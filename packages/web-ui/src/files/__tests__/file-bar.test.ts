@@ -6,8 +6,10 @@ import { fileBar } from '../file-bar'
 const typescript = 'export const a = 1\nexport const b = 2\n'
 
 test('text names its language as the editor knows it, then its lines and size', () => {
-  // Lines as the editor's gutter numbers them, the empty one after the last line break included.
-  expect(fileBar('/w/src/app.ts', { as: 'text', text: typescript }).label).toBe('TypeScript · 3 lines · 38 B')
+  // Lines as GitHub counts them: the line break that ends the last line starts no line.
+  expect(fileBar('/w/src/app.ts', { as: 'text', text: typescript }).label).toBe('TypeScript · 2 lines · 38 B')
+  expect(fileBar('/w/empty.txt', { as: 'text', text: '' }).label).toBe('Plain Text · 0 lines · 0 B')
+  expect(fileBar('/w/blank.txt', { as: 'text', text: '\n' }).label).toBe('Plain Text · 1 line · 1 B')
   // A language the editor ships reads as its language-data name, even for a name the data does not match.
   expect(fileBar('/w/tsconfig.jsonc', { as: 'text', text: '{}' }).label).toBe('JSON · 1 line · 2 B')
   expect(fileBar('/w/.gitignore', { as: 'text', text: 'dist\nnode_modules' }).label).toBe('Shell · 2 lines · 17 B')
@@ -32,7 +34,7 @@ test('media name their kind in full and the facts their preview reports, the zoo
 test('Copy puts the whole text on the clipboard, Markdown its source, and a file shown in part has none', () => {
   const readme = '# Demi\n\n**Bold** words.\n'
   const markdown = fileBar('/w/README.md', { as: 'text', text: readme })
-  expect(markdown).toEqual({ label: 'Markdown · 4 lines · 24 B', modes: true, copy: readme, download: true })
+  expect(markdown).toEqual({ label: 'Markdown · 3 lines · 24 B', modes: true, copy: readme, download: true })
   expect(fileBar('/w/src/app.ts', { as: 'text', text: typescript })).toMatchObject({ modes: false, copy: typescript })
   // The page holds only the first 8 MiB of a large log: its lines are not known, and Download gives all of it.
   expect(fileBar('/w/server.log', { as: 'start', size: 12 * 1024 * 1024 }))
