@@ -27,15 +27,18 @@ export function provideBlobUrl(url: BlobUrl): void {
  * while there is no source.
  */
 export function useMediaUrl(source: () => MediaSource | undefined): Readonly<Ref<string>> {
+  const address = useMediaAddress()
+  return computed(() => {
+    const value = source()
+    return value ? address(value) : ''
+  })
+}
+
+/** Where any media source loads from, for a component that reads addresses outside its render, such as a copy. */
+export function useMediaAddress(): (source: MediaSource) => string {
   const blobUrl = inject(blobUrlKey, null)
   if (!blobUrl) {
     throw new Error('Nothing says where blobs load from: the app provides it with provideBlobUrl')
   }
-  return computed(() => {
-    const value = source()
-    if (!value) {
-      return ''
-    }
-    return value.type === 'url' ? value.url : blobUrl(value.ref, value.mediaType)
-  })
+  return (source) => source.type === 'url' ? source.url : blobUrl(source.ref, source.mediaType)
 }

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Component } from 'vue'
-import { useClipboard, useResizeObserver } from '@vueuse/core'
+import { useClipboardItems, useResizeObserver } from '@vueuse/core'
 import { Check, Copy, Pencil } from '@lucide/vue'
-import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import { reportError } from '../../infra/errors'
 import type { MessageEditContent } from '../message-editing'
-import { composerCapsule, contentCapsule } from '../message-editor/capsules'
+import { composerCapsule, composerTransfer, contentCapsule, provideTransfers } from '../message-editor/capsules'
 import MessageEditor from '../message-editor/MessageEditor.vue'
 import type { ComposerAttachment } from '../message-input/attachments'
 import { splitMessageContent } from '../message-input/message-content'
@@ -39,9 +39,35 @@ const emit = defineEmits<{
   sendNow: []
   /** Open this message's editor. */
   edit: []
+  /** Try again the upload a file of a message not yet confirmed failed, and then the message. */
+  retry: []
 }>()
 
-const { copy, copied } = useClipboard({ copiedDuring: 1500 })
+const { copy, copied } = useClipboardItems({ copiedDuring: 1500 })
+const editor = ref<InstanceType<typeof MessageEditor>>()
+
+/** Copy puts the message on the clipboard in every form, its files with it (`product.md` § Writing a message). */
+function copyMessage(): void {
+  const item = editor.value?.clipboardItem()
+  if (item) {
+    copy([item]).catch((error: unknown) => reportError('Couldn’t Copy the Message', error))
+  }
+}
+
+// A message not yet confirmed shows how far each of its files' uploads has
+// come, and a failed one's Retry tries the message again.
+provideTransfers({
+  transfer: (id) => {
+    const item = props.attachments?.find((each) => each.id === id)
+    return item ? composerTransfer(item) : undefined
+  },
+  carries: () => false,
+  retry: () => emit('retry'),
+  current: (id) => {
+    const item = props.attachments?.find((each) => each.id === id)
+    return item ? composerCapsule(item) : undefined
+  },
+})
 
 interface BubbleAction {
   key: string
@@ -61,12 +87,6 @@ const message = computed(() => {
   }
 })
 
-/** What Copy puts on the clipboard: the Markdown, each file by its name. */
-const copyText = computed(() => message.value.markdown
-  .split(ATTACHMENT_MARK)
-  .map((text, index) => `${text}${message.value.capsules[index]?.name ?? ''}`)
-  .join(''))
-
 // Sent messages get copy and edit on hover.
 const actions = computed<BubbleAction[]>(() => {
   const list: BubbleAction[] = []
@@ -77,7 +97,7 @@ const actions = computed<BubbleAction[]>(() => {
     key: 'copy',
     hint: copied.value ? 'Copied' : 'Copy',
     icon: copied.value ? Check : Copy,
-    emit: () => void copy(copyText.value),
+    emit: copyMessage,
   })
   if (props.editable) {
     list.push({
@@ -207,6 +227,7 @@ useResizeObserver(bodyRef, measure)
           :class="textClass"
         >
           <MessageEditor
+            ref="editor"
             :markdown="message.markdown"
             :attachments="message.capsules"
           />
