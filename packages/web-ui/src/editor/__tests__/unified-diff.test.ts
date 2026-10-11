@@ -9,9 +9,12 @@ import { codeViewUpdate } from '../useCodeView'
 
 /**
  * The rows the diff shows for each change, as git prints them: each removed
- * line, then each added line, and git's note after a last line without a
+ * line, then each added line, and a note after a last line without a
  * newline.
  */
+/** Where git writes "\\ No newline at end of file". */
+const NO_NEWLINE = 'no newline'
+
 function rows(original: string, modified: string): string[] {
   const state = EditorState.create({ doc: modified, extensions: unifiedDiff(original) })
   const diff = diffOf(state)!
@@ -20,28 +23,28 @@ function rows(original: string, modified: string): string[] {
     if (chunk.toA > chunk.fromA)
       out.push(...diff.original.sliceString(chunk.fromA, chunk.endA).split('\n').map((line) => `-${line}`))
     if (chunk.toA > diff.original.length)
-      out.push('\\ No newline at end of file')
+      out.push(NO_NEWLINE)
     if (chunk.toB > chunk.fromB)
       out.push(...state.doc.sliceString(chunk.fromB, chunk.endB).split('\n').map((line) => `+${line}`))
     if (chunk.toB > state.doc.length)
-      out.push('\\ No newline at end of file')
+      out.push(NO_NEWLINE)
   }
   return out
 }
 
 test.each([
   // `printf 'x' > page.txt`: no removed row above the added line.
-  ['a created file without a final newline', '', 'x', ['+x', '\\ No newline at end of file']],
+  ['a created file without a final newline', '', 'x', ['+x', NO_NEWLINE]],
   ['a created file', '', 'x\ny\n', ['+x', '+y']],
   ['a removed file', 'x\ny\n', '', ['-x', '-y']],
-  ['a removed file without a final newline', 'x', '', ['-x', '\\ No newline at end of file']],
+  ['a removed file without a final newline', 'x', '', ['-x', NO_NEWLINE]],
   // No empty added row below what is left.
-  ['a deleted last line that had no newline', 'a\nb', 'a\n', ['-b', '\\ No newline at end of file']],
+  ['a deleted last line that had no newline', 'a\nb', 'a\n', ['-b', NO_NEWLINE]],
   ['a deleted last line', 'a\nb\n', 'a\n', ['-b']],
-  ['a final newline removed', 'a\nb\n', 'a\nb', ['-b', '+b', '\\ No newline at end of file']],
-  ['a final newline added', 'a\nb', 'a\nb\n', ['-b', '\\ No newline at end of file', '+b']],
-  ['a line added after one without a newline', 'a', 'a\nb\n', ['-a', '\\ No newline at end of file', '+a', '+b']],
-  ['a last line changed, neither with a newline', 'a\nb', 'a\nc', ['-b', '\\ No newline at end of file', '+c', '\\ No newline at end of file']],
+  ['a final newline removed', 'a\nb\n', 'a\nb', ['-b', '+b', NO_NEWLINE]],
+  ['a final newline added', 'a\nb', 'a\nb\n', ['-b', NO_NEWLINE, '+b']],
+  ['a line added after one without a newline', 'a', 'a\nb\n', ['-a', NO_NEWLINE, '+a', '+b']],
+  ['a last line changed, neither with a newline', 'a\nb', 'a\nc', ['-b', NO_NEWLINE, '+c', NO_NEWLINE]],
   ['an empty line removed', 'a\n\nb\n', 'a\nb\n', ['-']],
 ])('%s shows git’s rows', (_, original, modified, expected) => {
   expect(rows(original, modified)).toEqual(expected)
