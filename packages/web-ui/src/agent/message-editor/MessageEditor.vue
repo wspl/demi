@@ -184,6 +184,14 @@ onBeforeUnmount(() => {
 })
 
 watch(editable, (value) => editor.setEditable(value, false))
+// A composer that changes shape, as a paste of many lines opens it, keeps
+// the caret in view: the text scrolled while the composer was one line high,
+// which leaves its box at the top once it holds six.
+watch(multiline, () => {
+  if (props.composer && editor.isFocused) {
+    editor.view.dispatch(editor.state.tr.scrollIntoView())
+  }
+}, { flush: 'post' })
 // A wider or narrower composer holds more or less of the message on its line.
 watch(() => props.lineWidth, measure)
 // Code's colors arrive with the highlighter and follow the page's mode.
@@ -432,8 +440,24 @@ async function pngOf(src: string): Promise<Blob> {
   }
 }
 
+/** Whether the page's selection runs past this message, into the answer or another message. */
+function selectionLeaves(view: EditorView): boolean {
+  const selection = view.dom.ownerDocument.getSelection()
+  if (!selection || selection.rangeCount === 0) {
+    return false
+  }
+  const range = selection.getRangeAt(0)
+  return !view.dom.contains(range.startContainer) || !view.dom.contains(range.endContainer)
+}
+
 /** A selection in a sent message copies in every form; a lone picture also as itself. */
 function copySelection(view: EditorView, event: ClipboardEvent): boolean {
+  // A selection that runs on past the message is the page's to copy, whole and
+  // in order, as any web page copies it: ProseMirror's own copy, which a
+  // handler that declines would get, holds only the part in this message.
+  if (selectionLeaves(view)) {
+    return true
+  }
   const transfer = event.clipboardData
   const { selection } = view.state
   // Code copied from inside a code block is the code, as ProseMirror copies it.
