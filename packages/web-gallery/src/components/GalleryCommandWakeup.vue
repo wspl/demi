@@ -27,15 +27,16 @@ const title = 'Run the end-to-end suite'
 const input = JSON.stringify({ script: 'sh scripts/e2e.sh', description: title, intervalMs: 30_000 })
 function call(status: 'executing' | 'completed'): Block {
   return {
-    type: 'tool_call', id: 'wake-call', createdAt: created(), model: demoModel,
+    type: 'tool_call', id: 'wake-call', run: 'wake-call', createdAt: created(), model: demoModel,
     toolUseId: 'wake-call-use', toolName: 'shell', input, status,
     output: status === 'executing' ? [] : [{ type: 'text', text: 'status: running\ncommandId: 4\noutput:\nscenario 1 ok\nscenario 5 ok\n' }],
     view: status === 'executing' ? null : shellView({ commandId: '4', status: 'running', runningMs: 30_000, chunks: [{ stream: 'stdout', text: 'scenario 1 ok\n…\nscenario 5 ok\n' }] }),
   }
 }
+/** A block of the report; one of progress alone is in no run, as it shows nothing. */
 function report(id: string, event: CommandReport['event'], output: string): Block {
   return {
-    type: 'wakeup', id, turnId: `${id}-turn`, createdAt: created(), model: demoModel,
+    type: 'wakeup', id, ...(event.kind === 'running' ? {} : { run: id }), turnId: `${id}-turn`, createdAt: created(), model: demoModel,
     placement: 'new_turn', reports: [{ commandId: '4', title, event, output }],
   }
 }

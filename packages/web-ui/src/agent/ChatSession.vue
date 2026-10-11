@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { provideEditReads, provideEditSelection, type EditSelectionHandler } from './edit-selection'
-import type { ReadCallChange } from '../files/changes'
+import { provideEditSelection, type EditSelectionHandler } from './edit-selection'
 import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, watch } from 'vue'
@@ -65,8 +64,6 @@ const props = withDefaults(defineProps<{
   editVersion?: TranscriptVersion | null
   messageEdit?: MessageEditState | null
   selectEdit?: EditSelectionHandler
-  /** Reads a retained edit's two sides, for a work group's file counts. */
-  readEdit?: ReadCallChange
   fork?: MessageForkHandler
   /**
    * Detect Title in the Rename menu: `available` while a message is newer
@@ -156,7 +153,6 @@ const emit = defineEmits<{
 }>()
 provideEditSelection(() => props.selectEdit)
 provideBlockReader(() => props.readBlock)
-provideEditReads(() => props.readEdit)
 // A running call shows its command's output under it; once the call
 // returned, a command that still runs is the dock's (`runtime.md`
 // § Rendering boundary).

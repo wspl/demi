@@ -304,6 +304,7 @@ function toolCallBlock(status: ToolCallStatus): MessageListBlock {
   return {
     type: 'tool_call',
     id: `tool-${status}`,
+    run: `tool-${status}`,
     createdAt,
     model,
     toolUseId: `tool-use-${status}`,
@@ -319,6 +320,7 @@ function thinkingBlock(): MessageListBlock {
   return {
     type: 'thinking',
     id: 'thinking-1',
+    run: 'thinking-1',
     createdAt,
     model,
     text: 'thinking',

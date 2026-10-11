@@ -9,6 +9,7 @@ import {
   subagentBlocks,
   subagentParentBlocks,
   movedRequestBlocks,
+  cleanupRequestBlocks,
   signInRequestBlocks,
   standaloneRequest,
   uncopiedRequestBlocks,
@@ -26,7 +27,7 @@ import ToolCallBlock from '@demicodes/web-ui/agent/blocks/ToolCallBlock.vue'
 import { parseToolInput } from '@demicodes/web-ui/agent/block-helpers'
 import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import type { ActivityKind } from '@demicodes/web-ui/agent/activity-slot'
-import { provideEditReads, provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
+import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { galleryFiles, useGalleryWork, type GalleryWork } from '../fixtures/work-panel'
@@ -35,7 +36,7 @@ import { selectedTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
 import { NEW_TAB_URL, STARTING_LABELS, browserTabDataSchema, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
 import type { ChangeMode, ChangeSetSource, ChangeSources } from '@demicodes/web-ui/files/changes'
-import { transcriptRequests, type RequestChangeSource, type RequestEditRef, type RequestEditSelection } from '@demicodes/web-ui/files/request-changes'
+import { storedRequests, type RequestChangeSource, type RequestEditRef, type RequestEditSelection } from '@demicodes/web-ui/files/request-changes'
 import ChangeView from '@demicodes/web-ui/files/ChangeView.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
 import { createGalleryChangeSet, createGalleryWorkspace, gallerySides } from '../fixtures/workspace'
@@ -516,11 +517,9 @@ const editWork = useWorkTabs('change')
 // The gallery's own conversation browser stands behind every specimen's `browser`
 // kind, which lists its tabs as it is made.
 provideEditSelection(() => editWork.selectEdit)
-// A work group's file counts read its files' ends from the gallery's blobs, as the product's from the blob route.
-provideEditReads(() => readGalleryEdit)
 const changeUncommitted = useChangeTab('uncommitted', 'src/auth/cookie.ts', { uncommitted: workspace.changes, conversation: null })
 /** The sign-in request, its login.ts edited three times, as the Change view's specimens read it. */
-const signInChanges = transcriptRequests(signInRequestBlocks('change-view')).requests[0]!
+const signInChanges = storedRequests(signInRequestBlocks('change-view')).requests[0]!
 const signInLogin = signInChanges.files[0]!
 const changeRequest = useChangeTab('conversation', null, {
   uncommitted: workspace.changes,
@@ -538,7 +537,8 @@ const changeDocument = useChangeTab('conversation', null, {
     files: [{
       path: readmeChange.path,
       kind: readmeChange.kind,
-      edits: [{ call: 'gallery-readme-edit', title: 'Tidy the readme', path: readmeChange.path, segment: 0, created: false, copies: readmeChange.edits[0]!.copies }],
+      lines: { added: readmeChange.added, removed: readmeChange.removed },
+      edits: [{ call: 'gallery-readme-edit', title: 'Tidy the readme', path: readmeChange.path, segment: 0, copies: readmeChange.edits[0]!.copies }],
     }],
     read: () => gallerySides('README.md'),
   },
@@ -736,11 +736,13 @@ const writingSpecimens = [
 ]
 const uncopiedBlocks = uncopiedRequestBlocks()
 const movedBlocks = movedRequestBlocks()
+const cleanupBlocks = cleanupRequestBlocks()
 const parentBlocks = subagentParentBlocks()
 const childBlocks = subagentBlocks()
 useGalleryTranscripts(() => ({ blocks: signInBlocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: uncopiedBlocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: movedBlocks, subagents: [] }))
+useGalleryTranscripts(() => ({ blocks: cleanupBlocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: parentBlocks, subagents: [{ id: SUBAGENT, blocks: childBlocks }] }))
 const changesSurface = ref<{ dockHeight: number }>()
 const changesList = ref<{ isAtBottom: boolean; scrollToBottom: () => void }>()
@@ -2217,12 +2219,27 @@ onBeforeUnmount(() => {
             />
           </div>
         </GallerySpecimen>
-        <GallerySpecimen variant="moved and removed · the page written in /tmp and moved in; a script left in /tmp and scratch notes removed show nowhere" wide>
+        <GallerySpecimen variant="moved and removed in one run · the page written in /tmp and moved in; a script left in /tmp shows nowhere, and the scratch notes only under the calls that wrote and removed them" wide>
           <div class="gallery-frame h-[26rem] bg-surface">
             <AgentMessageList
               class="h-full"
               conversation-id="gallery-request-moved"
               :blocks="movedBlocks"
+              :pending-steers="[]"
+              :queue="[]"
+              phase="idle"
+              :bottom-offset="0"
+              :persisted-scroll-state="undefined"
+              read-only
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="removed and renamed across two runs · the first run keeps the notes it made, the second strikes them and the old guide and shows the setup page renamed; the request lists the old guide and the new name, not the notes" wide>
+          <div class="gallery-frame h-[24rem] bg-surface">
+            <AgentMessageList
+              class="h-full"
+              conversation-id="gallery-request-cleanup"
+              :blocks="cleanupBlocks"
               :pending-steers="[]"
               :queue="[]"
               phase="idle"

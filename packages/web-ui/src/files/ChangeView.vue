@@ -23,8 +23,7 @@ import ImagePreview from './ImagePreview.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import PreviewPair from './PreviewPair.vue'
 import TreeFrame from './TreeFrame.vue'
-import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources } from './changes'
-import { diffLineCounts } from './diff-counts'
+import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources, type ReadCallChange } from './changes'
 import {
   allChangesStart,
   editIndex,
@@ -167,9 +166,9 @@ const heading = computed(() => {
   const shown = relativePath(props.root, absolutePath.value)
   const folder = shown.slice(0, shown.lastIndexOf('/') + 1)
   const start = startEdit.value
-  const renamed = mode.value === 'conversation'
-    ? start && start.path !== change.path ? start.path : undefined
-    : 'from' in change ? change.from : undefined
+  const renamed = mode.value === 'conversation' && start
+    ? start.path !== change.path ? start.path : undefined
+    : change.from
   const from = renamed ? relativePath(props.root, resolveHostPath(props.root, renamed)) : null
   return { folder, name: baseName(absolutePath.value), from, deleted: change.kind === 'deleted' }
 })
@@ -269,24 +268,38 @@ const staleBecause = computed(() => {
   return entry?.value !== undefined && entry.failure ? entry.failure.message ?? 'The read failed.' : null
 })
 
+/** All Changes of a file the request removed ends with nothing: the diff is its start against an empty file. */
+const endsRemoved = computed(() => requestFile.value?.kind === 'deleted' && editAt.value === null)
+const readRequest = computed<ReadCallChange | null>(() => {
+  const read = request.value?.read
+  if (!read)
+    return null
+  return endsRemoved.value
+    ? async (copies, signal) => {
+        const sides = await read(copies, signal)
+        return sides && { original: sides.original, modified: '' }
+      }
+    : read
+})
 // A request's file, read from the copies the selection names.
 const callSides = useRequestSides(
   () => request.value && requestFile.value ? shownKey.value : null,
   () => requestFile.value ? selectionCopies(requestFile.value, editAt.value) : null,
-  () => request.value?.read ?? null,
+  () => readRequest.value,
 )
 
 const state = computed<State>(() => mode.value === 'conversation' ? callSides.state.value : workingState.value)
 /**
  * The header's line counts: a working-tree file's as git counts them, and in
- * Conversation those of the diff shown, All Changes or one edit, once its
- * sides are read; none without them.
+ * Conversation those the request's latest call stored: All Changes', or the
+ * shown edit's call's when the edit is its only one of the file; none
+ * where they were not kept.
  */
 const counts = computed(() => {
   if (mode.value === 'uncommitted')
     return workingChange.value
-  const shown = callSides.state.value
-  return shown.phase === 'ready' ? diffLineCounts(shown.sides.original, shown.sides.modified) : null
+  const at = editAt.value
+  return (at === null ? requestFile.value?.lines : edits.value[at]?.lines) ?? null
 })
 
 function retry(): void {

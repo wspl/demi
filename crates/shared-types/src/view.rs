@@ -172,9 +172,24 @@ pub struct EditedFile {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
     pub temporary: bool,
-    /// None for a file the command removed or only renamed.
-    #[garde(dive)]
+    /// At least one for a file the command wrote; none for one it removed
+    /// or only renamed.
+    #[garde(custom(segments_fit(&self.kind)), dive)]
     pub edits: Vec<EditSegment>,
+}
+
+/// A file the command wrote has its segments, and one it removed or only
+/// renamed has none.
+fn segments_fit(kind: &EditKind) -> impl FnOnce(&Vec<EditSegment>, &()) -> garde::Result + '_ {
+    move |edits, _| match (kind, edits.is_empty()) {
+        (EditKind::Added | EditKind::Modified, true) => {
+            Err(garde::Error::new("a file the command wrote has its segments"))
+        }
+        (EditKind::Deleted | EditKind::Renamed, false) => {
+            Err(garde::Error::new("a file the command removed or renamed has no segments"))
+        }
+        _ => Ok(()),
+    }
 }
 
 /// How a file changed: created, changed where it was, removed, or moved

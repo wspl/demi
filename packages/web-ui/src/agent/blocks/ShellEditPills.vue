@@ -2,27 +2,30 @@
 import { computed } from 'vue'
 import { ICON_PX } from '../../ui/icon-metrics'
 import type { ToolCallBlock } from '../block-types'
+import { storedShellView } from '../block-helpers'
 import { useEditSelection, useTranscript } from '../edit-selection'
-import { callPillFiles, pillSelection } from '../../files/request-changes'
+import { callPills, pillSelection } from '../../files/request-changes'
 import FileChangePills from './FileChangePills.vue'
 
 /**
- * The files a shell call changed, as pills under its row, but for those its
- * request does not show, such as a file in a temporary directory. A pill
- * opens its file in the call's request, at the call's first edit of it
- * (`edit-tracking.md` § What the conversation shows).
+ * The files a shell call changed, as pills under its row, as the call's
+ * view stores them: what it wrote, removed (struck through) and renamed,
+ * but for a file in a temporary directory. A pill opens its file in the
+ * call's request, at the call's first edit of it (`edit-tracking.md`
+ * § What the conversation shows).
  */
 const props = defineProps<{ block: ToolCallBlock }>()
 const select = useEditSelection()
 const transcript = useTranscript()
-const files = computed(() => callPillFiles(transcript?.requests() ?? null, props.block))
+const files = computed(() => callPills(props.block))
 
 /**
  * What each pill opens, by path; none while the call belongs to no request,
- * or once a later call of it removed the file.
+ * for a file it only removed or renamed, or once a later call removed it.
  */
 function selection(path: string) {
-  return transcript ? pillSelection(transcript.node, transcript.requests(), props.block, path) : null
+  const call = storedShellView(props.block)?.commandId
+  return transcript && call ? pillSelection(transcript.node, transcript.requests(), props.block, call, path) : null
 }
 function selectable(path: string): boolean {
   return select() !== undefined && selection(path) !== null
