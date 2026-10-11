@@ -725,16 +725,16 @@ function shownRows(conversation: ReturnType<typeof useConversations>['items'][nu
   }
 }
 
-// Undo Send or Send Now pressed on a steer still on its way is the user's
+// Recall or Send Now pressed on a steer still on its way is the user's
 // latest wish, carried out once the session holds the steer, on what it
 // became: the steer, or the queued message a refused steer went as
 // (`web-application.md` § Responding to the user, `product.md` § Steer or queue).
-// Undo Send takes the row away at once all the same, and puts the message
+// Recall takes the row away at once all the same, and puts the message
 // back into the empty composer once it is carried out.
 test.each([
-  { held: 'steer', press: 'Undo Send', request: 'removeWaiting' },
+  { held: 'steer', press: 'Recall', request: 'removeWaiting' },
   { held: 'steer', press: 'Send Now', request: 'interruptPendingSteer' },
-  { held: 'queue', press: 'Undo Send', request: 'removeWaiting' },
+  { held: 'queue', press: 'Recall', request: 'removeWaiting' },
 ] as const)('$press pressed on a steer on its way is carried out once the session holds it as a $held', async ({ held, press, request }) => {
   const store = useConversations()
   const id = store.create()
@@ -760,8 +760,8 @@ test.each([
     const messageId = conversation.pendingSends[0]!.id
     // It shows as the steer it will be from the send.
     expect(shownRows(conversation).waiting).toEqual([`message:${messageId}`])
-    if (press === 'Undo Send') {
-      store.undoSend(conversation, messageId)
+    if (press === 'Recall') {
+      store.recall(conversation, messageId)
       expect(shownRows(conversation).waiting).toEqual([])
       // Nothing comes back before the session holds the message.
       expect(conversation.draft).toBe('')
@@ -782,7 +782,7 @@ test.each([
     expect(carried.mock.calls[0]?.[0]).toBe(messageId)
     expect(heldAtRequest).toEqual([true])
     expect(conversation.pendingSends).toEqual([])
-    if (press === 'Undo Send') {
+    if (press === 'Recall') {
       expect(conversation.draft).toBe('Also check the sign-up page')
     }
   } finally {
@@ -838,16 +838,16 @@ async function withRemovals(check: (
   }
 }
 
-// Undo Send takes a waiting message back into the empty composer, as
+// Recall takes a waiting message back into the empty composer, as
 // iMessage's does (`product.md` § Steer or queue): its text, and its files
 // as capsules, which attach as a pasted message's do, without their bytes.
 // Before, the message was only removed.
-test('Undo Send puts a steer back into the empty composer, its file a capsule attached without uploading it', async () => {
+test('Recall puts a steer back into the empty composer, its file a capsule attached without uploading it', async () => {
   await withRemovals(async (conversation, removal) => {
     const store = useConversations()
     conversation.pendingSteers = [withPicture('second')]
     const focusRequests = store.composerFocusRequests
-    store.undoSend(conversation, 'second')
+    store.recall(conversation, 'second')
     expect(shownRows(conversation).waiting).toEqual([])
     // At once, before the session answers.
     expect(conversation.draft).toBe(`Compare ${ATTACHMENT_MARK} with the old one`)
@@ -860,14 +860,14 @@ test('Undo Send puts a steer back into the empty composer, its file a capsule at
     await waitFor(() => file?.kind === 'file' && file.phase === 'ready', () => 'the file was not attached')
     expect(requests.some((request) => request.path.includes(`sha256=${SHA}`))).toBe(true)
     expect(removal.sendBytes).not.toHaveBeenCalled()
-    expect(toasts.some((toast) => toast.title === 'Message Unsent')).toBe(false)
+    expect(toasts.some((toast) => toast.title === 'Message Recalled')).toBe(false)
   })
 })
 
-// With a draft in the composer, Undo Send keeps the draft as it is and the
+// With a draft in the composer, Recall keeps the draft as it is and the
 // message is not put back; a toast's Undo sends it again the way it was
 // sent (`product.md` § Steer or queue).
-test('Undo Send with a draft in the composer keeps it untouched, and the toast\'s Undo sends the message again to the queue', async () => {
+test('Recall with a draft in the composer keeps it untouched, and the toast\'s Undo sends the message again to the queue', async () => {
   await withRemovals(async (conversation, removal) => {
     const store = useConversations()
     const sent: ClientContent[][] = []
@@ -877,16 +877,16 @@ test('Undo Send with a draft in the composer keeps it untouched, and the toast\'
     try {
       conversation.draft = 'My own draft'
       conversation.queue = [withPicture('queued')]
-      store.undoSend(conversation, 'queued')
+      store.recall(conversation, 'queued')
       expect(shownRows(conversation).waiting).toEqual([])
       expect(conversation.draft).toBe('My own draft')
       expect(conversation.attachmentIds).toEqual([])
-      const unsent = toasts.at(-1)
-      expect(unsent).toMatchObject({ title: 'Message Unsent', tone: 'success', action: { label: 'Undo' } })
+      const recalled = toasts.at(-1)
+      expect(recalled).toMatchObject({ title: 'Message Recalled', tone: 'success', action: { label: 'Undo' } })
       removal.answer.resolve()
       // The session no longer lists it.
       conversation.queue = []
-      unsent?.action?.run()
+      recalled?.action?.run()
       await waitFor(() => sent.length === 1, () => 'the message was not sent again')
       expect(sent[0]).toEqual([
         { type: 'text', text: 'Compare ' },
@@ -908,12 +908,12 @@ test('Undo Send with a draft in the composer keeps it untouched, and the toast\'
 test.each([
   { since: 'left as it was', draft: '' },
   { since: 'edited', draft: `Compare ${ATTACHMENT_MARK} with the old one, please` },
-] as const)('a refused Undo Send brings the row back where it was, and the composer it refilled, $since, holds "$draft"', async ({ since, draft }) => {
+] as const)('a refused Recall brings the row back where it was, and the composer it refilled, $since, holds "$draft"', async ({ since, draft }) => {
   await withRemovals(async (conversation, removal) => {
     const store = useConversations()
     const steer = (text: string) => ({ id: text, content: [{ type: 'text' as const, text }] })
     conversation.pendingSteers = [steer('first'), withPicture('second'), steer('third')]
-    store.undoSend(conversation, 'second')
+    store.recall(conversation, 'second')
     expect(shownRows(conversation).waiting).toEqual(['message:first', 'message:third'])
     const fileIds = [...conversation.attachmentIds]
     if (since === 'edited') {
@@ -923,7 +923,7 @@ test.each([
     removal.answer.reject(new RemovalRefusedError('The agent had already read it.'))
     await waitFor(() => shownRows(conversation).waiting.length === 3, () => 'the row did not come back')
     expect(shownRows(conversation).waiting).toEqual(['message:first', 'message:second', 'message:third'])
-    expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Unsend the Message', message: 'The agent had already read it.' })
+    expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Recall the Message', message: 'The agent had already read it.' })
     expect(conversation.draft).toBe(draft)
     expect(conversation.attachmentIds).toEqual(since === 'edited' ? fileIds : [])
     expect(conversation.files.some((file) => fileIds.includes(file.id))).toBe(since === 'edited')
