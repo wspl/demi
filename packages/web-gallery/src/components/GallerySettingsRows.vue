@@ -18,6 +18,7 @@ import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import { DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
 import { productWould } from '../product-would'
 
 /**
@@ -35,7 +36,7 @@ const protocols = ['Chat Completions', 'Responses', 'Messages'] as const
 const name = ref('explore')
 const baseUrl = ref('https://api.example.com/v1')
 const protocol = ref<(typeof protocols)[number]>('Responses')
-const fontSize = ref(14)
+const fontSize = ref(DEFAULT_TRANSCRIPT_TEXT_SIZE)
 const theme = ref<Theme>('system')
 const sound = ref(true)
 /** The account row's usage, which Refresh reads again: each window a little further used. */

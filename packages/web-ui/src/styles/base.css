@@ -269,7 +269,9 @@ body,
 
 html {
   --icon-stroke-width: 1.75;
-  --agent-text: 14px;
+  /* --agent-text, the transcript's text size, is the user's choice: the page
+     writes it on the root (applyTranscriptTextSize), its default included
+     (DEFAULT_TRANSCRIPT_TEXT_SIZE in theme/productAppearance.ts). */
   --agent-leading: 1.5;
   --agent-chrome: 14px;
   /* A transcript's rows read at its prose's size, whatever size the user

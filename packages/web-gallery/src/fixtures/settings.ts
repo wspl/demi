@@ -2,6 +2,7 @@ import { DEMO_PERSONAL_INSTRUCTIONS } from './instructions'
 import { reactive } from 'vue'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import { DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
 import type {
   SettingsArchivedConversation,
   SettingsKeyBinding,
@@ -643,7 +644,7 @@ export function createSettingsState() {
     general: {
       language: 'English',
       theme: 'system' as 'light' | 'dark' | 'system',
-      fontSize: 15,
+      fontSize: DEFAULT_TRANSCRIPT_TEXT_SIZE,
     },
     notifications: {
       enabled: false,
