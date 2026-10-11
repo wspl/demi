@@ -1,6 +1,6 @@
 // Paths a message writes as link and image targets (`file-previews.md`
 // § Files named in messages).
-import { resolveHostPath } from '../files/paths'
+import { expandHome, resolveHostPath } from '../files/paths'
 import type { MessageFileTarget, MessageFiles } from './types'
 
 const LINE_RANGE_SUFFIX_RE = /:\d+(?:-\d+)?$/
@@ -46,16 +46,26 @@ export function decodedTarget(value: string): string {
   }
 }
 
+/** Where a message's paths start: the working directory, and the Host's home for `~/`, while it is known. */
+export type MessagePlaces = Pick<MessageFiles, 'cwd' | 'home'>
+
 /**
  * The Host path a message's link or image target names, its query and
- * fragment dropped and resolved against the working directory; null for a
- * target that names no file.
+ * fragment dropped, `~/` read from the Host's home as the File view's field
+ * reads it, and a relative one resolved against the working directory; null
+ * for a target that names no file, or names the home while it is unknown.
  */
-export function messageHostPath(target: string, cwd: string): string | null {
+export function messageHostPath(target: string, places: MessagePlaces): string | null {
   if (!isLikelyFilePath(target))
     return null
   const path = decodedTarget(normalizeFilePath(target.split(/[?#]/)[0] ?? ''))
-  return path === '' ? null : resolveHostPath(cwd, path)
+  if (path === '')
+    return null
+  const named = places.home ? expandHome(path, places.home) : path
+  // Without the home, a `~/` path names nothing it could be read as.
+  if (named.startsWith('~/'))
+    return null
+  return resolveHostPath(places.cwd, named)
 }
 
 /** A line a target points at: `#L42` or `#L42-L50` after it, as GitHub links one. */
@@ -75,9 +85,9 @@ export function targetLine(target: string): number | null {
   return line === undefined ? null : Number(line)
 }
 
-/** The Host file a link's target names, resolved against `cwd`, with its line; null for a target that names none. */
-export function messageFileTarget(target: string, cwd: string): MessageFileTarget | null {
-  const path = messageHostPath(target, cwd)
+/** The Host file a link's target names, resolved from `places`, with its line; null for a target that names none. */
+export function messageFileTarget(target: string, places: MessagePlaces): MessageFileTarget | null {
+  const path = messageHostPath(target, places)
   return path === null ? null : { path, line: targetLine(target) }
 }
 
@@ -117,7 +127,7 @@ export function messageImage(
     return { src: target, opens: null }
   if (!files)
     return null
-  const path = messageHostPath(target, files.cwd)
+  const path = messageHostPath(target, files)
   if (path === null)
     return null
   // A Host image opens whole only where a plugin opens files.
