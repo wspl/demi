@@ -16,6 +16,7 @@ function state(): RuntimeState {
     queue: [],
     pendingSteers: [],
     pendingCalls: [],
+    waitingSince: null,
     lastError: null,
     load: 'loading',
     pendingAction: null,

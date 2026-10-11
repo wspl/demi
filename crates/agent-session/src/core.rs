@@ -31,7 +31,7 @@ use demi_provider_common::{
 use demi_shared_types::{
     AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, CommandReport, ErrorDevice, FailureSource, ReportEvent,
     ModelSelection, NodeId, PendingCall, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
-    ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupPlacement,
+    Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock, WakeupPlacement,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -103,6 +103,9 @@ pub(crate) struct SessionCore {
     pub(super) persist: PersistMarks,
     /// Events of the current change, delivered once it is complete.
     pub(super) outbox: Vec<SessionEvent>,
+    /// When the node began to wait for the model's answer, while it waits
+    /// (`runtime.md` § Waiting for the model).
+    waiting_since: Option<Timestamp>,
     ids: Rc<dyn IdSource>,
     clock: Arc<dyn Clock>,
     /// The node's runtime, which knows which commands' ends a look showed it.
@@ -294,6 +297,7 @@ struct Published {
     reports: Vec<CommandReport>,
     intervals: Vec<CommandInterval>,
     edits: usize,
+    waiting_since: Option<Timestamp>,
 }
 
 /// What a complete change leaves to do after the core is released.
@@ -383,6 +387,7 @@ impl SessionCore {
             disposing: false,
             persist: PersistMarks::default(),
             outbox: Vec::new(),
+            waiting_since: None,
             ids: parts.ids,
             clock: parts.clock,
             requests: Requests::default(),
@@ -395,6 +400,7 @@ impl SessionCore {
                 reports: Vec::new(),
                 intervals: Vec::new(),
                 edits: 0,
+                waiting_since: None,
             },
         };
         // What the checkpoint holds counts as published: only later changes
@@ -1487,6 +1493,27 @@ impl SessionCore {
         self.writing.clear();
     }
 
+    /// The node starts to wait for the model's answer; `again`, for a retry
+    /// of the same request, keeps a wait that runs, whose clock runs on
+    /// (`runtime.md` § Waiting for the model).
+    pub(super) fn start_waiting(&mut self, again: bool) {
+        if !again || self.waiting_since.is_none() {
+            self.waiting_since = Some(self.clock.now());
+        }
+    }
+
+    /// The model's output began, or the request ended.
+    pub(super) fn stop_waiting(&mut self) {
+        self.waiting_since = None;
+    }
+
+    /// How long the node has waited for the model, while it waits.
+    pub(super) fn waited_ms(&self) -> Option<u64> {
+        let now = self.clock.now().as_millisecond();
+        self.waiting_since
+            .map(|since| u64::try_from(now - since.as_millisecond()).unwrap_or(0))
+    }
+
     /// The calls the model is writing, oldest first.
     pub(super) fn pending_calls(&self) -> Vec<PendingCall> {
         self.writing.iter().map(|writing| writing.call.clone()).collect()
@@ -1880,6 +1907,12 @@ impl SessionCore {
         if phase != self.published.phase {
             self.published.phase = phase;
             events.push(SessionEvent::PhaseChanged { phase });
+        }
+        if self.waiting_since != self.published.waiting_since {
+            self.published.waiting_since = self.waiting_since;
+            events.push(SessionEvent::WaitingChanged {
+                waited_ms: self.waited_ms(),
+            });
         }
         let requests = mem::take(&mut self.requests);
         Effects {

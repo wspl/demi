@@ -93,6 +93,7 @@ function state(
     queue: [],
     pendingSteers: [],
     pendingCalls: [],
+    waitingSince: null,
     phase: 'idle',
     load: 'ready',
     lastError: null,

@@ -49,6 +49,12 @@ export interface ConversationState {
   pendingSteers: PendingSteerMessage[]
   /** The calls the model is writing, as the server lists them (`runtime.md` § Calls being written). */
   pendingCalls: PendingCall[]
+  /**
+   * When the root began to wait for the model's answer, as `Date.now()`, as
+   * the server tells it; null when it waits for none (`runtime.md` § Waiting
+   * for the model).
+   */
+  waitingSince: number | null
   /** The conversation's model settings, which its composer shows. */
   model: ModelSettings
   lastError: string | null
@@ -81,6 +87,7 @@ export interface ChatSessionState
     | 'queue'
     | 'pendingSteers'
     | 'pendingCalls'
+    | 'waitingSince'
     | 'phase'
     | 'load'
     | 'lastError'

@@ -62,6 +62,7 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
             "queue",
             "pending_steers",
             "pending_calls",
+            "waiting",
             "context_usage"
         ]
     );
@@ -95,7 +96,17 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
 
     let mut second = fixture.client();
     second.send(open()).await;
-    let handshake: Vec<String> = second.received().iter().map(frame_type).collect();
+    let received = second.received();
+    // The root waits for the held request's answer: the handshake says so
+    // (`runtime.md` § Waiting for the model).
+    assert!(
+        received.iter().any(|frame| matches!(
+            frame,
+            ServerFrame::Waiting { subagent_id: None, waited_ms: Some(_) }
+        )),
+        "{received:?}"
+    );
+    let handshake: Vec<String> = received.iter().map(frame_type).collect();
     assert_eq!(
         handshake,
         [
@@ -105,6 +116,7 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
             "queue",
             "pending_steers",
             "pending_calls",
+            "waiting",
             "context_usage"
         ]
     );
@@ -569,6 +581,7 @@ async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
             "queue",
             "pending_steers",
             "pending_calls",
+            "waiting",
             "context_usage"
         ]
     );

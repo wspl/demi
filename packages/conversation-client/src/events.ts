@@ -64,6 +64,18 @@ export type ClientSessionEvent =
       pendingCalls: PendingCall[]
     }
   | {
+      type: 'waiting'
+      /** The subagent that waits; absent for the root. */
+      subagentId?: string
+      /**
+       * When the node began to wait for the model's answer, as `Date.now()`:
+       * the frame's arrival less how long it had waited, so no time of the
+       * server's is compared with the page's clock; null when it waits for
+       * none (`runtime.md` § Waiting for the model).
+       */
+      since: number | null
+    }
+  | {
       type: 'subagent_transcript_reset'
       subagentId: string
       start: number

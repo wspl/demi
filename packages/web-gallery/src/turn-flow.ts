@@ -1,4 +1,4 @@
-import { onBeforeUnmount, reactive, shallowRef } from 'vue'
+import { onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
 import type { Block, ContextUsage, UserContentBlock } from '@demicodes/protocol'
 import { ACTIVITY_HANDOFF_MS } from '@demicodes/web-ui/agent/activity-slot'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
@@ -122,6 +122,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     queue: [],
     pendingSteers: [],
     pendingCalls: [],
+    waitingSince: null,
     model: {
       providerId: demoModel.providerId,
       modelId: demoModel.model.id,
@@ -184,7 +185,25 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state.blocks = state.blocks.map((block) => (block.id === id ? next : block))
   }
 
+  /**
+   * The model is asked, as the server would tell a page when it begins to
+   * wait (`runtime.md` § Waiting for the model); the model's first block or
+   * call being written ends the wait, and so does the turn's end.
+   */
+  function waitForModel(): void {
+    state.waitingSince = Date.now()
+  }
+
+  watch(() => state.phase, (phase) => {
+    if (phase !== 'running') {
+      state.waitingSince = null
+    }
+  })
+
   function append(block: Block): void {
+    if (block.type === 'thinking' || block.type === 'text' || block.type === 'tool_call') {
+      state.waitingSince = null
+    }
     state.blocks = [...state.blocks, block]
   }
 
@@ -306,6 +325,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     at(run, end + 160, () => {
       // A steer that came during the reply is read before the turn ends.
       if (writeSteers()) {
+        waitForModel()
         thinkThenReply(run, WAIT_MS, THINK_2)
         return
       }
@@ -358,6 +378,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   /** A whole turn on the current transcript: request, think, run a tool, think, reply. */
   function runTurn(run: number): void {
     state.phase = 'running'
+    waitForModel()
     const thought1 = think(run, FIRST_OUTPUT_MS, THINK_1)
     const toolId = nextId('tool')
     let toolStartedAt = ''
@@ -390,6 +411,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       runningTool = null
       replace(toolId, tool(toolId, toolStartedAt, 'completed'))
       writeSteers()
+      waitForModel()
     })
     thinkThenReply(run, toolDone + WAIT_MS, THINK_2)
   }
@@ -420,6 +442,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   function runWork(run: number): void {
     state.phase = 'running'
     state.pendingCalls = []
+    waitForModel()
     let t = FIRST_OUTPUT_MS
     for (const step of WORK_STEPS) {
       if (step.kind === 'think') {
@@ -431,6 +454,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       // The model writes the call first: its row shows as it opens, takes its
       // description once written, and becomes the call's block when whole.
       at(run, t, () => {
+        state.waitingSince = null
         state.pendingCalls = [{ toolUseId: `${id}-use`, toolName: 'shell', description: null }]
       })
       at(run, t + 400, () => {
@@ -467,6 +491,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         endTerminal(terminal, 'exited')
         replace(id, workCall(id, startedAt, step, 'completed'))
         writeSteers()
+        waitForModel()
       })
       t = done + WAIT_MS
     }

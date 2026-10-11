@@ -490,6 +490,12 @@ impl<H: HostResolver> Tree<H> {
                             pending_calls: pending_calls.clone(),
                         });
                     }
+                    SessionEvent::WaitingChanged { waited_ms } => {
+                        sink.emit(ServerFrame::Waiting {
+                            subagent_id: Some(id.clone()),
+                            waited_ms: *waited_ms,
+                        });
+                    }
                     SessionEvent::ActionFailed { report } => {
                         if let Some(child) = child.upgrade() {
                             child.failure.replace(Some(report.message.clone()));
@@ -1159,8 +1165,9 @@ async fn stop_all(session: &AgentSession) {
     while session.abort().await.target.is_some() {}
 }
 
-/// A child's `started` frame, its transcript and the calls it is writing.
-fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 3] {
+/// A child's `started` frame, its transcript, the calls it is writing and
+/// its wait for the model.
+fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 4] {
     let session = child.node.session();
     let transcript = session.transcript();
     [
@@ -1184,6 +1191,10 @@ fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 3] {
         ServerFrame::PendingCalls {
             subagent_id: Some(child.id().clone()),
             pending_calls: session.pending_calls(),
+        },
+        ServerFrame::Waiting {
+            subagent_id: Some(child.id().clone()),
+            waited_ms: session.waited_ms(),
         },
     ]
 }

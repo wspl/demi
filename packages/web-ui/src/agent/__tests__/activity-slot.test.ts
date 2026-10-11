@@ -126,12 +126,13 @@ test('while the connection banner says the backend is away, a reconnecting conve
  * The tail row as the message list drives it, over a conversation the test
  * changes the way the page's state changes, at a clock the test sets.
  */
-function slotOver(phase: SessionPhase, blocks: MessageListBlock[]) {
-  const clock = spyOn(Date, 'now').mockReturnValue(0)
+function slotOver(phase: SessionPhase, blocks: MessageListBlock[], opened = 0) {
+  const clock = spyOn(Date, 'now').mockReturnValue(opened)
   const conversation = reactive({
     phase,
     blocks,
     pendingSubmission: null as PendingSubmissionState | null,
+    waitingSince: null as number | null,
   })
   const scope = effectScope()
   const { slot } = scope.run(() => useActivitySlot({
@@ -154,6 +155,7 @@ function slotOver(phase: SessionPhase, blocks: MessageListBlock[]) {
       ],
     }),
     pendingSubmission: () => conversation.pendingSubmission,
+    waitingSince: () => conversation.waitingSince,
     tail: () => conversation.blocks.at(-1),
     scope: () => 'conversation',
   }))!
@@ -194,6 +196,46 @@ test('a message sent to an idle conversation says Requesting from the send, thro
   conversation.pendingSubmission = null
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 5_000 })
+})
+
+test('a view shown during a wait counts from the start the server tells, not from when it opened', async () => {
+  // A subagent's request had waited eight minutes when its view opened.
+  using session = slotOver('running', [userBlock()], 600_000)
+  const { conversation, slot, at } = session
+  conversation.waitingSince = 120_000
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 120_000 })
+
+  at(660_000)
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 120_000 })
+})
+
+test('a message this page sent counts from its send, also once the server tells a later start', async () => {
+  using session = slotOver('idle', [textBlock()])
+  const { conversation, slot, at } = session
+  at(5_000)
+  conversation.pendingSubmission = sent()
+  await nextTick()
+  at(6_000)
+  conversation.phase = 'running'
+  conversation.waitingSince = 5_400
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 5_000 })
+
+  // The answer streams, then its call ran: the wait for the model's next
+  // answer is the server's, from when the call's result went back.
+  at(9_000)
+  conversation.blocks = [textBlock(), userBlock(), textBlock()]
+  conversation.pendingSubmission = null
+  conversation.waitingSince = null
+  await nextTick()
+  expect(slot.value).toBeNull()
+  at(20_100)
+  conversation.blocks = [...conversation.blocks, toolCallBlock('completed')]
+  conversation.waitingSince = 20_000
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 20_000 })
 })
 
 test('a failed delivery ends the wait, and Retry starts it again from the retry', async () => {
