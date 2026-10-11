@@ -77,57 +77,64 @@ function rows(list: readonly MessageListBlock[]): (string | string[])[] {
   return list.map((row) => (row.type === 'work_group' ? row.steps.map((step) => step.id) : row.id))
 }
 
+/** `blocks` as steps of the run `first`, as the backend stores them. */
+function run(first: string, ...blocks: Block[]): Block[] {
+  return blocks.map((block) => ({ ...block, run: first }) as Block)
+}
+
 describe('the steps the transcript shows as one row', () => {
   test('thinking without text shows only while it is what the running turn does now', () => {
-    expect(rows(groupWork([thinking('t1'), call('a'), thinking('t2'), call('b'), text('r')], false)))
+    expect(rows(groupWork([...run('t1', thinking('t1'), call('a'), thinking('t2'), call('b')), text('r')], false)))
       .toEqual([['a', 'b'], 'r'])
-    expect(rows(groupWork([call('a'), call('b'), thinking('t3'), text('r')], false)))
+    expect(rows(groupWork([...run('a', call('a'), call('b'), thinking('t3')), text('r')], false)))
       .toEqual([['a', 'b'], 'r'])
-    expect(rows(groupWork([thinking('t1'), text('r')], false))).toEqual(['r'])
-    expect(rows(groupWork([text('r'), call('a'), thinking('t2')], true))).toEqual(['r', ['a', 't2']])
+    expect(rows(groupWork([...run('t1', thinking('t1')), text('r')], false))).toEqual(['r'])
+    expect(rows(groupWork([text('r'), ...run('a', call('a'), thinking('t2'))], true))).toEqual(['r', ['a', 't2']])
   })
 
-  test('a reply ends a run, and the next run is a group of its own', () => {
-    expect(rows(groupWork([call('a'), call('b'), text('r1'), call('c'), call('d')], false)))
+  test('each run the backend stored is a row of its own, even with nothing shown between', () => {
+    expect(rows(groupWork([...run('a', call('a'), call('b')), text('r1'), ...run('c', call('c'), call('d'))], false)))
       .toEqual([['a', 'b'], 'r1', ['c', 'd']])
+    expect(rows(groupWork([...run('a', call('a')), ...run('b', call('b'))], false))).toEqual([['a'], ['b']])
   })
 
   test('once the run ended, a lone call stays the row it was, and a call with another step is a group', () => {
     // A group of a lone call shows as the call's own row.
-    expect(rows(groupWork([call('a'), text('r')], false))).toEqual([['a'], 'r'])
-    expect(rows(groupWork([thinking('t', 'Plan the fix.'), call('a'), text('r')], false))).toEqual([['t', 'a'], 'r'])
+    expect(rows(groupWork([...run('a', call('a')), text('r')], false))).toEqual([['a'], 'r'])
+    expect(rows(groupWork([...run('t', thinking('t', 'Plan the fix.'), call('a')), text('r')], false))).toEqual([['t', 'a'], 'r'])
   })
 
   test('the end of a running turn is always a group, from its first step, the call being written included', () => {
-    const live = groupWork([text('r'), thinking('t1')], true)
+    const live = groupWork([text('r'), ...run('t1', thinking('t1'))], true)
     expect(rows(live)).toEqual(['r', ['t1']])
     expect((live[1] as WorkGroupBlock).live).toBe(true)
     // The empty thinking that opened the run gives the group its id, so the
     // row stays the same row as the calls roll over it.
-    const later = groupWork([text('r'), thinking('t1'), call('a'), writing('b')], true)
+    const later = groupWork([text('r'), ...run('t1', thinking('t1'), call('a')), writing('b')], true)
     expect(rows(later)).toEqual(['r', ['a', 'pending-call:b-use']])
     expect(later[1]!.id).toBe(live[1]!.id)
+    // A call being written after what ends a run starts one.
+    expect(rows(groupWork([...run('a', call('a')), text('r'), writing('b')], true))).toEqual([['a'], 'r', ['pending-call:b-use']])
   })
 })
 
 // A command's notice and an agent's receipt between two calls are steps of
-// the work, not its end; the agent's text and the user's words and
-// decisions end it (`runtime.md` § Work groups).
+// the work, as the backend stores them (`runtime.md` § Work groups).
 describe('the notices and receipts between the steps', () => {
   test('fold into the run, in their order, and the run reads what its calls did', () => {
-    const run = groupWork([call('a'), call('b'), call('c'), notice('n', '17'), receipt('m', 'ag-2'), call('d'), call('e'), text('r')], false)
-    expect(rows(run)).toEqual([['a', 'b', 'c', 'n', 'm', 'd', 'e'], 'r'])
-    expect(workSummary((run[0] as WorkGroupBlock).steps)).toBe('Ran 5 commands')
+    const steps = run('a', call('a'), call('b'), call('c'), notice('n', '17'), receipt('m', 'ag-2'), call('d'), call('e'))
+    const grouped = groupWork([...steps, text('r')], false)
+    expect(rows(grouped)).toEqual([['a', 'b', 'c', 'n', 'm', 'd', 'e'], 'r'])
+    expect(workSummary((grouped[0] as WorkGroupBlock).steps)).toBe('Ran 5 commands')
   })
 
-  test('the agent’s text, a steer and the receipt of the user’s decision each end a run', () => {
-    expect(rows(groupWork([call('a'), notice('n', '17'), text('r'), call('b')], false))).toEqual([['a', 'n'], 'r', ['b']])
-    expect(rows(groupWork([call('a'), receipt('m', 'ag-2'), steer('s'), call('b')], false))).toEqual([['a', 'm'], 's', ['b']])
-    expect(rows(groupWork([call('a'), allowed('p'), call('b')], false))).toEqual([['a'], 'p', ['b']])
+  test('the receipt of the user’s decision is no step: it shows between the runs', () => {
+    expect(rows(groupWork([...run('a', call('a')), allowed('p'), ...run('b', call('b'))], false))).toEqual([['a'], 'p', ['b']])
   })
 
   test('a lone notice or receipt is its own row', () => {
-    expect(rows(groupWork([text('r1'), notice('n', '17'), text('r2'), receipt('m', 'ag-2', { type: 'completion', outcome: 'completed' }), text('r3')], false)))
+    const end = receipt('m', 'ag-2', { type: 'completion', outcome: 'completed' })
+    expect(rows(groupWork([text('r1'), ...run('n', notice('n', '17')), text('r2'), ...run('m', end), text('r3')], false)))
       .toEqual(['r1', ['n'], 'r2', ['m'], 'r3'])
   })
 
@@ -194,16 +201,16 @@ describe('what a group says it did', () => {
 test('a run is one row under one name from its first step to its end', () => {
   const ids = (list: readonly MessageListBlock[]) => list.map((row) => (row.type === 'work_group' ? `${row.id}:${row.steps.length}` : row.id))
   expect(ids(groupWork([text('t'), writing('c1')], true))).toEqual(['t', 'work:c1-use:1'])
-  expect(ids(groupWork([text('t'), call('c1')], true))).toEqual(['t', 'work:c1-use:1'])
-  expect(ids(groupWork([text('t'), call('c1'), thinking('k', 'Next')], true))).toEqual(['t', 'work:c1-use:2'])
-  expect(ids(groupWork([text('t'), call('c1'), writing('c2')], true))).toEqual(['t', 'work:c1-use:2'])
-  expect(ids(groupWork([text('t'), call('c1'), text('r')], false))).toEqual(['t', 'work:c1-use:1', 'r'])
+  expect(ids(groupWork([text('t'), ...run('c1', call('c1'))], true))).toEqual(['t', 'work:c1-use:1'])
+  expect(ids(groupWork([text('t'), ...run('c1', call('c1'), thinking('k', 'Next'))], true))).toEqual(['t', 'work:c1-use:2'])
+  expect(ids(groupWork([text('t'), ...run('c1', call('c1')), writing('c2')], true))).toEqual(['t', 'work:c1-use:2'])
+  expect(ids(groupWork([text('t'), ...run('c1', call('c1')), text('r')], false))).toEqual(['t', 'work:c1-use:1', 'r'])
   // A thinking first names the row, also once it has nothing to show and goes.
-  expect(ids(groupWork([text('t'), thinking('k')], true))).toEqual(['t', 'work:k:1'])
-  expect(ids(groupWork([text('t'), thinking('k'), call('c1')], true))).toEqual(['t', 'work:k:1'])
-  expect(ids(groupWork([text('t'), thinking('k'), call('c1'), text('r')], true))).toEqual(['t', 'work:k:1', 'r'])
+  expect(ids(groupWork([text('t'), ...run('k', thinking('k'))], true))).toEqual(['t', 'work:k:1'])
+  expect(ids(groupWork([text('t'), ...run('k', thinking('k'), call('c1'))], true))).toEqual(['t', 'work:k:1'])
+  expect(ids(groupWork([text('t'), ...run('k', thinking('k'), call('c1')), text('r')], true))).toEqual(['t', 'work:k:1', 'r'])
   // A notice or a receipt that joins keeps the run's name, and one that starts the run names it.
-  expect(ids(groupWork([text('t'), call('c1'), notice('n', '17'), receipt('m', 'ag-2')], true))).toEqual(['t', 'work:c1-use:3'])
-  expect(ids(groupWork([text('t'), notice('n', '17')], true))).toEqual(['t', 'work:n:1'])
-  expect(ids(groupWork([text('t'), notice('n', '17'), thinking('k'), call('c1')], true))).toEqual(['t', 'work:n:2'])
+  expect(ids(groupWork([text('t'), ...run('c1', call('c1'), notice('n', '17'), receipt('m', 'ag-2'))], true))).toEqual(['t', 'work:c1-use:3'])
+  expect(ids(groupWork([text('t'), ...run('n', notice('n', '17'))], true))).toEqual(['t', 'work:n:1'])
+  expect(ids(groupWork([text('t'), ...run('n', notice('n', '17'), thinking('k'), call('c1'))], true))).toEqual(['t', 'work:n:2'])
 })

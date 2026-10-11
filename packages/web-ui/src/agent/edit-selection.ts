@@ -1,5 +1,4 @@
 import { inject, provide, type InjectionKey } from 'vue'
-import type { ReadCallChange } from '../files/changes'
 import type { RequestEditSelection, TranscriptRequests } from '../files/request-changes'
 
 /**
@@ -21,20 +20,6 @@ export function provideEditSelection(handler: () => EditSelectionHandler | undef
 
 export function useEditSelection(): () => EditSelectionHandler | undefined {
   return inject(editSelectionKey, () => undefined)
-}
-
-const editReadsKey: InjectionKey<() => ReadCallChange | undefined> = Symbol('edit-reads')
-
-/**
- * How the transcript below reads a retained edit's two sides, for a work
- * group's file counts; none, and its pills name their files alone.
- */
-export function provideEditReads(read: () => ReadCallChange | undefined): void {
-  provide(editReadsKey, read)
-}
-
-export function useEditReads(): () => ReadCallChange | undefined {
-  return inject(editReadsKey, () => undefined)
 }
 
 /** One agent's transcript as its rows see it: whose it is, and its requests. */

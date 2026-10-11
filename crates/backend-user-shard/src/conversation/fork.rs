@@ -313,9 +313,21 @@ mod tests {
         )
         .await
         .unwrap();
+        // New databases, which no migration reads blobs for.
+        struct NoBlobs;
+        impl demi_backend_database::conversations::ConversationBlobs for NoBlobs {
+            fn read(
+                &self,
+                _: &ConversationId,
+                _: &demi_shared_types::BlobRef,
+            ) -> Result<Option<bytes::Bytes>, String> {
+                Ok(None)
+            }
+        }
         let stores = ConversationStores::open(
             data.path().join("conversations"),
             NonZeroUsize::new(4).unwrap(),
+            Arc::new(NoBlobs),
         )
         .await
         .unwrap();

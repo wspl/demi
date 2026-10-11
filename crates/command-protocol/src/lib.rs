@@ -9,6 +9,7 @@ mod artifacts;
 mod conversation;
 mod edits;
 mod invocation;
+mod line_counts;
 mod media;
 mod numbers;
 mod package;
@@ -29,6 +30,7 @@ pub use invocation::{
     ColorScheme, CommandLocale, Completion, Invocation, LocalInvocation, Viewable, conversation_name,
     without_nul,
 };
+pub use line_counts::line_counts;
 pub use media::{MAX_MEDIUM_BYTES, MediumFacts, is_binary, sniff_media_type};
 pub use numbers::{MAX_NUMBERS, NumbersAnswer, NumbersRequest, ServiceSequence, StreamOpen};
 pub use package::{

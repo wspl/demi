@@ -13,7 +13,8 @@ use rusqlite::{Connection, Transaction, TransactionBehavior};
 use sha2::{Digest, Sha256};
 
 use demi_agent_store::CheckpointState;
-use demi_shared_types::ReportEvent;
+use bytes::Bytes;
+use demi_shared_types::{BlobRef, ReportEvent};
 
 use super::StorageError;
 use super::columns::{decode, json, to_json};
@@ -35,8 +36,25 @@ pub(crate) struct Shipped {
 /// What turns a database of one schema into one of the next.
 pub(crate) enum Migration {
     Sql(&'static str),
-    /// A change SQL cannot express, such as re-encoding a stored value.
-    Code(fn(&Transaction<'_>) -> rusqlite::Result<()>),
+    /// A change SQL cannot express, such as re-encoding a stored value,
+    /// which may read the blobs the database's values name.
+    Code(fn(&Transaction<'_>, &dyn ReadBlob) -> rusqlite::Result<()>),
+}
+
+/// How a migration reads the bytes of a blob a database's values name, in
+/// the namespace they are in; none when the namespace does not hold it.
+/// It runs on the database's thread, which waits for it.
+pub trait ReadBlob {
+    fn read(&self, blob: &BlobRef) -> Result<Option<Bytes>, String>;
+}
+
+/// A database whose values name no blob, such as the control database.
+pub(crate) struct NoBlobs;
+
+impl ReadBlob for NoBlobs {
+    fn read(&self, blob: &BlobRef) -> Result<Option<Bytes>, String> {
+        Err(format!("this database names no blob, yet a migration read {blob}"))
+    }
 }
 
 /// The control database's. Its history holds the schema of each published
@@ -81,8 +99,10 @@ pub(crate) const CONTROL: Schema = Schema {
 };
 
 /// Each conversation's database's. Its history holds the schema of each
-/// published release before the one that ships the current schema; 0.1.21
-/// shipped the last one in it.
+/// published release before the one that ships the current schema, and of
+/// each development build a server keeps data of (`upgrades.md` § A
+/// development build on a server); 0.1.22-dev.20261011T064359Z shipped the
+/// last one in it.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -97,6 +117,10 @@ pub(crate) const CONVERSATION: Schema = Schema {
         Shipped {
             sql: include_str!("schema/conversation-0.1.21.sql"),
             migration: Migration::Code(from_0_1_21),
+        },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"),
+            migration: Migration::Code(blocks_with_lists),
         },
     ],
 };
@@ -319,7 +343,7 @@ ALTER TABLE command_outputs_next RENAME TO command_outputs;
 /// model keeps the list it held, null where the source stated none. Each
 /// record changed is decoded and checked as the format it becomes before
 /// it is written back.
-fn control_from_0_1_21(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+fn control_from_0_1_21(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch(CONTROL_FROM_0_1_21)?;
     let records = transaction
         .prepare("SELECT provider_id, record FROM model_catalogs")?
@@ -371,7 +395,7 @@ fn without_attachment_flags(value: &mut serde_json::Value) -> bool {
 /// with their connections, is that. A page of history is read by the
 /// blocks' types and found by a block's id or a command's, which the new
 /// indexes serve.
-fn from_0_1_21(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
+fn from_0_1_21(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "
 DELETE FROM sequences WHERE name = 'shell';
@@ -486,6 +510,48 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
     for (node, index, block) in blocks {
         update.execute(rusqlite::params![node, index, block])?;
+    }
+    Ok(())
+}
+
+/// From the conversation schema of the development build
+/// 0.1.22-dev.20261011T064359Z, which a server keeps data of
+/// (`upgrades.md` § A development build on a server), to transcript block
+/// format 3: each block of a run carries its run, and each shell call's
+/// view its own files with those it removed and renamed, its run's and its
+/// request's (`edit-tracking.md` § What the conversation shows), computed
+/// by walking each agent's transcript in order from the edit copies in the
+/// conversation's blob namespace, by the code that computes them for a new
+/// block. The tables are as they were. A copy that cannot be read stops the
+/// migration, which the next open tries again; one the namespace no longer
+/// holds leaves its file named alone.
+fn blocks_with_lists(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlite::Result<()> {
+    let nodes = transaction
+        .prepare("SELECT DISTINCT node_id FROM blocks")?
+        .query_map([], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
+    for node in nodes {
+        let rows = transaction
+            .prepare("SELECT idx, block FROM blocks WHERE node_id = ?1 ORDER BY idx")?
+            .query_map([&node], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)))?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let stored = rows
+            .iter()
+            .map(|(_, text)| {
+                serde_json::from_str::<serde_json::Value>(text)
+                    .map_err(corrupt)
+                    .and_then(|value| demi_shared_types::decode_value::<demi_shared_types::Block>(value).map_err(corrupt))
+            })
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        let mut blocks = stored.clone();
+        demi_agent_store::changes::relist(&mut blocks, |blob| blobs.read(blob))
+            .map_err(|error| corrupt(std::io::Error::other(format!("an edit copy was not read: {error}"))))?;
+        for (((index, _), before), after) in rows.iter().zip(&stored).zip(&blocks) {
+            if before != after {
+                update.execute(rusqlite::params![node, index, super::columns::to_json(after)])?;
+            }
+        }
     }
     Ok(())
 }
@@ -713,6 +779,7 @@ impl Schema {
         &self,
         connection: &mut Connection,
         path: &Path,
+        blobs: &dyn ReadBlob,
     ) -> Result<(), StorageError> {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let recorded: i32 =
@@ -731,7 +798,7 @@ impl Schema {
             for shipped in migrations {
                 let migrated = match shipped.migration {
                     Migration::Sql(sql) => transaction.execute_batch(sql),
-                    Migration::Code(migrate) => migrate(&transaction),
+                    Migration::Code(migrate) => migrate(&transaction, blobs),
                 };
                 migrated.map_err(|source| StorageError::Migration {
                     path: path.to_owned(),
@@ -1179,11 +1246,11 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 2.
+-- blocks.block: transcript block format 3.
 CREATE TABLE blocks (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx     INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 2
+  -- blocks.block: transcript block format 3
   block   TEXT NOT NULL,
   PRIMARY KEY (node_id, idx)
 ) STRICT;
@@ -1376,7 +1443,7 @@ mod tests {
         let (_directory, path, mut connection) = database(SHIPPED);
         connection.execute("INSERT INTO notes (id) VALUES ('a')", []).unwrap();
         assert_eq!(schema.current(version_of(SHIPPED)), Some(false));
-        schema.apply(&mut connection, &path).unwrap();
+        schema.apply(&mut connection, &path, &NoBlobs).unwrap();
         let version: i32 = connection
             .pragma_query_value(None, "user_version", |row| row.get(0))
             .unwrap();
@@ -1386,21 +1453,21 @@ mod tests {
             .unwrap();
         assert_eq!(title, "");
         let (_fresh_directory, fresh_path, mut fresh) = empty();
-        schema.apply(&mut fresh, &fresh_path).unwrap();
+        schema.apply(&mut fresh, &fresh_path, &NoBlobs).unwrap();
         assert_eq!(shape(&connection), shape(&fresh));
 
         let failing = Schema {
             sql: CURRENT,
             history: &[Shipped {
                 sql: SHIPPED,
-                migration: Migration::Code(|transaction| {
+                migration: Migration::Code(|transaction, _| {
                     transaction.execute_batch("ALTER TABLE notes ADD COLUMN title TEXT NOT NULL DEFAULT '';")?;
                     transaction.execute_batch("INSERT INTO missing VALUES (1);")
                 }),
             }],
         };
         let (_failing_directory, failing_path, mut failed) = database(SHIPPED);
-        let refused = failing.apply(&mut failed, &failing_path);
+        let refused = failing.apply(&mut failed, &failing_path, &NoBlobs);
         assert!(matches!(refused, Err(StorageError::Migration { .. })), "{refused:?}");
         let version: i32 = failed
             .pragma_query_value(None, "user_version", |row| row.get(0))
@@ -1412,7 +1479,7 @@ mod tests {
         assert_eq!(columns, 1);
 
         let (_other_directory, other_path, mut other) = database("CREATE TABLE other (id TEXT) STRICT;");
-        let refused = schema.apply(&mut other, &other_path);
+        let refused = schema.apply(&mut other, &other_path, &NoBlobs);
         assert!(matches!(refused, Err(StorageError::OtherSchema { .. })), "{refused:?}");
         assert_eq!(schema.current(version_of("CREATE TABLE other (id TEXT) STRICT;")), None);
     }
@@ -1424,10 +1491,10 @@ mod tests {
     fn each_shipped_schema_migrates_to_the_current_one() {
         for schema in [CONTROL, CONVERSATION] {
             let (_fresh_directory, fresh_path, mut fresh) = empty();
-            schema.apply(&mut fresh, &fresh_path).unwrap();
+            schema.apply(&mut fresh, &fresh_path, &NoBlobs).unwrap();
             for shipped in schema.history {
                 let (_directory, path, mut migrated) = database(shipped.sql);
-                schema.apply(&mut migrated, &path).unwrap();
+                schema.apply(&mut migrated, &path, &NoBlobs).unwrap();
                 assert_eq!(shape(&migrated), shape(&fresh));
             }
         }
@@ -1466,7 +1533,7 @@ mod tests {
             )
             .unwrap();
 
-        CONVERSATION.apply(&mut connection, &path).unwrap();
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
         let stored = command_outputs::read(&connection, &CommandId::try_from("c1").unwrap()).unwrap();
         assert_eq!(
             stored,
@@ -1501,7 +1568,7 @@ mod tests {
                 "INSERT INTO command_outputs (command_id, ended_at, removed_at) VALUES ('c3', 1000, 2000);",
             )
             .unwrap();
-        let refused = CONVERSATION.apply(&mut removed, &removed_path);
+        let refused = CONVERSATION.apply(&mut removed, &removed_path, &NoBlobs);
         assert!(matches!(refused, Err(StorageError::Migration { .. })), "{refused:?}");
         let version: i32 = removed
             .pragma_query_value(None, "user_version", |row| row.get(0))
@@ -1559,7 +1626,7 @@ mod tests {
                 [record.to_string()],
             )
             .unwrap();
-        CONTROL.apply(&mut connection, &path).unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
         let text: String = connection
             .query_row("SELECT record FROM model_catalogs WHERE provider_id = 'p1'", [], |row| row.get(0))
             .unwrap();
@@ -1590,7 +1657,7 @@ mod tests {
             .execute(insert, rusqlite::params!["waiting", 1, "root", state_of_0_1_21(wakeup), 0])
             .unwrap();
 
-        CONVERSATION.apply(&mut connection, &path).unwrap();
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
         for id in ["root", "waiting"] {
             let state: String = connection
                 .query_row("SELECT state FROM nodes WHERE id = ?1", [id], |row| row.get(0))
@@ -1606,7 +1673,7 @@ mod tests {
                 rusqlite::params!["root", 0, None::<String>, "{\"phase\":\"idle\"}", None::<i64>],
             )
             .unwrap();
-        let refused = CONVERSATION.apply(&mut corrupt, &corrupt_path);
+        let refused = CONVERSATION.apply(&mut corrupt, &corrupt_path, &NoBlobs);
         assert!(matches!(refused, Err(StorageError::Migration { .. })), "{refused:?}");
     }
 
@@ -1623,11 +1690,7 @@ mod tests {
 
         use crate::sequences;
 
-        let shipped = CONVERSATION
-            .history
-            .last()
-            .expect("a schema has a history")
-            .sql;
+        let shipped = include_str!("schema/conversation-0.1.21.sql");
         let model = serde_json::json!({
             "providerId": "anthropic",
             "model": {
@@ -1722,7 +1785,7 @@ mod tests {
                 .unwrap();
         }
 
-        CONVERSATION.apply(&mut connection, &path).unwrap();
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
         let stored: Vec<Block> = connection
             .prepare("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx")
             .unwrap()
@@ -1776,5 +1839,210 @@ mod tests {
                 .execute("INSERT INTO sequences (name, next) VALUES ('shell', 1)", [])
                 .is_err()
         );
+    }
+
+    /// The edit copies of a conversation, by their blobs; a read of one it
+    /// was told to fail on fails.
+    struct Copies {
+        texts: HashMap<BlobRef, Bytes>,
+        failing: Option<BlobRef>,
+    }
+
+    impl ReadBlob for Copies {
+        fn read(&self, blob: &BlobRef) -> Result<Option<Bytes>, String> {
+            if self.failing.as_ref() == Some(blob) {
+                return Err("the object store is unreachable".into());
+            }
+            Ok(self.texts.get(blob).cloned())
+        }
+    }
+
+    /// The shell calls of 0.1.21 and of the development build a server
+    /// keeps data of each get their run and its files, and the files of
+    /// their request, counted from the edit copies in the owner's
+    /// namespace: two calls of one run that wrote `a.txt` list it once,
+    /// counted from before the first to after the second, and a file a call
+    /// removed is listed deleted. A copy that cannot be read stops the
+    /// migration, which leaves the database as it was for the next open to
+    /// try again.
+    // Cost: four databases on disk, a few milliseconds.
+    #[test]
+    fn stored_shell_calls_get_their_lists_from_their_edit_copies() {
+        use demi_shared_types::{Block, ChangedFile, EditKind, LineCounts, ToolView};
+
+        let model = serde_json::json!({
+            "providerId": "anthropic",
+            "model": {
+                "id": "claude-sonnet-4-5",
+                "name": "Claude Sonnet 4.5",
+                "contextWindow": 200000,
+                "outputLimit": 64000,
+                "thinking": [{"type": "disabled"}],
+                "acceptedExtensions": ["png"]
+            },
+            "thinking": {"type": "disabled"},
+            "serviceTierId": null
+        });
+        let texts: HashMap<BlobRef, Bytes> = ["", "one\n", "one\ntwo\n", "old\nguide\n"]
+            .into_iter()
+            .map(|text| (BlobRef::of(text.as_bytes()), Bytes::from(text)))
+            .collect();
+        let blob = |text: &str| BlobRef::of(text.as_bytes()).to_string();
+        // 0.1.21 named the tool `shell_exec` and its view a shell; the
+        // development build's calls are `shell` calls, which list removals.
+        let sql_of = |name: &str| CONVERSATION.history.iter().position(|shipped| shipped.sql == name).unwrap();
+        let release = sql_of(include_str!("schema/conversation-0.1.21.sql"));
+        let development = sql_of(include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"));
+        for shipped in [release, development] {
+            let dev = shipped == development;
+            let call = |id: &str, command: &str, files: serde_json::Value, changes: serde_json::Value| {
+                let mut view = serde_json::json!({
+                    "kind": "shell",
+                    "status": "exited",
+                    "commandId": command,
+                    "exitCode": 0,
+                    "runningMs": 10,
+                    "idleMs": 0,
+                    "chunks": [],
+                    "viewTruncated": false,
+                    "files": files,
+                    "filesTruncated": false
+                });
+                if dev {
+                    view["pathChanges"] = changes;
+                } else {
+                    view["shellId"] = "3".into();
+                }
+                serde_json::json!({
+                    "type": "tool_call",
+                    "id": id,
+                    "createdAt": "2026-09-21T14:13:20.000Z",
+                    "model": model,
+                    "toolUseId": format!("toolu_{id}"),
+                    "toolName": if dev { "shell" } else { "shell_exec" },
+                    "input": r#"{"script":"echo two >> a.txt","description":"Write the notes"}"#,
+                    "status": "completed",
+                    "output": [{"type": "text", "text": "done"}],
+                    "view": view
+                })
+            };
+            let wrote = |kind: &str, original: &str, modified: &str| {
+                serde_json::json!([{
+                    "path": "/w/a.txt",
+                    "kind": kind,
+                    "added": 1,
+                    "removed": 0,
+                    "edits": [{"copies": {"original": blob(original), "modified": blob(modified)}}]
+                }])
+            };
+            let mut blocks = vec![
+                serde_json::json!({
+                    "type": "user",
+                    "id": "u1",
+                    "turnId": "t1",
+                    "createdAt": "2026-09-21T14:13:20.000Z",
+                    "model": model,
+                    "content": [{"type": "text", "text": "Write the notes"}],
+                    "preamble": null
+                }),
+                call("c1", "1", wrote("added", "", "one\n"), serde_json::json!([])),
+                call("c2", "2", wrote("modified", "one\n", "one\ntwo\n"), serde_json::json!([])),
+            ];
+            if dev {
+                blocks.push(call(
+                    "c3",
+                    "3",
+                    serde_json::json!([]),
+                    serde_json::json!([{"kind": "removed", "path": "/w/guide.md"}]),
+                ));
+            }
+            let state = if dev {
+                let mut state: serde_json::Value = serde_json::from_str(&state_of_0_1_21(serde_json::json!([]))).unwrap();
+                let fields = state.as_object_mut().unwrap();
+                fields.remove("wakeups");
+                fields.insert("reports".into(), serde_json::json!([]));
+                fields.insert("intervals".into(), serde_json::json!([]));
+                state.to_string()
+            } else {
+                state_of_0_1_21(serde_json::json!([]))
+            };
+            let sql = CONVERSATION.history[shipped].sql;
+            let conversation = || {
+                let (directory, path, connection) = database(sql);
+                connection
+                    .execute(
+                        "INSERT INTO nodes
+                           (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                         VALUES ('root', 0, '', 1, 0, 1, 0, ?1, ?2, 0)",
+                        rusqlite::params![state, i64::try_from(blocks.len()).unwrap()],
+                    )
+                    .unwrap();
+                for (index, block) in blocks.iter().enumerate() {
+                    connection
+                        .execute(
+                            "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
+                            rusqlite::params![i64::try_from(index).unwrap(), block.to_string()],
+                        )
+                        .unwrap();
+                }
+                (directory, path, connection)
+            };
+
+            let (_directory, path, mut connection) = conversation();
+            let copies = Copies { texts: texts.clone(), failing: None };
+            CONVERSATION.apply(&mut connection, &path, &copies).unwrap();
+            let stored: Vec<Block> = connection
+                .prepare("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx")
+                .unwrap()
+                .query_map([], |row| row.get::<_, String>(0))
+                .unwrap()
+                .map(|text| demi_shared_types::decode::<Block>(&text.unwrap()).unwrap())
+                .collect();
+            let Block::ToolCall(latest) = stored.last().unwrap() else {
+                panic!("{stored:?}");
+            };
+            assert_eq!(latest.run.as_ref().map(|run| run.as_str()), Some("c1"), "{sql:.40}");
+            let Some(ToolView::Shell(view)) = &latest.view else {
+                panic!("{latest:?}");
+            };
+            let listed = |files: &Option<Vec<ChangedFile>>| {
+                files
+                    .iter()
+                    .flatten()
+                    .map(|file| (file.path.clone(), file.kind, file.lines))
+                    .collect::<Vec<_>>()
+            };
+            let mut expected = vec![(
+                "/w/a.txt".to_owned(),
+                EditKind::Added,
+                Some(LineCounts { added: 2, removed: 0 }),
+            )];
+            if dev {
+                expected.push(("/w/guide.md".to_owned(), EditKind::Deleted, None));
+                let own: Vec<_> = view.files.iter().flatten().map(|file| (file.path.as_str(), file.kind)).collect();
+                assert_eq!(own, [("/w/guide.md", EditKind::Deleted)]);
+            }
+            assert_eq!(listed(&view.run_files), expected, "{sql:.40}");
+            assert_eq!(listed(&view.request_files), expected, "{sql:.40}");
+
+            let (_failed_directory, failed_path, mut failed) = conversation();
+            let unreachable = Copies {
+                texts: texts.clone(),
+                failing: Some(BlobRef::of(b"one\ntwo\n")),
+            };
+            let refused = CONVERSATION.apply(&mut failed, &failed_path, &unreachable);
+            assert!(matches!(refused, Err(StorageError::Migration { .. })), "{refused:?}");
+            let version: i32 = failed.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+            assert_eq!(version, version_of(sql));
+        }
+    }
+
+    /// The development build's conversation schema is the one its server's
+    /// databases record.
+    #[test]
+    fn the_development_build_in_the_history_is_the_one_its_server_records() {
+        let development = include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql");
+        assert_eq!(version_of(development), 1_563_671_332);
+        assert!(CONVERSATION.history.iter().any(|shipped| shipped.sql == development));
     }
 }

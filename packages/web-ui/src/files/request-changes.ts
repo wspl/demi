@@ -1,62 +1,40 @@
-import type { Block, EditCopies, EditedFile, PathChange } from '@demicodes/protocol'
+import type { Block, ChangedFile, EditCopies, EditedFile, EditKind, FileEdit, LineCounts } from '@demicodes/protocol'
 import { windowOf, type HeldTranscript } from '@demicodes/conversation-client'
 import { z } from 'zod'
 import { storedShellView, toolCallTitle } from '../agent/block-helpers'
 import type { ToolCallBlock } from '../agent/block-types'
-import type { ReadCallChange } from './changes'
-import { diffLineCounts } from './diff-counts'
-import { isWithinPath } from './paths'
+import type { ChangeFile, ReadCallChange } from './changes'
 
 /**
- * A request's changes (`edit-tracking.md` § Delivery to the conversation):
- * what one message of the user asked for, from its `user` block to the same
- * agent's next one, and the files its calls changed. Derived from one
- * agent's transcript whenever it is shown, never stored: a subagent's
- * changes are in its own transcript, not its parent's.
+ * A request's changes (`edit-tracking.md` § A request): what one message of
+ * the user asked for, from its `user` block to the same agent's next one,
+ * and the files its calls changed, as the backend stored them with the
+ * request's latest call (`requestFiles`). The page reads the lists it is
+ * given and counts nothing: a subagent's changes are in its own
+ * transcript, not its parent's.
  */
 
 /** One edit of a request's file: one segment of one of its calls. */
-export interface RequestEdit {
-  /** The command whose job made the edit. */
-  call: string
+export interface RequestEdit extends FileEdit {
   /** The call's title, as its row in the transcript names it. */
   title: string
-  /** The file's path in the call, which a later call may have renamed. */
-  path: string
-  /** Which of the call's segments of the file it is. */
-  segment: number
-  /** The segment created the file, so nothing came before it. */
-  created: boolean
-  /** The file's two sides; absent when they were not stored. */
-  copies?: EditCopies
+  /** The lines the call changed in the file, when the edit is its only one there. */
+  lines?: LineCounts
 }
 
 /**
- * A file a request changed, as it stands after the request's latest call,
- * with its edits in the order they were made: a file a later call renamed
- * is listed under its new name with its earlier edits, and one a later call
- * renamed away or removed is not listed (`edit-tracking.md` § A request).
+ * A file a request changed, as it stands after the request's latest call:
+ * its kind, All Changes' lines, and its edits in the order they were made.
  */
-export interface RequestFile {
-  /** As the Host names it. */
-  path: string
-  /** `added` when the request created it. */
-  kind: 'added' | 'modified'
+export interface RequestFile extends Omit<ChangedFile, 'edits'> {
   edits: RequestEdit[]
 }
 
 export interface TranscriptRequest {
   /** The `user` block that starts it. */
   id: string
-  /** In the order they were first changed, without the files it does not show. */
+  /** In the order they were first changed. */
   files: RequestFile[]
-  /**
-   * The files it changed and does not show (`edit-tracking.md` § Temporary
-   * files): one in a temporary directory, as it stands after the request's
-   * latest call, and one the request created and a later call removed. The
-   * pills of the calls that changed them leave them out too.
-   */
-  hidden: RequestFile[]
 }
 
 export interface TranscriptRequests {
@@ -65,182 +43,83 @@ export interface TranscriptRequests {
   requestOf: ReadonlyMap<string, TranscriptRequest>
 }
 
-/** A file as calls follow it: whether it is in a temporary directory where it stands now. */
-interface TrackedFile extends RequestFile {
-  temporary: boolean
-}
-
-/** The files a run of calls changed, as they stand after its latest call. */
-interface TrackedFiles {
-  /** The calls by their command, numbered as they come. */
-  order: Map<string, number>
-  files: TrackedFile[]
-  /** Those a call's removal took from `files`, as they stood then. */
-  removed: TrackedFile[]
-}
-
-function trackedFiles(): TrackedFiles {
-  return { order: new Map(), files: [], removed: [] }
-}
-
-/** `file` without what only following it needs. */
-function requestFile({ temporary: _temporary, ...file }: TrackedFile): RequestFile {
-  return file
-}
-
-/** Whether the file is a scratch file: in a temporary directory, or created by these calls and removed. */
-function scratch(file: TrackedFile): boolean {
-  return file.temporary || file.edits[0]?.created === true
-}
-
 /**
- * One agent's requests. Only a `user` block starts one: a steer, a wakeup,
- * another agent's message and a resume continue the request they follow.
+ * One agent's requests, each with the files its latest call stored. Only a
+ * `user` block starts one: a steer, a wakeup, another agent's message and
+ * a resume continue the request they follow.
  */
-export function transcriptRequests(blocks: readonly Block[]): TranscriptRequests {
+export function storedRequests(blocks: readonly Block[]): TranscriptRequests {
   const requests: TranscriptRequest[] = []
   const requestOf = new Map<string, TranscriptRequest>()
-  let current: { request: TranscriptRequest; tracked: TrackedFiles } | null = null
+  let current: { request: TranscriptRequest; calls: Map<string, ToolCallBlock>; latest: ChangedFile[] } | null = null
   const settle = () => {
-    if (current) {
-      const { files, removed } = current.tracked
-      current.request.files = files.filter((file) => !file.temporary).map(requestFile)
-      current.request.hidden = [...files.filter((file) => file.temporary), ...removed.filter(scratch)].map(requestFile)
-    }
+    if (current)
+      current.request.files = current.latest.map((file) => requestFile(file, current!.calls))
   }
   for (const block of blocks) {
     if (block.type === 'user') {
       settle()
-      current = { request: { id: block.id, files: [], hidden: [] }, tracked: trackedFiles() }
+      current = { request: { id: block.id, files: [] }, calls: new Map(), latest: [] }
       requests.push(current.request)
     }
-    if (!current) {
+    if (!current)
       continue
-    }
     requestOf.set(block.id, current.request)
-    if (block.type === 'tool_call') {
-      addCall(current.tracked, block)
+    const view = block.type === 'tool_call' ? storedShellView(block) : null
+    if (block.type === 'tool_call' && view) {
+      current.calls.set(view.commandId, block)
+      if (view.requestFiles)
+        current.latest = view.requestFiles
     }
   }
   settle()
   return { requests, requestOf }
 }
 
-/**
- * Whether the file `path` names in the call `block` is one its request does
- * not show. A call in no request, such as one shown on its own, has only its
- * own report to go by: a file it left in a temporary directory.
- */
-function hiddenFile(requests: TranscriptRequests | null, block: ToolCallBlock, path: string): boolean {
-  const request = requests?.requestOf.get(block.id)
-  const view = storedShellView(block)
-  if (!request) {
-    return view?.files?.find((file) => file.path === path)?.temporary === true
-  }
-  return request.hidden.some((file) => file.edits.some((edit) => edit.call === view?.commandId && edit.path === path))
-}
-
-/** The files a shell call's pills show: those it changed that its request shows. */
-export function callPillFiles(requests: TranscriptRequests | null, block: ToolCallBlock): EditedFile[] {
-  return (storedShellView(block)?.files ?? []).filter((file) => !hiddenFile(requests, block, file.path))
-}
-
-/**
- * The files `calls` changed, in the order first changed, each with its edits
- * in order: a run of a request's calls the transcript shows as one row,
- * whose files are counted from the same two ends. A file the request does
- * not show is left out (`TranscriptRequest.hidden`); calls in no request
- * leave out the files they left in a temporary directory.
- */
-export function callFiles(calls: readonly ToolCallBlock[], requests: TranscriptRequests | null): RequestFile[] {
-  const tracked = trackedFiles()
-  for (const call of calls) {
-    addCall(tracked, call)
-  }
-  const callOf = new Map(calls.map((call) => [storedShellView(call)?.commandId, call]))
-  return tracked.files
-    .filter((file) => {
-      const first = file.edits[0]
-      const call = first && callOf.get(first.call)
-      return call && requests?.requestOf.has(call.id) ? !hiddenFile(requests, call, first.path) : !file.temporary
-    })
-    .map(requestFile)
-}
-
-/**
- * Adds a call to the files of the calls before it: first its renames and
- * removals, in the order it made them, move or drop the files the earlier
- * calls changed; then its own files, which its job already names as they
- * stand after it, join them.
- */
-function addCall(tracked: TrackedFiles, block: ToolCallBlock): void {
-  const view = storedShellView(block)
-  if (!view) {
-    return
-  }
-  const { files, order } = tracked
-  order.set(view.commandId, order.size)
-  // Files a rename of this call brought to a name the list did not hold:
-  // whether a file was there before, only the call's own entry can tell.
-  const arrived = new Set<string>()
-  for (const change of view.pathChanges ?? []) {
-    applyPathChange(tracked, change, arrived)
-  }
-  const title = toolCallTitle(block)
-  for (const file of view.files ?? []) {
-    let entry = files.find((existing) => existing.path === file.path)
-    if (!entry) {
-      entry = { path: file.path, kind: file.kind, edits: [], temporary: file.temporary === true }
-      files.push(entry)
-    } else if (arrived.has(file.path)) {
-      entry.kind = file.kind
-    }
-    file.edits.forEach((edit, segment) => {
-      entry.edits.push({
-        call: view.commandId,
-        title,
-        path: file.path,
-        segment,
-        created: file.kind === 'added' && segment === 0,
-        ...(edit.copies ? { copies: edit.copies } : {}),
-      })
-    })
+/** A stored file of a request, its edits named by their calls' titles. */
+function requestFile(file: ChangedFile, calls: ReadonlyMap<string, ToolCallBlock>): RequestFile {
+  return {
+    ...file,
+    edits: file.edits.map((edit) => {
+      const call = calls.get(edit.call)
+      const own = call ? storedShellView(call)?.files?.find((entry) => entry.path === edit.path) : undefined
+      return {
+        ...edit,
+        title: call ? toolCallTitle(call) : '',
+        ...(own?.edits.length === 1 ? { lines: { added: own.added, removed: own.removed } } : {}),
+      }
+    }),
   }
 }
 
+/** A stored file as a pill or a list row shows it; a file whose ends were not kept is named alone. */
+export function changeFile(file: ChangedFile | EditedFile): ChangeFile {
+  const lines = 'lines' in file ? file.lines : 'added' in file ? { added: file.added, removed: file.removed } : undefined
+  return {
+    path: file.path,
+    kind: file.kind,
+    ...(file.from ? { from: file.from } : {}),
+    added: lines?.added ?? 0,
+    removed: lines?.removed ?? 0,
+  }
+}
+
+/** The files a shell call's pills show: those it changed, but in a temporary directory. */
+export function callPills(block: ToolCallBlock): ChangeFile[] {
+  return (storedShellView(block)?.files ?? []).filter((file) => !file.temporary).map(changeFile)
+}
+
 /**
- * Follows one rename or removal: a removed path, or a folder with all in it,
- * leaves the list; a renamed one takes its new name with its edits, merged
- * into the entry the new name already has, if any, which keeps its kind and
- * its place, or the earlier of the two.
+ * The files a run's folded pills show (`runtime.md` § Work groups): those
+ * its latest call stored, counted from before the run to after that call.
  */
-function applyPathChange(tracked: TrackedFiles, change: PathChange, arrived: Set<string>): void {
-  const { files, order } = tracked
-  if (change.kind === 'removed') {
-    const kept = files.filter((file) => !isWithinPath(file.path, change.path))
-    tracked.removed.push(...files.filter((file) => isWithinPath(file.path, change.path)))
-    files.splice(0, files.length, ...kept)
-    return
+export function runFiles(calls: readonly ToolCallBlock[]): ChangedFile[] {
+  for (const call of [...calls].reverse()) {
+    const files = storedShellView(call)?.runFiles
+    if (files)
+      return files
   }
-  for (const moved of files.filter((file) => isWithinPath(file.path, change.from))) {
-    const path = change.to + moved.path.slice(change.from.length)
-    const target = files.find((file) => file.path === path)
-    if (!target) {
-      moved.path = path
-      moved.kind = 'added'
-      // A folder's files are where the folder is.
-      moved.temporary = change.temporary === true
-      arrived.add(path)
-      continue
-    }
-    // Each call's edits stay in their order, the replaced file's first.
-    const callOrder = (edit: RequestEdit) => order.get(edit.call) ?? 0
-    target.edits = [...target.edits, ...moved.edits].sort((a, b) => callOrder(a) - callOrder(b))
-    const at = Math.min(files.indexOf(moved), files.indexOf(target))
-    files.splice(files.indexOf(moved), 1)
-    files.splice(files.indexOf(target), 1)
-    files.splice(at, 0, target)
-  }
+  return []
 }
 
 /** The transcripts of one conversation: its own agent's, and each subagent's by its id. */
@@ -263,7 +142,7 @@ export function findRequest(
   if (!window) {
     return null
   }
-  return transcriptRequests(window.blocks).requests.find((entry) => entry.id === request) ?? null
+  return storedRequests(window.blocks).requests.find((entry) => entry.id === request) ?? null
 }
 
 /**
@@ -294,29 +173,31 @@ export const requestEditSelectionSchema = z.object({
 export type RequestEditSelection = z.infer<typeof requestEditSelectionSchema>
 
 /**
- * What a file pill under a call opens: the file `path` names in the call,
- * at the call's first edit of it, in the call's request, under the name it
- * has there now; null once a later call removed it.
+ * What a file pill opens: the file of the request whose edits hold the
+ * call `call`'s edit of `path`, at that edit, under the name the file has
+ * there now; null once a later call removed it, or for a file the call
+ * only removed or renamed.
  */
 export function pillSelection(
   node: string | null,
   requests: TranscriptRequests,
   block: ToolCallBlock,
+  call: string,
   path: string,
 ): RequestEditSelection | null {
   const request = requests.requestOf.get(block.id)
-  const call = storedShellView(block)?.commandId
   for (const file of request?.files ?? []) {
+    if (file.kind === 'deleted')
+      continue
     const first = file.edits.find((edit) => edit.call === call && edit.path === path)
-    if (request && first) {
+    if (request && first)
       return { node, request: request.id, file: file.path, edit: editRef(first) }
-    }
   }
   return null
 }
 
 /** How a selection names `edit`. */
-export function editRef(edit: RequestEdit): RequestEditRef {
+export function editRef(edit: FileEdit): RequestEditRef {
   return { call: edit.call, path: edit.path, segment: edit.segment }
 }
 
@@ -352,9 +233,9 @@ export function editIndex(file: RequestFile, edit: RequestEditRef | null): numbe
  * created, starts from the first edit made to it, not from that creation.
  */
 export function allChangesStart(file: RequestFile): RequestEdit | undefined {
-  return file.kind === 'modified'
-    ? file.edits.find((edit) => !edit.created) ?? file.edits[0]
-    : file.edits[0]
+  return file.kind === 'added'
+    ? file.edits[0]
+    : file.edits.find((edit) => !edit.created) ?? file.edits[0]
 }
 
 /**
@@ -372,40 +253,15 @@ export function selectionCopies(file: RequestFile, index: number | null): EditCo
 }
 
 /**
- * The lines `file` added and removed across its edits, its All Changes as
- * the Change view's header counts it; null when its ends were not kept.
- */
-export async function fileLineCounts(
-  file: RequestFile,
-  read: ReadCallChange,
-  signal?: AbortSignal,
-): Promise<{ added: number; removed: number } | null> {
-  const copies = selectionCopies(file, null)
-  if (!copies) {
-    return null
-  }
-  const pair = await read(copies, signal)
-  return pair ? diffLineCounts(pair.original, pair.modified) : null
-}
-
-/**
- * Whether two derivations of a request's files hold the same files and
- * edits. The transcript is derived anew on each frame of a turn, so the same
- * files come as new objects; a view compares them by what they hold and
- * keeps what it shows while a frame changes none of it (`plugin-pages.md`
- * § What the service keeps). They are plain data the derivation builds in
- * one order, so their JSON tells them apart, whatever fields they gain.
+ * Whether two readings of a request's files hold the same files and edits.
+ * The request is read anew on each frame of a turn, so the same files come
+ * as new objects; a view compares them by what they hold and keeps what it
+ * shows while a frame changes none of it (`plugin-pages.md` § What the
+ * service keeps). They are plain data in the order the backend stored them,
+ * so their JSON tells them apart, whatever fields they gain.
  */
 export function sameRequestFiles(a: readonly RequestFile[], b: readonly RequestFile[]): boolean {
   return a === b || JSON.stringify(a) === JSON.stringify(b)
-}
-
-/** Names files' ends, which their counts follow: they change only when a later call changes a file. */
-export function filesEndsKey(files: readonly RequestFile[]): string {
-  return files.map((file) => {
-    const copies = selectionCopies(file, null)
-    return copies ? `${copies.original}:${copies.modified}` : `${file.path}:-`
-  }).join(',')
 }
 
 /** A request's files for the Change view, and how it reads an edit's two sides. */
