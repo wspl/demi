@@ -86,6 +86,14 @@ export function conversationPageKind(
   return 'missing'
 }
 
+/**
+ * Why a conversation did not open when the server could not read its
+ * database (`conversation_unreadable`), under “Couldn’t load this
+ * conversation.”: the page's words, never the server's, which name its files
+ * and an operator's command.
+ */
+export const CONVERSATION_UNREADABLE: SentenceText = 'The server could not read this conversation’s history.'
+
 export function sessionStatusCopy(kind: SessionStatusKind): {
   label: SentenceText
   action?: 'retry' | 'create'

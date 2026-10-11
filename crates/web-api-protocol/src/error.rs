@@ -127,6 +127,11 @@ pub enum ErrorCode {
     /// transcript was rewritten since the page read it (`web-api.md`
     /// § Pages).
     TranscriptChanged,
+    /// The conversation's database could not be read on the server, as one
+    /// a build that does not know its schema made: the page says so in its
+    /// own words, and the message, which names server paths, goes to its
+    /// console only.
+    ConversationUnreadable,
     /// The conversation is archived: restore it first.
     ConversationArchived,
     /// The conversation has no undecided permission request of that id:
