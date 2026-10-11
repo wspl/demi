@@ -96,8 +96,11 @@ order:
   the internet, such as a public tunnel.
 - **Parallel work.** A task with several independent parts, each taking more
   than a quick step, such as several sites, pages, libraries or files to look
-  into, goes to helper agents with `demi agent`, one part each, run at the
-  same time; the model then combines their reports. It does the parts itself
+  into, goes to subagents with `demi agent`, one part each, run at the
+  same time; the model then combines their reports. The prompt, the
+  capability index's `demi agent` entry and every text the model or the user
+  reads call them subagents, as the product does and as Claude Code, Codex
+  and Cursor do, never helpers. It does the parts itself
   only when each is a single quick step. The capability index entry says what
   the group does; this rule says when the work is split, because a model
   reading only the entry weighs the split against doing the work itself and
