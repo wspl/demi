@@ -333,7 +333,9 @@ them.
 
 Images and documents are weighted because their text rendering says nothing
 about their cost; an image-heavy history would otherwise estimate near zero
-and never compact.
+and never compact. A text is weighed as the request carries it, after the
+replay bound ([Text bounds](#text-bounds)): a pasted log of 50,000 characters
+weighs its 16,000 characters and the truncation line, not all of it.
 
 ### Context estimate
 
@@ -355,8 +357,10 @@ provider reported:
    larger.
 4. With an anchor, the estimate is the anchor plus the estimates of the blocks
    after its `response` block.
-5. Without one, the estimate is the sum of the estimates of the blocks from
-   the last `compaction_boundary` on.
+5. Without one, the estimate is the estimate of the system prompt and the
+   tool definitions, each its text's, plus the sum of the estimates of the
+   blocks from the last `compaction_boundary` on, so a request just after a
+   compaction is not read as the history alone.
 
 Only the blocks after the anchor, or from the boundary on without one, are
 weighed, so only their media's bytes matter to the estimate.
@@ -382,6 +386,54 @@ For example, right after a compaction the latest `response` still measures
 the history before the summary, so the estimate has no anchor and sums the
 blocks from the new boundary on; the page shows that smaller number, not the
 response's usage.
+
+### What fills the context
+
+The context indicator's card shows what the estimate is made of, as Claude
+Code's `/context` does. For example, a conversation at 285,100 of 1,000,000
+tokens:
+
+```text
+Context window                      285.1k / 1M (29%)
+[███████████████▌▌▌········································]
+■ Messages                          ~242.3k   24.2%   ›
+■ System prompt                       ~4.1k    0.4%   ›
+■ Tool definitions                    ~0.9k    0.1%
+■ Instructions                        ~6.3k    0.6%   ›
+■ Skills                              ~6.0k    0.6%   ›
+■ Other context                       ~0.5k    0.1%
+■ Summary                            ~25.0k    2.5%
+□ Compaction buffer                    33k     3.3%
+□ Free space                        681.9k    68.2%
+```
+
+| Row | What it covers | How it is counted |
+| --- | --- | --- |
+| System prompt | The product's system prompt and a profile's added instructions; opens into its layers ([System prompt](system-prompt.md)) | Each layer's text estimate |
+| Tool definitions | The tools' schemas the request carries | Their JSON's estimate |
+| Instructions | The `instructions` context blocks replayed; opens into their files | Block estimates, split per file |
+| Skills | The skills catalog's context block; opens into its skills | Its block estimate, split per entry |
+| Other context | Every other context block replayed, such as the execution context | Block estimates |
+| Summary | The replayed `compaction_boundary`, while there is one | Its block estimate |
+| Messages | Everything else the request carries; opens into the user's messages, the agent's text, thinking, tool calls by command group, and images | The rest: the estimate less every row above, never below zero; its parts are block estimates, and the gap between them and the rest is *Unattributed* |
+| Compaction buffer | The room the threshold keeps for the answer and the summary request ([When compaction runs](#when-compaction-runs)) | Window less threshold: exact |
+| Free space | What is left | Window less the estimate and the buffer, never below zero |
+
+- **The header is the estimate.** It reads the `context_usage` estimate and
+  window, as the indicator does, so the card never disagrees with the ring.
+  The rows add up to it by construction: Messages absorbs whatever the text
+  estimates miss, since only the provider's count is exact. When the rows
+  above Messages add up to more than the estimate, as just after a compaction
+  can happen, the header shows their sum.
+- **Estimated rows say so.** A row counted from text carries `~` before its
+  tokens, and Compaction buffer and Free space do not.
+- **No request is made to count.** The parts are computed by the session from
+  what it holds, with the estimate, and travel in the same `context_usage`
+  frame, so opening the card costs nothing and shows what the ring shows.
+  Exact counts from a vendor's token-counting endpoint are left out: only one
+  vendor family has one.
+- **A row with no tokens is left out**, and so are Summary before the first
+  compaction and Skills while no skill is on.
 
 ### Request size
 
