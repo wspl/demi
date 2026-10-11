@@ -1677,9 +1677,14 @@ exit code other than 0, grey *Stopped* for a stopped command, with the exit
 code in the tag's tooltip, *Exit code 1*; one that succeeded shows nothing,
 and one whose command runs shimmers, as long as it runs: also after its call
 returned and the command runs on as one of the conversation's running
-commands, until its end arrives. The expanded row shows the script highlighted as Bash, in the colors all code shows in
-([Code](../product/file-previews.md#code)), and says the end in words above the
-output. Component structure, expansion, icons, typography, motion and the
+commands, until its end arrives. A command that has run more than 3 seconds
+wears how long, counting up, as a grey tag in that place, *1m32s*, since its
+title is the agent's own words and takes no time; a shorter one shows
+none, so a quick command does not flash a tag. The tag goes when the command
+ends: a succeeded row shows nothing, a failed or stopped one its tag. The expanded row shows the script highlighted as Bash, in the colors all code shows in
+([Code](../product/file-previews.md#code)), and says above the output how long the command has run or ran, *Running for
+1m28s*, then *Exited with 0 after 2m13s*, *Failed with exit code 1 after 47s*
+or *Stopped after 5s*. Component structure, expansion, icons, typography, motion and the
 presentation of changed files are shown in the gallery, not here.
 
 ### Work groups
@@ -1734,7 +1739,10 @@ commands*, and a click opens it to every step.
   block, which then takes its place, keeping that face. While it holds a lone
   call, opening it shows the call, not a stack of one step, as an ended lone
   call does. From its second step on, opened, the row stands still as a
-  stack and what runs, *Running 4 commands*, with the steps under it;
+  stack and what runs, *Running 4 commands*, with the steps under it, and
+  once the run has lasted more than 3 seconds, for how long, *Running 4
+  commands for 1m32s*, counting up as *Thinking for 9s* does; an ended
+  run's title names no time;
   opening and folding change the row at once rather than rolling it. The
   run's first step rolls into the tail row first, as any block does.
 - The run's row is the turn's activity, so no Requesting row shows under it,
