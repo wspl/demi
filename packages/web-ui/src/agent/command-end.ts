@@ -1,4 +1,5 @@
 import type { ShellViewStatus } from '@demicodes/protocol'
+import { formatThinkingDuration } from './thinking-label'
 
 /**
  * Where a command is, as a stored view or the command's live frames say it:
@@ -37,20 +38,41 @@ export function commandEndMark(view: CommandEnd | null): CommandEndMark | null {
 }
 
 /**
- * The end of the command `view` shows, in words, as an open row says it
- * above the output: only when it failed, was stopped or was lost, as the
- * row's tag.
+ * How long a command runs before its row wears the time as a tag
+ * (`runtime.md` § Rendering boundary), and a run before its title says it
+ * (§ Work groups): a quicker one shows none, so it does not flash one.
  */
-export function commandEndWords(view: CommandEnd | null): string | null {
-  const mark = commandEndMark(view)
-  switch (mark?.kind) {
-    case 'failed':
-      return `Exited with code ${mark.exitCode}`
-    case 'stopped':
-      return 'Stopped'
-    case 'lost':
-      return mark.reason ? `Lost: ${mark.reason}` : 'Lost'
-    default:
-      return null
+export const SHOW_TIME_AFTER_MS = 3000
+
+/** How long work has run, as a running row says it once it has run more than 3 seconds; none before. */
+export function runningTime(elapsedMs: number | null): string | null {
+  return elapsedMs !== null && elapsedMs > SHOW_TIME_AFTER_MS ? formatThinkingDuration(elapsedMs) : null
+}
+
+/**
+ * What an open shell row says above the output (`runtime.md` § Rendering
+ * boundary): how long the command has run, while it runs and `end` is
+ * none, or how it ended and after how long, given how long it ran or has
+ * run, `elapsedMs`. A lost command says why, as its tag does, and no time;
+ * none while the time is unknown.
+ */
+export function commandStatusLine(end: CommandEnd | null, elapsedMs: number | null): string | null {
+  if (end?.status === 'lost') {
+    return end.lostReason ? `Lost: ${end.lostReason}` : 'Lost'
+  }
+  if (elapsedMs === null) {
+    return null
+  }
+  const time = formatThinkingDuration(elapsedMs)
+  switch (end?.status) {
+    case undefined:
+    case 'running':
+      return `Running for ${time}`
+    case 'exited':
+      if (end.exitCode === undefined)
+        return `Exited after ${time}`
+      return end.exitCode === 0 ? `Exited with 0 after ${time}` : `Failed with exit code ${end.exitCode} after ${time}`
+    case 'aborted':
+      return `Stopped after ${time}`
   }
 }

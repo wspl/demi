@@ -4,18 +4,20 @@ import { SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import CodeText from '@demicodes/web-ui/ui/CodeText.vue'
 import AnsiText from './AnsiText.vue'
+import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import ShellEditPills from './ShellEditPills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
-import ToolMedia from './ToolMedia.vue'
+import GoneMediaLines from './GoneMediaLines.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText, shellTerminalOutputChunks, storedShellView } from '../block-helpers'
-import { commandEndMark, commandEndWords } from '../command-end'
+import { commandEndMark, commandStatusLine, runningTime } from '../command-end'
 import CommandEndTag from './CommandEndTag.vue'
 import { useLiveCalls } from '../live-calls'
-import { shellRowEnd, shellRowRunning } from '../terminals'
+import { shellRowEnd, shellRowRunning, shellRowTime } from '../terminals'
 import { shellTitle } from '../tool-rendering'
-import { toolMedia } from '../tool-media'
+import { splitMedia, toolMedia } from '../tool-media'
 import { codeRuns, codeTextColor, useMarkdownRenderVersion } from '../../markdown/highlight'
+import { useElapsedTime } from '../../composables/useElapsedTime'
 
 const props = defineProps<{
   block: ToolCallBlock
@@ -36,7 +38,7 @@ const commandColors = computed(() => {
   return { runs: codeRuns(command.value, 'bash'), text: codeTextColor() }
 })
 const title = computed(() => shellTitle(props.input))
-const media = computed(() => toolMedia(props.block.output, title.value))
+const media = computed(() => splitMedia(toolMedia(props.block.output, title.value)))
 // A call whose command ran says how it ended in its tag and above its output,
 // so only a call that ran nothing, such as one the input check or the repeat
 // guard refused, shows its result's text as the failure.
@@ -47,7 +49,17 @@ const started = computed(() => liveCalls(props.block.toolUseId))
 // How the command ended, also when it ran on after the call returned; none while it runs.
 const end = computed(() => shellRowEnd(props.block, started.value))
 const endMark = computed(() => commandEndMark(end.value))
-const endWords = computed(() => commandEndWords(end.value))
+// How long the command has run, from the start the server reported, or ran.
+const time = computed(() => shellRowTime(props.block, started.value))
+const runningFor = useElapsedTime(
+  () => (time.value?.kind === 'running' ? time.value.since : Number.NaN),
+  () => time.value?.kind === 'running',
+)
+const elapsedMs = computed(() => (time.value?.kind === 'ran' ? time.value.ms : runningFor.value))
+/** While the command runs, past 3 seconds, the time it has run, where Failed or Stopped stands once it ends. */
+const runningTag = computed(() => (time.value?.kind === 'running' ? runningTime(runningFor.value) : null))
+/** Above the output: how long it has run, or how it ended and after how long. */
+const statusLine = computed(() => commandStatusLine(end.value, elapsedMs.value))
 /** While the call runs, its command's output as it comes (`runtime.md` § Rendering boundary). */
 const liveOutput = computed(() =>
   props.block.status === 'executing' ? started.value?.output ?? '' : '',
@@ -103,6 +115,7 @@ function toggleCommand(): void {
     :tone="block.status === 'error' && !endMark ? 'danger' : undefined"
     :error-text="errorText"
     :stick-bottom="block.status === 'executing'"
+    :pictures="media.pictures"
     framed
   >
     <template #icon>
@@ -112,6 +125,7 @@ function toggleCommand(): void {
     <template #default>
       <span class="min-w-0 truncate">{{ title }}</span>
       <CommandEndTag v-if="endMark" :mark="endMark" />
+      <Tag v-else-if="runningTag" class="shrink-0 tabular-nums">{{ runningTag }}</Tag>
     </template>
 
     <template #pinned>
@@ -139,13 +153,14 @@ function toggleCommand(): void {
           @layout="measureCommand"
         />
       </div>
+      <!-- Above the output, which scrolls under it as it follows the newest line. -->
+      <div v-if="statusLine" class="mt-1 px-3 text-xs leading-5 text-fg-subtle">{{ statusLine }}</div>
     </template>
 
-    <template v-if="terminalOutputText || endWords" #body>
-      <div v-if="endWords" class="px-3 text-xs leading-5 text-fg-subtle">{{ endWords }}</div>
-      <AnsiText v-if="terminalOutputText" class="px-3" :content="terminalOutputText" />
+    <template v-if="terminalOutputText" #body>
+      <AnsiText class="px-3" :content="terminalOutputText" />
     </template>
   </FunctionalBlock>
-  <ToolMedia :media="media" />
+  <GoneMediaLines :lines="media.gone" />
   <ShellEditPills :block="block" />
 </template>

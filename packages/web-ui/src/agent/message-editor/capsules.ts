@@ -20,6 +20,8 @@ export interface MessageCapsule {
   name: string
   /** A picture's address, or the media block it loads from. */
   image?: string | MediaSource
+  /** A video's media block, whose first frame its preview on hover shows. */
+  video?: MediaSource
   /** The opening of a text file, shown when the capsule is pointed at. */
   snippet?: string
   /** The device a file on another device is on. */
@@ -37,6 +39,11 @@ export interface MessageCapsule {
 /** An image file's picture, from its bytes in the user's blobs; none for a file of another kind. */
 export function blobImage(mediaType: string, sha256: string): ContentMediaSource | undefined {
   return mediaType.startsWith('image/') ? { type: 'ref', ref: sha256, mediaType } : undefined
+}
+
+/** A video file's bytes in the user's blobs; none for a file of another kind. */
+function blobVideo(mediaType: string, sha256: string): ContentMediaSource | undefined {
+  return mediaType.startsWith('video/') ? { type: 'ref', ref: sha256, mediaType } : undefined
 }
 
 /** What is happening to a file the composer is still carrying to the Host. */
@@ -154,6 +161,7 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
         path: block.path,
         snippet: block.snippet,
         image: capsule.image ?? blobImage(block.mediaType, block.sha256),
+        video: capsule.video ?? blobVideo(block.mediaType, block.sha256),
         reference: { type: 'stored', sha256: block.sha256, mediaType: block.mediaType, size: block.sizeBytes },
       }
     } else if (block.type === 'document') {
@@ -168,6 +176,7 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
         ...capsule,
         name: mediaName(block),
         image: block.type === 'image' ? source : undefined,
+        video: block.type === 'video' ? source : undefined,
         ...(source.type === 'ref' ? { reference: { type: 'stored', sha256: source.ref, mediaType: source.mediaType } } : {}),
       }
     } else if (block.type === 'upload') {
@@ -176,6 +185,7 @@ export function contentCapsule(id: string, blocks: readonly MessageEditContent[]
         name: block.fileName,
         snippet: block.snippet,
         image: blobImage(block.mediaType, block.sha256),
+        video: blobVideo(block.mediaType, block.sha256),
         reference: { type: 'stored', sha256: block.sha256, mediaType: block.mediaType },
       }
     }

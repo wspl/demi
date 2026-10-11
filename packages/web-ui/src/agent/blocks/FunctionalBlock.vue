@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, useId, useSlots, watch } from 'vue'
+import { useResizeObserver } from '@vueuse/core'
 import { CircleX } from '@lucide/vue'
 import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
@@ -8,8 +9,12 @@ import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Shimmer from '@demicodes/web-ui/ui/Shimmer.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { textWidth } from '@demicodes/web-ui/ui/text-width'
 import { useFollowEnd } from '../../composables/useFollowEnd'
 import { useWholeBlock } from '../whole-blocks'
+import RowPicture from '../RowPicture.vue'
+import { fitRowPictures, rowPictureBox } from '../row-pictures'
+import type { ToolPicture } from '../tool-media'
 
 const props = defineProps<{
   label?: string
@@ -33,6 +38,8 @@ const props = defineProps<{
   cutKey?: string
   /** The body is rows of their own, as a work group's steps: in flow, unbounded, never scrolled. */
   flow?: boolean
+  /** The images and videos the row's step returned, small in its line after the face (`file-previews.md` § Media a tool returned). */
+  pictures?: readonly ToolPicture[]
 }>()
 
 const slots = useSlots()
@@ -68,6 +75,37 @@ watch(isOpen, (open) => {
 })
 
 useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
+
+// The face and the pictures share the line by one rule (`row-pictures.ts`):
+// the title gives way first, down to half the row, then the pictures, into
+// the count of the rest. The face's parts that never shrink, its tags and
+// its chevron, stay whole throughout.
+const faceRow = ref<HTMLElement>()
+const roll = ref<InstanceType<typeof ChromeRoll>>()
+const rowWidth = ref(0)
+const faceWidth = ref(0)
+const rowFont = ref('')
+function measureFace(): void {
+  const row = faceRow.value
+  if (!row || !props.pictures?.length)
+    return
+  rowWidth.value = row.clientWidth
+  faceWidth.value = roll.value?.naturalWidth() ?? 0
+  rowFont.value = getComputedStyle(row).font
+}
+// Only a row with pictures watches its widths: a transcript holds hundreds of rows.
+useResizeObserver(() => (props.pictures?.length ? faceRow.value : undefined), measureFace)
+// The face's width changes with what it says, as a run's face rolls to its next step.
+useResizeObserver(() => (props.pictures?.length ? roll.value?.root : undefined), measureFace)
+watch(() => props.pictures?.length ?? 0, measureFace, { flush: 'post' })
+const picturesFit = computed(() => {
+  const pictures = props.pictures ?? []
+  if (pictures.length === 0 || rowWidth.value === 0)
+    return { shown: 0, more: 0 }
+  const font = rowFont.value
+  return fitRowPictures(rowWidth.value, faceWidth.value, pictures.map((picture) => rowPictureBox(picture).width), (count) => Math.ceil(textWidth(`+${count}`, font)))
+})
+const shownPictures = computed(() => (props.pictures ?? []).slice(0, picturesFit.value.shown))
 </script>
 
 <template>
@@ -78,6 +116,7 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
       has its own focus and name, and Enter or Space on the button clicks
       it, which reaches the face's click as a click on the face does. -->
     <div
+      ref="faceRow"
       class="relative flex h-7 cursor-default select-none items-center gap-2 text-row transition-colors duration-200 ease-out"
       :class="isExpandable ? 'group text-fg-row hover:text-fg-muted' : 'text-fg-row'"
       @click="toggle"
@@ -91,6 +130,7 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
       ></button>
       <ChromeRoll
         :id="faceId"
+        ref="roll"
         class="relative min-w-0"
         :face-key="rollKey ?? 'static'"
         :icon-key="iconKey ?? 'icon'"
@@ -125,6 +165,19 @@ useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
           </span>
         </Shimmer>
       </ChromeRoll>
+      <!-- 8 px after the face, the face row's gap; one line, never wrapping, the rest counted. -->
+      <div
+        v-if="picturesFit.shown > 0 || picturesFit.more > 0"
+        class="relative flex shrink-0 items-center gap-1"
+        data-row-pictures
+      >
+        <RowPicture
+          v-for="(picture, index) in shownPictures"
+          :key="index"
+          :picture="picture"
+        />
+        <span v-if="picturesFit.more > 0" class="tabular-nums text-fg-faint">+{{ picturesFit.more }}</span>
+      </div>
       <div class="flex-1"></div>
     </div>
     <Fold v-if="isExpandable" :open="isOpen">
