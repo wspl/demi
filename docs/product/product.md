@@ -901,6 +901,26 @@ least 2,000 characters or 40 lines becomes `pasted-text.txt`, using the shared
 composer's paste thresholds. Dropped, selected, and pasted files use the same
 staged attachment flow, and editing a sent message adds files the same way.
 
+The composer holds two things and nothing else: text in the user dialect,
+and capsules. Whatever enters it, typed, pasted or dropped, from Finder, a web
+page, another app or Demi's own transcript, is turned into those as it
+enters, never kept as what it was. For example, the user drags a screenshot
+from the agent's reply, or an image from a web page, onto the composer: it
+lands as an `image.png` capsule where it was dropped, exactly as a pasted
+screenshot does, never as a picture set into the text. So:
+
+- A file, or an image whose bytes the page can read (dragged or pasted as a
+  file, a `data:` image, an image of Demi's own page), becomes a capsule; an
+  attachment of the conversation dragged from the transcript becomes a
+  capsule of the same file, uploading nothing.
+- An image the page cannot read, such as one another site serves without
+  letting the page fetch it, becomes its link as text.
+- Pasted or dropped rich text keeps only the dialect's formats; images in it
+  follow the two rules above, and every other element, a table, a layout,
+  a style, becomes its text.
+- A capsule dragged within the composer moves; one dragged from another
+  composer, as from a message being edited, is copied as a capsule.
+
 Each attachment is a capsule in the message's text, and that text is the
 editor's document. The document is the message: it says which files the
 message carries, in what order, and what each one is. Nothing outside it adds
