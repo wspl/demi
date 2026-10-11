@@ -574,13 +574,22 @@ few milliseconds reads as the list twitching.
   list never draws a frame in which it is shorter, only to grow back. Only
   what the user does shrinks it: folding a row, editing a message, which
   replaces what follows it, or deleting.
-- **A turn that goes on takes the place of its end.** When the user presses
-  Continue after a Stop, or Resume after an error, the row that said how the
-  turn ended, *Stopped* or the error record, rolls over into the Requesting
-  row in that place, as a step rolls over the one before, and Requesting then
-  rolls into the turn's next step: one row throughout, never one that goes
-  while another appears under it. A recovery the backend refuses rolls the
-  row back to what it said.
+- **What replaces a row takes its place.** Whenever something the
+  conversation shows gives way to what comes next without the user removing
+  it, the new state rolls over the old one in the same row, with the roll a
+  step makes over the one before; a row never goes while another appears
+  beside it. One rule, for every such change: the message being sent and the
+  message confirmed; Connecting, Requesting and the step that arrives;
+  thinking without text and the text or step that follows it; a call being
+  written and its call; a retry's notice and the answer it waited for; a
+  failure told at the tail and the turn its Retry starts; *Compacting* and the
+  compaction's divider; a run's live face and its summary. For example, the
+  user presses Continue after a Stop: the *Stopped* row rolls into
+  *Requesting* in that place, and Requesting into the turn's next step; Resume
+  after an error rolls the error record the same way. A change the backend
+  refuses rolls the row back to what it said. A row moves only when the
+  message it shows moves, as a steer the turn took leaves the waiting messages
+  for its place in the transcript.
 - **Messages that wait stay out of the turn's flow.** A pending steer and a
   queued message wait below the turn, and what the turn is doing is read from
   the transcript alone: the tail row, Requesting or Connecting, stands right
