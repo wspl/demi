@@ -49,7 +49,7 @@ pub(crate) struct SessionFile {
     environment: Uuid,
     timestamp: String,
     /// Every line after the `environment` entry.
-    history: Vec<u8>,
+    pub(crate) history: Vec<u8>,
 }
 
 impl SessionFile {

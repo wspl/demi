@@ -243,3 +243,24 @@ impl Provider for ClaudeCodeProvider {
         })
     }
 }
+
+/// Test support (feature `testing`): the session a new process resumes for
+/// a request, for the tests of what sends this provider's requests.
+#[cfg(feature = "testing")]
+pub mod testing {
+    use demi_provider_common::InferenceRequest;
+
+    /// The entries of the session a new CLI process resumes for `request`,
+    /// one JSON line each, after the `environment` entry, which describes
+    /// the process's machine (`claude-code.md` § The session a process
+    /// resumes), written at `timestamp`.
+    pub fn session(request: &InferenceRequest, timestamp: &str) -> Vec<u8> {
+        crate::session::SessionFile::new(
+            &request.session_id,
+            &request.items,
+            &request.blocks,
+            timestamp.to_owned(),
+        )
+        .history
+    }
+}
