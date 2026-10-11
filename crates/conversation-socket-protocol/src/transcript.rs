@@ -137,6 +137,7 @@ fn light_block(block: &Block) -> Block {
             }
         }
         Block::Thinking(thinking) => {
+            thinking.text_length = Some(thinking.text.chars().count() as u64);
             thinking.text.clear();
             thinking.signature = None;
         }

@@ -623,6 +623,18 @@ pub struct ThinkingBlock {
     #[schemars(with = "BlockId")]
     #[garde(skip)]
     pub run: Option<BlockId>,
+    /// The text's length in characters (Unicode scalar values), which a
+    /// page's light form carries in place of the text, so the page tells a
+    /// withheld text from none (`web-api.md` § Light form); omitted from a
+    /// block whole.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "u64")]
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub text_length: Option<u64>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
     /// a process resumes); omitted when there are none. They never leave

@@ -53,6 +53,7 @@ fn reasoning_between_the_last_boundary_and_its_marker_is_marked_as_kept_past_a_s
     let thinking = |value: &str| {
         Block::Thinking(ThinkingBlock {
             run: None,
+            text_length: None,
             entries: Vec::new(),
             id: id(value),
             created_at: Timestamp::UNIX_EPOCH,
