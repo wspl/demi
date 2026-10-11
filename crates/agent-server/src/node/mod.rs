@@ -199,7 +199,10 @@ impl<H: HostResolver> Node<H> {
             .environments
             .page_views()
             .into_iter()
-            .filter(|view| view.state == PageState::Running || stored.contains(&view.command_id))
+            .filter(|view| {
+                matches!(view.state, PageState::Running | PageState::Stopping)
+                    || stored.contains(&view.command_id)
+            })
             .collect();
         views.sort_by_key(|view| std::cmp::Reverse(view.running_ms));
         views

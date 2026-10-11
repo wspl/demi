@@ -54,10 +54,6 @@ const NO_LIVE_WORK: &str = "No matching live job or stream";
 /// The numbers requests a connection answers at a time.
 const NUMBERS_REQUESTS: usize = 32;
 
-/// How long a job the backend has no command for has after `TERM` before
-/// it is killed (`runner.md` § Cancellation and completion).
-const UNKNOWN_KILL_AFTER: Duration = Duration::from_secs(5);
-
 /// How long a conversation release may take on the runner.
 const RELEASE_TIMEOUT: Duration = Duration::from_secs(360);
 
@@ -620,7 +616,7 @@ impl Link {
         self.spawn(async move {
             tokio::select! {
                 () = link.ended() => {}
-                () = tokio::time::sleep(UNKNOWN_KILL_AFTER) => link.post(&Inbound::JobKill {
+                () = tokio::time::sleep(wire::STOP_GRACE) => link.post(&Inbound::JobKill {
                     job_id: job,
                     signal: Some(wire::Signal::Kill),
                 }),

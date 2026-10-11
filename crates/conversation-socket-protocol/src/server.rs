@@ -418,8 +418,9 @@ pub enum JobPhase {
 serde_plain::derive_display_from_serialize!(JobPhase);
 serde_plain::derive_fromstr_from_deserialize!(JobPhase);
 
-/// Where a command is, with the pages' view of it: running, exited with its
-/// code, stopped, or lost with why.
+/// Where a command is, with the pages' view of it: running, and whether a
+/// stop waits for its runner's word, exited with its code, stopped, or lost
+/// with why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "status",
@@ -431,6 +432,12 @@ pub enum ShellStatus {
         #[serde(flatten)]
         #[garde(dive)]
         command: CommandView,
+        /// A stop waits for its runner to say that it ended (`runner.md`
+        /// § Cancellation and completion): the pages tag it *Stopping…*.
+        /// Present only then.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[garde(skip)]
+        stopping: bool,
     },
     Exited {
         #[serde(flatten)]
@@ -458,7 +465,7 @@ impl ShellStatus {
     /// The command and its view, whatever its status.
     pub fn command(&self) -> &CommandView {
         match self {
-            Self::Running { command }
+            Self::Running { command, .. }
             | Self::Exited { command, .. }
             | Self::Aborted { command }
             | Self::Lost { command, .. } => command,

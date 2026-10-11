@@ -1070,6 +1070,53 @@ impl RemoteJob {
         }
     }
 
+    /// Stops the job (`runner.md` § Cancellation and completion): `TERM`,
+    /// then `KILL` once [`wire::STOP_GRACE`] has passed without its end. A
+    /// signal sent while no connection served the job reached nothing, and
+    /// one sent over a connection that ended may not have reached the
+    /// runner, so both go again each time the job goes on over a connection
+    /// other than the one they went over. Ends with the job's end, which
+    /// only its runner reports, or its loss.
+    pub async fn stop(&self) -> JobEnd {
+        let mut attachments = self.clone();
+        loop {
+            // The connection this round's signals go over, none while away:
+            // the first poll below sends `TERM` before anything else runs.
+            let over = self.live().map(|link| link.downgrade());
+            let mut signals = std::pin::pin!(async {
+                self.stop_signal(wire::Signal::Terminate).await;
+                tokio::time::sleep(wire::STOP_GRACE).await;
+                self.stop_signal(wire::Signal::Kill).await;
+                std::future::pending::<()>().await
+            });
+            loop {
+                tokio::select! {
+                    end = self.end() => return end,
+                    () = &mut signals => {}
+                    () = attachments.reattached() => {
+                        let same = match (self.live(), &over) {
+                            (Some(link), Some(over)) => over.is(&link),
+                            _ => false,
+                        };
+                        if !same {
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// A stop's `signal`: one that could not go reaches nothing, and the
+    /// stop sends it again over the next connection.
+    async fn stop_signal(&self, signal: wire::Signal) {
+        if let Err(error) = self.kill(signal).await {
+            tracing::debug!(job = %self.id, "the job's {signal} was not sent: {error}");
+        }
+    }
+
+    /// Sends `signal` to the job while a connection serves it; nothing
+    /// while none does, or once the job ended.
     pub async fn kill(&self, signal: wire::Signal) -> Result<(), HostError> {
         match self.live() {
             Some(link) => {
