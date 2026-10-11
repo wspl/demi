@@ -106,8 +106,13 @@ pub enum AgentMessageEvent {
         home: Option<String>,
     },
     /// Demi's notice that a move the recipient asked for failed, which left
-    /// the conversation where it was.
-    MoveFailed {},
+    /// the conversation where it was; the receipt row says `reason` after
+    /// *Move failed* (`sessions-and-targets.md` § Switch the primary target).
+    MoveFailed {
+        /// Why, as the message's text says it: `the project no longer exists`.
+        #[garde(length(min = 1))]
+        reason: String,
+    },
 }
 
 impl AgentMessageEvent {

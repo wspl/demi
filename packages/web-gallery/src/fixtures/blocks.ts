@@ -150,7 +150,7 @@ export const organizeReceiptMessages: AgentMessage[] = [
     timestamp: '2026-09-12T12:08:00.000Z',
     content:
       "Demi could not make the move this conversation's agent asked for: the project no longer exists. The conversation still runs on Cloud (/home/demi/sessions/0f4e7597-e889-4baa-ac98-93fa61b68d28).",
-    event: { type: 'move_failed' as const },
+    event: { type: 'move_failed' as const, reason: 'the project no longer exists' },
   },
 ]
 
