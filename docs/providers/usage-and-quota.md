@@ -160,6 +160,24 @@ is one limit the vendor meters:
 - A snapshot is information for the user. Inference admission never reads it,
   and neither does the agent.
 
+Every surface that shows a window says its use and its reset the same way: a
+bar of `usedPercent`, *18% used*, and when it resets, as specifically as the
+user would say it, counted from now in the user's time zone:
+
+| When it resets | Wording |
+| --- | --- |
+| Within the hour | *Resets in 12 min* |
+| Within 24 hours | *Resets in 3 hr 38 min*, the minutes left out on the hour |
+| Within 7 days | *Resets Sat 4:00 PM* |
+| Later | *Resets Oct 15 at 4:00 PM*, with the year when it is not this year |
+| Unknown | No reset line |
+
+The wording follows the clock while it shows. Settings show every account's
+windows, and the context indicator's card shows, under the context's rows,
+the windows of the account the conversation's model runs on, under a line
+naming the plan, *Usage limits · Max*; a model on an API key has no such
+part.
+
 ### Probe and observation
 
 Two paths fill a snapshot:
