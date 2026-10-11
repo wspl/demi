@@ -1684,7 +1684,8 @@ none, so a quick command does not flash a tag. The tag goes when the command
 ends: a succeeded row shows nothing, a failed or stopped one its tag. The expanded row shows the script highlighted as Bash, in the colors all code shows in
 ([Code](../product/file-previews.md#code)), and says above the output how long the command has run or ran, *Running for
 1m28s*, then *Exited with 0 after 2m13s*, *Failed with exit code 1 after 47s*
-or *Stopped after 5s*. Component structure, expansion, icons, typography, motion and the
+or *Stopped after 5s*; a command that ended within a second says no time,
+*Exited with 0*. Component structure, expansion, icons, typography, motion and the
 presentation of changed files are shown in the gallery, not here.
 
 ### Work groups
