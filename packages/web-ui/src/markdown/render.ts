@@ -10,19 +10,13 @@ import { KEEPS_WINDOWS } from '../ui/window-stack'
 import { escapeHtml } from './html'
 import { mathExtensions } from './math'
 import { scrollingTable } from './table'
-import { declaredSize, THUMBNAIL_HEIGHT, thumbnailBox, thumbnailPlaceHeight, type PixelSize, type ThumbnailKind } from '../files/thumbnail'
+import { declaredSize, type PixelSize } from '../files/thumbnail'
 
 // Parsing is synchronous, so the renderers read the options of the parse in flight instead of
 // building a Marked instance (and re-registering KaTeX) per call.
 let activeOptions: MarkdownRenderOptions | undefined
 /** Links open around the renderer: an image inside one follows it instead of opening itself. */
 let openLinks = 0
-/**
- * Inside a run of a message's media, where each one is a thumbnail, the
- * height of the place the medium being rendered takes in the run's row;
- * null outside a run.
- */
-let runPlace: number | null = null
 
 /** A link that leaves for the web, in a new tab. */
 function webLink(url: string): string {
@@ -105,47 +99,23 @@ function attachmentLink(attachment: MessageAttachment, attributes = ''): string 
 }
 
 /**
- * The size an attachment's record carries, which a medium's box is taken
+ * The size an attachment's record carries, which a medium's tile is taken
  * from before its bytes arrive, as attributes that `media-run.ts` reads
- * again once a render is in the page.
+ * once a render is in the page and its width is known.
  */
 function sizeAttributes(size: PixelSize | null): string {
   return size ? ` data-width="${size.width}" data-height="${size.height}"` : ''
 }
 
 /**
- * A medium in a run as a thumbnail of `size`, known before its bytes arrive:
- * its box as its inline style, and the height of its place in the run.
- */
-function runThumbnail(size: PixelSize | null, kind: ThumbnailKind): string {
-  const box = thumbnailBox(size, kind)
-  runPlace = thumbnailPlaceHeight(size, kind)
-  return ` style="width: ${box.width}px; height: ${box.height}px"`
-}
-
-/**
- * A lone video's first frame, sized as a lone image is, by the proportions
- * and the width its record carries: 16:9 and the message's width while they
- * are unknown (`media-run.ts` sets them once its first frame arrives).
- */
-function loneVideoStyle(size: PixelSize | null): string {
-  if (!size)
-    return ''
-  return ` style="--media-ratio: ${size.width / size.height}; --media-width: ${size.width}px"`
-}
-
-/**
  * An attachment's video as its first frame with a play mark over it, which
  * a click opens in the viewer to play; inside a link, it follows the link.
- * In a run it is a thumbnail.
+ * It is a tile, as an image is.
  */
 function attachmentVideo(attachment: MessageAttachment, alt: string, title: string): string {
-  const size = declaredSize(attachment)
-  const inRun = runPlace !== null
-  const frame = inRun ? runThumbnail(size, 'video') : ''
-  const video = `<video src="${escapeHtml(attachment.url)}" muted playsinline preload="metadata" aria-label="${alt}"${title}${sizeAttributes(size)}${frame}></video>`
+  const video = `<video src="${escapeHtml(attachment.url)}" muted playsinline preload="metadata" aria-label="${alt}"${title}${sizeAttributes(declaredSize(attachment))}></video>`
   const mark = '<span class="media-play-mark" aria-hidden="true"></span>'
-  const wrapper = ` class="message-video"${inRun ? '' : loneVideoStyle(size)}`
+  const wrapper = ' class="message-video"'
   if (openLinks > 0)
     return `<span${wrapper}>${video}${mark}</span>`
   return `${attachmentLink(attachment, wrapper)}${video}${mark}</a>`
@@ -188,10 +158,9 @@ function imageSource(target: string): { src: string; link: string | null } | nul
 
 /**
  * An attachment an image names: an image that a click shows large, a video's
- * first frame that a click plays large, each at an image's bounds and in a
- * run as a thumbnail whose box its record's size gives before its bytes
- * arrive, and any other file as a link that downloads it, named by the alt
- * text.
+ * first frame that a click plays large, each a tile whose box its record's
+ * size gives before its bytes arrive, and any other file as a link that
+ * downloads it, named by the alt text.
  */
 function attachmentMedium(attachment: MessageAttachment, token: Tokens.Image): string {
   const alt = escapeHtml(token.text)
@@ -200,9 +169,7 @@ function attachmentMedium(attachment: MessageAttachment, token: Tokens.Image): s
     return attachmentVideo(attachment, alt, title)
   if (!attachment.mediaType.startsWith('image/'))
     return openLinks > 0 ? alt : `${attachmentLink(attachment)}${alt}</a>`
-  const size = declaredSize(attachment)
-  const box = runPlace !== null ? runThumbnail(size, 'image') : ''
-  const image = `<img src="${escapeHtml(attachment.url)}" alt="${alt}"${title}${sizeAttributes(size)}${box} />`
+  const image = `<img src="${escapeHtml(attachment.url)}" alt="${alt}"${title}${sizeAttributes(declaredSize(attachment))} />`
   return openLinks > 0 ? image : `${attachmentLink(attachment)}${image}</a>`
 }
 
@@ -265,8 +232,7 @@ const messageRenderer: RendererObject = {
     if (source === null)
       return escapeHtml(token.text)
     const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
-    const box = runPlace !== null ? runThumbnail(null, 'image') : ''
-    const image = `<img src="${escapeHtml(source.src)}" alt="${escapeHtml(token.text)}"${title}${box} />`
+    const image = `<img src="${escapeHtml(source.src)}" alt="${escapeHtml(token.text)}"${title} />`
     return openLinks > 0 || source.link === null ? image : `${source.link}${image}</a>`
   },
 }
@@ -438,75 +404,15 @@ agentMarked.use({
   },
   extensions: [{
     name: MEDIA,
+    // Each medium is a tile (`media-run.ts` sizes it once the message's
+    // width is known), lone or side by side with the others of its run.
     renderer(token) {
       const media = token.tokens ?? []
-      if (media.length === 1)
-        return `<p class="media-lone">${this.parser.parseInline(media)}</p>\n`
-      // In a run, each medium's place is as tall as its thumbnail's renderer
-      // says; one that shows as text, while its attachment is asked for,
-      // keeps the place of a medium whose size is unknown.
-      const items: string[] = []
-      try {
-        for (const medium of media) {
-          runPlace = THUMBNAIL_HEIGHT
-          const html = this.parser.parseInline([medium])
-          items.push(`<span style="height: ${runPlace}px">${html}</span>`)
-        }
-      } finally {
-        runPlace = null
-      }
-      return `<p class="media-run">${items.join('')}</p>\n`
+      const block = media.length === 1 ? 'media-lone' : 'media-run'
+      return `<p class="${block}">${media.map((medium) => this.parser.parseInline([medium])).join('')}</p>\n`
     },
   }],
 })
-
-/**
- * A medium cut off at the end of streamed text, after what holding back an
- * open link leaves: the `!` of an image, or a link still open around a whole
- * image.
- */
-const PARTIAL_MEDIUM = /(?:\[?!|\[!\[[^\]]*\]\([^)]*\)\](?:\([^)]*)?)$/
-
-/** The media a message's text ends with, in the innermost list item or quote it ends in; none when it ends with words. */
-function trailingMedia(blocks: Token[]): Token[] {
-  separateMedia(blocks)
-  let inner = blocks
-  for (;;) {
-    const last = inner.findLast((block) => block.type !== 'space')
-    if (last?.type === MEDIA)
-      return last.tokens ?? []
-    if (last?.type === 'list')
-      inner = last.items.at(-1)?.tokens ?? []
-    else if (last?.type === 'blockquote')
-      inner = last.tokens ?? []
-    else
-      return []
-  }
-}
-
-/**
- * Streamed text without the lone image at its end: whether that image stands
- * alone or starts a run is decided only by what follows it, so it shows once
- * that arrives, or once the message is complete, and never shows large first
- * and then shrinks into a row. An image that joins a run already shown shows
- * at once. `files` are the conversation's, which tell which images show.
- */
-export function holdUndecidedMedium(text: string, files?: MessageFiles): string {
-  const settled = text.replace(PARTIAL_MEDIUM, '')
-  // Media end with the `)` of the last one.
-  if (!/\)\s*$/.test(settled))
-    return text
-  activeOptions = { files }
-  let media: Token[]
-  try {
-    media = trailingMedia(agentMarked.lexer(settled))
-  } finally {
-    activeOptions = undefined
-  }
-  const raw = media.length === 1 ? media[0]?.raw : undefined
-  const end = settled.trimEnd()
-  return raw !== undefined && end.endsWith(raw) ? end.slice(0, end.length - raw.length) : text
-}
 
 /** The text of each inline code span of an agent's message, in order, at any depth. */
 export function messageCodeSpans(src: string): string[] {

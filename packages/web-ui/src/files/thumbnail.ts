@@ -1,4 +1,5 @@
 import { clamp } from '@demicodes/utils'
+import { fitScale } from './image-zoom'
 
 /** A picture's size in pixels. */
 export interface PixelSize {
@@ -9,23 +10,12 @@ export interface PixelSize {
 /** What a thumbnail shows: an image, or a video's first frame. */
 export type ThumbnailKind = 'image' | 'video'
 
-/**
- * How tall a thumbnail is at most: one in a run of a message's images and
- * videos (`file-previews.md` § Files named in messages). A medium whose
- * size is unknown until it loads keeps a place this tall before it loads
- * and after (`thumbnailPlaceHeight`).
- */
-export const THUMBNAIL_HEIGHT = 80
-
 /** The bounds of a thumbnail's box: its height at most, and its narrowest and widest, beyond which the medium is cropped. */
 export interface ThumbnailBounds {
   height: number
   minWidth: number
   maxWidth: number
 }
-
-/** A thumbnail in a message's run of pictures: 80 pixels tall, 64 to 200 wide. */
-export const MESSAGE_THUMBNAIL: ThumbnailBounds = { height: THUMBNAIL_HEIGHT, minWidth: 64, maxWidth: 200 }
 
 /**
  * A picture in a row's own line, a tool's or a notice's
@@ -46,15 +36,9 @@ export const ROW_PICTURE: ThumbnailBounds = { height: 20, minWidth: 16, maxWidth
  *
  * Never enlarged: the box is never taller or wider than the medium itself,
  * so one smaller than the box keeps its own size where it is narrower or
- * shorter. In a message's run, a 50 × 50 icon is 50 × 50, not widened to 64
- * or raised to 80; a 300 × 40 strip is 200 × 40, cropped to its middle at
- * its own scale.
+ * shorter: a 16 × 16 icon stays 16 × 16.
  */
-export function thumbnailBox(
-  natural: PixelSize | null,
-  kind: ThumbnailKind = 'image',
-  bounds: ThumbnailBounds = MESSAGE_THUMBNAIL,
-): PixelSize {
+export function thumbnailBox(natural: PixelSize | null, kind: ThumbnailKind, bounds: ThumbnailBounds): PixelSize {
   if (natural === null) {
     return kind === 'video'
       ? { width: Math.round(bounds.height * 16 / 9), height: bounds.height }
@@ -68,18 +52,44 @@ export function thumbnailBox(
   }
 }
 
+/** The space between two tiles of a message, side by side and between rows. */
+export const TILE_GAP = 8
+/** How tall a message's tile is at most. */
+export const TILE_HEIGHT = 240
+
 /**
- * How tall a thumbnail's place in a message's run is, a row of the run
- * being as tall as its tallest place (`file-previews.md` § Files named in
- * messages), given the size
- * `declared` known before the medium's bytes arrive, from its reference or
- * its attachment's record: its box's height when that size is known, so four
- * 171 × 40 frames stand in a row 40 pixels tall with no empty band under
- * them; 80 pixels when it is known only once the bytes load, such as a
- * video's before its first frame, so the row never shrinks when they do.
+ * The box a picture of a message fits in, lone or in a run
+ * (`file-previews.md` § Files named in messages): a third of `width`, the
+ * width its pictures stand in, less the two gaps between three tiles, and
+ * 240 pixels tall, so three tiles fill a line. A 760-pixel message's is
+ * 248 × 240.
  */
-export function thumbnailPlaceHeight(declared: PixelSize | null, kind: ThumbnailKind): number {
-  return thumbnailBox(declared, kind).height
+export function tileFrame(width: number): PixelSize {
+  return { width: Math.max(0, Math.floor((width - 2 * TILE_GAP) / 3)), height: TILE_HEIGHT }
+}
+
+/** A recording's proportions while its size is unknown, as most recordings are, and larger than any tile. */
+const UNKNOWN_VIDEO: PixelSize = { width: 1600, height: 900 }
+
+/**
+ * The box a message's picture of `natural` size takes, lone or in a run, in
+ * a message whose pictures stand `width` pixels wide: scaled down with its
+ * proportions kept to fit its tile's frame, never enlarged, never cropped.
+ * In a 760-pixel message a 2560 × 1720 screenshot is 248 × 167, a
+ * 1000 × 8000 page 30 × 240. A video whose size is unknown until its first
+ * frame takes a 16:9 box as wide as the frame; an image whose size is
+ * unknown has none (null) until its bytes give it one.
+ */
+export function tileBox(natural: PixelSize | null, kind: ThumbnailKind, width: number): PixelSize | null {
+  const frame = tileFrame(width)
+  const size = natural ?? (kind === 'video' ? UNKNOWN_VIDEO : null)
+  if (size === null)
+    return null
+  const scale = fitScale(size, frame)
+  return {
+    width: Math.min(frame.width, Math.round(size.width * scale)),
+    height: Math.min(frame.height, Math.round(size.height * scale)),
+  }
 }
 
 /**
