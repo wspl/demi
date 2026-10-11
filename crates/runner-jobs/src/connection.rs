@@ -27,9 +27,11 @@ use crate::commands::{
 
 /// Requests waiting for the registration's owner; a sender waits for room.
 const REQUESTS: usize = 64;
-/// How long the backend has to answer a question: where an artifact is, or
-/// which numbers a service may use.
-const ANSWER_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long the backend has to answer which numbers a service may use. Where
+/// an artifact is has no deadline of its own: the backend may fetch it first,
+/// which takes as long as the server's disk or link does
+/// (`native-runtime.md` § Publish packages, then source artifacts on demand).
+const NUMBERS_TIMEOUT: Duration = Duration::from_secs(15);
 
 /// Why work that needs the backend did not reach it: the runner stopped
 /// waiting for a connection (`runner.md` § Command lifetime).
@@ -155,19 +157,20 @@ impl ConnectionHandle {
                 sha256,
                 reply,
             },
-            "artifact location",
+            None,
         )
         .await?
         .map_err(RuntimeError::Location)
     }
 
-    /// Asks the backend a question and waits for its answer, for at most
-    /// `ANSWER_TIMEOUT` and while the connection it was asked on lasts; a
+    /// Asks the backend a question and waits for its answer while the
+    /// connection it was asked on lasts, and for at most `deadline` when it
+    /// names one, the name of what was asked and how long it may take; a
     /// question waits for a connection first.
     async fn ask<T>(
         &self,
         question: impl FnOnce(oneshot::Sender<Result<T, String>>) -> Question,
-        what: &'static str,
+        deadline: Option<(&'static str, Duration)>,
     ) -> Result<Result<T, String>, RuntimeError> {
         let live = self
             .connected()
@@ -181,11 +184,17 @@ impl ConnectionHandle {
             abandoned,
         })
         .await?;
+        let answer = async {
+            match deadline {
+                None => Ok(answer.await),
+                Some((what, within)) => tokio::time::timeout(within, answer)
+                    .await
+                    .map_err(|_| RuntimeError::Deadline(what)),
+            }
+        };
         tokio::select! {
             _ = live.closed.cancelled() => Err(RuntimeError::Cancelled),
-            answer = tokio::time::timeout(ANSWER_TIMEOUT, answer) => answer
-                .map_err(|_| RuntimeError::Deadline(what))?
-                .map_err(|_| RuntimeError::Cancelled),
+            answer = answer => answer?.map_err(|_| RuntimeError::Cancelled),
         }
     }
 
@@ -231,7 +240,7 @@ impl NumberSource for ConnectionHandle {
                     count,
                     reply,
                 },
-                "conversation numbers",
+                Some(("conversation numbers", NUMBERS_TIMEOUT)),
             )
             .await
             .map_err(|error| error.to_string())?

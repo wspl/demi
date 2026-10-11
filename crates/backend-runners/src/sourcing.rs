@@ -1,7 +1,8 @@
 //! Artifacts sourced on demand (`native-runtime.md` § Publish packages, then
 //! source artifacts on demand): the first time something needs an artifact
 //! of the server release, a runner asking where a package's executable
-//! downloads from or an installer asking for a runner executable, it is
+//! downloads from, an installer asking for a runner executable, or the
+//! backend storing ahead for the targets of its Hosts, it is
 //! taken from the store when it is there, and otherwise from the release's
 //! files, a directory on this machine or an HTTPS location, checked against
 //! the size and SHA-256 the release's records give, and stored. Needs of one
