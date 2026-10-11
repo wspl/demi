@@ -12,7 +12,7 @@ import Switch from '@demicodes/web-ui/ui/Switch.vue'
  */
 defineProps<{
   /** Transcript text size in px, applied as the transcript would. */
-  fontSize?: number
+  fontSize: number
 }>()
 
 // Short lines, so the sample stays two lines of prose and three of code at any size.
@@ -48,7 +48,7 @@ const on = ref(true)
         <StreamedMarkdown
           :content="SAMPLE"
           class="text-fg-body"
-          :style="{ fontSize: `${fontSize ?? 15}px`, lineHeight: 'var(--agent-leading)' }"
+          :style="{ fontSize: `${fontSize}px`, lineHeight: 'var(--agent-leading)' }"
         />
       </div>
     <!-- Tone: the surfaces stacked -->
