@@ -36,7 +36,7 @@ const emit = defineEmits<{
   unpin: []
 }>()
 
-// The dot's look is `ConversationDot`'s. An unread answer shows in the title's emphasis, not in the dot.
+// The dot's look is `ConversationDot`'s. An unread answer also shows in the title's emphasis.
 
 // The device a conversation outside a project runs on, named with its state as a row names an
 // item and its state (the Writing page's "A screen says a thing once").
