@@ -5,6 +5,7 @@ import { previewMediaType, type ContextUsage, type UserContentBlock } from '@dem
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
+import type { PasteHost } from '@demicodes/web-ui/agent/message-input/copied-message'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
@@ -25,6 +26,7 @@ import {
   type AttachmentUploadUpdate,
   type ComposerAttachment,
   type ComposerAttachmentInput,
+  type ComposerFileAttachment,
   type UploadedFile,
   type UploadFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
@@ -175,6 +177,10 @@ const picked = new Map<string, File>(
   ),
 )
 const answers = new Map<string, UploadedFile>()
+/** Each file's upload under way, which a message sent meanwhile waits for. */
+const transfers = new Map<string, Promise<void>>()
+/** Ends the claims of pasted files still under way when the specimen goes. */
+const claims = new AbortController()
 /** The specimen's model settings, which its model menu changes as the product's draft does. */
 const settings = ref<ModelSettings>({
   providerId: props.selectedProviderId,
@@ -198,20 +204,16 @@ const composerProps = computed(() => {
   return rest
 })
 
-function applyUpdate(id: string, update: AttachmentUploadUpdate) {
-  const item = attached.value.find((file) => file.id === id)
-  if (item) {
-    applyAttachmentUpdate(item, update)
-  }
-}
-
 /** Pictures of sent files stay loadable while the transcript shows them; they go with the page. */
 const sentPictures: string[] = []
 
-function forget(id: string, release: boolean) {
-  uploads.cancel(id)
-  picked.delete(id)
-  answers.delete(id)
+/** Lets a file go: its upload stops, unless a sent message `keepsUpload` waits for it. */
+function forget(id: string, release: boolean, keepsUpload = false) {
+  if (!keepsUpload) {
+    uploads.cancel(id)
+    picked.delete(id)
+    answers.delete(id)
+  }
   const item = attached.value.find((file) => file.id === id)
   if (item && isComposerFile(item) && item.src?.startsWith('blob:')) {
     if (release) {
@@ -244,8 +246,9 @@ function arrange(ids: string[]) {
 
 /** A sent file as the transcript records it: a record at a made-up Host path, a picture before it, or a device's file. */
 function sentBlocks(item: ComposerAttachment): UserContentBlock[] {
+  // The gallery's devices go by their names.
   if (item.kind === 'reference') {
-    return [{ type: 'reference', reference: encodeRemoteReference(item.host, item.path) }]
+    return [{ type: 'reference', reference: encodeRemoteReference(item.host, item.path, item.host) }]
   }
   const answer = answers.get(item.id)
   const record: UserContentBlock = {
@@ -260,29 +263,52 @@ function sentBlocks(item: ComposerAttachment): UserContentBlock[] {
   return item.src ? [{ type: 'image', source: { type: 'url', url: item.src } }, record] : [record]
 }
 
-/** Sends the draft the way the composer chose: at once, as a steer, or to the queue. */
+/**
+ * Sends the draft the way the composer chose: at once, as a steer, or to the
+ * queue. A message whose files still upload shows at once and waits for
+ * them, as the product's does (`product.md` § Writing a message); a steer or
+ * a queued message is handed on once they are in.
+ */
 function submit(way: SendWay) {
   const sent = carried.value.flatMap((id) => attached.value.filter((item) => item.id === id))
-  const content = joinMessageContent(draft.value, sent.map(sentBlocks))
+  const text = draft.value
+  const content = joinMessageContent(text, sent.map(sentBlocks))
   if (!content.length) {
     return
   }
+  const waiting = sent.filter((item) => isComposerFile(item) && item.phase !== 'ready')
+  const ready = waiting.length
+    ? Promise.all(waiting.map((item) => transfers.get(item.id))).then(() => {
+        if (waiting.some((item) => !answers.has(item.id))) {
+          throw new Error('A file of this message did not upload.')
+        }
+        const blocks = joinMessageContent(text, sent.map(sentBlocks))
+        for (const item of waiting) {
+          picked.delete(item.id)
+          answers.delete(item.id)
+        }
+        return blocks
+      })
+    : undefined
   // The message as the composer shows it, which the page holds until the server confirms it.
-  const message: SentMessage = { text: draft.value, attachments: sent }
+  const message: SentMessage = { text, attachments: sent, ready }
   draft.value = ''
   carried.value = []
   while (attached.value.length) {
-    forget(attached.value[0]!.id, false)
+    const id = attached.value[0]!.id
+    forget(id, false, waiting.some((item) => item.id === id))
   }
+  const handOn = (hand: (content: UserContentBlock[], message: SentMessage) => void) =>
+    ready ? void ready.then((blocks) => hand(blocks, message), () => productWould('Retry the Upload')) : hand(content, message)
   if (way === 'steer') {
     if (props.onSteer) {
-      props.onSteer(content, message)
+      handOn(props.onSteer)
     } else {
       productWould('Steer the Running Turn')
     }
   } else if (way === 'queue') {
     if (props.onQueue) {
-      props.onQueue(content, message)
+      handOn(props.onQueue)
     } else {
       productWould('Queue the Message')
     }
@@ -293,22 +319,61 @@ function submit(way: SendWay) {
 
 function startUpload(id: string) {
   const file = picked.get(id)
-  if (!file) {
+  const item = attached.value.find((each): each is ComposerFileAttachment => each.id === id && isComposerFile(each))
+  if (!file || !item) {
     return
   }
   // The stand-in never fails; were it to, the file would keep its capsule with Retry, as the product's does.
-  uploads.start(id, async (signal, report) => {
+  // The item is held, not looked up, so a sent message's capsule goes on showing its upload.
+  const transfer = uploads.start(id, async (signal, report) => {
     const answer = await upload(file, { signal, progress: report })
     answers.set(id, answer)
-    const item = attached.value.find((each) => each.id === id)
-    if (item && isComposerFile(item)) {
-      item.snippet = answer.snippet
+    item.snippet = answer.snippet
+  }, (update) => applyAttachmentUpdate(item, update))
+    .then(() => {}, () => applyAttachmentUpdate(item, { phase: 'failed' }))
+  transfers.set(id, transfer)
+  void transfer.then(() => {
+    if (transfers.get(id) === transfer) {
+      transfers.delete(id)
     }
-  }, (update) => applyUpdate(id, update)).catch(() => applyUpdate(id, { phase: 'failed' }))
+  })
 }
 
 /** Takes files and puts their capsules in the message, where the composer said they would land. */
 function addFiles(files: File[]) {
+  composer.value?.insertCapsules(takeFiles(files).map(composerCapsule))
+}
+
+/**
+ * How a message pasted into the composer brings its files back: a blob the
+ * gallery holds as an upload without its bytes, a device file by its path,
+ * and the picture a copy carried as a pasted file.
+ */
+const paste: PasteHost = {
+  claim: async (file) => {
+    const answer = await host.claim(file, claims.signal)
+    if (!answer) {
+      return null
+    }
+    const item = composerAttachment({ name: file.name, src: host.picture(file.sha256, file.mediaType), phase: 'ready' })
+    picked.set(item.id, new File([], file.name, { type: file.mediaType }))
+    answers.set(item.id, answer)
+    attached.value.push(item)
+    return composerCapsule(item)
+  },
+  remote: (file) => {
+    if (remoteAttachmentError(file.path, file.host, attached.value)) {
+      return null
+    }
+    const item = composerRemoteAttachment({ host: file.host, path: file.path })
+    attached.value.push(item)
+    return composerCapsule(item)
+  },
+  add: (files) => takeFiles(files).map(composerCapsule),
+}
+
+/** Takes files into the composer, each starting its upload, and answers the ones it took. */
+function takeFiles(files: File[]): ComposerAttachment[] {
   const taken: ComposerAttachment[] = []
   for (const file of files) {
     if (attachmentFileError(file, composerFileNames(attached.value))) {
@@ -321,7 +386,7 @@ function addFiles(files: File[]) {
     taken.push(held)
     startUpload(item.id)
   }
-  composer.value?.insertCapsules(taken.map(composerCapsule))
+  return taken
 }
 
 function retry(id: string) {
@@ -370,6 +435,7 @@ function changeModel(change: ModelSettingsChange) {
 }
 onBeforeUnmount(() => {
   window.clearTimeout(reloadTimer)
+  claims.abort()
   uploads.cancelAll()
   host.release()
   while (attached.value.length) {
@@ -391,6 +457,8 @@ onBeforeUnmount(() => {
     @submit-edit="emit('submitEdit')"
     :attachments="attached"
     :upload="upload"
+    :claim="host.claim"
+    :paste="paste"
     :providers="props.providers ?? demoProviders"
     :models="withContextLimits(props.models ?? demoModels)"
     :can-configure="canConfigure !== false"

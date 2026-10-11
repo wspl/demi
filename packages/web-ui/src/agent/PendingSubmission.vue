@@ -36,6 +36,7 @@ const markdown = computed(() => sentMarkdown(props.text, props.attachments.lengt
       :pending="pending"
       @remove="emit('remove')"
       @send-now="emit('sendNow')"
+      @retry="emit('retry')"
     />
     <div v-if="error" class="mt-2 px-[var(--agent-pad-x,2rem)]">
       <ErrorNotice

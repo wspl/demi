@@ -32,14 +32,16 @@ import {
 import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
 import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import {
-  attachmentsReady,
   composerAttachmentFromFile,
   composerRemoteAttachment,
   isComposerFile,
+  remoteAttachmentError,
 } from '@demicodes/web-ui/agent/message-input/attachments'
+import type { CopiedDeviceFile, CopiedStoredFile } from '@demicodes/web-ui/agent/message-input/copied-message'
+import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
 import { loadDraft } from '../api/drafts'
-import { ApiError, apiRequest, apiUrl, jsonBody, readResponse } from '../api/client'
+import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   attachedHostsSchema,
   batchAnswerSchema,
@@ -62,7 +64,7 @@ import {
   type TranscriptPage,
 } from '../api/generated/web-api'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
-import { createConversationUploads, sendingFileIds } from './uploads'
+import { blobPicture, createConversationUploads, sendingFileIds } from './uploads'
 import { useResources } from '../state/resources'
 import { useProduct, type ProductChange } from '../state/product'
 import { usePreferences } from '../state/preferences'
@@ -790,13 +792,6 @@ export const useConversations = defineStore('conversations', () => {
       ...file,
       phase: file.upload ? 'ready' : 'uploading',
     }
-  }
-
-  /** Where an uploaded picture loads from, for a file whose bytes this web browser does not have. */
-  function blobPicture(upload: { mediaType: string; sha256: string }): string | undefined {
-    return upload.mediaType.startsWith('image/')
-      ? apiUrl(`/blobs/${upload.sha256}?${new URLSearchParams({ type: upload.mediaType })}`)
-      : undefined
   }
 
   /**
@@ -1789,7 +1784,8 @@ export const useConversations = defineStore('conversations', () => {
   async function send(conversation: Conversation, way: SendWay = 'send'): Promise<void> {
     if (
       conversation.archived ||
-      !attachmentsReady(messageFiles(conversation)) ||
+      // A file whose upload failed is retried or removed in the composer first.
+      messageFiles(conversation).some((file) => isComposerFile(file) && file.phase === 'failed') ||
       (!conversation.draft.trim() && !conversation.attachmentIds.length)
     ) {
       return
@@ -1833,9 +1829,12 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Delivers a message the conversation holds as sent: makes its record
-   * first when it has none, then gives the message to the session with its
-   * id, which takes it once, as a message or as a steer.
+   * Delivers the message the conversation holds as sent: waits for every
+   * upload of its files, trying again one that failed, makes the
+   * conversation's record when it has none, then gives the message to the
+   * session with its id, which takes it once, as a message or as a steer. A
+   * message never goes without a file of it (`product.md` § Writing a
+   * message): one that cannot be uploaded leaves it undelivered.
    */
   async function deliver(
     conversation: Conversation,
@@ -1856,16 +1855,19 @@ export const useConversations = defineStore('conversations', () => {
     // failed delivery.
     const current = () => conversation.pendingSends.some((each) => each.id === pending.id)
     try {
-      await persistConversation(conversation)
-      const references = files.map((file): ClientContent => {
-        if (!isComposerFile(file)) {
-          return { type: 'remote_file', deviceId: file.deviceId, path: file.path }
-        }
-        if (!file.upload) {
-          throw new Error(`${file.name} has not finished uploading.`)
-        }
-        return { type: 'upload', ref: file.upload.id, fileName: file.name }
-      })
+      if (files.length !== pending.fileIds.length || files.length !== markCount(pending.text)) {
+        throw new Error('A file of this message is no longer on this page. Copy its text, attach the file again and send it anew.')
+      }
+      const [references] = await Promise.all([
+        Promise.all(files.map(async (file): Promise<ClientContent> => {
+          if (!isComposerFile(file)) {
+            return { type: 'remote_file', deviceId: file.deviceId, path: file.path }
+          }
+          const upload = await uploads.uploaded(file)
+          return { type: 'upload', ref: upload.id, fileName: file.name }
+        })),
+        persistConversation(conversation),
+      ])
       // Each file where its capsule stands in the text.
       const content = joinMessageContent(pending.text, references.map((reference) => [reference]))
       const runtime = await runtimeFor(conversation)
@@ -1889,6 +1891,34 @@ export const useConversations = defineStore('conversations', () => {
     if (!signal.aborted) {
       saveDrafts()
     }
+  }
+
+  /** A sent message waits for a file's upload, which closing the page would stop. */
+  const waitingForUploads = computed(() => items.value.some((conversation) =>
+    conversation.pendingSends.some((pending) => pending.error === null && conversation.files.some((file) =>
+      pending.fileIds.includes(file.id) && isComposerFile(file) && !file.upload))))
+
+  /**
+   * Takes a file a pasted message holds as a blob of the user's into the
+   * conversation's composer, without its bytes; null when the user's blobs do
+   * not hold it.
+   */
+  function claimFile(conversation: Conversation, file: CopiedStoredFile): Promise<ProductAttachment | null> {
+    return uploads.claimFile(conversation, file, lifetime.signal)
+  }
+
+  /** Takes a file on a paired device a pasted message names; null when the composer has it already. */
+  function attachDeviceFile(conversation: Conversation, file: CopiedDeviceFile): ProductAttachment | null {
+    if (remoteAttachmentError(file.path, file.host, conversation.files)) {
+      return null
+    }
+    conversation.files.push({ ...composerRemoteAttachment({ host: file.host, path: file.path }), deviceId: file.deviceId })
+    return conversation.files.at(-1) ?? null
+  }
+
+  /** How many files a message's text holds a place for. */
+  function markCount(text: string): number {
+    return text.split(ATTACHMENT_MARK).length - 1
   }
 
   /** The files the message has, in the order of its capsules; the rest wait for an undo. */
@@ -2105,6 +2135,9 @@ export const useConversations = defineStore('conversations', () => {
     regenerate: (conversation: Conversation, request: MessageEditRequest) =>
       regenerateMessage(editHost(conversation), request),
     addFiles,
+    claimFile,
+    attachDeviceFile,
+    waitingForUploads,
     arrangeFiles,
     retryFile,
     saveDrafts,

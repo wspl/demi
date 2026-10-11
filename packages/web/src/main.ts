@@ -190,6 +190,20 @@ const saveDrafts = () => {
   closeDraftStorage()
 }
 window.addEventListener('pagehide', saveDrafts)
+// A page closed while a sent message waits for its files' uploads asks first,
+// as a mail client does while it sends attachments (`product.md` § Writing a
+// message); the prompt is held only while such a message waits.
+const askBeforeLeaving = (event: BeforeUnloadEvent) => event.preventDefault()
+const stopLeaving = watch(
+  () => conversations.waitingForUploads,
+  (waiting) => {
+    if (waiting) {
+      window.addEventListener('beforeunload', askBeforeLeaving)
+    } else {
+      window.removeEventListener('beforeunload', askBeforeLeaving)
+    }
+  },
+)
 const refreshVisible = () => {
   if (document.visibilityState === 'hidden') {
     // A hidden page saves what its user typed, not waiting for a pause.
@@ -225,6 +239,8 @@ if (import.meta.hot) {
     preferences.stop()
     product.stop()
     window.removeEventListener('pagehide', saveDrafts)
+    stopLeaving()
+    window.removeEventListener('beforeunload', askBeforeLeaving)
     window.removeEventListener('focus', refreshVisible)
     document.removeEventListener('visibilitychange', refreshVisible)
     app.unmount()
