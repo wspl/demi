@@ -1,5 +1,17 @@
 import { expect, test } from 'bun:test'
-import { fitCrumbs } from '../crumb-fit'
+import { fitCrumbs, pathCrumbs } from '../crumb-fit'
+
+test('the path bar shows the whole path from the Host root, the root and the home wearing their glyphs', () => {
+  expect(pathCrumbs('/Users/alex/Projects/demi/docs/guide.md', { platform: 'macos', home: '/Users/zan' })).toEqual([
+    { name: '/', path: '/', icon: 'folder-macos' },
+    { name: 'Users', path: '/Users', icon: undefined },
+    { name: 'zan', path: '/Users/zan', icon: 'folder-home' },
+    { name: 'Projects', path: '/Users/alex/Projects', icon: undefined },
+    { name: 'demi', path: '/Users/alex/Projects/demi', icon: undefined },
+    { name: 'docs', path: '/Users/alex/Projects/demi/docs', icon: undefined },
+    { name: 'guide.md', path: '/Users/alex/Projects/demi/docs/guide.md', icon: undefined },
+  ])
+})
 
 // Three crumbs: 60, 80 and 120 wide with their names, 24 as glyphs, 14 per separator.
 const crumbs = [
