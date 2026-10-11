@@ -26,6 +26,7 @@ mod install;
 mod instructions;
 mod listener;
 mod models;
+mod page_client;
 mod panel;
 mod permissions;
 mod plugins;

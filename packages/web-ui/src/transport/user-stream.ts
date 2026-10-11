@@ -8,7 +8,7 @@ import { openSocket } from './liveness'
 
 export function userStreamAt(url: string): OpenUserStream {
   return (handlers) => {
-    const socket = openSocket(url)
+    const socket = openSocket(url, 'user stream')
     socket.binaryType = 'arraybuffer'
     const queued: StreamBytes[] = []
     socket.addEventListener('open', () => {

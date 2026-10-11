@@ -16,9 +16,9 @@ use demi_shared_types::Timestamp;
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::state::SyncEvent;
 use futures_util::StreamExt as _;
-use futures_util::stream::SplitStream;
 
-use crate::shard::{PageGone, PageSocket, Shard};
+use crate::shard::page_socket::{PageSocketOrigin, open_page_socket};
+use crate::shard::{PageEnd, PageGone, PageSocket, PageStream, Shard};
 
 /// The close code of a channel whose session ended.
 const SESSION_ENDED: u16 = 4002;
@@ -47,19 +47,22 @@ enum End {
 }
 
 impl End {
-    /// The close frame the backend sends for it; none when the page is gone.
-    fn close(self) -> Option<CloseFrame> {
-        let (code, reason) = match self {
-            Self::BackendClosing => (close_code::AWAY, "backend_closing"),
-            Self::UnexpectedMessage => (close_code::POLICY, "unexpected_message"),
-            Self::InternalError => (close_code::ERROR, "internal_error"),
-            Self::SessionEnded => (SESSION_ENDED, "session_ended"),
-            Self::PageGone => return None,
-        };
-        Some(CloseFrame {
+    /// How the socket ends: with the close frame the backend sends, or as
+    /// the page left it.
+    fn page_end(self) -> PageEnd {
+        let frame = |code, reason| CloseFrame {
             code,
             reason: Utf8Bytes::from_static(reason),
-        })
+        };
+        match self {
+            Self::BackendClosing => PageEnd::Close(frame(close_code::AWAY, "backend_closing")),
+            Self::UnexpectedMessage => {
+                PageEnd::Close(frame(close_code::POLICY, "unexpected_message"))
+            }
+            Self::InternalError => PageEnd::Fail(frame(close_code::ERROR, "internal_error")),
+            Self::SessionEnded => PageEnd::Close(frame(SESSION_ENDED, "session_ended")),
+            Self::PageGone => PageEnd::Gone,
+        }
     }
 }
 
@@ -70,14 +73,18 @@ enum Woke {
 }
 
 impl Shard {
-    /// Serves a page's synchronization channel until its session ends, the
-    /// page leaves or the shard closes.
-    pub async fn serve_sync_channel(self: Rc<Self>, socket: WebSocket, session: ChannelSession) {
+    /// Serves a page's synchronization channel, which `origin` opened, until
+    /// its session ends, the page leaves or the shard closes.
+    pub async fn serve_sync_channel(
+        self: Rc<Self>,
+        socket: WebSocket,
+        session: ChannelSession,
+        origin: PageSocketOrigin,
+    ) {
         // Counted before any wait, so the shard's close waits for this
         // channel; one adopted as the close begins ends at once.
         let _channel = self.sync_channels().token();
-        let (to_page, mut from_page) = socket.split();
-        let mut page = PageSocket::new(to_page, self.services().pages);
+        let (mut page, mut from_page) = open_page_socket(socket, self.services().pages, origin);
         let end = if self.is_closing() {
             End::BackendClosing
         } else {
@@ -100,9 +107,7 @@ impl Shard {
                 },
             }
         };
-        if let Some(frame) = end.close() {
-            page.close(frame).await;
-        }
+        page.end(from_page, end.page_end()).await;
     }
 }
 
@@ -226,7 +231,7 @@ impl Channel<'_> {
 
 /// Reads the page's side of the socket until it ends: the page sends
 /// nothing, so any message ends the channel.
-async fn page_ends(from_page: &mut SplitStream<WebSocket>) -> End {
+async fn page_ends(from_page: &mut PageStream) -> End {
     loop {
         match from_page.next().await {
             Some(Ok(Message::Text(_) | Message::Binary(_))) => return End::UnexpectedMessage,

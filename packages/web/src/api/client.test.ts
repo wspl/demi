@@ -82,9 +82,9 @@ function restarting(): void {
 }
 
 /** The backend is back: the page returns at once, and its channel brings the snapshot. */
-function back(): void {
+async function back(): Promise<void> {
   away = false
-  pageReturned()
+  await pageReturned()
   channels.last().connect(productState())
 }
 
@@ -93,7 +93,7 @@ test('a write the page sends while the backend restarts goes once, when it is ba
   restarting()
   const rename = apiRequest('/conversations/c-1', { method: 'PATCH', ...jsonBody({ title: 'Renamed' }) })
   await waitFor(() => refused.length === 1, () => 'the rename was not tried')
-  back()
+  await back()
   expect((await rename).status).toBe(204)
   expect(answered).toEqual(['PATCH /api/conversations/c-1 {"title":"Renamed"}'])
 })
@@ -116,7 +116,7 @@ test('a waiting request whose caller leaves rejects with the abort and is never 
   const reason = new Error('The caller left')
   caller.abort(reason)
   await expect(rename).rejects.toBe(reason)
-  back()
+  await back()
   // A request sent now reaches the backend, and the one dropped is not among what it got.
   await apiRequest('/auth/me')
   expect(answered).toEqual(['GET /api/auth/me'])
@@ -134,7 +134,7 @@ test('a page loaded while the backend cannot be reached connects, never signs ou
   expect(session.current.status).toBe('checking')
   expect(product.connecting).toBe(true)
   expect(product.load).toBe('loading')
-  back()
+  await back()
   await restored
   expect(session.user).toEqual(user)
   expect(product.connecting).toBe(false)

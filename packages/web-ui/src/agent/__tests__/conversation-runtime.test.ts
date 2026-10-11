@@ -483,6 +483,7 @@ test('a page back from sleep breaks a conversation socket silent past the watch 
     // does not, and no close reaches the page.
     jest.setSystemTime(Date.now() + 80_000)
     pageReturned()
+    jest.advanceTimersByTime(0)
     expect(slept.closed).toBe(true)
     // The conversation connects again without waiting: no timer runs before it.
     await turn()
@@ -518,6 +519,7 @@ test('a page back from sleep breaks a conversation socket that still waits for i
     // The laptop sleeps for 80 seconds before the session answers `open`.
     jest.setSystemTime(Date.now() + 80_000)
     pageReturned()
+    jest.advanceTimersByTime(0)
     expect(slept.closed).toBe(true)
     // The opening learns of the break through its promises, then waits no
     // reconnect wait: the zero-delay timer the return left is due now.
