@@ -1,7 +1,11 @@
 import { expect, test } from 'bun:test'
+import { Editor, type JSONContent } from '@tiptap/core'
+import type { Slice } from '@tiptap/pm/model'
 import type { UserContentBlock } from '@demicodes/protocol'
-import { ATTACHMENT_MARK as MARK, parseUserMarkdown } from '../../markdown/user-markdown'
+import { ATTACHMENT_MARK as MARK, parseUserMarkdown, serializeUserMarkdown } from '../../markdown/user-markdown'
 import { contentCapsule } from '../message-editor/capsules'
+import { markdownSlice } from '../message-editor/clipboard-slices'
+import { composerExtensions } from '../message-editor/extensions'
 import { encodeRemoteReference } from '../message-input/attachments'
 import {
   messageClipboard,
@@ -117,6 +121,53 @@ test('a copy of a lone file offers its picture under the file\'s name for when t
   expect(claims.map((claim) => claim.picture)).toEqual([null, null])
   expect(pasted.markdown).toBe(`Compare **before** ${MARK} with ${MARK}, notes in notes.md`)
   expect(pasted.missing).toEqual(['notes.md'])
+})
+
+/** What an empty composer holds once `paste` lands in it, as its Markdown. */
+function pastedIntoEmptyComposer(paste: (schema: Editor['schema']) => Slice): string {
+  const editor = new Editor({
+    element: null,
+    extensions: composerExtensions({ placeholder: '', submit: () => {}, cancel: () => true, editLast: () => false }),
+    content: { type: 'doc', content: [{ type: 'paragraph' }] },
+  })
+  try {
+    editor.view.dispatch(editor.state.tr.replaceSelection(paste(editor.schema)))
+    return serializeUserMarkdown(editor.getJSON()).markdown
+  } finally {
+    editor.destroy()
+  }
+}
+
+/** A task brief an agent wrote with a heredoc: its text ends with a line break, and a code block stands in it. */
+const BRIEF = 'Fix the login test.\n\n```sh\nbun test auth\n```\n\nThen report.\n'
+
+test('a copy holds no blank line before its first line or after its last, in each of its forms', () => {
+  const whole = messageClipboard(parseUserMarkdown(`\n${BRIEF}`, []))
+  expect(whole.plain).toBe(BRIEF.trim())
+  expect(whole.message).toEqual({ text: BRIEF.trim(), files: [] })
+  // The HTML is made from the same lines.
+  expect(serializeUserMarkdown(whole.doc).markdown).toBe(BRIEF.trim())
+
+  // A selection that ends at the end of the paragraph before the code: the
+  // blank line between them is not part of the copy.
+  const [intro] = parseUserMarkdown(BRIEF, []).content as JSONContent[]
+  const selection = messageClipboard({ type: 'doc', content: [intro!] })
+  expect(selection.plain).toBe('Fix the login test.')
+  expect(serializeUserMarkdown(selection.doc).markdown).toBe('Fix the login test.')
+})
+
+test('a paste into a composer drops the blank lines at its start and end, keeping the lines between and their indentation', () => {
+  expect(pastedIntoEmptyComposer((schema) => markdownSlice(schema, '\n\nfoo\n  bar\n\n'))).toBe('foo\n  bar')
+  expect(pastedIntoEmptyComposer((schema) => markdownSlice(schema, ' \n\t\n  indented first\n\nlast\n   \n'))).toBe('  indented first\n\nlast')
+})
+
+test('a message copied and pasted into an empty composer is the message, with no line under it', () => {
+  const { host } = composerHost()
+  const copy = messageClipboard(parseUserMarkdown(BRIEF, []))
+  const pasted = pasteMessage(copy.message, null, host)
+  expect(pastedIntoEmptyComposer((schema) => markdownSlice(schema, pasted.markdown, pasted.capsules))).toBe(BRIEF.trim())
+  // Its plain text pasted, as another app gives it back, is the message too.
+  expect(pastedIntoEmptyComposer((schema) => markdownSlice(schema, `${copy.plain}\n`))).toBe(BRIEF.trim())
 })
 
 test('Demi\'s own form is read only when it is one: JSON whose text has a mark for each file', () => {

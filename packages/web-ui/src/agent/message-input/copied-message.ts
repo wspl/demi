@@ -63,6 +63,63 @@ export type FileReference =
   | Omit<CopiedStoredFile, 'name'>
   | Pick<CopiedDeviceFile, 'type' | 'deviceId'>
 
+/** A line of a paragraph that holds nothing but white space: a line break, or white-space text. */
+function isBlankInline(node: JSONContent): boolean {
+  return node.type === 'hardBreak' || (node.type === 'text' && !node.text?.trim())
+}
+
+/** A paragraph whose every line is blank. */
+function isBlankParagraph(block: JSONContent): boolean {
+  return block.type === 'paragraph' && (block.content ?? []).every(isBlankInline)
+}
+
+/**
+ * The inline content of a paragraph without its blank lines before its
+ * first line (`end` false) or after its last (`end` true); a line's
+ * indentation stays, since a line with text is not blank.
+ */
+function trimParagraphLines(content: readonly JSONContent[], end: boolean): JSONContent[] {
+  const nodes = end ? content.toReversed() : [...content]
+  // Up to the last line break before the first text that is not white space.
+  let cut = 0
+  for (const [index, node] of nodes.entries()) {
+    if (!isBlankInline(node))
+      break
+    if (node.type === 'hardBreak')
+      cut = index + 1
+  }
+  const kept = nodes.slice(cut)
+  return end ? kept.toReversed() : kept
+}
+
+/**
+ * A document's blocks without the blank lines at its start and its end
+ * (`product.md` § Writing a message): blank paragraphs there go, and the
+ * first and last paragraphs lose their blank lines on that side; the lines
+ * between, and each line's indentation, stay. `from` and `to` are the range
+ * of `blocks` kept, so a slice knows whether its open ends were dropped.
+ * Code is kept as it is.
+ */
+export function trimBlankLines(blocks: readonly JSONContent[]): { blocks: JSONContent[]; from: number; to: number } {
+  let from = 0
+  let to = blocks.length
+  while (from < to && isBlankParagraph(blocks[from]!))
+    from += 1
+  while (to > from && isBlankParagraph(blocks[to - 1]!))
+    to -= 1
+  const kept = blocks.slice(from, to).map((block, index, all) => {
+    if (block.type !== 'paragraph')
+      return block
+    let content = block.content ?? []
+    if (index === 0)
+      content = trimParagraphLines(content, false)
+    if (index === all.length - 1)
+      content = trimParagraphLines(content, true)
+    return content.length === (block.content ?? []).length ? block : { ...block, content }
+  })
+  return { blocks: kept, from, to }
+}
+
 /** The forms of a copy that need no page: Demi's own and plain text, with the lone picture a copy carries as itself. */
 export interface MessageClipboard {
   message: CopiedMessage
@@ -70,14 +127,18 @@ export interface MessageClipboard {
   plain: string
   /** The copy holds one picture and no text: its capsule, whose picture also goes on the clipboard. */
   image: MessageCapsule | null
+  /** What the copy holds, without blank lines at its ends: the document its HTML is made from, so every form holds the same lines. */
+  doc: JSONContent
 }
 
 /**
- * The copy of a message, or of a part of it, from its editor document. A
- * capsule whose file the message does not hold yet, such as one still
- * uploading, goes as its name in the text.
+ * The copy of a message, or of a part of it, from its editor document,
+ * without blank lines before its first line or after its last. A capsule
+ * whose file the message does not hold yet, such as one still uploading,
+ * goes as its name in the text.
  */
-export function messageClipboard(doc: JSONContent): MessageClipboard {
+export function messageClipboard(whole: JSONContent): MessageClipboard {
+  const doc = { ...whole, content: trimBlankLines(whole.content ?? []).blocks }
   const { markdown, attachments } = serializeUserMarkdown<MessageCapsule | null>(doc)
   const parts = markdown.split(ATTACHMENT_MARK)
   let text = parts[0] ?? ''
@@ -97,7 +158,7 @@ export function messageClipboard(doc: JSONContent): MessageClipboard {
     plain += parts[index + 1] ?? ''
   })
   const lone = attachments.length === 1 && !parts.join('').trim() ? attachments[0] : null
-  return { message: { text, files }, plain, image: lone?.image ? lone : null }
+  return { message: { text, files }, plain, image: lone?.image ? lone : null, doc }
 }
 
 /**
