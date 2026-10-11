@@ -27,7 +27,12 @@ JSON errors carry `{ code, message }`. `code` is a value of `ErrorCode`, the
 `web-api-protocol` crate's list of every code the web app can see, which the web
 app receives as a string union. A situation has one code on every route:
 for example, an archived conversation that refuses an operation always answers
-`conversation_archived`. Validation normally returns 400, missing or
+`conversation_archived`, and a conversation whose database the server cannot
+read answers 500 `conversation_unreadable` on every route that reads it, its
+history, its attachments and its read acknowledgement, the full error going
+to the server's log only. A `message` is for the log and the developer; the
+page words what the user sees from the `code`, so no server path or operator
+command reaches the user. Validation normally returns 400, missing or
 inaccessible objects 404, and an operation refused by current state 409.
 Partial conversation mutations use the explicit outcomes described below.
 
