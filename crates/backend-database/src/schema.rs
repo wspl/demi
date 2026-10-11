@@ -2345,16 +2345,17 @@ mod tests {
         );
     }
 
-    /// The development builds' conversation schemas are the ones their
-    /// server's databases record.
+    /// The development builds' schemas are the ones their server's
+    /// databases record.
     #[test]
     fn the_development_builds_in_the_history_are_the_ones_their_server_records() {
-        for (development, version) in [
-            (include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"), 1_563_671_332),
-            (include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"), 845_924_528),
+        for (schema, development, version) in [
+            (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.20261011T064359Z.sql"), 1_563_671_332),
+            (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"), 845_924_528),
+            (&CONTROL, include_str!("schema/control-0.1.22-dev.20261011T123543Z.sql"), 388_363_661),
         ] {
             assert_eq!(version_of(development), version);
-            assert!(CONVERSATION.history.iter().any(|shipped| shipped.sql == development));
+            assert!(schema.history.iter().any(|shipped| shipped.sql == development));
         }
     }
 }
