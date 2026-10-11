@@ -1,23 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import CornerDot from '../ui/CornerDot.vue'
-import type { StatusDotTone } from '../ui/StatusDot.vue'
-import type { ConversationStatus } from './conversation-status'
+import { statusTone, type ConversationStatus } from './conversation-status'
 
-/** A conversation's status on its tab mark: running breathes in the accent, failure and abort are red, done green. */
+/** A conversation's status on the corner of its tab's or agent's mark, in the tone it wears everywhere (`statusTone`). */
 const props = defineProps<{
   status: ConversationStatus
 }>()
 
-const tone = computed<StatusDotTone | null>(() => {
-  if (props.status === 'active')
-    return 'accent'
-  if (props.status === 'error' || props.status === 'aborted')
-    return 'danger'
-  if (props.status === 'done')
-    return 'success'
-  return null
-})
+const tone = computed(() => statusTone(props.status))
 </script>
 
 <template>

@@ -148,6 +148,14 @@ export const mainAgentMessage: AgentMessage = {
   origin: 'parent-send',
 }
 
+/** Links whose names take more than a line in a narrow column, in the prose and in a table's cell. */
+export const agentLinksWrapMarkdown = `I asked [同名文件能重复粘贴；Agents chip 只在运行时显示；任务说明渲染 Markdown](agent:4) to check the three fixes together, and [Make the fixture server pick a free port before it starts listening](agent:6) to try again.
+
+| Agent | Task |
+| --- | --- |
+| 4 | [同名文件能重复粘贴；Agents chip 只在运行时显示；任务说明渲染 Markdown](agent:4) |
+| 6 | Retried by [Make the fixture server pick a free port before it starts listening](agent:6) |`
+
 /** A reply that links the agents of `gallerySubagents` by their numbers, and one the conversation does not have. */
 export const agentLinksMarkdown = `I split the login work four ways. [Find the cookie assertion](agent:1) is still looking, [Update helper comments](agent:4) finished, [Run the fixture server](agent:6) failed on its port, and I stopped [CI screenshot review](agent:5) once the cause was clear. Each reports to the [main agent](agent:0); [Snapshot fonts](agent:9) was never started.
 

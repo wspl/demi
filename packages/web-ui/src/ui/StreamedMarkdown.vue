@@ -5,7 +5,7 @@ import { holdUndecidedMedium } from '@demicodes/web-ui/markdown/render'
 import { fitMessageMedia, fitMessageMedium } from '@demicodes/web-ui/markdown/media-run'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
 import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
-import { openMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
+import { openMessageLink, pressMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'
 import { useMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import AgentLinkTip from '@demicodes/web-ui/agent/AgentLinkTip.vue'
@@ -188,6 +188,7 @@ watch(
     :aria-busy="streaming || undefined"
     v-html="renderedMarkdown"
     @click="openMessageLink($event, files(), viewer, agents())"
+    @keydown="pressMessageLink"
     @load.capture="onMediumLoad"
     @loadedmetadata.capture="onMediumLoad"
   />

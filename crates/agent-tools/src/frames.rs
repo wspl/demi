@@ -21,6 +21,7 @@ pub fn shell_output(subagent: Option<NodeId>, view: PageView) -> ServerFrame {
         PageState::Running => ShellStatus::Running { command },
         PageState::Exited { exit_code } => ShellStatus::Exited { command, exit_code },
         PageState::Aborted => ShellStatus::Aborted { command },
+        PageState::Lost { reason } => ShellStatus::Lost { command, reason },
     };
     ServerFrame::ShellOutput {
         subagent_id: subagent,

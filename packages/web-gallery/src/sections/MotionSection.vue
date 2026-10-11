@@ -15,7 +15,8 @@ import FunctionalBlock from '@demicodes/web-ui/agent/blocks/FunctionalBlock.vue'
 import ActivitySlot from '@demicodes/web-ui/agent/blocks/ActivitySlot.vue'
 import { chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
 import type { Block } from '@demicodes/protocol'
-import { demoModel, shellTool } from '../fixtures/blocks'
+import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
+import { demoModel, foundMarkBlocks, shellTool } from '../fixtures/blocks'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
@@ -49,6 +50,9 @@ const entranceThinking: Block = {
   text: 'The helper is fine. Update the assertion and leave cookie.ts alone.',
   signature: null,
 }
+const foundBlocks = foundMarkBlocks()
+/** The block the found-mark specimen brings into view next, as a search result or a notice asks. */
+const foundReveal = ref<string | null>(null)
 const labelIndex = ref(0)
 const faceIndex = ref(0)
 const labelFace = ref<(typeof labelFaces)[number]>('Requesting')
@@ -238,6 +242,34 @@ const exploratoryMarks: {
           :is-thinking-streaming="false"
           entering
         />
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      title="Found Mark"
+      note="A block a search result, a notice, a receipt or a link brings into view: one that fits the view stands in its middle, one taller than the view starts near its top, so it reads from its first line. It is marked for a moment by the accent’s faint fill, with a row’s rounded corners, within the column the transcript’s text stands in, and fades out. The same mark shows on a line a link opens in the File view and on a setting a search finds."
+    >
+      <GallerySpecimen variant="a call, an answer taller than the view, a short answer" wide>
+        <div class="gallery-frame h-[22rem] bg-surface">
+          <AgentMessageList
+            class="h-full"
+            conversation-id="gallery-found-mark"
+            :blocks="foundBlocks"
+            :pending-steers="[]"
+            :queue="[]"
+            phase="idle"
+            :bottom-offset="0"
+            :persisted-scroll-state="undefined"
+            :reveal-block-id="foundReveal"
+            read-only
+            @revealed="foundReveal = null"
+          />
+        </div>
+      </GallerySpecimen>
+      <div class="mt-3 flex gap-2">
+        <Button size="sm" @click="foundReveal = 'found-call'">Mark the Call</Button>
+        <Button size="sm" @click="foundReveal = 'found-long'">Mark the Long Answer</Button>
+        <Button size="sm" @click="foundReveal = 'found-short'">Mark the Short Answer</Button>
       </div>
     </GallerySection>
 

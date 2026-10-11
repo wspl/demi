@@ -11,10 +11,14 @@ import { useResizeObserver } from '@vueuse/core'
  * The text keeps its spaces and line breaks and copies exactly as given.
  *
  * The caller lays the element out as a block, such as a flex item: the
- * line's width decides which words are longer than a line.
+ * line's width decides which words are longer than a line. `styles` colors
+ * runs of the text, as a highlighter gives them, without changing where it
+ * wraps.
  */
 const props = defineProps<{
   text: string
+  /** CSS for runs of the text, by where each starts and ends in it; the rest keeps the element's color. */
+  styles?: readonly { from: number; to: number; style: string }[] | null
 }>()
 
 const emit = defineEmits<{
@@ -37,27 +41,56 @@ useResizeObserver(element, (entries) => {
   lineWidth.value = entry.contentRect.width
 })
 
+/** A part of a piece in one style: the CSS of the run it falls in, or none. */
+interface Segment {
+  text: string
+  style: string | undefined
+}
+
 interface Piece {
   text: string
   /** A run of characters other than white space; the rest is the space between. */
   word: boolean
   /** A word wider than a line, which alone may break inside. */
   long: boolean
+  segments: Segment[]
 }
 
-const pieces = computed<Piece[]>(() =>
-  props.text
+/** The text from `from` to `to`, cut where the styled runs start and end. */
+function segmentsOf(from: number, to: number): Segment[] {
+  const segments: Segment[] = []
+  let at = from
+  for (const run of props.styles ?? []) {
+    if (run.to <= at || run.from >= to)
+      continue
+    if (run.from > at)
+      segments.push({ text: props.text.slice(at, run.from), style: undefined })
+    const end = Math.min(run.to, to)
+    segments.push({ text: props.text.slice(Math.max(run.from, at), end), style: run.style })
+    at = end
+  }
+  if (at < to)
+    segments.push({ text: props.text.slice(at, to), style: undefined })
+  return segments
+}
+
+const pieces = computed<Piece[]>(() => {
+  let offset = 0
+  return props.text
     .split(/(\s+)/)
     .filter((text) => text !== '')
     .map((text) => {
       const word = !/^\s/.test(text)
+      const from = offset
+      offset += text.length
       return {
         text,
         word,
         long: word && lineWidth.value > 0 && textWidth(text, font.value) > lineWidth.value,
+        segments: segmentsOf(from, offset),
       }
-    }),
-)
+    })
+})
 
 watch(pieces, () => emit('layout'), { flush: 'post' })
 
@@ -84,5 +117,5 @@ function textWidth(text: string, font: string): number {
 </script>
 
 <template>
-  <code ref="element" class="whitespace-pre-wrap"><template v-for="(piece, index) in pieces" :key="index"><span v-if="piece.word" :class="piece.long ? 'terminal-wrap' : 'whitespace-nowrap'">{{ piece.text }}</span><template v-else>{{ piece.text }}</template></template></code>
+  <code ref="element" class="whitespace-pre-wrap"><template v-for="(piece, index) in pieces" :key="index"><span v-if="piece.word" :class="piece.long ? 'terminal-wrap' : 'whitespace-nowrap'"><template v-for="(segment, part) in piece.segments" :key="part"><span v-if="segment.style" :style="segment.style">{{ segment.text }}</span><template v-else>{{ segment.text }}</template></template></span><template v-else>{{ piece.text }}</template></template></code>
 </template>

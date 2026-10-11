@@ -58,7 +58,7 @@ fn place(block: &Block) -> Place {
             AgentMessageEvent::Message {} | AgentMessageEvent::Completion { .. } => Place::Step,
             AgentMessageEvent::Permission { .. }
             | AgentMessageEvent::Moved { .. }
-            | AgentMessageEvent::MoveFailed {} => Place::Ends,
+            | AgentMessageEvent::MoveFailed { .. } => Place::Ends,
         },
         // A boundary shows only where an edit removed its marker, which an
         // edit does only by cutting every block after it; its marker is the

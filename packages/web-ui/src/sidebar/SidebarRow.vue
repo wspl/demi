@@ -3,6 +3,8 @@ import { computed } from 'vue'
 import { Archive, Pin, PinOff } from '@lucide/vue'
 import DeviceIcon from '@demicodes/web-ui/devices/DeviceIcon.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
+import StatusDot from '@demicodes/web-ui/ui/StatusDot.vue'
+import { statusTone } from '@demicodes/web-ui/agent/conversation-status'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -34,33 +36,14 @@ const emit = defineEmits<{
   unpin: []
 }>()
 
-// One quiet mark: yellow while a permission request waits for the user, over every other mark and
-// whether the row is open or read; a breathing dot while running, blue for a result waiting to be
-// read, orange when the conversation failed. A turn the user stopped is their own decision, not a
-// failure, and leaves the row settled (`product.md` § Recovering an unfinished turn). A settled
-// row keeps a faint ring in the dot's place, so the column under a project's icon is never empty.
-const SETTLED_DOT = 'border border-fg-faint/60'
-
-const dotClass = computed(() => {
-  const { status, unread, needsYou } = props.conversation
-  if (needsYou) {
-    // The halo keeps it apart from the failed mark, whose amber is close to yellow in dark mode.
-    return 'bg-on-attention ring-2 ring-on-attention/35'
-  }
-  if (status === 'active') {
-    return 'sidebar-breath bg-fg'
-  }
-  if (props.open || !unread) {
-    return SETTLED_DOT
-  }
-  if (status === 'error') {
-    return 'bg-on-warning'
-  }
-  if (status === 'done' && unread) {
-    return 'bg-on-info'
-  }
-  return SETTLED_DOT
-})
+// One quiet mark (`product.md` § Conversations and projects): yellow with a halo while a
+// permission request waits for the user, over every other mark and whether the row is open or
+// read; otherwise the tone the conversation's state wears on its tab too, the accent breathing
+// while it runs, green once finished and red once failed, read or not. A turn the user stopped is
+// their own decision, and like a conversation that ran nothing it leaves the row settled: a faint
+// ring in the dot's place, so the column under a project's icon is never empty. An unread answer
+// shows in the title's emphasis, not in the dot.
+const tone = computed(() => statusTone(props.conversation.status))
 
 // The device a conversation outside a project runs on, named with its state as a row names an
 // item and its state (the Writing page's "A screen says a thing once").
@@ -115,12 +98,15 @@ const rowClass = computed(() => [
     @contextmenu.prevent="emit('contextmenu', $event)"
   >
     <span class="flex size-3.5 shrink-0 items-center justify-center">
+      <!-- The halo keeps it apart from the failed mark in dark mode. -->
       <span
-        class="size-1.5 rounded-full"
-        :class="dotClass"
-        :role="conversation.needsYou ? 'img' : undefined"
-        :aria-label="conversation.needsYou ? 'Needs your decision' : undefined"
+        v-if="conversation.needsYou"
+        class="size-1.5 rounded-full bg-on-attention ring-2 ring-on-attention/35"
+        role="img"
+        aria-label="Needs your decision"
       />
+      <StatusDot v-else-if="tone" :tone="tone" :class="{ 'sidebar-breath': conversation.status === 'active' }" />
+      <span v-else class="size-1.5 rounded-full border border-fg-faint/60" />
     </span>
     <TitleInput
       v-if="renaming"

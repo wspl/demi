@@ -79,7 +79,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Row',
-    'A title and one quiet dot: yellow while a permission request waits for the user, over every other mark and whether the row is open or read; breathing while running, blue for a result waiting to be read, orange when the conversation failed or was stopped, a faint ring when settled. A cut title ends in an ellipsis and shows whole in its tooltip. Archive appears on hover, with Unpin before it on a pinned row; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
+    'A title and one quiet dot: yellow while a permission request waits for the user, over every other mark and whether the row is open or read; otherwise the tone the conversation wears on its tab, the accent breathing while it runs, green once finished and red once failed, read or not, and a faint ring when stopped or nothing has run yet (Status Dots). An answer not yet read shows in a brighter title. A cut title ends in an ellipsis and shows whole in its tooltip. Archive appears on hover, with Unpin before it on a pinned row; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
   ],
   [
     'Selection',
@@ -247,6 +247,35 @@ function hoverRows(): SidebarConversation[] {
 const hoverConversations = ref(hoverRows())
 const hoverActive = ref<string | null>(null)
 
+/** A row for each state a conversation's dot shows, read and unread where it matters. */
+function statusRows(): SidebarConversation[] {
+  const row = (id: string, title: string, status: SidebarConversation['status'], unread: boolean, needsYou?: boolean): SidebarConversation => ({
+    id, title, status, unread, needsYou, updatedAt: '2026-10-10T09:00:00Z', projectId: null, pinned: false,
+  })
+  return [
+    row('s-running', 'Running', 'active', false),
+    row('s-done-unread', 'Finished, unread', 'done', true),
+    row('s-done-read', 'Finished, read', 'done', false),
+    row('s-failed-unread', 'Failed, unread', 'error', true),
+    row('s-failed-read', 'Failed, read', 'error', false),
+    row('s-needs-you', 'Needs you while running', 'active', false, true),
+    row('s-stopped', 'Stopped', 'aborted', false),
+    row('s-idle', 'Nothing run yet', 'idle', false),
+  ]
+}
+const statusConversations = ref(statusRows())
+const statusActive = ref<string | null>(null)
+
+/** Opening a row reads it, as the product acknowledges what the open conversation shows. */
+function selectStatus(id: string): void {
+  statusActive.value = id
+  statusConversations.value = statusConversations.value.map((c) => (c.id === id ? { ...c, unread: false } : c))
+}
+
+function archiveStatus(ids: string[]): void {
+  archiveRows(statusConversations, ids)
+}
+
 function archiveHover(ids: string[]): void {
   archiveRows(hoverConversations, ids)
 }
@@ -412,6 +441,42 @@ onBeforeUnmount(() => {
                 @pin="pinHover"
                 @archive="archiveHover"
                 @delete="(ids) => (hoverConversations = without(hoverConversations, ids))"
+              />
+            </div>
+          </div>
+        </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      title="Status Dots"
+      note="A row’s dot says what the conversation’s work is doing, in the tones its tab and an agent’s link wear: the accent breathing while it runs, green once finished and red once failed, read or not; yellow with a halo while a request waits for the user, over every other dot. A Stop is the user’s own decision, and a stopped row, like one that has run nothing yet, keeps the faint ring of a settled row. An answer the user has not read shows in the title, brighter, not in the dot: open a row to read it. Reset gives the specimen its rows again."
+    >
+      <div class="specimen-row specimen-row-wide items-start">
+        <GallerySpecimen variant="every state · live">
+          <div class="flex flex-col gap-2">
+            <div>
+              <Button variant="ghost" size="sm" @click="statusConversations = statusRows(); statusActive = null">Reset</Button>
+            </div>
+            <div class="gallery-frame flex h-[30rem] overflow-hidden">
+              <AppSidebar
+                :new-shortcut="newShortcut"
+                :search-shortcut="searchShortcut"
+                :account="demoAccount"
+                :projects="[]"
+                :conversations="statusConversations"
+                :active-id="statusActive"
+                @search="productWould('Open the Search Window')"
+                @create="productWould('Start a New Conversation')"
+                @add-project="productWould('Add a Project')"
+                @open-settings="wouldOpenSettings"
+                @sign-out="productWould('Sign Out')"
+                @select="selectStatus"
+                @reorder="(request) => productWould(request.kind === 'project' ? 'Move the Project' : 'Move the Conversation')"
+                @rename="(id, title) => (statusConversations = statusConversations.map((c) => (c.id === id ? { ...c, title } : c)))"
+                @pin="(ids, pinned) => (statusConversations = statusConversations.map((c) => (ids.includes(c.id) ? { ...c, pinned } : c)))"
+                @archive="archiveStatus"
+                @delete="(ids) => (statusConversations = without(statusConversations, ids))"
               />
             </div>
           </div>

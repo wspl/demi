@@ -48,6 +48,15 @@ pub struct ShellToolView {
     #[schemars(with = "i32")]
     #[garde(skip)]
     pub exit_code: Option<i32>,
+    /// Present once the command was lost: why, as its notice's tag says it.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub lost_reason: Option<String>,
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub running_ms: u64,
     #[garde(range(max = MAX_SAFE_INTEGER))]
@@ -117,6 +126,7 @@ impl ShellToolView {
             status,
             command_id,
             exit_code: None,
+            lost_reason: None,
             running_ms: 0,
             idle_ms: 0,
             chunks: Vec::new(),
@@ -130,13 +140,15 @@ impl ShellToolView {
     }
 }
 
-/// Where a command is: running, exited, or stopped.
+/// Where a command is: running, exited, stopped, or lost by its runner
+/// (`runtime.md` § Lost commands).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ShellViewStatus {
     Running,
     Exited,
     Aborted,
+    Lost,
 }
 
 serde_plain::derive_display_from_serialize!(ShellViewStatus);
