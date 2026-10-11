@@ -413,6 +413,13 @@ impl Backend {
         self.services.conversations.hold_commits()
     }
 
+    /// Holds every migration of a conversation's database from now on,
+    /// until the hold is released.
+    #[cfg(feature = "testing")]
+    pub fn hold_migrations(&self) -> demi_backend_database::conversations::MigrationHold {
+        self.services.conversations.hold_migrations()
+    }
+
     /// Holds every runner's hello at `step` from now on, until the hold is
     /// released.
     #[cfg(feature = "testing")]
