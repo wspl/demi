@@ -531,7 +531,11 @@ scrolls, and its field stays where it is as the list grows and shrinks, as
 in Spotlight and Raycast. ↑ and ↓ move through the
 list; Return or a click opens the selected conversation at the message that
 matched, which scrolls into view and is marked for a moment; Escape closes the
-window, as ⌘K does in Slack, Linear and ChatGPT.
+window, as ⌘K does in Slack, Linear and ChatGPT. The mark is the accent's
+faint fill behind the row as the row's own hover fill covers it, with its
+rounded corners and within the conversation's column, fading out; every
+place that marks a block for a moment, a notice's call, a link to a line or
+an agent's receipt, marks it the same way.
 
 A query searches what was said: titles, the user's messages, steers among
 them, and the text of the answers. Thinking, tool calls, commands' output and attached files are
