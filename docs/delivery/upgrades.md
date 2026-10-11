@@ -280,6 +280,17 @@ rename, a migration commits in one transaction
 a server that loses power after step 4 boots into the new release, whose
 services migrate and start as they would have.
 
+The return after a failed step 5 undoes step 4, so the journal goes back to
+step 4 before the return begins and is removed once the old release runs
+again. A return that is killed, or whose old release does not start either,
+leaves the journal at step 4, and the next command finishes the upgrade from
+there: it points `current` at the new release again and starts it, and
+returns once more if it still does not start. The new release migrates
+whichever databases the return had put back, as at its first start. Either
+way the release the command reports is the one `current` names. A journal
+left at step 5 would not be: taking step 5 again would start the old release
+that the return pointed `current` at, and step 6 would report the new one.
+
 ## A development build on a server
 
 For example, a batch of work is merged and the user wants to try it on their
