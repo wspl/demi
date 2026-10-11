@@ -150,11 +150,13 @@ fn thinking(id: &str, text: &str, signature: Option<&str>) -> Value {
 
 #[test]
 fn a_pages_thinking_carries_its_texts_length_in_place_of_its_text() {
-    // Thinking with text, and the textless signed thinking Gemini writes
-    // before a call, which the page hides as it does live.
+    // Thinking with text, counted without the white space around it; the
+    // textless signed thinking Gemini writes before a call, and a thinking
+    // of white space only, which the page hides as it does live.
     let cases = [
-        ("text", thinking("k1", "Käse 🧀 first.", Some("anthropic:sig")), 13),
+        ("text", thinking("k1", "\n Käse 🧀 first.\n", Some("anthropic:sig")), 13),
         ("no text", thinking("k2", "", Some("google:sig")), 0),
+        ("white space only", thinking("k3", " \n\u{3000}", None), 0),
     ];
     for (name, whole, length) in cases {
         let block: Block = demi_shared_types::decode_value(whole.clone()).unwrap();

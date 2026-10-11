@@ -623,10 +623,10 @@ pub struct ThinkingBlock {
     #[schemars(with = "BlockId")]
     #[garde(skip)]
     pub run: Option<BlockId>,
-    /// The text's length in characters (Unicode scalar values), which a
-    /// page's light form carries in place of the text, so the page tells a
-    /// withheld text from none (`web-api.md` § Light form); omitted from a
-    /// block whole.
+    /// The length in characters (Unicode scalar values) of the text without
+    /// the white space around it, which a page's light form carries in
+    /// place of the text, so the page tells a withheld text from none
+    /// (`web-api.md` § Light form); omitted from a block whole.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

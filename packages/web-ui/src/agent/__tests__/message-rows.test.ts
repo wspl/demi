@@ -645,7 +645,7 @@ function finishedRows(blocks: Block[]): string[] {
 /** `blocks` as a page read after a reload holds them: each in its light form (`web-api.md` § Light form). */
 function reopened(blocks: Block[]): Block[] {
   const light = blocks.map((block): Block =>
-    block.type === 'thinking' ? { ...block, text: '', signature: null, textLength: [...block.text].length } : block)
+    block.type === 'thinking' ? { ...block, text: '', signature: null, textLength: [...block.text.trim()].length } : block)
   return heldBlocks(addPage(EMPTY_TRANSCRIPT, { start: 0, length: light.length, blocks: light }, false))
 }
 
@@ -654,12 +654,13 @@ const thought = (id: string, body: string, run = id): Block => ({ type: 'thinkin
 // A page reopened reads the transcript in pages, whose thinking comes
 // without its text until its row is opened: the turn shows the same rows as
 // it did live, each thinking with text among them, and a thinking without
-// text, as Gemini signs before each call, nowhere.
+// text, as Gemini signs before each call, or of white space only, nowhere.
 test.each([
   ['thinking before the answer', [thought('k-1', 'The folder is the workspace.'), text('a-2', 'Three files.')], 'work:k-1 [k-1]'],
   ['thinking before a call', [thought('k-1', 'List the folder first.'), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [k-1 c-1]'],
   ['two thoughts before the answer', [thought('k-1', 'The folder is the workspace.'), thought('k-2', 'Count its files.', 'k-1'), text('a-2', 'Three files.')], 'work:k-2'],
   ['textless thinking before a call', [thought('k-1', ''), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [c-1]'],
+  ['white-space-only thinking before a call', [thought('k-1', ' \n'), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [c-1]'],
 ] as const)('a turn with %s shows the same rows after the page is reopened', (_name, turn, run) => {
   const blocks = [userBlock('u-2', 'm-2', 'What is in the folder?'), ...turn]
   const live = finishedRows(blocks)
