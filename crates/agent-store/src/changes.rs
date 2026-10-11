@@ -26,12 +26,13 @@ use crate::media::BlobStore;
 enum Place {
     /// A step: thinking, a call, a command's notice or an agent's receipt.
     Step,
-    /// A block the reader never sees, which neither joins nor ends a run.
+    /// A block the reader never sees, which neither joins nor ends a run:
+    /// among them a `resume` and a Stop the user continued, so the steps
+    /// after a Continue, a Resume or the system's resume after a restart
+    /// join the run before it.
     Passes,
     /// What the reader reads, which ends a run: the agent's text, the
-    /// user's words and decisions, an error, a stop, a compaction's divider;
-    /// and where a turn went on after it was cut, a `resume` and a Stop the
-    /// user continued, so the steps after Continue are a run of their own.
+    /// user's words and decisions, an error, a stop, a compaction's divider.
     Ends,
 }
 
@@ -64,11 +65,14 @@ fn place(block: &Block) -> Place {
         // divider that ends the run.
         Block::RedactedThinking(_)
         | Block::Response(_)
+        | Block::Resume(_)
         | Block::Context(_)
         | Block::CompactionBoundary(_) => Place::Passes,
+        // A Stop is continued before any step after it is stored, so the
+        // run a later step joins never changes.
+        Block::Abort(abort) if abort.is_resumed => Place::Passes,
         Block::User(_)
         | Block::Steer(_)
-        | Block::Resume(_)
         | Block::Abort(_)
         | Block::Text(_)
         | Block::Error(_)
