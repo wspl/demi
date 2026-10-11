@@ -544,8 +544,9 @@ test('messages sent while a turn runs wait in the queue, where the page removes 
     await client.submit([text('Waiting message')], waiting)
     await client.submit([text('Moved message')], moved)
     const afterRemove = queueOf(client, (ids) => !ids.includes(removed))
-    client.dequeueMessage(removed)
+    const removal = client.dequeueMessage(removed)
     expect(await afterRemove).toEqual([waiting, moved])
+    expect(await removal).toBe('removed')
     // Sent now, the moved message also ends the running turn.
     const ended = idle(client)
     const afterMove = queueOf(client, (ids) => ids[0] === moved)

@@ -16,8 +16,8 @@ test('a socket that opens carries the client from then on', async () => {
   const socket = sockets.last()
   socket.open()
   const client = await opening
-  client.cancelPendingSteer('steer')
-  expect(socket.sent).toEqual([{ type: 'cancel_pending_steer', steerId: 'steer' }])
+  client.steerNow('steer')
+  expect(socket.sent).toEqual([{ type: 'steer_now', steerId: 'steer' }])
   let disconnected = false
   client.subscribe((event) => {
     disconnected ||= event.type === 'disconnected'

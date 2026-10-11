@@ -77,6 +77,7 @@ import {
   readDraft,
   readLocalDrafts,
   takeLastWords,
+  UnreadableDraftError,
   writeDraft,
   writeLastWords,
   type SavedDraft,
@@ -191,7 +192,8 @@ export const useConversations = defineStore('conversations', () => {
    * user).
    */
   const wishes = new Map<string, 'remove' | 'sendNow'>()
-  let storageErrorReported = false
+  /** The draft storage failures this page reported, each once. */
+  const storageReported = new Set<'save' | 'restore' | 'unreadable'>()
 
   // A failed operation is a toast; server state is never replaced by a message.
   function report(title: HeadlineText, error: unknown): void {
@@ -203,12 +205,39 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
-  function storageError(error: unknown): void {
-    if (!storageErrorReported) {
-      storageErrorReported = true
-      reportError('Drafts remain on this page but could not be saved.', error, {
-        userVisible: true,
-      })
+  /**
+   * Reports, once a page, that the draft storage failed to save or restore,
+   * or that a record it holds did not read and was set aside
+   * (`web-application.md` § Persistence and adapters). The toast says it in
+   * words; what failed goes to the console.
+   */
+  function storageError(error: unknown, what: 'save' | 'restore'): void {
+    const kind = error instanceof UnreadableDraftError ? 'unreadable' : what
+    if (storageReported.has(kind)) {
+      return
+    }
+    storageReported.add(kind)
+    const detail = error instanceof UnreadableDraftError ? error.detail : undefined
+    switch (kind) {
+      case 'save':
+        reportError('Could Not Save Drafts', error, {
+          userVisible: true,
+          message: 'Your drafts stay on this page, but this web browser could not store them.',
+        })
+        break
+      case 'restore':
+        reportError('Could Not Restore Drafts', error, {
+          userVisible: true,
+          message: 'This web browser could not read the drafts it stored.',
+        })
+        break
+      case 'unreadable':
+        reportError('Could Not Restore a Draft', error, {
+          userVisible: true,
+          detail,
+          message: 'A draft stored in this web browser could not be read and was set aside. Your other drafts are restored.',
+        })
+        break
     }
   }
 
@@ -547,7 +576,7 @@ export const useConversations = defineStore('conversations', () => {
         // save tries it again.
         savedDrafts.delete(entry.id)
         if (current === lifetime) {
-          storageError(error)
+          storageError(error, 'save')
         }
       })
     }
@@ -595,8 +624,11 @@ export const useConversations = defineStore('conversations', () => {
     }
     const signal = lifetime.signal
     try {
-      const drafts = await readLocalDrafts(userId)
+      const { drafts, unreadable } = await readLocalDrafts(userId)
       signal.throwIfAborted()
+      for (const record of unreadable) {
+        storageError(record, 'restore')
+      }
       for (const draft of drafts) {
         if (
           !draft.local ||
@@ -645,7 +677,7 @@ export const useConversations = defineStore('conversations', () => {
       }
     } catch (error) {
       if (!signal.aborted) {
-        storageError(error)
+        storageError(error, 'restore')
       }
     }
   }
@@ -735,7 +767,7 @@ export const useConversations = defineStore('conversations', () => {
       }
     } catch (error) {
       signal.throwIfAborted()
-      storageError(error)
+      storageError(error, 'restore')
     }
     restored.add(conversation.id)
     // The page starts from what storage held: saving the restored draft
@@ -1360,7 +1392,7 @@ export const useConversations = defineStore('conversations', () => {
       restored.delete(id)
       savedDrafts.delete(id)
       if (userId) {
-        void deleteDraft(userId, id).catch(storageError)
+        void deleteDraft(userId, id).catch((error) => storageError(error, 'save'))
       }
     }
     const synced = ids.filter((id) => items.value.find((item) => item.id === id)?.persistence === 'synced')
@@ -2016,7 +2048,7 @@ export const useConversations = defineStore('conversations', () => {
     deleted.clear()
     restored.clear()
     savedDrafts.clear()
-    storageErrorReported = false
+    storageReported.clear()
   }
 
   return {

@@ -818,6 +818,68 @@ async fn the_context_sources_are_asked_at_once_and_answer_in_their_order() {
     );
 }
 
+/// Remove on a steer or a queued message (`runtime.md` § Pending steers):
+/// the session answers whether it removed the message or the message had
+/// gone on, after the list frame the removal changed, so the page never
+/// guesses from what comes next.
+#[tokio::test(flavor = "local")]
+async fn removing_a_waiting_message_is_answered_after_its_list() {
+    let script = ScriptedRuntime::new([Turn::pending()]);
+    let fixture = Fixture::new(&script);
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "one")).await;
+    until(|| script.requests().len() == 1).await;
+    client.send(send("m2", "two")).await;
+    let steer_id = demi_shared_types::BlockId::try_from("s1").unwrap();
+    client
+        .send(ClientFrame::Steer {
+            steer_id: steer_id.clone(),
+            content: demi_agent_server::testing::client_text("also this"),
+        })
+        .await;
+    client
+        .next_until(|frame| matches!(frame, ServerFrame::SteerResult { .. }))
+        .await;
+    client.received();
+
+    let dequeue = || ClientFrame::DequeueMessage {
+        message_id: crate::support::turn("m2"),
+    };
+    let cancel = || ClientFrame::CancelPendingSteer {
+        steer_id: steer_id.clone(),
+    };
+    client.send(dequeue()).await;
+    client.send(cancel()).await;
+    // Asked again, each has gone: the session no longer holds it.
+    client.send(dequeue()).await;
+    client.send(cancel()).await;
+    let shown: Vec<String> = client
+        .received()
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::Queue { queue } => Some(format!("queue {}", queue.len())),
+            ServerFrame::PendingSteers { pending_steers } => {
+                Some(format!("pending_steers {}", pending_steers.len()))
+            }
+            ServerFrame::RemoveResult { id, outcome } => {
+                Some(format!("remove_result {id} {}", serde_json::to_value(outcome).unwrap().as_str().unwrap()))
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        shown,
+        [
+            "queue 0",
+            "remove_result m2 removed",
+            "pending_steers 0",
+            "remove_result s1 removed",
+            "remove_result m2 gone_on",
+            "remove_result s1 gone_on",
+        ]
+    );
+}
+
 #[tokio::test(flavor = "local")]
 async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_empties_or_sends_now() {
     let release_second = Gate::new();
