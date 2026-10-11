@@ -4,7 +4,7 @@
 //! summary. Each is a pure reading of the blocks, weighed by the token
 //! estimates of the request the pass serves.
 
-use demi_shared_types::{Block, KeptMessage, UserContentBlock};
+use demi_shared_types::{Block, KeptMessage, ModelSelection, UserContentBlock};
 
 use super::{
     estimate::{block_tokens, content_tokens},
@@ -34,21 +34,35 @@ pub struct CompactionWindow {
     pub cut: usize,
 }
 
-/// The window of the next pass over the blocks of `request`, which keeps at
-/// least `budget` estimated tokens after its cut where it can: the cut is
-/// the latest end of an answered request's content that leaves the budget
-/// after it, or the latest such end when none does. An end of a request's
-/// content never parts a call from its result: a `tool_call` block holds
-/// both.
-pub fn compaction_window(request: &RequestView, budget: u64) -> CompactionWindow {
+/// The window of the next pass over the blocks of `request`, a request of
+/// `model`, which keeps at least `budget` estimated tokens after its cut
+/// where it can. The cut is the latest end of a request `model` answered
+/// that leaves the budget after it, or the latest such end when none does;
+/// when `model` answered none since the last compaction, as right after a
+/// switch, the latest answered request's end, whichever model answered
+/// it. An end of a request's content never parts a call from its result: a
+/// `tool_call` block holds both.
+pub fn compaction_window(
+    request: &RequestView,
+    model: &ModelSelection,
+    budget: u64,
+) -> CompactionWindow {
     let blocks = request.blocks();
     let start = replay_start(blocks);
-    let ends = answered_ends(blocks);
-    let Some(&latest) = ends.last() else {
+    let answered = answered_requests(blocks);
+    let Some(latest) = answered.last().map(|(end, _)| *end) else {
         return CompactionWindow {
             start,
             cut: unanswered_input(blocks).max(start),
         };
+    };
+    let ends: Vec<usize> = answered
+        .iter()
+        .filter(|(_, by)| same_model(by, model))
+        .map(|(end, _)| *end)
+        .collect();
+    let Some(&current) = ends.last() else {
+        return CompactionWindow { start, cut: latest };
     };
     // The estimates after each end, summed from the last block back.
     let mut after = 0;
@@ -63,7 +77,13 @@ pub fn compaction_window(request: &RequestView, budget: u64) -> CompactionWindow
             return CompactionWindow { start, cut: end };
         }
     }
-    CompactionWindow { start, cut: latest }
+    CompactionWindow { start, cut: current }
+}
+
+/// Whether two selections name the same model of the same provider entry,
+/// whose vendor caches the requests of either.
+fn same_model(one: &ModelSelection, other: &ModelSelection) -> bool {
+    one.provider_id == other.provider_id && one.model.id == other.model.id
 }
 
 /// Where the content of each request answered since the last compaction
@@ -73,24 +93,32 @@ pub fn compaction_window(request: &RequestView, budget: u64) -> CompactionWindow
 /// answer replay is what its request carried. A boundary whose marker an
 /// edit cut counts as the last compaction.
 pub fn answered_ends(blocks: &[Block]) -> Vec<usize> {
+    answered_requests(blocks)
+        .into_iter()
+        .map(|(end, _)| end)
+        .collect()
+}
+
+/// The same, each with the model whose `response` block closed it.
+fn answered_requests(blocks: &[Block]) -> Vec<(usize, &ModelSelection)> {
     let floor = blocks
         .iter()
         .rposition(is_compaction)
         .map_or(0, |compaction| compaction + 1);
-    let mut ends: Vec<usize> = Vec::new();
+    let mut answered: Vec<(usize, &ModelSelection)> = Vec::new();
     for (index, block) in blocks.iter().enumerate().skip(floor) {
-        if !matches!(block, Block::Response(_)) {
+        let Block::Response(response) = block else {
             continue;
-        }
-        let answer = blocks[floor..index]
+        };
+        let end = blocks[floor..index]
             .iter()
             .rposition(|block| !is_answer(block))
             .map_or(floor, |before| floor + before + 1);
-        if ends.last() != Some(&answer) {
-            ends.push(answer);
+        if answered.last().map(|(last, _)| *last) != Some(end) {
+            answered.push((end, &response.model));
         }
     }
-    ends
+    answered
 }
 
 /// Where the input no request has answered begins: at the last `user` block

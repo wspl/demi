@@ -173,6 +173,8 @@ async fn a_pass_names_the_command_and_the_subagent_that_still_run() {
         }),
         subagents: Rc::new(SubagentSettings {
             enabled: true,
+            max_live: None,
+            max_depth: None,
             profiles: Vec::new(),
         }),
         instructions: Rc::from("system prompt"),

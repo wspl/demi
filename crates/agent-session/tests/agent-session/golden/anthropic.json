@@ -13,14 +13,6 @@
           "text": "The release build fails; here is the screen."
         },
         {
-          "type": "image",
-          "source": {
-            "type": "base64",
-            "media_type": "image/png",
-            "data": "iVBORw0KGgoAAAANSUhEUgAAAAMAAAACCAYAAACddGYaAAAAJUlEQVR4AQEaAOX/AAAAB/8BAAf/AgAH/wAAAQf/AQEH/wIBB/9HPgYu4Em3zwAAAABJRU5ErkJggg=="
-          }
-        },
-        {
           "type": "text",
           "text": "Use the release profile."
         },
