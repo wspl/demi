@@ -45,6 +45,7 @@ const MIB: usize = 1024 * 1024;
 pub(crate) fn caller() -> JobCaller {
     JobCaller {
         node: NodeId::try_from("test-session").unwrap(),
+        tool_use_id: "call".into(),
     }
 }
 
@@ -74,7 +75,6 @@ pub(crate) fn exec(script: &str, window: u64) -> Exec {
         request: ExecRequest {
             script: script.into(),
             caller: caller(),
-            tool_use_id: "call".into(),
             viewable: viewable(),
         },
         window,

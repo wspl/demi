@@ -665,6 +665,7 @@ pub mod store_contract {
             event: AgentMessageEvent::Completion {
                 outcome: CompletionOutcome::Completed,
             },
+            origin: None,
         };
         Block::AgentMessage(AgentMessageBlock {
             entries: Vec::new(),

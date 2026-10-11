@@ -41,7 +41,7 @@ use std::{
 use demi_agent_store::{
     Checkpoint, CheckpointUpdate, RunningCommand, SessionStore, StoreError, media::HeldMedia,
 };
-use demi_agent_transcript::{IdSource, TranscriptLog, last_assistant_text};
+use demi_agent_transcript::{IdSource, TranscriptLog, last_answer};
 use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
 use demi_provider_common::{ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
@@ -703,10 +703,23 @@ impl AgentSession {
         self.shared.read(SessionCore::pending_calls)
     }
 
-    /// The text of the last `text` block, the result a child closes with.
-    pub fn last_assistant_text(&self) -> String {
-        self.shared
-            .read(|core| last_assistant_text(core.transcript.blocks(), 0).to_owned())
+    /// The last `text` block, the answer a child closes with: its id, which
+    /// its completion names, and its text, the result.
+    pub fn last_answer(&self) -> Option<(BlockId, String)> {
+        self.shared.read(|core| {
+            last_answer(core.transcript.blocks(), 0).map(|text| (text.id.clone(), text.text.clone()))
+        })
+    }
+
+    /// The block of the call `tool_use_id`, which a message its command
+    /// sends comes from; none when the transcript does not hold it.
+    pub fn call_block(&self, tool_use_id: &str) -> Option<BlockId> {
+        self.shared.read(|core| {
+            core.transcript.blocks().iter().rev().find_map(|block| match block {
+                Block::ToolCall(call) if call.tool_use_id == tool_use_id => Some(call.id.clone()),
+                _ => None,
+            })
+        })
     }
 
     /// Holds the bytes the backend read of the media a frame's content
