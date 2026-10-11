@@ -12,7 +12,7 @@ use std::sync::Arc;
 use async_stream::stream;
 use demi_provider_common::{
     InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits, ToolResultKinds,
-    Secret,
+    Secret, offers,
 };
 use demi_shared_types::Model;
 use futures_util::StreamExt as _;
@@ -246,6 +246,12 @@ fn run(
                         for Printed { raw, block } in message.content() {
                             match block {
                                 Some(ContentBlock::ToolUse(tool_use)) => match tool_use.call() {
+                                    // A call of a tool the request does not
+                                    // offer is the CLI's to answer, which it
+                                    // does with an error, and the model goes
+                                    // on in this run (`claude-code.md` §
+                                    // Tool-call batches).
+                                    Ok(call) if !offers(&request.tools, &call.tool_name) => {}
                                     Ok(call) => live.collect(call),
                                     Err(error) => {
                                         yield ProviderEvent::Error(ProviderFailure::protocol(error.to_string(), text));
@@ -294,12 +300,6 @@ fn run(
                             if live.collecting.is_empty() {
                                 continue;
                             }
-                            if live.mcp.is_none() {
-                                let message = "Claude Code called a tool, but the request offered none";
-                                yield ProviderEvent::Error(ProviderFailure::protocol(message, text));
-                                live.close().await;
-                                return;
-                            }
                             live.held = std::mem::take(&mut live.collecting);
                             let batch: Vec<ProviderEvent> =
                                 live.held.iter().cloned().map(ProviderEvent::ToolCall).collect();
@@ -314,6 +314,13 @@ fn run(
                             return;
                         }
                         for event in event.events(&mut live.writing) {
+                            // Nor is such a call shown as being written.
+                            if let ProviderEvent::ToolCallStart { tool_use_id, tool_name } = &event
+                                && !offers(&request.tools, tool_name)
+                            {
+                                live.writing.retain(|_, writing| writing != tool_use_id);
+                                continue;
+                            }
                             live.mirror.observe(&event);
                             yielded = true;
                             yield event;

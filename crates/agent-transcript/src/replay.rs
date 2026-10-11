@@ -245,7 +245,7 @@ impl<'a> RequestView<'a> {
 
     /// Whether the request declares the tool `name`.
     fn declares(&self, name: &str) -> bool {
-        self.tools.iter().any(|tool| tool.name == name)
+        demi_provider_common::offers(self.tools, name)
     }
 
     /// A call of a tool the request does not declare, such as one removed
