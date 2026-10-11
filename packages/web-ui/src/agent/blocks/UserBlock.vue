@@ -24,7 +24,7 @@ const props = defineProps<{
    * it said under it and its controls in view: a steer, which the running
    * turn reads at its next step, or a queued message, which runs after it.
    * Send Now delivers either at once (`product.md` § Steer or queue);
-   * Undo Send takes it back, into the composer when that is empty.
+   * Recall takes it back, into the composer when that is empty.
    */
   pending?: 'steer' | 'queued'
   /** Keep the hover actions visible (a catalog specimen, not a hover). */
@@ -34,7 +34,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  undoSend: []
+  recall: []
   sendNow: []
   /** Open this message's editor. */
   edit: []
@@ -245,7 +245,7 @@ useResizeObserver(bodyRef, measure)
       <!-- A queued message stands under the queue's divider, which already says so. -->
       <span v-if="pending === 'steer'" class="mr-1">Will be sent to the agent at its next step</span>
       <Button size="xs" variant="ghost" @click.stop="emit('sendNow')">Send Now</Button>
-      <Button size="xs" variant="ghost" @click.stop="emit('undoSend')">Undo Send</Button>
+      <Button size="xs" variant="ghost" @click.stop="emit('recall')">Recall</Button>
     </div>
   </div>
 </template>

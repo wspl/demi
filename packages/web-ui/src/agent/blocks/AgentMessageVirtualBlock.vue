@@ -47,9 +47,9 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  undoSendSteer: [id: string]
+  recallSteer: [id: string]
   interruptPendingSteer: [id: string]
-  undoSendQueued: [id: string]
+  recallQueued: [id: string]
   sendQueued: [id: string]
   editUser: [blockId: string]
   /** Retry on the message `id`, whose delivery failed. */
@@ -68,15 +68,15 @@ const entersAsChrome = computed(() =>
 )
 
 /**
- * Undo Send and Send Now on the message being sent: the same requests as on
+ * Recall and Send Now on the message being sent: the same requests as on
  * the steer or the queued message it will be, by the id it keeps, which the
  * host carries out once the session holds it.
  */
-function undoSendSubmission(submission: PendingSubmissionState): void {
+function recallSubmission(submission: PendingSubmissionState): void {
   if (submission.way === 'steer') {
-    emit('undoSendSteer', submission.id)
+    emit('recallSteer', submission.id)
   } else {
-    emit('undoSendQueued', submission.id)
+    emit('recallQueued', submission.id)
   }
 }
 
@@ -97,7 +97,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-bind="{ ...attrs, ...block.submission }"
       :pending="waitingAs(block)"
       @retry="emit('retrySubmission', block.submission.id)"
-      @undo-send="undoSendSubmission(block.submission)"
+      @recall="recallSubmission(block.submission)"
       @send-now="sendSubmissionNow(block.submission)"
     />
     <UserBlock
@@ -118,7 +118,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-bind="attrs"
       :content="block.content"
       :pending="waitingAs(block)"
-      @undo-send="emit('undoSendSteer', block.pendingSteerId)"
+      @recall="emit('recallSteer', block.pendingSteerId)"
       @send-now="emit('interruptPendingSteer', block.pendingSteerId)"
     />
     <UserBlock
@@ -126,7 +126,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-bind="attrs"
       :content="block.content"
       :pending="waitingAs(block)"
-      @undo-send="emit('undoSendQueued', block.queueId)"
+      @recall="emit('recallQueued', block.queueId)"
       @send-now="emit('sendQueued', block.queueId)"
     />
     <QueueDivider

@@ -46,7 +46,7 @@ import { productWould } from '../product-would'
 import type { SendWay, SendWhileRunning } from '@demicodes/web-ui/agent/send-way'
 import { galleryMessages } from '../fixtures/send-while-running'
 import { demoInstructions, demoOpenInstruction } from '../fixtures/instructions'
-import type { SentMessage, UndoSendComposer } from '../turn-flow'
+import type { SentMessage, RecallComposer } from '../turn-flow'
 import { createGalleryRemoteFileHosts } from '../fixtures/files'
 import { galleryUploads } from '../fixtures/upload-sweep'
 
@@ -96,8 +96,8 @@ const props = withDefaults(
     onSteer?: (content: UserContentBlock[], message: SentMessage) => void
     /** Queues a message behind the specimen's running turn; without it, a toast says what the product would do. */
     onQueue?: (content: UserContentBlock[], message: SentMessage) => void
-    /** The specimen's flow, whose Undo Send gives a message back into this composer, as the product's does. */
-    flow?: { attachComposer(host: UndoSendComposer): () => void }
+    /** The specimen's flow, whose Recall gives a message back into this composer, as the product's does. */
+    flow?: { attachComposer(host: RecallComposer): () => void }
   }>(),
   {
     draft: '',
@@ -345,12 +345,12 @@ function handOn(text: string, sent: ComposerAttachment[], way: SendWay): boolean
 }
 
 /**
- * Undo Send gives a message back into this composer when it is empty, as
+ * Recall gives a message back into this composer when it is empty, as
  * the product's does (`product.md` § Steer or queue): its text, and its
  * files as capsules a paste brings back, the caret at its end; a draft it
  * holds stays as it is.
  */
-const undoSend: UndoSendComposer = {
+const recall: RecallComposer = {
   takeBack(message) {
     if (!isEmptyMessage(draft.value, carried.value.length)) {
       return false
@@ -374,7 +374,7 @@ const undoSend: UndoSendComposer = {
 }
 let detach: (() => void) | undefined
 onMounted(() => {
-  detach = props.flow?.attachComposer(undoSend)
+  detach = props.flow?.attachComposer(recall)
 })
 
 /**
