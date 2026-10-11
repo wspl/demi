@@ -45,6 +45,8 @@ use demi_agent_transcript::{report_text, testing::SequentialIds};
 
 mod compaction;
 mod editing;
+mod generated;
+mod golden;
 mod input;
 mod lists;
 mod recovery;

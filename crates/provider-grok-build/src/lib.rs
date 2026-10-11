@@ -211,3 +211,15 @@ impl ProviderRuntime for GrokRuntime {
         }
     }
 }
+
+/// Test support (feature `testing`): the body this provider sends for a
+/// request, for the tests of what sends its requests.
+#[cfg(feature = "testing")]
+pub mod testing {
+    use demi_provider_common::InferenceRequest;
+
+    /// The body of `request`.
+    pub fn body(request: &InferenceRequest) -> Vec<u8> {
+        crate::request::encode(request)
+    }
+}
