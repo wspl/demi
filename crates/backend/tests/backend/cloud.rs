@@ -32,6 +32,7 @@ use tokio::sync::Notify;
 
 use crate::conversations::{Socket, anthropic_at, choose, create};
 use crate::families::{self, ScriptedKey};
+use crate::files;
 use crate::streams::{self, received};
 use crate::support::{GNU_UTILITIES, Harness, PATIENCE, Session, TestBackend, eventually};
 use crate::work::{Driven, say, shell};
@@ -1697,5 +1698,58 @@ async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_
         .turn(vec![shell("b2", &read, 20_000), say("still there")])
         .await;
     assert!(kept.received[0].contains("shared"), "{}", kept.received[0]);
+    backend.close().await;
+}
+
+// Over a second: the Cloud boots twice, and a paired device's runner starts.
+//
+// A page's watch of an attached Cloud does not wake it (`web-api.md` § File
+// watch): stopped, it answers `offline` and closes, and once something else
+// woke it, the page's next watch is live there.
+#[tokio::test]
+async fn a_watch_of_an_attached_cloud_answers_offline_while_it_is_stopped_without_waking_it() {
+    let mut harness = Harness::new();
+    harness.lifecycle = idle_after(Duration::from_millis(400));
+    harness.cloud.sweep = Duration::from_millis(50);
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    create(&backend, &master, FIRST).await;
+    let listed = backend.get(&format!("/api/conversations/{FIRST}/fs"), Some(&master)).await;
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    let device = the_cloud(&harness);
+    let session = format!("{}/sessions/{FIRST}", harness.manager.home(&device));
+    // Leaving the Cloud keeps it attached.
+    crate::work::switch(&backend, &master, FIRST, &alpha, alpha.runner.home_dir()).await;
+    until_status(&backend, &master, "the idle Cloud stops", |status| {
+        status.state == CloudState::Off
+    })
+    .await;
+
+    let route = format!("/api/conversations/{FIRST}/fs/watch");
+    let subscribe = json!({ "type": "subscribe", "subscriptions": [
+        { "key": "session", "kind": "folder_names", "path": session, "host": device },
+    ] });
+    let mut socket = files::watch_socket_of(&backend, &master, &route).await;
+    files::send_watch(&mut socket, subscribe.clone()).await;
+    assert_eq!(files::watch_message(&mut socket).await, json!({ "type": "offline" }));
+    assert_eq!(files::watch_closed(&mut socket).await, (1011, "host_unreachable".to_owned()));
+    assert_eq!(harness.manager.count(&format!("wake:{device}")), 1);
+
+    // Browsing the Cloud wakes it, and a lease of the conversation's file
+    // gate, its work, keeps it awake while the page watches again.
+    let working = backend.file_gate(&master, FIRST).await.enter(Purpose::Demand).await;
+    let browsed = backend
+        .get(
+            &format!("/api/conversations/{FIRST}/hosts/{device}/fs?path={}", query(&session)),
+            Some(&master),
+        )
+        .await;
+    assert_eq!(browsed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&browsed.body));
+    let mut socket = files::watch_socket_of(&backend, &master, &route).await;
+    files::send_watch(&mut socket, subscribe).await;
+    let live = files::watch_message(&mut socket).await;
+    assert_eq!((&live["type"], &live["key"]), (&json!("live"), &json!("session")), "{live}");
+    assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
+    drop(working);
     backend.close().await;
 }

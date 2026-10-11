@@ -282,6 +282,9 @@ pub(crate) struct StreamAccess {
     pub conversation: ConversationId,
     pub host: ConversationHost,
     pub device: DeviceId,
+    /// Whether it is the conversation's primary Host, whose `root` is the
+    /// conversation's working tree.
+    pub primary: bool,
     pub open: OpenTransfer,
     /// A stream's lease of the conversation's stream gate; none for a call.
     pub watching: Option<GateLease>,
@@ -452,7 +455,8 @@ impl dyn HostShard + '_ {
     }
 
     /// Admits a user stream, or a one-shot user call that must not wake the
-    /// Host (§ Host operations): like any operation, except that a stopped
+    /// Host (§ Host operations), on the conversation's primary Host or the
+    /// bound device `device` names: like any operation, except that a stopped
     /// Cloud is refused instead of woken, and that the admitted stream lets
     /// go of the file gate. It stays registered with the conversation's
     /// transfers, so a transition ends it. `attention` says what it is to
@@ -463,6 +467,7 @@ impl dyn HostShard + '_ {
     pub(crate) async fn admit_stream(
         &self,
         id: &ConversationId,
+        device: Option<&DeviceId>,
         attention: Attention,
         cancel: &CancellationToken,
     ) -> Result<StreamAccess, HostAccessError> {
@@ -479,7 +484,7 @@ impl dyn HostShard + '_ {
         let mut waited_for_return = false;
         let (files, mut selected) = loop {
             let files = waits.wait(slot.files.enter(purpose)).await?;
-            let selected = self.select_host(&record.id, None, false).await?;
+            let selected = self.select_host(&record.id, device, false).await?;
             match self.returning(&selected.device.id) {
                 Some(rest) if !waited_for_return => {
                     drop(files);
@@ -509,6 +514,7 @@ impl dyn HostShard + '_ {
             conversation: record.id,
             host,
             device: selected.device.id,
+            primary: selected.primary,
             open,
             watching,
         })

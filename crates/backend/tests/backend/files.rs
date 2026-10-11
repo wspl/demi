@@ -1004,18 +1004,23 @@ async fn after_a_restart_an_operation_waits_for_the_runner_the_shutdown_disconne
     device.backend.close().await;
 }
 
-type Socket =
+pub(crate) type Socket =
     tokio_tungstenite::WebSocketStream<tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>>;
 
-/// A page's file watch at `route`, from the product's origin.
-async fn watch_socket_at(device: &OnDevice, route: &str) -> Socket {
+/// `session`'s file watch at `route`, from the product's origin.
+pub(crate) async fn watch_socket_of(backend: &TestBackend, session: &Session, route: &str) -> Socket {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
-    let mut request = device.backend.ws_url(route).into_client_request().unwrap();
+    let mut request = backend.ws_url(route).into_client_request().unwrap();
     let headers = request.headers_mut();
-    headers.insert("cookie", device.master.cookie.parse().unwrap());
-    headers.insert("origin", device.backend.url.parse().unwrap());
+    headers.insert("cookie", session.cookie.parse().unwrap());
+    headers.insert("origin", backend.url.parse().unwrap());
     let (socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
     socket
+}
+
+/// A page's file watch at `route`.
+async fn watch_socket_at(device: &OnDevice, route: &str) -> Socket {
+    watch_socket_of(&device.backend, &device.master, route).await
 }
 
 /// A page's file watch of the conversation.
@@ -1024,7 +1029,7 @@ async fn watch_socket(device: &OnDevice) -> Socket {
 }
 
 /// The next message the watch sends.
-async fn watch_message(socket: &mut Socket) -> Value {
+pub(crate) async fn watch_message(socket: &mut Socket) -> Value {
     use tokio_tungstenite::tungstenite::Message;
     loop {
         match socket.next().await {
@@ -1035,7 +1040,7 @@ async fn watch_message(socket: &mut Socket) -> Value {
     }
 }
 
-async fn send_watch(socket: &mut Socket, message: Value) {
+pub(crate) async fn send_watch(socket: &mut Socket, message: Value) {
     use futures_util::SinkExt as _;
     use tokio_tungstenite::tungstenite::Message;
     socket.send(Message::Text(message.to_string().into())).await.unwrap();
@@ -1054,6 +1059,16 @@ async fn changed_at(socket: &mut Socket, key: &str) -> u64 {
         if let Some(change) = found {
             return change[1].as_u64().unwrap();
         }
+    }
+}
+
+/// How the watch closed: its code and reason.
+pub(crate) async fn watch_closed(socket: &mut Socket) -> (u16, String) {
+    match socket.next().await {
+        Some(Ok(tokio_tungstenite::tungstenite::Message::Close(Some(frame)))) => {
+            (u16::from(frame.code), frame.reason.as_str().to_owned())
+        }
+        other => panic!("expected the socket to close, got {other:?}"),
     }
 }
 
@@ -1172,12 +1187,44 @@ async fn a_devices_folder_dialog_hears_its_folders_change_through_device_access(
     assert!(changed_at(&mut socket, "logs").await > before);
 
     send_watch(&mut socket, json!({ "type": "paths", "paths": [] })).await;
-    match socket.next().await {
-        Some(Ok(tokio_tungstenite::tungstenite::Message::Close(Some(frame)))) => {
-            assert_eq!(u16::from(frame.code), 1003);
-            assert_eq!(frame.reason.as_str(), "invalid_message");
-        }
-        other => panic!("expected the socket to close, got {other:?}"),
-    }
+    assert_eq!(watch_closed(&mut socket).await, (1003, "invalid_message".to_owned()));
+    device.backend.close().await;
+}
+
+/// A conversation's watch carries a subscription that names an attached
+/// host to that host's runner (`web-api.md` § File watch): it is live and
+/// changes at that runner's numbers, which its listings answer, not at the
+/// primary Host's. A second or two: two paired devices' real runners start
+/// their watches.
+#[tokio::test]
+async fn a_subscription_naming_an_attached_host_is_watched_by_that_hosts_runner() {
+    let device = OnDevice::start().await;
+    let desk = device.backend.pair(&device.master, "desk").await;
+    device.harness.attach(CONVERSATION, desk.id(), "desk");
+    let logs = desk.runner.home_dir().join("logs");
+    std::fs::create_dir(&logs).unwrap();
+    std::fs::write(logs.join("server.log"), "1\n").unwrap();
+    let logs = logs.to_str().unwrap().to_owned();
+    let mut socket = watch_socket(&device).await;
+    let subscription = json!({ "key": "logs", "kind": "folder_details", "path": logs, "host": desk.id() });
+    send_watch(&mut socket, json!({ "type": "subscribe", "subscriptions": [subscription] })).await;
+    let live = watch_message(&mut socket).await;
+    assert_eq!((&live["type"], &live["key"]), (&json!("live"), &json!("logs")), "{live}");
+
+    let listing = format!("/hosts/{}/fs?{}", desk.id(), query(&[("path", &logs)]));
+    let listed = device.get(&listing).await;
+    assert_eq!(listed.status, StatusCode::OK);
+    let (epoch, before) = read_at(&listed);
+    assert_eq!(live["epoch"], epoch.as_str(), "the attached host's runner watches it");
+    let primary = device.get(&format!("/fs?{}", query(&[("path", &device.path(""))]))).await;
+    assert_ne!(read_at(&primary).0, epoch, "the two runners count apart");
+
+    use std::io::Write as _;
+    let mut log = std::fs::OpenOptions::new().append(true).open(format!("{logs}/server.log")).unwrap();
+    log.write_all(b"2\n").unwrap();
+    drop(log);
+    assert!(changed_at(&mut socket, "logs").await > before);
+    send_watch(&mut socket, json!({ "type": "renew", "keys": ["logs"] })).await;
+    assert_eq!(watch_message(&mut socket).await, json!({ "type": "renewed", "keys": ["logs"] }));
     device.backend.close().await;
 }
