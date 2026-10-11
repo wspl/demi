@@ -479,6 +479,33 @@ test('a command\'s live frames build what the page shows of it, until its end', 
   })
 })
 
+// The command's id stands in for its title only until the transcript has its
+// call, and a call the page then holds light, without its script, takes away
+// no script the command's record had.
+test('a command named by its id takes its call\'s title and script once the transcript has the call', () => {
+  const conversation = useConversations().items[0]!
+  conversation.history = wholeHistory([])
+  conversation.terminals = []
+  const frame = (tail: string, chars: number) => ({
+    type: 'shell_output' as const,
+    status: { status: 'running' as const, commandId: 'cmd', toolUseId: 'call-1', tail, chars, runningMs: 10 },
+  })
+  applyConversationEvent(conversation, frame('one\n', 4))
+  expect(toRaw(conversation.terminals)).toMatchObject([{ id: 'cmd', title: 'cmd' }])
+  expect(conversation.terminals[0]?.script).toBeUndefined()
+  conversation.history = wholeHistory([execCall('call-1', 'bun run web:gallery', 'completed', 'Start the gallery')])
+  applyConversationEvent(conversation, frame('two\n', 8))
+  expect(toRaw(conversation.terminals)).toMatchObject([
+    { id: 'cmd', title: 'Start the gallery', script: 'bun run web:gallery', output: 'one\ntwo\n' },
+  ])
+  const light = { ...execCall('call-1', 'bun run web:gallery', 'completed'), input: JSON.stringify({ description: 'Start the gallery' }), light: true as const }
+  conversation.history = wholeHistory([light])
+  applyConversationEvent(conversation, frame('three\n', 14))
+  expect(toRaw(conversation.terminals)).toMatchObject([
+    { title: 'Start the gallery', script: 'bun run web:gallery', output: 'one\ntwo\nthree\n' },
+  ])
+})
+
 // A command the user or the agent stopped shows as stopped, never as done.
 test('a stopped command stays stopped', () => {
   const conversation = useConversations().items[0]!

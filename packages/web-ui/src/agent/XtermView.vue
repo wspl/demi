@@ -2,14 +2,9 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Terminal } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
-import {
-  terminalCodeRuns,
-  terminalPromptColors,
-  useTerminalTheme,
-  xtermThemeFromElement,
-} from '../composables/useTerminalTheme'
+import { terminalCodeRuns, terminalColors, useTerminalTheme } from '../composables/useTerminalTheme'
 import { codeRuns, useMarkdownRenderVersion } from '../markdown/highlight'
-import { promptLine, terminalWrite, type TerminalShown } from './terminals'
+import { promptLine, terminalWrite, type PromptColors, type TerminalShown } from './terminals'
 import '@xterm/xterm/css/xterm.css'
 
 const props = defineProps<{
@@ -24,6 +19,11 @@ const props = defineProps<{
   script?: string
 }>()
 
+/**
+ * The element the terminal opens in and fits to. It has no padding of its
+ * own, which the fit would count as room (the fit addon measures the
+ * element's border box): the padding is its parent's.
+ */
 const hostRef = ref<HTMLElement | null>(null)
 const { terminalTheme } = useTerminalTheme()
 
@@ -31,19 +31,34 @@ let term: Terminal | undefined
 let fit: FitAddon | undefined
 /** The output the terminal shows, and the live view's count at its end; null before anything. */
 let shown: TerminalShown | null = null
+/** The theme the terminal draws in, as JSON, so colors that did not change are not drawn again. */
+let drawnTheme = ''
+/** The prompt line's colors, from the same look at the tokens as the theme. */
+let promptColors: PromptColors | null = null
 /** The prompt line, in the colors of the theme it was last drawn in. */
 let prompt = ''
 let resize: ResizeObserver | undefined
 let appearance: MutationObserver | undefined
 
-function applyTheme(): void {
+/**
+ * Takes the colors from the live tokens and draws what they change: the
+ * theme, and the prompt line with what follows it. A theme the terminal
+ * already draws is not set again, since xterm then repaints every row and
+ * restyles the page.
+ */
+function applyColors(): void {
   const host = hostRef.value
   if (!term || !host) {
     return
   }
-  const theme = xtermThemeFromElement(host, terminalTheme.value)
-  term.options.theme = theme
-  host.style.setProperty('--xterm-selection', theme.selectionBackground)
+  const colors = terminalColors(host, terminalTheme.value)
+  const theme = JSON.stringify(colors.theme)
+  if (theme !== drawnTheme) {
+    drawnTheme = theme
+    term.options.theme = colors.theme
+    host.style.setProperty('--xterm-selection', colors.theme.selectionBackground)
+  }
+  promptColors = colors.prompt
   applyPrompt()
 }
 
@@ -53,13 +68,16 @@ function applyTheme(): void {
  * output after it, anew.
  */
 function applyPrompt(): void {
+  if (!term || !promptColors) {
+    return
+  }
   const host = hostRef.value
-  if (!term || !host) {
+  if (!host) {
     return
   }
   // The script highlighted as Bash, as the conversation's code blocks color it.
   const runs = props.script ? terminalCodeRuns(host, codeRuns(props.script.replace(/(\r?\n)+$/, ''), 'bash') ?? []) : []
-  const next = promptLine(props.script, terminalPromptColors(host, terminalTheme.value), runs)
+  const next = promptLine(props.script, promptColors, runs)
   if (next === prompt) {
     return
   }
@@ -75,7 +93,8 @@ function applyPrompt(): void {
 /**
  * Writes what `output` adds to what the terminal shows, so it keeps its
  * scrollback, and opens it with the prompt line each time it starts anew
- * (`terminalWrite`).
+ * (`terminalWrite`). The terminal follows the output while its view is at
+ * the end, and stays where the user scrolled to otherwise.
  */
 function show(output: string, chars: number | undefined): void {
   if (!term) {
@@ -86,12 +105,8 @@ function show(output: string, chars: number | undefined): void {
   if (reset) {
     term.reset()
   }
-  if (!text) {
-    return
-  }
-  term.write(text)
-  if (props.running) {
-    term.scrollToBottom()
+  if (text) {
+    term.write(text)
   }
 }
 
@@ -101,6 +116,26 @@ function applyCursor(running: boolean): void {
   }
   term.options.cursorBlink = running
   term.options.cursorInactiveStyle = running ? 'block' : 'none'
+}
+
+/**
+ * Fits the terminal to its element once the element has a size. Without
+ * one, the fit addon falls back to two columns and one row, and output
+ * written that narrow wraps into the scrollback until its start falls out.
+ */
+function fitToHost(): void {
+  const host = hostRef.value
+  if (host && host.clientWidth > 0 && host.clientHeight > 0) {
+    fit?.fit()
+  }
+}
+
+/** Whether a change of the root's appearance attributes changed a value, not only wrote one. */
+function appearanceChanged(records: readonly MutationRecord[]): boolean {
+  const root = document.documentElement
+  return records.some(
+    (record) => record.attributeName !== null && record.oldValue !== root.getAttribute(record.attributeName),
+  )
 }
 
 onMounted(() => {
@@ -118,23 +153,23 @@ onMounted(() => {
     // The app's code font (`styles/base.css`), which xterm takes as a family list.
     fontFamily: getComputedStyle(host).getPropertyValue('--font-mono'),
     scrollback: 2000,
-    theme: xtermThemeFromElement(host, terminalTheme.value),
   })
   fit = new FitAddon()
   term.loadAddon(fit)
+  applyColors()
   term.open(host)
-  applyTheme()
-  fit.fit()
-  requestAnimationFrame(() => {
-    fit?.fit()
-    requestAnimationFrame(() => fit?.fit())
-  })
+  fitToHost()
   show(props.output, props.chars)
-  resize = new ResizeObserver(() => fit?.fit())
+  resize = new ResizeObserver(fitToHost)
   resize.observe(host)
-  appearance = new MutationObserver(applyTheme)
+  appearance = new MutationObserver((records) => {
+    if (appearanceChanged(records)) {
+      applyColors()
+    }
+  })
   appearance.observe(document.documentElement, {
     attributes: true,
+    attributeOldValue: true,
     attributeFilter: ['data-theme', 'data-tone', 'data-accent'],
   })
 })
@@ -147,7 +182,7 @@ watch(
   () => props.running,
   (running) => applyCursor(running === true),
 )
-watch(terminalTheme, applyTheme)
+watch(terminalTheme, applyColors)
 watch(() => props.script, applyPrompt)
 // The highlighter's arrival, and the page's mode, color the script anew.
 watch(useMarkdownRenderVersion(), applyPrompt)
@@ -162,10 +197,12 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div
-    ref="hostRef"
-    class="xterm-host h-full min-h-0 w-full px-3 py-2"
-  />
+  <div class="h-full min-h-0 w-full px-3 py-2">
+    <div
+      ref="hostRef"
+      class="xterm-host h-full min-h-0 w-full"
+    />
+  </div>
 </template>
 
 <style scoped>
