@@ -1025,6 +1025,23 @@ test('a draft keeps its files; the conversation itself is created on first send'
   expect(conversation.pendingSends[0]?.fileIds).toEqual([conversation.files[0]!.id])
 })
 
+// A failed upload is told on its capsule, with Retry, where it happened
+// (`web-application.md` § Responding to the user): a toast, which stays until
+// closed, would outlive the conversation it was about.
+test('a file whose upload fails says so on its capsule, whose Retry uploads it, and raises no toast', async () => {
+  const store = useConversations()
+  store.create()
+  const conversation = store.items[0]!
+  FakeXhr.failures = 1
+  const [file] = store.addFiles(conversation, [new File(['Local notes'], 'notes.txt', { type: 'text/plain' })])
+  store.arrangeFiles(conversation, [file!.id])
+  const phase = () => (file?.kind === 'file' ? file.phase : null)
+  await waitFor(() => phase() === 'failed', () => 'the upload did not fail')
+  store.retryFile(conversation, file!.id)
+  await waitFor(() => phase() === 'ready', () => 'Retry did not upload the file')
+  expect(toasts.filter((toast) => toast.title === 'Could Not Upload the Attachment')).toEqual([])
+})
+
 test('a file whose capsule was deleted comes back when undo brings the capsule back', async () => {
   const store = useConversations()
   store.create()
