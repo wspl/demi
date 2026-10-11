@@ -1605,9 +1605,22 @@ All 12 checkout tests pass, including the slow-network one that failed before.`)
   ]
 }
 
+/** The suites the found-mark transcript's run starts, by the command each runs as. */
+const FOUND_SUITES = [
+  ['61', 'Run the parser tests'],
+  ['62', 'Run the interpreter tests'],
+  ['63', 'Run the regexp tests'],
+  ['64', 'Run the garbage collector tests'],
+  ['65', 'Run mjsunit with JIT translation on'],
+  ['66', 'Run the wasm spec tests'],
+  ['67', 'Run the inspector tests'],
+] as const
+
 /**
  * A transcript to bring blocks into view in: a short call, an answer taller
- * than a session's view, and a short answer after it.
+ * than a session's view, a short answer after it, and a run of seven
+ * commands, folded, one of which then reports its end in a notice whose
+ * title brings its call into view.
  */
 export function foundMarkBlocks(): Block[] {
   const user = (id: string, at: number, text: string): Block => ({
@@ -1632,5 +1645,19 @@ export function foundMarkBlocks(): Block[] {
     reply('found-long', 580_000, steps.map((step) => `${step} ${'Each step follows from the one before it, and the next one reads its result. '.repeat(3)}`).join('\n\n')),
     user('found-thanks', 100_000, 'Thanks. Is anything left?'),
     reply('found-short', 90_000, 'Nothing is left: both tests pass.'),
+    user('found-suites', 80_000, 'Run the engine’s suites.'),
+    ...inRun(...FOUND_SUITES.map(([commandId, description], index) => toolCall({
+      id: `found-suite-${commandId}`,
+      createdAt: iso(70_000 - index * 1_000),
+      toolName: 'shell',
+      status: 'completed',
+      input: JSON.stringify({ script: `tools/run-tests.py --suite=${commandId}`, description }),
+      view: shellView({ commandId, status: 'running', chunks: [{ stream: 'stdout', text: 'Running…\n' }] }),
+    }))),
+    reply('found-started', 60_000, 'The seven suites are running. I will tell you as each ends.'),
+    {
+      type: 'wakeup', id: 'found-report', turnId: 'found-report-turn', createdAt: iso(30_000), model: demoModel, placement: 'new_turn',
+      reports: [{ commandId: '65', title: 'Run mjsunit with JIT translation on', event: { kind: 'ended', exitCode: 0 }, output: '5,812 tests passed' }],
+    },
   ]
 }
