@@ -20,7 +20,13 @@ export interface ListTailInput {
   pendingCalls: readonly PendingCall[]
   pendingSteers: readonly PendingSteerMessage[]
   queue: readonly QueuedMessage[]
-  pendingSubmission?: PendingSubmissionState | null
+  /** The messages sent and not yet confirmed, in the order they were sent. */
+  pendingSubmissions?: readonly PendingSubmissionState[]
+  /**
+   * The waiting messages whose Remove is on its way, by id: their rows are
+   * gone from the press (`product.md` § Steer or queue).
+   */
+  removing?: readonly string[]
 }
 
 /** What the list shows after the transcript, in two parts the tail row stands between. */
@@ -34,8 +40,8 @@ export interface ListTail {
   /**
    * The messages that wait below the turn (`product.md` § Following the
    * agent's work): the steers, then the queue under its divider, each with
-   * the message on its way that will be one of them, shown from its send as
-   * what it will be.
+   * the messages on their way that will be ones of them, shown from their
+   * send as what they will be, in the order they were sent.
    */
   waiting: MessageListBlock[]
 }
@@ -46,35 +52,32 @@ export interface ListTail {
  * message the session holds already shows there alone, in the transcript, as
  * a steer or in the queue: the row it was waiting in becomes that one
  * (`row-key.ts`), so it never shows twice, whichever of the two the server
- * tells first.
+ * tells first. A message whose Remove is on its way shows nowhere.
  */
 export function listTailBlocks(input: ListTailInput): ListTail {
   const written = new Set(input.blocks.flatMap((block) =>
     block.type === 'user' ? [block.turnId] : block.type === 'steer' ? [block.id] : []))
-  const steers = input.pendingSteers.filter((steer) => !written.has(steer.id))
-  const queue = input.queue.filter((message) => !written.has(message.id))
-  const submission = input.pendingSubmission
-  const held = !submission || written.has(submission.id)
-    || steers.some((steer) => steer.id === submission.id)
-    || queue.some((message) => message.id === submission.id)
-  const sending: MessageListBlock[] = held ? [] : [{
-    type: 'pending_submission',
-    id: `pending-submission:${submission.id}`,
-    submission,
-  }]
-  const way = held ? null : submission.way
-  const queued = [...queuedMessagesToRenderBlocks(queue), ...(way === 'queue' ? sending : [])]
+  const removing = new Set(input.removing)
+  const steers = input.pendingSteers.filter((steer) => !written.has(steer.id) && !removing.has(steer.id))
+  const queue = input.queue.filter((message) => !written.has(message.id) && !removing.has(message.id))
+  const held = new Set([...written, ...input.pendingSteers.map((steer) => steer.id), ...input.queue.map((message) => message.id)])
+  const sending = (input.pendingSubmissions ?? []).filter((submission) =>
+    !held.has(submission.id) && !removing.has(submission.id))
+  const rows = (way: PendingSubmissionState['way']): MessageListBlock[] => sending
+    .filter((submission) => submission.way === way)
+    .map((submission) => ({ type: 'pending_submission', id: `pending-submission:${submission.id}`, submission }))
+  const queued = [...queuedMessagesToRenderBlocks(queue), ...rows('queue')]
   return {
     turn: [
       ...(input.phase === 'compacting'
         ? [{ type: 'compaction_progress', id: 'compaction-progress' } as const]
         : []),
       ...pendingCallsToRenderBlocks(input.pendingCalls, input.blocks),
-      ...(way === 'send' ? sending : []),
+      ...rows('send'),
     ],
     waiting: [
       ...pendingSteersToRenderBlocks(steers),
-      ...(way === 'steer' ? sending : []),
+      ...rows('steer'),
       ...(queued.length > 0
         ? [{ type: 'queue_divider', id: 'queue-divider', count: queued.length } as const, ...queued]
         : []),

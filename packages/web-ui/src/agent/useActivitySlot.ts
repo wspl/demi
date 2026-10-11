@@ -21,8 +21,8 @@ export interface ActivitySlotState {
 export interface ActivitySlotSources {
   /** What the row's kind is decided from, except whether a message being delivered starts a turn. */
   input: () => Omit<ActivitySlotInput, 'startingTurn'>
-  /** The message sent and not yet confirmed. */
-  pendingSubmission: () => PendingSubmissionState | null
+  /** The messages sent and not yet confirmed, in the order they were sent. */
+  pendingSubmissions: () => readonly PendingSubmissionState[]
   /** When the agent began to wait for the model's answer, as the server tells it; null when it waits for none. */
   waitingSince: () => number | null
   /** The last block the list shows of the transcript: the one that may roll into the row. */
@@ -62,13 +62,13 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   /** A message on its way starts a turn: it is the user's next message already. */
   startingTurn: ComputedRef<boolean>
 } {
-  const { input, pendingSubmission, waitingSince, tail, scope } = sources
+  const { input, pendingSubmissions, waitingSince, tail, scope } = sources
 
   // The message on its way that starts a turn; null when none is. Read when
   // the message is sent, before the server's phase can answer it.
   const startingTurnId = ref<string | null>(null)
   watch(
-    () => deliveringId(pendingSubmission()),
+    () => deliveringId(pendingSubmissions()),
     (id) => {
       startingTurnId.value = id !== null && input().phase === 'idle' ? id : null
     },
@@ -165,11 +165,13 @@ export function useActivitySlot(sources: ActivitySlotSources): {
 }
 
 /**
- * The id of a message on its way; a failed delivery is not on its way. One
- * that waits for the backend to be reachable again is: the row says
- * Connecting meanwhile, or the connection banner says the backend is away,
- * and Requesting once the socket is back.
+ * The id of the first message on its way sent as the next message, which
+ * is the one that can start a turn; a steer or a queued message starts
+ * none, and a failed delivery is not on its way. One that waits for the
+ * backend to be reachable again is: the row says Connecting meanwhile, or
+ * the connection banner says the backend is away, and Requesting once the
+ * socket is back.
  */
-function deliveringId(submission: PendingSubmissionState | null): string | null {
-  return submission && submission.error === null ? submission.id : null
+function deliveringId(submissions: readonly PendingSubmissionState[]): string | null {
+  return submissions.find((submission) => submission.way === 'send' && submission.error === null)?.id ?? null
 }

@@ -21,7 +21,7 @@ test('a saved edit keeps its operation, its files and the separate composer draf
         ],
       },
     },
-    pendingSend: null,
+    pendingSends: [],
     local: null,
     base: 4,
     text: 'unrelated composer draft',

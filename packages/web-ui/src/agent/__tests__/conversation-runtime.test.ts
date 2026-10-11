@@ -2,12 +2,12 @@ import { expect, jest, spyOn, test } from 'bun:test'
 import type { PendingSteer } from '@demicodes/protocol'
 import { deferred, delay, waitFor } from '@demicodes/utils'
 import { computed } from 'vue'
-import { ConversationRuntime, type RuntimeState } from '../conversation-runtime'
+import { ConversationRuntime, RemovalRefusedError, type RuntimeState } from '../conversation-runtime'
 import { ConversationSocketError, connectConversationClient } from '../../transport/conversation-socket'
 import { pageReturned } from '../../transport/liveness'
 import { playSockets } from '../../transport/__tests__/test-socket'
 import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
-import { clientHarness, model, userBlock } from './agent-harness'
+import { clientHarness, createdAt, model, userBlock } from './agent-harness'
 
 function state(): RuntimeState {
   return {
@@ -170,6 +170,61 @@ test('send now on a pending steer or a queued message stops nothing and never tu
       { type: 'steer_now', steerId: 'steer' },
       { type: 'send_queued_message', messageId: 'queued' },
     ])
+  } finally {
+    runtime.dispose()
+  }
+})
+
+// Remove on a steer or a queued message (`product.md` § Steer or queue): the
+// session does not answer the request, so what its lists and transcript say
+// next tells whether the message was removed or went on first. A queued
+// message leaves the queue before its turn writes it, so leaving the queue
+// alone says nothing.
+test.each([
+  { kind: 'steer', outcome: 'removed' },
+  { kind: 'steer', outcome: 'went on' },
+  { kind: 'queued', outcome: 'removed' },
+  { kind: 'queued', outcome: 'went on' },
+] as const)('removing a $kind message the session $outcome settles from what the session says next', async ({ kind, outcome }) => {
+  const h = clientHarness()
+  const current = state()
+  const runtime = new ConversationRuntime({ state: current, connect: async () => h.client })
+  const content = [{ type: 'text' as const, text: 'skip the e2e tests' }]
+  try {
+    await runtime.connect()
+    h.receive({ type: 'transcript_reset', start: 0, length: 1, version: { epoch: 'epoch', revision: 1 }, blocks: [userBlock('u-1', 'turn-1', 'run the tests')] })
+    h.receive({ type: 'phase', phase: 'running' })
+    h.receive({ type: 'pending_steers', pendingSteers: kind === 'steer' ? [{ id: 'm', turnId: 'turn-1', model, content }] : [] })
+    h.receive({ type: 'queue', queue: kind === 'queued' ? [{ id: 'm', content }] : [] })
+    let settled = false
+    const removal = runtime.removeWaiting('m').then(() => 'removed', (error: unknown) => error).finally(() => {
+      settled = true
+    })
+    await waitFor(() => h.sent.length > 1)
+    expect(h.sent.at(-1)).toEqual(kind === 'steer' ? { type: 'cancel_pending_steer', steerId: 'm' } : { type: 'dequeue_message', messageId: 'm' })
+    if (kind === 'queued') {
+      h.receive({ type: 'queue', queue: [] })
+      await turn()
+      expect(settled).toBe(false)
+    }
+    if (outcome === 'went on') {
+      const written = kind === 'steer'
+        ? { type: 'steer' as const, id: 'm', turnId: 'turn-1', createdAt, model, content }
+        : userBlock('u-2', 'm', 'skip the e2e tests')
+      h.receive({ type: 'transcript_patch', revision: 2, patches: [{ op: 'add', index: 1, value: written }] })
+    }
+    if (kind === 'steer') {
+      h.receive({ type: 'pending_steers', pendingSteers: [] })
+    } else if (outcome === 'removed') {
+      // The turn ends without it.
+      h.receive({ type: 'phase', phase: 'idle' })
+    }
+    const result = await removal
+    if (outcome === 'removed') {
+      expect(result).toBe('removed')
+    } else {
+      expect(result).toBeInstanceOf(RemovalRefusedError)
+    }
   } finally {
     runtime.dispose()
   }

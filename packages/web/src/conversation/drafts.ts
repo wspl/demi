@@ -28,14 +28,15 @@ const remoteSchema = z.object({
 })
 export const draftSchema = z.object({
   messageEdit: messageEditStateSchema.nullable().optional(),
-  pendingSend: z
-    .object({
+  /** The messages sent and not yet confirmed, in the order they were sent. */
+  pendingSends: z.array(
+    z.object({
       id: z.uuid(),
       text: z.string(),
       fileIds: z.array(z.string()),
       error: z.string().nullable(),
-    })
-    .nullable(),
+    }),
+  ),
   /**
    * The revision of the backend's draft the composer's text was built on,
    * while the backend has not confirmed a change of it; null when the
