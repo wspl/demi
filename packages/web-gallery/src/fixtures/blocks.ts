@@ -351,6 +351,30 @@ export const longScriptShellTool = toolCall({
 })
 
 /**
+ * A script of a few lines, as Bash highlights it: a variable with a default,
+ * quotes, a pipe, a loop and a heredoc.
+ */
+export const BASH_SCRIPT = [
+  'SERVICE="${1:-auth}"',
+  'grep -rn "sid" "packages/web/src/$SERVICE" | wc -l',
+  'for file in $(git diff --name-only); do echo "changed: $file"; done',
+  "cat > /tmp/check.sh <<'EOF'",
+  'bun test "$SERVICE" --bail',
+  'EOF',
+].join('\n')
+
+export const bashScriptShellTool = toolCall({
+  id: 'tool-shell-bash',
+  toolName: 'shell',
+  status: 'completed',
+  input: JSON.stringify({ script: BASH_SCRIPT, description: 'Count the old cookie name and list the changed files' }),
+  view: shellView({
+    commandId: 'cmd-bash',
+    chunks: [{ stream: 'stdout', text: '4\nchanged: packages/web/src/auth.test.ts\nchanged: packages/web/src/cookie.ts\n' }],
+  }),
+})
+
+/**
  * One long line of words with hyphens inside them and a signed address
  * longer than any line: the command wraps at its spaces, each word whole,
  * and only the address breaks inside, filling its lines to the edge.
