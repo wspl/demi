@@ -47,7 +47,9 @@ pub use input::{INTERVAL_CAP_MS, INTERVAL_FLOOR_MS, taken_interval};
 use input::{ShellInput, parse};
 pub use reports::{EndOf, end_report, fill_output, progress_report};
 pub use demi_agent_transcript::duration;
-pub use result::{Look, look_text, report_media, report_output, whole_look_text, whole_status};
+pub use result::{
+    Look, interrupted_look, look_text, report_media, report_output, whole_look_text, whole_status,
+};
 pub use product::{
     ContextAnswer, ContextSource, HostResolver, NodeContext, Profile, ProfileModel, SubagentSettings,
     SubagentSource, Toolset, ToolsetSource, Unavailable,
@@ -246,6 +248,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 node: self.context.node.clone(),
                 tool_use_id: call.tool_use_id,
             },
+            title: input.description.0.clone(),
             viewable: Viewable {
                 model: call.model.model.id.clone(),
                 media_types: call.request_limits.tool_results.viewable(&call.model.model),
@@ -280,7 +283,6 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         call.command.started(StartedCommand {
             command: command.clone(),
             interval_ms,
-            title: input.description.0.clone(),
         });
         let (status, ended_by) = watch(
             environment.as_ref(),
@@ -306,7 +308,6 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             outcome.effect = Some(ToolEffect::Background {
                 command,
                 interval_ms,
-                title: input.description.0,
             });
         } else {
             self.release(environment.as_ref(), &command).await;
@@ -335,6 +336,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 node: self.context.node.clone(),
                 tool_use_id: running.tool_use_id.clone(),
             },
+            title: running.title.clone(),
             running: ran,
             seen: running.place,
         });

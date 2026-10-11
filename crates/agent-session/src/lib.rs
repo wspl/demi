@@ -47,8 +47,8 @@ use demi_provider_common::{ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
     AgentMessage, Block, BlockId, Clock, CommandId, ContextUsage, ModelSelection, NodeId, PendingCall,
-    PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ToolResultContentBlock, ToolView,
-    TurnId, UserContentBlock,
+    PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ShellToolView, ShellViewStatus,
+    ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -63,7 +63,7 @@ pub use editing::{
 pub use retry::RetryPolicy;
 pub use worker::left_by_offline_host;
 pub use runtime::{
-    CallCommand, InputArrival, NewContext, SeenContext, SessionRuntime, StartedCommand,
+    CallCommand, CommandLook, InputArrival, NewContext, SeenContext, SessionRuntime, StartedCommand,
     StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome, WindowEnd,
 };
 
@@ -565,8 +565,7 @@ impl AgentSession {
         let mut transcript = TranscriptLog::new(transcript, deps.ids.clone(), deps.clock.clone());
         let mut watched = Watched::default();
         for interval in &state.intervals {
-            let title = started_title(transcript.blocks(), &interval.command_id);
-            watched.add(interval.command_id.clone(), interval.interval_ms, title);
+            watched.add(interval.command_id.clone(), interval.interval_ms);
         }
         for call in transcript.pending_tool_calls() {
             let command = running
@@ -574,18 +573,24 @@ impl AgentSession {
                 .find(|running| running.tool_use_id == call.tool_use_id)
                 .map(|running| running.command.clone());
             let text = core::interrupted_text(&core::CallEnd::Crashed, command.as_ref());
+            // The call keeps naming the command it started, which runs as
+            // far as the conversation knows, so that its later report and
+            // notice find their call (`runtime.md` § Stop).
+            let view = command
+                .clone()
+                .map(|command| ToolView::Shell(ShellToolView::named(command, ShellViewStatus::Running)));
             if let Some(command) = command
                 && watched.get(&command).is_none()
             {
                 // Only its end reports: the call's interval is the tool's to
                 // read.
-                watched.add(command, None, call_title(&call.input));
+                watched.add(command, None);
             }
             transcript.complete_tool_call(
                 &call.tool_use_id,
                 vec![ToolResultContentBlock::Text { text }],
                 true,
-                None,
+                view,
             );
         }
         let interrupted = state.phase != SessionPhase::Idle;
@@ -942,7 +947,7 @@ impl AgentSession {
     /// when the session does not watch it.
     pub fn interval_of(&self, command: &CommandId) -> Option<Option<u32>> {
         self.shared
-            .read(|core| core.watched.get(command).map(|(_, interval)| interval))
+            .read(|core| core.watched.get(command))
     }
 
     /// Stops one thing (`runtime.md` § Stop): the running action, which has
@@ -1129,29 +1134,3 @@ fn check_restored_input(
     Ok(())
 }
 
-/// The title of the call that started `command`, which its reports name:
-/// the `description` of the last call whose view names it; empty when no
-/// call does, as after an edit removed it.
-fn started_title(blocks: &[Block], command: &CommandId) -> String {
-    blocks
-        .iter()
-        .rev()
-        .find_map(|block| match block {
-            Block::ToolCall(call) => match &call.view {
-                Some(ToolView::Shell(view)) if &view.command_id == command => {
-                    Some(call_title(&call.input))
-                }
-                _ => None,
-            },
-            _ => None,
-        })
-        .unwrap_or_default()
-}
-
-/// The `description` of a call whose input is `input`; empty without one.
-fn call_title(input: &str) -> String {
-    serde_json::from_str::<serde_json::Value>(input)
-        .ok()
-        .and_then(|input| input.get("description")?.as_str().map(str::to_owned))
-        .unwrap_or_default()
-}

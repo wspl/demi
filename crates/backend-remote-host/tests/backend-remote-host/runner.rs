@@ -75,6 +75,7 @@ pub(crate) fn exec(script: &str, window: u64) -> Exec {
         request: ExecRequest {
             script: script.into(),
             caller: caller(),
+            title: "Run the script".into(),
             viewable: viewable(),
         },
         window,

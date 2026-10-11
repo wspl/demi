@@ -30,6 +30,10 @@ pub struct CommandRecord {
     command_id: CommandId,
     /// The `shell` call that started the command.
     tool_use_id: String,
+    /// That call's title, its `description`, which every report of the
+    /// command names, whatever became of the call (`runtime.md` § Command
+    /// reports).
+    title: String,
     started: Instant,
     last_output: Instant,
     phase: Phase,
@@ -145,18 +149,20 @@ pub enum Ending {
 }
 
 impl CommandRecord {
-    /// A running command that the `shell` call `tool_use_id` started.
-    pub fn new(command_id: CommandId, tool_use_id: String) -> Self {
-        Self::taken_up(command_id, tool_use_id, std::time::Duration::ZERO, Seen::default())
+    /// A running command that the `shell` call `tool_use_id`, titled
+    /// `title`, started.
+    pub fn new(command_id: CommandId, tool_use_id: String, title: String) -> Self {
+        Self::taken_up(command_id, tool_use_id, title, std::time::Duration::ZERO, Seen::default())
     }
 
-    /// A running command that the `shell` call `tool_use_id` started
-    /// `running` ago and that is taken up again, whose output the model had
-    /// seen as far as `seen`: its output arrives again from its start, and
-    /// the model's view passes over what it saw.
+    /// A running command that the `shell` call `tool_use_id`, titled
+    /// `title`, started `running` ago and that is taken up again, whose
+    /// output the model had seen as far as `seen`: its output arrives again
+    /// from its start, and the model's view passes over what it saw.
     pub fn taken_up(
         command_id: CommandId,
         tool_use_id: String,
+        title: String,
         running: std::time::Duration,
         seen: Seen,
     ) -> Self {
@@ -164,6 +170,7 @@ impl CommandRecord {
         Self {
             command_id,
             tool_use_id,
+            title,
             started: now.checked_sub(running).unwrap_or(now),
             last_output: now,
             phase: Phase::Running,
@@ -180,6 +187,12 @@ impl CommandRecord {
 
     pub fn command_id(&self) -> &CommandId {
         &self.command_id
+    }
+
+    /// The title of the call that started the command; empty when that
+    /// call had none.
+    pub fn title(&self) -> &str {
+        &self.title
     }
 
     pub fn is_running(&self) -> bool {

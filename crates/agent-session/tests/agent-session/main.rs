@@ -77,10 +77,12 @@ struct TestRuntime {
 }
 
 /// The commands of a test node: each runs until the test ends it, and
-/// reports with its title what it is told to.
+/// reports what it is told to, named by the title its record keeps.
 #[derive(Default)]
 struct TestCommands {
     ended: RefCell<std::collections::HashMap<CommandId, tokio::sync::watch::Sender<bool>>>,
+    /// The title of the call that started each, as its record keeps it.
+    titles: RefCell<std::collections::HashMap<CommandId, String>>,
     /// How many progress reports each command made.
     reports: RefCell<std::collections::HashMap<CommandId, u32>>,
     /// Whether a command a call watches ends when the call is stopped, as
@@ -89,13 +91,20 @@ struct TestCommands {
 }
 
 impl TestCommands {
-    /// The command `id`, which runs from now on.
-    fn start(&self, id: &str) -> CommandId {
+    /// The command `id`, which a call titled `title` started and which
+    /// runs from now on.
+    fn start(&self, id: &str, title: &str) -> CommandId {
         let command = CommandId::try_from(id).unwrap();
         self.ended
             .borrow_mut()
             .insert(command.clone(), tokio::sync::watch::Sender::new(false));
+        self.titles.borrow_mut().insert(command.clone(), title.to_owned());
         command
+    }
+
+    /// The title the record of `command` keeps.
+    fn title(&self, command: &CommandId) -> String {
+        self.titles.borrow().get(command).cloned().unwrap_or_default()
     }
 
     /// Ends the command `id`.
@@ -204,18 +213,18 @@ impl SessionRuntime for TestRuntime {
     fn report<'a>(
         &'a self,
         command: &'a CommandId,
-        title: &'a str,
         interval_ms: Option<u32>,
         _: &'a demi_shared_types::ModelSelection,
         _: RequestLimits,
     ) -> LocalBoxFuture<'a, Option<CommandReport>> {
+        let title = self.commands.title(command);
         let report = if self.commands.has_ended(command) {
-            test_report(command.as_str(), title, ReportEvent::Ended { exit_code: None })
+            test_report(command.as_str(), &title, ReportEvent::Ended { exit_code: None })
         } else {
             let mut reports = self.commands.reports.borrow_mut();
             let count = reports.entry(command.clone()).or_default();
             *count += 1;
-            test_report(command.as_str(), title, running(*count, interval_ms.unwrap_or(0)))
+            test_report(command.as_str(), &title, running(*count, interval_ms.unwrap_or(0)))
         };
         Box::pin(async move { Some(report) })
     }
@@ -285,7 +294,6 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
                 interval_ms: call.input["intervalMs"]
                     .as_u64()
                     .map(|interval| u32::try_from(interval).unwrap()),
-                title: "Run the tests".into(),
             });
         }
         if let Some(started) = started.borrow_mut().take() {
@@ -307,11 +315,13 @@ fn gated_tool(name: &str) -> ((String, Invoke), Releases, oneshot::Receiver<()>)
 fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
     let commands = commands.clone();
     tool("work", move |call| {
-        let command = commands.start(call.input["commandId"].as_str().unwrap());
+        let command = commands.start(
+            call.input["commandId"].as_str().unwrap(),
+            call.input["description"].as_str().unwrap(),
+        );
         let interval_ms = call.input["intervalMs"]
             .as_u64()
             .map(|interval| u32::try_from(interval).unwrap());
-        let title = call.input["description"].as_str().unwrap().to_owned();
         let view = ToolView::Shell(ShellToolView {
             request_files: None,
             run_files: None,
@@ -332,7 +342,6 @@ fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
                 effect: Some(ToolEffect::Background {
                     command,
                     interval_ms,
-                    title,
                 }),
                 ..output("status: running")
             })
@@ -356,13 +365,30 @@ fn command_watching_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
     let commands = commands.clone();
     tool("watch", move |call| {
         let id = call.input["commandId"].as_str().unwrap().to_owned();
-        commands.start(&id);
+        commands.start(&id, call.input["description"].as_str().unwrap_or_default());
         let watching = Watching(commands.clone(), id);
         Box::pin(async move {
             let _watching = watching;
             std::future::pending().await
         })
     })
+}
+
+/// The view the call `block` keeps: whether it names `command`, and where.
+fn call_view(block: &Block) -> Option<ToolView> {
+    let Block::ToolCall(call) = block else {
+        panic!("not a call: {block:?}")
+    };
+    call.view.clone()
+}
+
+/// The view of a call that names the command `command`, where `status`
+/// says it is, as an interrupted call keeps it.
+fn naming(command: &str, status: ShellViewStatus) -> Option<ToolView> {
+    Some(ToolView::Shell(ShellToolView::named(
+        CommandId::try_from(command).unwrap(),
+        status,
+    )))
 }
 
 /// A response that calls `work` for the command `command`, reporting every
@@ -970,6 +996,8 @@ async fn stop_during_a_tool_drops_the_call_and_records_the_stop_before_it_answer
     );
     let stopped = "Tool call aborted: the user stopped the turn; command 254 was stopped.";
     assert_eq!(tool_output(&blocks[1]).1, texts(&[stopped]));
+    // The call keeps naming its command, which the stop stopped.
+    assert_eq!(call_view(&blocks[1]), naming("254", ShellViewStatus::Aborted));
     assert_eq!(running.await, Ok(ActionEnd::Aborted));
     assert_eq!(session.phase(), SessionPhase::Idle);
     // The next request carries the aborted call's result.
@@ -1190,6 +1218,12 @@ async fn dispose_during_a_tool_saves_the_interrupted_turn_and_keeps_the_queue() 
         tool_output(&checkpoint.transcript[1]).1,
         texts(&["Tool call interrupted: the backend shut down while this call watched command 254, which keeps running; look at it with demi shell status 254."])
     );
+    // The call keeps naming its command, so that the command's later
+    // report and notice find it.
+    assert_eq!(
+        call_view(&checkpoint.transcript[1]),
+        naming("254", ShellViewStatus::Running)
+    );
     assert_eq!(
         checkpoint.state.intervals,
         [CommandInterval {
@@ -1260,6 +1294,7 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
         command: CommandId::try_from("254").unwrap(),
         job: "job-254".into(),
         tool_use_id: "call-1".into(),
+        title: "Write a.txt".into(),
         started: Timestamp::UNIX_EPOCH,
         place: Default::default(),
     }];
@@ -1279,6 +1314,7 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
             ])
         )
     );
+    assert_eq!(call_view(&blocks[1]), naming("254", ShellViewStatus::Running));
     // It reports its end to the node.
     assert_eq!(restored.interval_of(&running[0].command), Some(None));
     restored

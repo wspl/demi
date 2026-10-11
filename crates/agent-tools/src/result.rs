@@ -263,6 +263,14 @@ pub fn report_output(status: &CommandStatus, budget: usize) -> String {
     lines.join("\n")
 }
 
+/// What the result of a call that something other than its tool ended
+/// shows of the command it watched (`runtime.md` § Interrupted calls): its
+/// output since the node's last look as a report carries it, within
+/// `budget` characters, and the user's view of the call.
+pub fn interrupted_look(status: &CommandStatus, budget: usize) -> (String, ShellToolView) {
+    (report_output(status, budget), shell_view(status, &unseen_output(status)))
+}
+
 /// The streams' newest lines a running command's look shows, beyond each
 /// stream's start.
 fn newest_of(status: &CommandStatus) -> Vec<&Newest> {
@@ -899,6 +907,7 @@ mod tests {
         let mut record = CommandRecord::new(
             "17".try_into().unwrap(),
             "call".into(),
+            "Run the test".into(),
         );
         record.append_output(StreamKind::Stdout, "done\nre");
         record.append_output(StreamKind::Stderr, "a");
