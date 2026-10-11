@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
+import { textWidth } from './text-width'
 
 /**
  * Code text, such as a command, that wraps at its spaces as an editor's word
@@ -97,23 +98,6 @@ watch(pieces, () => emit('layout'), { flush: 'post' })
 // The template keeps the words and the space between them on one line: white
 // space between its tags would add to the text.
 defineExpose({ element })
-</script>
-
-<script lang="ts">
-let measuring: CanvasRenderingContext2D | null | undefined
-
-/** How wide the text is drawn in the font, by a canvas shared by every instance. */
-function textWidth(text: string, font: string): number {
-  if (measuring === undefined) {
-    measuring = document.createElement('canvas').getContext('2d')
-  }
-  // Without a 2D context nothing is measured, and every word stays whole.
-  if (!measuring) {
-    return 0
-  }
-  measuring.font = font
-  return measuring.measureText(text).width
-}
 </script>
 
 <template>

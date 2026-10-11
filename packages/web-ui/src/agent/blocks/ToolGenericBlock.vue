@@ -3,11 +3,11 @@ import { computed } from 'vue'
 import { Zap } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import FunctionalBlock from './FunctionalBlock.vue'
-import ToolMedia from './ToolMedia.vue'
+import GoneMediaLines from './GoneMediaLines.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText } from '../block-helpers'
 import { trimToolSummary } from '../tool-rendering'
-import { toolMedia } from '../tool-media'
+import { splitMedia, toolMedia } from '../tool-media'
 
 const props = defineProps<{
   block: ToolCallBlock
@@ -30,10 +30,10 @@ const summary = computed(() => {
     })
     .join(' ')
 })
-// The result's own text; its media, and a medium that is gone, show under the row.
+// The result's own text; its pictures show in the row's line, and a medium that is gone under it.
 const texts = computed(() => props.block.output.flatMap((part) => part.type === 'text' ? [part.text] : []))
 const errorText = computed(() => getToolErrorText(props.block))
-const media = computed(() => toolMedia(props.block.output, props.block.toolName))
+const media = computed(() => splitMedia(toolMedia(props.block.output, props.block.toolName)))
 const detail = computed(() => {
   const text = errorText.value
   return text ? trimToolSummary(text, 160) : summary.value
@@ -47,6 +47,7 @@ const detail = computed(() => {
     :detail="detail"
     :loading="block.status === 'executing' || working"
     :tone="block.status === 'error' ? 'danger' : undefined"
+    :pictures="media.pictures"
   >
     <template
       v-if="texts.length > 0"
@@ -65,5 +66,5 @@ const detail = computed(() => {
       <Zap :size="ICON_PX.in28" />
     </template>
   </FunctionalBlock>
-  <ToolMedia :media="media" />
+  <GoneMediaLines :lines="media.gone" />
 </template>

@@ -9,7 +9,7 @@ import { latestBlocks } from '@demicodes/web-ui/agent/history'
 import type { Conversation } from '../state/types'
 import { findShellCall } from './terminals'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
-import { followLiveOutput, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
+import { followFrame } from '@demicodes/web-ui/agent/terminals'
 
 /** Map agent events to the product's child and terminal presentation records. */
 export function updateLiveStatus(conversation: Conversation): void {
@@ -102,24 +102,7 @@ export function applyConversationEvent(
     const call = current?.script !== undefined
       ? current
       : findShellCall(blocks, status.toolUseId) ?? current
-    const record: TerminalRecord = {
-      id: status.commandId,
-      title: call?.title ?? status.commandId,
-      script: call?.script,
-      phase: status.status,
-      startedAt:
-        current?.startedAt ?? new Date(Date.now() - status.runningMs).toISOString(),
-      ...(status.status !== 'running'
-        ? { endedAt: current?.endedAt ?? new Date().toISOString() }
-        : {}),
-      output: followLiveOutput(current?.output ?? '', current?.chars, status.tail, status.chars),
-      chars: status.chars,
-      // How it ended, which its row marks also when its call returned before.
-      exitCode: status.status === 'exited' ? status.exitCode : undefined,
-      lostReason: status.status === 'lost' ? status.reason : undefined,
-      toolUseId: status.toolUseId,
-      ...(subagentId === undefined ? {} : { subagentId }),
-    }
+    const record = followFrame(current, status, call, subagentId, Date.now())
     if (current) {
       Object.assign(current, record)
     } else {
