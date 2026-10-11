@@ -30,6 +30,7 @@ import { storedShellView } from './block-helpers'
 import { distanceFromBottom } from '../composables/scroll-bottom'
 import { highlightFound } from '../ui/found-highlight'
 import { provideTranscript } from './edit-selection'
+import { useOpenRuns } from './open-runs'
 import { storedRequests } from '../files/request-changes'
 
 const props = withDefaults(defineProps<{
@@ -225,29 +226,33 @@ onBeforeUnmount(() => {
   emit('saveScrollState', props.conversationId, getPersistedState())
 })
 
+// The runs the reader or a reveal opened, which stay open while the list shows this transcript.
+const runs = useOpenRuns(() => renderBlocks.value, () => props.conversationId)
 // A block a search result opened: shown once the history holds it, after the list placed itself,
 // and marked as it appears; the next request or leaving the list ends a mark still waiting.
 let revealing: AbortController | null = null
-/** The row that shows each block: a step's work group, or the block's own. */
-const rowOf = computed(() => new Map(renderBlocks.value.flatMap((row) =>
-  row.type === 'work_group' ? row.steps.map((step) => [step.id, row.id] as const) : [[row.id, row.id] as const])))
 /**
- * Brings the block `id`'s row into view and marks it for a moment: inside a
- * run that is open, its own step's row; inside a folded one, the run's row,
- * which stays folded (`runtime.md` § Work groups). False when the list does
- * not hold it.
+ * Brings the block `id`'s own row into view and marks it for a moment, the
+ * one way every reveal of this list goes, a search result's, a notice's
+ * call's and a receipt's block's alike: a block folded in a run opens the
+ * run first, and its step's row is the one placed and marked, never the
+ * run's (`runtime.md` § Command reports). False when the list does not
+ * hold it.
  */
 function revealAndMark(id: string): boolean {
   const scroller = scrollContainer.value
-  const row = rowOf.value.get(id) ?? id
-  if (!scroller || !reveal(row, props.bottomOffset))
+  const target = scroller ? runs.reveal(id) : null
+  if (!scroller || !target)
     return false
+  const rowSelector = `[data-block-id="${CSS.escape(target.row)}"]`
+  const step = target.step === null ? null : `[data-step-id="${CSS.escape(target.step)}"]`
+  // A run that opens draws its step's row in the next render: the list
+  // places the row at once and the step as the row draws it, and the mark
+  // waits for it.
+  reveal(target.row, props.bottomOffset, step ?? undefined)
   revealing?.abort()
   revealing = new AbortController()
-  const rowSelector = `[data-block-id="${CSS.escape(row)}"]`
-  const stepSelector = `${rowSelector} [data-step-id="${CSS.escape(id)}"]`
-  const open = row !== id && scroller.querySelector(stepSelector) !== null
-  highlightFound(scroller, open ? stepSelector : rowSelector, revealing.signal, { scroll: false })
+  highlightFound(scroller, step === null ? rowSelector : `${rowSelector} ${step}`, revealing.signal, { scroll: false })
   return true
 }
 watch(
@@ -369,6 +374,7 @@ defineExpose({
             <MessageEditRegion :muted="mutedIds.has(renderBlocks[item.index]!.id)">
               <AgentMessageVirtualBlock
                 :block="renderBlocks[item.index]!"
+                :open="runs.isOpen(renderBlocks[item.index]!.id)"
                 :is-thinking-streaming="isStreamingThinkingAt(item.index)"
                 :is-text-streaming="isStreamingTextAt(item.index)"
                 :show-assistant-footer="footerIds.has(renderBlocks[item.index]!.id)"
@@ -380,6 +386,7 @@ defineExpose({
                 :entering="isEntering(String(item.key))"
                 :editable="renderBlocks[item.index]!.id === editableUserId"
                 :regenerate="renderBlocks[item.index]!.id === regenerateId ? regenerate : undefined"
+                @update:open="(open) => runs.setOpen(renderBlocks[item.index]!.id, open)"
                 @recall-steer="(id) => emit('recallSteer', id)"
                 @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
                 @recall-queued="(id) => emit('recallQueued', id)"
