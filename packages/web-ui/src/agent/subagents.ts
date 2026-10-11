@@ -1,6 +1,7 @@
 import type { PendingCall, ProviderFailureFacts } from '@demicodes/protocol'
 import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { ConversationStatus } from './conversation-status'
+import type { MessageEditContent } from './message-editing'
 
 export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'
 
@@ -97,27 +98,40 @@ export function formatSubagentDuration(
   return formatDuration(subagentDurationMs(agent, nowMs))
 }
 
-/** What the dock's agents chip shows; `running` breathes its dot. */
-export interface AgentsChipState {
-  label: string
-  running: boolean
+/**
+ * A child's task brief, the `user` block its spawn or resume writes in the
+ * child's transcript `node`: Markdown an agent wrote, which renders as an
+ * answer does (`subagents.md` § Product rendering). Null for a `user` block
+ * of the conversation's own transcript, which the user typed and which keeps
+ * the user dialect, and for one that holds a file, which only a message the
+ * user sent does.
+ */
+export function childBrief(node: string | null, content: readonly MessageEditContent[]): string | null {
+  if (node === null) {
+    return null
+  }
+  let brief = ''
+  for (const part of content) {
+    if (part.type !== 'text') {
+      return null
+    }
+    brief += part.text
+  }
+  return brief
 }
 
 /**
  * The dock's agents chip (`subagents.md` § Product rendering): the live
- * children's count while any runs; once none does, plain Agents, so the
- * children's history stays one click away; no chip for a conversation that
- * never had a child. Finished children never count.
+ * children's count, and no chip while none runs, as the Running chip shows
+ * only while a command runs. Finished children never count; they stay one
+ * click away from their receipts and links.
  */
-export function agentsChip(agents: readonly SubagentRecord[]): AgentsChipState | null {
-  if (agents.length === 0) {
-    return null
-  }
+export function agentsChipLabel(agents: readonly SubagentRecord[]): string | null {
   const running = agents.filter((agent) => isSubagentRunning(agent.phase)).length
   if (running === 0) {
-    return { label: 'Agents', running: false }
+    return null
   }
-  return { label: running === 1 ? '1 Agent' : `${running} Agents`, running: true }
+  return running === 1 ? '1 Agent' : `${running} Agents`
 }
 
 /**

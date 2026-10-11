@@ -24,6 +24,8 @@ import ActivitySlot from './ActivitySlot.vue'
 import type { MessageForkState } from '../message-fork'
 import { provideBlockScope } from '../whole-blocks'
 import IndeterminateSpinner from '../../ui/IndeterminateSpinner.vue'
+import { useTranscript } from '../edit-selection'
+import { childBrief } from '../subagents'
 
 defineOptions({ inheritAttrs: false })
 
@@ -59,6 +61,7 @@ const emit = defineEmits<{
 }>()
 
 const attrs = useAttrs()
+const transcript = useTranscript()
 // A light block's row opens to read it whole (`web-api.md` § Light form).
 provideBlockScope(() => ('createdAt' in props.block ? props.block : undefined))
 /** Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its own. */
@@ -104,6 +107,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-else-if="block.type === 'user'"
       v-bind="attrs"
       :content="block.content"
+      :brief="childBrief(transcript?.node ?? null, block.content)"
       :editable="editable"
       @edit="emit('editUser', block.id)"
     />

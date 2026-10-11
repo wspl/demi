@@ -9,6 +9,7 @@ import { reportError } from '../../infra/errors'
 import type { MessageEditContent } from '../message-editing'
 import { composerCapsule, composerTransfer, contentMessage, provideTransfers } from '../message-editor/capsules'
 import MessageEditor from '../message-editor/MessageEditor.vue'
+import StreamedMarkdown from '../../ui/StreamedMarkdown.vue'
 import type { ComposerAttachment } from '../message-input/attachments'
 
 const props = defineProps<{
@@ -31,6 +32,12 @@ const props = defineProps<{
   actionsPinned?: boolean
   /** Allows editing an explicitly submitted user message. */
   editable?: boolean
+  /**
+   * A child's task brief (`childBrief`): rendered as an answer is, in full
+   * Markdown, inside the same bubble, and copied as its Markdown; never
+   * editable.
+   */
+  brief?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -45,9 +52,15 @@ const emit = defineEmits<{
 const { copy, copied } = useClipboardItems({ copiedDuring: 1500 })
 const editor = ref<InstanceType<typeof MessageEditor>>()
 
-/** Copy puts the message on the clipboard in every form, its files with it (`product.md` § Writing a message). */
+/**
+ * Copy puts the message on the clipboard in every form, its files with it
+ * (`product.md` § Writing a message); a brief, as its Markdown, as an
+ * answer's Copy does.
+ */
 function copyMessage(): void {
-  const item = editor.value?.clipboardItem()
+  const item = typeof props.brief === 'string'
+    ? new ClipboardItem({ 'text/plain': new Blob([props.brief], { type: 'text/plain' }) })
+    : editor.value?.clipboardItem()
   if (item) {
     copy([item]).catch((error: unknown) => reportError('Couldn’t Copy the Message', error))
   }
@@ -93,7 +106,7 @@ const actions = computed<BubbleAction[]>(() => {
     icon: copied.value ? Check : Copy,
     emit: copyMessage,
   })
-  if (props.editable) {
+  if (props.editable && typeof props.brief !== 'string') {
     list.push({
       key: 'edit',
       hint: 'Edit',
@@ -220,7 +233,12 @@ useResizeObserver(bodyRef, measure)
           class="select-text text-conversation"
           :class="textClass"
         >
+          <StreamedMarkdown
+            v-if="typeof brief === 'string'"
+            :content="brief"
+          />
           <MessageEditor
+            v-else
             ref="editor"
             :markdown="message.markdown"
             :attachments="message.capsules"

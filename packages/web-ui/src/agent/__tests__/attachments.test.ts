@@ -14,7 +14,6 @@ import {
   composerRemoteAttachment,
   decodeRemoteReference,
   encodeRemoteReference,
-  remoteAttachmentError,
   dataTransferFiles,
   filePreviewUrl,
   type AttachmentUploadUpdate,
@@ -87,8 +86,6 @@ test('a remote file is ready at once, and its reference names its host and full 
   expect(remote.name).toBe('package.json')
   expect(remote.kind).toBe('reference')
   expect(attachmentsReady([remote])).toBe(true)
-  expect(remoteAttachmentError(remote.path, remote.host, [remote])).toBeDefined()
-  expect(remoteAttachmentError(remote.path, 'build-01', [remote])).toBeUndefined()
   const encoded = encodeRemoteReference(remote.host, remote.path)
   expect(encoded.includes(remote.path)).toBe(true)
   expect(decodeRemoteReference(encoded)).toEqual({
@@ -98,12 +95,9 @@ test('a remote file is ready at once, and its reference names its host and full 
   })
 })
 
-test('empty, oversized, and duplicate files are refused', () => {
-  expect(attachmentFileError(new File([], 'empty.txt'), [])).toBeDefined()
-  expect(attachmentFileError(new File(['x'], 'note.txt'), ['note.txt'])).toBe(
-    'note.txt is already attached.'
-  )
-  expect(attachmentFileError(new File(['x'], 'note.txt'), [])).toBeUndefined()
+test('an empty file is refused', () => {
+  expect(attachmentFileError(new File([], 'empty.txt'))).toBeDefined()
+  expect(attachmentFileError(new File(['x'], 'note.txt'))).toBeUndefined()
 })
 
 test('the upload queue reports ready, rejects a failure, and silences a cancelled job', async () => {
