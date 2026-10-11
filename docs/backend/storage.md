@@ -181,9 +181,8 @@ input, which the multi-worker control service also relies on
   [origin](../product/product.md#conversation-titles), archive and pin state,
   ordering, read revision, target selection, target context revision, last
   switch, Cloud reset marker, the conversation's model selection as JSON
-  ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)),
-  the counts of messages the user sent and the last generated title had
-  seen. The target is
+  ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
+  The target is
   typed columns: its kind (Cloud, a device directory, or a workspace) and the
   device, path or workspace that kind names, checked per kind. A target switch
   compares and sets these columns, so it commits only against the selection it

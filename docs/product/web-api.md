@@ -45,7 +45,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Settings | `GET /settings` returns fixed instance mode; `GET/PATCH /settings/preferences` |
 | Subagents | `PUT /subagents { enabled }`; `POST /subagents/profiles`, `PATCH /subagents/profiles/:id`, `DELETE /subagents/profiles/:id`; the switch and the profiles are part of the product state ([Subagents](#subagents)) |
 | Instructions | `PUT /instructions { text }`; the text is part of the product state ([Instructions](#instructions)) |
-| Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `DELETE /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }`, `POST /conversations/:id/title` requests a [generated title](product.md#conversation-titles) |
+| Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `DELETE /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }` |
 | Search | `GET /search?q=<query>` finds the caller's conversations ([Search](#search)) |
 | Conversation history | `GET /conversations/:id/transcript?node=&before=\|after=\|around=` reads one page of an agent's transcript, `GET /conversations/:id/transcript/blocks/:blockId?node=` one block whole, `GET /conversations/:id/subagents` the conversation's subagents and `GET /conversations/:id/commands/:commandId` where the call that started a command lies ([Conversation history](#conversation-history)); `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `POST /conversations/:id/fs/exists`, `WS /conversations/:id/fs/watch`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
@@ -1096,10 +1096,7 @@ Activity timestamps never reorder rows.
 in, resolved the same way for a device directory, a workspace, and the Cloud, so
 the web app never derives it. Status is running/compacting from the live agent
 tree, otherwise completed/error/stopped from its latest terminal block, or idle.
-An unfinished checkpoint without a live session is interrupted. `titleCurrent`
-says whether the title has read every message the user sent, when asking for a
-new one could say nothing new, and `titleGenerating` whether a title request is
-in flight. `pluginsChanged` says whether the conversation's tree is open
+An unfinished checkpoint without a live session is interrupted. `pluginsChanged` says whether the conversation's tree is open
 with commands of plugins the user has since turned on or off, so a reload
 would change them ([Reload](#a-users-plugins)). `draftRevision` is
 the revision of the conversation's
@@ -1133,15 +1130,6 @@ the needs-you mark, and `permissionsRevision` rises with each change of its
 requests; a page that shows the conversation reads them when it is newer
 than the revision it holds. `pluginRevisions` and
 `permissionsRevision` are [counted in memory](#revisions-counted-in-memory).
-
-`POST /api/conversations/:id/title`, without a body, asks the conversation's
-model selection for a new title from every message the user sent and answers
-202; the title arrives with the conversation's summary once written. A
-conversation without message text answers 409 `no_messages`, one without a
-model 409 `model_not_selected`, an archived one 409 `conversation_archived`,
-and one whose provider is no longer in the caller's scope 404
-`provider_not_found`.
-
 A conversation is running while its tree will go on working without the user: an
 agent of the tree is acting, or a child is still open. An agent acts until the
 save that ends its action commits, which is also when the page sees its phase

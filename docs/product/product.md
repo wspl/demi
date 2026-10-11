@@ -520,14 +520,10 @@ rename at any time ──► title = what the user typed               origin: u
 ```
 
 Later the conversation turns to the login test and the title no longer says
-what it is about. The Rename button beside the title opens a menu of two ways
-to name the conversation: **Detect Title** asks the model for a new one, and
-**Rename** lets the user type it where the title stands, which a double-click
-on the title does too. Nothing shows that the model is writing: the Rename
-button stays as it is and its menu opens, Detect Title is unavailable while
-the request runs, and Rename works. When the model's title arrives, the title
-simply changes; a rename made meanwhile wins and stays. Afterwards Detect
-Title is unavailable until the user sends another message.
+what it is about. The Rename button beside the title lets the user type a new
+one where the title stands, which a double-click on the title does too. The
+model writes a title once, for the first message; after that the title is the
+user's to change.
 
 Every title records its origin, one of `placeholder` ("New conversation",
 before any send), `message`, `generated`, and `user`. A `message` title is
@@ -546,13 +542,13 @@ The request:
 
 | Aspect | Rule |
 | --- | --- |
-| When | At the first send, concurrently with the first turn: it neither waits for the turn nor delays it. A first message without text starts none, and the title stays the placeholder until renamed. After that only when the user asks, with Detect Title. One request per conversation at a time; asking while one runs joins it. |
+| When | At the first send, concurrently with the first turn: it neither waits for the turn nor delays it. A first message without text starts none, and the title stays the placeholder until renamed. There is no other request. |
 | Model | The provider and model selected for the conversation at that moment. No separate title model is configured. The messages therefore go only where the user already chose to send them. |
 | Effort | The lowest thinking effort the model offers, the default service tier, and an output limit of 4,096 tokens, room for that effort's thinking and one line, or the model's own [output limit](../providers/models.md#output-limit) when it is lower. At 1,024 the baseline model's lowest effort left about one title in ten empty, its thinking spending the whole limit. |
 | Input | A fixed title instruction as the system prompt, and one user message holding the text of every message the user has sent, oldest first and numbered. Each is cut to its first 400 characters, and the whole to 4,000: when they do not fit, the first message and the most recent ones stay and the middle is left out, since the first says what the conversation set out to do and the last what it has become. No agent system prompt, no tools, no assistant output, no attachments or images, no file references. The input stays short so that the title arrives quickly. At the first send the input is that one message. |
 | Path | The same metered provider runtime a turn uses, so the request counts in the user's usage ledger and obeys the same limits. It is not a session turn: nothing is added to the transcript and no session event is emitted. |
 | Output | The first non-empty line of the text response, without surrounding quotes, cut to 80 characters. Thinking output is ignored. An empty result writes nothing. |
-| Failure | A refused, failed or empty request is logged and ends there; the title in place stays, and is already usable. Nothing retries by itself: Detect Title stays available, and choosing it again is the retry. |
+| Failure | A refused, failed or empty request is logged and ends there; the title in place stays, and is already usable. Nothing retries it. |
 | Release | The request is aborted when the conversation is archived or the backend closes. |
 
 The limits of 80, 400 and 4,000 characters count Unicode scalar values, and a
@@ -740,26 +736,13 @@ after the instruction's examples ended in three Chinese ones. It also asks for n
 exact technical terms, file names, numbers and error codes kept, no tool
 names, no leading "the" or "my", and something meaningful even for a greeting.
 
-Detect Title is available exactly when a new title could differ from the last
-one the model wrote. The backend counts the user's messages on the conversation (a
-send, a steer, an edit and resend) and records, when a request finishes with a
-usable line, how many the request had seen. The title is current while the two
-are equal, and the menu item is disabled and says why; it returns with the
-next message. This holds for the first request as for one the user asked for,
-so a first title that failed leaves it available, and a title the user typed
-themselves can still be replaced by asking. The conversation summary carries both facts:
-`titleCurrent`, and `titleGenerating` while a request is in flight, which
-disables Detect Title, for the first request too.
+The page learns the generated title the way it learns a rename made
+elsewhere, from the conversation's summary on its
+[synchronization channel](web-api.md#page-synchronization); there is no title
+event of its own.
 
-`POST /api/conversations/:id/title` starts the request with the model
-settings the conversation's record holds and answers 202 at once; it answers
-409 `no_messages` when the user has sent no text. The page learns the new
-title the way it learns a rename made elsewhere, from the conversation's
-summary on its [synchronization channel](web-api.md#page-synchronization);
-there is no title event of its own.
-
-Not included: retitling by itself as a conversation grows, and titling from a
-different, cheaper model. The last is a
+Not included: asking the model for a new title later, retitling by itself as
+a conversation grows, and titling from a different, cheaper model. The last is a
 natural extension once instance or user configuration names such a model.
 
 Rationale: a request beside the turn, rather than a copy of the session the
