@@ -53,7 +53,18 @@ export function applyProductAppearance(choice: ProductAppearanceChoice): void {
   root.setAttribute('data-accent', choice.accent)
 }
 
-/** The transcript's text size, in px; the composer and previews follow the same token. */
+/**
+ * The transcript's text size, in px, when the user has picked none
+ * (`product.md` § Following the agent's work). The one default: the page
+ * writes it to `--agent-text`, which the stylesheets leave to it.
+ */
+export const DEFAULT_TRANSCRIPT_TEXT_SIZE = 14
+
+/**
+ * The transcript's text size, in px, on the document's `--agent-text`, which
+ * the agent's text, the user's messages, the transcript's rows and the
+ * composer read.
+ */
 export function applyTranscriptTextSize(px: number): void {
   document.documentElement.style.setProperty('--agent-text', `${px}px`)
 }
