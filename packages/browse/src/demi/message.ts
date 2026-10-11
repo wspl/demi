@@ -10,10 +10,7 @@
 import type { Locator, Page } from 'playwright'
 import type { Slot } from '../slot'
 import { Failure, type Tool } from '../tool'
-import { conversationId, summary, TURN_MS, waitSummary, type Summary } from './turn'
-
-/** How long a new conversation may take to get its address once its first message is sent. */
-const CREATE_MS = 30_000
+import { conversationAddress, conversationId, summary, TURN_MS, waitSummary, type Summary } from './turn'
 
 /** How long the page may take to show a failure the backend already reports. */
 const SHOW_MS = 10_000
@@ -44,7 +41,7 @@ export async function messageOn(slot: Slot, page: Page, text: string, options: M
   // The message replaces a draft the composer holds, as the message sent is the one given.
   await composer.fill(text)
   await composer.press('Enter')
-  await page.waitForURL((url) => /\/chat\/[^/?#]+/.test(url.pathname), { timeout: CREATE_MS })
+  await conversationAddress(page)
   const id = conversationId(page)
   if (id === null) {
     throw new Failure(`The page left the conversation: ${page.url()}`)
