@@ -3,7 +3,6 @@ import { computed, ref, watch } from 'vue'
 import { Cloud } from '@lucide/vue'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { reportError } from '@demicodes/web-ui/infra/errors'
 import { baseName } from '@demicodes/utils'
 
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
@@ -11,10 +10,7 @@ import { loadedInstructions } from '@demicodes/web-ui/agent/instructions'
 import { latestBlocks } from '@demicodes/web-ui/agent/history'
 import type { InstructionEntry } from '@demicodes/protocol'
 
-import {
-  composerRemoteAttachment,
-  remoteAttachmentError,
-} from '@demicodes/web-ui/agent/message-input/attachments'
+import { composerRemoteAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import { turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import { executionFor, hostDeviceOptions, moveLocked, primaryHostOf } from '../targets/execution'
@@ -178,15 +174,6 @@ const remoteHosts = computed(() => {
 })
 const remotePicker = ref<InstanceType<typeof RemoteFilePicker>>()
 function attachRemote(file: { deviceId: string; host: string; path: string }) {
-  const error = remoteAttachmentError(
-    file.path,
-    file.host,
-    props.conversation.files,
-  )
-  if (error) {
-    reportError('Couldn’t Attach', error, { userVisible: true, expected: true })
-    return
-  }
   const item = { ...composerRemoteAttachment(file), deviceId: file.deviceId }
   props.conversation.files.push(item)
   composer.value?.insertCapsules([composerCapsule(item)])
