@@ -104,6 +104,9 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
   }
 }
 
+/** The status the backend answers a plugin's failure with, which a specimen's failure without a reason stands for. */
+export const SERVER_FAILED = '500 Internal Server Error'
+
 function unknownMethod(method: string): never {
   throw new PluginCallError('unknown_method', `No method "${method}"`)
 }
@@ -156,8 +159,12 @@ export function browserPlugin(browser: GalleryBrowser, panel: GalleryBrowserPlug
       try {
         return await call(method, params)
       } catch (error) {
+        // A refusal with its reason, as the backend answers one with 409; one without, as it answers the
+        // plugin's own failure.
         if (error instanceof BrowserTabsError) {
-          throw new PluginCallError(error.code ?? 'failed', error.message)
+          throw error.reason === null
+            ? new PluginCallError('plugin_failed', error.message, SERVER_FAILED)
+            : new PluginCallError(error.reason, error.message, '409 Conflict')
         }
         throw error
       }

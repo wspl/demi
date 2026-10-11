@@ -18,9 +18,11 @@ demi-host-interface = { path = "../host-interface" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 futures-util.workspace = true
+http.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_plain.workspace = true
 tokio = { workspace = true, features = ["sync"] }
 
 [dev-dependencies]

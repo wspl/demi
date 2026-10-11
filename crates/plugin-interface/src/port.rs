@@ -371,6 +371,11 @@ pub enum PortRefusal {
     /// standard error.
     #[error("the operation failed: {stderr}")]
     Operation { stderr: String },
+    /// The Host could not start the operation: its package's service did
+    /// not start, or the runner refused to start it, in the runner's words
+    /// (`runner.md` § Service streams).
+    #[error("{message}")]
+    Service { message: String },
     /// Another write of the value came first.
     #[error("the value changed since it was read")]
     Conflict,

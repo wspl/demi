@@ -12,7 +12,7 @@ import { clientPlatform } from '@demicodes/utils'
 import { useDocumentVisibility, useDebounceFn } from '@vueuse/core'
 import { computed, shallowReactive, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue'
 import { z } from 'zod'
-import type { BrowserTab, LiveDownload, LiveTab, NeededBrowser } from '../generated/plugin'
+import { panelReasonSchema, type BrowserTab, type LiveDownload, type LiveTab, type NeededBrowser, type PanelReason } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
 import { picturesSupported } from './pictures'
 import type { HeadlineText, HostArtifact, OpenUserStream, PageContext, SentenceText } from '@demicodes/plugin-sdk'
@@ -43,8 +43,15 @@ export const browserTabDataSchema = z.object({
   tab: z.string().optional(),
   /** The browser no longer has that tab. */
   closed: z.boolean().optional(),
-  /** Why the plugin could not open a browser tab for it. */
-  failure: z.object({ code: z.string(), message: z.string() }).optional(),
+  /**
+   * Why the plugin could not open a browser tab for it: the reason, or the
+   * HTTP status a call would have answered the same failure with, and the
+   * Host's or the plugin's message, which the page never shows.
+   */
+  failure: z.union([
+    z.object({ code: panelReasonSchema, message: z.string() }),
+    z.object({ status: z.string(), message: z.string() }),
+  ]).optional(),
   /** The page's title as the address bar last showed it, so the strip names the tab while no view shows it. */
   title: z.string().optional(),
   /** How many times the agent showed the browser tab; absent while it never did (`live-view.md` § Showing a tab). */
@@ -67,56 +74,102 @@ export interface BrowserTabList {
 /** Why the strip cannot make a browser tab: the Host lacks the browser, which only the agent installs. */
 export const NO_BROWSER: SentenceText = 'No browser on this Host. Ask the agent to run demi browser install.'
 
-/**
- * A request the backend or the conversation browser refused, with the
- * answer's own code and message, or one that failed otherwise. A request
- * never fails for the page's connection: the shell's call waits for the
- * backend (`plugin-pages.md` § The page context).
- */
-export class BrowserTabsError extends Error {
-  constructor(
-    /** The backend's code; null for a failure that is no answer of the backend's. */
-    readonly code: string | null,
-    message: string,
-  ) {
-    super(message)
-  }
-}
+/** Why the plugin could not open a browser tab for a panel tab, as its data keeps it. */
+export type TabFailure = NonNullable<BrowserTabData['failure']>
 
 /**
- * What a refusal's code means to the user, in the Writing page's words rather
- * than the Host's error text: the browser's own codes, and the Host's that a
- * request or a tab's `failure` carries, such as an offline device, a stopped
- * Cloud or a connection that broke partway (`live-view.md` § A browser tab in
- * the panel).
+ * What every reason the page can be told means to the user, in the Writing
+ * page's words rather than the Host's error text (`live-view.md` § The tab
+ * methods): the browser's own codes, the view's capture notices, the
+ * conversation's host access's refusals and the plugin call route's own. The
+ * set is the plugin's, so a reason without a sentence does not build.
  */
-const REFUSALS: Readonly<Record<string, SentenceText>> = {
-  history_boundary: 'The tab has no page to go to in that direction.',
+const REASONS: Readonly<Record<PanelReason, SentenceText>> = {
   invalid_input: 'The browser opens only web, file and blank pages.',
   tab_not_found: 'This page is no longer open on the device.',
-  host_stopped: 'The Cloud is stopped.',
-  cloud_resetting: 'The Cloud is resetting.',
-  cloud_capacity: 'The Cloud cannot start now: the server has no room for it.',
-  cloud_crash_loop: 'The Cloud stopped starting after repeated failures.',
-  cloud_unavailable: 'The Cloud is not available right now.',
-  device_offline: 'The device is offline.',
-  device_not_found: 'The device was removed from your account.',
-  host_operation_failed: 'The connection to the device broke.',
-  conversation_busy: 'The conversation is busy. Try again in a moment.',
-  conversation_archived: 'This conversation is archived.',
-  navigation_failed: 'The browser couldn’t load the page.',
+  tab_busy: 'The tab is busy with another request. Try again in a moment.',
+  stale_ref: 'The page changed before the browser could act on it.',
+  stale_cursor: 'The browser’s records changed before they could be read.',
+  stale_inventory: 'The page’s files changed before they could be read.',
+  stale_tools: 'The page’s tools changed before they could be used.',
+  target_not_found: 'The browser couldn’t find that on the page.',
+  ambiguous_target: 'More than one part of the page matches.',
+  not_actionable: 'That part of the page can’t be used right now.',
   timeout: 'The browser didn’t answer in time.',
+  dialog_blocked: 'A dialog on the page is waiting for an answer.',
+  dialog_not_found: 'The page has no dialog waiting for an answer.',
+  invalid_dialog_action: 'The dialog can’t be answered that way.',
+  history_boundary: 'The tab has no page to go to in that direction.',
+  navigation_failed: 'The browser couldn’t load the page.',
+  protected_value: 'The page keeps that value private.',
+  side_effect_rejected: 'The browser didn’t let that change the page.',
+  unsupported_result: 'The browser can’t pass on what the page gave.',
+  unsupported_capability: 'The browser on the device can’t do that.',
+  cdp_method_denied: 'The browser doesn’t allow that.',
+  output_exists: 'A file with that name already exists on the device.',
+  io_error: 'The device couldn’t read or write a file the browser needs.',
+  result_too_large: 'The page gave more than the browser can pass on.',
+  partial_failure: 'The browser did only part of that.',
+  driver_error: 'The browser on the device ran into a problem.',
   browser_unavailable: 'The browser couldn’t start on the device.',
   browser_lost: 'The browser on the device stopped.',
-  input_failed: 'The page didn’t receive your input.',
+  cancelled: 'The request was canceled.',
+  outcome_unknown: 'The connection to the browser broke before it could say whether that worked.',
   capture_unavailable: 'This device can’t capture the browser’s pages.',
   capture_failed: 'The device couldn’t capture the page. It’s trying again.',
   capture_stopped: 'The device couldn’t capture the page.',
+  conversation_not_found: 'This conversation no longer exists.',
+  conversation_archived: 'This conversation is archived.',
+  conversation_busy: 'The conversation is busy. Try again in a moment.',
+  host_stopped: 'The Cloud is stopped.',
+  device_offline: 'The device is offline.',
+  device_not_found: 'The device was removed from your account.',
+  cloud_unavailable: 'The Cloud is not available right now.',
+  cloud_resetting: 'The Cloud is resetting.',
+  cloud_capacity: 'The Cloud cannot start now: the server has no room for it.',
+  cloud_crash_loop: 'The Cloud stopped starting after repeated failures.',
+  host_operation_failed: 'The connection to the device broke.',
+  unknown_plugin_method: 'This server can’t run a browser.',
+  plugin_disabled: 'The Browser plugin is off.',
 }
 
-/** A refusal's code as a sentence the page shows (`live-view.md` § A browser tab in the panel). */
-export function refusalSentence(code: string | null): SentenceText {
-  return (code === null ? undefined : REFUSALS[code]) ?? 'The browser couldn’t do that.'
+/** A reason as the sentence the page shows for it (`live-view.md` § The tab methods). */
+export function reasonSentence(reason: PanelReason): SentenceText {
+  return REASONS[reason]
+}
+
+/** What a failure with no reason says when no answer of the backend's came, as for a network failure or a timeout. */
+export const NO_ANSWER: SentenceText = 'The server didn’t answer.'
+
+/** What a failure with no reason says when the backend answered with `status`, such as `500 Internal Server Error`. */
+export function serverRefused(status: string): SentenceText {
+  return `The server couldn’t do that: ${status}.`
+}
+
+/** What a tab the plugin could not open says, from its data (`live-view.md` § A browser tab in the panel). */
+export function failureSentence(failure: TabFailure): SentenceText {
+  return 'code' in failure ? reasonSentence(failure.code) : serverRefused(failure.status)
+}
+
+/**
+ * A request that failed, with its reason when it has one and the sentence
+ * the page shows for it. A request never fails for the page's connection:
+ * the shell's call waits for the backend (`plugin-pages.md` § The page
+ * context).
+ */
+export class BrowserTabsError extends Error {
+  constructor(
+    /** The backend's or the browser's reason; null for a failure that carries none. */
+    readonly reason: PanelReason | null,
+    message: SentenceText,
+  ) {
+    super(message)
+  }
+
+  /** A failure for `reason`, in the page's words for it. */
+  static of(reason: PanelReason): BrowserTabsError {
+    return new BrowserTabsError(reason, reasonSentence(reason))
+  }
 }
 
 /**
@@ -156,7 +209,7 @@ export interface BrowserTabsApi {
 }
 
 /** Refusals of a Host that cannot be reached for the moment: an offline device, a stopped Cloud. */
-const UNREACHED = new Set(['device_offline', 'host_stopped'])
+const UNREACHED: ReadonlySet<PanelReason | null> = new Set<PanelReason>(['device_offline', 'host_stopped'])
 
 /**
  * Whether a request failed because the backend could not reach the Host: it
@@ -164,11 +217,11 @@ const UNREACHED = new Set(['device_offline', 'host_stopped'])
  * the page (`live-view.md` § A browser tab in the panel).
  */
 function unreached(error: unknown): boolean {
-  return error instanceof BrowserTabsError && error.code !== null && UNREACHED.has(error.code)
+  return error instanceof BrowserTabsError && UNREACHED.has(error.reason)
 }
 
 /** Answers that will not change by asking again. */
-const FINAL_CODES = new Set(['conversation_not_found', 'conversation_archived'])
+const FINAL_REASONS: ReadonlySet<PanelReason | null> = new Set<PanelReason>(['conversation_not_found', 'conversation_archived'])
 
 /** Whether this web browser can show the view's pictures, once it has answered. */
 export type PictureSupport = 'checking' | 'supported' | 'unsupported'
@@ -317,7 +370,7 @@ export class BrowserTabsController {
       }
     })
     watch(this.listError, (error) => {
-      if (error?.code && FINAL_CODES.has(error.code)) {
+      if (error && FINAL_REASONS.has(error.reason)) {
         this.closeView()
       }
     })
@@ -610,7 +663,7 @@ export class BrowserTabsController {
       if (this.requests.get(tab) === asked) {
         this.requests.delete(tab)
       }
-      if (error instanceof BrowserTabsError && error.code === 'tab_not_found') {
+      if (error instanceof BrowserTabsError && error.reason === 'tab_not_found') {
         this.lookFor(tab)
         return
       }
@@ -843,9 +896,9 @@ export class BrowserTabsController {
     return session
   }
 
-  /** A notice the picture still shows through is a failed request: a toast in the Writing page's words for its code. */
-  private notice(code: string): void {
-    this.errors.report(NOTICE_TITLE, new BrowserTabsError(code, refusalSentence(code)))
+  /** A notice the picture still shows through is a failed request: a toast in the Writing page's words for its reason. */
+  private notice(reason: PanelReason): void {
+    this.errors.report(NOTICE_TITLE, BrowserTabsError.of(reason))
   }
 
   private closeView(): void {
@@ -869,9 +922,7 @@ export class BrowserTabsController {
   }
 }
 
+/** A failure that is no answer of the backend's, such as a network failure or a timeout, as the page says it. */
 export function asTabsError(error: unknown): BrowserTabsError {
-  if (error instanceof BrowserTabsError) {
-    return error
-  }
-  return new BrowserTabsError(null, error instanceof Error ? error.message : String(error))
+  return error instanceof BrowserTabsError ? error : new BrowserTabsError(null, NO_ANSWER)
 }

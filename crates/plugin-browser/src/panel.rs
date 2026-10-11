@@ -13,11 +13,13 @@ use demi_command_package_browser_protocol::browser::{BrowserCreatedBy, BrowserTa
 use demi_plugin_interface::{PluginError, PluginPort, PortFailure, PortRefusal};
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::panel::{CreatePanelTab, PanelTab};
+use http::StatusCode;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use tokio::sync::Mutex;
 
 use crate::page;
+use crate::reason::PanelReason;
 
 /// The kind whose tabs the plugin takes part in.
 pub const KIND: &str = "browser";
@@ -289,16 +291,27 @@ async fn open_for(
 }
 
 /// Why a browser tab could not be opened, as the tab's content shows it:
-/// the browser's or the Host's own code and message.
+/// the reason the page has words for, the browser's or the Host's, or else
+/// the HTTP status a page call would answer the same failure with, and the
+/// message (`live-view.md` § The tab methods).
 fn failure(error: &PluginError) -> Value {
-    let (code, message) = match error {
-        PluginError::Refused { reason, message } => (json!(reason), message.clone()),
+    let message = error.to_string();
+    let (reason, status) = match error {
+        PluginError::Refused { reason, .. } => {
+            (reason.parse::<PanelReason>().ok(), StatusCode::CONFLICT)
+        }
         PluginError::Port {
-            refusal: PortRefusal::Host { code, message, .. },
-        } => (json!(code), message.clone()),
-        error => (json!("failed"), error.to_string()),
+            refusal: PortRefusal::Host { code, status, .. },
+        } => (
+            PanelReason::of_host(*code),
+            StatusCode::from_u16(*status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+        ),
+        _ => (None, StatusCode::INTERNAL_SERVER_ERROR),
     };
-    json!({ "code": code, "message": message })
+    match reason {
+        Some(reason) => json!({ "code": reason, "message": message }),
+        None => json!({ "status": status.to_string(), "message": message }),
+    }
 }
 
 /// The data of the panel tab `id`; none once the panel no longer has it.

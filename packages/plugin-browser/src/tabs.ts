@@ -1,9 +1,10 @@
 import { computed, onScopeDispose } from 'vue'
 import { z } from 'zod'
-import { BrowserTabsError, asTabsError, refusalSentence, type BrowserTabsApi } from './live/tabs'
+import { BrowserTabsError, asTabsError, NO_ANSWER, serverRefused, type BrowserTabsApi } from './live/tabs'
 import { PluginCallError, type ConversationPlugin } from '@demicodes/plugin-sdk'
 import {
   browserTabsSchema,
+  panelReasonSchema,
   tabBoundSchema,
   tabMovedSchema,
   type BindTab,
@@ -22,12 +23,17 @@ import {
 const BIND_TIMEOUT_MS = 310_000
 
 /**
- * A refusal with the plugin's reason, in the words the page shows for it,
- * never the Host's own error text (`live-view.md` § A browser tab in the
- * panel).
+ * A refused call in the words the page shows for it, never the Host's own
+ * error text (`live-view.md` § The tab methods): its reason's, or for an
+ * answer whose reason is not one of the plugin's, its HTTP status; a call no
+ * answer came for says so.
  */
 function tabsError(error: PluginCallError): BrowserTabsError {
-  return new BrowserTabsError(error.reason, refusalSentence(error.reason))
+  const reason = panelReasonSchema.safeParse(error.reason)
+  if (reason.success) {
+    return BrowserTabsError.of(reason.data)
+  }
+  return new BrowserTabsError(null, error.status === null ? NO_ANSWER : serverRefused(error.status))
 }
 
 /**

@@ -2402,9 +2402,11 @@ dependencies = [
  "demi-plugin-interface",
  "demi-web-api-protocol",
  "futures-util",
+ "http",
  "schemars",
  "serde",
  "serde_json",
+ "serde_plain",
  "tokio",
 ]
 

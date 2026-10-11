@@ -82,7 +82,7 @@ beforeEach(() => {
     if (path === '/api/plugins/skills/calls/remove_source') {
       return Response.json(
         { code: 'plugin_refused', reason: 'source_not_found', message: 'No skill source "src_2"' },
-        { status: 409 },
+        { status: 409, statusText: 'Conflict' },
       )
     }
     throw new Error(`Unexpected request: ${path}`)
@@ -126,10 +126,15 @@ test('a call goes to its plugin route, for the user or for a conversation, and a
   ])
 })
 
-test("a refusal rejects with the plugin's own reason", async () => {
+// The status is what a page says for a reason it has no words for (`live-view.md` § The tab methods).
+test("a refusal rejects with the plugin's own reason and the answer's status", async () => {
   const refused = page('skills').plugin.call('remove_source', { source: 'src_2' }, z.null())
   await expect(refused).rejects.toBeInstanceOf(PluginCallError)
-  await expect(refused).rejects.toMatchObject({ reason: 'source_not_found', message: 'No skill source "src_2"' })
+  await expect(refused).rejects.toMatchObject({
+    reason: 'source_not_found',
+    message: 'No skill source "src_2"',
+    status: '409 Conflict',
+  })
 })
 
 /** The backend goes away, as while it restarts: its channel closes, and no call reaches it. */
