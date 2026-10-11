@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { TriangleAlert } from '@lucide/vue'
+import { TriangleAlert, Zap } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import ModelMenu from '../agent/ModelMenu.vue'
@@ -81,26 +81,27 @@ watch(
   },
 )
 
-/** What the menu's trigger reads: Parent’s Model, or the model with its provider, effort and Fast. */
+/**
+ * What the menu's trigger reads, as the composer's chip does: Parent’s
+ * Model, or the model with its provider, then its effort a step quieter,
+ * then the bolt while Fast is on.
+ */
 const modelLabel = computed(() => {
   const settings = draft.value.model
   if (!settings) {
-    return 'Parent’s Model'
+    return { name: 'Parent’s Model', effort: '', fast: false }
   }
   const listed = (props.catalogModels[settings.providerId] ?? []).find((model) => model.id === settings.modelId)
-  const parts = [profileModelLabel(settings, props.providers, props.catalogModels)]
   const effort = settings.thinkingEffort
   const reasoning = buildReasoningState(listed)
-  // An effort the model no longer offers reads as itself, never as the first one a menu would show.
-  if (listed && effort !== null && !offersEffort(listed, effort)) {
-    parts.push(effort)
-  } else if (reasoning) {
-    parts.push(reasoningOptionLabel(reasoning, effort))
+  return {
+    name: profileModelLabel(settings, props.providers, props.catalogModels),
+    // An effort the model no longer offers reads as itself, never as the first one a menu would show.
+    effort: listed && effort !== null && !offersEffort(listed, effort)
+      ? effort
+      : reasoning ? reasoningOptionLabel(reasoning, effort) : '',
+    fast: isFastMode(listed, settings.serviceTierId),
   }
-  if (isFastMode(listed, settings.serviceTierId)) {
-    parts.push('Fast')
-  }
-  return parts.join(' · ')
 })
 const missing = computed(() => profileMissing(draft.value.model, props.providers, props.catalogModels))
 
@@ -186,7 +187,11 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               <template #trigger>
                 <span class="flex min-w-0 items-center gap-1.5">
                   <TriangleAlert v-if="missing" :size="ICON_PX.in24" class="shrink-0 text-on-warning" />
-                  <span class="min-w-0 truncate">{{ modelLabel }}</span>
+                  <span class="flex min-w-0 items-center gap-1">
+                    <span class="min-w-0 truncate">{{ modelLabel.name }}</span>
+                    <span v-if="modelLabel.effort" class="shrink-0 text-fg-subtle">{{ modelLabel.effort }}</span>
+                    <Zap v-if="modelLabel.fast" :size="ICON_PX.in24" class="shrink-0" aria-label="Fast" />
+                  </span>
                 </span>
               </template>
               <template #content>

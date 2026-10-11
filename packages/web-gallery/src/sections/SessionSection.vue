@@ -142,13 +142,12 @@ import {
   wideImageTool,
 } from '../fixtures/blocks'
 import {
-  demoModels,
   demoProviders,
   offlineProviders,
   openaiOnlyProviders,
   usageAt,
 } from '../fixtures/catalog'
-import { setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
+import { composerModels, setGalleryContextLimit } from '../fixtures/context-limits'
 import { galleryBlobs } from '../fixtures/blobs'
 import { agentLinksWrapMarkdown, agentReceiptMessages, briefSubagent, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
 import GalleryReceipts from '../components/GalleryReceipts.vue'
@@ -848,7 +847,6 @@ function playTurn(kind: TurnFlowKind): void {
 }
 
 /** The catalog with the user's context limits, which the selector specimens' Context rows change. */
-const selectorModels = computed(() => withContextLimits(demoModels))
 const selectorSettings = ref<ModelSettings>({
   providerId: 'anthropic',
   modelId: 'claude-sonnet',
@@ -1701,7 +1699,7 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="chip">
             <ModelSelector
               :providers="demoProviders"
-              :models="selectorModels"
+              :models="composerModels"
               :settings="selectorSettings"
               @change="changeSelector"
               @context-limit="setGalleryContextLimit"
@@ -1710,7 +1708,7 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="fast">
             <ModelSelector
               :providers="demoProviders"
-              :models="selectorModels"
+              :models="composerModels"
               :settings="fastSettings"
               @change="changeFast"
               @context-limit="setGalleryContextLimit"
@@ -1720,7 +1718,7 @@ onBeforeUnmount(() => {
             <GallerySpecimen variant="menu">
               <ModelMenu
                 :providers="demoProviders"
-                :models="selectorModels"
+                :models="composerModels"
                 :settings="selectorSettings"
                 @change="changeSelector"
                 @context-limit="setGalleryContextLimit"
