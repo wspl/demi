@@ -133,13 +133,16 @@ Host. For example, the agent's reply contains an image and a link:
 ```
 
 The chart loads from the Host the way a document's image does, and a click on
-`plot.py` opens it in the File view.
+`plot.py` opens it in the File view. A link to a Host file shows the file's
+icon before its name, the icon the file tree shows for it, so a file reads as
+a file and not as a page on the web.
 
 | Target | A link | An image |
 | --- | --- | --- |
 | Relative path | Resolved against the conversation's working directory, where the agent's commands run; the file opens in the File view, and a `#L42` after the path opens it at line 42, scrolled there and marked for a moment as a search result is | Resolved the same way and loaded from the Host |
 | Absolute path, or a `file://` URL | The file at that path, opened in the File view | Loaded from the Host |
 | `http` or `https` URL | Opens in a new tab of the user's browser | Loaded from that URL |
+| `agent:4`, an agent of the conversation ([Linking an agent](../agent/subagents.md#linking-an-agent)) | Opens the Agents window on that agent's tab | Its alt text |
 | `attachment:a3`, an attachment of the conversation ([Attachment commands](../execution/commands.md#attachment-commands)) | Opens it: an image or a video in the [media viewer](#the-media-viewer), any other file as a download | An image shows; a video shows its first frame with a play mark, at an image's bounds, and a click plays it in the viewer |
 | `data:` URL | Shown as text | Shown as it is |
 | Anything else | Shown as text | Its alt text |
