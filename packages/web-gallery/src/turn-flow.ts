@@ -7,6 +7,8 @@ import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { ChatSessionState, ConversationState, PendingSubmissionState } from '@demicodes/web-ui/agent/types'
 import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import { segmentStreamUnits } from '@demicodes/web-ui/ui/stream-reveal'
+import { contentCopy, type CopiedMessage } from '@demicodes/web-ui/agent/message-input/copied-message'
+import { showUnsent } from '@demicodes/web-ui/agent/unsent-toast'
 import { demoModel, editedFile, inRun, listedFiles, shellView, withLists, type ShellView } from './fixtures/blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './fixtures/catalog'
@@ -34,6 +36,17 @@ export type TurnFlowKind = 'turn' | 'undelivered' | 'offline' | 'resume' | 'retr
  */
 export type SentMessage = Pick<PendingSubmissionState, 'text' | 'attachments'> & {
   ready?: Promise<UserContentBlock[]>
+}
+
+/**
+ * The composer a specimen shows beside its flow, where Undo Send gives a
+ * message back as the product's does (`product.md` § Steer or queue).
+ */
+export interface UndoSendComposer {
+  /** Puts the message into the composer when it is empty, the caret at its end; false when it holds a draft, which stays. */
+  takeBack(message: CopiedMessage): boolean
+  /** Sends the message again the way it was sent, its files attached again without their bytes. */
+  sendAgain(message: CopiedMessage, way: 'steer' | 'queue'): void
 }
 
 /** The state `ChatSession` reads, over the full live conversation state the runtime keeps. */
@@ -170,8 +183,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   const pendingSubmissions = shallowRef<PendingSubmissionState[]>([])
   /** What each pending message sends, by its id, which its block holds once confirmed. */
   const contents = new Map<string, UserContentBlock[]>()
-  /** The waiting messages whose Remove is on its way, by id, which the list shows nowhere. */
+  /** The waiting messages whose Undo Send is on its way, by id, which the list shows nowhere. */
   const removing = shallowRef<string[]>([])
+  /** The composer the specimen shows, while it is mounted. */
+  let composer: UndoSendComposer | null = null
   /**
    * The message that starts a turn is on its way: the turn is as good as
    * running, so the composer shows Stop, and a message sent meanwhile
@@ -187,8 +202,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   const deliveries = new Map<string, number>()
   /** When the last message on its way is delivered, as `Date.now()`: the next one goes after it, never ahead. */
   let deliveredBy = 0
-  /** Remove or Send Now pressed on a steer or queued message on its way, by id, carried out once it is held. */
-  const wishes = new Map<string, 'remove' | 'sendNow'>()
+  /** Undo Send or Send Now pressed on a steer or queued message on its way, by id, carried out once it is held. */
+  const wishes = new Map<string, 'undoSend' | 'sendNow'>()
   let token = 0
   let sequence = 0
   /** The call of the turn that runs now, whose command a stop ends. */
@@ -752,7 +767,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * it holds this one, a steer in the running turn's steers and a queued
    * message in the queue, under the id it was sent with; with nothing
    * running, it is refused and goes as a message, which starts a turn, as
-   * the product sends it. Remove or Send Now pressed meanwhile is carried
+   * the product sends it. Undo Send or Send Now pressed meanwhile is carried
    * out then.
    */
   function deliverWaiting(content: UserContentBlock[], message: SentMessage, way: 'steer' | 'queue'): void {
@@ -769,10 +784,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     const wished = wishes.get(id)
     wishes.delete(id)
     if (state.phase === 'idle') {
-      if (wished === 'remove') {
-        // A message removed before it went is gone with its delivery.
-        dropSubmission(id)
+      if (wished === 'undoSend') {
+        // A message taken back before it went goes back to the user instead.
         removing.value = removing.value.filter((each) => each !== id)
+        giveBack(dropSubmission(id), pending.way === 'steer' ? 'steer' : 'queue')
         return
       }
       changeSubmission(id, { way: 'send' })
@@ -785,10 +800,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     } else {
       state.queue = [...state.queue, held]
     }
-    if (wished === 'remove' && pending.way === 'steer') {
-      removePendingSteer(id)
-    } else if (wished === 'remove') {
-      removeQueued(id)
+    if (wished === 'undoSend' && pending.way === 'steer') {
+      undoSendSteer(id)
+    } else if (wished === 'undoSend') {
+      undoSendQueued(id)
     } else if (wished === 'sendNow' && pending.way === 'steer') {
       interruptPendingSteer(id)
     } else if (wished === 'sendNow') {
@@ -796,8 +811,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   }
 
-  /** Keeps Remove or Send Now pressed on a message on its way as the wish; false for any other message. */
-  function keepWish(id: string, wished: 'remove' | 'sendNow'): boolean {
+  /** Keeps Undo Send or Send Now pressed on a message on its way as the wish; false for any other message. */
+  function keepWish(id: string, wished: 'undoSend' | 'sendNow'): boolean {
     if (!deliveries.has(id)) {
       return false
     }
@@ -981,14 +996,66 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     deliverWaiting(content, message, 'queue')
   }
 
-  /** Remove takes the row away at once, as the product's does; the simulated server holds the message no more right after. */
-  function removeQueued(id: string): void {
-    if (keepWish(id, 'remove')) {
+  /**
+   * Undo Send takes the row away at once, as the product's does, and the
+   * message goes back to the user; the simulated server holds it no more
+   * right after, so it never refuses.
+   */
+  function undoSendQueued(id: string): void {
+    undoSend(id, 'queue')
+  }
+
+  function undoSendSteer(id: string): void {
+    undoSend(id, 'steer')
+  }
+
+  function undoSend(id: string, way: 'steer' | 'queue'): void {
+    if (keepWish(id, 'undoSend')) {
       removing.value = [...removing.value, id]
       return
     }
-    state.queue = state.queue.filter((entry) => entry.id !== id)
+    const held = (way === 'steer' ? state.pendingSteers : state.queue).find((entry) => entry.id === id)
+    drop(id)
     removing.value = removing.value.filter((each) => each !== id)
+    if (held) {
+      giveBack(held.content, way)
+    }
+  }
+
+  /** The simulated server holds the steer or queued message `id` no more. */
+  function drop(id: string): void {
+    state.pendingSteers = state.pendingSteers.filter((entry) => entry.id !== id)
+    state.queue = state.queue.filter((entry) => entry.id !== id)
+  }
+
+  /**
+   * Gives a message Undo Send took back to the user, as the product does:
+   * into the specimen's composer when it is empty; otherwise a toast's Undo
+   * sends it again the way it was sent, through the composer when the
+   * specimen has one.
+   */
+  function giveBack(content: UserContentBlock[], way: 'steer' | 'queue'): void {
+    const copy = contentCopy(content)
+    if (composer?.takeBack(copy)) {
+      return
+    }
+    showUnsent(() => {
+      if (composer) {
+        composer.sendAgain(copy, way)
+      } else {
+        deliverWaiting(content, { text: copy.text, attachments: [] }, way)
+      }
+    })
+  }
+
+  /** The specimen's composer takes back what Undo Send gives; answers the call that lets it go again. */
+  function attachComposer(host: UndoSendComposer): () => void {
+    composer = host
+    return () => {
+      if (composer === host) {
+        composer = null
+      }
+    }
   }
 
   /**
@@ -1005,7 +1072,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     if (!item) {
       return
     }
-    removeQueued(id)
+    drop(id)
     if (state.phase === 'idle') {
       state.queue = [item, ...state.queue]
       return
@@ -1017,15 +1084,6 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     state.pendingSteers = []
     append(userBlock(item.content, item.id))
     runTurn(token)
-  }
-
-  function removePendingSteer(id: string): void {
-    if (keepWish(id, 'remove')) {
-      removing.value = [...removing.value, id]
-      return
-    }
-    state.pendingSteers = state.pendingSteers.filter((entry) => entry.id !== id)
-    removing.value = removing.value.filter((each) => each !== id)
   }
 
   /**
@@ -1041,7 +1099,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     if (!pending) {
       return
     }
-    removePendingSteer(id)
+    drop(id)
     cutRound()
     append(steerBlock(pending.content))
     thinkThenReply(token, WAIT_MS, THINK_2)
@@ -1230,10 +1288,11 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     compact,
     steer,
     queue,
-    removeQueued,
+    undoSendQueued,
     sendQueued,
-    removePendingSteer,
+    undoSendSteer,
     interruptPendingSteer,
+    attachComposer,
     abortSubagent,
     abortSubagents,
     abortTerminal,

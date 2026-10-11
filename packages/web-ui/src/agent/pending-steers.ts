@@ -69,7 +69,7 @@ export function pendingSteersToRenderBlocks(
 
 /**
  * What a message row says waits for the agent, with its line and its Send
- * Now and Remove (`product.md` § Steer or queue): a steer or a queued
+ * Now and Undo Send (`product.md` § Steer or queue): a steer or a queued
  * message, and a message on its way that will be one of them, from its
  * send, unless its delivery failed; undefined for any other row.
  */

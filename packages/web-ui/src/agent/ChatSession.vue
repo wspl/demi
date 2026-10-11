@@ -56,7 +56,7 @@ const props = withDefaults(defineProps<{
   /** The messages sent and not yet confirmed, in the order they were sent. */
   pendingSubmissions?: readonly PendingSubmissionState[]
   /**
-   * The waiting messages whose Remove is on its way, by id: their rows are
+   * The waiting messages whose Undo Send is on its way, by id: their rows are
    * gone from the press, and come back only when the removal is refused
    * (`product.md` § Steer or queue).
    */
@@ -122,9 +122,9 @@ const emit = defineEmits<{
   abortSubagents: []
   abortSubagent: [id: string]
   abortTerminal: [id: string]
-  removeQueued: [id: string]
+  undoSendQueued: [id: string]
   sendQueued: [id: string]
-  removePendingSteer: [id: string]
+  undoSendSteer: [id: string]
   interruptPendingSteer: [id: string]
   'update:messageEdit': [state: MessageEditState | null]
   /**
@@ -484,9 +484,9 @@ watch(
             :reveal-block-id="reveal?.node === null ? reveal.blockId : null"
             @revealed="emit('revealed')"
             @save-scroll-state="(id, state) => emit('saveScroll', id, state ?? null)"
-            @delete-queued="(id) => emit('removeQueued', id)"
+            @undo-send-queued="(id) => emit('undoSendQueued', id)"
             @send-queued="(id) => emit('sendQueued', id)"
-            @delete-pending-steer="(id) => emit('removePendingSteer', id)"
+            @undo-send-steer="(id) => emit('undoSendSteer', id)"
             @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
             @edit-user="editUser"
             @regenerate="regenerate"

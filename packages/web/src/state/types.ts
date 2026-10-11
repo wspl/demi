@@ -80,7 +80,7 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
    */
   pendingSends: PendingSend[]
   /**
-   * The waiting messages whose Remove is on its way, by id: a steer, a
+   * The waiting messages whose Undo Send is on its way, by id: a steer, a
    * queued message, or a message on its way that will be one. The list
    * shows none of them from the press (`product.md` § Steer or queue).
    */
