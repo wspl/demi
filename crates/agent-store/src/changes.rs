@@ -29,7 +29,9 @@ enum Place {
     /// A block the reader never sees, which neither joins nor ends a run.
     Passes,
     /// What the reader reads, which ends a run: the agent's text, the
-    /// user's words and decisions, an error, a stop, a compaction's divider.
+    /// user's words and decisions, an error, a stop, a compaction's divider;
+    /// and where a turn went on after it was cut, a `resume` and a Stop the
+    /// user continued, so the steps after Continue are a run of their own.
     Ends,
 }
 
@@ -62,13 +64,11 @@ fn place(block: &Block) -> Place {
         // divider that ends the run.
         Block::RedactedThinking(_)
         | Block::Response(_)
-        | Block::Resume(_)
         | Block::Context(_)
         | Block::CompactionBoundary(_) => Place::Passes,
-        // A stop the turn was continued after no longer shows.
-        Block::Abort(abort) if abort.is_resumed => Place::Passes,
         Block::User(_)
         | Block::Steer(_)
+        | Block::Resume(_)
         | Block::Abort(_)
         | Block::Text(_)
         | Block::Error(_)
