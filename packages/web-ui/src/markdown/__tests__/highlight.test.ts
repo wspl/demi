@@ -18,6 +18,8 @@ test('a code block is labeled with the full name of the language its fence names
   expect(label('bash')).toBe('Shell')
   expect(label('py')).toBe('Python')
   expect(label('yml')).toBe('YAML')
+  // An extension the editor reads as a language the data does not match by name, as a file of it is named.
+  expect(label('jsonc')).toBe('JSON')
   // One the highlighter does not know shows as the fence wrote it, and plain.
   expect(label('text')).toBe('text')
   expect(renderMarkdown('```text\n<x>\n```')).toContain('<code>&lt;x&gt;</code>')

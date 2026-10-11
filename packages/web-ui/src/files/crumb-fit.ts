@@ -1,3 +1,24 @@
+import { landmarkIcon } from './file-icons'
+import { pathSegments } from './paths'
+import type { FileBrowserSource } from './types'
+
+/** One crumb of a path bar: a directory on the way to the path, or the path itself. */
+export interface Crumb {
+  name: string
+  path: string
+  /** The root's and the home's landmark glyph, which the crumb wears in place of a folder's. */
+  icon: string | undefined
+}
+
+/**
+ * A path bar's crumbs: the whole path, from the Host's root down to the path
+ * itself, the root and the home wearing their glyphs (`file-previews.md`
+ * § The File view's bars).
+ */
+export function pathCrumbs(path: string, source: Pick<FileBrowserSource, 'platform' | 'home'>): Crumb[] {
+  return pathSegments(path).map((segment) => ({ ...segment, icon: landmarkIcon(segment.path, source) }))
+}
+
 /** A crumb's width with its name, and as its glyph alone. */
 export interface CrumbWidths {
   full: number
