@@ -296,6 +296,11 @@ pub const INSTRUCTIONS_SOURCE: &str = "instructions";
 /// plugin may be named so.
 pub const EXECUTION_SOURCE: &str = "execution";
 
+/// The context source of the skills plugin, whose block is the skills
+/// catalog (`skills.md` § What the model sees), the context card's Skills
+/// row (`compaction.md` § What fills the context).
+pub const SKILLS_SOURCE: &str = "skills";
+
 /// One part of an instructions block's text (`instructions.md` § What the
 /// card lists).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]

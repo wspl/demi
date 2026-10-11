@@ -15,7 +15,7 @@ use super::*;
 const WINDOW: u64 = 100_000;
 
 /// A prompt with an identity, the tool rules, an index of two command
-/// groups and the model line.
+/// groups, the model line and a profile's added instructions.
 fn prompt() -> SystemPrompt {
     let index = CapabilityIndex {
         groups: ["demi browser", "demi file"]
@@ -38,6 +38,10 @@ fn prompt() -> SystemPrompt {
                 index,
             },
             text(PromptLayerKind::ModelIdentity, "This conversation runs on test-model."),
+            text(
+                PromptLayerKind::ProfileInstructions,
+                "Instructions for this subagent:\n\nYou find code and change nothing.",
+            ),
         ],
     }
 }
@@ -142,7 +146,7 @@ fn assert_adds_up(usage: &ContextUsage) {
     }
 }
 
-// Two sessions and five scripted requests: a few milliseconds.
+// Three sessions and six scripted requests: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn the_rows_add_up_to_the_estimate_anchored_after_a_compaction_and_when_the_rest_exceeds_it() {
     let provider = ScriptedRuntime::new([
@@ -173,6 +177,11 @@ async fn the_rows_add_up_to_the_estimate_anchored_after_a_compaction_and_when_th
         "{named:?}"
     );
     assert!(matches!(named.last(), Some(ContextPart::Unattributed { .. })), "{named:?}");
+    // The responses' usage is a turn record.
+    assert!(
+        named.iter().any(|part| matches!(part, ContextPart::Reports { .. })),
+        "{named:?}"
+    );
     let parts = |kind| -> Vec<String> {
         row(&anchored, kind)
             .unwrap()
@@ -192,7 +201,7 @@ async fn the_rows_add_up_to_the_estimate_anchored_after_a_compaction_and_when_th
     };
     assert_eq!(
         parts(ContextRowKind::SystemPrompt),
-        ["Identity", "ToolRules", "ModelIdentity", "tool shell"]
+        ["Identity", "ToolRules", "ModelIdentity", "ProfileInstructions", "tool shell"]
     );
     assert_eq!(parts(ContextRowKind::Commands), ["demi browser", "demi file"]);
     assert_eq!(
@@ -227,4 +236,34 @@ async fn the_rows_add_up_to_the_estimate_anchored_after_a_compaction_and_when_th
     assert_eq!(exceeded.tokens, 10);
     assert_adds_up(&exceeded);
     assert!(row(&exceeded, ContextRowKind::Messages).is_none(), "{exceeded:#?}");
+    let above: u64 = exceeded
+        .rows
+        .iter()
+        .filter(|row| row.estimated)
+        .map(|row| row.tokens)
+        .sum();
+
+    // A provider that counts 100 tokens more than those rows for a message
+    // the text estimates weigh at 4,000: the parts are scaled down to the
+    // 100, and nothing is left Unattributed.
+    let provider = ScriptedRuntime::new([Turn::Events(vec![
+        event::text("Done."),
+        event::response(above + 100, 0),
+    ])]);
+    let store = MemoryTreeStore::new();
+    let session = start_on(&provider, runtime(&long), &store, SessionConfig::default()).await;
+    session.send(text(&"y".repeat(16_000)), turn("t1")).unwrap().await.unwrap();
+    let scaled = session.context_usage().await.unwrap();
+    assert_adds_up(&scaled);
+    let messages = row(&scaled, ContextRowKind::Messages).unwrap();
+    assert_eq!(messages.tokens, 100, "{scaled:#?}");
+    assert_eq!(messages.parts.iter().map(ContextPart::tokens).sum::<u64>(), 100);
+    assert!(
+        matches!(messages.parts.first(), Some(ContextPart::UserMessages { tokens }) if *tokens > 90),
+        "{messages:?}"
+    );
+    assert!(
+        !messages.parts.iter().any(|part| matches!(part, ContextPart::Unattributed { .. })),
+        "{messages:?}"
+    );
 }

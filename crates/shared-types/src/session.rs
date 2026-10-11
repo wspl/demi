@@ -165,8 +165,14 @@ pub enum ContextPart {
         #[garde(range(max = MAX_SAFE_INTEGER))]
         tokens: u64,
     },
+    /// The text of command reports, agent messages and the records of a
+    /// turn, such as a response's usage, an error or a resume.
+    Reports {
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        tokens: u64,
+    },
     /// What Messages holds beyond its other parts: what the text estimates
-    /// miss of the provider's count, and the blocks no other part names.
+    /// miss of the provider's count.
     Unattributed {
         #[garde(range(max = MAX_SAFE_INTEGER))]
         tokens: u64,
@@ -187,8 +193,58 @@ impl ContextPart {
             | Self::AgentText { tokens }
             | Self::Thinking { tokens }
             | Self::Images { tokens }
+            | Self::Reports { tokens }
             | Self::Unattributed { tokens } => *tokens,
         }
+    }
+
+    /// The part with `tokens` in place of its estimate.
+    fn with_tokens(mut self, value: u64) -> Self {
+        match &mut self {
+            Self::Prompt { tokens, .. }
+            | Self::Tool { tokens, .. }
+            | Self::CommandGroup { tokens, .. }
+            | Self::Instruction { tokens, .. }
+            | Self::Skill { tokens, .. }
+            | Self::Source { tokens, .. }
+            | Self::UserMessages { tokens }
+            | Self::AgentText { tokens }
+            | Self::Thinking { tokens }
+            | Self::Images { tokens }
+            | Self::Reports { tokens }
+            | Self::Unattributed { tokens } => *tokens = value,
+        }
+        self
+    }
+
+    /// `parts` scaled down, when they add up to more than `total`, so they
+    /// add up to it exactly: each in proportion, rounded down, and what the
+    /// rounding leaves given to the largest parts first, in their order.
+    pub fn scaled_to(parts: Vec<Self>, total: u64) -> Vec<Self> {
+        let sum: u64 = parts.iter().map(Self::tokens).sum();
+        if sum <= total {
+            return parts;
+        }
+        let share = |tokens: u64| {
+            u64::try_from(u128::from(tokens) * u128::from(total) / u128::from(sum))
+                .expect("a share of a total fits the total's type")
+        };
+        let mut scaled: Vec<u64> = parts.iter().map(|part| share(part.tokens())).collect();
+        let mut left = total - scaled.iter().sum::<u64>();
+        let mut order: Vec<usize> = (0..parts.len()).collect();
+        order.sort_by_key(|index| std::cmp::Reverse(parts[*index].tokens()));
+        for index in order {
+            if left == 0 {
+                break;
+            }
+            scaled[index] += 1;
+            left -= 1;
+        }
+        parts
+            .into_iter()
+            .zip(scaled)
+            .map(|(part, tokens)| part.with_tokens(tokens))
+            .collect()
     }
 }
 

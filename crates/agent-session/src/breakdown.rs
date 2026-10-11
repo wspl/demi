@@ -12,7 +12,7 @@ use demi_agent_transcript::{
 };
 use demi_shared_types::{
     Block, ContextBlock, ContextPart, ContextRow, ContextRowKind, INSTRUCTIONS_SOURCE,
-    InstructionEntry, ToolCallBlock, instruction_sections,
+    InstructionEntry, SKILLS_SOURCE, ToolCallBlock, instruction_sections,
 };
 
 use super::{
@@ -20,11 +20,6 @@ use super::{
     core::SessionCore,
     runtime::{PromptLayer, SystemPrompt},
 };
-
-/// The opening of the skills catalog's list, in the Agent Skills format
-/// every agent's catalog shares (`skills.md` § What the model sees): a
-/// context block that holds it is the Skills row, whatever its source.
-const SKILLS_OPENING: &str = "<available_skills>";
 
 /// What calls that run no `demi` command group are counted under.
 const SHELL_GROUP: &str = "shell";
@@ -128,6 +123,8 @@ struct Fill {
     agent_text: u64,
     thinking: u64,
     images: u64,
+    /// Command reports, agent messages and the records of a turn.
+    reports: u64,
     calls: BTreeMap<String, u64>,
 }
 
@@ -139,7 +136,7 @@ impl Fill {
             Block::Context(context) if context.source == INSTRUCTIONS_SOURCE => {
                 self.add_instructions(context, weight.tokens());
             }
-            Block::Context(context) if context.text.contains(SKILLS_OPENING) => {
+            Block::Context(context) if context.source == SKILLS_SOURCE => {
                 self.skills_tokens += weight.tokens();
                 self.skills.extend(skill_parts(&context.text));
             }
@@ -157,15 +154,16 @@ impl Fill {
                 *self.calls.entry(call_group(call, groups)).or_default() += weight.text;
                 self.images += weight.media;
             }
-            // The text of command reports, agent messages and the records of
-            // a turn are no part of their own: they stay Unattributed.
-            Block::Wakeup(_) => self.images += weight.media,
+            Block::Wakeup(_) => {
+                self.reports += weight.text;
+                self.images += weight.media;
+            }
             Block::AgentMessage(_)
             | Block::Resume(_)
             | Block::Response(_)
             | Block::Error(_)
             | Block::Abort(_)
-            | Block::CompactionMarker(_) => {}
+            | Block::CompactionMarker(_) => self.reports += weight.text,
         }
     }
 
@@ -210,12 +208,18 @@ impl Fill {
             ContextPart::Images {
                 tokens: self.images,
             },
+            ContextPart::Reports {
+                tokens: self.reports,
+            },
         ];
         message_parts.extend(
             self.calls
                 .into_iter()
                 .map(|(group, tokens)| ContextPart::CommandGroup { group, tokens }),
         );
+        // Parts that add up to more than the rest, as when the provider
+        // counts less than the text estimates, are scaled down to it.
+        let message_parts = ContextPart::scaled_to(message_parts, messages);
         let attributed: u64 = message_parts.iter().map(ContextPart::tokens).sum();
         let mut message_parts = largest_first(message_parts);
         message_parts.push(ContextPart::Unattributed {

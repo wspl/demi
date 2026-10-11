@@ -148,6 +148,7 @@ export function usageOf(tokens: number, window: number | null, shape: UsageShape
     { kind: 'thinking', tokens: share(0.07) },
     { kind: 'userMessages', tokens: share(0.05) },
     { kind: 'commandGroup', group: 'demi file', tokens: share(0.04) },
+    { kind: 'reports', tokens: share(0.02) },
   ]
   const attributed = parts.reduce((sum, part) => sum + part.tokens, 0)
   parts.push({ kind: 'unattributed', tokens: messages - attributed })
