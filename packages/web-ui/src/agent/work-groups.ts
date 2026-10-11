@@ -1,7 +1,8 @@
 import type { MessageListBlock } from './pending-steers'
 import { upperFirst } from '@demicodes/utils'
 import { parseToolCallInput } from './block-helpers'
-import { reportShown } from './command-reports'
+import { reportMark, reportShown } from './command-reports'
+import { receiptRow } from './agent-receipts'
 import { shellStatusLooks, toolRenderKind } from './tool-rendering'
 
 /**
@@ -213,37 +214,51 @@ function agents(count: number): string {
   return count === 1 ? '1 agent' : `${count} agents`
 }
 
-/** What a notice or a receipt told: a command's end, an agent's end, or an agent's update. */
-type NoticeKind = 'command' | 'agent' | 'update'
+/**
+ * What a notice or a receipt told: a command's end or an agent's end, each
+ * by how it ended, as its own row says it, or an agent's update.
+ */
+interface Told {
+  subject: 'command' | 'agent' | 'update'
+  ending: string
+  /** The commands or the agents it named, each once. */
+  names: Set<string>
+}
 
-const NOTICE_WORDS = {
-  command: (count: number) => `${commands(count)} finished`,
-  agent: (count: number) => `${agents(count)} finished`,
-  update: (count: number) => `heard from ${agents(count)}`,
-} satisfies Record<NoticeKind, (count: number) => string>
+/** The words of what the run was told, after the count of what it named. */
+function toldWords({ subject, ending, names }: Told): string {
+  const count = names.size
+  return subject === 'update' ? `heard from ${agents(count)}` : `${subject === 'command' ? commands(count) : agents(count)} ${ending}`
+}
 
 /**
- * What the run's notices and receipts told, each kind once, in the order the
- * run first had it, counting the commands and the agents they named, each
- * once: a run without a call reads them, as nothing else says what happened.
+ * What the run's notices and receipts told, each kind once, by how its
+ * command or agent ended, in the order the run first had it, counting the
+ * commands and the agents they named, each once: a run without a call reads
+ * them, as nothing else says what happened (`runtime.md` § Work groups).
  */
 function describeNotices(steps: readonly WorkStep[]): string {
-  const told = new Map<NoticeKind, Set<string>>()
-  const add = (kind: NoticeKind, name: string) => {
-    const names = told.get(kind) ?? new Set<string>()
-    names.add(name)
-    told.set(kind, names)
+  const told = new Map<string, Told>()
+  const add = (subject: Told['subject'], ending: string, name: string) => {
+    const key = `${subject} ${ending}`
+    const entry = told.get(key) ?? { subject, ending, names: new Set<string>() }
+    entry.names.add(name)
+    told.set(key, entry)
   }
   for (const step of steps) {
     if (step.type === 'wakeup') {
-      step.reports.filter(reportShown).forEach((report) => add('command', report.commandId))
+      for (const report of step.reports.filter(reportShown))
+        add('command', reportMark(report)?.kind ?? 'finished', report.commandId)
     }
     else if (step.type === 'agent_message') {
-      const { event, sender } = step.message
-      add(event.type === 'completion' ? 'agent' : 'update', sender?.id ?? step.id)
+      const name = step.message.sender?.id ?? step.id
+      if (step.message.event.type === 'completion')
+        add('agent', receiptRow(step.message).tag ?? 'finished', name)
+      else
+        add('update', '', name)
     }
   }
-  return upperFirst([...told].map(([kind, names]) => NOTICE_WORDS[kind](names.size)).join(', '))
+  return upperFirst([...told.values()].map(toldWords).join(', '))
 }
 
 /**

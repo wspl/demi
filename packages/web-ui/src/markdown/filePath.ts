@@ -1,7 +1,7 @@
 // Paths a message writes as link and image targets (`file-previews.md`
 // § Files named in messages).
 import { resolveHostPath } from '../files/paths'
-import type { MessageFiles } from './types'
+import type { MessageFileTarget, MessageFiles } from './types'
 
 const LINE_RANGE_SUFFIX_RE = /:\d+(?:-\d+)?$/
 
@@ -56,6 +56,29 @@ export function messageHostPath(target: string, cwd: string): string | null {
     return null
   const path = decodedTarget(normalizeFilePath(target.split(/[?#]/)[0] ?? ''))
   return path === '' ? null : resolveHostPath(cwd, path)
+}
+
+/** A line a target points at: `#L42` or `#L42-L50` after it, as GitHub links one. */
+const LINE_FRAGMENT_RE = /#L([1-9]\d*)(?:-L?\d+)?$/
+/** The same as a `:42` or `:42-50` after the path, as a compiler or a search names one. */
+const LINE_SUFFIX_RE = /:([1-9]\d*)(?:-\d+)?$/
+
+/**
+ * The line a message's link target points at, its first when it names a
+ * range (`file-previews.md` § Files named in messages); null when it points
+ * at none.
+ */
+export function targetLine(target: string): number | null {
+  const trimmed = target.trim()
+  const line = LINE_FRAGMENT_RE.exec(trimmed)?.[1]
+    ?? LINE_SUFFIX_RE.exec(trimmed.split(/[?#]/)[0] ?? '')?.[1]
+  return line === undefined ? null : Number(line)
+}
+
+/** The Host file a link's target names, resolved against `cwd`, with its line; null for a target that names none. */
+export function messageFileTarget(target: string, cwd: string): MessageFileTarget | null {
+  const path = messageHostPath(target, cwd)
+  return path === null ? null : { path, line: targetLine(target) }
 }
 
 export function isHttpUrl(path: string): boolean {

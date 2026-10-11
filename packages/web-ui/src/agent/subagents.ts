@@ -6,6 +6,8 @@ export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'
 
 export interface SubagentRecord {
   id: string
+  /** The number the model knows it by, which a message links it with as `agent:<number>`. */
+  number: number
   name: string
   phase: SubagentPhase
   startedAt: string

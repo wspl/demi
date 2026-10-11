@@ -98,6 +98,12 @@ const props = withDefaults(defineProps<{
    */
   picture?: boolean
   overlayStore?: OverlayStore
+  /**
+   * An element the page did not render through a component, such as a link
+   * in a rendered message, that the tip describes in place of its slot: the
+   * tip follows the pointer and the focus on it and stands by it.
+   */
+  trigger?: HTMLElement | null
 }>(), {
   offset: 8,
   disabled: false,
@@ -348,15 +354,46 @@ defineExpose({
   },
 })
 
+/** Gives a `trigger` element the listeners the slot's wrapper has in the template, or takes them away. */
+function listen(element: HTMLElement, on: boolean): void {
+  if (on) {
+    element.addEventListener('pointerenter', onPointerenter)
+    element.addEventListener('pointermove', onPointermove)
+    element.addEventListener('pointerleave', onPointerleave)
+    element.addEventListener('pointerdown', onPointerdown, { capture: true })
+    element.addEventListener('focusin', onFocusin)
+    element.addEventListener('focusout', scheduleClose)
+    return
+  }
+  element.removeEventListener('pointerenter', onPointerenter)
+  element.removeEventListener('pointermove', onPointermove)
+  element.removeEventListener('pointerleave', onPointerleave)
+  element.removeEventListener('pointerdown', onPointerdown, { capture: true })
+  element.removeEventListener('focusin', onFocusin)
+  element.removeEventListener('focusout', scheduleClose)
+}
+
+watch(() => props.trigger, (element, before) => {
+  if (before)
+    listen(before, false)
+  if (element) {
+    listen(element, true)
+    triggerRef.value = element
+  }
+}, { immediate: true })
+
 onBeforeUnmount(() => {
   clearTimers()
   unbindDismiss()
+  if (props.trigger)
+    listen(props.trigger, false)
 })
 </script>
 
 <template>
   <component
     :is="props.tag"
+    v-if="!props.trigger"
     ref="triggerRef"
     v-bind="attrs"
     @pointerenter="onPointerenter"
