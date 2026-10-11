@@ -591,6 +591,12 @@ counted among the [working tree](#working-tree)'s changed paths; a `file` or
 `folder` subscription inside an ignored folder, such as a log under `target/`
 a page shows, changes as any other.
 
+A subscription inside a working tree rides on the tree's watch: the relay
+and a direct watch hold the tree's watch while anything inside it is
+subscribed, the page saying nothing of it, and a tree's watch that fails
+fails the subscriptions inside it. A `head` subscription rides on the watch
+of its repository's tree.
+
 **Leases.** A subscription is a lease of 10 minutes from when the runner
 received its `fs_subscribe` or its last `fs_renew`, which names many ids at
 once. The runner ends a subscription whose lease ran out and releases what it
@@ -607,7 +613,12 @@ the file system watch behind it already runs:
   descriptor per file, more than a repository and the usual limit of 256
   allow. A file or folder outside the working tree is watched alone with
   kqueue, never through a stream over its parent's whole tree, at most 64 of
-  them, and a file replaced by a rename is watched again under its name. A
+  them, and a file replaced by a rename is watched again under its name; a
+  `folder_details` subscription there is an FSEvents stream over that folder
+  alone, since kqueue does not see its entries' contents change, and counts
+  among the 64. kqueue sees its own node removed or renamed, not a folder
+  above it: outside the working tree, a rename of a folder above a
+  subscription goes unseen until the node itself changes. A
   subscription inside an excluded folder gets a watch of its own.
 - On Linux inotify watches the working tree's folders except the ignored
   ones; a subscription inside an ignored folder adds a watch of that folder.
