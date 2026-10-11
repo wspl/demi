@@ -46,6 +46,47 @@ starts on Preview; the Change view offers Diff and Preview and starts on Diff.
 The choice holds for the next files until the user changes it, for the page's
 lifetime. Every file in the File view can be downloaded, whatever its kind.
 
+### The File view's bars
+
+The File view has two bars, as a browser has an address bar over a page and
+GitHub a file's own bar over its contents:
+
+```text
+ ← →  [ / › Users › zan › Projects › demi › docs › guide.md ]  [tree]   the path bar
+ ┌──────────────────────────────────────────────────┬──────────┐
+ │ Markdown · 47 lines · 1.1 KB   [Preview|Source] ⧉ ⤓ │ demi     │   the file's bar
+ │                                                  │  docs    │
+ │   the document                                   │   guide… │
+```
+
+- **The path bar shows the whole path**, always: its crumbs start at the
+  Host's root, the home and the root wearing their glyphs, and its text field
+  holds the absolute path. The tree beside the file is the workspace's, and
+  only the tree: the path bar says where the file is on the Host, wherever
+  that is. A path typed relative to nothing still starts from the
+  workspace, and `~` names the home. A bar too narrow for every name turns the
+  crumbs farthest from the file into their glyphs first, as it does now.
+- **The file's bar** stands over what the file shows, the width of the file's
+  side, not over the tree, 36 pixels tall. On its left, what the file is: its
+  kind's full name, the language for text as the editor knows it,
+  *TypeScript*, *Markdown*, *Plain Text* for one it does not, then the facts
+  that kind has, so a picture's facts move up here from under it:
+
+  | Kind | The bar says |
+  | --- | --- |
+  | Text and Markdown | *TypeScript · 20 lines · 476 B* |
+  | Image | *PNG Image · 1280 × 720 · 150% · 412 KB*, the zoom following the picture |
+  | Video | *MP4 Video · 1280 × 720 · 4.2 MB* |
+  | Audio, PDF | *M4A Audio · 3.1 MB*, *PDF Document · 812 KB* |
+  | Other | Its kind and size, as its card says |
+
+  On its right, what the user can do with the file: Preview and Source for
+  Markdown and SVG, Copy for any file shown as text, which puts its whole
+  text on the clipboard, Markdown's source and not its rendering, and
+  Download for every file. A file shown as only its first 8 MiB has no Copy,
+  since the page does not hold the rest; Download gives all of it. Nothing of
+  the file stands in the path bar.
+
 These show the card: HEIC, TIFF and JPEG XL images, which only Safari
 displays; MKV, AVI and WMV video, which web browsers play unreliably; Office
 documents. HTML and MDX show as source: a page needs its scripts and relative
