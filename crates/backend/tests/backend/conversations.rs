@@ -10,6 +10,7 @@
 //! up, and the patches and batches of the sidebar. No test calls a real
 //! model.
 
+use std::collections::VecDeque;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -20,7 +21,7 @@ use demi_backend_providers::llm::families::{
 };
 use demi_conversation_socket_protocol::{
     ClientFrame, EditOutcome, EditRequest, Failures, RemoveOutcome, ServerFrame, SubagentJob,
-    TranscriptVersion,
+    TranscriptPatch, TranscriptVersion,
 };
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_provider_common::{
@@ -72,6 +73,9 @@ pub(crate) struct Socket {
     /// How long it waits for the next message before the test fails as
     /// hung: ten seconds, longer where a real Cloud boots within a turn.
     pub(crate) patience: Duration,
+    /// The frames of the last message not read yet: a message carries a
+    /// frame, or an array of the frames the backend had ready at once.
+    unread: VecDeque<ServerFrame>,
 }
 
 impl Socket {
@@ -115,6 +119,7 @@ impl Socket {
             Ok((socket, _)) => Ok(Self {
                 socket,
                 patience: Duration::from_secs(10),
+                unread: VecDeque::new(),
             }),
             Err(tungstenite::Error::Http(response)) => {
                 let body = response.body().as_deref().unwrap_or_default();
@@ -150,21 +155,49 @@ impl Socket {
     }
 
     async fn next(&mut self) -> Received {
+        if let Some(frame) = self.unread.pop_front() {
+            return Received::Frame(frame);
+        }
+        match self.message().await {
+            Ok(frames) => {
+                self.unread = frames.into();
+                Received::Frame(self.unread.pop_front().expect("a message carries a frame"))
+            }
+            Err(code) => Received::Closed(code),
+        }
+    }
+
+    /// The frames of the last message not read yet, else those of the next
+    /// message; the close code once the backend closed the socket.
+    async fn message(&mut self) -> Result<Vec<ServerFrame>, Option<u16>> {
+        if !self.unread.is_empty() {
+            return Ok(self.unread.drain(..).collect());
+        }
         loop {
             let message = tokio::time::timeout(self.patience, self.socket.next())
                 .await
                 .unwrap_or_else(|_| panic!("the socket delivers within {:?}", self.patience));
             match message {
                 Some(Ok(Message::Text(text))) => {
-                    let frame = serde_json::from_str(text.as_str())
+                    let value: Value = serde_json::from_str(text.as_str())
                         .unwrap_or_else(|error| panic!("{error}: {text}"));
-                    return Received::Frame(frame);
+                    let frames = match value {
+                        Value::Array(frames) => frames,
+                        frame => vec![frame],
+                    };
+                    assert!(!frames.is_empty(), "a message carries a frame: {text}");
+                    return Ok(frames
+                        .into_iter()
+                        .map(|frame| {
+                            serde_json::from_value(frame).unwrap_or_else(|error| panic!("{error}: {text}"))
+                        })
+                        .collect());
                 }
                 Some(Ok(Message::Close(close))) => {
-                    return Received::Closed(close.map(|close| u16::from(close.code)));
+                    return Err(close.map(|close| u16::from(close.code)));
                 }
                 Some(Ok(_)) => {}
-                Some(Err(_)) | None => return Received::Closed(None),
+                Some(Err(_)) | None => return Err(None),
             }
         }
     }
@@ -867,12 +900,29 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
         ]
     );
     vendor.respond(answer(&["Hello", " there."], 12, 3));
-    let turn = socket.chat("m1", "Say hello").await;
-    assert!(
-        turn.iter()
-            .any(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. })),
-        "{turn:?}"
-    );
+    socket.send(&send("m1", "Say hello")).await;
+    let mut ran = false;
+    let end = loop {
+        let message = socket.message().await.expect("the socket stays open");
+        ran |= message.contains(&ServerFrame::Phase { phase: SessionPhase::Running });
+        if ran && message.contains(&ServerFrame::Phase { phase: SessionPhase::Idle }) {
+            break message;
+        }
+    };
+    // The turn's end is one change (`product.md` § Following the agent's
+    // work): the patch that completes its last text comes in the message
+    // that says the conversation went idle, so no page draws the finished
+    // text of a running turn, followed by Requesting, in between.
+    let completes = end.iter().position(|frame| {
+        matches!(frame, ServerFrame::TranscriptPatch { patches, .. } if patches.iter().any(|patch| matches!(
+            patch,
+            TranscriptPatch::ReplaceBlock { value: Block::Text(text), .. } if text.forkable && text.text == "Hello there."
+        )))
+    });
+    let idle = end
+        .iter()
+        .position(|frame| *frame == ServerFrame::Phase { phase: SessionPhase::Idle });
+    assert!(matches!((completes, idle), (Some(completes), Some(idle)) if completes < idle), "{end:?}");
 
     let sent = &vendor.requests()[0];
     assert_eq!(
@@ -1908,25 +1958,24 @@ impl StalledPage {
     }
 
     /// Opens the conversation and reads the socket's bytes as far as the
-    /// header of the frame after `opened`, the transcript's reset, whose
-    /// length it answers: the backend is sending the reset, and the page
-    /// reads no further.
+    /// start of the handshake's message, whose length it answers: the
+    /// backend is sending `opened` and the transcript's reset, which it had
+    /// ready at once, in one message, and the page reads no further.
     async fn open_until_the_reset_is_sent(&mut self) -> u64 {
         let open = serde_json::to_string(&ClientFrame::Open { from: None, edge: None }).unwrap();
         self.socket.send(Message::Text(open.into())).await.unwrap();
-        // Read beneath the WebSocket, which would read the whole reset: a
-        // final text frame for `opened`, then the reset's frame header with
-        // its 64-bit length.
-        let opened = br#"{"type":"opened"}"#;
-        let mut head = [0; 2 + 17 + 10];
+        // Read beneath the WebSocket, which would read the whole message: a
+        // final text frame's header with its 64-bit length, then the array
+        // of the handshake's frames, `opened` first.
+        let opened = br#"[{"type":"opened"},"#;
+        let mut head = [0; 10 + 19];
         tokio::time::timeout(PATIENCE, self.socket.get_mut().read_exact(&mut head))
             .await
             .expect("the backend sends the handshake")
             .unwrap();
-        assert_eq!(head[..2], [0x81, 17]);
-        assert_eq!(&head[2..19], opened);
-        assert_eq!(head[19..21], [0x81, 127]);
-        u64::from_be_bytes(head[21..].try_into().unwrap())
+        assert_eq!(head[..2], [0x81, 127]);
+        assert_eq!(&head[10..], opened);
+        u64::from_be_bytes(head[2..10].try_into().unwrap())
     }
 }
 

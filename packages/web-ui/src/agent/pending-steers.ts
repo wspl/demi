@@ -52,7 +52,8 @@ export interface SessionFailureRow {
 export type MessageListBlock =
   Block | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock | CompactionProgressBlock |
   PendingCallRenderBlock | WorkGroupBlock | ActivitySlotRow | DeliveryFailureRow | SessionFailureRow |
-  { type: 'pending_submission'; id: string; submission: PendingSubmissionState } |
+  /** A message on its way; `startsTurn` when it is a steer that starts the turn, which reads as the user's next message. */
+  { type: 'pending_submission'; id: string; submission: PendingSubmissionState; startsTurn: boolean } |
   /** The edge of a window that does not reach its transcript's start or end, which shows its next page coming. */
   { type: 'history_edge'; id: 'history-before' | 'history-after' }
 
@@ -71,7 +72,9 @@ export function pendingSteersToRenderBlocks(
  * What a message row says waits for the agent, with its line and its Send
  * Now and Undo Send (`product.md` § Steer or queue): a steer or a queued
  * message, and a message on its way that will be one of them, from its
- * send, unless its delivery failed; undefined for any other row.
+ * send, unless its delivery failed or it is a steer that starts the turn,
+ * which is the user's next message (`product.md` § Following the agent's
+ * work); undefined for any other row.
  */
 export function waitingAs(row: MessageListBlock): 'steer' | 'queued' | undefined {
   switch (row.type) {
@@ -80,7 +83,7 @@ export function waitingAs(row: MessageListBlock): 'steer' | 'queued' | undefined
     case 'queued_message':
       return 'queued'
     case 'pending_submission':
-      if (row.submission.error !== null) {
+      if (row.submission.error !== null || row.startsTurn) {
         return undefined
       }
       return row.submission.way === 'steer' ? 'steer' : row.submission.way === 'queue' ? 'queued' : undefined
