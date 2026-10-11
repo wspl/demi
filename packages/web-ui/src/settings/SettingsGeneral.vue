@@ -98,7 +98,7 @@ const sendDescription = `Steer: the agent reads your message in the running turn
           @update:model-value="accent = $event as ProductAccent"
         />
       </SettingsRow>
-      <SettingsRow label="Transcript text size" description="Messages only.">
+      <SettingsRow label="Transcript text size" description="Sizes the conversation’s messages and steps.">
         <Slider
           v-model="fontSize"
           :min="12"

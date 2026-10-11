@@ -40,7 +40,7 @@ const go = computed(() => {
         <ReceiptTag :tag="row.tag" />
       </template>
       <template #body>
-        <div class="px-3 py-2 text-[13px] leading-5 text-fg-subtle">
+        <div class="px-3 py-2 text-conversation text-fg-subtle">
           <StreamedMarkdown :content="message.content" :streaming="false" />
         </div>
       </template>
