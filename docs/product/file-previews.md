@@ -235,14 +235,19 @@ never turned into a link. The answer is kept with the reply; a stopped Cloud
 is not woken for it, and its code stays text until the Host runs.
 
 An image is a picture in the message, not the message: it is a tile, scaled
-down with its proportions kept to fit a box a third of the message's width,
+down with its proportions kept to fit a box a third of the width it stands
+in, the message's or a list item's,
 less the two 8-pixel gaps between three tiles, and 240 pixels tall, never
 enlarged, so three pictures fill a line. For example, in a message 760
 pixels wide a tile's box is 248 × 240: a 2560 × 1720 screenshot shows
 248 × 167, and a 1000 × 8000 page 30 × 240. An image always stands on a
 line of its own, with 12 pixels between it and the text above and below it,
 even where the Markdown puts it in the same paragraph as the text, such as
-on the line after a list item's words. Resting the pointer on it shows it
+on the line after a list item's words. A tile whose picture's size is
+known before it loads, as an attachment's is, takes its box at once; one
+whose size is not, as a Host path's or a web image's, takes no room until
+it loads and then grows once to its tile, since a box held at the largest
+size would leave a blank band under every smaller picture. Resting the pointer on it shows it
 large ([A picture's preview on hover](#a-pictures-preview-on-hover)). A click shows the image whole: a Host image in the File
 view, a web image in a new tab of the user's browser. An image inside a link
 follows the link.
