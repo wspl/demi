@@ -63,10 +63,11 @@ const readOnlySource: FileBrowserSource = keptSource({
   platform: 'linux',
   home: '/workspace',
   async list() {
-    return [
+    const entries = [
       { name: 'src', isDirectory: true },
       { name: 'README.md', isDirectory: false, size: 1280 },
     ]
+    return { value: entries, readAt: null }
   },
   async createDirectory() {
     throw new FileBrowserError(

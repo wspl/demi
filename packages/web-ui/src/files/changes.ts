@@ -4,7 +4,7 @@ import { baseName } from '@demicodes/utils'
 import type { Showing } from './file-cache'
 import type { TreeRow } from './tree'
 import type { RequestChangeSource } from './request-changes'
-import type { FileContents, FileWatchNote } from './types'
+import type { FileContents } from './types'
 
 /**
  * One changed file as the change view lists it: its path, how it changed,
@@ -42,12 +42,15 @@ export interface ChangeSetSource {
   failure?: string | null
   /** Lists the working tree again. */
   refresh?(): void
-  /** What the source says of the Host's watch; null or absent without one. */
-  readonly watch?: FileWatchNote | null
+  /**
+   * Why the Host does not watch the list, while it says so: the view shows
+   * it as last read, with Refresh; null or absent while it watches.
+   */
+  readonly unwatched?: string | null
   /**
    * Shows both sides of one file until released: empty `original` for an
    * added file, empty `modified` for a deleted one. A side that is not text
-   * fails with kind `binary` or `too-large`.
+   * is the answer `binary` or `too-large`.
    */
   showSides(path: string): Showing<ChangeSides>
   /**
@@ -93,7 +96,7 @@ export interface ChangeSources {
 export const emptyChangeSet: ChangeSetSource = {
   files: [],
   showSides: () => ({
-    entry: { value: undefined, failure: { kind: 'not-found', message: 'No change recorded' }, reading: false },
+    entry: { value: undefined, answer: 'gone', failure: null, reading: false, unwatched: null },
     retry: () => {},
     release: () => {},
     away: () => {},

@@ -8,6 +8,7 @@
  */
 import type { Component } from 'vue'
 import type { Showing } from './file-cache'
+import type { ReadAt } from './watch-channel'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 import type { DeviceState } from '../devices/state'
 
@@ -25,22 +26,36 @@ export interface FileBrowserEntry {
 
 /**
  * Why a directory could not be listed, a file read or written. `kind` picks
- * the copy; `message` is shown as the detail. `binary` and `too-large` are
- * files the text read cannot show, which a view shows as a card instead;
- * `exists` is a file an upload was not to replace.
+ * the copy; `message` is shown as the detail. `exists` is a file an upload
+ * was not to replace. `not-found`, `binary` and `too-large` are what the
+ * Host answered of the path, nothing there, a file that is not text, one
+ * too large to read as text: the kept files keep each as an answer, never
+ * as a failure (`plugin-pages.md` § What the service keeps).
  */
 export interface FileBrowserFailure {
   kind: 'not-found' | 'permission' | 'offline' | 'binary' | 'too-large' | 'exists' | 'other'
   message?: SentenceText
 }
 
+/** What a refusal that is the Host's answer carries: the file's version, and the Host's number before it read. */
+export interface AnswerFacts {
+  version?: string | null
+  readAt?: ReadAt | null
+}
+
 export class FileBrowserError extends Error {
   readonly kind: FileBrowserFailure['kind']
+  /** The version of the file the Host answered of; null when it named none. */
+  readonly version: string | null
+  /** The Host's number before it read; null when it named none. */
+  readonly readAt: ReadAt | null
 
-  constructor(kind: FileBrowserFailure['kind'], message?: SentenceText) {
+  constructor(kind: FileBrowserFailure['kind'], message?: SentenceText, facts: AnswerFacts = {}) {
     super(message ?? kind)
     this.name = 'FileBrowserError'
     this.kind = kind
+    this.version = facts.version ?? null
+    this.readAt = facts.readAt ?? null
   }
 }
 
@@ -79,17 +94,6 @@ export interface FileText {
   version: string | null
 }
 
-/**
- * What a source says of the Host's watch of what it shows (`plugin-pages.md`
- * § What the service keeps); reactive.
- */
-export interface FileWatchNote {
-  /** Why the Host cannot watch; null while it can, or no watch says. The views then show files as last read. */
-  readonly unavailable: string | null
-  /** Reads everything shown again now. */
-  refresh(): void
-}
-
 /** The operating system behind a source; picks the root glyph. */
 export type FileBrowserPlatform = 'macos' | 'linux' | 'windows'
 
@@ -104,8 +108,6 @@ export interface FileBrowserSource {
   platform: FileBrowserPlatform
   /** The directory the file browser opens in when the caller names none, and where Home goes. */
   home: string
-  /** What the source says of the Host's watch; null without one. */
-  readonly watch: FileWatchNote | null
   /** Lists one directory once. Rejects with a `FileBrowserError` for a known failure; anything else reads as `other`. */
   list(path: string): Promise<FileBrowserEntry[]>
   /** Shows one directory's listing until released. */

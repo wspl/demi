@@ -1,7 +1,9 @@
 import { expect, test } from 'bun:test'
 import { effectScope, nextTick, ref } from 'vue'
 import { useDevicePairing } from '../../devices/pairing'
-import { HostFiles } from '../../files/file-cache'
+import { HostFiles, type Answered } from '../../files/file-cache'
+import { SimulatedWatch } from '../../files/memory-source'
+import { WatchChannel } from '../../files/watch-channel'
 import { keptSource } from '../../files/kept-source'
 import { usePathCompletion } from '../../files/path-completion'
 import { FileBrowserError, type FileBrowserEntry } from '../../files/types'
@@ -82,24 +84,25 @@ test('a device project\'s button says Add Project for a directory that exists an
   const listed: string[] = []
   const pending: (() => void)[] = []
   const files = new HostFiles()
-  files.cover({ covers: () => true })
+  const watched = new SimulatedWatch()
   const source = keptSource({
     platform: 'macos',
     home: '/Users/alex',
-    list(path: string): Promise<FileBrowserEntry[]> {
+    list(path: string): Promise<Answered<FileBrowserEntry[]>> {
+      const readAt = watched.readAt()
       listed.push(path)
       return new Promise((resolve, reject) => {
         pending.push(() => {
           const entries = tree[path]
           if (entries) {
-            resolve(entries)
+            resolve({ value: entries, readAt })
           } else {
             reject(new FileBrowserError('not-found'))
           }
         })
       })
     },
-  }, { files })
+  }, { files, watch: new WatchChannel(files, watched.open) })
   const path = ref('')
   const scope = effectScope()
   const { completion, action } = scope.run(() => ({
