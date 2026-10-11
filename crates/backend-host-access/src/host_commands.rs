@@ -15,7 +15,6 @@
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::rc::{Rc, Weak};
-use std::time::Duration;
 
 use demi_backend_database::conversation_index::{
     AttachedHostRecord, ExecutionTarget, RecordChange,
@@ -24,7 +23,6 @@ use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob};
 use demi_host_interface::{
     Call, GroupBuilder, LeafBuilder, ProcessEnd, RpcError, RpcInvocation, RpcPort, TypedRpc,
 };
-use demi_runner_protocol::wire::Signal;
 use demi_shared_types::StreamKind;
 use demi_web_api_protocol::devices::{DeviceKind, DeviceState};
 use demi_web_api_protocol::ids::ConversationId;
@@ -36,10 +34,6 @@ use tokio_util::sync::CancellationToken;
 use crate::HostShard;
 use crate::access::{HostRole, ReachableHost};
 use crate::transition::ChangeRefusal;
-
-/// How long a stopped `shell` waits for the far job's end after asking it
-/// to terminate, before it kills it.
-const ABORT_GRACE: Duration = Duration::from_secs(5);
 
 const SUMMARY: &str =
     "The hosts this conversation reaches: list them, show the primary one, run a command on another, attach or detach the user's devices.";
@@ -630,22 +624,14 @@ async fn run_on_host(
     }
 }
 
-/// Stops the far job: asks it to terminate, and kills it when it has not
-/// ended within the grace; its pipes fail with the command.
+/// Stops the far job as a stop does (`RemoteJob::stop`); its pipes fail
+/// with the command.
 async fn stop(job: &RemoteJob, stdout: &Pipe, stdin: Option<&Pipe>) -> JobEnd {
-    // A job that ended already needs no signal.
-    let _ = job.kill(Signal::Terminate).await;
     stdout.fail("command aborted");
     if let Some(stdin) = stdin {
         stdin.fail("command aborted");
     }
-    match tokio::time::timeout(ABORT_GRACE, job.end()).await {
-        Ok(end) => end,
-        Err(_) => {
-            let _ = job.kill(Signal::Kill).await;
-            job.end().await
-        }
-    }
+    job.stop().await
 }
 
 /// Writes what the caller types into the job, and ends its input when the

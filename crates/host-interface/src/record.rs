@@ -96,6 +96,10 @@ pub struct PageView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PageState {
     Running,
+    /// It runs while a stop waits for its runner to say that it ended
+    /// (`runner.md` § Cancellation and completion): the pages tag it
+    /// *Stopping…*, and it still counts as running.
+    Stopping,
     Exited { exit_code: i32 },
     Aborted,
     /// Its runner lost it, for `reason` (`runtime.md` § Lost commands): the
@@ -106,6 +110,8 @@ pub enum PageState {
 #[derive(Debug)]
 enum Phase {
     Running,
+    /// Running, while a stop waits for the runner's word of the end.
+    Stopping,
     Exited {
         exit_code: i32,
         binary_stdout: Option<BinaryOutput>,
@@ -195,7 +201,7 @@ impl CommandRecord {
     }
 
     pub fn is_running(&self) -> bool {
-        matches!(self.phase, Phase::Running)
+        matches!(self.phase, Phase::Running | Phase::Stopping)
     }
 
     /// How long the command has printed nothing (`runtime.md` § Results and
@@ -209,14 +215,14 @@ impl CommandRecord {
     pub fn media(&self) -> &[CommandMedium] {
         match &self.phase {
             Phase::Exited { media, .. } | Phase::Lost { media, .. } => media,
-            Phase::Running | Phase::Aborted => &[],
+            Phase::Running | Phase::Stopping | Phase::Aborted => &[],
         }
     }
 
     /// How the command ended; none while it runs.
     pub fn ending(&self) -> Option<Ending> {
         match &self.phase {
-            Phase::Running => None,
+            Phase::Running | Phase::Stopping => None,
             Phase::Exited { exit_code, .. } => Some(Ending::Exited(*exit_code)),
             Phase::Aborted => Some(Ending::Aborted),
             Phase::Lost { reason, .. } => Some(Ending::Lost(reason.clone())),
@@ -331,15 +337,15 @@ impl CommandRecord {
         running
     }
 
-    /// Marks a running command stopped whose streams never ended. True when
-    /// it ran until now.
-    pub fn mark_aborted(&mut self) -> bool {
-        if !self.is_running() {
-            return false;
+    /// Marks a running command as being stopped: it runs until its runner
+    /// says that it ended (`runner.md` § Cancellation and completion). True
+    /// when the pages' view changed.
+    pub fn mark_stopping(&mut self) -> bool {
+        let running = matches!(self.phase, Phase::Running);
+        if running {
+            self.phase = Phase::Stopping;
         }
-        self.last_output = Instant::now();
-        self.phase = Phase::Aborted;
-        true
+        running
     }
 
     /// The model's status: each stream's output since the model's last view,
@@ -391,7 +397,7 @@ impl CommandRecord {
         );
         let now = Instant::now();
         let state = match &self.phase {
-            Phase::Running => CommandState::Running { hint, outliving },
+            Phase::Running | Phase::Stopping => CommandState::Running { hint, outliving },
             Phase::Exited {
                 exit_code,
                 binary_stdout,
@@ -429,6 +435,7 @@ impl CommandRecord {
             tool_use_id: self.tool_use_id.clone(),
             state: match &self.phase {
                 Phase::Running => PageState::Running,
+                Phase::Stopping => PageState::Stopping,
                 Phase::Exited { exit_code, .. } => PageState::Exited {
                     exit_code: *exit_code,
                 },

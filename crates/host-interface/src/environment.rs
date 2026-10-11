@@ -91,8 +91,11 @@ pub trait ShellEnvironment {
         stdin: Bytes,
     ) -> LocalBoxFuture<'a, Result<(), ShellError>>;
 
-    /// Stops a running command: asks it to end, and ends it when it does not.
-    /// A command that is not running stays as it is.
+    /// Stops a running command: asks it to end, and ends it when it does
+    /// not, and returns once the stop is asked; [`ended`](Self::ended) waits
+    /// for the end, which only the command's runner reports (`runner.md`
+    /// § Cancellation and completion). A command that is not running stays
+    /// as it is.
     fn abort<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<(), ShellError>>;
 
     /// The pages' view of every command the environment holds: each one
