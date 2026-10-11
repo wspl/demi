@@ -1,11 +1,12 @@
 import type { RendererObject, Token, Tokens } from 'marked'
 import { markdownReader } from './reader'
 import { baseName } from '@demicodes/utils'
-import type { MarkdownRenderOptions, MessageAttachment, MessageFileTarget } from './types'
+import type { MarkdownRenderOptions, MessageAttachment, MessageFileTarget, MessageFiles } from './types'
 import { codeBlockHtml } from './highlight'
 import { attachmentId, isHttpUrl, messageFileTarget, messageImage } from './filePath'
 import { codeFileTarget } from './code-paths'
 import { linkedAgent } from '../agent/agent-links'
+import { KEEPS_WINDOWS } from '../ui/window-stack'
 import { escapeHtml } from './html'
 import { mathExtensions } from './math'
 import { scrollingTable } from './table'
@@ -32,12 +33,16 @@ function webLink(url: string): string {
  * A link that opens a Host file through the `file` intent, at its line when
  * it names one. A link of text names the file with its icon first, the one
  * the file tree shows for it, which the page puts in its place
- * (`StreamedMarkdown`), so it reads as a file and not as a web page.
+ * (`StreamedMarkdown`), so it reads as a file and not as a web page; a link
+ * that starts with an icon is spaced from the words around it
+ * (`icon-link`).
  */
 function fileLink({ path, line }: MessageFileTarget, named: boolean): string {
   const at = line === null ? '' : ` data-line="${line}"`
-  const icon = named ? `<span class="message-file-icon" data-file-icon="${escapeHtml(baseName(path))}" aria-hidden="true"></span>` : ''
-  return `<a href="${escapeHtml(path)}" data-file-link${at}>${icon}`
+  if (!named)
+    return `<a href="${escapeHtml(path)}" data-file-link${at}>`
+  const icon = `<span class="message-file-icon" data-file-icon="${escapeHtml(baseName(path))}" aria-hidden="true"></span>`
+  return `<a href="${escapeHtml(path)}" class="icon-link" data-file-link${at}>${icon}`
 }
 
 /**
@@ -46,6 +51,10 @@ function fileLink({ path, line }: MessageFileTarget, named: boolean): string {
  * place with the agent's live state, then the text, and a click opens it in
  * the Agents window. A number the conversation does not have shows the text
  * alone; the page's tip says so. Outside a conversation, the text alone.
+ * It starts with an icon, so it is spaced as a file's link is
+ * (`icon-link`), and it is a control of the Agents window, as the window's
+ * chip is: a press on it is not one outside the window (`KEEPS_WINDOWS`),
+ * so a click when the window shows its tab closes the window.
  */
 function agentLink(number: number, body: string): string {
   const agents = activeOptions?.agents
@@ -53,21 +62,23 @@ function agentLink(number: number, body: string): string {
     return body
   if (!agents.find(number))
     return `<span class="agent-link-missing" data-agent-link="${number}">${body}</span>`
-  return `<button type="button" class="agent-link" data-agent-link="${number}"><span class="agent-link-mark" data-agent-mark="${number}"></span>${body}</button>`
+  return `<button type="button" class="agent-link icon-link" data-agent-link="${number}" ${KEEPS_WINDOWS}><span class="agent-link-mark" data-agent-mark="${number}"></span>${body}</button>`
 }
 
 /**
  * A link that opens an attachment: an image or a video large in the page's
  * viewer, where a video plays, and any other file as a download under its
- * name.
+ * name. One that opens the viewer is the viewer's control: a press on it
+ * does not close the viewer, which shows the medium in place of the one it
+ * shows (`KEEPS_WINDOWS`).
  */
 function attachmentLink(attachment: MessageAttachment, attributes = ''): string {
   const url = escapeHtml(attachment.url)
   const name = escapeHtml(attachment.name)
   if (attachment.mediaType.startsWith('image/'))
-    return `<a href="${url}" data-attachment-image="${name}"${attributes}>`
+    return `<a href="${url}" data-attachment-image="${name}" ${KEEPS_WINDOWS}${attributes}>`
   if (attachment.mediaType.startsWith('video/'))
-    return `<a href="${url}" data-attachment-video="${name}"${attributes}>`
+    return `<a href="${url}" data-attachment-video="${name}" ${KEEPS_WINDOWS}${attributes}>`
   return `<a href="${url}" download="${name}"${attributes}>`
 }
 
@@ -243,72 +254,153 @@ function isWhiteSpace(token: Token): boolean {
   return token.type === 'br' || (token.type === 'text' && token.raw.trim() === '')
 }
 
-/** Whether an inline token is an image, or a link around one image and nothing else. */
+/**
+ * Whether an image token shows a picture, or a video's first frame: an image
+ * that loads, or an attachment that is an image or a video, also while the
+ * page still asks for it. One that never shows, which leaves its alt text or
+ * a download link, is words.
+ */
+function showsMedium(token: Token): boolean {
+  if (token.type !== 'image')
+    return false
+  const href: string = token.href
+  const id = attachmentId(href)
+  if (id === null)
+    return messageImage(href, activeOptions?.files) !== null
+  const lookup = activeOptions?.files?.attachment?.(id)
+  if (!lookup || lookup.state === 'missing')
+    return false
+  return lookup.state !== 'found' || /^(?:image|video)\//.test(lookup.attachment.mediaType)
+}
+
+/** Whether an inline token is a medium of the message: an image that shows, or a link around one and nothing else. */
 function isMedium(token: Token): boolean {
-  if (token.type === 'image')
+  if (showsMedium(token))
     return true
   if (token.type !== 'link')
     return false
   const inside = (token.tokens ?? []).filter((part) => !isWhiteSpace(part))
-  return inside.length === 1 && inside[0]?.type === 'image'
+  return inside.length === 1 && inside[0] !== undefined && showsMedium(inside[0])
 }
 
 /**
- * The images a block holds when it is a paragraph of images with nothing but
- * white space between them; null for any other block.
- */
-function paragraphMedia(token: Token): Token[] | null {
-  if (token.type !== 'paragraph')
-    return null
-  const media: Token[] = []
-  for (const part of token.tokens ?? []) {
-    if (isMedium(part))
-      media.push(part)
-    else if (!isWhiteSpace(part))
-      return null
-  }
-  return media.length > 0 ? media : null
-}
-
-/**
- * The images of the paragraphs of images that follow each other from block
- * `start`, across the blank lines between them, and the index after the last
- * of those paragraphs; none when block `start` is not one.
- */
-function mediaFrom(blocks: Token[], start: number): { media: Token[]; end: number } {
-  const media: Token[] = []
-  let end = start
-  for (let index = start; index < blocks.length; index += 1) {
-    const block = blocks[index]
-    if (block === undefined)
-      break
-    if (block.type === 'space' && media.length > 0)
-      continue
-    const found = paragraphMedia(block)
-    if (found === null)
-      break
-    media.push(...found)
-    end = index + 1
-  }
-  return { media, end }
-}
-
-/** The block a run of images becomes: two or more of them, in one paragraph or in several that follow each other. */
-const MEDIA_RUN = 'mediaRun'
-
-/**
- * Turns each run of a message's images into one block, which stands them side
- * by side; a lone image stays in its paragraph
+ * The block a message's media stand in, on a line of their own: one medium
+ * alone, or a run of two or more side by side
  * (`file-previews.md` § Files named in messages).
  */
-function groupMediaRuns(blocks: Token[]): void {
-  for (let index = 0; index < blocks.length; index += 1) {
-    const { media, end } = mediaFrom(blocks, index)
-    if (media.length < 2)
-      continue
-    const raw = blocks.slice(index, end).map((block) => block.raw).join('')
-    blocks.splice(index, end - index, { type: MEDIA_RUN, raw, tokens: media })
+const MEDIA = 'messageMedia'
+
+function mediaBlock(media: Token[]): Token {
+  return { type: MEDIA, raw: media.map((medium) => medium.raw).join('\n'), tokens: media }
+}
+
+/** `token` without the white space at its start or its end, when it is text. */
+function trimmedText(token: Token, edge: 'start' | 'end'): Token {
+  if (token.type !== 'text')
+    return token
+  const trim = (value: string) => (edge === 'start' ? value.trimStart() : value.trimEnd())
+  return { ...token, raw: trim(token.raw), text: trim(token.text) }
+}
+
+/** The words of a paragraph between its media, without the white space and line breaks at their edges. */
+function trimmedWords(words: Token[]): Token[] {
+  const first = words.findIndex((token) => !isWhiteSpace(token))
+  if (first < 0)
+    return []
+  const last = words.findLastIndex((token) => !isWhiteSpace(token))
+  const kept = words.slice(first, last + 1)
+  kept[0] = trimmedText(kept[0]!, 'start')
+  kept[kept.length - 1] = trimmedText(kept.at(-1)!, 'end')
+  return kept
+}
+
+/**
+ * A paragraph, or a tight list item's text, split at its media: the words
+ * before them, the media that follow each other with nothing but white space
+ * between them, the words after, each a block of its own, so a picture always
+ * stands on its own line, even on the line after a list item's words. Null
+ * for one with no media.
+ */
+function splitAtMedia(block: Tokens.Paragraph | Tokens.Text | Tokens.Generic): Token[] | null {
+  const inline = block.tokens ?? []
+  if (!inline.some(isMedium))
+    return null
+  const parts: Token[] = []
+  let words: Token[] = []
+  let media: Token[] = []
+  const endWords = () => {
+    const kept = trimmedWords(words)
+    if (kept.length > 0) {
+      const raw = kept.map((token) => token.raw).join('')
+      parts.push({ type: block.type, raw, text: raw, tokens: kept })
+    }
+    words = []
   }
+  const endMedia = () => {
+    if (media.length > 0)
+      parts.push(mediaBlock(media))
+    media = []
+  }
+  for (const token of inline) {
+    if (isMedium(token)) {
+      endWords()
+      media.push(token)
+    } else if (media.length === 0 || !isWhiteSpace(token)) {
+      endMedia()
+      words.push(token)
+    }
+  }
+  endWords()
+  endMedia()
+  return parts
+}
+
+/** Joins media blocks that follow each other, across the blank lines between them, into one run. */
+function joinMediaRuns(blocks: Token[]): void {
+  for (let index = 0; index < blocks.length; index += 1) {
+    const first = blocks[index]
+    if (first?.type !== MEDIA)
+      continue
+    const media = [...(first.tokens ?? [])]
+    let last = index
+    for (let next = index + 1; next < blocks.length; next += 1) {
+      const block = blocks[next]
+      if (block?.type === 'space')
+        continue
+      if (block?.type !== MEDIA)
+        break
+      media.push(...(block.tokens ?? []))
+      last = next
+    }
+    if (last > index)
+      blocks.splice(index, last - index + 1, mediaBlock(media))
+  }
+}
+
+/**
+ * Gives each of a message's media, and each run of them, a block of its own,
+ * in the message and in its lists and quotes: a lone image stands on its
+ * own line, and images that follow each other stand side by side, whatever
+ * words come before the first of them in its paragraph; any other text, a
+ * list or a heading ends a run (`file-previews.md` § Files named in messages).
+ */
+function separateMedia(blocks: Token[]): void {
+  for (let index = 0; index < blocks.length; index += 1) {
+    const block = blocks[index]
+    if (block?.type === 'list') {
+      for (const item of block.items)
+        separateMedia(item.tokens)
+    } else if (block?.type === 'blockquote') {
+      separateMedia(block.tokens ?? [])
+    } else if (block?.type === 'paragraph' || block?.type === 'text') {
+      const parts = splitAtMedia(block)
+      if (parts) {
+        blocks.splice(index, 1, ...parts)
+        index += parts.length - 1
+      }
+    }
+  }
+  joinMediaRuns(blocks)
 }
 
 const agentMarked = markdownReader({ breaks: true, renderer: messageRenderer }, scrollingTable)
@@ -318,19 +410,22 @@ agentMarked.use({ extensions: mathExtensions({ throwOnError: false, output: 'htm
 agentMarked.use({
   hooks: {
     processAllTokens(tokens) {
-      groupMediaRuns(tokens)
+      separateMedia(tokens)
       return tokens
     },
   },
   extensions: [{
-    name: MEDIA_RUN,
+    name: MEDIA,
     renderer(token) {
-      // Each medium's place is as tall as its thumbnail's renderer says; one
-      // that shows as text, while its attachment is asked for or missing,
+      const media = token.tokens ?? []
+      if (media.length === 1)
+        return `<p class="media-lone">${this.parser.parseInline(media)}</p>\n`
+      // In a run, each medium's place is as tall as its thumbnail's renderer
+      // says; one that shows as text, while its attachment is asked for,
       // keeps the place of a medium whose size is unknown.
       const items: string[] = []
       try {
-        for (const medium of token.tokens ?? []) {
+        for (const medium of media) {
           runPlace = THUMBNAIL_HEIGHT
           const html = this.parser.parseInline([medium])
           items.push(`<span style="height: ${runPlace}px">${html}</span>`)
@@ -350,35 +445,45 @@ agentMarked.use({
  */
 const PARTIAL_MEDIUM = /(?:\[?!|\[!\[[^\]]*\]\([^)]*\)\](?:\([^)]*)?)$/
 
+/** The media a message's text ends with, in the innermost list item or quote it ends in; none when it ends with words. */
+function trailingMedia(blocks: Token[]): Token[] {
+  separateMedia(blocks)
+  let inner = blocks
+  for (;;) {
+    const last = inner.findLast((block) => block.type !== 'space')
+    if (last?.type === MEDIA)
+      return last.tokens ?? []
+    if (last?.type === 'list')
+      inner = last.items.at(-1)?.tokens ?? []
+    else if (last?.type === 'blockquote')
+      inner = last.tokens ?? []
+    else
+      return []
+  }
+}
+
 /**
  * Streamed text without the lone image at its end: whether that image stands
  * alone or starts a run is decided only by what follows it, so it shows once
  * that arrives, or once the message is complete, and never shows large first
  * and then shrinks into a row. An image that joins a run already shown shows
- * at once.
+ * at once. `files` are the conversation's, which tell which images show.
  */
-export function holdUndecidedMedium(text: string): string {
+export function holdUndecidedMedium(text: string, files?: MessageFiles): string {
   const settled = text.replace(PARTIAL_MEDIUM, '')
-  // A paragraph of images ends with the `)` of its last one.
+  // Media end with the `)` of the last one.
   if (!/\)\s*$/.test(settled))
     return text
-  const blocks = agentMarked.lexer(settled)
-  let start = blocks.length
-  for (let index = blocks.length - 1; index >= 0; index -= 1) {
-    const block = blocks[index]
-    if (block === undefined)
-      break
-    if (block.type === 'space')
-      continue
-    if (paragraphMedia(block) === null)
-      break
-    start = index
+  activeOptions = { files }
+  let media: Token[]
+  try {
+    media = trailingMedia(agentMarked.lexer(settled))
+  } finally {
+    activeOptions = undefined
   }
-  if (mediaFrom(blocks, start).media.length !== 1)
-    return text
-  const before = blocks.slice(0, start).map((block) => block.raw).join('')
-  // The lexer reads a carriage return as a line feed; such text is shown as it is.
-  return settled.startsWith(before) ? before : text
+  const raw = media.length === 1 ? media[0]?.raw : undefined
+  const end = settled.trimEnd()
+  return raw !== undefined && end.endsWith(raw) ? end.slice(0, end.length - raw.length) : text
 }
 
 /** The text of each inline code span of an agent's message, in order, at any depth. */

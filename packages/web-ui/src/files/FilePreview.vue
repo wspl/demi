@@ -6,6 +6,7 @@ import ImagePreview from './ImagePreview.vue'
 import MediaPreview from './MediaPreview.vue'
 import { baseName } from '@demicodes/utils'
 import { formatBytes } from './format'
+import { formatZoom } from './image-zoom'
 import { TOO_LARGE_NOTE } from './preview'
 import { failureShown } from './file-cache'
 import { useShowing } from './showing'
@@ -36,6 +37,8 @@ type State =
   | { phase: 'failed'; message: string }
 
 const dimensions = ref<{ width: number; height: number } | null>(null)
+/** An image's zoom, which its preview reports. */
+const zoom = ref<number | null>(null)
 const name = computed(() => baseName(props.path))
 const shown = useShowing(() => props.contents, () => props.path, (contents, path) => contents.showDescription(path))
 /** The version the web browser could not decode, of this file. */
@@ -70,13 +73,19 @@ const src = computed(() => state.value.phase === 'ready'
 
 watch(() => props.path, () => {
   dimensions.value = null
+  zoom.value = null
 })
 
+/** What the preview shows beside the file: its pixel size, an image's zoom, and its file size, *1280 × 720 · 50% · 412 KB*. */
 const caption = computed(() => {
   if (state.value.phase !== 'ready')
     return ''
-  const size = formatBytes(state.value.description.size)
-  return dimensions.value ? `${dimensions.value.width} × ${dimensions.value.height} · ${size}` : size
+  const parts = [
+    dimensions.value ? `${dimensions.value.width} × ${dimensions.value.height}` : null,
+    zoom.value === null ? null : formatZoom(zoom.value),
+    formatBytes(state.value.description.size),
+  ]
+  return parts.filter((part) => part !== null).join(' · ')
 })
 </script>
 
@@ -89,6 +98,7 @@ const caption = computed(() => {
           :src="src"
           :name="name"
           @size="(width, height) => dimensions = { width, height }"
+          @zoom="zoom = $event"
           @failed="failed"
         />
         <MediaPreview

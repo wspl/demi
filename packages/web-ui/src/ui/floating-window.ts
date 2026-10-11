@@ -1,5 +1,4 @@
 import { clamp } from '@demicodes/utils'
-import { onBeforeUnmount, ref, watch } from 'vue'
 import type { PixelSize } from '../files/thumbnail'
 import { FIELD } from '../overlay/dialogFocus'
 
@@ -128,32 +127,4 @@ export function escapeClosesWindow(key: EscapeKey, otherLayerOpen: boolean): boo
   if (key.defaultPrevented || key.isComposing || otherLayerOpen)
     return false
   return key.target?.closest(FIELD) == null
-}
-
-/** How many floating windows are open on the page. */
-const openWindows = ref(0)
-
-/**
- * Counts a floating window while `isOpen` holds, until it unmounts, so a
- * layer beneath the windows knows one stands in front of it.
- */
-export function useOpenWindowCount(isOpen: () => boolean): void {
-  let counted = false
-  function count(open: boolean): void {
-    if (open === counted)
-      return
-    counted = open
-    openWindows.value += open ? 1 : -1
-  }
-  watch(isOpen, count, { immediate: true })
-  onBeforeUnmount(() => count(false))
-}
-
-/**
- * Whether a floating window stands in front of the page, as the media
- * viewer does: a window beneath it, such as the dock's Agents window,
- * leaves Escape to it, so Escape closes the one in front first.
- */
-export function floatingWindowInFront(): boolean {
-  return openWindows.value > 0
 }

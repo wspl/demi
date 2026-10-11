@@ -5,6 +5,7 @@ import { useMediaViewer } from '../files/media-viewer'
 import { dropSource } from '../files/preview'
 import { declaredSize, loadedSize, thumbnailBox, thumbnailPlaceHeight, type PixelSize } from '../files/thumbnail'
 import { useMediaUrl } from './media-source'
+import { KEEPS_WINDOWS } from '../ui/window-stack'
 
 /**
  * One image or video of the conversation, as a thumbnail that takes its box
@@ -73,6 +74,7 @@ onBeforeUnmount(() => {
       class="relative max-w-full rounded-md outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-line-focus"
       :class="kind === 'image' ? 'cursor-zoom-in' : 'cursor-pointer'"
       :aria-label="kind === 'image' ? `Open ${name} large` : `Play ${name}`"
+      v-bind="{ [KEEPS_WINDOWS]: '' }"
       @click="openLarge"
     >
       <img
