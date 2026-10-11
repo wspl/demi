@@ -65,6 +65,14 @@ pub struct DeviceRecord {
     pub route: DeviceRoute,
 }
 
+/// A paired device's system: its platform, and the operating system its
+/// runner last reported, none before its runner first connected.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PairedSystem {
+    pub platform: RunnerPlatform,
+    pub os: Option<OperatingSystem>,
+}
+
 /// What a change of a device sets: each field that is present.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DeviceChange {
@@ -192,22 +200,29 @@ impl ControlService {
         .await
     }
 
-    /// The platforms of every user's paired devices, each once: the systems
-    /// whose runners this backend serves.
-    pub async fn paired_platforms(&self) -> Result<Vec<RunnerPlatform>, StorageError> {
+    /// The systems of every user's paired devices, each once: the systems
+    /// whose runners this backend serves, and whose targets the commands it
+    /// stores ahead are for.
+    pub async fn paired_systems(&self) -> Result<Vec<PairedSystem>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection
-                .prepare_cached("SELECT DISTINCT platform FROM devices WHERE kind = 'user'")?;
+                .prepare_cached("SELECT DISTINCT platform, os FROM devices WHERE kind = 'user'")?;
             let mut rows = statement.query([])?;
-            let mut platforms = Vec::new();
+            let mut systems = Vec::new();
             while let Some(row) = rows.next()? {
-                platforms.push(decode(
-                    "devices",
-                    "platform",
-                    row.get::<_, String>("platform")?.parse::<RunnerPlatform>(),
-                )?);
+                systems.push(PairedSystem {
+                    platform: decode(
+                        "devices",
+                        "platform",
+                        row.get::<_, String>("platform")?.parse::<RunnerPlatform>(),
+                    )?,
+                    os: match row.get::<_, Option<String>>("os")? {
+                        Some(text) => Some(json("devices", "os", &text)?),
+                        None => None,
+                    },
+                });
             }
-            Ok(platforms)
+            Ok(systems)
         })
         .await
     }
