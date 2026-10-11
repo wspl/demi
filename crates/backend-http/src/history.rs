@@ -39,7 +39,8 @@ pub(super) async fn transcript(
         .read(&record.id, move |connection| {
             tree::read_page(connection, &node, &query)
         })
-        .await?;
+        .await
+        .map_err(ApiError::conversation_unreadable)?;
     match read {
         // A conversation with no database yet has an empty transcript.
         None => Ok(Json(TranscriptPage {
@@ -107,7 +108,8 @@ pub(super) async fn block(
             let mut blocks = tree::blocks_in(connection, &node, index..index + 1)?;
             Ok(Ok(blocks.remove(0)))
         })
-        .await?
+        .await
+        .map_err(ApiError::conversation_unreadable)?
         .ok_or_else(no_block)??;
     let failures = failure_facts(&services.assembly, std::slice::from_ref(&found)).await;
     Ok(Json(WholeBlock {
@@ -128,7 +130,8 @@ pub(super) async fn subagents(
     let nodes = services
         .conversations
         .read(&record.id, tree::subagents)
-        .await?
+        .await
+        .map_err(ApiError::conversation_unreadable)?
         .unwrap_or_default();
     Ok(Json(Subagents {
         subagents: nodes.iter().filter_map(|node| node.job()).collect(),
@@ -157,7 +160,8 @@ pub(super) async fn command(
     let (node, call) = services
         .conversations
         .read(&record.id, move |connection| tree::command_call(connection, &wanted))
-        .await?
+        .await
+        .map_err(ApiError::conversation_unreadable)?
         .flatten()
         .ok_or_else(no_command)?;
     Ok(Json(CommandCall {
