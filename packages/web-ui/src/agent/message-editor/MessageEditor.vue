@@ -1,28 +1,25 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
-import { DOMSerializer, Fragment, Slice, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
-import { Selection, TextSelection, type Transaction } from '@tiptap/pm/state'
+import { DOMSerializer, Fragment, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
+import { Selection, type Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import { Editor, EditorContent } from '@tiptap/vue-3'
-import { transferHasFiles } from '../../composables/useFileDrop'
 import { messageFileTarget } from '../../markdown/filePath'
 import { useMarkdownRenderVersion } from '../../markdown/highlight'
 import { useMessageFiles } from '../../markdown/message-files'
-import { parseUserMarkdown, serializeUserMarkdown } from '../../markdown/user-markdown'
+import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '../../markdown/user-markdown'
 import { useAutofocus } from '../../ui/autofocus'
 import { reportError } from '../../infra/errors'
 import { useMediaAddress } from '../media-source'
-import { dataTransferFiles, pastedTextFile, pastedTextIsLong } from '../message-input/attachments'
 import {
-  COPIED_MESSAGE_ATTRIBUTE,
+  copiedMessageHtml,
   messageClipboard,
-  readCopiedMessage,
   type CopiedMessage,
   type MessageClipboard,
 } from '../message-input/copied-message'
-import { useTransfers, type MessageCapsule } from './capsules'
+import { capsuleOf, useTransfers, type MessageCapsule } from './capsules'
 import { composerExtensions, readOnlyExtensions, redrawDecorations } from './extensions'
-import { markdownSlice, trimmedSlice } from './clipboard-slices'
+import { fragmentDocument, markdownSlice, trimmedSlice } from './clipboard-slices'
 import type { PlaceholderText } from '../../ui/ui-text'
 
 /**
@@ -81,12 +78,17 @@ const emit = defineEmits<{
   /** Enter, or ⌘/Ctrl+Enter; `otherWay` for ⌘/Ctrl+Enter outside a code block (`MessageKeyOptions`). */
   submit: [otherWay: boolean]
   cancel: []
-  /** Files pasted, or a paste long enough to be one; their capsules land where the cursor was. */
+  /**
+   * Files pasted, a paste long enough to be one, or images a paste or a drop
+   * brought: the owner takes them and gives their capsules to
+   * `insertCapsules`, at once, which puts them where they were pasted or
+   * dropped.
+   */
   files: [files: File[]]
   /**
-   * A copied message pasted, in Demi's own form, with the picture a copy of a
-   * lone image carried: the owner takes its files and gives the message back
-   * to `insertMessage`, where the cursor was.
+   * A copied message pasted or dropped, in Demi's own form, with the picture
+   * a copy of a lone image carried: the owner takes its files and gives the
+   * message back to `insertMessage`, where it was pasted or dropped.
    */
   message: [message: CopiedMessage, image: File | null]
   focus: []
@@ -125,6 +127,15 @@ const editor = new Editor({
           props.editLast?.()
           return !!props.editLast
         },
+        intake: {
+          carries: (id) => transfers?.carries(id) ?? false,
+          land: (at) => {
+            landing = at
+          },
+          files: (taken) => emit('files', taken),
+          message: (message, picture) => emit('message', message, picture),
+          content: insertContent,
+        },
       })
     : readOnlyExtensions(),
   content: parseUserMarkdown(props.markdown, props.attachments),
@@ -138,14 +149,9 @@ const editor = new Editor({
       class: 'markdown-body message-editor-text',
       ...(props.composer ? fieldAttributes() : {}),
     }),
-    handlePaste: (view, event) => props.composer && paste(view, event),
-    handleDrop: (view, event, _slice, moved) => props.composer && drop(view, event, moved),
     // A sent message copies with its files (`product.md` § Writing a message);
     // the composer's own copy keeps ProseMirror's, which a paste in it reads.
     handleDOMEvents: props.composer ? {} : { copy: (view, event) => copySelection(view, event) },
-    // A paste or a drop brings no blank lines at its ends.
-    transformPasted: (slice, view) =>
-      trimmedSlice(new Slice(keepCapsules(slice.content, view), slice.openStart, slice.openEnd), view.state.schema),
     // A copy, a cut or a drag holds no blank line before its first line or
     // after its last, in its HTML as in its text; ProseMirror drags the
     // copied slice, so text moved within a composer leaves such lines behind.
@@ -154,7 +160,7 @@ const editor = new Editor({
     // copied from; code copied from inside a code block is the code.
     clipboardTextSerializer: (slice) => slice.openStart > 0 && slice.content.childCount === 1 && slice.content.firstChild?.type.spec.code
       ? slice.content.textBetween(0, slice.content.size)
-      : messageClipboard({ type: 'doc', content: slice.content.toJSON() ?? [] }).plain,
+      : messageClipboard(fragmentDocument(slice.content)).plain,
   },
   onUpdate: write,
   onTransaction: ({ transaction }) => {
@@ -297,90 +303,15 @@ function inCode(view: EditorView): boolean {
   return !!view.state.selection.$from.parent.type.spec.code
 }
 
-/** Where files land: here, with the selection they replace gone. */
-function landAtSelection(view: EditorView): void {
-  if (!view.state.selection.empty) {
-    view.dispatch(view.state.tr.deleteSelection())
-  }
-  landing = view.state.selection.from
-}
-
-function paste(view: EditorView, event: ClipboardEvent): boolean {
-  const transfer = event.clipboardData
-  if (!transfer) {
-    return false
-  }
-  const pasted = dataTransferFiles(transfer)
-  // A copied message comes back with its files where they stood; code takes text alone.
-  const copied = inCode(view) ? null : copiedMessage(transfer.getData('text/html'))
-  if (copied) {
-    landAtSelection(view)
-    emit('message', copied, pasted.find((file) => file.type.startsWith('image/')) ?? null)
-    return true
-  }
-  if (pasted.length) {
-    landAtSelection(view)
-    emit('files', pasted)
-    return true
-  }
-  // Code takes pasted text as it is.
-  if (inCode(view)) {
-    return false
-  }
-  const text = transfer.getData('text/plain')
-  if (pastedTextIsLong(text)) {
-    landAtSelection(view)
-    emit('files', [pastedTextFile(text)])
-    return true
-  }
-  // Copied from a message: its own formatting and capsules.
-  if (transfer.getData('text/html').includes('data-pm-slice')) {
-    return false
-  }
-  view.dispatch(view.state.tr.replaceSelection(markdownSlice(view.state.schema, text)).scrollIntoView())
-  return true
-}
-
-function drop(view: EditorView, event: DragEvent, moved: boolean): boolean {
-  const transfer = event.dataTransfer
-  // Files are the composer's to take, where they were dropped.
-  if (transferHasFiles(transfer)) {
-    return true
-  }
-  // A move inside the editor, or text dragged out of a message, carries its own nodes.
-  if (moved || !transfer || transfer.getData('text/html').includes('data-pm-slice')) {
-    return false
-  }
-  const text = transfer.getData('text/plain')
-  const pos = view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
-  if (!text || pos === undefined) {
-    return false
-  }
-  const tr = view.state.tr.setSelection(TextSelection.create(view.state.doc, pos))
-  view.dispatch(tr.replaceSelection(markdownSlice(view.state.schema, text)))
-  return true
-}
-
-/** Demi's own form of a copied message, which the outermost element of its HTML holds; null for HTML from elsewhere. */
-function copiedMessage(html: string): CopiedMessage | null {
-  if (!html.includes(COPIED_MESSAGE_ATTRIBUTE)) {
-    return null
-  }
-  const page = new DOMParser().parseFromString(html, 'text/html')
-  return readCopiedMessage(page.querySelector(`[${COPIED_MESSAGE_ATTRIBUTE}]`)?.getAttribute(COPIED_MESSAGE_ATTRIBUTE) ?? null)
-}
-
 /**
  * A copy's forms: Demi's own and plain text, and its HTML, Demi's own form an
  * attribute of its outermost element; all three hold the same lines, without
  * blank ones at the ends.
  */
 function clipboardForms(content: Fragment): { clipboard: MessageClipboard; html: string } {
-  const clipboard = messageClipboard({ type: 'doc', content: content.toJSON() ?? [] })
-  const wrapper = document.createElement('div')
-  wrapper.setAttribute(COPIED_MESSAGE_ATTRIBUTE, JSON.stringify(clipboard.message))
-  wrapper.append(htmlSerializer(editor.schema).serializeFragment(Fragment.fromJSON(editor.schema, clipboard.doc.content ?? [])))
-  return { clipboard, html: wrapper.outerHTML }
+  const clipboard = messageClipboard(fragmentDocument(content))
+  const html = htmlSerializer(editor.schema).serializeFragment(Fragment.fromJSON(editor.schema, clipboard.doc.content ?? []))
+  return { clipboard, html: copiedMessageHtml(clipboard.message, html) }
 }
 
 /** The message as HTML for mail, documents and chat apps: its formatting, each picture an image, every other file its name. */
@@ -478,39 +409,85 @@ function copySelection(view: EditorView, event: ClipboardEvent): boolean {
 }
 
 /**
- * Pasted or dropped nodes keep the capsules of files this composer carries
- * and does not have already: a capsule cut from this message can be pasted
- * back, one from elsewhere has no file here to send.
+ * Where new content lands: where it was told to, or at the cursor; a code
+ * block holds only text, so content that lands in one goes after it.
  */
-function keepCapsules(fragment: Fragment, view: EditorView): Fragment {
-  const present = new Set<string>()
-  view.state.doc.descendants((node) => {
-    const id = capsuleOf(node)?.id
-    if (id) {
-      present.add(id)
-    }
-  })
-  const keep = (content: Fragment): Fragment => {
-    const nodes: ProseMirrorNode[] = []
-    content.forEach((node) => {
-      const capsule = capsuleOf(node)
-      if (!capsule) {
-        nodes.push(node.isLeaf ? node : node.copy(keep(node.content)))
-        return
-      }
-      if (transfers?.carries(capsule.id) && !present.has(capsule.id)) {
-        present.add(capsule.id)
-        nodes.push(node)
-      }
-    })
-    return Fragment.from(nodes)
-  }
-  return keep(fragment)
+function landingPlace(tr: Transaction): number {
+  const $at = tr.doc.resolve(landing === null ? tr.selection.from : Math.min(landing, tr.doc.content.size))
+  return $at.parent.type.spec.code ? $at.after() : $at.pos
 }
 
-/** The file a node stands for, when it is a capsule. */
-function capsuleOf(node: ProseMirrorNode): MessageCapsule | null {
-  return node.type.name === 'attachment' ? node.attrs['capsule'] ?? null : null
+/** Puts files into the message where they were told to land: one change, capsules and all. */
+function insertCapsules(capsules: readonly MessageCapsule[]): void {
+  if (!capsules.length || editor.isDestroyed) {
+    return
+  }
+  const tr = editor.state.tr
+  const at = landingPlace(tr)
+  tr.insert(at, capsules.map((capsule) => editor.schema.nodes['attachment']!.create({ capsule })))
+  landing = null
+  editor.view.dispatch(tr)
+}
+
+/**
+ * A pasted message, its files taken: its text and capsules go in where the
+ * paste landed, as one change, the cursor after them.
+ */
+function insertMessage(markdown: string, capsules: readonly MessageCapsule[]): void {
+  if (editor.isDestroyed) {
+    return
+  }
+  const tr = editor.state.tr
+  const at = landingPlace(tr)
+  tr.replaceRange(at, at, markdownSlice(editor.schema, markdown, capsules))
+  tr.setSelection(Selection.near(tr.doc.resolve(tr.mapping.map(at, 1)), -1))
+  landing = null
+  editor.view.dispatch(tr.scrollIntoView())
+}
+
+/**
+ * Text with the images a paste or a drop brought, each where it stood: the
+ * text goes in, and each image is taken as a pasted file is, its capsule
+ * landing after the text before it. The owner gives the capsules back at
+ * once, so the steps follow each other as one change to undo.
+ */
+function insertContent(markdown: string, taken: File[]): void {
+  let at: number | null = landing
+  markdown.split(ATTACHMENT_MARK).forEach((part, index) => {
+    const file = index > 0 ? taken[index - 1] : undefined
+    if (file) {
+      landing = at
+      const size = editor.state.doc.content.size
+      emit('files', [file])
+      at = at === null ? null : at + editor.state.doc.content.size - size
+    }
+    if (part) {
+      landing = at
+      insertMessage(part, [])
+      at = editor.state.selection.to
+    }
+  })
+  landing = null
+}
+
+/**
+ * A drag out of a message carries Demi's own form beside ProseMirror's, as
+ * a copy does, so another composer brings its files back as capsules
+ * without uploading them; this composer moves what it dragged by
+ * ProseMirror's own record of the drag.
+ */
+function dragStart(event: DragEvent): void {
+  const slice = editor.view.dragging?.slice
+  const transfer = event.dataTransfer
+  if (!slice || !transfer) {
+    return
+  }
+  const { clipboard } = clipboardForms(slice.content)
+  if (!clipboard.message.files.length) {
+    return
+  }
+  const html = document.createRange().createContextualFragment(transfer.getData('text/html'))
+  transfer.setData('text/html', copiedMessageHtml(clipboard.message, html))
 }
 
 /**
@@ -554,33 +531,8 @@ defineExpose({
     landing = editor.view.posAtCoords({ left: event.clientX, top: event.clientY })?.pos
       ?? Selection.atEnd(editor.state.doc).from
   },
-  /** Puts files into the message where they were told to land: one change, capsules and all. */
-  insertCapsules(capsules: readonly MessageCapsule[]): void {
-    if (!capsules.length) {
-      return
-    }
-    const tr = editor.state.tr
-    const $at = tr.doc.resolve(landing === null ? tr.selection.to : Math.min(landing, tr.doc.content.size))
-    // A code block holds only text: a file dropped into one lands after it.
-    const at = $at.parent.type.spec.code ? $at.after() : $at.pos
-    tr.insert(at, capsules.map((capsule) => editor.schema.nodes['attachment']!.create({ capsule })))
-    landing = null
-    editor.view.dispatch(tr)
-  },
-  /**
-   * A pasted message, its files taken: its text and capsules go in where
-   * the paste landed, as one change.
-   */
-  insertMessage(markdown: string, capsules: readonly MessageCapsule[]): void {
-    if (editor.isDestroyed) {
-      return
-    }
-    const tr = editor.state.tr
-    const at = landing === null ? tr.selection.from : Math.min(landing, tr.doc.content.size)
-    tr.setSelection(TextSelection.create(tr.doc, at)).replaceSelection(markdownSlice(editor.schema, markdown, capsules))
-    landing = null
-    editor.view.dispatch(tr.scrollIntoView())
-  },
+  insertCapsules,
+  insertMessage,
   /**
    * A pasted file the composer could not add: its name stands where its
    * capsule did. Answers whether the message still held that capsule.
@@ -617,6 +569,7 @@ defineExpose({
     class="message-editor"
     :data-files="files() ? '' : undefined"
     @click="click"
+    @dragstart="dragStart"
   >
     <EditorContent :editor="editor" />
   </div>
