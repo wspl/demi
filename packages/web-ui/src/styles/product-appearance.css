@@ -79,17 +79,18 @@ html[data-theme="dark"][data-tone="ink"] {
 }
 
 html[data-theme="light"][data-tone="ink"] {
-  /* Lighter than subtle: on white, subtle stood too near the prose. */
-  --fg-row: #8f8f8f;
+  /* Under the prose by colour, still read: at #8f8f8f a row read washed out
+     on white. The prose is near black, so the step between them stays. */
+  --fg-row: #6e6e6e;
   --surface-base: #f4f4f4;
   --surface: #ffffff;
   --surface-editor: #ffffff;
   --surface-raised: #ffffff;
   --surface-float: #ffffff;
   --overlay: black;
-  --fg-emphasis: #171717;
-  --fg: #242424;
-  --fg-body: #2a2a2a;
+  --fg-emphasis: #141414;
+  --fg: #1c1c1c;
+  --fg-body: #1f1f1f;
   --fg-muted: #595959;
   --fg-subtle: #7a7a7a;
   --fg-faint: #8c8c8c;
@@ -134,16 +135,16 @@ html[data-theme="dark"][data-tone="warm"] {
 }
 
 html[data-theme="light"][data-tone="warm"] {
-  --fg-row: oklch(63% 0.004 107);
+  --fg-row: oklch(53% 0.004 107);
   --surface-base: #f8f5ef;
   --surface: #fffdf9;
   --surface-editor: #fffdf9;
   --surface-raised: #ffffff;
   --surface-float: #ffffff;
   --overlay: black;
-  --fg-emphasis: oklch(18% 0.004 107);
-  --fg: oklch(22% 0.004 107);
-  --fg-body: oklch(28% 0.004 107);
+  --fg-emphasis: oklch(16% 0.004 107);
+  --fg: oklch(20% 0.004 107);
+  --fg-body: oklch(23% 0.004 107);
   --fg-muted: oklch(45% 0.004 107);
   --fg-subtle: oklch(55% 0.004 107);
   --fg-faint: oklch(68% 0.004 107);
