@@ -47,9 +47,10 @@ test('a running group is its own activity: the next steps roll over its face, no
   expect(kind('running', transcript, groupWork(transcript, true))).toBeNull()
   // Without the grouping the same tail waits for the model.
   expect(kind('running', transcript)).toBe('requesting')
-  // A lone call is its own row: once it ended, the turn waits for the model under it.
+  // A lone call is the run's row too: once it ended, the turn waits for the
+  // model in it, and no Requesting row shows under it.
   const lone = [userBlock(), toolCallBlock('completed')]
-  expect(kind('running', lone, groupWork(lone, true))).toBe('requesting')
+  expect(kind('running', lone, groupWork(lone, true))).toBeNull()
 })
 
 test('the slot stays hidden while the tool row itself is executing', () => {
@@ -131,13 +132,14 @@ function slotOver(phase: SessionPhase, blocks: MessageListBlock[], opened = 0) {
   const conversation = reactive({
     phase,
     blocks,
+    load: 'ready' as SessionLoad,
     pendingSubmission: null as PendingSubmissionState | null,
     waitingSince: null as number | null,
   })
   const scope = effectScope()
   const { slot } = scope.run(() => useActivitySlot({
     input: () => ({
-      load: 'ready',
+      load: conversation.load,
       backendAway: false,
       phase: conversation.phase,
       pendingAction: null,
@@ -170,8 +172,8 @@ function slotOver(phase: SessionPhase, blocks: MessageListBlock[], opened = 0) {
   }
 }
 
-function sent(error: string | null = null, waiting = false): PendingSubmissionState {
-  return { id: 'turn-1', text: 'hello', attachments: [], error, waiting }
+function sent(error: string | null = null): PendingSubmissionState {
+  return { id: 'turn-1', text: 'hello', attachments: [], error }
 }
 
 test('a message sent to an idle conversation says Requesting from the send, through its confirmation, on one clock', async () => {
@@ -253,15 +255,16 @@ test('a failed delivery ends the wait, and Retry starts it again from the retry'
   expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 9_000 })
 })
 
-test('a message waiting for the backend to be reachable is no request yet; Requesting starts once it goes', async () => {
+test('a message sent while the socket reconnects says Connecting, and Requesting starts once the socket is back', async () => {
   using session = slotOver('idle', [])
   const { conversation, slot, at } = session
-  conversation.pendingSubmission = sent(null, true)
+  conversation.load = 'reconnecting'
+  conversation.pendingSubmission = sent()
   await nextTick()
-  expect(slot.value).toBeNull()
+  expect(slot.value?.kind).toBe('connecting')
 
   at(12_000)
-  conversation.pendingSubmission = sent()
+  conversation.load = 'ready'
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 12_000 })
 })

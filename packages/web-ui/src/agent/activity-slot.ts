@@ -92,8 +92,9 @@ function isWaitingForProvider(input: ActivitySlotInput): boolean {
   if (last.type === 'text') {
     return last.forkable === true
   }
-  // A running group's face is the newest step: the steps after it roll over
-  // it there, not into the tail row.
+  // The run's row is the turn's activity: it shimmers while the model is
+  // waited for, and the steps after it roll over its face, not into the tail
+  // row (`runtime.md` § Work groups).
   if (last.type === 'work_group') {
     return !last.live
   }

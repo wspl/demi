@@ -45,12 +45,18 @@ function isEmptyThinking(block: MessageListBlock): boolean {
  * The list's rows with the work grouped (`runtime.md` § Work groups). A
  * thinking block without text shows only while it is the newest block of a
  * running turn, as what the agent is doing; once anything follows it or the
- * turn ends, it has nothing to show and goes. A lone call is its own row,
- * running or ended, so opening it shows the call; a lone thinking is a
- * group, so the first call rolls over it in place. From two steps on, the
- * steps at the end of a running turn are one group, each new step showing
- * over the one before in one row; once they ended, they stay one group when
- * they hold a call.
+ * turn ends, it has nothing to show and goes. The steps at the end of a
+ * running turn are one group from the first step on, each new step showing
+ * over the one before in the same row, so a step that joins never adds a
+ * row that then merges into it. Once they ended, they stay one group when
+ * they hold a call or are a lone step; only thinking without a call falls
+ * apart into its steps. A group of a lone call shows as the call's own row
+ * (`WorkGroupBlock`), so it opens to the call.
+ *
+ * A group is named after the run's first block, as `stepKey` names it, so
+ * the row keeps its name while the run grows, a call being written becomes
+ * its block, and the run ends: the list keeps the row rather than building
+ * it anew.
  */
 export function groupWork(blocks: readonly MessageListBlock[], running: boolean): MessageListBlock[] {
   const rows: MessageListBlock[] = []
@@ -70,13 +76,11 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
     const steps = blocks.slice(index, end).filter((step, at, run): step is WorkStep =>
       isStep(step) && !(isEmptyThinking(step) && !(live && at === run.length - 1)))
     const calls = steps.filter((step) => step.type !== 'thinking').length
-    const grouped = steps.length === 1
-      ? steps[0]!.type === 'thinking'
-      : steps.length >= 2 && (live || calls >= 1)
+    const grouped = steps.length > 0 && (live || steps.length === 1 || calls >= 1)
     if (grouped) {
       rows.push({
         type: 'work_group',
-        id: `work:${block.id}`,
+        id: workRowId(block),
         steps,
         live,
         endedAt: next && 'createdAt' in next ? next.createdAt : null,
@@ -88,6 +92,11 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
     index = end
   }
   return rows
+}
+
+/** The name of the row a run starting with `first` shows as; a step of an ended run without a call, shown alone, takes its own. */
+export function workRowId(first: WorkStep): string {
+  return `work:${stepKey(first)}`
 }
 
 /** A command count as a row says it. */

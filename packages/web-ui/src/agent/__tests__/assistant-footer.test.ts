@@ -60,3 +60,13 @@ test('a reply the user stopped keeps its footer, Copy among it', () => {
     { id: 'stopped', type: 'abort' },
   ], 'idle')]).toEqual(['cut-off'])
 })
+
+// A message being sent is the user's next message from the moment it is
+// sent, so the answer before it keeps Copy and Fork while the turn starts
+// and the message is written (`product.md` § Following the agent's work).
+test('the answer before a message being sent keeps its footer while the turn starts, and text the agent went on from does not gain one', () => {
+  expect([...footerAmong([{ id: 'answer', type: 'text' }], replyEndIds([{ id: 'answer', type: 'text' }], 'running', true))])
+    .toEqual(['answer'])
+  const workedOn = [{ id: 'note', type: 'text' }, { id: 'step', type: 'tool_call' }] as const
+  expect(footerAmong(workedOn, replyEndIds(workedOn, 'running', true)).size).toBe(0)
+})
