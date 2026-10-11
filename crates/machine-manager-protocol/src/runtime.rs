@@ -21,19 +21,15 @@ pub const PROGRAMS: [&str; 4] = [
     "gvisor-bin/runsc-fd-parking",
 ];
 
-/// The runtime release the manager is built with (`runtime/release.json`).
+/// The runtime release the manager is built with (`runtime/release.json`):
+/// upstream's release, the same version on both architectures.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RuntimeRelease {
+    /// Upstream's release, such as `20261005.0`.
     pub upstream: String,
-    pub commit: String,
-    pub arm64_version: String,
-    pub arm64_patch_sha256: String,
-    /// The SHA-512 of the arm64 distribution the Runtime workflow published.
-    pub arm64_archive_sha512: String,
     pub amd64_archive_sha512: String,
-    pub bazel: String,
-    pub bazel_arm64_sha256: String,
+    pub arm64_archive_sha512: String,
 }
 
 impl RuntimeRelease {
@@ -43,30 +39,22 @@ impl RuntimeRelease {
         serde_json::from_str(Self::MANIFEST).expect("the pinned runtime release is valid")
     }
 
-    /// The version runsc reports on this architecture: arm64 runs the build
-    /// with the seccomp trap fix, amd64 the upstream release.
+    /// The version runsc reports.
     pub fn version(&self) -> String {
-        if cfg!(target_arch = "aarch64") {
-            self.arm64_version.clone()
-        } else {
-            format!("release-{}", self.upstream)
-        }
+        format!("release-{}", self.upstream)
     }
 
-    /// The distribution of this architecture: upstream's release on amd64,
-    /// the Runtime workflow's build on arm64.
+    /// Upstream's distribution for this architecture.
     pub fn archive_url(&self) -> String {
-        if cfg!(target_arch = "aarch64") {
-            format!(
-                "https://github.com/wspl/demi/releases/download/runsc-{}/gvisor-arm64.tar.bz2",
-                self.arm64_version
-            )
+        let architecture = if cfg!(target_arch = "aarch64") {
+            "aarch64"
         } else {
-            format!(
-                "https://storage.googleapis.com/gvisor/releases/release/{}/x86_64/gvisor.tar.bz2",
-                self.upstream
-            )
-        }
+            "x86_64"
+        };
+        format!(
+            "https://storage.googleapis.com/gvisor/releases/release/{}/{architecture}/gvisor.tar.bz2",
+            self.upstream
+        )
     }
 
     /// The SHA-512 of `archive_url`'s archive, in lowercase hex.

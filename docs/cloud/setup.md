@@ -32,12 +32,8 @@ The manager runs the `runsc` version that the runtime release manifest,
 `crates/machine-manager/runtime/release.json`, pins, from
 `/opt/demi/gvisor/<version>/`, where `demi-server` fetches it before a
 release that pins it runs ([gVisor runtime](../delivery/builds-and-releases.md#gvisor-runtime)).
-On amd64 the archive is upstream's release, checked against the SHA-512 the
-manifest pins. On arm64 it is built from the same pinned source with the
-shipped seccomp ABI fix and the native/systrap regression probe, once per
-pin, and published as a release of its own whose SHA-512 the manifest pins
-too; build dependencies and inputs are in
-`crates/machine-manager/runtime/README.md`. Startup requires the executable
+The archive is upstream's release for the machine's architecture, checked
+against the SHA-512 the manifest pins for it. Startup requires the executable
 to report exactly the pinned version.
 
 The manager is a Linux executable, released for amd64 and arm64
