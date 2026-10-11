@@ -204,7 +204,10 @@ The node's own context blocks are the record of what it saw. A block names its
 revision, and a node whose transcript holds the current one gets no block. A
 switch is announced to a node once: the previous and current targets, that no
 files moved, and how to reach the device left behind with `demi host shell
---host`. A later change is announced as a change of the attached hosts. Every
+--host`. A later change of the attached hosts is announced as one. A block a
+runner's report caused, as when the Cloud's home becomes known, carries no
+label of change, since nothing the user did changed: it states the Host as it
+now is, which the model reads in place of the block before. Every
 block ends with the attached hosts, each with its connection and the directory
 its shells start in.
 
