@@ -53,7 +53,14 @@ import type { PermissionDecision, PermissionRequestView } from '../permissions/t
 const props = withDefaults(defineProps<{
   conversation: ChatSessionState
   hasProvider: boolean
-  pendingSubmission?: PendingSubmissionState | null
+  /** The messages sent and not yet confirmed, in the order they were sent. */
+  pendingSubmissions?: readonly PendingSubmissionState[]
+  /**
+   * The waiting messages whose Remove is on its way, by id: their rows are
+   * gone from the press, and come back only when the removal is refused
+   * (`product.md` § Steer or queue).
+   */
+  removing?: readonly string[]
   editVersion?: TranscriptVersion | null
   messageEdit?: MessageEditState | null
   selectEdit?: EditSelectionHandler
@@ -112,7 +119,8 @@ const emit = defineEmits<{
   retitle: []
   retry: []
   retryLoad: []
-  retrySubmission: []
+  /** Retry on the message `id`, whose delivery failed. */
+  retrySubmission: [id: string]
   abortSubagents: []
   abortSubagent: [id: string]
   abortTerminal: [id: string]
@@ -224,7 +232,7 @@ const canRecover = computed(
   () =>
     props.hasProvider &&
     !props.messageEdit &&
-    !props.pendingSubmission &&
+    !props.pendingSubmissions?.length &&
     !props.conversation.archived &&
     props.conversation.load !== 'failed',
 )
@@ -258,7 +266,7 @@ function recover(): void {
   }
 }
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit
-  && !props.pendingSubmission
+  && !props.pendingSubmissions?.length
   && !props.conversation.archived
   && !props.conversation.subagents.some((agent) => agent.phase === 'running'))
 
@@ -447,11 +455,12 @@ watch(
             :failures="conversation.failures"
             :load-error="conversation.lastError"
             :failure="failureNotice"
-            :pending-submission="pendingSubmission"
+            :pending-submissions="pendingSubmissions"
+            :removing="removing"
             :read-only="!canEdit"
             :fork="fork"
             :edit-target-id="messageEdit?.request.targetBlockId"
-            @retry-submission="emit('retrySubmission')"
+            @retry-submission="(id) => emit('retrySubmission', id)"
             :bottom-offset="surface?.dockHeight ?? 0"
             :persisted-scroll-state="conversation.scroll ?? undefined"
             :reveal-block-id="reveal?.node === null ? reveal.blockId : null"

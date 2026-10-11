@@ -129,7 +129,8 @@ function detach(id: string): void {
         @retitle="updateTitle"
         has-provider
         @save-scroll="(_id, state) => (session.scroll = state)"
-        :pending-submission="flow.pendingSubmission.value"
+        :pending-submissions="flow.pendingSubmissions.value"
+        :removing="flow.removing.value"
         @retry-submission="flow.retrySubmission"
         @retry="flow.resume()"
         @abort-subagents="flow.abortSubagents"
@@ -167,7 +168,7 @@ function detach(id: string): void {
         <template #composer
           ><GalleryComposer
             placeholder="Ask Demi…"
-            :running="session.phase === 'running'"
+            :running="session.phase === 'running' || flow.startingTurn.value"
             :compacting="session.phase === 'compacting'"
             :usage="session.contextUsage ?? undefined"
             :archived="session.archived"

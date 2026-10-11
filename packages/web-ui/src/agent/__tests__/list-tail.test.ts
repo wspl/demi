@@ -53,7 +53,7 @@ test('a message the transcript holds shows there alone, not again in the tail', 
     pendingCalls: [],
     pendingSteers: [],
     queue: [{ id: 'm-2', content: [{ type: 'text', text: 'next' }] }],
-    pendingSubmission: { id: 'm-2', way: 'queue', text: 'next', attachments: [], error: null },
+    pendingSubmissions: [{ id: 'm-2', way: 'queue', text: 'next', attachments: [], error: null }],
   })
   expect(tail).toEqual({ turn: [], waiting: [] })
 })
@@ -70,7 +70,7 @@ test('a message on its way stands where what it will be stands, and leaves once 
     pendingCalls: [],
     pendingSteers: held.steers ?? [steer],
     queue: held.queue ?? [queued],
-    pendingSubmission: { id: 'm-3', way, text: 'also', attachments: [], error: null },
+    pendingSubmissions: [{ id: 'm-3', way, text: 'also', attachments: [], error: null }],
   })
   const ids = (way: 'send' | 'steer' | 'queue', held?: Parameters<typeof tail>[1]) => {
     const { turn, waiting } = tail(way, held)

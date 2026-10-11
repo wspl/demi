@@ -9,6 +9,7 @@ import {
   type PendingSteer,
   type ProviderErrorDiagnostics,
   type QueuedMessage,
+  type RemoveOutcome,
   type ServerFrame,
   type SessionPhase,
   type TranscriptVersion,
@@ -200,11 +201,17 @@ export class ConversationClient {
     )
   }
 
-  dequeueMessage(messageId: string): void {
-    if (!this.sendFrame({ type: 'dequeue_message', messageId })) {
-      return
+  /**
+   * Removes a queued message; resolves with the session's answer: `removed`,
+   * or `gone_on` when its turn had started or the session never held it
+   * (`runtime.md` § Pending steers).
+   */
+  async dequeueMessage(messageId: string): Promise<RemoveOutcome> {
+    const outcome = await this.removeRequest(messageId, { type: 'dequeue_message', messageId })
+    if (outcome === 'removed') {
+      this.settleQueuedSend(messageId)
     }
-    this.settleQueuedSend(messageId)
+    return outcome
   }
 
   /**
@@ -239,8 +246,31 @@ export class ConversationClient {
     this.sendFrame({ type: 'steer_now', steerId })
   }
 
-  cancelPendingSteer(steerId: string): void {
-    this.sendFrame({ type: 'cancel_pending_steer', steerId })
+  /**
+   * Withdraws a pending steer; resolves with the session's answer:
+   * `removed`, or `gone_on` when the turn had taken it or the session never
+   * held it (`runtime.md` § Pending steers).
+   */
+  cancelPendingSteer(steerId: string): Promise<RemoveOutcome> {
+    return this.removeRequest(steerId, { type: 'cancel_pending_steer', steerId })
+  }
+
+  /**
+   * Sends a removal and waits for its `remove_result`, which follows the
+   * list's frame. A failed turn does not fail it: its `error` frame is the
+   * turn's, not the removal's.
+   */
+  private removeRequest(id: string, frame: ClientFrame): Promise<RemoveOutcome> {
+    return this.request(
+      frame,
+      (event) => {
+        if (event.type === 'remove_result' && event.id === id) {
+          return { resolve: event.outcome }
+        }
+        return event.type === 'error' ? undefined : this.failure(event, frame.type)
+      },
+      'The removal was not confirmed.',
+    )
   }
 
   /** Runs the latest turn again from the user's input; resolves when it ends. */
@@ -623,6 +653,7 @@ export class ConversationClient {
         this.rejectSteersAndAborts(new Error('Session closed'))
         return
       case 'edit_result':
+      case 'remove_result':
       case 'shell_output':
       case 'shell_write_result':
       case 'retry_scheduled':

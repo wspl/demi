@@ -262,6 +262,16 @@
     }
   },
   {
+    "type": "remove_result",
+    "id": "steer-1",
+    "outcome": "removed"
+  },
+  {
+    "type": "remove_result",
+    "id": "m-2",
+    "outcome": "gone_on"
+  },
+  {
     "type": "abort_result",
     "result": {
       "target": "active_tool",

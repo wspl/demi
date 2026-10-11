@@ -118,7 +118,7 @@ function slotOver(phase: SessionPhase, blocks: MessageListBlock[], opened = 0) {
     phase,
     blocks,
     load: 'ready' as SessionLoad,
-    pendingSubmission: null as PendingSubmissionState | null,
+    pendingSubmissions: [] as PendingSubmissionState[],
     waitingSince: null as number | null,
   })
   const scope = effectScope()
@@ -131,7 +131,7 @@ function slotOver(phase: SessionPhase, blocks: MessageListBlock[], opened = 0) {
       transcriptBlocks: conversation.blocks,
       turnRows: conversation.blocks,
     }),
-    pendingSubmission: () => conversation.pendingSubmission,
+    pendingSubmissions: () => conversation.pendingSubmissions,
     waitingSince: () => conversation.waitingSince,
     tail: () => conversation.blocks.at(-1),
     scope: () => 'conversation',
@@ -157,7 +157,7 @@ test('a message sent to an idle conversation says Requesting from the send, thro
   expect(slot.value).toBeNull()
 
   at(5_000)
-  conversation.pendingSubmission = sent()
+  conversation.pendingSubmissions = [sent()]
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 5_000 })
 
@@ -170,7 +170,7 @@ test('a message sent to an idle conversation says Requesting from the send, thro
   // The message's block confirms it; the page drops the pending message in the same update.
   at(8_000)
   conversation.blocks = [textBlock(), userBlock()]
-  conversation.pendingSubmission = null
+  conversation.pendingSubmissions = []
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 5_000 })
 })
@@ -192,7 +192,7 @@ test('a message this page sent counts from its send, also once the server tells 
   using session = slotOver('idle', [textBlock()])
   const { conversation, slot, at } = session
   at(5_000)
-  conversation.pendingSubmission = sent()
+  conversation.pendingSubmissions = [sent()]
   await nextTick()
   at(6_000)
   conversation.phase = 'running'
@@ -204,7 +204,7 @@ test('a message this page sent counts from its send, also once the server tells 
   // answer is the server's, from when the call's result went back.
   at(9_000)
   conversation.blocks = [textBlock(), userBlock(), textBlock()]
-  conversation.pendingSubmission = null
+  conversation.pendingSubmissions = []
   conversation.waitingSince = null
   await nextTick()
   expect(slot.value).toBeNull()
@@ -218,14 +218,14 @@ test('a message this page sent counts from its send, also once the server tells 
 test('a failed delivery ends the wait, and Retry starts it again from the retry', async () => {
   using session = slotOver('idle', [])
   const { conversation, slot, at } = session
-  conversation.pendingSubmission = sent()
+  conversation.pendingSubmissions = [sent()]
   await nextTick()
-  conversation.pendingSubmission = sent('Connection closed before confirmation')
+  conversation.pendingSubmissions = [sent('Connection closed before confirmation')]
   await nextTick()
   expect(slot.value).toBeNull()
 
   at(9_000)
-  conversation.pendingSubmission = sent()
+  conversation.pendingSubmissions = [sent()]
   await nextTick()
   expect(slot.value).toEqual({ kind: 'requesting', incoming: null, since: 9_000 })
 })
@@ -234,7 +234,7 @@ test('a message sent while the socket reconnects says Connecting, and Requesting
   using session = slotOver('idle', [])
   const { conversation, slot, at } = session
   conversation.load = 'reconnecting'
-  conversation.pendingSubmission = sent()
+  conversation.pendingSubmissions = [sent()]
   await nextTick()
   expect(slot.value?.kind).toBe('connecting')
 
@@ -247,7 +247,7 @@ test('a message sent while the socket reconnects says Connecting, and Requesting
 test('a message sent during a turn joins the queue and adds no Requesting under the streaming answer', async () => {
   using session = slotOver('running', [userBlock(), textBlock()])
   const { conversation, slot } = session
-  conversation.pendingSubmission = sent()
+  conversation.pendingSubmissions = [sent()]
   await nextTick()
   expect(slot.value).toBeNull()
 })
