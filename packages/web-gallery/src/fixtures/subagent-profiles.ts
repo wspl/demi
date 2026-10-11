@@ -1,21 +1,6 @@
 import { reactive } from 'vue'
 import type { SettingsSubagentProfile } from '@demicodes/web-ui/settings/types'
 import type { LimitValue } from '@demicodes/web-ui/ui/limit-field'
-import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
-import { demoModels, demoProviders } from './catalog'
-import { withContextLimits } from './context-limits'
-
-/** The providers the Subagent section's model menu offers. */
-export const subagentProviders: ProviderInfo[] = demoProviders
-
-/**
- * The models the Subagent section's model menu offers and its marks are
- * read from, with the context limits the gallery's user set, which the
- * menu's Context row changes as the composer's does.
- */
-export function subagentModels(): Record<string, ModelInfo[]> {
-  return withContextLimits(demoModels)
-}
 
 /**
  * A user's profiles, one of each kind the section shows: on another

@@ -21,14 +21,10 @@ import { useGalleryView } from '../gallery-views'
 import GallerySubagents from '../components/GallerySubagents.vue'
 import SubagentProfileDialog from '@demicodes/web-ui/settings/SubagentProfileDialog.vue'
 import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
-import {
-  createSubagentState,
-  demoSubagentProfiles,
-  subagentModels,
-  subagentProviders,
-} from '../fixtures/subagent-profiles'
+import { createSubagentState, demoSubagentProfiles } from '../fixtures/subagent-profiles'
 import { productWould } from '../product-would'
-import { setGalleryContextLimit } from '../fixtures/context-limits'
+import { demoProviders } from '../fixtures/catalog'
+import { composerModels, setGalleryContextLimit } from '../fixtures/context-limits'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import { demoDeviceInstallation, demoDeviceReport } from '../fixtures/device-installation'
@@ -164,7 +160,6 @@ function pinnedEditor(id: string | null) {
     : { name: '', description: '', model: null, instructions: null, canSpawn: true }
   return { open: ref(true), draft }
 }
-const profileModels = computed(() => subagentModels())
 const inheritEditor = pinnedEditor(null)
 const ownEditor = pinnedEditor('explore')
 
@@ -334,9 +329,9 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             :overlay-store="appOverlayStore"
             mode="create"
             :profile="inheritEditor.draft"
-            :providers="subagentProviders"
-            :models="profileModels"
-            :catalog-models="profileModels"
+            :providers="demoProviders"
+            :models="composerModels"
+            :catalog-models="composerModels"
             @close="inheritEditor.open.value = false"
             @save="saved(inheritEditor, $event)"
             @context-limit="setGalleryContextLimit"
@@ -355,9 +350,9 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             :overlay-store="appOverlayStore"
             mode="edit"
             :profile="ownEditor.draft"
-            :providers="subagentProviders"
-            :models="profileModels"
-            :catalog-models="profileModels"
+            :providers="demoProviders"
+            :models="composerModels"
+            :catalog-models="composerModels"
             @close="ownEditor.open.value = false"
             @save="saved(ownEditor, $event)"
             @context-limit="setGalleryContextLimit"

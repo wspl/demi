@@ -378,7 +378,7 @@ export const useConversations = defineStore('conversations', () => {
   function shownSettings(conversation: Conversation): ModelSettings {
     const pick = composerModel(
       resources.providerInfos,
-      resources.modelsFor(),
+      resources.models,
       conversation.model.providerId,
       conversation.model.modelId,
     )
@@ -1112,7 +1112,7 @@ export const useConversations = defineStore('conversations', () => {
     const { signal } = entry.controller
     const pick = composerModel(
       resources.providerInfos,
-      resources.modelsFor(),
+      resources.models,
       conversation.model.providerId,
       conversation.model.modelId,
     )
@@ -1611,7 +1611,7 @@ export const useConversations = defineStore('conversations', () => {
     const signal = lifetime.signal
     const sentAt = product.sent()
     const shown = shownSettings(conversation)
-    const listed = lookupSelectedModel(resources.modelsFor(), shown.providerId, shown.modelId)
+    const listed = lookupSelectedModel(resources.models, shown.providerId, shown.modelId)
     const settings = listed ? offeredSettings(shown, listed.model) : null
     const request: CreateConversation = {
       id: conversation.id,
