@@ -2654,7 +2654,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Compaction"
-        note="The user compacted after the second answer. The divider shows there, where the compaction was triggered, though the summary goes in before that answer. While the pass runs the divider says so, before a steer that arrived meanwhile; a failed pass leaves its error record there. A Compact the user asked for ended no turn, so the dock offers no Resume for it (Session failures shows both cases)."
+        note="The user compacted after the second answer. The divider shows there, where the compaction was triggered, though the summary goes in before that answer. While the pass runs the divider says so, its words shimmering as a running row’s do, before a steer that arrived meanwhile, and the finished divider rolls in over it; a failed pass leaves its error record there. A Compact the user asked for ended no turn, so the dock offers no Resume for it (Session failures shows both cases)."
       >
         <div class="specimen-stack">
           <GallerySpecimen
