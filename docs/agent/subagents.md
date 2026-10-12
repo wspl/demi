@@ -712,7 +712,9 @@ terminal input reach it there, and so do `demi shell status`, `input`,
 `output` and `stop`. When the backend restarts, or the tree is disposed,
 before such a command has ended, restore takes it up although it skips the
 closed child: the command keeps showing as stopping, the stop is sent again,
-and its end is recorded in the child's transcript when the runner reports it. Their
+and its end is recorded with the command when the runner reports it, where a
+resumed child's next round reads it, as for a command that ended while the
+child was closed; nothing writes to a closed child's transcript. Their
 completions are saved in the child's final checkpoint as waiting input and
 open no turn; the child's next round reads them. A finished creation
 command's cancellation has no authority over its child. Dispose saves the
