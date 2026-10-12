@@ -397,10 +397,10 @@ tokens:
 Context window                      285.1k / 1M (29%)
 [███████████████▌▌▌········································]
 ■ Messages                          ~242.3k   24.2%
-■ System prompt                       ~3.6k    0.4%   ›
-■ Commands                            ~1.4k    0.1%   ›
+■ System prompt                       ~3.6k    0.4%
+■ Commands                            ~1.4k    0.1%
 ■ Instructions                        ~6.3k    0.6%   ›
-■ Skills                              ~6.0k    0.6%   ›
+■ Skills                              ~6.0k    0.6%
 ■ Other context                       ~0.5k    0.1%
 ■ Summary                            ~25.0k    2.5%
 □ Compaction buffer                    33k     3.3%
@@ -409,10 +409,10 @@ Context window                      285.1k / 1M (29%)
 
 | Row | What it covers | How it is counted |
 | --- | --- | --- |
-| System prompt | The product's system prompt but its capability index, a profile's added instructions, and the definition of the `shell` tool, the one tool the model calls; opens into those parts ([System prompt](system-prompt.md)) | Each part's text estimate, the tool's as its JSON |
-| Commands | The capability index: the command groups the agent can run, as the system prompt lists them; opens into its groups, such as `demi browser` and `demi file`, so the user sees what each plugin's commands cost | Each group's text estimate |
-| Instructions | The `instructions` context blocks replayed; opens into their files | Block estimates, split per file |
-| Skills | The context block of the skills plugin, the source the catalog comes from; opens into its skills | Its block estimate, split per skill entry of the catalog |
+| System prompt | The product's system prompt but its capability index, a profile's added instructions, and the definition of the `shell` tool, the one tool the model calls ([System prompt](system-prompt.md)) | The text estimate of each, the tool's as its JSON, added up |
+| Commands | The capability index: the command groups the agent can run, as the system prompt lists them | Its text estimate |
+| Instructions | The `instructions` context blocks replayed; opens into the list of its files, as the card listed them before, each a link that opens the file, with no figure of its own | Block estimates |
+| Skills | The context block of the skills plugin, the source the catalog comes from | Its block estimate |
 | Other context | Every other context block replayed, such as the execution context | Block estimates |
 | Summary | The replayed `compaction_boundary`, while there is one | Its block estimate |
 | Messages | Everything else the request carries: the user's messages, the agent's text and thinking, tool calls and their results, images, reports | The rest: the estimate less every row above, never below zero. It does not open: its share is the provider's count less estimates, so parts of it would be estimates of a number that is not one |
@@ -435,9 +435,9 @@ Context window                      285.1k / 1M (29%)
 - **The rows stand largest first**, the rows of what the request carries by
   their tokens, then Compaction buffer, then Free space last, so the eye
   meets what fills the context first.
-- **A row opens only into two parts or more**: a row that holds one thing,
-  such as Other context while the execution context is its only block,
-  shows no chevron, since opening it would repeat the row.
+- **Only Instructions opens**, into its files; every other row is one
+  figure, since a finer split is an estimate of an estimate and tells the
+  user nothing to act on.
 - **A row with no tokens is left out**, and so are Summary before the first
   compaction and Skills while no skill is on.
 
