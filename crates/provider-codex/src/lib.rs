@@ -12,6 +12,7 @@ mod failure;
 mod login;
 mod models;
 mod quota;
+mod releases;
 mod request;
 mod run;
 #[cfg(feature = "testing")]
@@ -43,6 +44,7 @@ use reqwest::Url;
 use crate::{auth::CodexAuth, login::CodexKit, quota::CodexQuota};
 
 pub use failure::read_codex_failure;
+pub use releases::CodexReleases;
 
 /// How failure messages name the vendor.
 const LABEL: &str = "Codex";
@@ -72,9 +74,8 @@ pub struct CodexConfig {
     pub backend_url: Url,
     /// The sign-in service, `https://auth.openai.com` in the product.
     pub auth_url: Url,
-    /// The npm registry's record of the newest Codex CLI release,
-    /// [`Self::RELEASES_URL`] in the product.
-    pub releases_url: Url,
+    /// The newest Codex CLI release, the backend's one.
+    pub releases: CodexReleases,
     pub transport: TransportMode,
     /// How long a server-sent events request waits for its response headers.
     pub header_timeout: Duration,
@@ -87,15 +88,15 @@ pub struct CodexConfig {
 impl CodexConfig {
     pub const BACKEND_URL: &str = "https://chatgpt.com/backend-api";
     pub const AUTH_URL: &str = "https://auth.openai.com";
-    pub const RELEASES_URL: &str = "https://registry.npmjs.org/@openai/codex/latest";
 
-    /// The product's configuration of an entry's provider for `account`.
-    pub fn new(account: Option<String>) -> Self {
+    /// The product's configuration of an entry's provider for `account`,
+    /// asking for models with the version `releases` names.
+    pub fn new(account: Option<String>, releases: CodexReleases) -> Self {
         Self {
             account,
             backend_url: Url::parse(Self::BACKEND_URL).expect("the backend URL parses"),
             auth_url: Url::parse(Self::AUTH_URL).expect("the sign-in URL parses"),
-            releases_url: Url::parse(Self::RELEASES_URL).expect("the registry URL parses"),
+            releases,
             transport: TransportMode::Auto,
             header_timeout: Duration::from_secs(20),
             connect_timeout: Duration::from_secs(10),
@@ -116,7 +117,7 @@ struct Shared {
     websocket_url: Url,
     /// The catalog's address, without the client version.
     models_url: Url,
-    client_version: models::ClientVersion,
+    releases: CodexReleases,
     transport: TransportMode,
     header_timeout: Duration,
     connect_timeout: Duration,
@@ -176,11 +177,7 @@ impl CodexProvider {
                 websocket_url: websocket_url(&responses_url),
                 responses_url,
                 models_url: codex_url(&config.backend_url, "/models"),
-                client_version: models::ClientVersion::new(
-                    config.releases_url,
-                    http.clone(),
-                    clock.clone(),
-                ),
+                releases: config.releases,
                 transport: config.transport,
                 header_timeout: config.header_timeout,
                 connect_timeout: config.connect_timeout,
@@ -248,6 +245,10 @@ impl Provider for CodexProvider {
 
     fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>> {
         Box::pin(models::list(&self.shared))
+    }
+
+    fn catalog_revision(&self) -> Option<String> {
+        Some(self.shared.releases.version())
     }
 
     fn read_failure(

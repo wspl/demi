@@ -7,14 +7,16 @@ use demi_provider_common::credentials::{
     AccountMeta, AccountsCapability, CredentialPool, LoginKind, MemoryCredentialPool,
 };
 use demi_provider_common::models_dev::ModelsDevClient;
-use demi_provider_common::testing::{FixedClock, jwt};
+use demi_provider_common::testing::{FixedClock, MockResponse, MockVendor, guarded, jwt};
 use demi_shared_types::{AuthState, Clock, QuotaSnapshot, SnapshotSource};
 use serde_json::json;
 
 use std::sync::Arc;
 
-use demi_backend::families::builtin;
-use demi_backend_providers::llm::families::{AccountBinding, FamilyArgs, FamilyCredential};
+use demi_backend::families::{CodexFamily, builtin};
+use demi_backend_providers::llm::families::{
+    AccountBinding, FamilyArgs, FamilyCredential, ProviderFamily,
+};
 use demi_provider_common::Provider;
 use demi_provider_common::quota::{MemorySnapshots, QuotaSnapshotStore};
 
@@ -27,9 +29,18 @@ fn built(
     pool: &MemoryCredentialPool,
     account: Option<AccountBinding>,
 ) -> Arc<dyn Provider> {
+    builtin()
+        .get(family)
+        .unwrap()
+        .provider(args(family, pool, account))
+        .unwrap()
+}
+
+/// What a family builds a provider of `family` over `pool` with.
+fn args(family: &str, pool: &MemoryCredentialPool, account: Option<AccountBinding>) -> FamilyArgs {
     let clock: Arc<dyn Clock> = Arc::new(FixedClock(NOW.parse().unwrap()));
     let url = ModelsDevClient::DEFAULT_URL.parse().unwrap();
-    let args = FamilyArgs {
+    FamilyArgs {
         entry_id: "entry-1".into(),
         label: family.into(),
         credential: FamilyCredential::Subscription(SubscriptionArgs {
@@ -39,8 +50,31 @@ fn built(
         http: reqwest::Client::new(),
         clock: clock.clone(),
         models_dev: ModelsDevClient::new(reqwest::Client::new(), url, clock),
+    }
+}
+
+#[tokio::test]
+async fn every_codex_provider_of_a_backend_asks_with_the_one_version_the_family_read() {
+    let registry = MockVendor::start().await;
+    let record = json!({ "name": "@openai/codex", "version": "0.163.0" });
+    registry.respond_at("/latest", MockResponse::status(200).chunk(record.to_string()));
+    let family = CodexFamily::new(registry.url("/latest").parse().unwrap());
+    let pool = MemoryCredentialPool::new();
+    let first = family.provider(args("codex", &pool, None)).unwrap();
+    let second = family.provider(args("codex", &pool, None)).unwrap();
+    assert_eq!(second.catalog_revision().as_deref(), Some("0.162.1"));
+
+    // A catalog read starts the read of the registry, then fails without a
+    // request to Codex: the provider has no account.
+    assert!(first.list_models().await.is_err());
+    let read = async {
+        while second.catalog_revision().as_deref() != Some("0.163.0") {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+        }
     };
-    builtin().get(family).unwrap().provider(args).unwrap()
+    guarded("the version the first provider's read brings", read).await;
+    assert!(second.list_models().await.is_err());
+    assert_eq!(registry.requests().len(), 1);
 }
 
 /// An account whose snapshot says it was probed.

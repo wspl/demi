@@ -64,6 +64,10 @@ struct EntryState {
     /// The record once read from storage: `Some(None)` when storage holds
     /// none under this entry's key.
     record: Option<Option<Arc<CatalogRecord>>>,
+    /// The source's revision the record was read under: the one a refresh
+    /// started with, or, for a record loaded from storage, the one current
+    /// when it was loaded.
+    revision: Option<String>,
     failure: Option<Failure>,
     refresh: Option<Refresh>,
 }
@@ -100,15 +104,17 @@ impl ModelCatalogCache {
     }
 
     /// The catalog of entry `provider` under `key` (`models.md` § Freshness
-    /// and refresh): a fresh record at once; an expired one at once, marked
-    /// stale, while one refresh starts or runs; without a record, or when
-    /// `force` asks, what the refresh returns. `fetch` reads the source when
-    /// a refresh starts. A failed refresh returns the kept record marked
-    /// stale with the failure as a warning, or, without one, the failure.
+    /// and refresh): a fresh record at once; an expired one, or one read
+    /// under another `revision` of the source, at once, marked stale, while
+    /// one refresh starts or runs; without a record, or when `force` asks,
+    /// what the refresh returns. `fetch` reads the source when a refresh
+    /// starts. A failed refresh returns the kept record marked stale with
+    /// the failure as a warning, or, without one, the failure.
     pub async fn read(
         &self,
         provider: &ProviderId,
         key: String,
+        revision: Option<String>,
         fetch: impl FnOnce() -> CatalogFetch,
         force: bool,
     ) -> Result<ProviderModelList, String> {
@@ -116,16 +122,19 @@ impl ModelCatalogCache {
             return Err("The model catalog cache is closed".into());
         }
         let entry = self.entry(provider, key);
-        let record = self.stored(provider, &entry).await?;
+        let record = self.stored(provider, &entry, &revision).await?;
         let refresh = {
             let mut state = entry.lock();
             // A refresh may have replaced the record while it loaded.
             let record = state.record.clone().flatten().or(record);
             let now = self.clock.now();
+            let current = state.revision == revision;
             if let (false, None, Some(record)) = (
                 force,
                 &state.failure,
-                record.as_ref().filter(|record| fresh(record, now)),
+                record
+                    .as_ref()
+                    .filter(|record| current && fresh(record, now)),
             ) {
                 return Ok(record.catalog.clone());
             }
@@ -143,7 +152,9 @@ impl ModelCatalogCache {
             let refresh = match &state.refresh {
                 Some(refresh) => refresh.clone(),
                 None => {
-                    let refresh = self.start(provider, &entry, fetch());
+                    // Taken before the source is read, so a revision that
+                    // changes during the read leaves the record stale.
+                    let refresh = self.start(provider, &entry, revision, fetch());
                     state.refresh = Some(refresh.clone());
                     refresh
                 }
@@ -218,13 +229,15 @@ impl ModelCatalogCache {
         entry
     }
 
-    /// The record storage holds under the entry's key, read once. A stored
-    /// record that fails validation is the entry's failure, never repaired
-    /// or dropped.
+    /// The record storage holds under the entry's key, read once and taken
+    /// as read under `revision`, the source's revision now. A stored record
+    /// that fails validation is the entry's failure, never repaired or
+    /// dropped.
     async fn stored(
         &self,
         provider: &ProviderId,
         entry: &Entry,
+        revision: &Option<String>,
     ) -> Result<Option<Arc<CatalogRecord>>, String> {
         if let Some(record) = entry.lock().record.clone() {
             return Ok(record);
@@ -239,16 +252,28 @@ impl ModelCatalogCache {
             .map(Arc::new);
         let mut state = entry.lock();
         // A concurrent read or a refresh may have set it meanwhile.
-        Ok(state.record.get_or_insert(record).clone())
+        if let Some(record) = &state.record {
+            return Ok(record.clone());
+        }
+        state.revision = revision.clone();
+        Ok(state.record.insert(record).clone())
     }
 
-    /// Starts a refresh of the entry as a task of the cache.
-    fn start(&self, provider: &ProviderId, entry: &Arc<Entry>, fetch: CatalogFetch) -> Refresh {
+    /// Starts a refresh of the entry under the source's `revision` as a
+    /// task of the cache.
+    fn start(
+        &self,
+        provider: &ProviderId,
+        entry: &Arc<Entry>,
+        revision: Option<String>,
+        fetch: CatalogFetch,
+    ) -> Refresh {
         let task = refresh(
             self.control.clone(),
             self.clock.clone(),
             provider.clone(),
             entry.clone(),
+            revision,
             fetch,
         );
         let handle = self.refreshes.spawn_on(task, &self.edge);
@@ -282,13 +307,14 @@ fn stale_without_warning(record: &CatalogRecord) -> ProviderModelList {
 }
 
 /// One read of the entry's source within the limit, and, when it answers a
-/// usable catalog, the new record in storage and in memory. A cancelled
-/// refresh writes nothing.
+/// usable catalog, the new record, read under `revision`, in storage and in
+/// memory. A cancelled refresh writes nothing.
 async fn refresh(
     control: ControlService,
     clock: Arc<dyn Clock>,
     provider: ProviderId,
     entry: Arc<Entry>,
+    revision: Option<String>,
     fetch: CatalogFetch,
 ) -> Result<Arc<CatalogRecord>, String> {
     let answer = tokio::select! {
@@ -322,6 +348,7 @@ async fn refresh(
         match &outcome {
             Ok(record) => {
                 state.record = Some(Some(record.clone()));
+                state.revision = revision;
                 state.failure = None;
             }
             Err(message) => {
@@ -509,6 +536,7 @@ mod tests {
             cache.read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 answering(&reads, Ok(catalog("First"))),
                 false,
             )
@@ -523,6 +551,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 answering(&reads, Ok(catalog("Other"))),
                 false,
             )
@@ -537,6 +566,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 answering(&reads, Ok(catalog("Other"))),
                 false,
             )
@@ -563,7 +593,7 @@ mod tests {
             );
             stale.push(
                 cache
-                    .read(&fixture.provider, "key".into(), source, false)
+                    .read(&fixture.provider, "key".into(), None, source, false)
                     .await
                     .unwrap(),
             );
@@ -573,6 +603,7 @@ mod tests {
         let forced = cache.read(
             &fixture.provider,
             "key".into(),
+            None,
             answering(&reads, Ok(catalog("Never"))),
             true,
         );
@@ -596,6 +627,59 @@ mod tests {
     }
 
     #[tokio::test(start_paused = true)]
+    async fn a_record_read_under_another_revision_of_its_source_is_stale_at_once() {
+        let fixture = Fixture::new().await;
+        let reads = Arc::new(AtomicUsize::new(0));
+        let cache = fixture.cache();
+        let read = |revision: &str, fetch: Box<dyn FnOnce() -> CatalogFetch>, force: bool| {
+            cache.read(
+                &fixture.provider,
+                "key".into(),
+                Some(revision.to_owned()),
+                fetch,
+                force,
+            )
+        };
+        let never = || Box::new(answering(&reads, Ok(catalog("Never"))));
+        let built_in = read("0.162.1", Box::new(answering(&reads, Ok(catalog("Built-in")))), false);
+        assert_eq!(name(&built_in.await.unwrap()), "Built-in");
+        let again = read("0.162.1", never(), false).await.unwrap();
+        assert_eq!((name(&again), again.stale), ("Built-in", false));
+
+        // A minute later the source reads under a new revision: the record
+        // comes at once, marked stale, and one refresh starts, which a
+        // forced read joins.
+        tokio::time::advance(Duration::from_secs(60)).await;
+        let (answer, awaited) = source();
+        let stale = read("0.163.0", Box::new(awaiting(&reads, awaited)), false);
+        let stale = stale.await.unwrap();
+        assert_eq!((name(&stale), stale.stale), ("Built-in", true));
+        let joined = read("0.163.0", never(), true);
+        answer.send(catalog("Newest")).unwrap();
+        assert_eq!(name(&joined.await.unwrap()), "Newest");
+        let fresh = read("0.163.0", never(), false).await.unwrap();
+        assert_eq!((name(&fresh), fresh.stale), ("Newest", false));
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+        cache.close().await;
+
+        // A restart takes the stored record as read under the revision of
+        // the moment, as it knows no other.
+        let cache = fixture.cache();
+        let restored = cache
+            .read(
+                &fixture.provider,
+                "key".into(),
+                Some("0.163.0".into()),
+                never(),
+                false,
+            )
+            .await
+            .unwrap();
+        assert_eq!((name(&restored), restored.stale), ("Newest", false));
+        assert_eq!(reads.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test(start_paused = true)]
     async fn a_failed_refresh_keeps_the_record_holds_off_a_minute_and_a_forced_refresh_does_not_wait()
      {
         let fixture = Fixture::new().await;
@@ -606,6 +690,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 answering(&reads, Ok(catalog("First"))),
                 false,
             )
@@ -621,6 +706,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 answering(&failures, Err("offline".into())),
                 true,
             )
@@ -643,6 +729,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 answering(&failures, Err("offline".into())),
                 false,
             )
@@ -655,6 +742,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 answering(&failures, Err("offline".into())),
                 true,
             )
@@ -665,6 +753,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 answering(&reads, Ok(catalog("Recovered"))),
                 true,
             )
@@ -690,7 +779,7 @@ mod tests {
             let fetch = awaiting(&reads, awaited);
             tokio::spawn(async move {
                 cache
-                    .read(&provider, "old-account".into(), fetch, false)
+                    .read(&provider, "old-account".into(), None, fetch, false)
                     .await
             })
         };
@@ -704,6 +793,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "new-account".into(),
+                None,
                 answering(&reads, Ok(catalog("New account"))),
                 false,
             )
@@ -715,6 +805,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "changed-config".into(),
+                None,
                 answering(&reads, Ok(catalog("Changed"))),
                 false,
             )
@@ -760,6 +851,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 answering(&reads, Err("offline".into())),
                 true,
             )
@@ -771,6 +863,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 answering(&reads, Ok(invalid)),
                 true,
             )
@@ -783,6 +876,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 answering(&reads, Ok(stale)),
                 true,
             )
@@ -808,6 +902,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 awaiting(&reads, awaited),
                 true,
             )
@@ -823,7 +918,7 @@ mod tests {
             let cache = cache.clone();
             let provider = fixture.provider.clone();
             let fetch = awaiting(&reads, awaited);
-            tokio::spawn(async move { cache.read(&provider, "key".into(), fetch, true).await })
+            tokio::spawn(async move { cache.read(&provider, "key".into(), None, fetch, true).await })
         };
         started.notified().await;
         cache.close().await;
@@ -832,6 +927,7 @@ mod tests {
             .read(
                 &fixture.provider,
                 "key".into(),
+                None,
                 answering(&reads, Ok(catalog("Late"))),
                 false,
             )

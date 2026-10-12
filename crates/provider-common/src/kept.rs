@@ -85,6 +85,13 @@ impl<T: Clone> KeptRead<T> {
         Ok(value)
     }
 
+    /// The value last read, fresh or not, without starting a read; none
+    /// before the first read succeeds.
+    pub fn last(&self) -> Option<T> {
+        let state = self.state();
+        state.value.as_ref().map(|(_, value)| value.clone())
+    }
+
     /// The value last read, at once, fresh or not; none before the first
     /// read succeeds. When it is older than its lifetime or missing, and no
     /// read is under way, `read_again` is spawned on `edge`: it reads by

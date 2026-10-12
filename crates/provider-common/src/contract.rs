@@ -35,6 +35,15 @@ pub trait Provider: Send + Sync + 'static {
     /// (`models.md` § Catalog cache).
     fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>>;
 
+    /// What the directory [`list_models`](Self::list_models) would read
+    /// depends on besides the entry, such as the client version the Codex
+    /// catalog asks with; a kept catalog read under another revision is
+    /// stale (`models.md` § The Codex catalog). Read without waiting; none
+    /// for a directory that depends on the entry alone.
+    fn catalog_revision(&self) -> Option<String> {
+        None
+    }
+
     /// Reads a failure record this provider produced (`failures-and-recovery.md`
     /// § Reading a failure). `received_at` is when the failure was received; a
     /// relative wait counts from it.
