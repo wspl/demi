@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AgentMessage } from '@demicodes/protocol'
-import AgentTip from '../AgentTip.vue'
+import AgentRunLine from '../AgentRunLine.vue'
 import NoticeLabel from './NoticeLabel.vue'
 import ReceiptTag from './ReceiptTag.vue'
 import { useMessageAgents } from '../agent-links'
@@ -11,7 +11,7 @@ import { receiptOrigin, receiptRow, useOriginRevealer } from '../agent-receipts'
  * What a receipt says on its notice row (`subagents.md` § Product
  * rendering), wherever the row stands, the folded face of a run included:
  * the words, the agent's name, which leads where the receipt came from
- * and, pointed at, names the agent and what it runs on, and its tag.
+ * and, pointed at, shows what it is doing and runs on, and its tag.
  */
 const props = defineProps<{ message: AgentMessage }>()
 
@@ -32,7 +32,7 @@ const go = computed(() => {
 <template>
   <NoticeLabel :notice="row.notice" :title="row.title" :subject="row.subject" :go="go">
     <template v-if="row.title && sender?.run" #tip>
-      <AgentTip :number="sender.number" :description="sender.description" :run="sender.run" />
+      <AgentRunLine :run="sender.run" plain />
     </template>
   </NoticeLabel>
   <ReceiptTag v-if="row.tag" :tag="row.tag" />
