@@ -30,7 +30,7 @@ use futures_util::future::join_all;
 use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
-pub(crate) use self::profiles::ProfileListing;
+pub(crate) use self::profiles::{Deleted, ModelListing, ProfileAnswer, ProfileListing};
 pub(crate) use self::supervisor::{ShownAgent, StartInput, TreeEntry};
 use self::{live::LiveOutput, supervisor::Child};
 use super::{AgentServer, ResolveError, commands, connection::Outbox};

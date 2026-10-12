@@ -1,13 +1,12 @@
 //! The caller's subagent settings (`web-api.md` § Subagents): the Subagents
-//! switch, the limits and the profiles. The edge checks a body's name and texts; the
-//! caller's shard checks a profile's model against its entry's catalog and
-//! writes, and the change reaches the caller's pages as the `subagents`
+//! switch, the limits and the profiles. The caller's shard checks a
+//! profile's name, texts and model, as it does for `demi agent profiles`,
+//! and writes, and the change reaches the caller's pages as the `subagents`
 //! part.
 
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_accounts::subagents::{check_new, check_patch};
 use demi_backend_database::subagents::ProfileRefusal as Stored;
 use demi_backend_host_access::transition::ChangeRefusal;
 use demi_backend_user_shard::shard::subagents::ProfileRefusal;
@@ -41,11 +40,10 @@ pub(super) async fn create(
     AuthUser(user): AuthUser,
     JsonBody(profile): JsonBody<NewProfile>,
 ) -> Result<(StatusCode, Json<ProfileAnswer>), ApiError> {
-    check_new(&profile).map_err(|error| ApiError::invalid_body(error.to_string()))?;
     let profile = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.create_profile(profile).await })
+        .call(move |shard, _| async move { shard.create_profile(profile, true).await })
         .await?
         .map_err(refused)?;
     Ok((StatusCode::CREATED, Json(ProfileAnswer { profile })))
@@ -59,7 +57,6 @@ pub(super) async fn patch(
     JsonBody(patch): JsonBody<ProfilePatch>,
 ) -> Result<Json<ProfileAnswer>, ApiError> {
     let id = profile_id(id)?;
-    check_patch(&patch).map_err(|error| ApiError::invalid_body(error.to_string()))?;
     let profile = state
         .shards
         .of(&user.id)
@@ -93,6 +90,7 @@ fn profile_id(id: String) -> Result<ProfileId, ApiError> {
 fn refused(refusal: ProfileRefusal) -> ApiError {
     let message = refusal.to_string();
     match refusal {
+        ProfileRefusal::Text(_) => ApiError::invalid_body(message),
         ProfileRefusal::Stored(Stored::NotFound) => {
             ApiError::new(StatusCode::NOT_FOUND, ErrorCode::ProfileNotFound, message)
         }

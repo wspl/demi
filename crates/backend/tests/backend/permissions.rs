@@ -74,7 +74,7 @@ async fn opened(scripts: &Arc<Scripts>) -> World {
     }
 }
 
-async fn permissions(backend: &TestBackend, session: &Session, id: &str) -> ConversationPermissions {
+pub(crate) async fn permissions(backend: &TestBackend, session: &Session, id: &str) -> ConversationPermissions {
     let read = backend
         .get(&format!("/api/conversations/{id}/permissions"), Some(session))
         .await;
@@ -88,13 +88,13 @@ async fn permissions(backend: &TestBackend, session: &Session, id: &str) -> Conv
 }
 
 /// The only undecided request of the conversation: its id.
-async fn the_request(backend: &TestBackend, session: &Session, id: &str) -> String {
+pub(crate) async fn the_request(backend: &TestBackend, session: &Session, id: &str) -> String {
     let read = permissions(backend, session, id).await;
     assert_eq!(read.requests.len(), 1, "{read:?}");
     read.requests[0].id.as_str().to_owned()
 }
 
-async fn decide(
+pub(crate) async fn decide(
     backend: &TestBackend,
     session: &Session,
     id: &str,
