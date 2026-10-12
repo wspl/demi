@@ -266,7 +266,12 @@ conversation; the panel button covers the screen with the work panel, and
   viewport's `interactive-widget` and keeps the page its full height under
   the keyboard, scrolling it to show the field, so the app follows the
   visual viewport itself: its height is the visual viewport's, it stands at
-  the visual viewport's top, and the page's own scroll stays at 0.
+  the visual viewport's top, and the page's own scroll stays at 0. This one
+  rule holds at every width, since it changes nothing where no keyboard
+  covers the page: an iPhone turned sideways is wider than 768 pixels and
+  shows the desktop layout, and its keyboard still never hides the composer.
+  A sheet's or a window's bottom stands above Safari's floating toolbar as
+  above the keyboard.
 - **Sized for a finger.** Every row a finger picks, in the sidebar, sheets,
   Settings and the file tree, is at least 44 pixels tall, with 16-pixel
   titles; a group label is 36, the sidebar's footer 52, a tab 36. No tap
