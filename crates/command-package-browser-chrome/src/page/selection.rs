@@ -30,6 +30,7 @@ pub(crate) async fn select_text(
         ));
     }
     let mut last_failure = None;
+    let mut pauses = element::CheckPauses::default();
     loop {
         let attempt = async {
             let crate::page::element::Ready { element, named, .. } =
@@ -76,7 +77,7 @@ pub(crate) async fn select_text(
                     });
                     operation
                         .run(async {
-                            tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                            pauses.wait().await;
                             Ok(())
                         })
                         .await?;

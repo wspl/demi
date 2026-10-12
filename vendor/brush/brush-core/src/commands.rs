@@ -752,6 +752,9 @@ async fn execute_builtin_command<SE: extensions::ShellExtensions>(
 ) -> Result<ExecutionResult, error::Error> {
     // In POSIX mode, special builtins that return errors are to be treated as fatal.
     let mark_errors_fatal = builtin.special_builtin && context.shell.options().posix_mode;
+    if let Some(host) = context.shell.execution_host() {
+        host.builtin_started();
+    }
 
     match (builtin.execute_func)(context, args).await {
         Ok(result) => Ok(result),

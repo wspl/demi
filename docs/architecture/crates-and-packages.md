@@ -823,7 +823,8 @@ or on another plugin.
   its manifest; its secrets; and its page state and page methods.
 - **Public boundary:** its factory, whose manifest names its page package,
   `@demicodes/plugin-web`, which `xtask contracts` generates the page's types
-  into.
+  into, once the page exists; until `search` and the page land it declares
+  only the `demi web` group with `fetch`.
 - **Must not:** hold an HTTP client of its own, store a search result, or
   put a token or a key in page state or a log.
 
