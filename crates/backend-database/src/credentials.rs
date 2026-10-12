@@ -229,7 +229,8 @@ impl ControlService {
                 return Ok(Err(CredentialRefusal::NotFound));
             };
             let name = change.name.unwrap_or_else(|| stored.name.clone());
-            if name != stored.name && named(&transaction, &user, &name)?.is_some() {
+            // A change of the name's case alone keeps it this credential's.
+            if named(&transaction, &user, &name)?.is_some_and(|other| other.id != id) {
                 return Ok(Err(CredentialRefusal::NameTaken(name)));
             }
             let old = values_of(&transaction, &stored, &*seal)?;
@@ -475,19 +476,26 @@ pub(crate) fn by_id(
         .transpose()
 }
 
+/// The user's credential named `name` whatever its case: *GitHub token*
+/// and *github token* are one name (`web-api.md` § Credentials). SQLite's
+/// own `NOCASE` folds ASCII alone, so the names are compared here, among
+/// the user's few credentials.
 pub(crate) fn named(
     connection: &Connection,
     user: &UserId,
     name: &str,
 ) -> Result<Option<StoredCredential>, StorageError> {
-    connection
-        .query_row(
-            &format!("SELECT {COLUMNS} FROM user_credentials WHERE user_id = ?1 AND name = ?2"),
-            params![user.as_str(), name],
-            |row| Ok(credential_row(row)),
-        )
-        .optional()?
-        .transpose()
+    let wanted = name.to_lowercase();
+    let mut statement = connection
+        .prepare_cached(&format!("SELECT {COLUMNS} FROM user_credentials WHERE user_id = ?1"))?;
+    let mut rows = statement.query([user.as_str()])?;
+    while let Some(row) = rows.next()? {
+        let stored = credential_row(row)?;
+        if stored.name.to_lowercase() == wanted {
+            return Ok(Some(stored));
+        }
+    }
+    Ok(None)
 }
 
 fn optional_instant(
