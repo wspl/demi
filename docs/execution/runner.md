@@ -52,6 +52,20 @@ liveness checks are paused, as a Cloud's are while it is checkpointed, counts
 as answering. For example, a laptop
 whose Wi-Fi blinked reconnects within about 5 seconds instead of being
 refused until the backend's heartbeat gives the old socket up.
+
+A connection's end ends everything it carries. Requests waiting for the
+runner's answer fail as the device being offline, its service streams and
+direct streams close, and its `rpc` calls are stopped, so their handlers see
+the cancellation ([Handle an rpc call](commands.md#handle-an-rpc-call)). The
+backend's work for the connection, such as an `rpc` handler committing its
+change or the answer to one of the runner's requests, gets up to 5 seconds
+to finish; whatever still runs then is aborted, and the backend logs each
+piece by name. Only then is the device offline, and a new hello for the
+device waits for that end, so it is answered within those 5 seconds. For
+example, a `demi browser` call whose handler waits for the very device its
+connection served would otherwise keep that connection from ending, and
+every new connection of the device would wait behind it, unanswered, until
+the backend restarted.
 It answers a known token with `hello_ok` once it has bound the connection to
 the token's device, which is online from then until the connection ends. A
 hello that meets the backend's shutdown gets no answer: its connection closes,
