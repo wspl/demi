@@ -7,6 +7,7 @@
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Output;
+use std::time::Duration;
 
 use demi_backend_remote_host::testing::runner_binary;
 use demi_command_protocol::{TARGETS, VERSION, host_target};
@@ -24,7 +25,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::conversations::{FIRST, Socket, anthropic, choose, create, tool_result, tool_use};
-use crate::support::{Harness, Session, TestBackend, answer, eventually};
+use crate::support::{Harness, Session, TestBackend, answer, elapse, eventually};
 
 fn sha(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
@@ -169,18 +170,19 @@ impl Installations {
         let script = self.script(backend).await;
         let mut installer = self.shell();
         installer.arg(&script).envs(extra.iter().copied());
-        paired(installer, backend, session, 0).await
+        paired(installer, backend, session, None).await
     }
 
     /// Fetches the backend's installer and runs it from a shell whose file
-    /// mode creation mask is `umask`, pairing the runner with `session` once
-    /// `expired` codes went by; what it printed.
+    /// mode creation mask is `umask`, lets its first code expire by letting
+    /// the code's `lifetime` elapse, and pairs the runner with `session` by
+    /// the next one; what it printed.
     async fn install_with_umask(
         &self,
         backend: &TestBackend,
         session: &Session,
         umask: &str,
-        expired: usize,
+        lifetime: Duration,
     ) -> String {
         let script = self.script(backend).await;
         let mut installer = self.shell();
@@ -188,7 +190,7 @@ impl Installations {
             .arg("-c")
             .arg(format!("umask {umask} && exec sh \"$0\""))
             .arg(&script);
-        paired(installer, backend, session, expired).await
+        paired(installer, backend, session, Some(lifetime)).await
     }
 
     /// The backend's installer, saved in the home.
@@ -249,16 +251,17 @@ const CODES: [&str; 2] = [
 ];
 
 /// Runs `installer`, which stays until its runner is paired: it shows each
-/// pairing code as its runner receives one, and the code after `expired`
-/// codes went by is claimed with `session`. What it printed, once it exited
-/// successfully.
+/// pairing code as its runner receives one. With an `expiring` lifetime the
+/// first code is let expire, by letting that lifetime elapse, and the next
+/// is claimed with `session`; without, the first is. What it printed, once
+/// it exited successfully.
 async fn paired(
     mut installer: tokio::process::Command,
     backend: &TestBackend,
     session: &Session,
-    expired: usize,
+    mut expiring: Option<Duration>,
 ) -> String {
-    use tokio::io::AsyncBufReadExt as _;
+    use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
     let mut child = installer
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -266,41 +269,64 @@ async fn paired(
         .spawn()
         .unwrap();
     let mut lines = tokio::io::BufReader::new(child.stdout.take().unwrap()).lines();
+    let mut stderr = child.stderr.take().unwrap();
+    let mut errors = Vec::new();
+    let mut chunk = [0; 8192];
+    let mut stderr_open = true;
     let mut printed = String::new();
-    let mut codes = 0;
     // A hang guard: an installer that never sees its runner paired would
-    // wait for ever.
-    let read = tokio::time::timeout(std::time::Duration::from_secs(60), async {
-        while let Some(line) = lines.next_line().await.unwrap() {
-            printed.push_str(&line);
-            printed.push('\n');
-            let Some(code) = CODES.iter().find_map(|prefix| line.strip_prefix(prefix)) else {
-                continue;
-            };
-            codes += 1;
-            if codes == expired + 1 {
-                let claimed = backend
-                    .post("/api/devices/claim", Some(session), json!({ "code": code }))
-                    .await;
-                assert_eq!(
-                    claimed.status,
-                    StatusCode::CREATED,
-                    "{}",
-                    String::from_utf8_lossy(&claimed.body)
-                );
+    // wait for ever. It fires only once the installer has printed nothing
+    // for a minute on either stream, its download's progress meter included,
+    // so a slow download that moves is no hang; nor is a code's lifetime,
+    // which elapses at once between two lines.
+    let read = loop {
+        let heard = tokio::time::timeout(Duration::from_secs(60), async {
+            tokio::select! {
+                line = lines.next_line() => Some(line.unwrap()),
+                read = stderr.read(&mut chunk), if stderr_open => {
+                    let read = read.unwrap();
+                    stderr_open = read > 0;
+                    errors.extend_from_slice(&chunk[..read]);
+                    None
+                }
             }
+        })
+        .await;
+        let line = match heard {
+            Err(silent) => break Err(silent),
+            Ok(None) => continue,
+            Ok(Some(None)) => break Ok(()),
+            Ok(Some(Some(line))) => line,
+        };
+        printed.push_str(&line);
+        printed.push('\n');
+        let Some(code) = CODES.iter().find_map(|prefix| line.strip_prefix(prefix)) else {
+            continue;
+        };
+        if let Some(lifetime) = expiring.take() {
+            elapse(lifetime).await;
+            continue;
         }
-    })
-    .await;
+        let claimed = backend
+            .post("/api/devices/claim", Some(session), json!({ "code": code }))
+            .await;
+        assert_eq!(
+            claimed.status,
+            StatusCode::CREATED,
+            "{}",
+            String::from_utf8_lossy(&claimed.body)
+        );
+    };
     if read.is_err() {
         // The runner it started stays, and the installations' drop drains it.
         child.start_kill().unwrap();
     }
-    let output = child.wait_with_output().await.unwrap();
+    stderr.read_to_end(&mut errors).await.unwrap();
+    let status = child.wait().await.unwrap();
     assert!(
-        read.is_ok() && output.status.success(),
+        read.is_ok() && status.success(),
         "{printed}\n{}",
-        String::from_utf8_lossy(&output.stderr)
+        String::from_utf8_lossy(&errors)
     );
     printed
 }
@@ -622,15 +648,13 @@ async fn an_installer_that_finds_its_runner_waiting_shows_its_code_and_no_earlie
 /// and removal).
 // Several seconds (8 s here under load): the installer downloads this build's
 // runner (170 MB) from its backend, verifies it and starts it, and shows a
-// code that expires after two seconds before it shows the one claimed; a
-// scripted model then runs one job on the paired runner.
+// code, which the test lets expire at once, before it shows the one claimed;
+// a scripted model then runs one job on the paired runner.
 #[tokio::test]
 async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the_shells_mask() {
     let releases = Releases::new(runner_binary());
     releases.publish("initial");
-    let mut harness = Harness::new().with_runner_releases(releases.path());
-    // Long enough for the installer to show a code and the test to claim it.
-    harness.runners.claim_lifetime = std::time::Duration::from_secs(2);
+    let harness = Harness::new().with_runner_releases(releases.path());
     let (backend, master) = harness.start_set_up().await;
     let installations = Installations::new();
     let state = installations.state(&format!("{}/", backend.url));
@@ -649,7 +673,7 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
     // installer shows the runner's code, and the next one once it expired,
     // which pairs the runner.
     let printed = installations
-        .install_with_umask(&backend, &master, "002", 1)
+        .install_with_umask(&backend, &master, "002", harness.runners.claim_lifetime)
         .await;
     assert!(printed.contains(CODES[1]), "{printed}");
     assert!(!printed.contains("EXPIRED-CODE"), "{printed}");
