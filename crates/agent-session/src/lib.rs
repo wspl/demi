@@ -42,7 +42,7 @@ use std::{
 use demi_agent_store::{
     Checkpoint, CheckpointUpdate, RunningCommand, SessionStore, StoreError, media::HeldMedia,
 };
-use demi_agent_transcript::{IdSource, TranscriptLog, last_answer, last_failure};
+use demi_agent_transcript::{ForkEnd, IdSource, TranscriptLog, last_answer, last_failure};
 use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
 use demi_provider_common::{ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
@@ -898,15 +898,15 @@ impl AgentSession {
     }
 
     /// A Fork's seed from this live session, through the completed text
-    /// `target` (`conversation-fork.md` § The fork seed): captured in one
+    /// `end` names (`conversation-fork.md` § The fork seed): captured in one
     /// step, with the model a switch the session accepted would use.
-    pub fn prepare_fork(&self, target: &BlockId) -> Result<Checkpoint, ForkError> {
+    pub fn prepare_fork(&self, end: ForkEnd<'_>) -> Result<Checkpoint, ForkError> {
         self.shared.read(|core| {
             let state = demi_agent_store::CheckpointState {
                 model: core.latest_selection().clone(),
                 ..core.checkpoint_state()
             };
-            fork_seed(core.transcript.blocks(), state, target)
+            fork_seed(core.transcript.blocks(), state, end)
         })
     }
 

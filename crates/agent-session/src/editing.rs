@@ -7,7 +7,7 @@
 use std::rc::Rc;
 
 use demi_agent_store::{Checkpoint, CheckpointState, CheckpointUpdate, EditReceipt};
-use demi_agent_transcript::{CutError, TranscriptLog, before_user, through_assistant};
+use demi_agent_transcript::{CutError, ForkEnd, TranscriptLog, before_user, fork_prefix};
 use demi_command_protocol::canonical_digest;
 use demi_conversation_socket_protocol::{EditRequest, MediaRef, TranscriptVersion};
 use demi_provider_common::ProviderRuntime;
@@ -319,15 +319,16 @@ pub enum ForkError {
     Store(String),
 }
 
-/// A Fork's seed (`conversation-fork.md` § The fork seed): a root checkpoint
-/// of the history through the completed text `target`
-/// (`conversation-fork.md` § Eligibility), idle, with nothing waiting.
+/// A Fork's seed (`conversation-fork.md` § The fork seed): a checkpoint of
+/// the history through the completed text `end` names
+/// (`conversation-fork.md` § Eligibility), idle, with nothing waiting: a
+/// new root's, or a forked child's (`subagents.md` § Fork).
 pub fn fork_seed(
     blocks: &[Block],
     state: CheckpointState,
-    target: &BlockId,
+    end: ForkEnd<'_>,
 ) -> Result<Checkpoint, ForkError> {
-    let prefix = through_assistant(blocks, target)?.to_vec();
+    let prefix = fork_prefix(blocks, end)?.to_vec();
     Ok(Checkpoint {
         state: CheckpointState {
             phase: demi_shared_types::SessionPhase::Idle,

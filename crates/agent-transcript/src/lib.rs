@@ -19,8 +19,8 @@ pub use compaction::{
     summary_text,
 };
 pub use cut::{
-    CutError, ResumePoint, Rewind, before_user, last_answer, last_failure, last_assistant_text,
-    resume_point, rewind, through_assistant, unwind,
+    CutError, ForkEnd, ResumePoint, Rewind, before_user, fork_prefix, last_answer, last_failure,
+    last_assistant_text, resume_point, rewind, unwind,
 };
 pub use ids::{IdSource, RandomIds};
 pub use journal::{DirtyRows, PatchBatch};
