@@ -9,6 +9,7 @@ import HighlightText from './HighlightText.vue'
 import Popover from './Popover.vue'
 import { inSheetKey } from './sheet-context'
 import Tooltip from './Tooltip.vue'
+import TruncatedText from './TruncatedText.vue'
 import { ICON_PX } from './icon-metrics'
 import { disabledTooltip } from './disabled'
 import type { SentenceText, TitleText } from './ui-text'
@@ -42,6 +43,8 @@ const props = defineProps<{
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: SentenceText
+  /** What the row stands for, as a tooltip, such as a place's full path; a disabled row's reason comes first. */
+  hint?: SentenceText
   shortcut?: string
   /** A choice row: shows the check gutter, reports aria-checked, and keeps the menu tree open. */
   choice?: boolean
@@ -66,7 +69,7 @@ const emit = defineEmits<{
 const slots = useSlots()
 const isChoice = computed(() => props.choice === true)
 const isDisabled = computed(() => props.disabled === true)
-const tooltipContent = computed(() => disabledTooltip(isDisabled.value, props.disabledReason))
+const tooltipContent = computed(() => disabledTooltip(isDisabled.value, props.disabledReason) ?? props.hint)
 const menuIconless = inject(
   menuIconlessKey,
   computed(() => false),
@@ -255,13 +258,7 @@ const toneClass = computed(() => {
           <span class="min-w-0 truncate"><HighlightText :text="label ?? ''" :indexes="typedPrefix" /></span>
         </slot>
       </span>
-      <span
-        v-if="value"
-        class="menu-cell-value truncate text-right text-fg-subtle"
-        :title="value"
-      >
-        {{ value }}
-      </span>
+      <TruncatedText v-if="value" class="menu-cell-value text-right text-fg-subtle" :text="value" />
       <span
         v-if="hasSuffix"
         class="menu-cell-suffix flex items-center justify-end"

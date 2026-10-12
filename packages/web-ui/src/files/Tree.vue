@@ -4,6 +4,7 @@ import { useResizeObserver } from '@vueuse/core'
 import { useTypeSelect } from '../composables/useTypeSelect'
 import DropOutline from '../ui/DropOutline.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
+import Tooltip from '../ui/Tooltip.vue'
 import TypeSelectHint from '../ui/TypeSelectHint.vue'
 import TreeRow from './TreeRow.vue'
 import { usePhone } from '../ui/phone'
@@ -315,13 +316,14 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
          the padding too, so nothing shows through the gaps, and the stack takes the pointer, so
          the rows it covers get no hover or click through it. -->
     <div class="absolute inset-x-0 top-0 isolate z-[1] flex flex-col bg-surface-editor p-1 pb-0">
-      <div
+      <Tooltip
+        tag="div"
         class="relative z-10 flex h-7 shrink-0 select-none items-center bg-surface-editor px-2 text-chrome font-medium text-fg-muted phone:h-11 phone:text-[15px]"
-        :title="captionTitle"
+        :content="captionTitle"
       >
         <span class="min-w-0 flex-1 truncate">{{ caption }}</span>
         <slot name="captionTrailing" />
-      </div>
+      </Tooltip>
       <!-- Each pinned row in its own clip; only the deepest slides up as its
            directory leaves, its clip shrinking with it, while the rows above stay. -->
       <div class="flex flex-col gap-px bg-surface-editor pt-px">
