@@ -76,6 +76,23 @@ and inside the Cloud guest, whatever C library the host has. Windows
 executables link the C runtime statically, so they need no separately installed
 runtime.
 
+### Memory allocator
+
+Every executable built for a musl target allocates with mimalloc, and every
+other target keeps its system's allocator. musl's own allocator returns
+memory to the kernel and takes it back again around small allocations, with
+`munmap` and `mmap`, and serializes threads on a lock; inside the Cloud's
+gVisor sandbox every system call costs about fifteen times what it costs on
+a plain kernel, so the allocator alone made a large share of a program's
+work there. Measured in the sandbox, a 128 MiB WebRTC transfer took about
+39,000 `mmap` and as many `munmap` calls with musl's allocator, and mimalloc
+halved the sandbox kernel's CPU time for it and doubled its throughput. The
+allocators of macOS and Windows have no such cost, so they stay.
+
+`shared-cli` declares it, under `cfg(target_env = "musl")`, and every program
+links `shared-cli`, so no program declares an allocator of its own. mimalloc
+is C, which the Linux build's Zig compiles as it does `aws-lc-sys`'s.
+
 `xtask` itself is not released. It runs on the developer's machine and on the
 release workflow's runners, where each build job builds it and the later Linux
 jobs reuse what a build job of their architecture built
