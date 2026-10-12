@@ -652,6 +652,7 @@ form that works as stored:
 | API-key entry configuration, with its key and endpoint | Sealed | `providers` |
 | Subscription account secret | Sealed | `provider_credentials` |
 | A plugin's secret, its OAuth tokens included | Sealed | `plugin_secrets` |
+| A user's credential's field values | Sealed | `user_credentials` |
 
 A PHC string records the algorithm and its parameters beside the salt and the
 hash, for example `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`, so a stored
