@@ -1020,6 +1020,9 @@ A job describes one child:
 | `parentSessionId` | The node that spawned it |
 | `description` | The spawn's `--description`, or empty |
 | `profile` | The profile name, or null for the inherit profile |
+| `model` | What the round runs on, resolved by the backend from the profile or the parent: `{ provider, model, effort, fast }`, the provider entry's and the model's names as the model menu shows them, the effort or `off`, and whether the Fast tier is on |
+| `round` | The round, 1 for the spawn's |
+| `forkedFrom` | The number of the agent it was forked from, or null |
 | `phase` | `running`, `completed`, `aborted`, or `error` |
 | `startedAt` | The round's start time, RFC 3339 |
 | `endedAt` | The close time, or null while the child runs |
@@ -1153,6 +1156,31 @@ names *Main agent* when pointed at. A number the conversation does not
 have shows the link's text alone, and pointed at, *No agent 9 in this
 conversation*. The product's instructions tell the model to link the agents
 it names this way ([System prompt](system-prompt.md)).
+
+### What an agent runs on
+
+Wherever the page names a child it can say what the child runs on and for
+how long, in one line built from the job:
+
+```text
+research · Claude Sonnet 5.5 · Medium · Running for 4m12s
+No profile · Claude Opus 5.5 · High · Finished after 8m3s · Round 2
+frontend · Claude Sonnet 5.5 · High · Fast · Forked from agent 7
+```
+
+The profile's name, or *No profile* for the inherit profile, which the model
+after it then explains; the model's name; the effort, or *Thinking off*;
+*Fast* when it is on; the time, *Running for* while the round runs and,
+once it closed, *Finished after*, *Stopped after* or *Failed after*, counted
+from the round's start; *Round N* from the second round; *Forked from agent
+N* for a fork. The time follows the clock while it shows.
+
+- **The Agents window** shows the line under the tabs for the tab it shows,
+  in the secondary text color, one line, its end giving way first.
+- **An agent link and a receipt's name**, pointed at, show *Subagent 4 ·
+  Finished*, the description, then the line.
+- **The Completed menu** shows each child's profile after its description,
+  as a tag, *No profile* left out.
 
 Nested tool use renders from the same blocks on `subagent_transcript_*`, keyed
 by `subagentId` under the matching `subagent` `started` job, with
