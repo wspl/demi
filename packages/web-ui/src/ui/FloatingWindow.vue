@@ -24,11 +24,10 @@ import type { OverlayStore } from '../overlay/overlayStore'
  * scrim and no focus held inside it (`file-previews.md` § The media viewer).
  *
  * Move and resize: dragging the title bar moves it, and dragging any edge or
- * corner resizes it, with the matching cursor; it stays at least 240 × 180,
+ * corner resizes it, with the matching cursor; it stays at least 320 × 240,
  * no larger than the page, and its title bar on the page, also when the
  * browser window shrinks (`clampWindowRect`). The host keeps the box
- * (v-model:rect), so it can open the next window where the user left this
- * one. A drag captures the pointer (`startPointerDrag`), and Escape during it
+ * (v-model:rect) and decides where and how large the window opens. A drag captures the pointer (`startPointerDrag`), and Escape during it
  * puts the window back.
  *
  * Focus: opening moves the focus into the window, and closing gives it back

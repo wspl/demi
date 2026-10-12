@@ -4,6 +4,7 @@ import {
   fittedView,
   isClick,
   pannedView,
+  rescaledView,
   resizedView,
   toggledView,
   wheelScale,
@@ -88,4 +89,20 @@ test('resizing the frame keeps a fitted picture fitted and a zoomed one at its z
   expect(resizedView(fittedView(shot, frame), shot, frame, larger)).toEqual(fittedView(shot, larger))
   const zoomed = resizedView({ scale: 2, x: -1000, y: -500 }, shot, frame, larger)
   expect(zoomed).toEqual({ scale: 2, x: -820, y: -340 })
+})
+
+test('a picture at 100% is one pixel per device pixel: a retina screenshot is half its pixels wide on the page', () => {
+  // 2880 × 1800 pixels on two device pixels per page pixel: 1440 × 900 page px is the actual size.
+  const actual = { width: 1440, height: 900 }
+  const room = { width: 1440, height: 900 }
+  expect(fittedView(actual, room)).toEqual({ scale: 1, x: 0, y: 0 })
+  expect(fittedView(actual, { width: 720, height: 450 }).scale).toBe(0.5)
+})
+
+test('another display\'s pixel ratio changes the zoom the picture reads at, not its size on the page', () => {
+  // Fitted at 100% on two device pixels per page pixel; moved to one, the actual size doubles and the same 1440 page px read 50%.
+  const view = { scale: 1, x: 0, y: 0 }
+  const moved = rescaledView(view, 1 / 2)
+  expect(moved).toEqual({ scale: 0.5, x: 0, y: 0 })
+  expect(2880 * moved.scale).toBe(1440)
 })
