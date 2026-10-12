@@ -576,10 +576,6 @@ impl ExecutionHost for Scope {
         Arc::new(self.clone())
     }
 
-    fn resolve_path(&self, path: &Path, cwd: &Path) -> PathBuf {
-        resolve_path(path, cwd)
-    }
-
     fn time(&self) -> Option<Box<dyn brush_core::execution_host::Timing>> {
         Some(Box::new(self.timings.start()))
     }
@@ -702,25 +698,6 @@ pub(crate) fn child_attributes(
     }
 }
 
-pub fn resolve_path(path: &Path, cwd: &Path) -> PathBuf {
-    #[cfg(windows)]
-    if let Some(text) = path.to_str() {
-        let bytes = text.as_bytes();
-        if bytes.len() >= 2
-            && bytes[0] == b'/'
-            && bytes[1].is_ascii_alphabetic()
-            && (bytes.len() == 2 || bytes[2] == b'/')
-        {
-            return PathBuf::from(format!(
-                "{}:/{}",
-                bytes[1] as char,
-                text.get(3..).unwrap_or("")
-            ));
-        }
-    }
-    cwd.join(path)
-}
-
 /// What a standard utility runs with: its job's scope, and the attributes of
 /// the shell that ran it for the programs it starts.
 pub(crate) struct UtilityControl {
@@ -769,9 +746,6 @@ impl uucore::context::Control for UtilityControl {
     }
     fn sleep(&self, duration: Duration) -> io::Result<()> {
         self.scope.sleep(duration)
-    }
-    fn resolve(&self, path: &Path, cwd: &Path) -> PathBuf {
-        resolve_path(path, cwd)
     }
     fn task_guard(&self) -> Box<dyn Send + Sync> {
         Box::new(self.scope.tasks.token())
