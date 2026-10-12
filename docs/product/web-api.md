@@ -879,8 +879,9 @@ from that health, and `cliPackage`: the command package that installs the
 CLI its requests start on the user's Cloud, such as `demi.claude-code`, or
 null when its requests are HTTP; the page knows by it that the provider
 needs the Cloud. The entries of the product state carry the same `cliPackage`. `availability` is
-`{ type: "unavailable", reason: "setup", message }` while the entry is
-incomplete, with what it lacks
+`{ type: "unavailable", reason: "setup", message, missing }` while the entry
+is incomplete, `missing` naming what it lacks (`apiKey`, `baseUrl`, `models`,
+`account`)
 ([A provider is in the list from the start](../providers/models.md#a-provider-is-in-the-list-from-the-start)),
 `{ type: "unavailable", reason: "authentication", message }` while the
 credential is refused or a subscription's account expired, `{ type: "unavailable", reason: "runtime",

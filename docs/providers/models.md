@@ -143,25 +143,23 @@ custom endpoint of a family. The entry joins the providers list at once,
 selected, named after its vendor or family, and its page shows what it still
 needs, as Mail adds an account that waits for its password. For example, the
 user adds Google: *Google* stands in the list with a yellow dot, and on its
-page the API key field is red, with *Add an API key to use Google.* under it in
-red, as a form marks a field it cannot do without. The field a model is missing
-from is the model list's, whose Add Model button the sentence then stands
-under; a subscription's is its Sign In row.
+page the API key field is red with *Required* under it.
 
-An entry that cannot infer yet is **incomplete**, for the first of these:
-
-| What it lacks | The entry says |
-| --- | --- |
-| An API key, on an API-key entry | *Add an API key to use Google.* |
-| The API's address, on a custom endpoint | *Add the API's address.* |
-| A model, on an entry whose catalog is its configured list and the list is empty | *Add a model.* |
-| An account, on a subscription entry | *Sign in to use Claude Code.* |
+An entry that cannot infer yet is **incomplete**: an API-key entry without a
+key, a custom endpoint without its address, an entry whose catalog is its
+configured list while the list is empty, or a subscription entry without an
+account. Each field it lacks is red with *Required* under it in red, as a form
+marks a field it cannot do without; an empty model list shows *Add at least
+one model* under Add Model, and a subscription shows *Sign in required* under
+its Sign In row.
 
 An incomplete entry wears the yellow dot in the providers list, the same
 needs-you yellow the sidebar uses, and its models show in the model menu
-dimmed, with the entry's sentence as the reason they cannot be chosen
-([What the web app receives](#what-the-web-app-receives)). Its availability is
-`unavailable` for the reason `setup` with that sentence. The dot goes the
+dimmed, with *Finish setting up this provider in Settings* as the reason they
+cannot be chosen ([What the web app receives](#what-the-web-app-receives)). Its
+availability is `unavailable` for the reason `setup`, with that sentence and
+the list of what it lacks (`apiKey`, `baseUrl`, `models`, `account`), from
+which the page marks its fields. The dot goes the
 moment the last missing part is saved. Nothing is checked against the vendor
 while the user types: **Test** stays the way to try the entry.
 
