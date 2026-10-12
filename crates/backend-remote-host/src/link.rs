@@ -177,6 +177,10 @@ pub struct LinkOptions {
     pub device: String,
     /// The account the runner works as, from its `hello`.
     pub identity: HostIdentity,
+    /// The kernel and the `SHELL` a process the runner starts sees, from
+    /// its `hello`.
+    pub kernel: Option<wire::Kernel>,
+    pub shell: Option<String>,
     pub pipes: Pipes,
     pub policy: Rc<dyn LinkPolicy>,
     /// How often to ping; none turns liveness off.
@@ -257,6 +261,8 @@ impl WeakLink {
 pub(crate) struct Inner {
     device: String,
     identity: HostIdentity,
+    kernel: Option<wire::Kernel>,
+    shell: Option<String>,
     /// The device's jobs, which outlive the connection.
     device_jobs: DeviceJobs,
     outbound: mpsc::Sender<Vec<u8>>,
@@ -608,6 +614,8 @@ impl Link {
         let link = Link(Rc::new(Inner {
             device: options.device,
             identity: options.identity,
+            kernel: options.kernel,
+            shell: options.shell,
             device_jobs: options.jobs.clone(),
             outbound,
             pipes: options.pipes,
@@ -707,6 +715,18 @@ impl Link {
 
     pub fn identity(&self) -> &HostIdentity {
         &self.0.identity
+    }
+
+    /// The kernel a process the runner starts runs on, as its hello
+    /// reported it; none from a runner on Windows.
+    pub fn kernel(&self) -> Option<&wire::Kernel> {
+        self.0.kernel.as_ref()
+    }
+
+    /// The `SHELL` a process the runner starts inherits, as its hello
+    /// reported it; none when the device environment names none.
+    pub fn shell(&self) -> Option<&str> {
+        self.0.shell.as_deref()
     }
 
     pub fn pipes(&self) -> &Pipes {
