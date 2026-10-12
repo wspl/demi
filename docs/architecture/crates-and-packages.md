@@ -241,6 +241,16 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   Behavior: [Commands](../execution/commands.md).
 - **Must not:** implement operations or perform IO.
 
+#### `command-package-fetch-protocol`
+
+- **Owns:** the `demi.fetch` package's id (`PACKAGE`, which its release
+  descriptor names) and operations (`Operation`): the arguments and results of
+  `fetch.get`, with their limits.
+- **Public boundary:** the types above. `plugin-web` declares the `demi fetch`
+  commands from them and `demi-fetch` decodes invocations with them.
+  Behavior: [Web search and fetch](../agent/web.md#demi-fetch).
+- **Must not:** implement operations or perform IO.
+
 #### `command-package-browser-protocol`
 
 - **Owns:** the `demi.browser` package's id (`PACKAGE`) and operations
@@ -1647,6 +1657,7 @@ conversation-socket-protocol -> shared-types
 command-sdk -> shared-artifacts, command-protocol
 command-declarations -> none
 command-package-file-protocol -> shared-types
+command-package-fetch-protocol -> shared-types
 command-package-browser-protocol -> shared-types
 command-package-claude-code-protocol -> none
 runner-protocol -> command-protocol, command-declarations, shared-types
@@ -1672,6 +1683,7 @@ plugin-interface -> command-declarations, shared-types, host-interface, web-api-
 plugin-file -> plugin-interface, command-declarations, command-package-file-protocol, host-interface
 plugin-browser -> plugin-interface, command-declarations, command-package-browser-protocol, host-interface, web-api-protocol
 plugin-skills -> plugin-interface, host-interface, shared-types
+plugin-web -> plugin-interface, command-declarations, command-package-fetch-protocol, host-interface
 plugin-changes -> plugin-interface
 plugin-file-browser -> plugin-interface
 backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface
@@ -1695,14 +1707,15 @@ backend-permissions -> command-declarations, shared-types, host-interface, backe
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
 backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, backend-plugins, plugin-interface
-backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills
+backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 server -> backend-database, machine-manager-protocol, shared-artifacts, shared-cli
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts, shared-cli
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates, shared-cli
+command-package-fetch -> command-protocol, command-sdk, command-package-fetch-protocol, shared-cli
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk, shared-cli
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk, shared-cli
-xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-interface
+xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-interface
 ```
 
 ### TypeScript packages
