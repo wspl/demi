@@ -1,7 +1,8 @@
 //! `POST /api/attachments?name=&sha256=` (`web-api.md` § Uploads and
 //! media): a file's bytes, at most 25 MiB, into the caller's blobs with one
 //! attachment record; with a SHA-256 and no body, the blob the caller holds
-//! already gains the record, and no bytes travel. The answer carries the
+//! already gains the record, and no bytes travel, and a blob it does not
+//! hold answers 200 with a null attachment. The answer carries the
 //! media type the backend reads from the bytes and, for a text file, its
 //! opening, which the composer shows on the file's capsule as the message
 //! will carry it.
@@ -14,11 +15,14 @@ use axum::extract::State;
 use axum::extract::rejection::{BytesRejection, FailedToBufferBody};
 use axum::http::header::{CONTENT_LENGTH, CONTENT_TYPE};
 use axum::http::{HeaderMap, StatusCode};
+use axum::response::{IntoResponse as _, Response};
 use demi_agent_store::attachments::{is_text, snippet, upload_media_type};
+use demi_shared_types::BlobRef;
 use demi_web_api_protocol::attachments::{
-    ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto, UploadQuery,
+    ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentCheckAnswer, AttachmentDto, UploadQuery,
 };
 use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::ids::UserId;
 use garde::Validate as _;
 
 use super::error::ApiError;
@@ -62,7 +66,7 @@ pub(super) async fn upload(
     QueryParams(query): QueryParams<UploadQuery>,
     headers: HeaderMap,
     body: Result<Bytes, BytesRejection>,
-) -> Result<(StatusCode, Json<AttachmentAnswer>), ApiError> {
+) -> Result<Response, ApiError> {
     query
         .validate()
         .map_err(|report| ApiError::invalid_query(format!("name: {report}")))?;
@@ -80,22 +84,25 @@ pub(super) async fn upload(
         other => ApiError::invalid_body(other.body_text()),
     })?;
     let blobs = services.blobs.for_user(&user.id);
-    // What the record is read from: the file's opening, or all of it, and
-    // its size.
-    let (opening, size_bytes, sha256) = match (bytes.is_empty(), query.sha256) {
-        (true, None) => return Err(ApiError::invalid_body("An upload holds at least one byte")),
+    let uploaded = async |opening: Bytes, size_bytes: u64, sha256| {
+        record(&services, &user.id, &query.name, &sent, &opening, size_bytes, sha256).await
+    };
+    match (bytes.is_empty(), query.sha256.clone()) {
+        (true, None) => Err(ApiError::invalid_body("An upload holds at least one byte")),
         // No bytes travel for a blob the caller holds already; only the
         // caller's own namespace is asked, and only its opening is read.
-        (true, Some(sha256)) => match blobs.opening(&sha256).await? {
-            Some(held) => (held.bytes, held.size, sha256),
-            None => {
-                return Err(ApiError::new(
-                    StatusCode::NOT_FOUND,
-                    ErrorCode::BlobMissing,
-                    "Your files hold no blob with that SHA-256; send its bytes",
-                ));
+        // A blob it does not hold is an answer too, with no upload.
+        (true, Some(sha256)) => Ok(match blobs.opening(&sha256).await? {
+            Some(held) => {
+                let attachment = uploaded(held.bytes, held.size, sha256).await?;
+                let answer = AttachmentCheckAnswer { attachment: Some(attachment) };
+                (StatusCode::CREATED, Json(answer)).into_response()
             }
-        },
+            None => {
+                let answer = AttachmentCheckAnswer { attachment: None };
+                (StatusCode::OK, Json(answer)).into_response()
+            }
+        }),
         (false, Some(sha256)) => {
             if !blobs.put_named(bytes.clone(), &sha256).await? {
                 return Err(ApiError::invalid_body(
@@ -103,29 +110,44 @@ pub(super) async fn upload(
                 ));
             }
             let size = bytes.len() as u64;
-            (bytes, size, sha256)
+            let attachment = uploaded(bytes, size, sha256).await?;
+            Ok((StatusCode::CREATED, Json(AttachmentAnswer { attachment })).into_response())
         }
         (false, None) => {
             let sha256 = blobs.put(bytes.clone()).await?;
             let size = bytes.len() as u64;
-            (bytes, size, sha256)
+            let attachment = uploaded(bytes, size, sha256).await?;
+            Ok((StatusCode::CREATED, Json(AttachmentAnswer { attachment })).into_response())
         }
-    };
-    let media_type = upload_media_type(&sent, &opening);
+    }
+}
+
+/// Records an upload of the blob `sha256` names, read from `opening`, the
+/// file's opening or all of it: the media type the bytes say, else the one
+/// they were sent as, and a text file's snippet.
+async fn record(
+    services: &Services,
+    user: &UserId,
+    name: &str,
+    sent: &str,
+    opening: &[u8],
+    size_bytes: u64,
+    sha256: BlobRef,
+) -> Result<AttachmentDto, ApiError> {
+    let media_type = upload_media_type(sent, opening);
     // The record keeps the snippet, so a draft that names the upload shows
     // it on every page (`web-api.md` § Conversation drafts).
-    let snippet = is_text(&query.name, &media_type).then(|| snippet(&opening));
+    let snippet = is_text(name, &media_type).then(|| snippet(opening));
     let record = services
         .control
-        .create_attachment(user.id.clone(), media_type, size_bytes, sha256, snippet)
+        .create_attachment(user.clone(), media_type, size_bytes, sha256, snippet)
         .await?;
-    let attachment = AttachmentDto {
+    Ok(AttachmentDto {
         id: record.id,
         media_type: record.media_type,
         size_bytes: record.size_bytes,
         sha256: record.sha256,
         created_at: record.created_at,
         snippet: record.snippet,
-    };
-    Ok((StatusCode::CREATED, Json(AttachmentAnswer { attachment })))
+    })
 }

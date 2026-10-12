@@ -1,7 +1,7 @@
 import type { ClaimFile, UploadedFile, UploadFile } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
-import { ApiError, apiError, apiRequest, apiUrl, invalidResponse, untilReached } from './client'
-import { attachmentAnswerSchema } from './generated/web-api'
+import { apiError, apiRequest, apiUrl, invalidResponse, readResponse, untilReached } from './client'
+import { type AttachmentDto, attachmentAnswerSchema, attachmentCheckAnswerSchema } from './generated/web-api'
 
 /**
  * Where the page loads a blob of the user's own, seen as `mediaType`
@@ -127,29 +127,18 @@ async function fileSha256(file: File): Promise<string> {
  * Asks for an upload of the blob the user holds already, which sends no
  * bytes; null when the user's blobs do not hold it and the bytes must go.
  */
-async function uploadHeld(query: URLSearchParams, mediaType: string, signal: AbortSignal): Promise<unknown> {
-  try {
-    const response = await apiRequest(`/attachments?${query}`, {
-      method: 'POST',
-      headers: { 'Content-Type': mediaType },
-      signal,
-    })
-    return await response.json()
-  } catch (error) {
-    if (error instanceof ApiError && error.code === 'blob_missing') {
-      return null
-    }
-    throw error
-  }
+async function uploadHeld(query: URLSearchParams, mediaType: string, signal: AbortSignal): Promise<UploadedFile | null> {
+  const response = await apiRequest(`/attachments?${query}`, {
+    method: 'POST',
+    headers: { 'Content-Type': mediaType },
+    signal,
+  })
+  const { attachment } = await readResponse(response, attachmentCheckAnswerSchema)
+  return attachment && uploadedFile(attachment)
 }
 
-/** The upload an answer names, with what the backend read of the file. */
-function uploadedFile(answer: unknown): UploadedFile {
-  const parsed = attachmentAnswerSchema.safeParse(answer)
-  if (!parsed.success) {
-    throw invalidResponse(parsed.error)
-  }
-  const { attachment } = parsed.data
+/** The upload `attachment` names, with what the backend read of the file. */
+function uploadedFile(attachment: AttachmentDto): UploadedFile {
   return {
     id: attachment.id,
     mediaType: attachment.mediaType,
@@ -165,8 +154,7 @@ function uploadedFile(answer: unknown): UploadedFile {
  */
 export const claimStoredFile: ClaimFile = async (file, signal) => {
   const query = new URLSearchParams({ name: file.name, sha256: file.sha256 })
-  const held = await uploadHeld(query, file.mediaType, signal)
-  return held === null ? null : uploadedFile(held)
+  return uploadHeld(query, file.mediaType, signal)
 }
 
 /**
@@ -182,8 +170,15 @@ export const uploadAttachment: UploadFile = async (file, options) => {
   const sha256 = await fileSha256(file)
   const query = new URLSearchParams({ name: file.name, sha256 })
   const held = await uploadHeld(query, sentMediaType(file), options.signal)
-  return uploadedFile(held ?? await uploadBytes(`/attachments?${query}`, file, {
+  if (held) {
+    return held
+  }
+  const sent = attachmentAnswerSchema.safeParse(await uploadBytes(`/attachments?${query}`, file, {
     signal: options.signal,
     progress: (sent) => options.progress(file.size ? sent / file.size : 1),
   }))
+  if (!sent.success) {
+    throw invalidResponse(sent.error)
+  }
+  return uploadedFile(sent.data.attachment)
 }

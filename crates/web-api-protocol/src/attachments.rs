@@ -2,7 +2,7 @@
 //! caller's blobs with one attachment record, and a send, steer or edit
 //! frame names the upload by its id.
 
-use demi_shared_types::{BlobRef, MAX_SAFE_INTEGER, Timestamp};
+use demi_shared_types::{BlobRef, MAX_SAFE_INTEGER, Nullable, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -33,10 +33,22 @@ pub struct UploadQuery {
     pub sha256: Option<BlobRef>,
 }
 
-/// The answer of an upload.
+/// The answer of an upload that sent the file's bytes.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AttachmentAnswer {
     pub attachment: AttachmentDto,
+}
+
+/// The answer of an upload that named a SHA-256 and sent no bytes: 201 with
+/// the upload of the blob the caller holds, or 200 with null when the
+/// caller's blobs do not hold it, and the page sends the bytes next. A
+/// missing blob is an answer, not a failure, since a browser logs every 4xx
+/// in its console.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct AttachmentCheckAnswer {
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<AttachmentDto>")]
+    pub attachment: Option<AttachmentDto>,
 }
 
 /// An upload as the composer shows it: the media type the backend read from

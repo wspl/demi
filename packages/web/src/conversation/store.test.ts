@@ -257,7 +257,7 @@ beforeEach(async () => {
     }
     if (path.startsWith('/api/attachments?')) {
       // The backend holds none of these files: their bytes go next.
-      return Response.json({ code: 'blob_missing', message: 'Send its bytes' }, { status: 404 })
+      return Response.json({ attachment: null })
     }
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
