@@ -1071,11 +1071,23 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     let stopped = work.turn(vec![shell("t5", &stop, 30_000), say("stopped")]).await;
     let stop = &stopped.received[0];
     assert_eq!(field(stop, "exitCode"), "1", "{stop}");
+    let shown = shown_output(stop);
+    let second = shown
+        .strip_prefix(&format!("[command {command} stopped]\n"))
+        .unwrap_or_else(|| panic!("{shown}"));
+    // The second stop's error goes to its stderr and what it says of the
+    // other command to its stdout: separate streams, which reach the job
+    // apart and keep no order between them (`commands.md` § Deliver IO and
+    // release an invocation), so its lines are compared sorted.
+    let mut second = second.lines().collect::<Vec<_>>();
+    second.sort_unstable();
     assert_eq!(
-        shown_output(stop),
-        format!(
-            "[command {command} stopped]\ndemi shell stop: 999: no such command in this conversation\n[command {command} had already ended]\n"
-        )
+        second,
+        [
+            format!("[command {command} had already ended]"),
+            "demi shell stop: 999: no such command in this conversation".to_owned(),
+        ],
+        "{shown}"
     );
     let look = format!("demi shell status {command}; printf 'late\\n' | demi shell input {command}");
     let looked = work.turn(vec![shell("t6", &look, 30_000), say("looked")]).await;
