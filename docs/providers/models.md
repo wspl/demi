@@ -156,9 +156,11 @@ user adds Google: *Google* stands in the list with a yellow dot, and on its
 page the API key field is red with *Required* under it.
 
 An entry that cannot infer yet is **incomplete**: an API-key entry without a
-key, a custom endpoint without its address, an entry whose catalog is its
-configured list while the list is empty, or a subscription entry without an
-account. Each field it lacks is red with *Required* under it in red, as a form
+key, an entry whose catalog is its configured list while the list is empty,
+or a subscription entry without an account. An address is never missing: an
+entry without one uses its family's default endpoint
+([Endpoints](providers.md#endpoints)). The page knows whether a key is saved
+from the entry's `hasApiKey`, and shows the masked key only then. Each field it lacks is red with *Required* under it in red, as a form
 marks a field it cannot do without; an empty model list shows *Add at least
 one model* under Add Model, and a subscription shows *Sign in required* under
 its Sign In row.
@@ -168,8 +170,8 @@ needs-you yellow the sidebar uses, and its models show in the model menu
 dimmed, with *Finish setting up this provider in Settings* as the reason they
 cannot be chosen ([What the web app receives](#what-the-web-app-receives)). Its
 availability is `unavailable` for the reason `setup`, with that sentence and
-the list of what it lacks (`apiKey`, `baseUrl`, `models`, `account`), from
-which the page marks its fields. The dot goes the
+the list of what it lacks (`apiKey`, `models`, `account`), from which the
+page marks its fields. The dot goes the
 moment the last missing part is saved. Nothing is checked against the vendor
 while the user types: **Test** stays the way to try the entry.
 
@@ -198,6 +200,10 @@ An entry whose catalog is its configured list gets a model in one step:
 3. **Add** saves it. Choosing *Custom* shows the same fields empty but the
    name typed so far.
 
+The search offers only models an agent can work with: those whose output
+includes text and that call tools; a model that writes speech or images, or
+calls no tool, is left out.
+
 The search reads the backend's copy of the models.dev document
 ([The models.dev document](#the-modelsdev-document)), so it makes no request
 of its own per keystroke. A query matches a model whose name or id holds each
@@ -224,7 +230,7 @@ Google entry" in a conversation:
 | `edit <entry>` | Changes the name, the endpoint, or the key with `--api-key-stdin` |
 | `remove <entry>` | Removes the entry, as Settings does |
 | `models search <query>` | The same search as Add Model, each match on one line with its `<vendor>/<model id>`, name, context window, output limit, efforts and files |
-| `models add <entry> [<vendor>/<model id>]` | Adds a model to the entry's configured list, filled from that match; options `--id`, `--name`, `--context`, `--output`, `--efforts`, `--extensions` and `--fast-tier` set or override fields, and without a match they are the whole model |
+| `models add <entry> [<vendor>/<model id>]` | Adds a model to the entry's configured list, filled from that match; options `--id`, `--name`, `--context`, `--output`, `--efforts`, `--extensions` and `--fast-tier` set or override fields, and without a match they are the whole model. An entry that offers its vendor's list and has none of its own starts its list from the models its vendor offers now, so adding one model removes none, and the answer says so: *Google now keeps its own list of 13 models; it no longer follows models.dev.* |
 | `models edit <entry> <model id>` | Changes the fields its options name |
 | `models remove <entry> <model id>` | Removes the model from the list |
 
