@@ -759,15 +759,15 @@ html[data-theme="light"] .file-pill {
   display: none;
 }
 
-/* A hover card a phone shows as a sheet (HoverCard's `sheet`) is the
+/* A card a phone shows as a sheet (the context indicator's) is the
    sheet's content, with no card of its own around it. */
-.sheet .hover-card-shell {
+.sheet .overlay-card {
   border-radius: 0;
   background: none;
   box-shadow: none;
 }
 
-.sheet .hover-card-shell::after {
+.sheet .overlay-card::after {
   display: none;
 }
 
