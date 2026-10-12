@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import AgentMark from './AgentMark.vue'
-import AgentTip from './AgentTip.vue'
+import AgentRunLine from './AgentRunLine.vue'
 import { useMessageAgents } from './agent-links'
 
 /**
@@ -43,7 +43,7 @@ function open(): void {
       </span>
     </span>
     <template #overlay>
-      <AgentTip v-if="agent.run" :number="agent.number" :description="agent.description" :run="agent.run" />
+      <AgentRunLine v-if="agent.run" :run="agent.run" plain />
       <div v-else>{{ agent.description }}</div>
     </template>
   </Tooltip>
