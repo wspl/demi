@@ -4,7 +4,9 @@ import { Bot, History } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
+import HighlightText from '../ui/HighlightText.vue'
 import Menu from '../ui/Menu.vue'
+import Tag from '../ui/Tag.vue'
 import {
   finishedSubagents,
   formatSubagentDuration,
@@ -27,6 +29,7 @@ const items = computed(() => {
     label: agent.name,
     icon: Bot,
     value: formatSubagentDuration(agent, nowMs),
+    profile: agent.profile,
   }))
 })
 function select(id: string, close: () => void): void {
@@ -59,7 +62,15 @@ function select(id: string, close: () => void): void {
         :selected-id="activeId ?? undefined"
         :item-height="28"
         @select="select($event, close)"
-      />
+      >
+        <!-- The child's profile after its description, as a tag; none for no profile (`subagents.md` § What an agent runs on). -->
+        <template #item="{ item, query }">
+          <span class="flex min-w-0 flex-1 items-center gap-1.5">
+            <span class="min-w-0 truncate"><HighlightText :text="item.label" :query="query" /></span>
+            <Tag v-if="item.profile" class="shrink-0">{{ item.profile }}</Tag>
+          </span>
+        </template>
+      </Menu>
     </template>
   </Dropdown>
 </template>

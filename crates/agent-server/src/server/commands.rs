@@ -43,7 +43,7 @@ const LIST_SUMMARY: &str = "Render the whole session tree from the root down, ma
 /// The `--profile` option's description, which names no profile: the help
 /// is rendered once per tree, and the profiles change with the user's
 /// settings (`subagents.md` § Command help).
-const PROFILE_OPTION: &str = "The name of one of the user's subagent profiles; `demi agent profiles list` lists them with when to use each. Omit to inherit the parent's model, prompt, Host and commands.";
+const PROFILE_OPTION: &str = "The name of one of the user's subagent profiles. Without it the child inherits your model, prompt, Host and commands; `demi agent profiles list` lists the profiles, with when to use each, that may fit the task better.";
 
 const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state, recent tool titles with durations, last assistant text; for an archived one, how and when it closed with its result or failure. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. Several ids show each in order; --json takes one. A read, not a wait — not for polling loops.";
 
@@ -116,7 +116,7 @@ struct ShowArgs {
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const AGENT_ENTRY: &str = "Runs subagents, each with a fresh context of its own, that work in parallel on parts of a task and report back; forks one into a new child that goes on from what it already knows, on another profile; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites, pages or libraries to look into; for a long investigation whose details would crowd your context; or for a task one of the user's subagent profiles fits (`demi agent profiles list`). A single lookup or edit is faster done yourself.";
+const AGENT_ENTRY: &str = "Runs subagents, each with a fresh context of its own, that work in parallel on parts of a task and report back; forks one into a new child that goes on from what it already knows, on another profile; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites, pages or libraries to look into; for a long investigation whose details would crowd your context; or for a task one of the user's subagent profiles fits: run `demi agent profiles list` first and give each subagent the one that fits. A single lookup or edit is faster done yourself.";
 
 /// `demi agent spawn --json`, `fork --json` and `resume --json`.
 #[derive(Serialize, JsonSchema)]
