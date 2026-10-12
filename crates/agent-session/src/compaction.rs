@@ -219,16 +219,27 @@ async fn over_a_threshold(
 }
 
 /// Runs `work` in the compacting stage, which clients see as the phase
-/// `compacting`, and returns to the stage before it.
+/// `compacting`, and returns to the stage before it. A wait for the model
+/// pauses meanwhile, since the page shows the pass instead, and starts
+/// again at its end (`runtime.md` § Waiting for the model).
 pub(super) async fn compacting<T>(
     s: &SessionShared,
     work: impl Future<Output = Result<T, TurnError>>,
 ) -> Result<T, TurnError> {
-    let before = s.read(SessionCore::stage);
-    s.update(|core| core.set_stage(TurnStage::Compacting));
+    let (before, waiting) = s.update(|core| {
+        let paused = (core.stage(), core.waited_ms().is_some());
+        core.set_stage(TurnStage::Compacting);
+        core.stop_waiting();
+        paused
+    });
     let result = work.await;
     if let Some(stage) = before {
-        s.update(|core| core.set_stage(stage));
+        s.update(|core| {
+            core.set_stage(stage);
+            if waiting {
+                core.start_waiting();
+            }
+        });
     }
     result
 }

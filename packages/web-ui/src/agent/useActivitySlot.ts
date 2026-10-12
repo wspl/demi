@@ -49,37 +49,28 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   )
 
   // The clock counts from when the wait began, which is the session's fact,
-  // not this view's (`runtime.md` § Waiting for the model): a view shown
-  // during a wait counts from the start the server tells, and runs on across
-  // the confirmation of a message and the agent's own retries alike. A wait
-  // this page started, by sending a message or a recovery, counts from that
-  // action, before the server has it. Until the server tells a start, the row
-  // counts from when it began to say Requesting.
-  // A call being written ends the wait the server counts, while the row goes
-  // on saying Requesting until the call's description is written
-  // (`runtime.md` § Calls being written): the row keeps the start it was
-  // told, rather than counting again from when it began to show.
+  // not this view's (`runtime.md` § Waiting for the model): the server tells
+  // a start for as long as the row says Requesting, from the turn's start
+  // or a step's end until something of the answer shows, so a view shown
+  // during a wait counts from it, and runs on across the confirmation of a
+  // message and the agent's own retries alike. A wait this page started, by
+  // sending a message or a recovery, counts from that action, before the
+  // server has it. Until the server's start arrives, the row counts from
+  // when it began to say Requesting.
   const requesting = computed(() => kind.value === 'requesting')
   const shownSince = ref(Date.now())
   const startedHere = ref(false)
-  const toldSince = ref<number | null>(waitingSince())
   watch(
     () => [requesting.value, scope()] as const,
     ([isRequesting, currentScope], [wasRequesting, previousScope]) => {
       if (isRequesting && (!wasRequesting || currentScope !== previousScope)) {
         shownSince.value = Date.now()
         startedHere.value = startingTurn.value || input().recovering
-        toldSince.value = waitingSince()
       }
     },
   )
-  watch(waitingSince, (told) => {
-    if (told !== null) {
-      toldSince.value = told
-    }
-  }, { flush: 'sync' })
   const since = computed(() => {
-    const told = toldSince.value
+    const told = waitingSince()
     if (told === null) {
       return shownSince.value
     }
