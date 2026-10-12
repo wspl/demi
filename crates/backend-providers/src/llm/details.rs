@@ -29,6 +29,13 @@ impl ProviderAssembly {
     ) -> (AuthState, RuntimeState) {
         let provider = match provider {
             Ok(provider) => provider,
+            // Nothing is known of a provider that is not set up yet.
+            Err(AssemblyError::Incomplete) => {
+                return (
+                    AuthState::Unauthenticated { message: None },
+                    RuntimeState::Unknown { message: None },
+                );
+            }
             Err(error) => {
                 let auth = AuthState::Error {
                     message: error.to_string(),
@@ -57,7 +64,23 @@ impl ProviderAssembly {
     ) -> Result<ProviderDetails, AssemblyError> {
         let provider = self.provider_for(entry).await;
         let (auth, runtime) = self.health(entry, &provider).await;
-        let provider = provider?;
+        let provider = match provider {
+            Ok(provider) => provider,
+            // An entry without its key has no provider to ask,
+            // nor accounts or quota yet.
+            Err(AssemblyError::Incomplete) => {
+                return Ok(ProviderDetails {
+                    auth,
+                    runtime,
+                    accounts: Vec::new(),
+                    active: None,
+                    quota: None,
+                    quota_capability: QuotaCapability::None {},
+                    cli_package: None,
+                });
+            }
+            Err(error) => return Err(error),
+        };
         let accounts = match entry.credential {
             EntryCredential::Subscription { .. } => self.vault().accounts(entry.id.clone()).await?,
             EntryCredential::ApiKey(_) => Vec::new(),
@@ -120,10 +143,18 @@ fn for_inference_only(details: ProviderDetails) -> ProviderDetails {
     }
 }
 
-/// Whether the entry's models can be used now, from its health: a credential
-/// that is missing or refused, or a provider that cannot run, makes them
-/// unavailable.
-pub fn availability(auth: &AuthState, runtime: &RuntimeState) -> Availability {
+/// Whether the entry's models can be used now: not while the entry lacks a
+/// part it needs, all of which it names; then from its health, a credential
+/// that is refused or a provider that cannot run makes them unavailable.
+pub fn availability(
+    entry: &ProviderEntry,
+    auth: &AuthState,
+    runtime: &RuntimeState,
+) -> Availability {
+    let missing = entry.missing();
+    if !missing.is_empty() {
+        return Availability::setup(missing);
+    }
     if matches!(
         auth,
         AuthState::Unauthenticated { .. } | AuthState::Error { .. }
@@ -131,6 +162,7 @@ pub fn availability(auth: &AuthState, runtime: &RuntimeState) -> Availability {
         return Availability::Unavailable {
             reason: UnavailableReason::Authentication,
             message: "Provider login is unavailable".into(),
+            missing: None,
         };
     }
     match runtime {
@@ -138,6 +170,7 @@ pub fn availability(auth: &AuthState, runtime: &RuntimeState) -> Availability {
             Availability::Unavailable {
                 reason: UnavailableReason::Runtime,
                 message: message.clone(),
+                missing: None,
             }
         }
         RuntimeState::Unknown { .. } | RuntimeState::Ready { .. } => Availability::Available {},

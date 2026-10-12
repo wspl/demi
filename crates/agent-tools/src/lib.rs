@@ -51,7 +51,7 @@ pub use result::{
     Look, interrupted_look, look_text, report_media, report_output, whole_look_text, whole_status,
 };
 pub use product::{
-    ContextAnswer, ContextSource, EFFORT_OFF, EntryKind, HostResolver, MenuEntry, MenuModel,
+    ContextAnswer, ContextSource, EFFORT_OFF, HostResolver,
     ModelChoice, ModelEdit, NewProfileDraft, NodeContext, Profile, ProfileEdit, ProfileModel,
     SubagentSettings, SubagentSource, TIER_DEFAULT, Toolset, ToolsetSource, Unavailable, runs_on,
 };
