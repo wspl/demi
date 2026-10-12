@@ -269,10 +269,13 @@ impl CloudConfigDir {
     /// Writes `files` into the directory, each at its path there.
     async fn write(&self, files: Vec<(String, Bytes)>) -> Result<(), HostError> {
         let fs = self.host.fs();
+        let paths = self.host.identity().paths;
         for (name, bytes) in files {
-            let path = format!("{}/{name}", self.path);
-            if let Some((parent, _)) = path.rsplit_once('/') {
-                fs.mkdir(parent, MkdirOptions { recursive: true }).await?;
+            // `name` is a path in the directory, written with `/`.
+            let path = paths.join(&self.path, &name);
+            if let Some((parent, _)) = name.rsplit_once('/') {
+                fs.mkdir(&paths.join(&self.path, parent), MkdirOptions { recursive: true })
+                    .await?;
             }
             fs.write_file(&path, FileContents::Bytes(bytes), WriteOptions::default())
                 .await?;

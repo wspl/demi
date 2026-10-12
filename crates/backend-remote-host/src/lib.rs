@@ -48,7 +48,7 @@ pub use pipes::{
 };
 pub use remote_host::{
     Admission, AttachedArtifact, DeviceLink, DirectoryFile, JobStart, LogPage, Look, LookAt, ConditionalRead, OpenedRead, RemoteHost, RemoteJob,
-    ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, byte_stream, collect_pipe, host_identity,
+    ServiceCallError, ServiceEnd, ServiceRequest, ServiceStream, byte_stream, collect_pipe, host_identity, host_paths,
 };
 #[cfg(feature = "edge")]
 pub use runner_socket::{close_frame, socket_frame};
