@@ -403,7 +403,9 @@ Raw process environment selection follows these rules:
 | Null value in an overlay | Remove that inherited variable. |
 
 The device environment is the runner's own environment without the names
-that begin with `DEMI_`. Those configure the runner, such as
+that begin with `DEMI_` and, on Windows, those that begin with `=`, the
+hidden per-drive directories such as `=C:` that cmd keeps and no program may
+be given back; Windows' `Path` is the shell's `PATH`. Those configure the runner, such as
 `DEMI_RELEASE_ID` and `DEMI_RUNNER_NAME`, or belong to whatever started it,
 such as the `DEMI_*` settings of a developer's shell; none of them is meant
 for the programs the runner starts. For example, a test that a job runs and
@@ -999,7 +1001,11 @@ as it does on every system. The Git Bash and MSYS form `/c/Users/…` is not a
 drive path here: it names `/c` at the root of the current drive, which does
 not exist, and the context block tells the model to write `C:/…` instead.
 Paths the runner prints, such as the directory a shell starts in, use the
-system's own form, `C:\Users\zan\Downloads`.
+system's own form, `C:\Users\zan\Downloads`, and so do the paths the
+backend builds on a Host, such as where an attachment is saved: the backend
+joins them with the separator of the system the Host's runner reports, in
+one helper every caller uses, so a Windows Host shows
+`C:\Users\zan\.demi\attachments\…`, never `C:\Users\zan/.demi/…`.
 
 ### Standard utilities
 
