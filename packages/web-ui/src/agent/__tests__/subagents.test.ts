@@ -1,9 +1,10 @@
 import { expect, test } from 'bun:test'
 import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
+import { formatDuration } from '../thinking-label'
 import {
+  agentRunLine,
   agentsChipLabel,
   childBrief,
-  formatDuration,
   formatSubagentDuration,
   finishedSubagents,
   runningSubagents,
@@ -18,6 +19,10 @@ function agent(
 ): SubagentRecord {
   return {
     number: 1,
+    profile: null,
+    model: { provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false },
+    round: 1,
+    forkedFrom: null,
     startedAt: '2026-09-09T00:00:00.000Z',
     history: EMPTY_TRANSCRIPT,
     sessionPhase: 'idle',
@@ -92,6 +97,26 @@ test('duration is compact and uses endedAt once the child is finished', () => {
   expect(formatSubagentDuration(done, Date.parse('2026-09-09T01:00:00.000Z'))).toBe(
     '3m',
   )
+})
+
+test('the line says what a child runs on as the design writes it', () => {
+  const sonnet = { provider: 'Anthropic', model: 'Claude Sonnet 5.5', effort: 'medium', fast: false }
+  const research = agent({ id: 'a', name: 'A', phase: 'running', profile: 'research', model: sonnet })
+  expect(agentRunLine(research, 252_000)).toBe('research · Claude Sonnet 5.5 · Medium · Running for 4m12s')
+  const second = agent({ id: 'b', name: 'B', phase: 'completed', round: 2 })
+  expect(agentRunLine(second, 483_000)).toBe('No profile · Claude Opus 5.5 · High · Finished after 8m3s · Round 2')
+  const fork = agent({
+    id: 'c',
+    name: 'C',
+    phase: 'aborted',
+    profile: 'frontend',
+    model: { ...sonnet, effort: 'off', fast: true },
+    forkedFrom: 7,
+  })
+  expect(agentRunLine(fork, 5_000)).toBe('frontend · Claude Sonnet 5.5 · Thinking off · Fast · Stopped after 5s · Forked from agent 7')
+  // A model without a thinking setting names no effort.
+  const plain = agent({ id: 'd', name: 'D', phase: 'error', model: { ...sonnet, effort: null } })
+  expect(agentRunLine(plain, 60_000)).toBe('No profile · Claude Sonnet 5.5 · Failed after 1m')
 })
 
 test('a running inspect lists every running child; a finished inspect sits beside them', () => {

@@ -12,7 +12,12 @@ use std::rc::{Rc, Weak};
 use demi_agent_tools::{
     ContextAnswer, ContextSource, HostResolver, MenuEntry, NewProfileDraft, NodeContext, Profile,
     ProfileEdit, ProfileModel, SubagentSettings, SubagentSource, Toolset, ToolsetSource,
+    runs_on as job_model,
 };
+use demi_conversation_socket_protocol::JobModel;
+use demi_shared_types::ModelSelection;
+
+use super::runs_on::runs_on;
 use demi_backend_host_access::attachment_commands::attachment_group;
 use demi_backend_host_access::host_commands::host_group;
 
@@ -119,6 +124,18 @@ impl SubagentSource for ShardSubagents {
                 .model_menu()
                 .await
                 .map_err(|error| error.to_string())
+        })
+    }
+
+    fn runs_on<'a>(&'a self, selection: &'a ModelSelection) -> LocalBoxFuture<'a, JobModel> {
+        Box::pin(async move {
+            let Ok(shard) = self.shard() else {
+                // The backend is shutting down: the frame names what the
+                // selection holds.
+                return job_model(selection, None, None);
+            };
+            let mut models = runs_on(shard.services(), shard.user(), std::slice::from_ref(selection)).await;
+            models.pop().expect("one model for one selection")
         })
     }
 

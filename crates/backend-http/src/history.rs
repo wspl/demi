@@ -9,7 +9,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::tree;
 use demi_backend_host_access::root_of;
-use demi_backend_user_shard::conversation::failure_facts;
+use demi_backend_user_shard::conversation::{failure_facts, runs_on};
 use demi_conversation_socket_protocol::{index_u32, light};
 use demi_shared_types::{BlockId, CommandId};
 use demi_web_api_protocol::conversations::{
@@ -133,8 +133,14 @@ pub(super) async fn subagents(
         .await
         .map_err(ApiError::conversation_unreadable)?
         .unwrap_or_default();
+    let selections: Vec<_> = nodes.iter().map(|(_, model)| model.clone()).collect();
+    let models = runs_on(services, &user.id, &selections).await;
     Ok(Json(Subagents {
-        subagents: nodes.iter().filter_map(|node| node.job()).collect(),
+        subagents: nodes
+            .iter()
+            .zip(models)
+            .filter_map(|((node, _), model)| node.job(model))
+            .collect(),
     }))
 }
 

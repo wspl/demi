@@ -394,6 +394,18 @@ pub struct SubagentJob {
     #[schemars(with = "Nullable<String>")]
     #[garde(skip)]
     pub profile: Option<String>,
+    /// What the round runs on, from the profile or the parent.
+    #[garde(dive)]
+    pub model: JobModel,
+    /// The round: 1 for the spawn's, one more at each resume.
+    #[garde(range(min = 1, max = MAX_SAFE_INTEGER))]
+    pub round: u64,
+    /// The number of the agent it was forked from; null for a child that
+    /// was not forked.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u64>")]
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub forked_from: Option<u64>,
     #[garde(skip)]
     pub phase: JobPhase,
     /// When the round started.
@@ -414,6 +426,28 @@ pub struct SubagentJob {
     #[schemars(with = "String")]
     #[garde(skip)]
     pub result: Option<String>,
+}
+
+/// What a child's round runs on (`subagents.md` § What an agent runs on),
+/// in the words the model menu shows.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct JobModel {
+    /// The provider entry's name.
+    #[garde(skip)]
+    pub provider: String,
+    /// The model's name.
+    #[garde(skip)]
+    pub model: String,
+    /// The thinking effort in the vendor's word, such as `high`, or `off`;
+    /// null for a model that offers no thinking setting.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    #[garde(skip)]
+    pub effort: Option<String>,
+    /// Whether the round runs on the model's Fast tier.
+    #[garde(skip)]
+    pub fast: bool,
 }
 
 /// Where a child is.
