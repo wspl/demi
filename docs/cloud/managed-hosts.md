@@ -765,7 +765,12 @@ installs whole whenever it reconciles, at startup and on `reconcile`. The
 table's rules are the same for every sandbox. Its only per-sandbox fact is one
 element of a set: the pair of the sandbox's host interface and its source
 address. Starting a sandbox adds its pair before the sandbox runs, and stopping
-it removes the pair. A packet from a Cloud interface whose (interface, source
+it removes the pair. Installing the table whole puts the pair of every sandbox
+that runs into it, in the same transaction, since a reconcile keeps those
+sandboxes running. For example, a backend that restarts sends `reconcile`
+while the user's Cloud runs a Claude Code request; without its pair, the new
+table would drop every packet the Cloud sends, and the request would wait on
+DNS that never answers while the Cloud looks healthy. A packet from a Cloud interface whose (interface, source
 address) pair is not in the set is dropped, so a workload can neither replace
 the rules nor send as another sandbox. The manager builds the table as typed
 data with the `nftables` crate and applies it with `nft` in one transaction:
