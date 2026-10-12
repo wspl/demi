@@ -6,7 +6,7 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import { markdownPlainText } from '@demicodes/web-ui/markdown/plain-text'
 import { requestAction } from '@demicodes/web-ui/permissions/types'
 import { readPermissions } from '../api/permissions'
-import type { ConversationSummary, LastTurn } from '../api/generated/web-api'
+import type { ConversationSummary, LastTurn, PermissionRequest } from '../api/generated/web-api'
 import { useProduct } from './product'
 
 /**
@@ -135,6 +135,26 @@ export function follow(
  * The start of a finished turn's answer as a notification says it: in plain
  * text, cut to 120 characters; empty for a turn that ended without one.
  */
+/** What a request asks the user, as its card's title asks it. */
+function requestQuestion(request: PermissionRequest): string {
+  switch (request.kind) {
+    case 'permission': {
+      const action = requestAction({
+        categories: request.categories.map((category) => ({
+          id: category.id,
+          action: category.action ?? null,
+          description: null,
+        })),
+      })
+      return `Allow this conversation to ${action}?`
+    }
+    case 'credential':
+      return `Save the credential \u201c${request.name}\u201d?`
+    case 'allowance':
+      return `Allow this conversation to use \u201c${request.name}\u201d?`
+  }
+}
+
 export function answerStart(turn: LastTurn): string {
   return turn.answerStart === null ? '' : truncate(markdownPlainText(turn.answerStart), ANSWER_START_CHARS)
 }
@@ -235,14 +255,7 @@ export const useNotifications = defineStore('notifications', () => {
         notifiedRequests.set(summary.id, new Set(requests.map((request) => request.id)))
         for (const request of requests) {
           if (!notified.has(request.id)) {
-            const action = requestAction({
-              categories: request.categories.map((category) => ({
-                id: category.id,
-                action: category.action ?? null,
-                description: null,
-              })),
-            })
-            show(summary.id, summary.title, `Allow this conversation to ${action}?`, `permission:${request.id}`, open)
+            show(summary.id, summary.title, requestQuestion(request), `permission:${request.id}`, open)
           }
         }
         return

@@ -3,7 +3,8 @@
 //! the instance secret, bound to the row it belongs to, and stored as one
 //! BLOB of a random 12-byte nonce, the ciphertext and the 16-byte tag. The
 //! plugins' secrets are sealed here too (`plugins.md` § Secrets), through
-//! the product's side of the plugin host's port.
+//! the product's side of the plugin host's port, and so are the values of
+//! the users' credentials (`credentials.md` § Storage and expiry).
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
@@ -30,6 +31,8 @@ pub enum Row<'a> {
         user: &'a UserId,
         name: &'a str,
     },
+    /// A user's credential's values, by the user and the credential's name.
+    Credential { user: &'a UserId, name: &'a str },
 }
 
 impl Row<'_> {
@@ -45,6 +48,7 @@ impl Row<'_> {
             Self::PluginSecret { plugin, user, name } => {
                 (b"demi plugin secret", vec![*plugin, user.as_str(), *name])
             }
+            Self::Credential { user, name } => (b"demi credential", vec![user.as_str(), *name]),
         };
         let mut name = label.to_vec();
         for id in ids {

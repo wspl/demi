@@ -61,9 +61,9 @@ impl ReadBlob for NoBlobs {
 /// release before the one that ships the current schema, and of each
 /// development build a server keeps data of (`upgrades.md` § A development
 /// build on a server); 0.1.22-dev.20261011T123543Z shipped the last of
-/// those. The schemas with the subagent limits, without Detect Title and
-/// with the kept limits after it no server keeps, but development databases
-/// do, and the server's migrate through them.
+/// those. The schemas with the subagent limits, without Detect Title, with
+/// the kept limits and with the plugins' secrets after it no server keeps,
+/// but development databases do, and the server's migrate through them.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -115,8 +115,74 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.kept-limits.sql"),
             migration: Migration::Sql(CONTROL_FROM_KEPT_LIMITS),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.plugin-secrets.sql"),
+            migration: Migration::Sql(CONTROL_FROM_PLUGIN_SECRETS),
+        },
     ],
 };
+
+/// From the control schema with the plugins' secrets to the one with the
+/// users' credentials (`credentials.md` § Storage and expiry): two new
+/// tables, empty; and a conversation's requests of three kinds, of which
+/// every stored one is a permission request. The requests' table is
+/// rebuilt, since SQLite cannot make a column nullable in place.
+const CONTROL_FROM_PLUGIN_SECRETS: &str = "
+CREATE TABLE user_credentials (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL REFERENCES users (id),
+  name         TEXT NOT NULL,
+  note         TEXT NOT NULL,
+  fields       TEXT NOT NULL,
+  sealed       BLOB NOT NULL,
+  keep_until   INTEGER,
+  last_used_at INTEGER,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
+  UNIQUE (user_id, name)
+) STRICT;
+CREATE INDEX user_credentials_by_expiry ON user_credentials (keep_until) WHERE keep_until IS NOT NULL;
+CREATE TABLE permission_requests_next (
+  id                TEXT PRIMARY KEY,
+  conversation_id   TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  kind              TEXT NOT NULL CHECK (kind IN ('permission', 'credential', 'allowance')),
+  categories        TEXT,
+  credential_name   TEXT,
+  credential_id     TEXT REFERENCES user_credentials (id) ON DELETE SET NULL,
+  ask               TEXT,
+  command           TEXT NOT NULL,
+  node_id           TEXT NOT NULL,
+  agent_number      INTEGER,
+  agent_description TEXT,
+  created_at        INTEGER NOT NULL,
+  decision          TEXT CHECK (decision IN ('allowed', 'denied')),
+  decided_at        INTEGER,
+  read              INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1)),
+  CHECK ((kind = 'permission') = (categories IS NOT NULL)),
+  CHECK ((kind = 'permission') = (credential_name IS NULL)),
+  CHECK ((kind = 'credential') = (ask IS NOT NULL)),
+  CHECK (kind = 'allowance' OR credential_id IS NULL),
+  CHECK (kind <> 'credential' OR decision IS NULL),
+  CHECK ((agent_number IS NULL) = (agent_description IS NULL)),
+  CHECK ((decision IS NULL) = (decided_at IS NULL))
+) STRICT;
+INSERT INTO permission_requests_next
+  (id, conversation_id, kind, categories, command, node_id, agent_number, agent_description,
+   created_at, decision, decided_at, read)
+  SELECT id, conversation_id, 'permission', categories, command, node_id, agent_number,
+         agent_description, created_at, decision, decided_at, read
+  FROM permission_requests;
+DROP TABLE permission_requests;
+ALTER TABLE permission_requests_next RENAME TO permission_requests;
+CREATE INDEX permission_requests_of_conversation ON permission_requests (conversation_id, created_at);
+CREATE TABLE credential_allowances (
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  credential_id   TEXT NOT NULL REFERENCES user_credentials (id) ON DELETE CASCADE,
+  allowed_at      INTEGER NOT NULL,
+  PRIMARY KEY (conversation_id, credential_id)
+) STRICT;
+CREATE INDEX credential_allowances_of_credential ON credential_allowances (credential_id);
+";
 
 /// From the control schema whose subagent limits keep their numbers to the
 /// one with the plugins' secrets and OAuth clients (`plugins.md` § Secrets,
@@ -1262,6 +1328,27 @@ CREATE TABLE plugin_oauth_clients (
   PRIMARY KEY (plugin, issuer)
 ) STRICT, WITHOUT ROWID;
 
+-- Each user's credentials (`credentials.md`): the fields as JSON, credential
+-- fields format 1, `[{ name, label, kind }]`, never a value; the values, a
+-- JSON object by field name, sealed with the user and the name as the
+-- additional data, so a rename seals them again; when it is removed, null
+-- while it is kept always; and when an agent last read it. A name is unique
+-- among its user's credentials.
+CREATE TABLE user_credentials (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL REFERENCES users (id),
+  name         TEXT NOT NULL,
+  note         TEXT NOT NULL,
+  fields       TEXT NOT NULL,
+  sealed       BLOB NOT NULL,
+  keep_until   INTEGER,
+  last_used_at INTEGER,
+  created_at   INTEGER NOT NULL,
+  updated_at   INTEGER NOT NULL,
+  UNIQUE (user_id, name)
+) STRICT;
+CREATE INDEX user_credentials_by_expiry ON user_credentials (keep_until) WHERE keep_until IS NOT NULL;
+
 -- The conversation index. The web app chooses a conversation's id and its
 -- case is kept, but no two ids differ only in case: each names a database
 -- file, and a file system may ignore case. The target is Cloud (optionally a
@@ -1371,18 +1458,28 @@ CREATE TABLE conversation_drafts (
   CHECK ((replaced IS NULL) = (replaced_revision IS NULL))
 ) STRICT;
 
--- Conversation permissions (permissions.md): each command an agent ran
--- without the grants of its categories, a JSON array of their ids sorted so
--- that the same categories compare equal, undecided until the user decides and
--- then kept until the decision's message is in the agent's checkpoint, and
--- read once the user has opened the conversation with the request waiting
--- (the sidebar's yellow mark settles then); and each category the user
--- allowed for a conversation. The agent is the root when its number and
--- description are null.
+-- A conversation's requests (permissions.md § Requests), each of a kind: a
+-- permission request is a command an agent ran without the grants of its
+-- categories, a JSON array of their ids sorted so that the same categories
+-- compare equal; a credential request asks the user for a credential of a
+-- name, its ask a JSON document, credential request format 1, `{ reason,
+-- fields: [{ name, label, kind }], keep }`, and is gone once answered, since
+-- the command that asked waits for the answer; an allowance request asks to
+-- use a saved credential in the conversation, which names it while it is
+-- saved. A request is undecided until the user decides and then kept until
+-- the decision's message is in the agent's checkpoint, and read once the
+-- user has opened the conversation with the request waiting (the sidebar's
+-- yellow mark settles then). The agent is the root when its number and
+-- description are null. Each category the user allowed for a conversation,
+-- and each credential, are the conversation's grants and allowances.
 CREATE TABLE permission_requests (
   id                TEXT PRIMARY KEY,
   conversation_id   TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  categories        TEXT NOT NULL,
+  kind              TEXT NOT NULL CHECK (kind IN ('permission', 'credential', 'allowance')),
+  categories        TEXT,
+  credential_name   TEXT,
+  credential_id     TEXT REFERENCES user_credentials (id) ON DELETE SET NULL,
+  ask               TEXT,
   command           TEXT NOT NULL,
   node_id           TEXT NOT NULL,
   agent_number      INTEGER,
@@ -1391,6 +1488,11 @@ CREATE TABLE permission_requests (
   decision          TEXT CHECK (decision IN ('allowed', 'denied')),
   decided_at        INTEGER,
   read              INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1)),
+  CHECK ((kind = 'permission') = (categories IS NOT NULL)),
+  CHECK ((kind = 'permission') = (credential_name IS NULL)),
+  CHECK ((kind = 'credential') = (ask IS NOT NULL)),
+  CHECK (kind = 'allowance' OR credential_id IS NULL),
+  CHECK (kind <> 'credential' OR decision IS NULL),
   CHECK ((agent_number IS NULL) = (agent_description IS NULL)),
   CHECK ((decision IS NULL) = (decided_at IS NULL))
 ) STRICT;
@@ -1402,6 +1504,14 @@ CREATE TABLE permission_grants (
   granted_at      INTEGER NOT NULL,
   PRIMARY KEY (conversation_id, category)
 ) STRICT;
+
+CREATE TABLE credential_allowances (
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  credential_id   TEXT NOT NULL REFERENCES user_credentials (id) ON DELETE CASCADE,
+  allowed_at      INTEGER NOT NULL,
+  PRIMARY KEY (conversation_id, credential_id)
+) STRICT;
+CREATE INDEX credential_allowances_of_credential ON credential_allowances (credential_id);
 
 -- A conversation's deletion that has not reached its last step: its record
 -- is gone, and a start finishes what is left (`storage.md` § Deleting a
@@ -2632,6 +2742,57 @@ mod tests {
                 ("u1".to_owned(), true, 10, true, 3, false),
                 ("u2".to_owned(), false, 4, false, 1, true),
             ]
+        );
+    }
+
+    /// A permission request stored before requests had kinds keeps its
+    /// values through the rebuilt table, as a permission request.
+    #[test]
+    fn a_request_of_the_control_schema_with_the_plugins_secrets_stays_a_permission_request() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.22-dev.plugin-secrets.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('u1', 'a@example.test', 'a', 'h', 'master', 0);
+                 INSERT INTO conversations
+                   (id, user_id, title, title_origin, archived, pinned, sort_order, read_revision,
+                    target_kind, context_version, created_at, updated_at)
+                   VALUES ('c1', 'u1', 't', 'user', 0, 0, 0, 0, 'cloud', 0, 0, 0);
+                 INSERT INTO permission_requests
+                   (id, conversation_id, categories, command, node_id, agent_number, agent_description,
+                    created_at, decision, decided_at, read)
+                   VALUES ('r1', 'c1', '[\"skills.manage\"]', 'demi skills add a/b', 'n1', 2, 'helper',
+                           5, 'allowed', 6, 1);",
+            )
+            .unwrap();
+
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let row: (String, String, String, String, i64, String, i64, i64) = connection
+            .query_row(
+                "SELECT kind, categories, command, node_id, agent_number, decision, decided_at, read
+                 FROM permission_requests WHERE id = 'r1'",
+                [],
+                |row| {
+                    Ok((
+                        row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?,
+                        row.get(5)?, row.get(6)?, row.get(7)?,
+                    ))
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            row,
+            (
+                "permission".to_owned(),
+                "[\"skills.manage\"]".to_owned(),
+                "demi skills add a/b".to_owned(),
+                "n1".to_owned(),
+                2,
+                "allowed".to_owned(),
+                6,
+                1
+            )
         );
     }
 

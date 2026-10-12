@@ -7,6 +7,8 @@
 
 mod adoption;
 mod agent_profiles;
+pub(crate) mod credential_commands;
+pub mod credentials;
 #[cfg(test)]
 pub(crate) use self::adoption::PlayedRunner;
 pub mod cloud;
@@ -131,6 +133,10 @@ pub struct Shard {
     /// Each conversation's watch for its tree to be idle, which makes the
     /// changes its agent asked for then.
     pending_watches: PendingWatches,
+    /// The commands that wait for the answers to their credential requests.
+    credential_waits: demi_backend_permissions::Waits,
+    /// What rearms the expiry of the user's credentials.
+    credential_expiry: credentials::CredentialExpiry,
 }
 
 impl Shard {
@@ -190,6 +196,8 @@ impl Shard {
             plugin_installs: PluginInstalls::default(),
             permission_revisions: demi_backend_permissions::Revisions::default(),
             pending_watches: PendingWatches::default(),
+            credential_waits: demi_backend_permissions::Waits::default(),
+            credential_expiry: credentials::CredentialExpiry::default(),
         }
     }
 
@@ -687,6 +695,11 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                         shard
                             .tasks
                             .spawn_local(shard.clone().follow_account_changes(changes));
+                        // And the expiry of the user's credentials, which
+                        // removes at once what is past due.
+                        shard
+                            .tasks
+                            .spawn_local(shard.clone().follow_credential_expiry());
                         shard
                     })
                     .clone();
