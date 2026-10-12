@@ -81,12 +81,17 @@ impl Releases {
     /// Publishes a release whose every target names `artifact`, which need
     /// not be the program's.
     fn publish_naming(&self, name: &str, artifact: &Value) -> String {
+        self.publish_for(name, artifact, &TARGETS)
+    }
+
+    /// Publishes a release of `targets` alone, each naming `artifact`.
+    fn publish_for(&self, name: &str, artifact: &Value, targets: &[&str]) -> String {
         let release = sha(name.as_bytes());
         let files = self.directory.path().join("files");
         std::fs::create_dir_all(&files).unwrap();
         std::fs::create_dir_all(self.path().join("commands")).unwrap();
         crate::support::write_server_release(&self.path(), &files);
-        for target in TARGETS {
+        for target in targets {
             let file = files.join(compressed_file(RUNNER, target));
             if !file.exists() {
                 std::os::unix::fs::symlink(&self.compressed, &file).unwrap();
@@ -94,7 +99,7 @@ impl Releases {
         }
         std::fs::create_dir_all(self.runners().join(&release)).unwrap();
         // Test-only: every target names this machine's runner.
-        let targets: serde_json::Map<String, Value> = TARGETS
+        let targets: serde_json::Map<String, Value> = targets
             .iter()
             .map(|target| ((*target).to_owned(), artifact.clone()))
             .collect();
@@ -946,6 +951,36 @@ async fn a_runner_sent_to_an_update_shows_its_device_updating_until_its_next_hel
     })
     .await;
     drop(installations);
+    backend.close().await;
+}
+
+/// A development build may carry other platforms' runners only: the
+/// installer then says which platform the server lacks before it installs
+/// anything, rather than failing on the download.
+#[tokio::test]
+async fn an_installer_refuses_a_platform_its_server_has_no_runner_for() {
+    let stand_in = tempfile::NamedTempFile::new().unwrap();
+    std::fs::write(stand_in.path(), "a stand-in for the runner").unwrap();
+    let releases = Releases::new(stand_in.path().to_owned());
+    let others: Vec<&str> = TARGETS
+        .iter()
+        .copied()
+        .filter(|target| *target != host_target())
+        .collect();
+    releases.publish_for("others", &releases.artifact.clone(), &others);
+    let backend = Harness::new()
+        .with_runner_releases(releases.path())
+        .start()
+        .await;
+    let installations = Installations::new();
+    let script = installations.script(&backend).await;
+    let refused = installations.run(&script, &[]).await;
+    assert_eq!(refused.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8_lossy(&refused.stderr),
+        format!("This server has no Demi runner for {}.\n", host_target())
+    );
+    assert!(!installations.home.path().join(".demi").exists());
     backend.close().await;
 }
 
