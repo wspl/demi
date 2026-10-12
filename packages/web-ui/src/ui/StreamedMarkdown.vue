@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { md } from '@demicodes/web-ui/markdown/md'
 import { fitMessageMedia, fitMessageMedium, messagePicture, messagePictures, type MessagePicture } from '@demicodes/web-ui/markdown/media-run'
@@ -15,6 +15,7 @@ import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { useContentScrollers } from '@demicodes/web-ui/composables/useContentScrollers'
+import type { TextArrival } from '@demicodes/conversation-client'
 import { useStreamReveal } from '@demicodes/web-ui/composables/useStreamReveal'
 import { closeOpenInlineMarkdown, holdIncompleteMarkdown, wrapSteps } from '@demicodes/web-ui/ui/stream-reveal'
 
@@ -24,8 +25,11 @@ defineOptions({ inheritAttrs: false })
 const props = withDefaults(defineProps<{
   content: string
   streaming?: boolean
+  /** When each piece of `content` reached the page, so a view that mounts mid-stream fades each from then. */
+  arrivals?: readonly TextArrival[]
 }>(), {
   streaming: false,
+  arrivals: undefined,
 })
 
 const root = ref<HTMLElement>()
@@ -35,7 +39,7 @@ const files = useMessageFiles()
 function settled(text: string): string {
   return holdIncompleteMarkdown(text).visible
 }
-const { shown, steps } = useStreamReveal(() => props.content, () => props.streaming, settled)
+const { shown, steps } = useStreamReveal(() => props.content, () => props.streaming, settled, () => props.arrivals)
 
 // While the text arrives the steps show only what has settled; the stream's
 // end shows the rest as it is.
@@ -86,13 +90,6 @@ watch(width, () => {
     fitMessageMedia(root.value)
 })
 
-onMounted(() => {
-  if (root.value) {
-    fitMessageMedia(root.value)
-    findPlaces(root.value)
-  }
-})
-
 function onMediumLoad(event: Event): void {
   const medium = event.target
   if (!(medium instanceof HTMLImageElement || medium instanceof HTMLVideoElement))
@@ -103,6 +100,8 @@ function onMediumLoad(event: Event): void {
     pictures.value = pictures.value.map((picture) => (picture.element === medium ? messagePicture(medium) : picture))
 }
 
+// Each render, the first included: the steps a view mounts with, the pieces
+// that arrived less than a fade ago, fade from its first frame.
 watch(
   [renderedMarkdown, () => props.streaming],
   async () => {
@@ -114,7 +113,7 @@ watch(
     findPlaces(el)
     wrapSteps(el, visible.value, steps.value)
   },
-  { flush: 'post' },
+  { flush: 'post', immediate: true },
 )
 </script>
 
