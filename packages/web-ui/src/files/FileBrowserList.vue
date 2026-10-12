@@ -19,7 +19,8 @@ import TypeSelectHint from '../ui/TypeSelectHint.vue'
 import FileIcon from './FileIcon.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import type { FileBrowserSort, FileBrowserSortKey } from './file-browser-state'
-import { entryKind, formatBytes, formatModified } from './format'
+import { formatModified } from '../ui/dates'
+import { entryKind, formatBytes } from './format'
 import { isHiddenName, isValidEntryName } from './paths'
 import type {
   FileBrowserEntry,

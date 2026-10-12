@@ -257,7 +257,7 @@ test('a reloaded page times a running command from the start the server reported
   const time = shellRowTime(call, command)
   expect(time).toEqual({ kind: 'running', since: loadedAt - 92_000 })
   // The page's clock reads the time it has run since that start.
-  expect(runningTime(loadedAt - (time?.kind === 'running' ? time.since : 0))).toBe('1m32s')
+  expect(runningTime(loadedAt - (time?.kind === 'running' ? time.since : 0))).toBe('1m 32s')
   // A later frame keeps the start; the end frame says how long it ran in all.
   const later = followFrame(command, { ...frame, runningMs: 95_000 }, undefined, undefined, loadedAt + 3_500)
   expect(later.startedAt).toBe(command.startedAt)

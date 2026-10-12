@@ -1,5 +1,5 @@
 import type { ShellViewStatus } from '@demicodes/protocol'
-import { formatDuration } from './thinking-label'
+import { formatSpan } from '@demicodes/utils'
 
 /**
  * Where a command is, as a stored view or the command's live frames say it:
@@ -52,7 +52,7 @@ export const SHOW_TIME_AFTER_MS = 3000
 
 /** How long work has run, as a running row says it once it has run more than 3 seconds; none before. */
 export function runningTime(elapsedMs: number | null): string | null {
-  return elapsedMs !== null && elapsedMs > SHOW_TIME_AFTER_MS ? formatDuration(elapsedMs) : null
+  return elapsedMs !== null && elapsedMs > SHOW_TIME_AFTER_MS ? formatSpan(elapsedMs) : null
 }
 
 /**
@@ -73,7 +73,7 @@ export function commandStatusLine(end: CommandEnd | null, elapsedMs: number | nu
   if (elapsedMs === null) {
     return null
   }
-  const time = formatDuration(elapsedMs)
+  const time = formatSpan(elapsedMs)
   switch (end?.status) {
     case undefined:
     case 'running':

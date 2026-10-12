@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { formatReset, formatSpan } from '../useRelativeTime'
+import { formatDay, formatModified, formatMoment, formatPast, formatReset, formatUntil } from '../dates'
 
 // When a usage window resets, as Settings and the context card both say it
 // (`usage-and-quota.md` § What a snapshot says), against a fixed clock in the
@@ -47,15 +47,41 @@ test.each([
   expect(formatReset(at, now)).toBe(wording)
 })
 
-// The duration words the reset times share with the time a subagent has run.
+// Every wording names a time on the 12-hour clock, in the local time zone.
 test.each([
-  { scenario: 'under a minute', ms: 42 * SECOND + 900, wording: '42s' },
-  { scenario: 'on the minute', ms: 3 * MINUTE, wording: '3m' },
-  { scenario: 'minutes and seconds', ms: 16 * MINUTE + 48 * SECOND, wording: '16m 48s' },
-  { scenario: 'an hour and seconds', ms: HOUR + 59 * SECOND, wording: '1h' },
-  { scenario: 'hours and minutes', ms: HOUR + 5 * MINUTE + 30 * SECOND, wording: '1h 5m' },
-  { scenario: 'more than a day', ms: DAY + 3 * HOUR, wording: '27h' },
-  { scenario: 'a clock set back', ms: -5 * SECOND, wording: '0s' },
-])('a span of $scenario reads "$wording"', ({ ms, wording }) => {
-  expect(formatSpan(ms)).toBe(wording)
+  { scenario: 'an afternoon', at: '2026-09-02T18:12:00', wording: 'Sep 2, 2026 6:12 PM' },
+  { scenario: 'a morning', at: '2025-03-02T09:05:00', wording: 'Mar 2, 2025 9:05 AM' },
+  { scenario: 'midnight', at: '2026-09-07T00:00:00', wording: 'Sep 7, 2026 12:00 AM' },
+  { scenario: 'noon', at: '2026-09-07T12:30:00', wording: 'Sep 7, 2026 12:30 PM' },
+  { scenario: 'an unknown time', at: undefined, wording: '' },
+  { scenario: 'a time that is not one', at: 'never', wording: '' },
+])('a modified time of $scenario reads "$wording"', ({ at, wording }) => {
+  expect(formatModified(at)).toBe(wording)
+})
+
+test.each([
+  { scenario: 'this year', at: at(2026, 9, 9, 14, 0), wording: 'Friday, October 9 at 2:00 PM' },
+  { scenario: 'another year', at: at(2025, 0, 3, 9, 5), wording: 'Friday, January 3, 2025 at 9:05 AM' },
+])('a moment of $scenario reads "$wording"', ({ at, wording }) => {
+  expect(formatMoment(at, now)).toBe(wording)
+})
+
+test('a day reads in full, without a time', () => {
+  expect(formatDay(at(2026, 9, 7, 14, 0))).toBe('October 7, 2026')
+})
+
+// A message's time against the page's clock, which ticks each second while
+// the backend stamps the message: a reply that just arrived is in the past.
+test.each([
+  { scenario: 'a moment the clock has not reached yet', at: inMs(201), wording: 'a few seconds ago' },
+  { scenario: 'five minutes ago', at: inMs(-5 * MINUTE), wording: '5 minutes ago' },
+])('a past time of $scenario reads "$wording"', ({ at, wording }) => {
+  expect(formatPast(at, now)).toBe(wording)
+})
+
+test.each([
+  { scenario: 'eight minutes ahead', at: inMs(8 * MINUTE), wording: 'in 8 minutes' },
+  { scenario: 'a moment the clock has passed', at: inMs(-SECOND), wording: 'in a few seconds' },
+])('a time to come of $scenario reads "$wording"', ({ at, wording }) => {
+  expect(formatUntil(at, now)).toBe(wording)
 })

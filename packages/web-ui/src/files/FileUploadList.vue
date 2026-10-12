@@ -11,7 +11,7 @@ import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from './FileIcon.vue'
 import { uploadFiles, uploadSize, type FileUpload, type FileUploads } from './file-uploads'
 import { formatBytes } from './format'
-import { baseName } from '@demicodes/utils'
+import { baseName, countOf } from '@demicodes/utils'
 
 /**
  * A source's uploads, and nothing while there are none; its host sets its
@@ -55,7 +55,7 @@ function stop(upload: FileUpload): void {
 /** A folder's files as a count: `40 files`, or `12 / 40 files` of those landed. */
 function fileCount(upload: FileUpload, landed: boolean): string {
   const files = uploadFiles(upload)
-  const total = `${files.length} ${files.length === 1 ? 'file' : 'files'}`
+  const total = countOf(files.length, 'file')
   return landed ? `${files.filter((step) => step.done).length} / ${total}` : total
 }
 
