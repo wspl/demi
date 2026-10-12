@@ -25,7 +25,14 @@ export function stepInterval(backlog: number): number {
 }
 
 const TRAILING_OPENERS = /(?:^|[\s(])(?:\*{1,3}|_{1,3}|~{1,2}|`{1,3}|\\)$/
-const INCOMPLETE_LINK = /\[[^\]]*$|\[[^\]]*\]\([^)]*$/
+// A link's text, closed or not, with nothing after it yet, or with its target half written.
+const INCOMPLETE_LINK = /\[[^\]]*\]?$|\[[^\]]*\]\([^)]*$/
+/**
+ * A last line that opens a block and has no text yet: a list item's or a
+ * quote's markers, or a code fence. Shown alone it would draw the block's
+ * marker, bar or well before any of its text.
+ */
+const EMPTY_BLOCK_OPENER = /(?<=^|\n)(?:[ \t]*(?:[-*+]|\d{1,9}[.)]|>)(?:[ \t]+|$))+$|(?<=^|\n) {0,3}(?:`{3,}|~{3,})[^`\n]*\n?$/
 
 let reducedMotionQuery: MediaQueryList | null | undefined
 
@@ -79,12 +86,13 @@ export function nextStepEnd(text: string, from: number, ceiling: number, safe: (
   return ceiling
 }
 
-const MARKDOWN_SYNTAX = /^ {0,3}(?:`{3,}|~{3,}).*$|\]\([^)]*\)|^ {0,3}(?:#{1,6} |> ?|[-*+] |\d+[.)] )|[*_~`[\]\n]/gm
+const MARKDOWN_SYNTAX = /^ {0,3}(?:`{3,}|~{3,}).*$|^ {0,3}(?:-{3,}|\|?(?: *:?-+:? *\|)+(?: *:?-+:? *)?) *$|^ {0,3}\| *|(?<=^ {0,3}\|.*?) *\| *|\]\([^)]*\)|^ {0,3}(?:#{1,6} |> ?|[-*+] |\d+[.)] )|[*_~`[\]\n]/gm
 
 /**
  * About how many characters `source`, a slice of markdown, renders as, line
- * breaks left out: its text without the marks around it and without a code
- * fence's lines. A step's fade covers this many rendered characters, so an
+ * breaks left out: its text without the marks around it, without a code
+ * fence's lines, a rule's dashes, and a table's pipes and the row that aligns
+ * its columns. A step's fade covers this many rendered characters, so an
  * estimate a mark off fades a neighbouring character a moment early or late
  * and nothing more.
  */
@@ -122,13 +130,19 @@ export function alignShown(shown: string, target: string): string {
   return target.slice(0, index)
 }
 
-/** Keep unmatched emphasis / link markers out of the markdown parse until they close. */
+/**
+ * Keep unmatched emphasis / link markers out of the markdown parse until they
+ * close, and a block's opening line out until its first text.
+ */
 export function holdIncompleteMarkdown(text: string): {
   visible: string;
   held: string
 } {
   if (!text)
     return { visible: '', held: '' }
+  const openerAt = text.search(EMPTY_BLOCK_OPENER)
+  if (openerAt >= 0)
+    return { visible: text.slice(0, openerAt), held: text.slice(openerAt) }
   const linkAt = text.search(INCOMPLETE_LINK)
   if (linkAt >= 0)
     return {
@@ -209,10 +223,41 @@ export function arrivedSteps(arrivals: readonly TextArrival[], shown: number, no
 const FADE_IN: Keyframe[] = [{ opacity: 0 }, { opacity: 1 }]
 
 /**
- * Gives the text of each step still fading in a span that fades it, from the
- * render's end backwards. A step's extent is its rendered length, counted
- * from the end; code keeps its place in the count but no span, as a code
- * block's text shows at once.
+ * The elements of a render that paint something of their own around their
+ * text: inline code's box, a link's underline and icon, a key's frame, a list
+ * item's marker, a quote's bar, a code block's well and language, a table's
+ * frame and a row's rules and fill.
+ */
+const OWN_PAINT = 'code, a, kbd, .icon-link, li, blockquote, .code-block, pre, table, tr'
+
+/**
+ * Whether `node` is text of the reply, as a step's rendered length counts
+ * it: not the whitespace between blocks (the newline marked emits after each
+ * paragraph), nor a code block's language, which the fence line names.
+ */
+function isReplyText(node: Text): boolean {
+  return (node.textContent ?? '').trim() !== '' && !node.parentElement?.closest('.code-block-lang')
+}
+
+/** A part of a text node a step showed: `start` to `end` in it, of the step at `mark`. */
+interface Piece {
+  node: Text
+  start: number
+  end: number
+  mark: number
+}
+
+/**
+ * Fades in the text of each step still fading, from the render's end
+ * backwards. A step's extent is its rendered length, counted from the end.
+ *
+ * An element that paints something of its own (`OWN_PAINT`) fades with the
+ * step that shows its first character, with the text of that step inside it;
+ * its text of later steps fades again inside it, from where the element's
+ * fade has got to. So inline code's box comes with its first characters,
+ * never as an empty box first, and a list's marker with its item's first
+ * word. Other text of a step fades in a span of its own; a code block's
+ * text shows with its block, as code is not shown a word at a time.
  *
  * Each fade is an animation of the document's timeline that starts when its
  * step was shown (`performance.now()` and the timeline count from the same
@@ -231,12 +276,20 @@ export function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly Re
   if (prefersReducedMotion())
     return
   const now = performance.now()
-  const marks = shownSteps
-    .filter((step) => now - step.at < STREAM_PACE.fadeMs && step.start < text.length)
-    .toSorted((a, b) => b.start - a.start)
-    .map((step) => ({ fromEnd: renderedLength(text.slice(step.start)), at: step.at }))
-  if (marks.length === 0)
+  const fadingSteps = shownSteps.filter((step) => now - step.at < STREAM_PACE.fadeMs && step.start < text.length)
+  if (fadingSteps.length === 0)
     return
+  // Counted as the whole text less what comes before the step, so a step that
+  // starts within a line, such as a table's row, is read in that line's context.
+  const total = renderedLength(text)
+  const marks = fadingSteps
+    .toSorted((a, b) => b.start - a.start)
+    .map((step) => ({ fromEnd: total - renderedLength(text.slice(0, step.start)), at: step.at }))
+
+  // Which step shows each piece of text, read before the render changes.
+  const pieces: Piece[] = []
+  /** The step of each text node's first character, for the nodes a fading step starts in. */
+  const firstMarks = new Map<Text, number>()
   let counted = 0
   let mark = 0
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
@@ -245,39 +298,82 @@ export function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly Re
     node && mark < marks.length;
     node = walker.previousNode() as Text | null
   ) {
-    const content = node.textContent ?? ''
-    // Whitespace between blocks (the newline marked emits after each paragraph) carries no
-    // ink, and the count leaves out the newlines between blocks.
-    if (!content.trim())
+    if (!isReplyText(node))
       continue
-    const code = node.parentElement?.closest('pre') !== null
+    const content = node.textContent ?? ''
     // `end` and `left` walk the node's text from its end; line breaks take no part in the count.
     let end = content.length
     let left = content.length - (content.match(/\n/g)?.length ?? 0)
     while (left > 0 && mark < marks.length) {
-      const { fromEnd, at } = marks[mark]!
-      const take = Math.min(fromEnd - counted, left)
+      const take = Math.min(marks[mark]!.fromEnd - counted, left)
       const start = startOfLast(content.slice(0, end), take)
-      if (take > 0 && !code) {
-        // A span of inline code shown whole in one step fades with its fill, never as an empty box first.
-        const parent = node.parentElement
-        const inked = start === 0 && end === content.length && parent?.tagName === 'CODE' && parent.childNodes.length === 1
-          ? parent
-          : document.createElement('span')
-        if (inked !== parent) {
-          const piece = node.splitText(start)
-          piece.replaceWith(inked)
-          inked.append(piece)
-        }
-        // The class marks the text still fading in, for whoever looks at the page.
-        inked.classList.add('stream-ink')
-        inked.animate(FADE_IN, { duration: STREAM_PACE.fadeMs, fill: 'backwards' }).startTime = at
+      if (take > 0) {
+        pieces.push({ node, start, end, mark })
+        // The piece that takes the rest of the node holds its first character.
+        if (take === left)
+          firstMarks.set(node, mark)
       }
       end = start
       left -= take
       counted += take
-      if (counted >= fromEnd)
+      if (counted >= marks[mark]!.fromEnd)
         mark += 1
     }
   }
+
+  // The painting elements whose first character a fading step shows, each
+  // fading with that step unless an element around it already does.
+  const fading = new Map<Element, number>()
+  for (const element of el.querySelectorAll(OWN_PAINT)) {
+    const first = firstReplyText(element)
+    const step = first ? firstMarks.get(first) : undefined
+    if (step === undefined)
+      continue
+    if (fadingAround(element, el, fading)?.[1] === step)
+      continue
+    fading.set(element, step)
+    fade(element, marks[step]!.at)
+  }
+
+  for (const { node, start, end, mark: step } of pieces) {
+    const around = fadingAround(node, el, fading)
+    // The text of an element's own fade fades with it, never twice; code shows with its block.
+    if (around?.[1] === step || node.parentElement?.closest('pre'))
+      continue
+    // Splitting from the end leaves the node's earlier pieces where they are.
+    const piece = start > 0 ? node.splitText(start) : node
+    if (end < (piece.textContent ?? '').length)
+      piece.splitText(end - start)
+    const span = document.createElement('span')
+    piece.replaceWith(span)
+    span.append(piece)
+    fade(span, marks[step]!.at)
+  }
+}
+
+/** The first text of the reply inside `element`. */
+function firstReplyText(element: Element): Text | null {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+  for (let node = walker.nextNode() as Text | null; node; node = walker.nextNode() as Text | null) {
+    if (isReplyText(node))
+      return node
+  }
+  return null
+}
+
+/** The nearest element around `node`, inside `root`, that fades, with its step. */
+function fadingAround(node: Node, root: Element, fading: ReadonlyMap<Element, number>): [Element, number] | undefined {
+  for (let element = node.parentElement; element && element !== root; element = element.parentElement) {
+    const step = fading.get(element)
+    if (step !== undefined)
+      return [element, step]
+  }
+  return undefined
+}
+
+/** Fades `element` in from `at`, the time its step was shown. */
+function fade(element: Element, at: number): void {
+  // The class marks what is still fading in, for whoever looks at the page.
+  element.classList.add('stream-ink')
+  element.animate(FADE_IN, { duration: STREAM_PACE.fadeMs, fill: 'backwards' }).startTime = at
 }
