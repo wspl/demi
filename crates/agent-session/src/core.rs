@@ -107,7 +107,8 @@ pub(crate) struct SessionCore {
     pub(super) persist: PersistMarks,
     /// Events of the current change, delivered once it is complete.
     pub(super) outbox: Vec<SessionEvent>,
-    /// When the node began to wait for the model's answer, while it waits
+    /// When the node began to wait for the model's answer, while it waits:
+    /// from when its turn needs the next answer until that answer shows
     /// (`runtime.md` § Waiting for the model).
     waiting_since: Option<Timestamp>,
     ids: Rc<dyn IdSource>,
@@ -627,6 +628,12 @@ impl SessionCore {
             ActionKind::Send { content } => media::content_references(content).cloned().collect(),
             _ => Vec::new(),
         };
+        // A turn waits for the model's answer from its start, through the
+        // hooks and the Host reads that build its request; a compaction
+        // alone asks for none.
+        if !matches!(kind, ActionKind::Compact) {
+            self.start_waiting();
+        }
         self.activity = Activity::Running(ActionRun {
             turn: turn.clone(),
             cancel: cancel.clone(),
@@ -722,6 +729,7 @@ impl SessionCore {
     /// still pending are dropped.
     pub(super) fn end_action(&mut self) {
         self.activity = Activity::Finishing;
+        self.stop_waiting();
         self.editing = None;
         self.inputs.discard_steers();
         self.release_media();
@@ -755,6 +763,7 @@ impl SessionCore {
             });
         }
         self.activity = Activity::Closed { interrupted: began };
+        self.stop_waiting();
         began
     }
 
@@ -1394,8 +1403,25 @@ impl SessionCore {
             self.keep_entries(of, entries);
             return;
         }
+        // The wait for the model ends with the first output a page shows
+        // (`runtime.md` § Waiting for the model): reasoning, which a
+        // thinking start opens before any event, text, a whole call, or a
+        // call being written once its title is. Hidden reasoning, the
+        // response's usage and a call without its title show nothing, and
+        // the row goes on saying Requesting.
+        let shows = thinking_started
+            || matches!(
+                event,
+                ProviderEvent::ThinkingDelta(_)
+                    | ProviderEvent::ThinkingSignature(_)
+                    | ProviderEvent::TextDelta(_)
+                    | ProviderEvent::ToolCall(_)
+            );
         let before = self.transcript.blocks().len();
         self.apply_event_to_transcript(event, thinking_started);
+        if shows || self.writing.iter().any(|writing| writing.call.description.is_some()) {
+            self.stop_waiting();
+        }
         // The blocks a run's events write, which its entries name by
         // position (`EntriesOf::Output`).
         let written = self.transcript.blocks()[before..]
@@ -1507,16 +1533,17 @@ impl SessionCore {
         self.writing.clear();
     }
 
-    /// The node starts to wait for the model's answer; `again`, for a retry
-    /// of the same request, keeps a wait that runs, whose clock runs on
+    /// The node's turn needs the model's next answer: it waits from now,
+    /// unless a wait runs already, whose clock runs on, as across a retry
     /// (`runtime.md` § Waiting for the model).
-    pub(super) fn start_waiting(&mut self, again: bool) {
-        if !again || self.waiting_since.is_none() {
+    pub(super) fn start_waiting(&mut self) {
+        if self.waiting_since.is_none() {
             self.waiting_since = Some(self.clock.now());
         }
     }
 
-    /// The model's output began, or the request ended.
+    /// The model's output shows, a compaction pass begins, or the action
+    /// ended.
     pub(super) fn stop_waiting(&mut self) {
         self.waiting_since = None;
     }

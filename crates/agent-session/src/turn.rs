@@ -70,6 +70,10 @@ async fn run_turn(
     s.update(|core| core.offline_host = None);
     loop {
         cancel.check()?;
+        // The turn needs the model's next answer from here: after its input,
+        // a step's calls, or a response that the input arriving meanwhile
+        // continues (`runtime.md` § Waiting for the model).
+        s.update(SessionCore::start_waiting);
         if switch_first && apply_switch(s, cancel).await? {
             s.update(|core| core.push_resume(None));
         }
@@ -234,7 +238,6 @@ async fn stream(
     continues: bool,
 ) -> Result<bool, TurnError> {
     s.update(|core| core.set_stage(TurnStage::Streaming));
-    let _waiting = Waiting(s);
     let policy = s.config.retry;
     let mut attempt = 1;
     let mut size_checked = false;
@@ -262,7 +265,6 @@ async fn stream(
             .update(|core| core.take_runtime())
             .expect("the provider runtime is in its slot between runs");
         let request_cancel = request.cancel.clone();
-        s.update(|core| core.start_waiting(attempt > 1));
         let read = read(s, cancel, window, &model, runtime.run(request), &request_cancel).await;
         // However the request ended, no call of it is being written.
         s.update(|core| core.end_writing());
@@ -281,7 +283,7 @@ async fn stream(
         let too_large = failure.code == Some(ErrorCode::ContextLengthExceeded);
         if too_large && unwindable && !refusal_compacted && s.config.compaction.automatic() {
             refusal_compacted = true;
-            cut_history(s, start).await?;
+            drop_attempt(s, start).await?;
             if compact_before_request(s, cancel, continues).await? {
                 continue;
             }
@@ -291,8 +293,7 @@ async fn stream(
             s.update(|core| core.record_failure(&report));
             return Err(TurnError::Failed(Box::new(report)));
         }
-        // The attempt's leftovers go.
-        cut_history(s, start).await?;
+        drop_attempt(s, start).await?;
         let delay = policy.delay(attempt, failure.retry_after);
         s.emit(SessionEvent::RetryScheduled {
             attempt,
@@ -312,16 +313,6 @@ async fn stream(
     }
 }
 
-/// Ends the node's wait for the model when its request ends, however it
-/// ends; a retry keeps the wait (`runtime.md` § Waiting for the model).
-struct Waiting<'a>(&'a SessionShared);
-
-impl Drop for Waiting<'_> {
-    fn drop(&mut self) {
-        self.0.update(|core| core.stop_waiting());
-    }
-}
-
 /// One compaction pass before a request; a pass that compacted inside a
 /// running turn appends a `resume` block, while before a turn's first
 /// request its new input is last already. Returns whether it compacted.
@@ -337,10 +328,14 @@ async fn compact_before_request(
     Ok(compacted)
 }
 
-/// Cuts the history to its first `cut` blocks.
-pub(super) async fn cut_history(s: &SessionShared, cut: usize) -> Result<(), TurnError> {
+/// Drops what a failed attempt wrote, cutting the history to its first
+/// `cut` blocks. The row says Requesting again, so the node waits for the
+/// model again, unless its wait runs on from before any output
+/// (`runtime.md` § Waiting for the model).
+async fn drop_attempt(s: &SessionShared, cut: usize) -> Result<(), TurnError> {
     let blocks = s.read(|core| core.transcript.blocks()[..cut].to_vec());
     persist::commit_rewrite(s, blocks).await?;
+    s.update(SessionCore::start_waiting);
     Ok(())
 }
 
@@ -479,10 +474,7 @@ async fn read(
                 if let ProviderEvent::Response(usage) = &event {
                     recover |= s.config.compaction.reached(window, model, usage);
                 }
-                s.update(|core| {
-                    core.stop_waiting();
-                    core.apply_event(event, thinking_started);
-                });
+                s.update(|core| core.apply_event(event, thinking_started));
                 thinking_started = false;
             }
         }
