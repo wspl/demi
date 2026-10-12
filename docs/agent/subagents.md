@@ -79,7 +79,12 @@ demi agent resume <id> < message.txt
 demi agent send <id|parent> < message.txt
 demi agent show <id>...
 demi agent list
-demi agent profiles
+demi agent models
+demi agent profiles list
+demi agent profiles show <name>
+demi agent profiles create <name> --description <line> [model options] [--no-spawning] [--disabled] [< instructions.txt]
+demi agent profiles edit <name> [--name <new>] [--description <line>] [model options] [--spawning|--no-spawning] [--enabled|--disabled] [--no-instructions] [< instructions.txt]
+demi agent profiles delete <name>
 ```
 
 `demi agent spawn` reads a task brief from stdin, creates a persisted child, and
@@ -107,13 +112,14 @@ parent's checkpoint before it replaces the archived round.
 Prompts and `send` and `resume` messages are read only from stdin: a quoted
 heredoc, a pipe, or input redirection. They have no positional or option form.
 An empty message fails. `--profile` names one of the user's
-[profiles](#profiles), which `demi agent profiles` lists. There is no
+[profiles](#profiles), which `demi agent profiles list` lists. There is no
 `--model` option: the model and the provider runtime come from the profile or
 the parent.
 
-With `--json`, `abort`, `send`, `show`, `list`, and `profiles` return
+With `--json`, `abort`, `send`, `show`, `list`, and `profiles list` return
 `{ id, aborted }`, `{ id, accepted }`, `{ agent }`, `{ tree }`, and
-`{ profiles }`.
+`{ profiles }`; `models`, `profiles show` and the profile changes return what
+[Managing profiles](#managing-profiles) gives them.
 
 ### Command help
 
@@ -139,7 +145,7 @@ into this argument:
 
 `--description` is a short UI title that tells concurrent children apart. The
 `--profile` help names no profile: it says that the option takes the name of
-one of the user's profiles, that `demi agent profiles` lists them with when to
+one of the user's profiles, that `demi agent profiles list` lists them with when to
 use each, and that omitting the option inherits the parent's model, prompt,
 Host and commands. The help is part of the system prompt, which is rendered
 once, so it holds nothing that changes when the user edits profiles
@@ -470,7 +476,7 @@ prompt, on the conversation's Host with the root's commands, and its
 | Field | Meaning |
 | --- | --- |
 | Name | The `--profile` value: 1 to 40 lowercase letters, digits and hyphens, starting with a letter, unique among the user's profiles. `default` is reserved for the inherit profile below, and no profile can take it. |
-| Description | When the agent should use the profile: one line of 1 to 500 characters, which `demi agent profiles` shows the model ([What the model sees](#what-the-model-sees)). |
+| Description | When the agent should use the profile: one line of 1 to 500 characters, which `demi agent profiles list` shows the model ([What the model sees](#what-the-model-sees)). |
 | Model | Inherit, the parent's model selection; or model settings of the user's own: a provider entry of the user's scope, one model of its catalog, an effort the model lists or thinking off, and a service tier, with the meanings of a conversation's ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)). The effort is always explicit: a profile saved without one takes the first effort the model lists. The entry may be the parent's or any other. |
 | Instructions | None, or text of 1 to 65,536 characters added to the child's system prompt after the product's, which it never replaces: the child is always Demi, with Demi's identity, harness guide, tool rules, capability index and model identity, and the profile says what this kind of subagent is for and how it should work, such as *Read and report; never change a file* ([System prompt](system-prompt.md)). |
 | Spawning | Whether children of this profile may spawn children of their own. |
@@ -502,6 +508,62 @@ parent was started with one; its children may spawn. It exists whether or not
 the user has profiles, and it cannot be configured or replaced. Profiles apply
 to a session's own children; a subagent spawning grandchildren resolves names
 against the same list.
+
+### Managing profiles
+
+An agent sees the models it could give a profile and changes the user's
+profiles with the `demi agent` group, so a user can say "make me an explore
+profile on a cheap fast model" in a conversation. It still starts a child only
+through a profile: `spawn` has no model option.
+
+**`demi agent models`** lists what the composer's model menu offers the user
+now, the same catalog: each enabled provider entry, by the name Settings
+gives it and its kind, then each of its enabled models with its id, name,
+context window, efforts (the first one marked as the default, and `off` when
+it can turn thinking off), service tiers such as `fast`, and whether it reads
+images. The model the calling agent runs on is marked. It is a read every
+node's group has.
+
+```text
+$ demi agent models
+Claude Code · subscription
+* claude-opus-5-5     Claude Opus 5.5     1M    low* medium high max off   fast   images
+  claude-sonnet-5     Claude Sonnet 5     1M    low* medium high off       fast   images
+Development · API key
+  deepseek-v4.1-flash DeepSeek V4.1 Flash 128K  low* high                         -
+* the model this agent runs on
+```
+
+`--json` returns `{ providers: [{ id, name, kind, models: [{ id, name,
+window, efforts, defaultEffort, canTurnOff, tiers, images, current }] }] }`.
+
+**`demi agent profiles`** is a group:
+
+| Leaf | Does |
+| --- | --- |
+| `list` | Each enabled profile's name and description, or the line about subagents being off ([What the model sees](#what-the-model-sees)) |
+| `show <name>` | Every field of one profile, enabled or not: name, description, model (*parent's*, or provider entry, model, effort and tier), spawning, enabled, and its instructions in full |
+| `create <name>` | A new profile with the [fields](#profiles) the options give; the instructions are stdin when stdin is given, else none; it starts enabled unless `--disabled` |
+| `edit <name>` | Changes the fields its options name and keeps the others; stdin replaces the instructions, `--no-instructions` removes them |
+| `delete <name>` | Removes the profile; a child already running on it goes on |
+
+The model options are `--model <id>`, a model `demi agent models` lists, with
+`--provider <entry>`, the entry's name or id, needed only when more than one
+entry offers that id; `--effort <effort|off>` and `--tier <tier|default>`;
+and, on `edit`, `--model parent`, which makes the profile inherit the
+parent's model again. A profile created without `--model` inherits it. The
+checks are the settings page's, with the same words: a name that is taken or
+malformed, `default`, an effort or tier the model does not offer, a model the
+entry does not list, a description over 500 characters
+([Profiles](#profiles)). A change reaches the settings page at once, as one
+made there does, and the next `profiles list` and `spawn` read it.
+
+**Permission.** `create`, `edit` and `delete` change a setting of the user's
+that every conversation reads, so they need the user's permission in each
+conversation, the category `agent.profiles`, *Change Subagent Profiles*:
+"Create, edit and delete the subagent profiles every conversation of yours
+can use." ([Categories](permissions.md#categories)). `models`, `profiles
+list` and `profiles show` are reads and need none.
 
 ### Limits
 
@@ -547,7 +609,7 @@ any child is created, with a message that says which:
    `--profile` inherits the parent:
 
    ```text
-   unknown profile "explorer"; the user's profiles are explore, reviewer. Run `demi agent profiles` for when to use each, or omit --profile to inherit the parent.
+   unknown profile "explorer"; the user's profiles are explore, reviewer. Run `demi agent profiles list` for when to use each, or omit --profile to inherit the parent.
    ```
 
 3. **The profile is enabled.** A disabled profile is the user's choice, not a
@@ -590,7 +652,7 @@ profile "explore" is unavailable: model "claude-haiku-4-5" no longer offers the 
 
 Nothing falls back: not to the parent's model, and not to another effort or
 tier of the profile's model. The profile stays unavailable until the user
-changes it in settings. `demi agent profiles` lists an unavailable profile
+changes it in settings. `demi agent profiles list` lists an unavailable profile
 with what is missing, so the model can tell the user instead of trying it.
 
 Disabled and unavailable are different states: disabled is the user's
@@ -615,7 +677,7 @@ runtime, made for the child's model selection
 
 ### What the model sees
 
-The model reads the settings when it runs `demi agent profiles`, which the
+The model reads the settings when it runs `demi agent profiles list`, which the
 agent server answers at call time from the user's current settings:
 
 - While subagents are on: each enabled profile's name and description, in
@@ -636,11 +698,11 @@ user wants the model to know. Like `list` and `show`, it is a read that every
 node's group has, spawn-restricted or not.
 
 ```text
-$ demi agent profiles
+$ demi agent profiles list
 explore   Use for finding code, call sites and documentation; it reports and changes nothing.
 reviewer  Use to review a finished change before reporting it.
 
-$ demi agent profiles      # after the user turns subagents off
+$ demi agent profiles list # after the user turns subagents off
 Subagents are turned off in settings; demi agent spawn fails until the user turns them on.
 ```
 
@@ -649,7 +711,7 @@ block: the prompt is rendered once per tree and could not follow an edit,
 and a block would put every edit into every conversation's transcript
 whether or not it spawns. The `demi agent spawn` help, which is part of the
 prompt, therefore says nothing about the switch; the model learns it from
-`demi agent profiles` and from a spawn's failure. A user
+`demi agent profiles list` and from a spawn's failure. A user
 who names a profile in a message, such as "ask explore to find the call
 sites", gives the model the name directly.
 
@@ -1148,7 +1210,7 @@ The tree and its commands:
    with the user's current names; a profile whose provider entry or model is
    gone, or whose effort or tier the model no longer offers, fails the spawn
    with the profile's name and what is missing, creates no child, and is
-   listed by `demi agent profiles` as unavailable.
+   listed by `demi agent profiles list` as unavailable.
 8. A profile's spawn restriction removes `spawn`, `abort`, and `resume`,
    keeps communication and reads, and survives archive, reopen, and resume;
    the inherit profile's children may spawn.
@@ -1166,14 +1228,14 @@ The tree and its commands:
     failed completion.
 15. A profile changed or deleted after a spawn changes nothing in that child
     across restore and resume. A profile created, changed or deleted while a
-    tree is open applies to that tree's next spawn, and `demi agent profiles`
+    tree is open applies to that tree's next spawn, and `demi agent profiles list`
     answers the new list at once.
 16. With subagents turned off, a spawn of any profile, the inherit profile
     included, fails with the switch's message and creates nothing, at any
     depth and in an open tree without a reload; running children go on, and
-    `resume`, `send` and `abort` still work. `demi agent profiles` succeeds,
+    `resume`, `send` and `abort` still work. `demi agent profiles list` succeeds,
     says that subagents are off and lists no profile.
-17. A disabled profile is not listed by `demi agent profiles`, is left out of
+17. A disabled profile is not listed by `demi agent profiles list`, is left out of
     an unknown name's answer, and fails a spawn with the disabled message,
     also when its model is gone; a child spawned before it was disabled is
     unaffected.
@@ -1200,7 +1262,7 @@ Product:
    failed, and aborted receipts, long content, equal descriptions with distinct
    sender IDs, and reconnect.
 2. With no profile configured, children inherit, the model sees the spawn
-   prompt field's help, and `demi agent profiles` says that the user has none.
+   prompt field's help, and `demi agent profiles list` says that the user has none.
 3. The settings page's Subagents section turns subagents on and off, creates,
    edits, enables, disables and deletes profiles, refuses a reserved or taken
    name, and shows a profile whose entry, model, effort or tier is gone as
