@@ -144,6 +144,16 @@ impl Executable {
         }
     }
 
+    /// Whether it runs on a Host, as the runner and the command programs
+    /// do, and so allocates with mimalloc on a musl target
+    /// (`builds-and-releases.md` § Memory allocator).
+    pub(crate) fn runs_on_host(self) -> bool {
+        match self {
+            Self::Runner | Self::File | Self::Fetch | Self::Browser | Self::Claude => true,
+            Self::Backend | Self::Machines | Self::Server => false,
+        }
+    }
+
     /// The targets it runs on, in the order of the release matrix.
     fn targets(self) -> &'static [&'static str] {
         match self {
