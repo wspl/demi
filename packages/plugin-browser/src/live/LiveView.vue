@@ -444,6 +444,7 @@ onBeforeUnmount(() => {
       :anchor-x="menuAt.x"
       :anchor-y="menuAt.y"
       :offset="0"
+      sheet
       @close="closeMenu"
     >
       <Menu v-if="menu" iconless>
