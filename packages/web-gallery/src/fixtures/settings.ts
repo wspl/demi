@@ -15,6 +15,7 @@ import type {
 import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import type { WebState } from '@demicodes/plugin-web'
 import { commitOf } from './plugins'
+import { createCredentialState } from './credentials'
 import { createSubagentState } from './subagent-profiles'
 import { DAY, HOUR, MINUTE, SECOND, ago, ahead } from './time'
 
@@ -708,6 +709,7 @@ export function createSettingsState() {
       { id: 'file-browser', name: 'File Browser', description: 'Opens the conversation’s files in the work panel to read them, with a tree of the working directory.', enabled: true },
     ] as SettingsPlugin[],
     subagents: createSubagentState(),
+    credentials: createCredentialState(),
     instructions: DEMO_PERSONAL_INSTRUCTIONS,
     skills: {
       sources: [

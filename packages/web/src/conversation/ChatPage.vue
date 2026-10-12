@@ -219,7 +219,8 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :primary-host="primaryHost"
     :permission-requests="permissions.stateFor(conversation.id).requests"
     :deciding-permission="permissions.stateFor(conversation.id).deciding"
-    @decide-permission="(id, decision) => permissions.decide(conversation!.id, id, decision)"
+    :request-error="permissions.stateFor(conversation.id).error"
+    @decide-permission="(id, decision, credential) => permissions.decide(conversation!.id, id, decision, credential)"
     :pending-submissions="
       conversation.pendingSends.map((pending) => ({
         id: pending.id,
