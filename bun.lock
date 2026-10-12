@@ -238,6 +238,7 @@
       "devDependencies": {
         "@happy-dom/global-registrator": "^20.14.6",
         "@vue/tsconfig": "^0.9.1",
+        "playwright": "1.63.0",
         "typescript": "^6.0.3",
         "vite": "^8.2.2",
       },

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { md } from '@demicodes/web-ui/markdown/md'
 import { fitMessageMedia, fitMessageMedium, messagePicture, messagePictures, type MessagePicture } from '@demicodes/web-ui/markdown/media-run'
@@ -15,15 +15,9 @@ import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { useContentScrollers } from '@demicodes/web-ui/composables/useContentScrollers'
-import { useStreamReveal, type RevealStep } from '@demicodes/web-ui/composables/useStreamReveal'
-import {
-  closeOpenInlineMarkdown,
-  holdIncompleteMarkdown,
-  prefersReducedMotion,
-  renderedLength,
-  startOfLast,
-  STREAM_PACE,
-} from '@demicodes/web-ui/ui/stream-reveal'
+import type { TextArrival } from '@demicodes/conversation-client'
+import { useStreamReveal } from '@demicodes/web-ui/composables/useStreamReveal'
+import { closeOpenInlineMarkdown, holdIncompleteMarkdown, wrapSteps } from '@demicodes/web-ui/ui/stream-reveal'
 
 // The root is the rendered message; each code block's Copy is teleported into it.
 defineOptions({ inheritAttrs: false })
@@ -31,8 +25,11 @@ defineOptions({ inheritAttrs: false })
 const props = withDefaults(defineProps<{
   content: string
   streaming?: boolean
+  /** When each piece of `content` reached the page, so a view that mounts mid-stream fades each from then. */
+  arrivals?: readonly TextArrival[]
 }>(), {
   streaming: false,
+  arrivals: undefined,
 })
 
 const root = ref<HTMLElement>()
@@ -42,7 +39,7 @@ const files = useMessageFiles()
 function settled(text: string): string {
   return holdIncompleteMarkdown(text).visible
 }
-const { shown, steps } = useStreamReveal(() => props.content, () => props.streaming, settled)
+const { shown, steps } = useStreamReveal(() => props.content, () => props.streaming, settled, () => props.arrivals)
 
 // While the text arrives the steps show only what has settled; the stream's
 // end shows the rest as it is.
@@ -64,77 +61,6 @@ const renderedMarkdown = computed(() => {
     agents: agents(),
   })
 })
-
-/** How a step's text fades in. */
-const FADE_IN: Keyframe[] = [{ opacity: 0 }, { opacity: 1 }]
-
-/**
- * Gives the text of each step still fading in a span that fades it, from the
- * render's end backwards. A step's extent is its rendered length, counted
- * from the end; code keeps its place in the count but no span, as a code
- * block's text shows at once.
- *
- * Each fade is an animation of the document's timeline that starts when its
- * step was shown (`performance.now()` and the timeline count from the same
- * origin), so it goes on unbroken through a render, which replaces the spans,
- * and through a move of the text in the page, which a CSS animation would
- * start over: setting up a scroller's bars (`ScrollArea`) appends its
- * content to it again, and the reply's last lines faded in a second time.
- */
-function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly RevealStep[]): void {
-  if (prefersReducedMotion())
-    return
-  const now = performance.now()
-  const marks = shownSteps
-    .filter((step) => now - step.at < STREAM_PACE.fadeMs && step.start < text.length)
-    .toSorted((a, b) => b.start - a.start)
-    .map((step) => ({ fromEnd: renderedLength(text.slice(step.start)), at: step.at }))
-  if (marks.length === 0)
-    return
-  let counted = 0
-  let mark = 0
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
-  for (
-    let node = walker.lastChild() as Text | null;
-    node && mark < marks.length;
-    node = walker.previousNode() as Text | null
-  ) {
-    const content = node.textContent ?? ''
-    // Whitespace between blocks (the newline marked emits after each paragraph) carries no
-    // ink, and the count leaves out the newlines between blocks.
-    if (!content.trim())
-      continue
-    const code = node.parentElement?.closest('pre') !== null
-    // `end` and `left` walk the node's text from its end; line breaks take no part in the count.
-    let end = content.length
-    let left = content.length - (content.match(/\n/g)?.length ?? 0)
-    while (left > 0 && mark < marks.length) {
-      const { fromEnd, at } = marks[mark]!
-      const take = Math.min(fromEnd - counted, left)
-      const start = startOfLast(content.slice(0, end), take)
-      if (take > 0 && !code) {
-        // A span of inline code shown whole in one step fades with its fill, never as an empty box first.
-        const parent = node.parentElement
-        const inked = start === 0 && end === content.length && parent?.tagName === 'CODE' && parent.childNodes.length === 1
-          ? parent
-          : document.createElement('span')
-        if (inked !== parent) {
-          const piece = node.splitText(start)
-          piece.replaceWith(inked)
-          inked.append(piece)
-        }
-        // The class marks the text still fading in, for whoever looks at the page.
-        inked.classList.add('stream-ink')
-        inked.animate(FADE_IN, { duration: STREAM_PACE.fadeMs }).startTime = at
-      }
-      end = start
-      left -= take
-      counted += take
-      if (counted >= fromEnd)
-        mark += 1
-    }
-  }
-}
 
 /**
  * The places of the current render that components fill: each code block
@@ -164,13 +90,6 @@ watch(width, () => {
     fitMessageMedia(root.value)
 })
 
-onMounted(() => {
-  if (root.value) {
-    fitMessageMedia(root.value)
-    findPlaces(root.value)
-  }
-})
-
 function onMediumLoad(event: Event): void {
   const medium = event.target
   if (!(medium instanceof HTMLImageElement || medium instanceof HTMLVideoElement))
@@ -181,6 +100,8 @@ function onMediumLoad(event: Event): void {
     pictures.value = pictures.value.map((picture) => (picture.element === medium ? messagePicture(medium) : picture))
 }
 
+// Each render, the first included: the steps a view mounts with, the pieces
+// that arrived less than a fade ago, fade from its first frame.
 watch(
   [renderedMarkdown, () => props.streaming],
   async () => {
@@ -192,7 +113,7 @@ watch(
     findPlaces(el)
     wrapSteps(el, visible.value, steps.value)
   },
-  { flush: 'post' },
+  { flush: 'post', immediate: true },
 )
 </script>
 
