@@ -351,13 +351,17 @@ export interface SettingsCredential {
   name: string
   /** The reason it was asked for; empty for none. */
   note: string
-  fields: CredentialFieldView[]
+  fields: SettingsCredentialField[]
   /** When it is removed; null while it is kept always. */
   keepUntil: string | null
   /** When an agent last read it; null before. */
   lastUsedAt: string | null
-  /** When it last changed: a value read for an earlier time is read again. */
-  updatedAt: string
+}
+
+/** A field as the list shows it: a visible field with its value, a secret one without, which only the reveal reads. */
+export interface SettingsCredentialField extends CredentialFieldView {
+  /** A visible field's value; null for a secret one. */
+  value: string | null
 }
 
 /** A field as the editor saves it: a new field carries its value, an existing one its value only when the user typed one. */

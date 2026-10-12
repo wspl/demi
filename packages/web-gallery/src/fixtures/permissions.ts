@@ -119,11 +119,11 @@ export function renewalRequest(): CredentialRequestView {
 }
 
 /** What the backend says of values that do not match the request's fields. */
-export const INVALID_ANSWER = 'values.key: a value is at most 65536 bytes'
+export const INVALID_ANSWER = 'The value of “API key” can be at most 64 KiB.'
 
 /** What the backend says of an answer that would renew a saved credential with other fields. */
 export const FIELDS_DIFFER =
-  '“Google API key” is saved with other fields (token:secret): ask for those fields, or under another name'
+  '“Google API key” already has other fields; answer with the same fields or choose another name.'
 
 /** A stored credential the conversation asks to use. */
 export function allowanceRequest(): AllowanceRequestView {

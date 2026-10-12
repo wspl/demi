@@ -13,36 +13,33 @@ export function demoCredentials(): SettingsCredential[] {
       id: 'cred-github',
       name: 'GitHub token for zan',
       note: 'To push the release branches from the deploy script',
-      fields: [{ name: 'token', label: 'Token', kind: 'secret' }],
+      fields: [{ name: 'token', label: 'Token', kind: 'secret', value: null }],
       keepUntil: null,
       lastUsedAt: ahead(-3 * 60 * 60_000),
-      updatedAt: '2026-10-01T09:00:00.000Z',
     },
     {
       id: 'cred-google',
       name: 'Google API key',
       note: 'To add Google as a provider',
-      fields: [{ name: 'key', label: 'API key', kind: 'secret' }],
+      fields: [{ name: 'key', label: 'API key', kind: 'secret', value: null }],
       keepUntil: ahead(40 * 60_000),
       lastUsedAt: null,
-      updatedAt: '2026-10-01T09:00:00.000Z',
     },
     {
       id: 'cred-linear',
       name: 'Linear sign-in for zan',
       note: '',
       fields: [
-        { name: 'user', label: 'User name', kind: 'visible' },
-        { name: 'password', label: 'Password', kind: 'secret' },
+        { name: 'user', label: 'User name', kind: 'visible', value: 'zan@example.com' },
+        { name: 'password', label: 'Password', kind: 'secret', value: null },
       ],
       keepUntil: ahead(26 * 24 * 60 * 60_000),
       lastUsedAt: ahead(-2 * 24 * 60 * 60_000),
-      updatedAt: '2026-10-01T09:00:00.000Z',
     },
   ]
 }
 
-/** The values behind the credentials above, which only the reveal reads. */
+/** Every value behind the credentials above, as the reveal reads them; the list carries the visible ones too. */
 export const DEMO_CREDENTIAL_VALUES: Record<string, Record<string, string>> = {
   'cred-github': { token: 'ghp_EXAMPLEEXAMPLEEXAMPLE' },
   'cred-google': { key: 'AIza-example-not-a-real-key' },

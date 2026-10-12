@@ -9,8 +9,9 @@ import { DEMO_CREDENTIAL_VALUES, type CredentialState } from '../fixtures/creden
 /**
  * The Credentials section over a specimen's state. Each write waits a beat,
  * as the product's does; a name another credential has is refused with the
- * backend's message, so the editor shows its error. The reveal reads the
- * fixture's values; a value the user typed in the editor is kept for it.
+ * backend's message, so the editor shows its error. A saved visible field
+ * lists its value, as the backend's list does; the reveal reads the
+ * fixture's values, and a value the user typed in the editor is kept for it.
  */
 const props = defineProps<{
   state: CredentialState
@@ -41,16 +42,21 @@ const KEEP_MS = { '1h': 60 * 60_000, '1d': 24 * 60 * 60_000, '30d': 30 * 24 * 60
 async function saveCredential(id: string | null, draft: SettingsCredentialDraft) {
   await beat()
   if (props.state.credentials.some((credential) => credential.id !== id && credential.name.toLowerCase() === draft.name.toLowerCase())) {
-    throw new Error('Another of your credentials has that name')
+    throw new Error(`Another credential is named “${draft.name}”; choose another name.`)
   }
   const existing = props.state.credentials.find((credential) => credential.id === id)
   const before = id === null ? {} : (typed.get(id) ?? DEMO_CREDENTIAL_VALUES[id] ?? {})
   const values = Object.fromEntries(draft.fields.map((field) => [field.name, field.value ?? before[field.name] ?? '']))
-  const fields = draft.fields.map(({ name, label, kind }) => ({ name, label, kind }))
+  const fields = draft.fields.map(({ name, label, kind }) => ({
+    name,
+    label,
+    kind,
+    value: kind === 'visible' ? (values[name] ?? '') : null,
+  }))
   const keepUntil =
     draft.keep === null ? (existing?.keepUntil ?? null) : draft.keep === 'always' ? null : ahead(KEEP_MS[draft.keep])
   if (existing) {
-    Object.assign(existing, { name: draft.name, note: draft.note, fields, keepUntil, updatedAt: new Date().toISOString() })
+    Object.assign(existing, { name: draft.name, note: draft.note, fields, keepUntil })
     typed.set(existing.id, values)
   } else {
     const credential: SettingsCredential = {
@@ -60,7 +66,6 @@ async function saveCredential(id: string | null, draft: SettingsCredentialDraft)
       fields,
       keepUntil,
       lastUsedAt: null,
-      updatedAt: new Date().toISOString(),
     }
     props.state.credentials.push(credential)
     typed.set(credential.id, values)
