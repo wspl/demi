@@ -324,8 +324,9 @@ impl Services {
             providers.models_dev_url,
             providers.clock.clone(),
         );
-        let claude_releases = ClaudeReleases::new(&providers.claude_releases, edge.clone())
-            .map_err(ServicesError::Http)?;
+        let claude_releases =
+            ClaudeReleases::new(&providers.claude_releases, edge.clone(), clock.clone())
+                .map_err(ServicesError::Http)?;
         let assembly = Arc::new(ProviderAssembly::new(
             vault.clone(),
             providers.families,
