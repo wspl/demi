@@ -56,7 +56,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   const manualDrafts = ref<Record<string, SettingsProviderModel[]>>({})
   const operations = ref<Record<string, SettingsProviderOperation>>({})
   const refreshingUsage = ref<Record<string, Record<string, SettingsQuotaRefresh>>>({})
-  /** The vendor's words for the last manual usage refresh that failed, per provider and account, until the next answer. */
+  /** The vendor's words for the last manual usage refresh that failed, per provider and account, until that account's next answer; the surfaces show them, no toast does. */
   const usageFailures = ref<Record<string, Record<string, string>>>({})
   const quotaRefreshCache = createQuotaRefreshCache()
   const testing = computed(
@@ -647,7 +647,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       if (!current.signal.aborted && refreshingUsage.value[provider.id]?.[accountId] === 'manual') {
         usageFailures.value[provider.id] ??= {}
         usageFailures.value[provider.id]![accountId] = error instanceof Error ? error.message : String(error)
-        reportError('Could Not Refresh Usage', error, { userVisible: true })
+        // The account's line shows it, wherever its windows show; no toast.
+        reportError('Could Not Refresh Usage', error)
       }
     } finally {
       if (current === lifetime) {

@@ -249,7 +249,7 @@ test('automatic quota refresh uses a one-minute TTL; manual refresh bypasses and
   }
 })
 
-test('automatic quota failures stay quiet; manual retries explain the error', async () => {
+test('automatic quota failures stay quiet; a manual retry records the vendor\'s words for the account\'s line, with no toast', async () => {
   const settings = useProviderSettings()
   const provider = settings.providers.find((entry) => entry.id === 'configured')!
   let requests = 0
@@ -265,7 +265,8 @@ test('automatic quota failures stay quiet; manual retries explain the error', as
   expect(requests).toBe(1)
   await settings.refreshUsage(provider, 'first')
   expect(requests).toBe(2)
-  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Refresh Usage', message: 'Billing unavailable' })
+  expect(toasts).toHaveLength(0)
+  expect(settings.usageFailures).toEqual({ configured: { first: 'Billing unavailable' } })
 })
 
 test('a manual refresh joins an automatic request and shows its pending state and failure', async () => {
@@ -287,7 +288,8 @@ test('a manual refresh joins an automatic request and shows its pending state an
   deferred.resolve(Response.json({ code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 }))
   await automatic
   expect(settings.refreshingUsage).toEqual({})
-  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Refresh Usage', message: 'Billing unavailable' })
+  expect(toasts).toHaveLength(0)
+  expect(settings.usageFailures).toEqual({ configured: { first: 'Billing unavailable' } })
 })
 
 test('a manual usage refresh that fails keeps the vendor\'s words for that account until the next answer', async () => {
@@ -302,6 +304,7 @@ test('a manual usage refresh that fails keeps the vendor\'s words for that accou
   expect(settings.usageFailures).toEqual({})
   await settings.refreshUsage(provider, 'first')
   expect(settings.usageFailures).toEqual({ configured: { first: 'Billing unavailable' } })
+  expect(toasts).toHaveLength(0)
   fail = false
   await settings.refreshUsage(provider, 'second')
   expect(settings.usageFailures).toEqual({ configured: { first: 'Billing unavailable' } })

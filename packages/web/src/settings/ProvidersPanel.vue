@@ -95,6 +95,7 @@ onUnmounted(() => {
     :testing="testing"
     :refreshing="refreshing"
     :refreshing-usage="settings.refreshingUsage"
+    :usage-failures="settings.usageFailures"
     @change="change"
     @toggle-model="
       (provider, model, enabled) =>
