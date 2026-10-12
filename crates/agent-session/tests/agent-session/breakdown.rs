@@ -5,9 +5,7 @@
 
 use demi_agent_session::{PromptLayer, token_threshold};
 use demi_host_interface::{CapabilityIndex, IndexGroup};
-use demi_shared_types::{
-    ContextPart, ContextRowKind, ContextUsage, InstructionEntry, PromptLayerKind,
-};
+use demi_shared_types::{ContextRowKind, ContextUsage, InstructionEntry};
 
 use super::*;
 
@@ -25,23 +23,14 @@ fn prompt() -> SystemPrompt {
             })
             .to_vec(),
     };
-    let text = |kind, text: &str| PromptLayer::Text {
-        kind,
-        text: text.to_owned(),
-    };
+    let text = |text: &str| PromptLayer::Text(text.to_owned());
     SystemPrompt {
         layers: vec![
-            text(PromptLayerKind::Identity, &"You are Demi. ".repeat(40)),
-            text(PromptLayerKind::ToolRules, &"The shell tool: ".repeat(20)),
-            PromptLayer::Commands {
-                text: format!("Capabilities:\n\n{}", index.text()),
-                index,
-            },
-            text(PromptLayerKind::ModelIdentity, "This conversation runs on test-model."),
-            text(
-                PromptLayerKind::ProfileInstructions,
-                "Instructions for this subagent:\n\nYou find code and change nothing.",
-            ),
+            text(&"You are Demi. ".repeat(40)),
+            text(&"The shell tool: ".repeat(20)),
+            PromptLayer::Commands(format!("Capabilities:\n\n{}", index.text())),
+            text("This conversation runs on test-model."),
+            text("Instructions for this subagent:\n\nYou find code and change nothing."),
         ],
     }
 }
@@ -142,7 +131,7 @@ fn assert_adds_up(usage: &ContextUsage) {
     );
     for row in &usage.rows {
         assert_eq!(row.estimated, !exact(&row.kind), "{row:?}");
-        assert!(row.tokens > 0 && row.parts.iter().all(|part| part.tokens() > 0), "{row:?}");
+        assert!(row.tokens > 0, "{row:?}");
     }
 }
 
@@ -161,40 +150,19 @@ async fn the_rows_add_up_to_the_estimate_anchored_after_a_compaction_and_when_th
     let session = start_on(&provider, runtime("Be brief."), &store, SessionConfig::default()).await;
     session.send(text("Open the page"), turn("t1")).unwrap().await.unwrap();
 
-    // Anchored: Messages is the provider's count less the rows above it,
-    // and it does not open.
+    // Anchored: Messages is the provider's count less the rows above it.
     let anchored = session.context_usage().await.unwrap();
     assert_eq!(anchored.tokens, 60_050);
     assert_adds_up(&anchored);
-    assert!(row(&anchored, ContextRowKind::Messages).unwrap().parts.is_empty());
-    let parts = |kind| -> Vec<String> {
-        row(&anchored, kind)
-            .unwrap()
-            .parts
-            .iter()
-            .map(|part| match part {
-                ContextPart::Prompt { layer, .. } => format!("{layer:?}"),
-                ContextPart::Tool { name, .. } => format!("tool {name}"),
-                ContextPart::CommandGroup { group, .. } => group.clone(),
-                ContextPart::Instruction { entry: InstructionEntry::Personal, .. } => "personal".to_owned(),
-                ContextPart::Instruction { entry: InstructionEntry::File { path }, .. } => path.clone(),
-                ContextPart::Skill { name, .. } => name.clone(),
-                ContextPart::Source { source, .. } => source.clone(),
-            })
-            .collect()
-    };
-    assert_eq!(
-        parts(ContextRowKind::SystemPrompt),
-        ["Identity", "ToolRules", "ModelIdentity", "ProfileInstructions", "tool shell"]
-    );
-    assert_eq!(parts(ContextRowKind::Commands), ["demi browser", "demi file"]);
-    assert_eq!(
-        parts(ContextRowKind::Instructions),
-        ["personal", "/workspace/AGENTS.md"]
-    );
-    // The larger skill first.
-    assert_eq!(parts(ContextRowKind::Skills), ["web-design", "release"]);
-    assert_eq!(parts(ContextRowKind::OtherContext), ["execution"]);
+    for kind in [
+        ContextRowKind::SystemPrompt,
+        ContextRowKind::Commands,
+        ContextRowKind::Instructions,
+        ContextRowKind::Skills,
+        ContextRowKind::OtherContext,
+    ] {
+        assert!(row(&anchored, kind).is_some(), "{kind:?}: {anchored:#?}");
+    }
     assert!(row(&anchored, ContextRowKind::Summary).is_none());
 
     // Just after a compaction there is no anchor: the estimate is the

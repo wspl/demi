@@ -6,7 +6,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    BlockId, InstructionEntry, MAX_SAFE_INTEGER, ModelSelection, Nullable, TurnId, UserContentBlock,
+    BlockId, MAX_SAFE_INTEGER, ModelSelection, Nullable, TurnId, UserContentBlock,
 };
 
 /// What a session is doing, as clients see it.
@@ -41,7 +41,8 @@ pub struct ContextUsage {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub compact_from: Option<u64>,
     /// What fills the context (`compaction.md` § What fills the context),
-    /// in the card's order, a row with no tokens left out. The rows before
+    /// one figure each in the order of `ContextRowKind`, which the card
+    /// sorts largest first, a row with no tokens left out. The rows before
     /// the compaction buffer add up to the estimate, or to more when the
     /// rows above Messages alone do.
     #[garde(dive)]
@@ -60,28 +61,26 @@ pub struct ContextRow {
     /// the compaction buffer and the free space are exact.
     #[garde(skip)]
     pub estimated: bool,
-    /// What the row opens into; empty for a row that does not open.
-    #[garde(dive)]
-    pub parts: Vec<ContextPart>,
 }
 
-/// What a row of the context covers, in the card's order.
+/// What a row of the context covers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum ContextRowKind {
     /// Everything else the request carries: the estimate less every row
-    /// above, never below zero. It does not open.
+    /// above, never below zero.
     Messages,
     /// The system prompt but its capability index, and the tools'
     /// definitions.
     SystemPrompt,
-    /// The capability index, by command group.
+    /// The capability index.
     Commands,
-    /// The instructions blocks replayed, by file.
+    /// The instructions blocks replayed; the card opens it into the files
+    /// the newest block lists.
     Instructions,
-    /// The skills catalog's block, by skill.
+    /// The skills catalog's block.
     Skills,
-    /// Every other context block replayed, by source.
+    /// Every other context block replayed.
     OtherContext,
     /// The replayed summary of the last compaction.
     Summary,
@@ -89,88 +88,6 @@ pub enum ContextRowKind {
     CompactionBuffer,
     /// What is left: the window less the rows above and the buffer.
     FreeSpace,
-}
-
-/// A part a row of the context opens into, with its estimate.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
-#[serde(
-    tag = "kind",
-    rename_all = "camelCase",
-    rename_all_fields = "camelCase",
-    deny_unknown_fields
-)]
-pub enum ContextPart {
-    /// A layer of the system prompt.
-    Prompt {
-        #[garde(skip)]
-        layer: PromptLayerKind,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        tokens: u64,
-    },
-    /// A tool's definition, such as the `shell` tool's.
-    Tool {
-        #[garde(skip)]
-        name: String,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        tokens: u64,
-    },
-    /// A command group, such as `demi browser`: its section of the
-    /// capability index.
-    CommandGroup {
-        #[garde(skip)]
-        group: String,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        tokens: u64,
-    },
-    /// The personal instructions or a project file of an instructions
-    /// block.
-    Instruction {
-        #[garde(dive)]
-        entry: InstructionEntry,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        tokens: u64,
-    },
-    /// A skill of the catalog, by its name.
-    Skill {
-        #[garde(skip)]
-        name: String,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        tokens: u64,
-    },
-    /// The blocks of one context source, such as `execution`.
-    Source {
-        #[garde(skip)]
-        source: String,
-        #[garde(range(max = MAX_SAFE_INTEGER))]
-        tokens: u64,
-    },
-}
-
-impl ContextPart {
-    /// The part's estimate, in tokens.
-    pub fn tokens(&self) -> u64 {
-        match self {
-            Self::Prompt { tokens, .. }
-            | Self::Tool { tokens, .. }
-            | Self::CommandGroup { tokens, .. }
-            | Self::Instruction { tokens, .. }
-            | Self::Skill { tokens, .. }
-            | Self::Source { tokens, .. } => *tokens,
-        }
-    }
-}
-
-/// A layer of the system prompt (`system-prompt.md` § The layers), but the
-/// capability index, which is a row of its own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub enum PromptLayerKind {
-    Identity,
-    HarnessGuide,
-    ToolRules,
-    ModelIdentity,
-    /// A subagent profile's added instructions.
-    ProfileInstructions,
 }
 
 impl ContextUsage {

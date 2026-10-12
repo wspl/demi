@@ -1,5 +1,4 @@
-import type { ContextPart, ContextRow, ContextUsage, PromptLayerKind } from '@demicodes/protocol'
-import { demoInstructions } from './instructions'
+import type { ContextRow, ContextUsage } from '@demicodes/protocol'
 import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protocol'
 
 export const demoProviders: ProviderInfo[] = [
@@ -75,79 +74,32 @@ function compactionBuffer(window: number): number {
 /**
  * The usage the backend reports at `tokens` of `window`, the window in use:
  * Compact is taken from half. Its rows are those a Demi conversation holds:
- * the system prompt with the shell tool, the commands, the instructions of
- * `demoInstructions`, two skills and the execution context, then Messages,
- * the rest, which does not open; in a window, the compaction buffer and the
- * free space.
+ * the system prompt with the shell tool, the commands, the instructions
+ * of `demoInstructions`, two skills and the execution context, then Messages,
+ * the rest; in a window, the compaction buffer and the free space. The
+ * frame sends them in this order, and the card sorts them.
  */
 export function usageOf(tokens: number, window: number | null, shape: UsageShape = {}): ContextUsage {
-  const prompt = (layer: PromptLayerKind, tokens: number): ContextPart => ({ kind: 'prompt', layer, tokens })
-  const group = (name: string, tokens: number): ContextPart => ({ kind: 'commandGroup', group: name, tokens })
+  const estimated = (kind: ContextRow['kind'], tokens: number): ContextRow => ({ kind, tokens, estimated: true })
   const fixed: ContextRow[] = [
-    {
-      kind: 'systemPrompt',
-      tokens: 3_610,
-      estimated: true,
-      parts: [
-        prompt('identity', 640),
-        prompt('harnessGuide', 790),
-        prompt('toolRules', 610),
-        prompt('modelIdentity', 30),
-        { kind: 'tool', name: 'shell', tokens: 1_540 },
-      ],
-    },
-    {
-      kind: 'commands',
-      tokens: 1_420,
-      estimated: true,
-      parts: [
-        group('demi browser', 340),
-        group('demi agent', 210),
-        group('demi file', 160),
-        group('demi host', 150),
-        group('demi shell', 130),
-        group('demi attachment', 120),
-        group('demi skills', 120),
-      ],
-    },
-    {
-      kind: 'instructions',
-      tokens: 3_240,
-      estimated: true,
-      parts: [
-        { kind: 'instruction', entry: demoInstructions[0]!, tokens: 40 },
-        { kind: 'instruction', entry: demoInstructions[1]!, tokens: 2_610 },
-        { kind: 'instruction', entry: demoInstructions[2]!, tokens: 540 },
-      ],
-    },
-    {
-      kind: 'skills',
-      tokens: 410,
-      estimated: true,
-      parts: [
-        { kind: 'skill', name: 'web-design-guidelines', tokens: 190 },
-        { kind: 'skill', name: 'release', tokens: 150 },
-      ],
-    },
-    {
-      kind: 'otherContext',
-      tokens: 480,
-      estimated: true,
-      parts: [{ kind: 'source', source: 'execution', tokens: 480 }],
-    },
-    ...(shape.summary ? [{ kind: 'summary' as const, tokens: shape.summary, estimated: true, parts: [] }] : []),
+    estimated('systemPrompt', 3_610),
+    estimated('commands', 1_420),
+    estimated('instructions', 3_240),
+    estimated('skills', 410),
+    estimated('otherContext', 480),
+    ...(shape.summary ? [estimated('summary', shape.summary)] : []),
   ]
   const above = fixed.reduce((sum, row) => sum + row.tokens, 0)
   const messages = Math.max(0, tokens - above)
   const rows: ContextRow[] = [
-    { kind: 'messages', tokens: messages, estimated: true, parts: [] },
+    estimated('messages', messages),
     ...fixed,
   ]
   if (window !== null) {
     const buffer = compactionBuffer(window)
     rows.push(
-      { kind: 'compactionBuffer', tokens: buffer, estimated: false, parts: [] },
-      { kind: 'freeSpace', tokens: Math.max(0, window - Math.max(tokens, above) - buffer), estimated: false, parts: [] },
+      { kind: 'compactionBuffer', tokens: buffer, estimated: false },
+      { kind: 'freeSpace', tokens: Math.max(0, window - Math.max(tokens, above) - buffer), estimated: false },
     )
   }
   return {
