@@ -7,7 +7,7 @@
 //! unused for ten minutes, when the runtime drops it, or when its machine
 //! needs its seat. A preparation that fails is logged and forgotten.
 
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::{Rc, Weak};
 use std::sync::Arc;
@@ -35,7 +35,8 @@ const MOST_ON_A_MACHINE: usize = 2;
 #[derive(Default)]
 pub struct PreparedProcesses {
     seats: RefCell<VecDeque<SeatRecord>>,
-    next: Cell<u64>,
+    /// How many preparations began on the machine, which also numbers them.
+    begun: tokio::sync::watch::Sender<u64>,
 }
 
 struct SeatRecord {
@@ -49,8 +50,8 @@ impl PreparedProcesses {
     /// A seat for a process `entry`'s runtime prepares; the oldest seat
     /// beyond the machine's two is told to close.
     fn seat(self: &Rc<Self>, entry: &str) -> Seat {
-        let id = self.next.get();
-        self.next.set(id + 1);
+        let id = *self.begun.borrow();
+        self.begun.send_replace(id + 1);
         let close = CancellationToken::new();
         let mut seats = self.seats.borrow_mut();
         seats.push_back(SeatRecord {
@@ -81,6 +82,21 @@ impl PreparedProcesses {
             }
             kept
         });
+    }
+
+    /// Closes every process prepared on the machine.
+    pub fn close_all(&self) {
+        for seat in self.seats.borrow_mut().drain(..) {
+            seat.close.cancel();
+        }
+    }
+
+    /// Resolves once `count` preparations began on the machine since it was
+    /// first used, for a check of what starts one.
+    pub async fn until_begun(&self, count: u64) {
+        let mut begun = self.begun.subscribe();
+        // The sender lives in `self`, which this call borrows.
+        let _ = begun.wait_for(|begun| *begun >= count).await;
     }
 
     /// How many prepared processes the machine holds unused.

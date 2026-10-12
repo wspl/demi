@@ -681,6 +681,12 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                         // The search index follows the user's changes from
                         // the shard's first call until it closes.
                         shard.tasks.spawn_local(shard.clone().follow_for_search());
+                        // So do the processes prepared ahead, the changes of
+                        // the accounts they were started with.
+                        let changes = services.vault.account_changes();
+                        shard
+                            .tasks
+                            .spawn_local(shard.clone().follow_account_changes(changes));
                         shard
                     })
                     .clone();
