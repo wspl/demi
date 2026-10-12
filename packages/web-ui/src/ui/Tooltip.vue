@@ -145,7 +145,13 @@ const emit = defineEmits<{
 
 followPointer()
 
-const triggerRef = ref<HTMLElement | null>(null)
+/** The wrapper this component renders around its slot; none while `trigger` stands in for it. */
+const wrapperRef = ref<HTMLElement | null>(null)
+/**
+ * What the tip describes: the `trigger` element, or the wrapper. A computed rather than one ref both fill, since
+ * the wrapper goes when a trigger arrives after the first render and would clear a shared ref as it unmounts.
+ */
+const triggerRef = computed(() => props.trigger ?? wrapperRef.value)
 const floatingRef = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
 const hiddenByScroll = ref(false)
@@ -455,10 +461,8 @@ function listen(element: HTMLElement, on: boolean): void {
 watch(() => props.trigger, (element, before) => {
   if (before)
     listen(before, false)
-  if (element) {
+  if (element)
     listen(element, true)
-    triggerRef.value = element
-  }
 }, { immediate: true })
 
 onBeforeUnmount(() => {
@@ -478,7 +482,7 @@ onBeforeUnmount(() => {
   <component
     :is="props.tag"
     v-if="!props.trigger"
-    ref="triggerRef"
+    ref="wrapperRef"
     v-bind="attrs"
     @pointerenter="onPointerenter"
     @pointermove="onPointermove"
