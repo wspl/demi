@@ -1,6 +1,6 @@
 //! The supervisor operations of a conversation's tree (`subagents.md`): the
-//! agent directory of its live nodes; starting children (spawn, resume and
-//! restore) and closing them (a natural completion, a failure or an abort);
+//! agent directory of its live nodes; starting children (spawn, fork, resume
+//! and restore) and closing them (a natural completion, a failure or an abort);
 //! delivering their completions; messages between agents; and the `list`
 //! and `show` reads. Every node supervises its own children the same way;
 //! only the root's lifecycle is its client's.
@@ -11,10 +11,11 @@ use std::{
 };
 
 use demi_agent_session::{
-    AgentMessageError, AgentSession, Execution, SessionEvent, Settle, Subscription,
+    AgentMessageError, AgentSession, Execution, ForkError, ModelSwitch, SessionEvent, Settle,
+    Subscription,
 };
-use demi_agent_store::{ClosePhase, NodeClose, NodeRecord};
-use demi_agent_transcript::{last_answer, last_failure};
+use demi_agent_store::{Checkpoint, ClosePhase, NodeClose, NodeRecord};
+use demi_agent_transcript::{CutError, ForkEnd, last_answer, last_failure};
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
     JobPhase, ServerFrame, SubagentEvent, TranscriptPatch, index_u32, latest_page_start,
@@ -38,7 +39,7 @@ use super::profiles::Limits;
 use crate::{
     Node,
     node::{self, Instructions, NodeRole, NodeSpec, Origin},
-    server::{AgentServer, commands::with_runtime_groups},
+    server::{AgentServer, commands::with_runtime_groups, stored_fork_seed},
 };
 
 /// The bound of a completion's result and of `show`'s last assistant text,
@@ -105,6 +106,13 @@ pub(crate) enum StartInput {
     Resume {
         id: NodeId,
         message: String,
+    },
+    /// `demi agent fork`: the caller's child the model knows by `source`.
+    Fork {
+        source: u64,
+        message: String,
+        profile_name: Option<String>,
+        description: Option<String>,
     },
 }
 
@@ -265,7 +273,7 @@ impl<H: HostResolver> Tree<H> {
         Ok(LiveSlot { tree: self.clone() })
     }
 
-    /// Starts a child of `caller` for `demi agent spawn` or `resume`
+    /// Starts a child of `caller` for `demi agent spawn`, `fork` or `resume`
     /// (`subagents.md` § Creation command ownership): creates or reopens the
     /// child in a task of the tree, so the start runs to its end even when
     /// the call is cancelled. Starts of one owner take turns. Answers the
@@ -295,6 +303,15 @@ impl<H: HostResolver> Tree<H> {
                     description,
                 } => tree.spawn(&owner, prompt, profile_name, description).await,
                 StartInput::Resume { id, message } => tree.reopen(&owner, id, message).await,
+                StartInput::Fork {
+                    source,
+                    message,
+                    profile_name,
+                    description,
+                } => {
+                    tree.fork(&owner, source, message, profile_name, description)
+                        .await
+                }
             }
         });
         started
@@ -350,9 +367,113 @@ impl<H: HostResolver> Tree<H> {
             model: setup.model,
             first_message: Some(self.text_message(prompt)),
         };
-        self.start_child(&server, owner, origin, runtime, Some(slot))
+        self.start_child(&server, owner, origin, runtime, None, Some(slot))
             .await?;
         Ok(number)
+    }
+
+    /// Forks the child of `owner` the model knows by `source`
+    /// (`subagents.md` § Fork): a new child of `owner` with the next agent
+    /// number, whose history is the source's through its newest completed
+    /// text, and whose next user message is `message`. The checks are a
+    /// spawn's, and the profile `profile_name`, none for the inherit profile,
+    /// sets what it runs on; `description` defaults to the source's with
+    /// ` (fork)`. Its first request switches from the source's
+    /// model to that profile's as a model switch does, compacting first with
+    /// the source's model when the history is over the new model's
+    /// threshold. The source is untouched. Answers its number.
+    async fn fork(
+        self: &Rc<Self>,
+        owner: &Rc<Node<H>>,
+        source: u64,
+        message: String,
+        profile_name: Option<String>,
+        description: Option<String>,
+    ) -> Result<u64, String> {
+        if !owner.record().can_spawn_subagents {
+            return Err("this session may not spawn subagents".to_owned());
+        }
+        let Some(source) = self.child_record_of(owner.id(), source).await? else {
+            return Err(format!(
+                "no subagent {source} of yours to fork (see `demi agent list`)"
+            ));
+        };
+        let server = self.server.upgrade().ok_or("the agent server is gone")?;
+        let setup = self
+            .spawn_setup(&server, owner, profile_name.as_deref())
+            .await?;
+        let mut seed = self.fork_seed(&source).await?;
+        self.check_depth(owner, setup.limits).await?;
+        let slot = self.reserve_live(setup.limits)?;
+        // The child starts on the source's model, which compacts what the
+        // profile's model cannot hold, and switches at its first request.
+        let from = seed.state.model.clone();
+        let runtime = self
+            .child_runtime(&server, owner, &from)
+            .await
+            .map_err(RuntimeError::reason)?;
+        let switch = if setup.model == from {
+            None
+        } else {
+            let runtime = if setup.model.provider_id == from.provider_id {
+                None
+            } else {
+                let built = self.child_runtime(&server, owner, &setup.model).await;
+                Some(built.map_err(RuntimeError::reason)?)
+            };
+            Some(ModelSwitch {
+                model: Box::new(setup.model),
+                runtime,
+            })
+        };
+        let number = self
+            .store
+            .next_number(Sequence::Agent)
+            .await
+            .map_err(|error| error.to_string())?;
+        let description = description.unwrap_or_else(|| {
+            format!("{} (fork)", source.description)
+                .trim_start()
+                .to_owned()
+        });
+        let record = NodeRecord {
+            id: self.new_node_id(),
+            number,
+            parent: Some(owner.id().clone()),
+            description,
+            profile: profile_name,
+            instructions: setup.instructions,
+            round: 1,
+            started_at: self.clock.now(),
+            can_spawn_subagents: setup.can_spawn,
+            closed: None,
+            delivered: false,
+        };
+        seed.state.queue.push(self.text_message(message));
+        let origin = Origin::Forked {
+            record,
+            checkpoint: seed,
+        };
+        self.start_child(&server, owner, origin, runtime, switch, Some(slot))
+            .await?;
+        Ok(number)
+    }
+
+    /// The history a fork of the child `source` starts from: captured from
+    /// its live session in one step, or read from its archived checkpoint
+    /// (`subagents.md` § Fork).
+    async fn fork_seed(&self, source: &NodeRecord) -> Result<Checkpoint, String> {
+        let seed = match self.child(&source.id) {
+            Some(child) => child.node.session().prepare_fork(ForkEnd::Newest),
+            None => stored_fork_seed(self.store.as_ref(), &source.id, ForkEnd::Newest).await,
+        };
+        seed.map_err(|error| match error {
+            ForkError::Target(CutError::NothingCompleted) => format!(
+                "Agent {} has no completed message to fork from yet",
+                source.number
+            ),
+            error => error.to_string(),
+        })
     }
 
     /// The provider runtime of a child of `owner` that infers with `model`
@@ -431,7 +552,7 @@ impl<H: HostResolver> Tree<H> {
             .map_err(|error| error.to_string())?;
         // The reopen queued the message in its checkpoint.
         let reopened = self.stored(&id).await?;
-        self.start_child(&server, owner, reopened, runtime, Some(slot))
+        self.start_child(&server, owner, reopened, runtime, None, Some(slot))
             .await?;
         Ok(number)
     }
@@ -455,19 +576,21 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    /// Everything spawn, reopen and restore share: the child's node from the
-    /// assembly, new with its brief queued in the create commit or from the
-    /// store, on `runtime`, with what it was spawned with; then its place in
-    /// the directory and its frames, what it has yet to run, its own
-    /// children, and its supervision. A spawn's or a resume's `slot` ends
-    /// once the child is in the directory, which counts it from then on; a
-    /// restore takes none, since it brings back what was live.
+    /// Everything spawn, fork, reopen and restore share: the child's node
+    /// from the assembly, new with its first message queued in the create
+    /// commit or from the store, on `runtime`, with what it was spawned
+    /// with; then the model `switch` a fork lands at its first request, its
+    /// place in the directory and its frames, what it has yet to run, its
+    /// own children, and its supervision. A start's `slot` ends once the
+    /// child is in the directory, which counts it from then on; a restore
+    /// takes none, since it brings back what was live.
     async fn start_child(
         self: &Rc<Self>,
         server: &Rc<AgentServer<H>>,
         owner: &Rc<Node<H>>,
         origin: Origin,
         runtime: Box<dyn ProviderRuntime>,
+        switch: Option<ModelSwitch>,
         slot: Option<LiveSlot<H>>,
     ) -> Result<NodeId, String> {
         let deps = &server.deps;
@@ -513,6 +636,13 @@ impl<H: HostResolver> Tree<H> {
         })
         .await
         .map_err(|error| error.to_string())?;
+        if let Some(switch) = switch
+            && let Err(refused) = assembled.node.session().update_model(switch)
+        {
+            // Only a closing session refuses a switch, and one just
+            // assembled is not closing; its runtime is closed all the same.
+            refused.discard().await;
+        }
         let child = self.attach_child(assembled.node);
         drop(slot);
         let id = child.id().clone();
@@ -665,7 +795,7 @@ impl<H: HostResolver> Tree<H> {
                         continue;
                     }
                 };
-                if let Err(error) = self.start_child(&server, owner, origin, runtime, None).await {
+                if let Err(error) = self.start_child(&server, owner, origin, runtime, None, None).await {
                     self.delete_unbuilt(&id, &error).await;
                 }
             }
@@ -1257,15 +1387,23 @@ impl<H: HostResolver> Tree<H> {
         owner: &NodeId,
         number: u64,
     ) -> Result<Option<NodeId>, String> {
+        let record = self.child_record_of(owner, number).await?;
+        Ok(record.map(|record| record.id))
+    }
+
+    /// The record of the child of `owner` the model knows by `number`, live
+    /// or archived.
+    async fn child_record_of(
+        &self,
+        owner: &NodeId,
+        number: u64,
+    ) -> Result<Option<NodeRecord>, String> {
         let children = self
             .store
             .children(owner)
             .await
             .map_err(|error| error.to_string())?;
-        Ok(children
-            .into_iter()
-            .find(|record| record.number == number)
-            .map(|record| record.id))
+        Ok(children.into_iter().find(|record| record.number == number))
     }
 }
 
