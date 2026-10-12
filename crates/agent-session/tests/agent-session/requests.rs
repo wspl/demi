@@ -13,7 +13,7 @@ use demi_agent_transcript::COMPACTION_NOTE;
 use demi_agent_store::testing::png;
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
 use demi_provider_codex::{
-    CodexConfig, CodexProvider, TransportMode,
+    CodexConfig, CodexProvider, CodexReleases, TransportMode,
     testing::{FakeWebSocket, Script, Step},
 };
 use demi_provider_common::VendorPolicy;
@@ -172,7 +172,13 @@ impl Family {
                     "accountId": "acct-1", "lastRefresh": NOW,
                 });
                 let pool = pool_with("cred-c", secret.to_string()).await;
-                let mut config = CodexConfig::new(Some("cred-c".into()));
+                // No request here reads the catalog, so the registry is never asked.
+                let releases = CodexReleases::new(
+                    vendor.url("/npm").parse().unwrap(),
+                    reqwest::Client::new(),
+                    clock.clone(),
+                );
+                let mut config = CodexConfig::new(Some("cred-c".into()), releases);
                 config.auth_url = vendor.url("").parse().unwrap();
                 (config.backend_url, config.transport) = match self {
                     Self::CodexWebSocket => (

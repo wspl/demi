@@ -13,7 +13,7 @@ mod websocket;
 
 use std::{sync::Arc, time::Duration};
 
-use demi_provider_codex::{CodexConfig, CodexProvider, TransportMode};
+use demi_provider_codex::{CodexConfig, CodexProvider, CodexReleases, TransportMode};
 pub(crate) use demi_provider_common::testing::run;
 use demi_provider_common::{
     Provider, ProviderRuntime, RuntimeEnv,
@@ -80,6 +80,18 @@ pub(crate) async fn pool_with(secret: String) -> MemoryCredentialPool {
 /// scripted vendor.
 pub(crate) const NPM_LATEST: &str = "/npm/@openai/codex/latest";
 
+/// The newest Codex releases as the scripted vendor's npm registry names
+/// them, believed by `clock`.
+pub(crate) fn releases_at(vendor: &MockVendor, clock: Arc<dyn Clock>) -> CodexReleases {
+    let url = vendor.url(NPM_LATEST).parse().unwrap();
+    CodexReleases::new(url, reqwest::Client::new(), clock)
+}
+
+/// [`releases_at`] at `NOW`.
+pub(crate) fn releases(vendor: &MockVendor) -> CodexReleases {
+    releases_at(vendor, Arc::new(FixedClock(NOW.parse().unwrap())))
+}
+
 /// A provider whose backend, sign-in service and npm registry are the
 /// scripted vendor.
 pub(crate) fn provider(
@@ -88,20 +100,21 @@ pub(crate) fn provider(
     transport: TransportMode,
 ) -> CodexProvider {
     let clock = Arc::new(FixedClock(NOW.parse().unwrap()));
-    provider_at(vendor, pool, transport, clock)
+    provider_at(vendor, pool, transport, clock, releases(vendor))
 }
 
-/// [`provider`], reading the time from `clock`.
+/// [`provider`], reading the time from `clock` and the newest release from
+/// `releases`.
 pub(crate) fn provider_at(
     vendor: &MockVendor,
     pool: &MemoryCredentialPool,
     transport: TransportMode,
     clock: Arc<dyn Clock>,
+    releases: CodexReleases,
 ) -> CodexProvider {
-    let mut config = CodexConfig::new(Some(ACCOUNT.into()));
+    let mut config = CodexConfig::new(Some(ACCOUNT.into()), releases);
     config.backend_url = vendor.url("/backend-api").parse().unwrap();
     config.auth_url = vendor.url("").parse().unwrap();
-    config.releases_url = vendor.url(NPM_LATEST).parse().unwrap();
     config.transport = transport;
     config.header_timeout = Duration::from_secs(5);
     config.connect_timeout = Duration::from_secs(5);
