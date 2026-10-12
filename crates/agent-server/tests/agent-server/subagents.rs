@@ -970,6 +970,7 @@ pub(crate) fn child_record(
         can_spawn_subagents: true,
         closed: None,
         delivered: false,
+        forked_from: None,
     }
 }
 

@@ -80,6 +80,7 @@ import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
+import AgentRunLine from '@demicodes/web-ui/agent/AgentRunLine.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { firstRunningSubagentId } from '@demicodes/web-ui/agent/subagents'
@@ -286,6 +287,17 @@ const finishedOnly = agents.filter((agent) => agent.phase !== 'running')
 const exhibitOpen = ref(true)
 const exhibitAgentId = ref<string | null>(firstRunningSubagentId(agents))
 const exhibitTerminalId = ref<string | null>(firstRunningTerminalId(terminals))
+/** One child per variant of the line that says what a child runs on. */
+const runLines = [workSubagent(), ...gallerySubagents()]
+const runLineVariants: Record<string, string> = {
+  'ag-suite': 'running · profile',
+  'ag-cookie': 'running · no profile',
+  'ag-logout': 'running · Fast · forked',
+  'ag-snapshot': 'running · thinking off',
+  'ag-comments': 'finished · no profile · round 2',
+  'ag-fixture': 'failed',
+  'ag-ci': 'stopped',
+}
 const briefAgents = reactive([briefSubagent()])
 const briefOpen = ref(true)
 const briefAgentId = ref<string | null>(briefAgents[0]!.id)
@@ -1871,7 +1883,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Agents in a Message"
-        note="A reply links a subagent as agent:4, the number spawn printed: its mark, the robot with the dot of its state as its tab in the Agents window wears it, then the text. It is drawn in the text's own colors, not a web link's accent, as a mention in Slack or Linear reads as part of the sentence: the text in the prose's color at medium weight over a dotted underline in the faintest text color, 1px, 3px below the text, and the mark in the secondary text color. It starts with an icon, so, as a file's link, it keeps 0.2em of space on each side, inside its hover fill and outside its underline: in the Chinese sentence the character before the mark and the colon after the name do not touch it. It flows as words do: a long name wraps at the line's end like any text, its first line starting where the text before it ends, the mark staying with the first word, and the hover fill and the underline following each line it spans, in a narrow column and a table's cell alike. It is reached with Tab and opened with Return or Space, as a button is. Pointed at, it shows the hover fill behind both and names the agent, Subagent 4 · Finished, and its description. A click opens the Agents window on that agent's tab, a finished one as Completed picks it, and a click when the window shows that tab leaves it as it is; stopping an agent there takes the dot off its mark, as a stopped conversation's row is settled. agent:0, the main agent, brings the main transcript into view. A number the conversation does not have is its text alone, which says so when pointed at."
+        note="A reply links a subagent as agent:4, the number spawn printed: its mark, the robot with the dot of its state as its tab in the Agents window wears it, then the text. It is drawn in the text's own colors, not a web link's accent, as a mention in Slack or Linear reads as part of the sentence: the text in the prose's color at medium weight over a dotted underline in the faintest text color, 1px, 3px below the text, and the mark in the secondary text color. It starts with an icon, so, as a file's link, it keeps 0.2em of space on each side, inside its hover fill and outside its underline: in the Chinese sentence the character before the mark and the colon after the name do not touch it. It flows as words do: a long name wraps at the line's end like any text, its first line starting where the text before it ends, the mark staying with the first word, and the hover fill and the underline following each line it spans, in a narrow column and a table's cell alike. It is reached with Tab and opened with Return or Space, as a button is. Pointed at, it shows the hover fill behind both and names the agent, Subagent 4 · Finished, its description, and what it runs on. A click opens the Agents window on that agent's tab, a finished one as Completed picks it, and a click when the window shows that tab leaves it as it is; stopping an agent there takes the dot off its mark, as a stopped conversation's row is settled. agent:0, the main agent, brings the main transcript into view. A number the conversation does not have is its text alone, which says so when pointed at."
       >
         <GallerySpecimen variant="running, finished, failed, stopped, main, unknown" wide>
           <GalleryAgentLinks />
@@ -1976,7 +1988,7 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
 
-      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts read as a command’s notice: what happened, then the agent by its description, underlined with dots, with Failed or Stopped after it when it went wrong. A click on the agent’s name opens the Agents window over the specimens on that agent’s tab, a finished one as Completed picks it, and marks the block the receipt came from: the call that sent the update, the finished agent’s last answer, the failed agent’s failure record; the stopped agent gave none, so its tab opens at its latest. Close (×) closes the window. In a child’s transcript, a message from the main agent reads Main agent sent a message, the main agent its subject, and its name brings the call that sent it into view in the main transcript. A notice row does not open, as no notice row does: no chevron, no body; what it would show is where the agent’s name leads, so the name is its one control, reached with Tab. On a narrow row the name gives way first, down to a few characters, then the words. The user’s decisions on permission requests, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed name no agent and say all there is in their words, the failed move why: Move failed: the project no longer exists. These rows have no human message controls.">
+      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts read as a command’s notice: what happened, then the agent by its description, underlined with dots, with Failed or Stopped after it when it went wrong. Pointed at, a subagent’s name shows the tip its link shows: Subagent 4 · Finished, its description, and what it runs on. A click on the agent’s name opens the Agents window over the specimens on that agent’s tab, a finished one as Completed picks it, and marks the block the receipt came from: the call that sent the update, the finished agent’s last answer, the failed agent’s failure record; the stopped agent gave none, so its tab opens at its latest. Close (×) closes the window. In a child’s transcript, a message from the main agent reads Main agent sent a message, the main agent its subject, and its name brings the call that sent it into view in the main transcript. A notice row does not open, as no notice row does: no chevron, no body; what it would show is where the agent’s name leads, so the name is its one control, reached with Tab. On a narrow row the name gives way first, down to a few characters, then the words. The user’s decisions on permission requests, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed name no agent and say all there is in their words, the failed move why: Move failed: the project no longer exists. These rows have no human message controls.">
         <div class="gallery-frame gallery-block-frame bg-surface">
           <GalleryReceipts :agents="agents" @abort="sessionFlow.abortSubagents" @abort-agent="sessionFlow.abortSubagent">
             <div class="specimen-stack [--agent-pad-x:0px]">
@@ -2791,7 +2803,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'windows'">
       <GallerySection
         title="Agents"
-        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Close Tab for a finished one, the other disabled. A child's last row reads its own phase: Find the cookie assertion ended its turn while its search runs on, so it shows no Requesting row, while Check the logout path waits for its model. Stop Agent stops the child at once; a command it still runs stays in the Running window as Stopping…, its tab's mark a spinner, until its runner says that it ended, here 3 seconds later: stop Find the cookie assertion and open the Terminals window below. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Completed opens the searchable finished list; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. It stands with the media viewer a screenshot in a child’s transcript opens in the order they opened, the newest in front: a press outside every window, here anywhere on the page but a window, closes the newest alone, as Escape does, and a second press the next. Close (×), or Escape with the focus in it, closes it too, and Run Them Again opens it again."
+        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Close Tab for a finished one, the other disabled. A child's last row reads its own phase: Find the cookie assertion ended its turn while its search runs on, so it shows no Requesting row, while Check the logout path waits for its model. Stop Agent stops the child at once; a command it still runs stays in the Running window as Stopping…, its tab's mark a spinner, until its runner says that it ended, here 3 seconds later: stop Find the cookie assertion and open the Terminals window below. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Under the tabs, in the secondary text color, one line says what the shown tab's child runs on, its end giving way first on a narrow window: its profile or No profile, its model, its effort or Thinking off, Fast, how long it has run, counting while it runs, Round N from the second round and Forked from agent N (What an Agent Runs On). Completed opens the searchable finished list, each child's profile a tag after its description, none for no profile; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. It stands with the media viewer a screenshot in a child’s transcript opens in the order they opened, the newest in front: a press outside every window, here anywhere on the page but a window, closes the newest alone, as Escape does, and a second press the next. Close (×), or Escape with the focus in it, closes it too, and Run Them Again opens it again."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
@@ -2805,6 +2817,17 @@ onBeforeUnmount(() => {
             @abort-agent="sessionFlow.abortSubagent"
           />
         </div>
+      </GallerySection>
+      <GallerySection
+        title="What an Agent Runs On"
+        note="One line built from a child's job says what it runs on and for how long: its profile, or No profile, which the model after it then explains; the model; the effort, or Thinking off; Fast when it is on; Running for while the round runs, counting with the page's clock, and Finished after, Stopped after or Failed after once it closed; Round N from the second round; Forked from agent N for a fork. The Agents window shows it under the tabs, and the tips of an agent link and a receipt's name after the description. One line, its end giving way first."
+      >
+        <GallerySpecimen v-for="run in runLines" :key="run.id" :variant="runLineVariants[run.id] ?? run.name" wide>
+          <AgentRunLine class="text-chrome text-fg-muted" :run="run" />
+        </GallerySpecimen>
+        <GallerySpecimen variant="narrow · the end gives way">
+          <AgentRunLine class="w-56 text-chrome text-fg-muted" :run="runLines[2]!" />
+        </GallerySpecimen>
       </GallerySection>
       <GallerySection
         title="A Child's Brief"

@@ -1,5 +1,5 @@
-import type { AgentMessage, Block } from '@demicodes/protocol'
-import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
+import type { AgentMessage, Block, JobModel } from '@demicodes/protocol'
+import type { AgentRun, SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import { demoModel, inRun, screenshotTool, shellView, thinkingText } from './blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { ago } from './time'
@@ -75,6 +75,23 @@ function shell(
   }
 }
 
+const OPUS: JobModel = { provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false }
+const SONNET: JobModel = { provider: 'Anthropic', model: 'Claude Sonnet 5.5', effort: 'medium', fast: false }
+const HAIKU: JobModel = { provider: 'Anthropic', model: 'Claude Haiku 5', effort: 'low', fast: false }
+
+/**
+ * What a gallery child runs on (`subagents.md` § What an agent runs on): its
+ * profile, none for the inherit profile, its model, and its round and fork
+ * when they are not the first and none.
+ */
+function runsOn(
+  profile: string | null,
+  model: JobModel,
+  more: Partial<Pick<AgentRun, 'round' | 'forkedFrom'>> = {},
+): Pick<AgentRun, 'profile' | 'model' | 'round' | 'forkedFrom'> {
+  return { profile, model, round: 1, forkedFrom: null, ...more }
+}
+
 /** What Check the logout path tells its parent while it works. */
 const LOGOUT_UPDATE = 'Logout clears the renamed cookie in `auth.ts`. I am checking the **redirect** next.'
 /** Update helper comments' last answer, its result. */
@@ -107,7 +124,7 @@ export const agentReceiptMessages: AgentMessage[] = [
   },
   {
     id: 'subagent:ag-comments:1',
-    sender: { id: 'ag-comments', number: 4, description: 'Update helper comments', round: 1 },
+    sender: { id: 'ag-comments', number: 4, description: 'Update helper comments', round: 2 },
     recipientId: 'gallery-parent',
     timestamp: '2026-09-12T12:01:00.000Z',
     content: COMMENTS_RESULT,
@@ -178,6 +195,7 @@ export function workSubagent(): SubagentRecord {
     id: 'ag-suite',
     number: 3,
     name: 'Find the old suite paths',
+    ...runsOn('research', SONNET),
     phase: 'running',
     sessionPhase: 'running',
     startedAt: ago(60_000),
@@ -212,6 +230,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-cookie',
       number: 1,
       name: 'Find the cookie assertion',
+      ...runsOn(null, OPUS),
       phase: 'running',
       // Its turn ended while the search it started runs on: it shows no
       // Requesting row (`runtime.md` § Frame protocol).
@@ -250,6 +269,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-logout',
       number: 2,
       name: 'Check the logout path',
+      ...runsOn('frontend', { ...SONNET, effort: 'high', fast: true }, { forkedFrom: 1 }),
       phase: 'running',
       sessionPhase: 'running',
       startedAt: ago(48_000),
@@ -291,6 +311,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-snapshot',
       number: 7,
       name: 'Snapshot strings',
+      ...runsOn('quick', { ...HAIKU, effort: 'off' }),
       phase: 'running',
       sessionPhase: 'running',
       startedAt: ago(12_000),
@@ -312,6 +333,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-comments',
       number: 4,
       name: 'Update helper comments',
+      ...runsOn(null, OPUS, { round: 2 }),
       phase: 'completed',
       sessionPhase: 'idle',
       startedAt: ago(420_000),
@@ -347,6 +369,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-fixture',
       number: 6,
       name: 'Run the fixture server',
+      ...runsOn('browser', SONNET),
       phase: 'error',
       sessionPhase: 'idle',
       startedAt: ago(300_000),
@@ -386,6 +409,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-ci',
       number: 5,
       name: 'CI screenshot review',
+      ...runsOn('review', { ...OPUS, effort: 'medium' }),
       phase: 'aborted',
       sessionPhase: 'idle',
       startedAt: ago(180_000),
@@ -443,6 +467,7 @@ export function briefSubagent(): SubagentRecord {
     id: 'ag-flake',
     number: 8,
     name: 'Find why the login test flakes',
+    ...runsOn('research', SONNET),
     phase: 'running',
     sessionPhase: 'running',
     startedAt: ago(30_000),
