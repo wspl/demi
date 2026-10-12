@@ -7,8 +7,11 @@
 use std::num::NonZeroU32;
 use std::rc::Rc;
 
+use demi_conversation_socket_protocol::JobModel;
 use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
-use demi_shared_types::{InstructionEntry, NodeId, TurnId};
+use demi_shared_types::{
+    InstructionEntry, ModelSelection, NodeId, ProviderModel, THINKING_OFF, TurnId,
+};
 use futures_util::future::LocalBoxFuture;
 
 /// The commands every node of a tree starts from, which a tree takes when
@@ -169,6 +172,33 @@ pub struct ModelChoice {
 
 /// The effort option that turns thinking off.
 pub const EFFORT_OFF: &str = "off";
+
+/// What a job says a round on `selection` runs on (`subagents.md` § What an
+/// agent runs on): the entry's name `entry` and the model's name and Fast
+/// tier from its catalog model `catalog`, the names the model menu shows;
+/// the entry's id, the selection's model name and no Fast tier for what the
+/// user's scope no longer has.
+pub fn runs_on(
+    selection: &ModelSelection,
+    entry: Option<&str>,
+    catalog: Option<&ProviderModel>,
+) -> JobModel {
+    let tier = selection.service_tier_id.as_deref();
+    JobModel {
+        provider: entry.unwrap_or(&selection.provider_id).to_owned(),
+        model: catalog.map_or(&selection.model.name, |model| &model.display_name).clone(),
+        effort: selection.thinking_effort().map(|effort| {
+            if effort == THINKING_OFF { EFFORT_OFF } else { effort }.to_owned()
+        }),
+        fast: catalog.is_some_and(|model| {
+            model
+                .service_tiers
+                .iter()
+                .any(|listed| Some(listed.id.as_str()) == tier && listed.fast)
+        }),
+    }
+}
+
 /// The tier option that names the vendor's default tier.
 pub const TIER_DEFAULT: &str = "default";
 
@@ -215,6 +245,12 @@ pub trait SubagentSource {
     /// What the composer's model menu offers the user now.
     fn models(&self) -> LocalBoxFuture<'_, Result<Vec<MenuEntry>, String>> {
         Box::pin(async { Err("this product has no model menu".to_owned()) })
+    }
+
+    /// What a round on `selection` runs on, in the names the model menu
+    /// shows now ([`runs_on`]).
+    fn runs_on<'a>(&'a self, selection: &'a ModelSelection) -> LocalBoxFuture<'a, JobModel> {
+        Box::pin(async move { runs_on(selection, None, None) })
     }
 
     /// Creates a profile; answers it as stored, or why it was refused.

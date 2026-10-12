@@ -19,7 +19,9 @@ use std::sync::{Arc, Mutex};
 use demi_backend_providers::llm::families::{
     FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
 };
-use demi_conversation_socket_protocol::{JobPhase, ServerFrame, SubagentEvent};
+use demi_conversation_socket_protocol::{
+    JobModel, JobPhase, ServerFrame, SubagentEvent, SubagentJob,
+};
 use demi_provider_claude_code::Placement;
 use demi_provider_common::testing::event;
 use demi_provider_common::{
@@ -580,6 +582,141 @@ async fn a_spawn_reads_the_users_settings_and_builds_the_childs_model_from_the_c
     assert!(
         refused.contains("subagents are turned off in settings"),
         "{refused}"
+    );
+    backend.close().await;
+}
+
+/// The `started` jobs among `frames`.
+fn started(frames: &[ServerFrame]) -> Vec<SubagentJob> {
+    frames
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::Subagent {
+                event: SubagentEvent::Started,
+                job,
+            } => Some(job.clone()),
+            _ => None,
+        })
+        .collect()
+}
+
+// About a second: four rounds of children each run a shell job on a real
+// device.
+#[tokio::test]
+async fn a_childs_job_says_what_its_round_runs_on_in_the_menus_names() {
+    let scripts = Arc::new(Scripts::default());
+    let (_harness, backend, master, _paired, root, _provider) = tree(&scripts).await;
+    // A second entry whose `n` has a Fast tier, and a profile on it with
+    // thinking off and the Fast tier.
+    let quick = backend
+        .post(
+            "/api/providers",
+            Some(&master),
+            json!({
+                "source": "custom", "providerType": "tree", "label": "Quick", "apiKey": "k",
+                "models": [{
+                    "id": "n", "displayName": "N", "contextWindow": 100000, "outputLimit": null,
+                    "thinkingEfforts": ["low", "high"], "acceptedExtensions": null,
+                    "fastTier": "priority"
+                }]
+            }),
+        )
+        .await;
+    assert_eq!(quick.status, StatusCode::CREATED);
+    let quick = quick.json::<ProviderAnswer>().provider.id;
+    let profile = json!({
+        "name": "quick", "description": "Answers fast.",
+        "model": { "providerId": quick, "modelId": "n", "thinkingEffort": "disabled", "serviceTierId": "priority" },
+        "instructions": null, "canSpawn": false
+    });
+    let created = backend
+        .post("/api/subagents/profiles", Some(&master), profile)
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+
+    // Each round's child waits until the root's turn has ended, so that its
+    // completion wakes the idle root, which answers it.
+    let go = format!("{root}/go");
+    let mut round = async |id: &str, command: &str| {
+        let _ = std::fs::remove_file(&go);
+        scripts.root(
+            FIRST,
+            vec![shell(id, command), say("dispatched"), say("received")],
+        );
+        let mut frames = socket.chat(id, "Go").await;
+        std::fs::write(&go, "").unwrap();
+        frames.extend(
+            socket
+                .until(|frame| {
+                    matches!(
+                        frame,
+                        ServerFrame::Subagent {
+                            event: SubagentEvent::Closed,
+                            ..
+                        }
+                    )
+                })
+                .await,
+        );
+        frames.extend(socket.until_idle().await);
+        started(&frames)
+    };
+    let inherited = JobModel {
+        provider: "Tree".to_owned(),
+        model: "M".to_owned(),
+        effort: None,
+        fast: false,
+    };
+    let fast = JobModel {
+        provider: "Quick".to_owned(),
+        model: "N".to_owned(),
+        effort: Some("off".to_owned()),
+        fast: true,
+    };
+    let runs_on = |jobs: &[SubagentJob]| -> Vec<(u64, Option<String>, JobModel, u64, Option<u64>)> {
+        jobs.iter()
+            .map(|job| {
+                let job = job.clone();
+                (job.number, job.profile, job.model, job.round, job.forked_from)
+            })
+            .collect()
+    };
+
+    // A child without a profile runs on its parent's model.
+    scripts.child(vec![shell("c1", WAIT), say("first"), shell("c3", WAIT), say("again")]);
+    let jobs = round("t1", "demi agent spawn <<< 'Look'").await;
+    assert_eq!(runs_on(&jobs), [(1, None, inherited.clone(), 1, None)]);
+
+    // A profile's child runs on the profile's model.
+    scripts.child(vec![shell("c2", WAIT), say("quick")]);
+    let jobs = round("t2", "demi agent spawn --profile quick <<< 'Look fast'").await;
+    assert_eq!(
+        runs_on(&jobs),
+        [(2, Some("quick".to_owned()), fast.clone(), 1, None)]
+    );
+
+    // A resumed child starts its second round on the same model.
+    let jobs = round("t3", "demi agent resume 1 <<< 'Look again'").await;
+    assert_eq!(runs_on(&jobs), [(1, None, inherited.clone(), 2, None)]);
+
+    // A fork of the profile's child without a profile runs on its
+    // parent's model, which it switches to from its source's, and says
+    // which agent it was forked from.
+    scripts.child(vec![shell("c4", WAIT), say("forked")]);
+    let jobs = round("t4", "demi agent fork 2 <<< 'Look once more'").await;
+    assert_eq!(runs_on(&jobs), [(3, None, inherited.clone(), 1, Some(2))]);
+
+    // The conversation's subagents route says the same of the closed ones.
+    let listed = transcript(&backend, &master, FIRST).await.subagents;
+    assert_eq!(
+        runs_on(&listed),
+        [
+            (1, None, inherited.clone(), 2, None),
+            (2, Some("quick".to_owned()), fast, 1, None),
+            (3, None, inherited, 1, Some(2))
+        ]
     );
     backend.close().await;
 }

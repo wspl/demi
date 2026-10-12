@@ -20,12 +20,17 @@ export interface ReasoningState {
   firstEffort: string
 }
 
+/** An effort as the model menu names it: `high` is High. */
+export function effortWord(effort: string): TitleText {
+  return upperFirst(effort)
+}
+
 export function buildReasoningState(model: ModelInfo | null | undefined): ReasoningState | null {
   const first = model ? firstEffort(model) : null
   if (!model?.reasoning || first === null)
     return null
   const effortOptions = model.reasoning.efforts.map((effort): ReasoningOption => ({
-    label: upperFirst(effort),
+    label: effortWord(effort),
     effort,
   }))
   const options: ReasoningOption[] = model.reasoning.canDisable

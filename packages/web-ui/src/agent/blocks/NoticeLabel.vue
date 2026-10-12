@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import Tooltip from '../../ui/Tooltip.vue'
 import { KEEPS_WINDOWS } from '../../ui/window-stack'
 
 /**
@@ -13,8 +14,10 @@ import { KEEPS_WINDOWS } from '../../ui/window-stack'
  * one outside the session's windows (`KEEPS_WINDOWS`, `product.md` § the
  * dock's chips). On a narrow row the title gives way
  * first, down to a few characters, and then the words, each ending in an
- * ellipsis.
+ * ellipsis. The `tip` slot, when given, is what the title shows pointed at,
+ * such as what an agent runs on.
  */
+defineSlots<{ tip?(): unknown }>()
 defineProps<{
   notice: string
   /** What the notice names; none for a notice that names nothing. */
@@ -34,15 +37,20 @@ defineProps<{
     :class="subject ? 'notice-label-subject' : ''"
   >
     <span v-if="!subject" class="notice-words">{{ notice }}:</span>
-    <!-- The title's click is its own, never the row's. -->
-    <button
-      v-if="go"
-      type="button"
-      class="notice-title cursor-pointer text-fg-muted underline decoration-dotted decoration-fg-faint underline-offset-3 transition-colors duration-200 ease-out hover:text-fg-body hover:decoration-current"
-      v-bind="{ [KEEPS_WINDOWS]: '' }"
-      @click.stop="go"
-    >{{ title }}</button>
-    <span v-else class="notice-title text-fg-muted">{{ title }}</span>
+    <Tooltip class="notice-title" :disabled="!$slots.tip">
+      <!-- The title's click is its own, never the row's. -->
+      <button
+        v-if="go"
+        type="button"
+        class="notice-title-text cursor-pointer text-fg-muted underline decoration-dotted decoration-fg-faint underline-offset-3 transition-colors duration-200 ease-out hover:text-fg-body hover:decoration-current"
+        v-bind="{ [KEEPS_WINDOWS]: '' }"
+        @click.stop="go"
+      >{{ title }}</button>
+      <span v-else class="notice-title-text text-fg-muted">{{ title }}</span>
+      <template v-if="$slots.tip" #overlay>
+        <slot name="tip" />
+      </template>
+    </Tooltip>
     <span v-if="subject" class="notice-words">{{ notice }}</span>
   </span>
 </template>
@@ -73,6 +81,11 @@ defineProps<{
 }
 
 .notice-title {
+  display: flex;
+  min-width: 0;
+}
+
+.notice-title-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;

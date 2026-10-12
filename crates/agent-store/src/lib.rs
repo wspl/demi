@@ -23,7 +23,7 @@ pub mod testing;
 
 use std::rc::Rc;
 
-use demi_conversation_socket_protocol::{JobPhase, SubagentJob};
+use demi_conversation_socket_protocol::{JobModel, JobPhase, SubagentJob};
 use demi_host_interface::{Seen, WholeOutput};
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
@@ -233,14 +233,16 @@ pub struct NodeRecord {
     pub closed: Option<NodeClose>,
     /// Whether the completion of the closed round reached its parent.
     pub delivered: bool,
+    /// The number of the agent it was forked from; none for one not forked.
+    pub forked_from: Option<u64>,
 }
 
 impl NodeRecord {
     /// A child as the `subagent` frames and the conversation's transcript
-    /// route describe it (`subagents.md` § Protocol): running while it is
-    /// live, else as it closed, with the result of a completed round. The
-    /// root, which no node spawned, has none.
-    pub fn job(&self) -> Option<SubagentJob> {
+    /// route describe it (`subagents.md` § Protocol): running on `model`
+    /// while it is live, else as it closed, with the result of a completed
+    /// round. The root, which no node spawned, has none.
+    pub fn job(&self, model: JobModel) -> Option<SubagentJob> {
         let parent = self.parent.clone()?;
         let result = match self.closed.as_ref().map(|close| &close.phase) {
             Some(ClosePhase::Completed { result }) => Some(result.clone()),
@@ -252,6 +254,9 @@ impl NodeRecord {
             parent_session_id: parent,
             description: self.description.clone(),
             profile: self.profile.clone(),
+            model,
+            round: self.round,
+            forked_from: self.forked_from,
             phase: self
                 .closed
                 .as_ref()
@@ -277,6 +282,7 @@ impl NodeRecord {
             can_spawn_subagents: true,
             closed: None,
             delivered: false,
+            forked_from: None,
         }
     }
 }
