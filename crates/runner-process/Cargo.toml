@@ -42,9 +42,16 @@ rustix = { version = "1", features = ["fs", "process"] }
 # processes that left its groups (`runner.md` § Cancellation and completion).
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
-# The runner's umask, read without changing it (`src/process.rs`).
+# The runner's umask, read without changing it, and an ended child's
+# processor time (`src/process.rs`).
 [target.'cfg(target_os = "linux")'.dependencies]
 procfs = "0.18"
+
+# An ended child's processor time, which only proc_pid_rusage reads, in Mach
+# time units (`src/process.rs`).
+[target.'cfg(target_vendor = "apple")'.dependencies]
+libc = "0.2"
+mach2 = "0.7"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }

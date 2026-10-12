@@ -265,6 +265,47 @@ async fn ulimit_limits_the_jobs_own_processes_only() {
     assert_eq!(output, format!("{soft}\n{soft}\n"));
 }
 
+/// A job's `time` reports the processor time of the processes its pipeline
+/// started, with the children they waited for, and none of the runner's: a
+/// process that another part of the job started and that ends during the
+/// pipeline counts as nothing, and a pipeline that ran a builtin or standard
+/// utility says that its work is not counted. Before, `time` reported the
+/// whole runner's time and that of every child it reaped meanwhile, the
+/// background loop's here. About 0.8 s: each counted loop must take
+/// measurable time.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn time_reports_the_processes_its_pipeline_started_and_none_of_the_runners() {
+    let root = tempfile::tempdir().unwrap();
+    let script = r#"burn='i=0; while [ $i -lt 100000 ]; do i=$((i+1)); done'
+time /bin/sh -c "/bin/sh -c '$burn'"
+time env /bin/sh -c "$burn"
+/bin/sh -c "$burn" &
+time wait $!"#;
+    let (code, _, errors) = job(root.path(), script).await;
+    assert_eq!(code, 0, "{errors}");
+    let reports: Vec<&str> = errors.split("\nreal\t").skip(1).collect();
+    assert_eq!(reports.len(), 3, "{errors}");
+    let seconds = |report: &str, name: &str| -> f64 {
+        let line = report
+            .lines()
+            .find_map(|line| line.strip_prefix(&format!("{name}\t")))
+            .unwrap();
+        let (minutes, seconds) = line.trim_end_matches('s').split_once('m').unwrap();
+        minutes.parse::<f64>().unwrap() * 60.0 + seconds.parse::<f64>().unwrap()
+    };
+    let used = |report: &str| seconds(report, "user") + seconds(report, "sys");
+    let uncounted = "(work inside the runner not counted)";
+    // The inner shell's loop, which the outer one waited for.
+    assert!(used(reports[0]) >= 0.01, "{errors}");
+    assert!(!reports[0].contains(uncounted), "{errors}");
+    // `env` runs in the runner and starts the loop as its child.
+    assert!(used(reports[1]) >= 0.01, "{errors}");
+    assert!(reports[1].contains(uncounted), "{errors}");
+    assert_eq!(used(reports[2]), 0.0, "{errors}");
+    assert!(reports[2].contains(uncounted), "{errors}");
+}
+
 /// A job's `umask` holds for the processes its shell starts and the files
 /// its redirections and standard utilities create, not for the runner nor
 /// another job. Before, it set this test's own process's umask.

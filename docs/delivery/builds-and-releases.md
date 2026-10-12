@@ -66,7 +66,7 @@ Each executable is built for the targets where it runs:
 | Executable | Targets | Reason |
 | --- | --- | --- |
 | `demi-runner` | All six | Paired devices run macOS, Linux, or Windows on arm64 or x86_64, and the Cloud guest runs Linux |
-| `demi-file`, `demi-browser`, `demi-claude-code` | All six | A released command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
+| `demi-file`, `demi-browser`, `demi-claude-code`, `demi-fetch` | All six | A released command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
 | `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`; `aarch64-apple-darwin`, `x86_64-apple-darwin` in development only | Servers run Linux, and a release carries the Linux targets; a developer may also run the backend on a Mac, with the Cloud in a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md)) |
 | `demi-machine-manager` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | The machine manager drives gVisor, Linux namespaces, cgroups, loop devices, and nftables, which exist only on Linux |
 | `demi-server` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | It installs, upgrades and rolls back a server, which runs Linux ([Upgrades](upgrades.md)) |
@@ -309,7 +309,7 @@ Each executable has its own kind of release:
   and operations are the ones the
   package's contract crate declares (`command-package-file-protocol` for `demi-file`,
   `command-package-browser-protocol` for `demi-browser`, `command-package-claude-code-protocol` for
-  `demi-claude-code`), the operation list the program routes by, so a release
+  `demi-claude-code`, `command-package-fetch-protocol` for `demi-fetch`), the operation list the program routes by, so a release
   cannot advertise an operation the program does not serve; its version is
   the workspace version in the release workflow and a development version
   everywhere else ([Rust executables](package-versioning.md#rust-executables)).
@@ -395,6 +395,7 @@ For example, 0.1.3 for x86_64:
   commands/demi-file/           one command package release per directory, its descriptor
   commands/demi-browser/
   commands/demi-claude-code/
+  commands/demi-fetch/
   release.json                  where the release's files are
   image/                        the Cloud image release of the target's architecture
 
