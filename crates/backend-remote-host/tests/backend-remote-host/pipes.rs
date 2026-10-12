@@ -3,7 +3,10 @@ use std::{cell::RefCell, convert::Infallible, rc::Rc, time::Duration};
 use bytes::Bytes;
 use demi_backend_remote_host::{PipeError, PipeRefusal, Pipes};
 use futures_util::{StreamExt, stream};
+use demi_runner_protocol::wire::PipeFrame;
 use tokio::sync::mpsc;
+
+use crate::Framed;
 
 fn chunks(
     parts: &[&'static str],
@@ -55,11 +58,10 @@ async fn a_device_put_streams_into_a_device_get_and_answers_once_drained() {
         .chunks(64 * 1024)
         .map(|part| Ok::<_, Infallible>(Bytes::copy_from_slice(part)))
         .collect();
-    let mut sink = pipes.claim_sink(pipe.id(), "b").unwrap();
+    let sink = pipes.claim_sink(pipe.id(), "b").unwrap();
     let source = pipes.claim_source(pipe.id(), "a").unwrap();
     let put = tokio::task::spawn_local(source.pump(stream::iter(parts)));
-    sink.source_arrived().await.unwrap();
-    assert_eq!(collect(sink.into_stream()).await, payload);
+    assert_eq!(Framed::new(sink).read().await, (payload, Ok(())));
     put.await.unwrap().unwrap();
     pipe.done().await.unwrap();
     // Single use; the other device at either end is no party to it.
@@ -120,9 +122,8 @@ async fn this_process_reads_a_put_and_feeds_a_get_one_chunk_at_a_time() {
     }
     // One chunk may be in flight; the next write waits for the sink.
     assert!(wrote.borrow().len() <= 1, "{:?}", wrote.borrow());
-    let mut sink = pipes.claim_sink(outbound.id(), "b").unwrap();
-    sink.source_arrived().await.unwrap();
-    assert_eq!(collect(sink.into_stream()).await, b"one two three");
+    let sink = pipes.claim_sink(outbound.id(), "b").unwrap();
+    assert_eq!(Framed::new(sink).read().await, (b"one two three".to_vec(), Ok(())));
     producer.await.unwrap();
     outbound.done().await.unwrap();
 
@@ -155,9 +156,9 @@ async fn a_missing_end_times_out_a_lost_device_fails_its_pipes_an_early_reader_d
     );
 
     let dropped = pipes.mint(Some("a"), Some("b"));
-    let mut waiting = pipes.claim_sink(dropped.id(), "b").unwrap();
+    let waiting = pipes.claim_sink(dropped.id(), "b").unwrap();
     pipes.device_gone("a");
-    let refusal = waiting.source_arrived().await.unwrap_err().to_string();
+    let refusal = Framed::new(waiting).read().await.1.unwrap_err();
     assert!(refusal.contains("device a disconnected"), "{refusal}");
 
     // The reader takes one chunk and leaves: the PUT is answered as drained.
@@ -192,7 +193,7 @@ async fn the_arrival_window_ends_once_both_ends_are_there_however_quiet() {
     let (sender, body) = body();
     let source = pipes.claim_source(pipe.id(), "a").unwrap();
     let put = tokio::task::spawn_local(source.pump(body));
-    let mut sink = pipes.claim_sink(pipe.id(), "b").unwrap();
+    let sink = pipes.claim_sink(pipe.id(), "b").unwrap();
     assert_eq!(
         pipes.claim_sink(pipe.id(), "b").err(),
         Some(PipeRefusal::AlreadyConnected)
@@ -204,8 +205,7 @@ async fn the_arrival_window_ends_once_both_ends_are_there_however_quiet() {
     tokio::time::sleep(Duration::from_millis(80)).await;
     sender.send(Ok(Bytes::from_static(b"late"))).await.unwrap();
     drop(sender);
-    sink.source_arrived().await.unwrap();
-    assert_eq!(collect(sink.into_stream()).await, b"late");
+    assert_eq!(Framed::new(sink).read().await, (b"late".to_vec(), Ok(())));
     put.await.unwrap().unwrap();
     pipe.done().await.unwrap();
 }
@@ -215,7 +215,7 @@ async fn handing_a_held_source_to_a_device_waits_for_that_device() {
     let pipes = Pipes::new(Duration::from_millis(40));
     let pipe = pipes.to_device("b");
     pipe.hold_source().unwrap();
-    let mut sink = pipes.claim_sink(pipe.id(), "b").unwrap();
+    let sink = pipes.claim_sink(pipe.id(), "b").unwrap();
     pipe.source_from("a").unwrap();
     assert!(
         pipe.done()
@@ -224,8 +224,32 @@ async fn handing_a_held_source_to_a_device_waits_for_that_device() {
             .to_string()
             .contains("an end never arrived")
     );
-    assert!(sink.source_arrived().await.is_err());
+    assert!(Framed::new(sink).read().await.1.is_err());
     assert_eq!(pipe.writer().err(), Some(PipeError::Settled));
+}
+
+/// A sink's response goes out at once and keeps itself alive while the
+/// pipe says nothing: an idle frame after each 30 s without a frame, so an
+/// edge that ends a response silent for 100 s, as Cloudflare's does, keeps
+/// it; its end frame carries the cause the device reports. Before, the
+/// response sent nothing until the first byte, and Cloudflare ended a quiet
+/// `demi shell status --wait 5m` with `pipe refused (524)`.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_quiet_sink_sends_an_idle_frame_every_30_seconds_and_ends_with_its_cause() {
+    let pipes = Pipes::new(Duration::from_secs(600));
+    let pipe = pipes.mint(Some("a"), Some("b"));
+    let started = tokio::time::Instant::now();
+    let mut response = Framed::new(pipes.claim_sink(pipe.id(), "b").unwrap());
+    for idle in 1..=3 {
+        assert_eq!(response.frame().await, Some(PipeFrame::Idle));
+        assert_eq!(started.elapsed(), Duration::from_secs(30 * idle));
+    }
+    pipes.fail(pipe.id(), "the job's device went away");
+    assert_eq!(
+        response.frame().await,
+        Some(PipeFrame::End(Err("the job's device went away".to_owned())))
+    );
+    assert_eq!(response.frame().await, None);
 }
 
 #[tokio::test(flavor = "local")]
@@ -235,14 +259,11 @@ async fn a_failure_interrupts_a_quiet_body_and_a_waiting_read() {
     let (_sender, body) = body();
     let source = pipes.claim_source(pipe.id(), "a").unwrap();
     let put = tokio::task::spawn_local(source.pump(body));
-    let mut sink = pipes.claim_sink(pipe.id(), "b").unwrap();
-    sink.source_arrived().await.unwrap();
-    let mut response = sink.into_stream();
-    let read = tokio::task::spawn_local(async move { response.next().await });
+    let sink = pipes.claim_sink(pipe.id(), "b").unwrap();
+    let read = tokio::task::spawn_local(Framed::new(sink).read());
     tokio::task::yield_now().await;
     pipes.fail(pipe.id(), "cancelled");
-    let read = read.await.unwrap().unwrap().unwrap_err();
-    assert_eq!(read.to_string(), "pipe failed: cancelled");
+    assert_eq!(read.await.unwrap(), (Vec::new(), Err("cancelled".to_owned())));
     assert_eq!(
         put.await.unwrap().unwrap_err().to_string(),
         "pipe failed: cancelled"
@@ -255,15 +276,10 @@ async fn a_device_report_counts_only_from_an_end_and_only_while_open() {
     let pipes = Pipes::new(Duration::from_secs(5));
     let pipe = pipes.mint(Some("a"), Some("b"));
     assert!(!pipes.fail_from_device(pipe.id(), "unrelated", "unauthorized failure"));
-    let mut sink = pipes.claim_sink(pipe.id(), "b").unwrap();
+    let sink = pipes.claim_sink(pipe.id(), "b").unwrap();
     assert!(pipes.fail_from_device(pipe.id(), "a", "upload refused"));
-    assert!(
-        sink.source_arrived()
-            .await
-            .unwrap_err()
-            .to_string()
-            .contains("upload refused")
-    );
+    let (_, end) = Framed::new(sink).read().await;
+    assert!(end.unwrap_err().contains("upload refused"));
     // Once over, the other end's failure is the consequence, not news.
     assert!(!pipes.fail_from_device(pipe.id(), "b", "later failure"));
     assert!(
@@ -281,9 +297,8 @@ async fn an_empty_upload_settles_both_ends() {
     let pipe = pipes.mint(Some("a"), Some("b"));
     let source = pipes.claim_source(pipe.id(), "a").unwrap();
     let put = tokio::task::spawn_local(source.pump(chunks(&[])));
-    let mut sink = pipes.claim_sink(pipe.id(), "b").unwrap();
-    sink.source_arrived().await.unwrap();
-    assert_eq!(collect(sink.into_stream()).await, b"");
+    let sink = pipes.claim_sink(pipe.id(), "b").unwrap();
+    assert_eq!(Framed::new(sink).read().await, (Vec::new(), Ok(())));
     put.await.unwrap().unwrap();
     pipe.done().await.unwrap();
 }
@@ -301,15 +316,17 @@ async fn an_end_that_goes_away_before_the_end_fails_the_pipe() {
     // A response cut short.
     let pipe = pipes.mint(None, Some("b"));
     let mut writer = pipe.writer().unwrap();
-    let mut sink = pipes.claim_sink(pipe.id(), "b").unwrap();
-    sink.source_arrived().await.unwrap();
-    let mut response = sink.into_stream();
+    let sink = pipes.claim_sink(pipe.id(), "b").unwrap();
+    let mut response = Framed::new(sink);
     tokio::task::spawn_local(async move {
         // The pipe fails under the writer when the response goes.
         let _ = writer.write(Bytes::from_static(b"first")).await;
         let _ = writer.write(Bytes::from_static(b"second")).await;
     });
-    assert_eq!(response.next().await.unwrap().unwrap(), "first");
+    assert_eq!(
+        response.frame().await,
+        Some(PipeFrame::Data(Bytes::from_static(b"first")))
+    );
     drop(response);
     assert_eq!(
         pipe.done().await.unwrap_err().to_string(),

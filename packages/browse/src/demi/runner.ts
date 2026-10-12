@@ -26,18 +26,23 @@ const RUNNER_MS = 60_000
 /** How long the runner may take to stop before it is killed. */
 const STOP_MS = 15_000
 
+/**
+ * `backend` is the address the runner reaches the backend at, the slot's
+ * backend unless it names another, such as a proxy in front of it that
+ * stands for an edge.
+ */
 export function runner(tool: Tool) {
   return Object.assign(
-    (options: { fresh?: boolean } = {}) => act(tool, options.fresh ? 'new' : 'default'),
+    (options: { fresh?: boolean, backend?: string } = {}) => act(tool, options.fresh ? 'new' : 'default', options.backend),
     {
       stop: () => act(tool, 'stop'),
-      start: () => act(tool, 'start'),
+      start: (options: { backend?: string } = {}) => act(tool, 'start', options.backend),
     },
   )
 }
 
 /** Does what `request` asks of the slot's runner; answers the device's name once it runs, or null once it is stopped. */
-async function act(tool: Tool, request: RunnerRequest): Promise<string | null> {
+async function act(tool: Tool, request: RunnerRequest, backend?: string): Promise<string | null> {
   const { slot } = tool
   const state = readState(slot)
   const running = runningServer(slot, 'runner')
@@ -61,7 +66,7 @@ async function act(tool: Tool, request: RunnerRequest): Promise<string | null> {
     case 'start': {
       requireServers(tool)
       const generation = state.runner?.generation ?? 1
-      const started = start(tool, generation)
+      const started = start(tool, generation, backend)
       const connected = await untilReady('The runner', started, async () => lineOf(started.group.log, PAIRED)?.[1] ?? null, RUNNER_MS)
       tool.print(`Runner    ${connected} started again and connected; its log is ${started.group.log}`)
       return connected
@@ -74,7 +79,7 @@ async function act(tool: Tool, request: RunnerRequest): Promise<string | null> {
           ? 'Runner    stopped the slot\'s runner, whose pairing never ended, to pair it again'
           : `Runner    ${device} stopped; the backend keeps it as an offline device`)
       }
-      return pair(tool, step.generation)
+      return pair(tool, step.generation, backend)
   }
 }
 
@@ -84,15 +89,15 @@ function requireServers(tool: Tool): void {
   }
 }
 
-/** Starts the runner of `generation` on the slot's installation and records its group. */
-function start(tool: Tool, generation: number): Started {
+/** Starts the runner of `generation` on the slot's installation, reaching the backend at `backend`, and records its group. */
+function start(tool: Tool, generation: number, backend = local(tool.slot.ports.backend)): Started {
   const { slot } = tool
   const program = join(slot.root, 'target/debug/demi-runner')
   if (!existsSync(program)) {
     throw new Failure(`${program} is missing; demi.up() builds it with the backend`)
   }
   const home = slotPaths(slot).runnerHome
-  const command = [program, 'run', '--backend', local(slot.ports.backend), '--home', home, '--name', runnerName(slot.number, generation)]
+  const command = [program, 'run', '--backend', backend, '--home', home, '--name', runnerName(slot.number, generation)]
   const started = startGroup(command, { cwd: slot.root, env: childEnv(tool, {}), log: freshLog(slot, 'runner') })
   updateState(slot, (state) => {
     state.servers.runner = started.group
@@ -101,7 +106,7 @@ function start(tool: Tool, generation: number): Started {
 }
 
 /** Pairs a runner of `generation` in a new installation through Add Device; answers its device name. */
-async function pair(tool: Tool, generation: number): Promise<string> {
+async function pair(tool: Tool, generation: number, backend?: string): Promise<string> {
   const { slot } = tool
   const home = slotPaths(slot).runnerHome
   rmSync(home, { recursive: true, force: true })
@@ -109,7 +114,7 @@ async function pair(tool: Tool, generation: number): Promise<string> {
   updateState(slot, (state) => {
     state.runner = { generation, device: null }
   })
-  const started = start(tool, generation)
+  const started = start(tool, generation, backend)
   const code = await untilReady('The runner', started, async () => lineOf(started.group.log, PAIRING_CODE)?.[1] ?? null, RUNNER_MS)
   tool.print(`Runner    ${runnerName(slot.number, generation)} started; pairing code ${code}`)
 
