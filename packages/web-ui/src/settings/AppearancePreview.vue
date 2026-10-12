@@ -15,7 +15,8 @@ defineProps<{
   fontSize: number
 }>()
 
-// Short lines, so the sample stays two lines of prose and three of code at any size.
+// Short lines, so the sample stays two lines of prose and two of code at any
+// size, and fits the frame's minimum at the largest size.
 const SAMPLE = [
   'Text at this size,\\',
   'line after line.',
@@ -23,7 +24,6 @@ const SAMPLE = [
   '```ts',
   'const on = true',
   'if (on) run()',
-  'return done',
   '```',
 ].join('\n')
 
