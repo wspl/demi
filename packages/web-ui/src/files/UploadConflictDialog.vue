@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { countOf, countUnlessOne } from '@demicodes/utils'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
@@ -32,10 +33,9 @@ const emit = defineEmits<{
 
 const merges = computed(() => props.clashes.some((clash) => clash.isDirectory && clash.takenByDirectory))
 
-/** `file`, `folder`, or `item` for a mix, in the plural past one. */
+/** `file`, `folder`, or `item` for a mix. */
 function noun(files: number, folders: number): string {
-  const word = folders === 0 ? 'file' : files === 0 ? 'folder' : 'item'
-  return files + folders === 1 ? word : `${word}s`
+  return folders === 0 ? 'file' : files === 0 ? 'folder' : 'item'
 }
 
 const title = computed(() => {
@@ -43,7 +43,7 @@ const title = computed(() => {
   if (clashes.length === 1)
     return `Replace ${clashes[0]!.name}?`
   const folders = clashes.filter((clash) => clash.isDirectory).length
-  return `Replace ${clashes.length} ${noun(clashes.length - folders, folders)}?`
+  return `Replace ${countOf(clashes.length, noun(clashes.length - folders, folders))}?`
 })
 
 /** The names in a sentence: all of them up to three, then the first two and how many more. */
@@ -59,7 +59,7 @@ const body = computed(() => {
   const them = one ? 'it' : 'them'
   const { files, folders } = props.others
   const count = files + folders
-  const rest = count === 0 ? 'nothing' : `the other ${count === 1 ? '' : `${count} `}${noun(files, folders)}`
+  const rest = count === 0 ? 'nothing' : `the other ${countUnlessOne(count, noun(files, folders))}`
   const answers = merges.value
     ? `Merge adds yours to ${them}, writing over files with the same names; Replace deletes ${them} with everything in ${them} first`
     : `Replace writes over ${them}`

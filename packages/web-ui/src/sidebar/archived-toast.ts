@@ -1,8 +1,9 @@
+import { countUnlessOne } from '@demicodes/utils'
 import { showToast, updateToast } from '../infra/toast'
 import type { HeadlineText } from '../ui/ui-text'
 
 function archivedTitle(count: number): HeadlineText {
-  return count === 1 ? 'Conversation Archived' : `${count} Conversations Archived`
+  return `${countUnlessOne(count, 'Conversation')} Archived`
 }
 
 /**
