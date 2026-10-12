@@ -1195,7 +1195,7 @@ when the user is meant to look at it or act in it: the user asked to see a
 page, a sign-in or a choice needs the user's hand, or the page is a result for
 the user. It does not show the tabs it opens to check its own work. `show`
 only records the request on the tab and answers at once; the user's panel
-opens and selects the tab once the command's job ends
+opens and selects the tab once the command ends
 ([Showing a tab](live-view.md#showing-a-tab)). It does not bring the tab to
 the front of the Host's browser window, and the user may have looked away
 again by the time the agent continues. Showing a tab again shows it again.

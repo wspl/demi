@@ -308,20 +308,26 @@ state again ([Data a page shows](plugin-pages.md#data-a-page-shows)):
 
 | Topic | Scope | Fires when |
 | --- | --- | --- |
-| `jobs` | Conversation | A job of the conversation ends |
+| `calls` | Conversation | A call of one of the plugin's own commands in the conversation ends, however it ends; it fires for that plugin alone |
 
 For example, `plugin-browser`'s conversation state, the conversation
-browser's tab list, follows `jobs`: the agent's `demi browser open` is a job,
-and when it ends every page that shows the conversation reads the list again.
-A topic belongs to the product service whose change it is: `jobs` to host
-access. A topic joins when a plugin's state needs
-it, as a slot of the page does.
+browser's tab list, follows `calls`: when the agent's `demi browser open`
+ends, every page that shows the conversation reads the list again. The
+agent's `rg`, a build, or a `demi file edit` calls no `demi browser`
+command, so it fires nothing for the browser. Only the plugin's own commands
+can change what it shows: an agent that searches a repository every few
+seconds would otherwise have the tab list read from its Host after every
+search. A tab a page opens by itself reaches the panel through the live view
+instead ([A browser tab in the panel](../browser/live-view.md#a-browser-tab-in-the-panel)). A topic
+belongs to the product service whose change it is: `calls` to the plugin
+host, which forwards the calls. A topic joins when a plugin's state needs it,
+as a slot of the page does.
 
 A manifest can also name the topics the plugin itself is told about: when one
 fires, the plugin host sends the plugin a `topic` request for its scope, after
-it marked the state changed. `plugin-browser` is told about `jobs`, since a job
-of the agent may have opened or closed tabs that the work panel shows
-([Panel kinds](#panel-kinds)).
+it marked the state changed. `plugin-browser` is told about `calls`, since a
+`demi browser` command of the agent may have opened or closed tabs that the
+work panel shows ([Panel kinds](#panel-kinds)).
 
 ### Panel kinds
 
@@ -642,7 +648,7 @@ not use.
 | Id | Name | Crate | Contributes | Page package | Design |
 | --- | --- | --- | --- | --- | --- |
 | `file` | Demi File Commands | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
-| `browser` | Browser | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
+| `browser` | Browser | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `calls`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
 | `skills` | Skills | `plugin-skills` | A context source; the `demi skills` group and the category Manage skills; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
 | `web` | Web | `plugin-web` | The `demi web` group: `search`, an rpc leaf, and `fetch`, bound to `demi.fetch`; secrets, outbound requests and an OAuth sign-in to Exa; user state and methods to sign in, sign out, save and remove a key | `@demicodes/plugin-web`: the Web Search settings section with its sidebar entry | [Web search and fetch](../agent/web.md) |
 | `changes` | Changes | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
