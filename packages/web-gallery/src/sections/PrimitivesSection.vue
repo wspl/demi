@@ -10,6 +10,7 @@ import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import ShortcutRecorder from '@demicodes/web-ui/ui/ShortcutRecorder.vue'
+import StatusDot, { type StatusDotTone } from '@demicodes/web-ui/ui/StatusDot.vue'
 import SwatchPicker from '@demicodes/web-ui/ui/SwatchPicker.vue'
 import ResizeHandle from '@demicodes/web-ui/ui/ResizeHandle.vue'
 import ChoiceCards, { type ChoiceCardOption } from '@demicodes/web-ui/ui/ChoiceCards.vue'
@@ -48,6 +49,9 @@ const paneWidth = ref(200)
 const paneHeight = ref(96)
 
 const spinning = ref(false)
+
+const dotTones: readonly StatusDotTone[] = ['accent', 'success', 'warning', 'danger', 'attention', 'muted']
+const dotBreathing = ref(true)
 
 const query = ref('session cookie')
 const emptyQuery = ref('')
@@ -696,6 +700,29 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
     </template>
 
     <template v-if="view === 'marks'">
+      <GallerySection
+        title="StatusDot"
+        note="The product’s one dot for a status. A running thing breathes the same everywhere (the sidebar row, a tab’s corner, the status bar, the dock’s chips): the opacity runs 0.35 to 1 and the size 0.8 to 1.15 over 2.4 seconds. Under the system’s Reduce Motion setting the dot stays still at full opacity. The ring is the settled mark that holds a dot’s place."
+      >
+        <div class="specimen-row">
+          <GallerySpecimen v-for="tone in dotTones" :key="tone" :variant="tone">
+            <StatusDot :tone="tone" :label="tone" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="ring">
+            <StatusDot tone="muted" ring label="settled" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="xs">
+            <StatusDot tone="success" size="xs" label="xs" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="breathing">
+            <div class="flex items-center gap-3">
+              <StatusDot tone="accent" :breathing="dotBreathing" label="running" />
+              <Switch v-model="dotBreathing" label="Breathing" size="sm" />
+            </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
       <GallerySection
         title="ConversationStatusDot"
         note="Idle, active, done, error, and aborted."
