@@ -139,7 +139,9 @@ conversation no longer runs, its subagents and background jobs included.
   own installation folder under `.cache/browse/` and pairs it through Add
   Device, or reuses the one it paired; `demi.runner.stop()` and `.start()`
   stop and start that same runner, as a device that goes away and comes back,
-  and `demi.runner({ fresh: true })` pairs a new one.
+  and `demi.runner({ fresh: true })` pairs a new one. `demi.runner({ backend })`
+  and `.start({ backend })` have the runner reach the backend at another
+  address, such as a local proxy that stands in for a CDN's edge.
 - **Frames.** `demi.frames(probe)` runs `probe` in the page at every frame the
   page draws and returns what it read each time, for a check that a list never
   shrinks or a row keeps its place across a transition.
