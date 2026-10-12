@@ -26,7 +26,9 @@ import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { providerLogo, vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
-import { usageAt } from '../fixtures/catalog'
+import { usageAt, usageOf } from '../fixtures/catalog'
+import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
+import type { UsageLimits } from '@demicodes/web-ui/agent/context-usage'
 import GallerySection from '../components/GallerySection.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import { productWould } from '../product-would'
@@ -81,6 +83,22 @@ const compactIdle = ref(false)
 const compactWarn = ref(false)
 const compactDanger = ref(false)
 const compactPinned = ref(false)
+/** The usage limits of the account the card's conversation runs on; each time the card shows them, a probe reads each window a little further used. */
+const cardLimits = ref<UsageLimits>({
+  plan: 'Max 5×',
+  autoRefresh: true,
+  windows: [
+    { id: 'five_hour', label: '5h session', used: 18, max: 100, resetsAt: ahead(3 * HOUR + 38 * MINUTE) },
+    { id: 'seven_day', label: '7d all models', used: 34, max: 100, resetsAt: ahead(5 * DAY + 2 * HOUR) },
+    { id: 'limit:weekly_scoped:Fable', label: '7d Fable', used: 81, max: 100, resetsAt: ahead(12 * DAY) },
+  ],
+})
+function refreshCardLimits(): void {
+  cardLimits.value = {
+    ...cardLimits.value,
+    windows: cardLimits.value.windows.map((window) => ({ ...window, used: Math.min(window.max, window.used + 1) })),
+  }
+}
 const buttonPressed = ref(true)
 const buttonGhostPressed = ref(true)
 const buttonPrimaryPressed = ref(true)
@@ -706,7 +724,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
 
       <GallerySection
         title="ContextUsageIndicator"
-        note="The ring is the backend’s estimate. Point at it for the card: a click on the ring does nothing, Compact compacts. Compact is offered from half the window. The card lists the instructions the model holds; an entry opens where it is written."
+        note="The ring is the backend’s estimate. Point at it for the card, on a phone tap it for a sheet: a click on the ring does nothing, Compact compacts, from half the window. The bar and the rows say what fills the context, each row with its estimate and share of the window; a row with a chevron opens into its parts, and an instructions file opens where it is written. Under them, the usage limits of a subscription account; a model on an API key has none."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="below half · 34%">
@@ -744,7 +762,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
           </GallerySpecimen>
           <GallerySpecimen variant="no window">
             <ContextUsageIndicator
-              :usage="{ tokens: 12000, window: null, compactFrom: null }"
+              :usage="usageOf(12_000, null)"
               @compact="productWould('Compact the Conversation')"
             />
           </GallerySpecimen>
@@ -752,20 +770,38 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
         <!-- Each card pinned open in a well of its own, with room above the ring for it. -->
         <div class="flex flex-wrap gap-6">
           <GalleryOverlayWell>
-            <GallerySpecimen variant="card · Compact offered">
-              <div class="px-28 pt-14">
+            <GallerySpecimen variant="card · a long conversation, Compact offered">
+              <div class="px-44 pt-[36rem]">
                 <ContextUsageIndicator
                   pinned
                   :usage="usageAt(0.62)"
                   :is-compacting="compactPinned"
+                  :instructions="demoInstructions"
+                  :limits="cardLimits"
                   @compact="pulseCompact('pinned')"
+                  @open-instruction="demoOpenInstruction($event, productWould)"
+                  @refresh-limits="refreshCardLimits"
                 />
               </div>
             </GallerySpecimen>
           </GalleryOverlayWell>
           <GalleryOverlayWell>
-            <GallerySpecimen variant="card · instructions">
-              <div class="px-36 pt-48">
+            <GallerySpecimen variant="card · just compacted, Compact disabled">
+              <div class="px-44 pt-[36rem]">
+                <ContextUsageIndicator
+                  pinned
+                  :usage="usageAt(0.06, { summary: 2_400 })"
+                  :instructions="demoInstructions"
+                  :limits="cardLimits"
+                  @open-instruction="demoOpenInstruction($event, productWould)"
+                  @refresh-limits="refreshCardLimits"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell>
+            <GallerySpecimen variant="card · API key, no usage limits">
+              <div class="px-44 pt-[26rem]">
                 <ContextUsageIndicator
                   pinned
                   :usage="usageAt(0.42)"
@@ -773,13 +809,6 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                 />
-              </div>
-            </GallerySpecimen>
-          </GalleryOverlayWell>
-          <GalleryOverlayWell>
-            <GallerySpecimen variant="card · below half, Compact disabled">
-              <div class="px-28 pt-14">
-                <ContextUsageIndicator pinned :usage="usageAt(0.23)" />
               </div>
             </GallerySpecimen>
           </GalleryOverlayWell>

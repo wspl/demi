@@ -7,6 +7,7 @@
 //! synchronous closure ends before any await, and each change's events reach
 //! the listeners after the state is released.
 
+mod breakdown;
 mod bus;
 mod cancel;
 mod compaction;
@@ -63,7 +64,7 @@ pub use editing::{
 pub use retry::RetryPolicy;
 pub use worker::left_by_offline_host;
 pub use runtime::{
-    CallCommand, CommandLook, InputArrival, NewContext, RunningWork, SeenContext, SessionRuntime, StartedCommand,
+    CallCommand, CommandLook, InputArrival, NewContext, PromptLayer, RunningWork, SeenContext, SessionRuntime, StartedCommand, SystemPrompt,
     StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome, WindowEnd,
 };
 

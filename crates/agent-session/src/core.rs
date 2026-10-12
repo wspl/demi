@@ -20,7 +20,7 @@ use demi_agent_store::{
 use demi_agent_transcript::{
     DirtyRows, INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, REPLAY_CHARS, RequestView,
     TranscriptLog, labelled_output,
-    estimate::{blocks_tokens, context_anchor},
+    estimate::{anchor_tokens, blocks_tokens, context_anchor},
     replay, replay_start,
 };
 use demi_conversation_socket_protocol::AbortTarget;
@@ -1714,13 +1714,14 @@ impl SessionCore {
     /// the blocks after the anchor weigh, so only their media need to be
     /// held: a session restored with media, which holds none, tells it
     /// without a read while those blocks reference none.
-    pub(super) fn context_estimate(&self) -> Result<u64, Vec<BlobRef>> {
+    pub(super) fn context_estimate(&self, system_prompt: &str) -> Result<u64, Vec<BlobRef>> {
         let blocks = self.transcript.blocks();
         let start = replay_start(blocks);
         let replayed = &blocks[start..];
         let anchor = context_anchor(replayed, &self.model.model);
         let weighed = ModelView::of(start + anchor.from, &replayed[anchor.from..], &self.media)?;
-        Ok(anchor.tokens + blocks_tokens(&weighed.blocks, &self.request_view(&weighed)))
+        Ok(anchor_tokens(&anchor, system_prompt, &self.tools)
+            + blocks_tokens(&weighed.blocks, &self.request_view(&weighed)))
     }
 
     /// Drains the transcript's patches into one event and marks their rows

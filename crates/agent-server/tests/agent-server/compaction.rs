@@ -15,7 +15,7 @@ use demi_agent_transcript::testing::SequentialIds;
 use demi_conversation_socket_protocol::{ClientFrame, ClientFrameKind, ServerFrame};
 use demi_host_interface::CommandSet;
 use demi_provider_common::testing::{FixedClock, ScriptedRuntime, Turn, event};
-use demi_shared_types::{Block, ContextUsage, EXECUTION_SOURCE, NodeId, SessionPhase};
+use demi_shared_types::{Block, ContextRowKind, EXECUTION_SOURCE, NodeId, SessionPhase};
 use serde_json::json;
 
 use crate::support::{
@@ -26,14 +26,19 @@ use crate::support::{
 /// The test model's window, which `model_of` gives every scripted model.
 const WINDOW: u64 = 100_000;
 
-fn usage(tokens: u64) -> ServerFrame {
-    ServerFrame::ContextUsage {
-        usage: ContextUsage {
-            tokens,
-            window: Some(WINDOW),
-            compact_from: Some(WINDOW / 2),
-        },
+/// The usage a frame tells: its estimate, its window and the estimate the
+/// user may compact from.
+fn usage(frame: Option<&ServerFrame>) -> Option<(u64, Option<u64>, Option<u64>)> {
+    match frame? {
+        ServerFrame::ContextUsage { usage } => {
+            Some((usage.tokens, usage.window, usage.compact_from))
+        }
+        _ => None,
     }
+}
+
+fn of_window(tokens: u64) -> Option<(u64, Option<u64>, Option<u64>)> {
+    Some((tokens, Some(WINDOW), Some(WINDOW / 2)))
 }
 
 fn last_usage(frames: &[ServerFrame]) -> Option<&ServerFrame> {
@@ -59,11 +64,27 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
     client.next_until(is_pending_steers).await;
     // The usage follows the handshake.
     let opened = client.next_until(is_context_usage).await;
-    assert_eq!(opened.last(), Some(&usage(0)));
+    // Before any message the estimate is the system prompt's and the
+    // tools', all of it the System prompt and Commands rows.
+    let Some(ServerFrame::ContextUsage { usage: first }) = opened.last() else {
+        panic!("the open reported no usage: {opened:?}");
+    };
+    let row_kinds: Vec<_> = first.rows.iter().map(|row| row.kind).collect();
+    let prompt: u64 = first.rows[..2].iter().map(|row| row.tokens).sum();
+    assert_eq!(
+        row_kinds,
+        [
+            ContextRowKind::SystemPrompt,
+            ContextRowKind::Commands,
+            ContextRowKind::CompactionBuffer,
+            ContextRowKind::FreeSpace
+        ]
+    );
+    assert!(first.tokens > 0 && first.tokens == prompt, "{first:?}");
 
     client.send(send("m1", "first")).await;
     let turn = client.next_until(is_idle).await;
-    assert_eq!(last_usage(&turn), Some(&usage(30_000)));
+    assert_eq!(usage(last_usage(&turn)), of_window(30_000));
     client.send(ClientFrame::Compact {}).await;
     assert_eq!(
         client.next().await,
@@ -75,7 +96,7 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
 
     client.send(send("m2", "second")).await;
     let turn = client.next_until(is_idle).await;
-    assert_eq!(last_usage(&turn), Some(&usage(60_000)));
+    assert_eq!(usage(last_usage(&turn)), of_window(60_000));
     client.send(ClientFrame::Compact {}).await;
     let compaction = client.next_until(is_idle).await;
     assert!(compaction.contains(&ServerFrame::Phase {

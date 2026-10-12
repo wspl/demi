@@ -38,9 +38,9 @@ pub use agent_message::{
 };
 pub use block::{
     AbortBlock, AgentMessageBlock, Block, CommandEnd, CommandReport, CompactionBoundaryBlock, CompactionMarkerBlock,
-    ContextBlock, ErrorBlock, ErrorDevice, EXECUTION_SOURCE, HOST_OFFLINE, INSTRUCTIONS_SOURCE, InstructionEntry, KeptMessage, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, SteerBlock, StoppedBy,
+    ContextBlock, ErrorBlock, ErrorDevice, EXECUTION_SOURCE, HOST_OFFLINE, SKILLS_SOURCE, INSTRUCTIONS_SOURCE, InstructionEntry, KeptMessage, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, SteerBlock, StoppedBy,
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock, client_block,
-    client_blocks, WakeupPlacement,
+    client_blocks, instruction_sections, WakeupPlacement,
 };
 pub use bytes::B64Bytes;
 pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};
@@ -77,7 +77,10 @@ pub use quota::{
 };
 pub use read_at::ReadAt;
 pub use schema::Nullable;
-pub use session::{ContextUsage, PendingCall, PendingSteer, QueuedMessage, SessionPhase};
+pub use session::{
+    ContextPart, ContextRow, ContextRowKind, ContextUsage, PendingCall, PendingSteer, PromptLayerKind,
+    QueuedMessage, SessionPhase,
+};
 pub use time::{Clock, SystemClock, Timestamp, TimestampError};
 pub use view::{
     BinaryStdout, ChangedFile, EditCopies, EditKind, EditSegment, EditedFile, FileEdit, LineCounts,

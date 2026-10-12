@@ -5,7 +5,9 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{BlockId, MAX_SAFE_INTEGER, ModelSelection, Nullable, TurnId, UserContentBlock};
+use crate::{
+    BlockId, InstructionEntry, MAX_SAFE_INTEGER, ModelSelection, Nullable, TurnId, UserContentBlock,
+};
 
 /// What a session is doing, as clients see it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
@@ -21,7 +23,7 @@ serde_plain::derive_fromstr_from_deserialize!(SessionPhase);
 
 /// How full the session's next request is, as compaction estimates it
 /// (`compaction.md` § Context estimate), with the window its thresholds use.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ContextUsage {
     /// The estimate of the next request, in tokens.
@@ -38,6 +40,137 @@ pub struct ContextUsage {
     #[schemars(with = "Nullable<u64>")]
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub compact_from: Option<u64>,
+    /// What fills the context (`compaction.md` § What fills the context),
+    /// in the card's order, a row with no tokens left out. The rows before
+    /// the compaction buffer add up to the estimate, or to more when the
+    /// rows above Messages alone do.
+    #[garde(dive)]
+    pub rows: Vec<ContextRow>,
+}
+
+/// One row of what fills the context.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ContextRow {
+    #[garde(skip)]
+    pub kind: ContextRowKind,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub tokens: u64,
+    /// Whether the row is counted from text, which the card says with `~`;
+    /// the compaction buffer and the free space are exact.
+    #[garde(skip)]
+    pub estimated: bool,
+    /// What the row opens into; empty for a row that does not open.
+    #[garde(dive)]
+    pub parts: Vec<ContextPart>,
+}
+
+/// What a row of the context covers, in the card's order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum ContextRowKind {
+    /// Everything else the request carries: the estimate less every row
+    /// above, never below zero. It does not open.
+    Messages,
+    /// The system prompt but its capability index, and the tools'
+    /// definitions.
+    SystemPrompt,
+    /// The capability index, by command group.
+    Commands,
+    /// The instructions blocks replayed, by file.
+    Instructions,
+    /// The skills catalog's block, by skill.
+    Skills,
+    /// Every other context block replayed, by source.
+    OtherContext,
+    /// The replayed summary of the last compaction.
+    Summary,
+    /// The room the token threshold keeps: the window less the threshold.
+    CompactionBuffer,
+    /// What is left: the window less the rows above and the buffer.
+    FreeSpace,
+}
+
+/// A part a row of the context opens into, with its estimate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum ContextPart {
+    /// A layer of the system prompt.
+    Prompt {
+        #[garde(skip)]
+        layer: PromptLayerKind,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        tokens: u64,
+    },
+    /// A tool's definition, such as the `shell` tool's.
+    Tool {
+        #[garde(skip)]
+        name: String,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        tokens: u64,
+    },
+    /// A command group, such as `demi browser`: its section of the
+    /// capability index.
+    CommandGroup {
+        #[garde(skip)]
+        group: String,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        tokens: u64,
+    },
+    /// The personal instructions or a project file of an instructions
+    /// block.
+    Instruction {
+        #[garde(dive)]
+        entry: InstructionEntry,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        tokens: u64,
+    },
+    /// A skill of the catalog, by its name.
+    Skill {
+        #[garde(skip)]
+        name: String,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        tokens: u64,
+    },
+    /// The blocks of one context source, such as `execution`.
+    Source {
+        #[garde(skip)]
+        source: String,
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        tokens: u64,
+    },
+}
+
+impl ContextPart {
+    /// The part's estimate, in tokens.
+    pub fn tokens(&self) -> u64 {
+        match self {
+            Self::Prompt { tokens, .. }
+            | Self::Tool { tokens, .. }
+            | Self::CommandGroup { tokens, .. }
+            | Self::Instruction { tokens, .. }
+            | Self::Skill { tokens, .. }
+            | Self::Source { tokens, .. } => *tokens,
+        }
+    }
+}
+
+/// A layer of the system prompt (`system-prompt.md` § The layers), but the
+/// capability index, which is a row of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum PromptLayerKind {
+    Identity,
+    HarnessGuide,
+    ToolRules,
+    ModelIdentity,
+    /// A subagent profile's added instructions.
+    ProfileInstructions,
 }
 
 impl ContextUsage {

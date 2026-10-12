@@ -56,8 +56,8 @@ test('the usage the composer shows is the one the session reports, not one read 
   try {
     // A response before the compaction still measures the history the summary replaced.
     h.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
-    h.receive({ type: 'context_usage', usage: { tokens: 6_000, window: 100_000, compactFrom: 50_000 } })
-    expect(current.contextUsage).toEqual({ tokens: 6_000, window: 100_000, compactFrom: 50_000 })
+    h.receive({ type: 'context_usage', usage: { tokens: 6_000, window: 100_000, compactFrom: 50_000, rows: [] } })
+    expect(current.contextUsage).toEqual({ tokens: 6_000, window: 100_000, compactFrom: 50_000, rows: [] })
   } finally {
     runtime.dispose()
   }
