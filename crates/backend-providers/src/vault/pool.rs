@@ -91,8 +91,7 @@ impl CredentialPool for VaultCredentialPool {
             let account = CredentialId::try_from(id).map_err(|_| not_found())?;
             let selected = self
                 .vault
-                .control()
-                .set_active_credential(self.provider.clone(), account)
+                .set_active_account(&self.provider, account)
                 .await
                 .map_err(store)?;
             if !selected {
@@ -119,8 +118,7 @@ impl CredentialPool for VaultCredentialPool {
             };
             let stored = self
                 .vault
-                .control()
-                .write_credential(self.provider.clone(), account)
+                .write_account(&self.provider, account)
                 .await
                 .map_err(store)?;
             if !stored {

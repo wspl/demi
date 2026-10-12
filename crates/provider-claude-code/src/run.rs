@@ -109,6 +109,10 @@ impl ProviderRuntime for ClaudeCodeRuntime {
         })
     }
 
+    fn prepares_ahead(&self) -> bool {
+        true
+    }
+
     /// Prepares the process of the next request, `request` but for its
     /// input, when the runtime holds none that would serve it: as a page
     /// opens the conversation or the user picks another model, effort or

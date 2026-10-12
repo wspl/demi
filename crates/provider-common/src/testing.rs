@@ -211,10 +211,18 @@ impl ScriptedRuntime {
     /// What the runtime was asked to ready ahead, once it was asked at
     /// least `count` times.
     pub async fn readied(&self, count: usize) -> Vec<(Ahead, InferenceRequest)> {
+        self.readied_until(|readied| readied.len() >= count).await
+    }
+
+    /// What the runtime was asked to ready ahead, once that holds `done`.
+    pub async fn readied_until(
+        &self,
+        done: impl Fn(&[(Ahead, InferenceRequest)]) -> bool,
+    ) -> Vec<(Ahead, InferenceRequest)> {
         let mut readied = self.readied.subscribe();
         let asked = guarded("the runtime to be asked to ready ahead", async {
             readied
-                .wait_for(|readied| readied.len() >= count)
+                .wait_for(|readied| done(readied))
                 .await
                 .map(|readied| readied.clone())
         })
@@ -274,6 +282,10 @@ impl ProviderRuntime for ScriptedRuntime {
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         self.script.borrow_mut().closes += 1;
         Box::pin(async {})
+    }
+
+    fn prepares_ahead(&self) -> bool {
+        true
     }
 
     fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {

@@ -117,6 +117,7 @@ impl ProviderResolver for ConversationProviders {
                 scope,
                 selection: model.clone(),
                 current: None,
+                prepares_ahead: false,
             };
             runtime
                 .serve(&entry, model.clone())
@@ -240,6 +241,9 @@ struct ConversationRuntime {
     /// facts applied.
     selection: ModelSelection,
     current: Option<Current>,
+    /// Whether the entry's provider runs a process it prepares ahead; its
+    /// family, and so this, never changes.
+    prepares_ahead: bool,
 }
 
 /// The runtime that serves the session's requests, with what it was built
@@ -340,6 +344,7 @@ impl ConversationRuntime {
             .provider_for(entry)
             .await
             .map_err(|error| refused(error.to_string(), None))?;
+        self.prepares_ahead = provider.capabilities().process_host;
         let kept = self.current.as_ref().is_some_and(|current| {
             Arc::ptr_eq(&current.provider, &provider) && current.model == selection.model.id
         });
@@ -429,7 +434,12 @@ impl ProviderRuntime for ConversationRuntime {
                 model: current.model.clone(),
                 runtime: current.runtime.fresh(),
             }),
+            prepares_ahead: self.prepares_ahead,
         })
+    }
+
+    fn prepares_ahead(&self) -> bool {
+        self.prepares_ahead
     }
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {

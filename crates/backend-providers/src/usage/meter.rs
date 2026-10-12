@@ -118,6 +118,10 @@ impl ProviderRuntime for MeteredRuntime {
         self.inner.close()
     }
 
+    fn prepares_ahead(&self) -> bool {
+        self.inner.prepares_ahead()
+    }
+
     /// Readying ahead is no request: it is neither limited nor recorded.
     fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {
         self.inner.prepare(request, ahead)

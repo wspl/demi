@@ -368,6 +368,80 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     );
 }
 
+/// A page that opens a restored conversation whose history replays an
+/// image has its next request readied with the image's bytes, read from
+/// the blob after the open was answered (`claude-code.md` § Preparing a
+/// process ahead).
+#[tokio::test(flavor = "local")]
+async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_its_bytes() {
+    let script = ScriptedRuntime::new([Turn::Events(vec![
+        event::text("a tiny png"),
+        event::response(1, 1),
+    ])]);
+    let blobs = MemoryBlobs::new();
+    let png = png(4, 3, 1);
+    let uploaded = blobs.put(png.clone()).await.unwrap();
+    let upload = attachments::Upload {
+        name: "tiny.png",
+        path: "/home/demi/.demi/attachments/conversation/tiny.png",
+        media_type: "image/png",
+        sha256: &uploaded,
+        bytes: &png,
+    };
+    let resolved = attachments::upload_blocks(upload, &*blobs).await.unwrap();
+    let store = MemoryTreeStore::with_blobs(blobs.clone());
+    let fixture = Fixture::with(&script, store, ServerConfig::default());
+    fixture
+        .resolver
+        .select(model_reading("stub", "test-model", &[FileExtension::Png]));
+    let files = TestFiles::new();
+    files.upload("upload-1", resolved);
+    let mut client =
+        TestClient::connect_with(&fixture.server, &conversation(), "/workspace", files);
+    client.send(open()).await;
+    client.next_until(is_pending_steers).await;
+    client
+        .send(ClientFrame::Send {
+            message_id: crate::support::turn("m1"),
+            content: vec![ClientContent::Upload {
+                r#ref: "upload-1".into(),
+                file_name: "tiny.png".into(),
+            }],
+        })
+        .await;
+    client.next_until(is_idle).await;
+    // The open and the turn's end ready the next request, once or twice as
+    // the open's came before the turn or after it; the last holds the turn.
+    let answered = script
+        .readied_until(|readied| readied.iter().any(|(_, request)| request.items.len() == 2))
+        .await
+        .len();
+    client.send(ClientFrame::Close {}).await;
+    client
+        .next_until(|frame| *frame == ServerFrame::Closed)
+        .await;
+
+    // Restored, the session holds no bytes; the open reads no blob, and the
+    // readying after it reads the image's.
+    client.send(open()).await;
+    client.next_until(is_pending_steers).await;
+    let readied = script.readied(answered + 1).await;
+    let (_, request) = &readied[answered];
+    let image = UserPart::Image(Medium::Bytes(MediaBytes {
+        data: png,
+        media_type: "image/png".into(),
+    }));
+    let Some(InferenceItem::UserMessage { content }) = request.items.first() else {
+        panic!("{:?}", request.items)
+    };
+    assert!(content.contains(&image), "{content:?}");
+    assert!(
+        matches!(request.items.last(), Some(InferenceItem::AssistantText { text, .. }) if text == "a tiny png"),
+        "{:?}",
+        request.items
+    );
+}
+
 #[tokio::test(flavor = "local")]
 async fn stop_during_a_stream_answers_after_the_stopped_marker_and_the_queued_message_runs_next() {
     let script = ScriptedRuntime::new([
