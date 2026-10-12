@@ -47,7 +47,7 @@ url = "2"
 uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "1", features = ["process", "stdio"] }
+rustix = { version = "1", features = ["process", "stdio", "system"] }
 
 # The standard handles a runner in the background points at its log.
 [target.'cfg(windows)'.dependencies]

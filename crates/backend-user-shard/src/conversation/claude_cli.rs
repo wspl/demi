@@ -18,7 +18,9 @@ use bytes::Bytes;
 use demi_backend_cloud::access::MachineAccess;
 use demi_backend_database::StorageError;
 use demi_backend_providers::llm::claude_releases::ReleaseError;
-use demi_backend_remote_host::{AttachedArtifact, RemoteHost, ServiceCallError, ServiceRequest};
+use demi_backend_remote_host::{
+    AttachedArtifact, RemoteHost, ServiceCallError, ServiceRequest, WeakLink,
+};
 use demi_backend_runners::command_context::{command_context, provider_context};
 use demi_command_package_claude_code_protocol::{
     Installed, Operation, PACKAGE, Release, Reply, Status,
@@ -27,17 +29,15 @@ use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, CommandCaller, CommandContext, PackageArtifact,
 };
 use demi_host_interface::{
-    FileContents, Host as _, HostError, MkdirOptions, Process, ProcessEnd, RmOptions, SpawnEnv,
-    SpawnRequest, WriteOptions,
+    FileContents, Host as _, HostError, MkdirOptions, Process, ProcessEnd, RmOptions, WriteOptions,
 };
 use demi_provider_claude_code::{
     AccountMachine, AccountWork, CliSite, CliStart, CliSystem, ConfigDir, Placed, Placement,
     PreparedProcesses, StartError, StartSteps,
 };
-use demi_shared_types::StreamKind;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{CliInstall, CliMachine};
-use futures_util::{FutureExt as _, StreamExt as _};
+use futures_util::FutureExt as _;
 use futures_util::future::{BoxFuture, LocalBoxFuture, Shared};
 use serde::de::DeserializeOwned;
 use tokio::sync::broadcast::error::RecvError;
@@ -192,7 +192,7 @@ impl Placement for CloudPlacement {
                 ))
             })?;
             lap(&mut steps.directories);
-            let system = system(&access.host, &run_dir).await.map_err(|error| {
+            let system = shard.cli_system(&access, &run_dir).await.map_err(|error| {
                 StartError(format!(
                     "The Cloud could not be asked what it tells Claude Code of itself: {error}"
                 ))
@@ -331,59 +331,6 @@ impl Drop for CloudConfigDir {
     }
 }
 
-/// What `host` tells a process in `run_dir` of itself, as the CLI reads it
-/// to describe its environment (`claude-code.md` § The session a process
-/// resumes): the kernel's name and release, the `SHELL` the process
-/// inherits, and the directory with its links resolved. Only a process
-/// there knows the kernel and the variable, so the placement starts one.
-async fn system(host: &RemoteHost, run_dir: &str) -> Result<CliSystem, String> {
-    let working_directory = host
-        .fs()
-        .realpath(run_dir)
-        .await
-        .map_err(|error| error.to_string())?;
-    let spawn = SpawnRequest {
-        command: "/bin/sh".into(),
-        args: vec!["-c".into(), r#"uname -s; uname -r; printf '%s\n' "$SHELL""#.into()],
-        cwd: Some(run_dir.to_owned()),
-        env: SpawnEnv::Overlay(Default::default()),
-        descriptors: Vec::new(),
-        retained: false,
-    };
-    // Dropping the control before the end would kill the process.
-    let Process {
-        output,
-        control,
-        exit,
-    } = host
-        .process()
-        .spawn(spawn)
-        .await
-        .map_err(|error| error.to_string())?;
-    let printed: Vec<Bytes> = output
-        .filter_map(|chunk| async move {
-            (chunk.stream == StreamKind::Stdout).then_some(chunk.bytes)
-        })
-        .collect()
-        .await;
-    let end = exit.await;
-    drop(control);
-    if end != ProcessEnd::Exited(0) {
-        return Err(format!("/bin/sh ended with {end:?}"));
-    }
-    let printed = String::from_utf8_lossy(&printed.concat()).into_owned();
-    let mut lines = printed.lines().map(str::to_owned);
-    let (Some(kernel), Some(release), shell) = (lines.next(), lines.next(), lines.next()) else {
-        return Err(format!("/bin/sh printed {printed:?}"));
-    };
-    Ok(CliSystem {
-        kernel,
-        release,
-        shell: shell.filter(|shell| !shell.is_empty()),
-        working_directory,
-    })
-}
-
 /// Where a provider's process runs on a Cloud whose home is `home`.
 fn run_dir(home: &str) -> String {
     format!("{home}/.demi/claude/run")
@@ -423,14 +370,61 @@ impl AccountMachine for ShardMachine {
 }
 
 /// The CLI work of one user's shard: the versions being installed beside
-/// the one in use, and the processes prepared ahead on the user's Cloud.
+/// the one in use, the processes prepared ahead on the user's Cloud, and
+/// the run directory's real path there.
 #[derive(Default)]
 pub(crate) struct ClaudeCli {
     upgrading: RefCell<HashSet<String>>,
     prepared: Rc<PreparedProcesses>,
+    /// The run directory with its links resolved, and the runner
+    /// connection it was resolved over: a new connection resolves it again.
+    run_dir: RefCell<Option<(WeakLink, String)>>,
 }
 
 impl Shard {
+    /// What the Cloud `access` holds tells a process in `run_dir` of
+    /// itself, as the CLI reads it to describe its environment
+    /// (`claude-code.md` § The session a process resumes): the kernel and
+    /// the `SHELL` its runner reported in its hello, and the directory with
+    /// its links resolved, once per runner connection. No process starts
+    /// for them.
+    async fn cli_system(&self, access: &MachineAccess, run_dir: &str) -> Result<CliSystem, String> {
+        let link = self
+            .devices()
+            .link(&access.device.id)
+            .ok_or("the Cloud's runner is not connected")?;
+        let kernel = link
+            .kernel()
+            .ok_or("the Cloud's runner reported no kernel")?
+            .clone();
+        let kept = self
+            .claude_cli()
+            .run_dir
+            .borrow()
+            .as_ref()
+            .filter(|(over, _)| over.is(&link))
+            .map(|(_, path)| path.clone());
+        let working_directory = match kept {
+            Some(path) => path,
+            None => {
+                let path = access
+                    .host
+                    .fs()
+                    .realpath(run_dir)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                *self.claude_cli().run_dir.borrow_mut() = Some((link.downgrade(), path.clone()));
+                path
+            }
+        };
+        Ok(CliSystem {
+            kernel: kernel.name,
+            release: kernel.release,
+            shell: link.shell().map(str::to_owned),
+            working_directory,
+        })
+    }
+
     /// The CLI's executable on the Cloud `access` holds, installed first
     /// when the Cloud has none.
     async fn cli_executable_at(
@@ -459,19 +453,27 @@ impl Shard {
             .map_err(|error| error.to_string())
     }
 
-    /// The executable to start on `target`: the wanted version when the
-    /// Cloud has it, else the newest it has while the wanted one installs
-    /// beside it. Only a Cloud with none waits for an install.
+    /// The executable to start on `target` (`claude-code.md` § Which
+    /// version): the wanted version when the Cloud has it, else the newest
+    /// it has while the wanted one installs beside it. A Cloud with a
+    /// version never waits for the release pointer: without a believed
+    /// answer it starts its newest, and the pointer is read in the
+    /// background for a later start. Only a Cloud with none waits for the
+    /// read and the install.
     async fn cli_executable(&self, target: &CliTarget) -> Result<String, CliError> {
-        let wanted = self.services().claude_releases.latest(false).await?;
+        let releases = &self.services().claude_releases;
         let installed = installed(self.services(), target).await?;
+        let Some(newest) = installed.first() else {
+            let wanted = releases.latest(false).await?;
+            return ensure(self.services(), target, &wanted).await;
+        };
+        let Some(wanted) = releases.believed() else {
+            return Ok(newest.path.to_string_lossy().into_owned());
+        };
         let usable = installed
             .iter()
             .find(|installed| installed.version == wanted.version)
-            .or_else(|| installed.first());
-        let Some(usable) = usable else {
-            return ensure(self.services(), target, &wanted).await;
-        };
+            .unwrap_or(newest);
         if usable.version != wanted.version {
             self.upgrade_cli(target.clone(), wanted);
         }

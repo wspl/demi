@@ -5,9 +5,9 @@
 //! recorded; the request's model, system prompt and effort; stream-json in
 //! and out with partial messages; its own configuration directory; the
 //! account's access token on a descriptor, never in its environment; the
-//! CLI's updater and automatic compaction off; and the input a session ends
-//! with answered at once. A sign-in runs the CLI's own login in a directory
-//! of its own.
+//! CLI's updater, automatic compaction and telemetry off; and the input a
+//! session ends with answered at once. A sign-in runs the CLI's own login
+//! in a directory of its own.
 
 use std::collections::BTreeMap;
 
@@ -132,7 +132,8 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
 /// process's own configuration directory, and the directory of its
 /// sessions there; the CLI's updater off, since Demi alone changes its
 /// version; its automatic compaction off, since Demi compacts the
-/// conversation itself; an MCP tool-output limit of one million tokens, so
+/// conversation itself; its telemetry off, which halves its start in a
+/// Cloud's sandbox; an MCP tool-output limit of one million tokens, so
 /// the CLI never cuts a result Demi sends; `CLAUDECODE` removed, so the CLI
 /// never takes itself for a session inside another Claude Code; and the
 /// input the session ends with answered at once.
@@ -149,6 +150,7 @@ fn environment(site: &CliSite) -> BTreeMap<String, Option<String>> {
         ("CLAUDE_CODE_RESUME_INTERRUPTED_TURN".to_owned(), set("1")),
         ("DISABLE_AUTOUPDATER".to_owned(), set("1")),
         ("DISABLE_AUTO_COMPACT".to_owned(), set("1")),
+        ("DISABLE_TELEMETRY".to_owned(), set("1")),
         ("MAX_MCP_OUTPUT_TOKENS".to_owned(), set("1000000")),
         ("CLAUDECODE".to_owned(), None),
     ])

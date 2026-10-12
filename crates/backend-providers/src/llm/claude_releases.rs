@@ -2,9 +2,12 @@
 //! newest version, read from the official distribution's `latest` pointer
 //! and that version's manifest, and believed for six hours. Concurrent
 //! readers share one read, a version's manifest is read once, and a redirect
-//! is refused. The reads run on the edge's runtime, whoever asks.
+//! is refused. The reads run on the edge's runtime, whoever asks; a start
+//! that has a version to run never waits for one, and reads in the
+//! background instead.
 
 use std::collections::{BTreeMap, HashMap};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use demi_command_package_claude_code_protocol::{Artifact, PACKAGE, Release, is_version};
@@ -54,24 +57,22 @@ struct ManifestPlatform {
     size: u64,
 }
 
-/// What the backend has read of the distribution.
-#[derive(Default)]
-struct Known {
-    /// The newest release and when it was read.
-    newest: Option<(Instant, Release)>,
-    /// Each version's release, which never changes once published.
-    releases: HashMap<String, Release>,
-}
-
 /// The vendor's releases.
-pub struct ClaudeReleases {
+pub struct ClaudeReleases(Arc<Distribution>);
+
+/// The distribution and what the backend has read of it.
+struct Distribution {
     /// The distribution's address, without a trailing slash.
     base: String,
     /// A client that follows no redirect and gives up after `READ_TIMEOUT`.
     http: reqwest::Client,
     edge: Handle,
-    /// Held across a read, so that readers who wait for it share it.
-    known: tokio::sync::Mutex<Known>,
+    /// Each version's release, which never changes once published, held
+    /// across a read, so that readers who wait for it share it.
+    releases: tokio::sync::Mutex<HashMap<String, Release>>,
+    /// The newest release and when it was read, which a start reads without
+    /// waiting for a read under way. A `std` mutex: no section awaits.
+    newest: Mutex<Option<(Instant, Release)>>,
 }
 
 impl ClaudeReleases {
@@ -81,21 +82,58 @@ impl ClaudeReleases {
             .redirect(reqwest::redirect::Policy::none())
             .timeout(READ_TIMEOUT)
             .build()?;
-        Ok(Self {
+        Ok(Self(Arc::new(Distribution {
             base: base.as_str().trim_end_matches('/').to_owned(),
             http,
             edge,
-            known: tokio::sync::Mutex::default(),
-        })
+            releases: tokio::sync::Mutex::default(),
+            newest: Mutex::default(),
+        })))
     }
 
     /// The vendor's newest release: the one read within six hours, or a new
     /// read. `refresh` reads the pointer again unless a read finished after
     /// the call began.
     pub async fn latest(&self, refresh: bool) -> Result<Release, ReleaseError> {
+        self.0.latest(refresh).await
+    }
+
+    /// The newest release read within six hours, without waiting. Without
+    /// one, as after the backend starts, it answers none and reads the
+    /// pointer in the background, unless a read is under way, for a later
+    /// call to answer with.
+    pub fn believed(&self) -> Option<Release> {
+        if let Some((read_at, release)) = &*self.0.newest() {
+            if read_at.elapsed() < LATEST_TTL {
+                return Some(release.clone());
+            }
+        }
+        // A read under way holds the lock and keeps what it reads.
+        if self.0.releases.try_lock().is_err() {
+            return None;
+        }
+        let distribution = self.0.clone();
+        // The read ends within `READ_TIMEOUT`; the edge's runtime ending at
+        // shutdown drops it before.
+        self.0.edge.spawn(async move {
+            if let Err(error) = distribution.latest(false).await {
+                tracing::warn!("the newest Claude Code release was not read: {error}");
+            }
+        });
+        None
+    }
+}
+
+impl Distribution {
+    fn newest(&self) -> std::sync::MutexGuard<'_, Option<(Instant, Release)>> {
+        // A section only reads or replaces the value.
+        self.newest.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    async fn latest(&self, refresh: bool) -> Result<Release, ReleaseError> {
         let asked = Instant::now();
-        let mut known = self.known.lock().await;
-        if let Some((read_at, release)) = &known.newest {
+        let mut releases = self.releases.lock().await;
+        if let Some((read_at, release)) = &*self.newest() {
             let fresh = if refresh {
                 *read_at >= asked
             } else {
@@ -110,7 +148,7 @@ impl ClaudeReleases {
         if !is_version(version) {
             return Err(ReleaseError("the distribution named no version".into()));
         }
-        let release = match known.releases.get(version) {
+        let release = match releases.get(version) {
             Some(release) => release.clone(),
             None => {
                 let release = self.release(version).await.map_err(|reason| {
@@ -118,11 +156,11 @@ impl ClaudeReleases {
                         "the release of version {version} could not be read ({reason})"
                     ))
                 })?;
-                known.releases.insert(version.to_owned(), release.clone());
+                releases.insert(version.to_owned(), release.clone());
                 release
             }
         };
-        known.newest = Some((Instant::now(), release.clone()));
+        *self.newest() = Some((Instant::now(), release.clone()));
         Ok(release)
     }
 
