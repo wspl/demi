@@ -7,6 +7,7 @@
 mod account;
 mod cli;
 mod mcp;
+mod prepared;
 mod refresh;
 mod runs;
 mod session;

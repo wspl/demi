@@ -22,7 +22,7 @@ use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime};
 use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
 use demi_provider_common::{
-    ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
+    Ahead, ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, RuntimeEnv,
 };
 use demi_shared_types::{Model, ModelSelection, NodeId, UnavailableSetting, effective_context_window};
@@ -434,6 +434,33 @@ impl ProviderRuntime for ConversationRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(self.close_current())
+    }
+
+    /// Resolves the entry as the request will, so a model or an account
+    /// picked meanwhile gets its runtime now, and lets that runtime ready
+    /// itself. An entry that cannot serve readies nothing: the request
+    /// says why.
+    fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {
+        Box::pin(async move {
+            let output_limit = match self.admit(&request).await {
+                Ok(output_limit) => output_limit,
+                Err(failure) => {
+                    tracing::debug!(
+                        conversation = %self.scope.conversation,
+                        "nothing was readied ahead: {}",
+                        failure.message
+                    );
+                    return;
+                }
+            };
+            if let Some(current) = &mut self.current {
+                let request = InferenceRequest {
+                    output_limit,
+                    ..request
+                };
+                current.runtime.prepare(request, ahead).await;
+            }
+        })
     }
 
     /// The limits of the runtime that serves the session's requests; none

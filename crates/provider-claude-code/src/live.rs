@@ -41,6 +41,7 @@ use crate::output::{ControlRequestLine, Line};
 use crate::placement::{CliSite, ConfigDir, Placed, Placement};
 use crate::session::SessionFile;
 use crate::account::expiring;
+use crate::timing::StartTiming;
 use crate::{FAMILY, Shared, cli};
 
 /// The `tracing` target of the raw stream-json exchange, at trace level.
@@ -92,14 +93,14 @@ impl tokio_util::codec::Decoder for CliLines {
 /// What a process was started for: another session, model or thinking
 /// setting needs a new process, since each is fixed per process.
 #[derive(Debug, Clone, PartialEq)]
-struct ProcessKey {
+pub(crate) struct ProcessKey {
     session_id: String,
     model_id: String,
     thinking: Option<ThinkingConfig>,
 }
 
 impl ProcessKey {
-    fn of(request: &InferenceRequest) -> Self {
+    pub(crate) fn of(request: &InferenceRequest) -> Self {
         Self {
             session_id: request.session_id.clone(),
             model_id: request.model_id.clone(),
@@ -166,6 +167,16 @@ pub(crate) enum Next {
     Broken(ProviderFailure),
 }
 
+/// What a process did while it waited for a request to take it.
+pub(crate) enum Waited {
+    /// The MCP server's reply to a control request.
+    Reply(String, Box<ServerJsonRpcMessage>),
+    /// The MCP server opened a call.
+    Opened(ToolCall),
+    /// The process printed a line, or its output ended.
+    Output(Option<Result<String, LinesCodecError>>),
+}
+
 pub(crate) struct LiveCli {
     shared: Arc<Shared>,
     key: ProcessKey,
@@ -198,6 +209,9 @@ pub(crate) struct LiveCli {
     pub(crate) mcp: Option<Mcp>,
     /// Which block each entry the process mirrors belongs to.
     pub(crate) mirror: Mirror,
+    /// How the process's start went, until the first run that takes it
+    /// reports it.
+    pub(crate) started: Option<StartTiming>,
 }
 
 impl LiveCli {
@@ -221,6 +235,7 @@ impl LiveCli {
             .map_err(|failure| failure.failure())?;
         let expires_at = secret.expires_at;
         let token = secret.access_token;
+        let building = tokio::time::Instant::now();
         let file = {
             let session = request.session_id.clone();
             let items = request.items.clone();
@@ -231,6 +246,7 @@ impl LiveCli {
             })
             .await?
         };
+        let session_build = building.elapsed();
         let start = |site: &CliSite| {
             let start = cli::start(site, request, &token, &file);
             // The environment and the descriptors are left out: a
@@ -244,7 +260,11 @@ impl LiveCli {
             );
             start
         };
-        let Placed { process, config } = placement
+        let Placed {
+            process,
+            config,
+            steps,
+        } = placement
             .start(&start)
             .await
             // The machine could not be reached or readied, as when its
@@ -287,6 +307,11 @@ impl LiveCli {
             held: Vec::new(),
             mcp,
             mirror: Mirror::default(),
+            started: Some(StartTiming {
+                steps,
+                session_build,
+                initialize: None,
+            }),
         })
     }
 
@@ -297,19 +322,28 @@ impl LiveCli {
     /// it holds, or a new user message. A retry of a failed turn gives it
     /// neither, and the process would wait for input that never comes.
     pub(crate) fn serves(&self, request: &InferenceRequest) -> bool {
-        let running = self.exit.clone().now_or_never().is_none();
-        // A process whose token is about to expire would be refused midway;
-        // a new one starts with a fresh token.
-        let fresh = !expiring(self.expires_at, self.shared.clock.now());
-        let offers_tools = self.mcp.is_some() || request.tools.is_empty();
         let gains_input =
             !self.held.is_empty() || input::user_messages(&request.items).count() > self.sent.count;
+        self.continues(request) && self.fresh() && gains_input
+    }
+
+    /// Whether the process could go on with `request`, whatever its input
+    /// and its token: it still runs, for the same session, model and
+    /// thinking setting, it has an MCP server when the request offers
+    /// tools, and the transcript continues what it received.
+    pub(crate) fn continues(&self, request: &InferenceRequest) -> bool {
+        let running = self.exit.clone().now_or_never().is_none();
+        let offers_tools = self.mcp.is_some() || request.tools.is_empty();
         running
-            && fresh
             && offers_tools
             && self.key == ProcessKey::of(request)
             && !self.sent.diverged(&request.items)
-            && gains_input
+    }
+
+    /// Whether the process's token lasts: one about to expire would be
+    /// refused midway, so a new process starts with a fresh token.
+    pub(crate) fn fresh(&self) -> bool {
+        !expiring(self.expires_at, self.shared.clock.now())
     }
 
     /// Sets a new process up for `request`: when the request offers tools,
@@ -321,7 +355,11 @@ impl LiveCli {
         request: &InferenceRequest,
     ) -> Result<(), ProviderFailure> {
         if self.mcp.is_some() {
+            let initializing = tokio::time::Instant::now();
             self.initialize(&request.system_prompt).await?;
+            if let Some(started) = &mut self.started {
+                started.initialize = Some(initializing.elapsed());
+            }
         }
         self.sent = Sent::of(&request.items);
         Ok(())
@@ -426,6 +464,46 @@ impl LiveCli {
                     Read::Broken(failure) => return Next::Broken(failure),
                 },
             }
+        }
+    }
+
+    /// What the process does next while it waits for a request; dropping
+    /// the wait loses nothing.
+    pub(crate) async fn wait(&mut self) -> Waited {
+        tokio::select! {
+            biased;
+            event = next_mcp(&mut self.mcp) => match event {
+                McpEvent::Reply(request_id, reply) => Waited::Reply(request_id, reply),
+                McpEvent::Opened(call) => Waited::Opened(call),
+            },
+            line = self.lines.next() => Waited::Output(line),
+        }
+    }
+
+    /// Answers what a waiting process did: its control requests are
+    /// answered and the MCP server's replies written, and any other line is
+    /// kept for the request that takes it. A process that ends, breaks or
+    /// calls a tool before it was given any input fails.
+    pub(crate) async fn answer_waiting(&mut self, waited: Waited) -> Result<(), ProviderFailure> {
+        match waited {
+            Waited::Reply(request_id, reply) => self.reply(request_id, *reply).await,
+            Waited::Opened(call) => Err(failure(format!(
+                "Claude Code called the tool {} before it was given any input",
+                call.tool_name
+            ))),
+            Waited::Output(line) => match self.read(line) {
+                Read::Line(_, Some(Line::ControlRequest(line))) => self.control_request(line).await,
+                Read::Line(text, line) => {
+                    self.pending.push_back((text, line));
+                    Ok(())
+                }
+                Read::Blank => Ok(()),
+                Read::End => {
+                    let reason = self.exit_message().await;
+                    Err(ended(&self.exit.clone().await, reason))
+                }
+                Read::Broken(failure) => Err(failure),
+            },
         }
     }
 

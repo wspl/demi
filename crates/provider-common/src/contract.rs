@@ -117,9 +117,35 @@ pub trait ProviderRuntime {
     /// waiting.
     fn close(&mut self) -> LocalBoxFuture<'_, ()>;
 
+    /// Readies ahead what the session's next request needs, now that the
+    /// request is known but for its input: `request` is that request
+    /// without it, and `ahead` says what made it known (`claude-code.md`
+    /// § Preparing a process ahead). What it starts goes on by itself once
+    /// the future ends, and a failure of it is the runtime's to log and
+    /// forget: the request then does what it would have done. Most
+    /// runtimes have nothing to ready.
+    fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {
+        let _ = (request, ahead);
+        Box::pin(std::future::ready(()))
+    }
+
     /// What the vendor accepts in one request of `model`, however few tokens
     /// it holds (`models.md` § Request limits).
     fn request_limits(&self, model: &Model) -> RequestLimits;
+}
+
+/// What made a session's next request known but for its input
+/// (`claude-code.md` § Preparing a process ahead).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ahead {
+    /// A page opened the conversation.
+    Opened,
+    /// The user picked another model or effort in it, or another account of
+    /// its provider in Settings.
+    Chosen,
+    /// An action of the session ended, such as a turn: its history may have
+    /// changed, and the token of a kept process may be about to expire.
+    Ended,
 }
 
 /// What a vendor accepts in one request (`models.md` § Request limits). A
