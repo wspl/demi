@@ -30,7 +30,7 @@ use tokio::sync::{Notify, watch};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
-    InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, ProviderFailure,
+    Ahead, InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, ProviderFailure,
     ProviderRun, ProviderRuntime, RequestLimits, ToolCall, ToolDefinition, ToolResultKinds,
     UserPart,
 };
@@ -181,6 +181,8 @@ impl Turn {
 #[derive(Clone)]
 pub struct ScriptedRuntime {
     script: Rc<RefCell<Script>>,
+    /// What the runtime was asked to ready ahead, in order.
+    readied: Rc<watch::Sender<Vec<(Ahead, InferenceRequest)>>>,
 }
 
 struct Script {
@@ -202,7 +204,22 @@ impl ScriptedRuntime {
                     ..RequestLimits::default()
                 },
             })),
+            readied: Rc::new(watch::Sender::new(Vec::new())),
         }
+    }
+
+    /// What the runtime was asked to ready ahead, once it was asked at
+    /// least `count` times.
+    pub async fn readied(&self, count: usize) -> Vec<(Ahead, InferenceRequest)> {
+        let mut readied = self.readied.subscribe();
+        let asked = guarded("the runtime to be asked to ready ahead", async {
+            readied
+                .wait_for(|readied| readied.len() >= count)
+                .await
+                .map(|readied| readied.clone())
+        })
+        .await;
+        asked.expect("the sender lives in this runtime")
     }
 
     /// The runtime of a vendor that takes requests within `limits`, for
@@ -256,6 +273,11 @@ impl ProviderRuntime for ScriptedRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         self.script.borrow_mut().closes += 1;
+        Box::pin(async {})
+    }
+
+    fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {
+        self.readied.send_modify(|readied| readied.push((ahead, request)));
         Box::pin(async {})
     }
 
