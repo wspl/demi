@@ -16,6 +16,7 @@ use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
     ClientFrame, ClientFrameKind, EditOutcome, EditRequest, RemoveOutcome, ServerFrame, SteerOutcome,
 };
+use demi_provider_common::Ahead;
 use demi_shared_types::{BlockId, NodeId, SessionPhase, TurnId};
 use tokio::sync::mpsc::{self, error::TrySendError};
 
@@ -263,6 +264,9 @@ impl<H: HostResolver> Connection<H> {
             }
         };
         tree.attach(self.id, self.outbox.clone(), from, edge);
+        // The user will likely send next: its request is known but for its
+        // input (`claude-code.md` § Preparing a process ahead).
+        tree.root().session().prepare_ahead(Ahead::Opened);
         // The usage follows the handshake, since the window in use is asked
         // for (`compaction.md` § Context estimate). It is the estimate at
         // the moment it is sent, so a later change still arrives after it.

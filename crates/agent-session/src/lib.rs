@@ -7,6 +7,7 @@
 //! synchronous closure ends before any await, and each change's events reach
 //! the listeners after the state is released.
 
+mod ahead;
 mod breakdown;
 mod bus;
 mod cancel;
@@ -44,7 +45,7 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{ForkEnd, IdSource, TranscriptLog, last_answer, last_failure};
 use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
-use demi_provider_common::{ProviderFailure, ProviderRuntime};
+use demi_provider_common::{Ahead, ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
     AgentMessage, Block, BlockId, Clock, CommandId, ContextUsage, ModelSelection, NodeId, PendingCall,
@@ -993,6 +994,22 @@ impl AgentSession {
     /// back.
     pub fn update_model(&self, switch: ModelSwitch) -> Result<(), ModelSwitch> {
         self.shared.update(|core| core.record_switch(switch))
+    }
+
+    /// Readies ahead what the session's next request needs, now that it is
+    /// known but for its input (`claude-code.md` § Preparing a process
+    /// ahead): a page opened the conversation, or the user chose another
+    /// model, effort or account for it. From then on each action's end
+    /// readies it again. It is done once the session is idle; a subagent's
+    /// session is never asked.
+    pub fn prepare_ahead(&self, ahead: Ahead) {
+        self.shared.update(|core| core.ask_ahead(ahead));
+    }
+
+    /// The selection the next request lands with, or the one a switch that
+    /// waits for an edit names.
+    pub fn latest_model(&self) -> ModelSelection {
+        self.shared.read(|core| core.latest_selection().clone())
     }
 
     /// Whether `model` needs a runtime of its own: it belongs to another

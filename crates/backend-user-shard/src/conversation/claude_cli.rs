@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::{Rc, Weak};
 use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use bytes::Bytes;
 use demi_backend_cloud::access::MachineAccess;
@@ -31,7 +32,7 @@ use demi_host_interface::{
 };
 use demi_provider_claude_code::{
     AccountMachine, AccountWork, CliSite, CliStart, CliSystem, ConfigDir, Placed, Placement,
-    StartError,
+    PreparedProcesses, StartError, StartSteps,
 };
 use demi_shared_types::StreamKind;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
@@ -39,6 +40,7 @@ use demi_web_api_protocol::providers::{CliInstall, CliMachine};
 use futures_util::{FutureExt as _, StreamExt as _};
 use futures_util::future::{BoxFuture, LocalBoxFuture, Shared};
 use serde::de::DeserializeOwned;
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::services::Services;
@@ -112,12 +114,24 @@ const CONFIG_PARENT: &str = "/tmp";
 pub(crate) struct CloudPlacement {
     shard: Weak<Shard>,
     work: ProcessWork,
+    /// The processes prepared ahead on the user's Cloud.
+    prepared: Rc<PreparedProcesses>,
 }
 
 impl CloudPlacement {
     /// The placement a provider's process starts with.
     pub fn placement(shard: Weak<Shard>, work: ProcessWork) -> Rc<dyn Placement> {
-        Rc::new(Self { shard, work })
+        // A shard that is gone starts nothing, so what it would share
+        // matters to nobody.
+        let prepared = shard
+            .upgrade()
+            .map(|shard| shard.claude_cli().prepared.clone())
+            .unwrap_or_default();
+        Rc::new(Self {
+            shard,
+            work,
+            prepared,
+        })
     }
 }
 
@@ -131,15 +145,26 @@ impl Placement for CloudPlacement {
                 .shard
                 .upgrade()
                 .ok_or_else(|| StartError("The backend is shutting down".into()))?;
+            // Each step's time, which the run's span carries
+            // (`claude-code.md` § Preparing a process ahead).
+            let mut steps = StartSteps::default();
+            let mut step = Instant::now();
+            let mut lap = |into: &mut Duration| {
+                let now = Instant::now();
+                *into = now - step;
+                step = now;
+            };
             let access = shard
                 .cloud_shard()
                 .machine_access()
                 .await
                 .map_err(|error| StartError(error.to_string()))?;
+            lap(&mut steps.admit);
             let executable = shard
                 .cli_executable_at(&access, &self.work)
                 .await
                 .map_err(StartError)?;
+            lap(&mut steps.executable);
             let run_dir = run_dir(&access.home);
             access
                 .host
@@ -165,23 +190,32 @@ impl Placement for CloudPlacement {
                     "Claude Code's configuration directory could not be made on the Cloud: {error}"
                 ))
             })?;
+            lap(&mut steps.directories);
             let system = system(&access.host, &run_dir).await.map_err(|error| {
                 StartError(format!(
                     "The Cloud could not be asked what it tells Claude Code of itself: {error}"
                 ))
             })?;
+            lap(&mut steps.system);
             let site = CliSite {
                 executable,
                 run_dir,
                 config_dir: config.path.clone(),
                 system,
             };
+            // The session's bytes are made here, for the machine's system,
+            // and written next: one step.
             let CliStart { spawn, files } = start(&site);
+            steps.file_bytes = files
+                .iter()
+                .map(|(_, bytes)| u64::try_from(bytes.len()).unwrap_or(u64::MAX))
+                .sum();
             config.write(files).await.map_err(|error| {
                 StartError(format!(
                     "Claude Code's session could not be written on the Cloud: {error}"
                 ))
             })?;
+            lap(&mut steps.files);
             let process = access
                 .host
                 .process()
@@ -192,6 +226,7 @@ impl Placement for CloudPlacement {
                         "Claude Code could not be started on the Cloud: {error}"
                     ))
                 })?;
+            lap(&mut steps.spawn);
             let exit = process.exit.shared();
             config.exit = Some(exit.clone());
             Ok(Placed {
@@ -200,8 +235,13 @@ impl Placement for CloudPlacement {
                     ..process
                 },
                 config: Box::new(config),
+                steps,
             })
         })
+    }
+
+    fn prepared(&self) -> Rc<PreparedProcesses> {
+        self.prepared.clone()
     }
 }
 
@@ -379,10 +419,11 @@ impl AccountMachine for ShardMachine {
 }
 
 /// The CLI work of one user's shard: the versions being installed beside
-/// the one in use.
+/// the one in use, and the processes prepared ahead on the user's Cloud.
 #[derive(Default)]
 pub(crate) struct ClaudeCli {
     upgrading: RefCell<HashSet<String>>,
+    prepared: Rc<PreparedProcesses>,
 }
 
 impl Shard {
@@ -458,6 +499,16 @@ impl Shard {
             }
             shard.claude_cli().upgrading.borrow_mut().remove(&release.version);
         });
+    }
+
+    /// The active account of the provider entry `entry` changed in Settings
+    /// (`claude-code.md` § Preparing a process ahead): the processes
+    /// prepared on the user's Cloud with the previous account's token are
+    /// closed, and the conversations on the entry that a page has open
+    /// prepare again.
+    pub(crate) fn account_changed(&self, entry: &ProviderId) {
+        self.claude_cli().prepared.close_entry(entry.as_str());
+        self.agent().prepare_open_of(entry.as_str());
     }
 
     /// Installs the CLI on the user's Cloud for account work of `entry`, as
@@ -694,6 +745,22 @@ impl CliInstalls {
     /// Forgets the installs of a deleted entry.
     pub fn forget(&self, entry: &ProviderId) {
         self.lock().retain(|(_, installed), _| installed != entry);
+    }
+}
+
+/// Tells `user`'s shard that the active account of `entry` changed, so its
+/// Cloud's processes prepared with the previous account's token close and
+/// the conversations a page has open on the entry prepare again. A shard
+/// that cannot be reached prepares nothing: each next request starts its
+/// process as it would have.
+pub async fn active_account_changed(shards: &Shards, user: &UserId, entry: &ProviderId) {
+    let entry = entry.clone();
+    let told = shards
+        .of(user)
+        .call(move |shard, _| async move { shard.account_changed(&entry) })
+        .await;
+    if let Err(error) = told {
+        tracing::debug!(%user, "the account's change prepared nothing ahead: {error}");
     }
 }
 

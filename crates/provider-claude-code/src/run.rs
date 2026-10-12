@@ -5,14 +5,18 @@
 //! and at a batch of tool calls whose results the next run delivers. It hands
 //! it back before the run's last event, since the agent stops reading a run
 //! at its failure. Every other end closes it, or drops it, which kills it.
+//! When the next request is known but for its input, the runtime prepares
+//! its process ahead, and the request takes that one as a kept process
+//! when it is the request it was prepared for (`claude-code.md` §
+//! Preparing a process ahead).
 
 use std::rc::Rc;
 use std::sync::Arc;
 
 use async_stream::stream;
 use demi_provider_common::{
-    InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits, ToolResultKinds,
-    Secret, offers,
+    Ahead, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
+    ProviderRuntime, RequestLimits, Secret, ToolResultKinds, offers,
 };
 use demi_shared_types::Model;
 use futures_util::StreamExt as _;
@@ -23,6 +27,8 @@ use crate::Shared;
 use crate::live::{LiveCli, Next};
 use crate::output::{ContentBlock, Line, Printed, StreamEvent, TurnEnd};
 use crate::placement::Placement;
+use crate::prepared::Prepared;
+use crate::timing::{self, RunTiming, Took};
 
 /// The HTTP status of a call the vendor refused for its token.
 const UNAUTHORIZED: u16 = 401;
@@ -35,6 +41,9 @@ pub(crate) struct ClaudeCodeRuntime {
     placement: Rc<dyn Placement>,
     /// The process kept from the last run.
     live: Option<LiveCli>,
+    /// The process prepared for the next request; a runtime that keeps a
+    /// process prepares none.
+    prepared: Option<Prepared>,
 }
 
 impl ClaudeCodeRuntime {
@@ -48,19 +57,31 @@ impl ClaudeCodeRuntime {
             http,
             placement,
             live: None,
+            prepared: None,
         }
     }
 }
 
+/// Whether `items` end with the model's answer, so a process resuming them
+/// waits for input: they are no empty history, which the CLI cannot
+/// resume, and end in no input still to answer, such as a message whose
+/// turn failed or a call's result.
+fn answered(items: &[InferenceItem]) -> bool {
+    matches!(
+        items.last(),
+        Some(
+            InferenceItem::AssistantText { .. }
+                | InferenceItem::AssistantThinking { .. }
+                | InferenceItem::AssistantRedactedThinking { .. }
+        )
+    )
+}
+
 impl ProviderRuntime for ClaudeCodeRuntime {
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
-        let span = tracing::info_span!(
-            "claude_code_run",
-            provider = %self.shared.id,
-            session = %request.session_id,
-            request = %request.request_id,
-        );
-        let run = run(self, request);
+        let span = timing::run_span(&self.shared.id, &request.session_id, &request.request_id);
+        let timing = RunTiming::new(span.clone());
+        let run = run(self, request, timing);
         let mut run = Box::pin(run);
         stream::poll_fn(move |context| {
             let _entered = span.enter();
@@ -82,6 +103,55 @@ impl ProviderRuntime for ClaudeCodeRuntime {
             if let Some(live) = self.live.take() {
                 live.close().await;
             }
+            if let Some(prepared) = self.prepared.take() {
+                prepared.close().await;
+            }
+        })
+    }
+
+    /// Prepares the process of the next request, `request` but for its
+    /// input, when the runtime holds none that would serve it: as a page
+    /// opens the conversation or the user picks another model, effort or
+    /// account; and, as an action ends, when the kept process's token is
+    /// about to expire. A prepared process the history moved away from is
+    /// closed. A history that does not end with an answer prepares nothing.
+    /// Nothing here waits for a process: the session readies while the
+    /// user may be sending, so what it closes ends by itself.
+    fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {
+        Box::pin(async move {
+            if let Some(prepared) = self.prepared.take() {
+                if prepared.prepared_for(&request) {
+                    self.prepared = Some(prepared);
+                    return;
+                }
+                tokio::task::spawn_local(prepared.close());
+            }
+            let wanted = match (ahead, &self.live) {
+                (Ahead::Opened | Ahead::Chosen, None) => true,
+                (Ahead::Opened | Ahead::Chosen, Some(live)) => {
+                    !(live.continues(&request) && live.fresh())
+                }
+                (Ahead::Ended, Some(live)) => live.continues(&request) && !live.fresh(),
+                (Ahead::Ended, None) => false,
+            };
+            if !wanted || !answered(&request.items) {
+                return;
+            }
+            if let Some(live) = self.live.take() {
+                tokio::task::spawn_local(live.close());
+            }
+            tracing::debug!(
+                provider = %self.shared.id,
+                session = %request.session_id,
+                ?ahead,
+                "preparing a Claude Code process ahead"
+            );
+            self.prepared = Some(Prepared::start(
+                &self.shared,
+                &self.http,
+                &self.placement,
+                request,
+            ));
         })
     }
 
@@ -106,6 +176,7 @@ impl ProviderRuntime for ClaudeCodeRuntime {
 fn run(
     runtime: &mut ClaudeCodeRuntime,
     request: InferenceRequest,
+    mut timing: RunTiming,
 ) -> impl Stream<Item = ProviderEvent> + '_ {
     stream! {
         let cancel = request.cancel.clone();
@@ -113,9 +184,24 @@ fn run(
         let mut refused: Option<Secret> = None;
         'attempt: loop {
             // A second attempt starts afresh: the first closed its process.
-            let kept = runtime.live.take();
+            let mut kept = runtime.live.take().map(|live| (live, Took::Kept));
+            if let Some(prepared) = runtime.prepared.take() {
+                if prepared.serves(&request) {
+                    match cancel.run_until_cancelled(prepared.take()).await {
+                        // The task closes a process nobody waits for.
+                        None => return,
+                        Some(Some(live)) => kept = Some((live, Took::Prepared)),
+                        // Its preparation failed: the request starts its
+                        // process as it would have.
+                        Some(None) => {}
+                    }
+                } else {
+                    prepared.close().await;
+                }
+            }
             let mut live = match kept {
-                Some(mut live) if live.serves(&request) => {
+                Some((mut live, took)) if live.serves(&request) => {
+                    timing.took(took, live.started.take());
                     if let Some(mcp) = &live.mcp {
                         mcp.offer(request.tools.clone());
                     }
@@ -139,6 +225,7 @@ fn run(
                             return;
                         }
                         Some(Ok(entries)) => {
+                            timing.ready();
                             for event in entries {
                                 yield event;
                             }
@@ -147,7 +234,7 @@ fn run(
                     }
                 }
                 previous => {
-                    if let Some(previous) = previous {
+                    if let Some((previous, _)) = previous {
                         previous.close().await;
                     }
                     let started = LiveCli::start(
@@ -178,6 +265,8 @@ fn run(
                             return;
                         }
                         Some(Ok(())) => {
+                            timing.took(Took::New, live.started.take());
+                            timing.ready();
                             // A new process mirrored nothing yet.
                             live.mirror.begin(&request);
                             live
@@ -265,6 +354,7 @@ fn run(
                                     for event in events {
                                         live.mirror.observe(&event);
                                         yielded = true;
+                                        timing.delta();
                                         yield event;
                                     }
                                     live.mirror.printed(id.clone(), raw, wrote);
@@ -323,6 +413,7 @@ fn run(
                             }
                             live.mirror.observe(&event);
                             yielded = true;
+                            timing.delta();
                             yield event;
                         }
                     }
