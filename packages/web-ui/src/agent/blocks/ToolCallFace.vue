@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import Tag from '@demicodes/web-ui/ui/Tag.vue'
+import RunEndTag from './RunEndTag.vue'
 import ShellRowTag from './ShellRowTag.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText, parseToolCallInput } from '../block-helpers'
@@ -40,6 +40,6 @@ const detail = computed(() => {
   <template v-else>
     <span class="shrink-0">{{ block.toolName }}</span>
     <span v-if="detail" class="min-w-0 truncate font-mono text-fg-muted group-hover:text-fg-body">{{ detail }}</span>
-    <Tag v-if="block.status === 'error'" tone="danger" class="shrink-0">Failed</Tag>
+    <RunEndTag v-if="block.status === 'error'" kind="failed" />
   </template>
 </template>
