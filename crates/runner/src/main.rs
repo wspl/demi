@@ -1,9 +1,12 @@
+#![cfg_attr(windows, feature(windows_process_extensions_inherit_handles))]
 //! The runner (`runner.md`): the execution host's program, which registers
 //! with the backend and serves its work, and, under a root command's name,
 //! the command alias that forwards one command line to it.
 
 mod connection;
 mod console;
+#[cfg(windows)]
+mod detached;
 mod direct;
 mod host_log;
 mod management;
@@ -41,7 +44,12 @@ use tracing_subscriber::{
 };
 
 async fn command(root: String, argv: Vec<String>) -> io::Result<u8> {
-    let env: BTreeMap<_, _> = std::env::vars().collect();
+    // Without the `=C:` entries cmd.exe adds on Windows for each drive's
+    // current directory, which are no variables: a command run from
+    // `cmd /c` would otherwise be refused for its environment.
+    let env: BTreeMap<_, _> = std::env::vars()
+        .filter(|(name, _)| !name.starts_with('='))
+        .collect();
     let endpoint = env
         .get(command_client::ENDPOINT_ENV)
         .ok_or_else(|| io::Error::other("command requires a runner execution context"))?
@@ -139,8 +147,11 @@ fn directory(installation: &Installation, boot: Option<&ManagedBoot>) -> io::Res
         .backend
         .as_ref()
         .ok_or_else(|| io::Error::other("pass --backend <url> to select an installation"))?;
+    // One component at a time, so that on Windows the path the runner
+    // prints, such as its removal command, has the system's separators.
     Ok(home()?
-        .join(".demi/instances")
+        .join(".demi")
+        .join("instances")
         .join(state::instance_id(backend)))
 }
 
@@ -340,9 +351,13 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     // The device environment (`runner.md` § Host operations): the runner's
     // own, as its jobs' shell reads it, without the names that configure it
     // or belong to whatever started it, which no program it starts is meant
-    // to read.
+    // to read. Nor the entries Windows names `=C:` and the like, which are
+    // no variables but the current directory cmd.exe keeps for each drive:
+    // a runner whose starter passed them on handed them to every command,
+    // which refuses a name with `=` ("invalid environment variable name
+    // \"=C:\"").
     let env: BTreeMap<_, _> = demi_runner_shell::host_environment()
-        .filter(|(name, _)| !name.starts_with("DEMI_"))
+        .filter(|(name, _)| !name.starts_with("DEMI_") && !name.starts_with('='))
         .collect();
     let home = home()?;
     let state = RunnerState::open(directory.clone()).await?;
@@ -445,7 +460,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         // A Cloud keeps its artifacts on its home image, which its stops,
         // wakes and resets keep (`native-runtime.md` § The cache).
         artifacts: artifacts.unwrap_or_else(|| match &boot {
-            Some(_) => home.join(".demi/artifacts"),
+            Some(_) => home.join(".demi").join("artifacts"),
             None => directory.join("artifacts"),
         }),
         directory,

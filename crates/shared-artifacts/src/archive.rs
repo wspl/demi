@@ -30,6 +30,17 @@ pub struct Archive {
     pub entry: String,
 }
 
+impl Archive {
+    /// The entry in an installation at `directory`. The entry is a path in
+    /// the archive, whose separator is `/`; it is joined a component at a
+    /// time, so that on Windows the path has the system's separators, as
+    /// what the runner prints does: `C:\…\chrome-win64\chrome.exe`, not
+    /// `C:\…\chrome-win64/chrome.exe`.
+    pub fn entry_in(&self, directory: &Path) -> PathBuf {
+        directory.join(self.entry.split('/').collect::<PathBuf>())
+    }
+}
+
 /// What an installation records beside its files: the SHA-256 of the archive
 /// it came from and of its entry.
 #[derive(Debug, Serialize, Deserialize)]
@@ -72,7 +83,7 @@ pub async fn recorded(directory: &Path, archive: &Archive) -> Result<Option<Path
             reason: "holds another archive".to_owned(),
         });
     }
-    Ok(Some(directory.join(&archive.entry)))
+    Ok(Some(archive.entry_in(directory)))
 }
 
 /// The installation of `archive` at `directory`: its entry, once the
@@ -92,7 +103,7 @@ pub async fn installed(
         directory: directory.to_owned(),
         reason: reason.to_owned(),
     };
-    let entry = directory.join(&archive.entry);
+    let entry = archive.entry_in(directory);
     let found = match crate::digest(&entry, ENTRY_BYTES, cancel).await {
         Ok(found) => found,
         Err(Error::TooLarge { .. }) => return Err(invalid("fails its integrity check")),
@@ -176,7 +187,7 @@ async fn publish_installation(
     archive: &Archive,
     cancel: &CancellationToken,
 ) -> Result<PathBuf, Error> {
-    let entry = match crate::digest(&extracted.join(&archive.entry), ENTRY_BYTES, cancel).await {
+    let entry = match crate::digest(&archive.entry_in(extracted), ENTRY_BYTES, cancel).await {
         Ok(entry) => entry,
         Err(Error::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
             return Err(Error::Archive(format!("holds no {}", archive.entry)));
@@ -192,7 +203,7 @@ async fn publish_installation(
         return Err(Error::Cancelled);
     }
     crate::publish_directory(extracted, destination).await?;
-    Ok(destination.join(&archive.entry))
+    Ok(archive.entry_in(destination))
 }
 
 /// Installs into `root`, as [`install_archive`] does once the archive is
@@ -211,7 +222,7 @@ pub async fn install_unpacked(
     let unpacked = Path::new(&archive.entry)
         .components()
         .try_fold(entry, |path, _| path.parent())
-        .filter(|unpacked| unpacked.join(&archive.entry) == entry)
+        .filter(|unpacked| archive.entry_in(unpacked) == entry)
         .ok_or_else(|| Error::Archive(format!("{} is not its {}", entry.display(), archive.entry)))?
         .to_owned();
     tokio::fs::create_dir_all(root).await?;
