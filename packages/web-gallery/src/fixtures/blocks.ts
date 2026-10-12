@@ -1,6 +1,7 @@
 import type { AgentMessage, Block, ChangedFile, CommandReport, EditedFile, ModelSelection, ToolResultContentBlock, UserContentBlock } from '@demicodes/protocol'
 import { encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { ShellToolView as ShellView, ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
+import type { ToolPicture } from '@demicodes/web-ui/agent/tool-media'
 import { editCopies, galleryBlobSize, galleryBlobs, missingBlob } from './blobs'
 import { agentReceiptMessages } from './subagents'
 
@@ -565,6 +566,19 @@ function captures(count: number): Capture[] {
   return Array.from({ length: count }, (_, index) => index % 2 === 0
     ? { tab: `t${index + 1}`, width: 480, height: 300, bytes: 15_822, medium: blobImage(galleryBlobs.screenshot) }
     : { tab: `t${index + 1}`, width: 480, height: 300, bytes: 16_078, medium: blobImage(galleryBlobs.chart) })
+}
+
+/**
+ * `count` pictures as a row holds them in its line, alternating between the
+ * login page and its chart (480 × 300, so each takes 32 × 20).
+ */
+export function rowPictureSamples(count: number): ToolPicture[] {
+  return Array.from({ length: count }, (_, index): ToolPicture => {
+    const medium = blobImage(index % 2 === 0 ? galleryBlobs.screenshot : galleryBlobs.chart)
+    if (medium.type !== 'image')
+      throw new Error('a blob image is an image')
+    return { kind: 'image', source: medium.source, name: `Screenshot ${index + 1}` }
+  })
 }
 
 /** Four screenshots in one call: they stand in the call's line, beside its title. */
@@ -1486,6 +1500,20 @@ export function leftRunningBlocks(): Block[] {
     },
     ...inRun(
       { type: 'thinking', id: 'left-running-think', createdAt: iso(138_000), model: demoModel, text: 'The suite takes minutes: start it and let it report.', signature: null },
+      // Screenshots of the app's screens the run took first: the folded row holds their pictures and the command's time.
+      screenshotsCall(
+        {
+          id: 'left-running-shots',
+          createdAt: iso(137_000),
+          toolName: 'shell',
+          input: JSON.stringify({
+            script: 'for t in t1 t2 t3 t4 t5 t6 t7 t8 t9 t10 t11 t12; do demi browser screenshot "$t" | demi file view; done',
+            description: 'Take a screenshot of each screen the suite covers',
+          }),
+        },
+        'cmd-left-running-shots',
+        captures(12),
+      ),
       toolCall({
         id: LEFT_RUNNING_CALL,
         createdAt: iso(136_000),
