@@ -1,6 +1,6 @@
 import { DEMO_BUN_TEST, DEMO_GIT_DIFF, DEMO_RG } from './terminal-output'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import { BASH_SCRIPT, RUNNING_SHELL_DESCRIPTION, RUNNING_SHELL_SCRIPT, returnedShellTool, runningShellTool } from './blocks'
+import { BASH_SCRIPT, RUNNING_RUN_CALL, RUNNING_SHELL_DESCRIPTION, RUNNING_SHELL_SCRIPT, returnedShellTool, runningShellTool } from './blocks'
 import { ago } from './time'
 
 /**
@@ -9,6 +9,19 @@ import { ago } from './time'
  * (`useLiveGalleryCommand`).
  */
 export const LIVE_TERMINAL_ID = 'term-watch'
+
+/** The command the running run's newest call started, a minute and a half ago (`runningRunBlocks`). */
+export function runningRunCommand(): TerminalRecord {
+  return {
+    id: 'term-merge',
+    title: 'Review and merge the reset wording',
+    script: 'git merge --no-ff fix/reset-wording && bun run test',
+    phase: 'running',
+    startedAt: ago(92_000),
+    output: 'Merge made by the \'ort\' strategy.\nbun test v1.3.14\n',
+    toolUseId: `${RUNNING_RUN_CALL}-use`,
+  }
+}
 
 export function galleryTerminals(): TerminalRecord[] {
   return [

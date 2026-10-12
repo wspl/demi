@@ -12,12 +12,13 @@ import ThinkingText from './ThinkingText.vue'
 import CommandReportBlock from './CommandReportBlock.vue'
 import AgentReceiptBlock from './AgentReceiptBlock.vue'
 import NoticeStepFace from './NoticeStepFace.vue'
+import ShellRowTag from './ShellRowTag.vue'
 import FileChangePills from './FileChangePills.vue'
 import GoneMediaLines from './GoneMediaLines.vue'
 import { stepIcon } from './tool-row-icon'
 import { toolCallTitle } from '../block-helpers'
 import { thinkingFaceLabel } from '../thinking-label'
-import { isNoticeStep, stepKey, workRunning, workSummary, type NoticeStep, type WorkGroupBlock, type WorkStep } from '../work-groups'
+import { isNoticeStep, runFace, stepKey, workRunning, workSummary, type NoticeStep, type WorkGroupBlock, type WorkStep } from '../work-groups'
 import { useEditSelection, useTranscript } from '../edit-selection'
 import { changeFile, pillSelection, runFiles } from '../../files/request-changes'
 import { foldedMedia, splitMedia } from '../tool-media'
@@ -40,26 +41,19 @@ import { provideBlockScope } from '../whole-blocks'
  * while it is open enters as a row joining the transcript does. Folded, the
  * pictures the calls and notices returned stand in its line, and the files
  * the steps changed under it; open, each with its own row. Open while it
- * runs, its title says for how long once that is past 3 seconds.
+ * runs, its title says for how long once that is past 3 seconds; folded,
+ * the newest step's face wears that step's tag, as a running command's time.
  */
 const props = defineProps<{ group: WorkGroupBlock }>()
 const isOpen = defineModel<boolean>('open', { default: false })
 
 const newest = computed(() => props.group.steps.at(-1)!)
-const lone = computed(() => {
-  const steps = props.group.steps
-  return steps.length === 1 && steps[0]!.type === 'thinking' ? steps[0]! : null
-})
+const shape = computed(() => runFace(props.group, isOpen.value))
+const lone = computed(() => (shape.value.kind === 'thinking' ? shape.value.thinking : null))
 // A lone thinking's row is the thinking's own: held light, it opens to read it whole.
 provideBlockScope(() => lone.value ?? undefined)
-const loneCall = computed(() => {
-  const steps = props.group.steps
-  return steps.length === 1 && steps[0]!.type === 'tool_call' ? steps[0]! : null
-})
-const loneNotice = computed(() => {
-  const steps = props.group.steps
-  return steps.length === 1 && isNoticeStep(steps[0]!) ? steps[0]! : null
-})
+const loneCall = computed(() => (shape.value.kind === 'call' ? shape.value.call : null))
+const loneNotice = computed(() => (shape.value.kind === 'notice' ? shape.value.notice : null))
 /** The newest step is thinking that still streams. */
 const thinkingLive = computed(() => props.group.live && newest.value.type === 'thinking')
 
@@ -79,7 +73,7 @@ const loneElapsed = useElapsedTime(
 )
 const loneText = computed(() => lone.value?.text.trim() ?? '')
 /** The run is open while it runs: its row stands as a stack and says what runs, and for how long. */
-const stackRunning = computed(() => props.group.live && isOpen.value && !lone.value)
+const stackRunning = computed(() => shape.value.kind === 'stack')
 /** How long the run has lasted, from its first step's start. */
 const runElapsed = useElapsedTime(
   () => {
@@ -106,39 +100,44 @@ interface Face {
   label: string
   /** The newest step is a notice or a receipt: the face says it as its own row does. */
   notice: NoticeStep | null
+  /** The newest step is a `shell` call: the face wears its row's tag. */
+  command: ToolCallStep | null
   rollKey: string
 }
+type ToolCallStep = Extract<WorkStep, { type: 'tool_call' }>
 
 const face = computed<Face>(() => {
+  const shown = shape.value
   if (lone.value) {
     return {
       icon: Brain,
       iconKey: 'thinking',
       label: thinkingFaceLabel(thinkingLive.value, loneElapsed.value),
       notice: null,
+      command: null,
       rollKey: thinkingLive.value ? `${lone.value.id}:live` : `${lone.value.id}:done`,
     }
-  }
-  if (!props.group.live) {
-    return { icon: Layers, iconKey: 'stack', label: workSummary(props.group.steps), notice: null, rollKey: 'done' }
   }
   // Open, the steps show under the row, so it stands still as the stack of
   // what runs; folded again, it shows the newest step. Opening and folding
   // change what the row shows, not how far the work got, so the face cuts
   // over at once rather than rolling.
-  if (isOpen.value) {
-    return { icon: Layers, iconKey: 'stack', label: workRunning(props.group.steps, runElapsed.value), notice: null, rollKey: 'running' }
+  if (shown.kind !== 'step') {
+    return shown.kind === 'stack'
+      ? { icon: Layers, iconKey: 'stack', label: workRunning(props.group.steps, runElapsed.value), notice: null, command: null, rollKey: 'running' }
+      : { icon: Layers, iconKey: 'stack', label: workSummary(props.group.steps), notice: null, command: null, rollKey: 'done' }
   }
-  const step = newest.value
+  const step = shown.step
   const { icon, key } = stepIcon(step)
   if (isNoticeStep(step)) {
-    return { icon, iconKey: key, label: '', notice: step, rollKey: stepKey(step) }
+    return { icon, iconKey: key, label: '', notice: step, command: null, rollKey: stepKey(step) }
   }
   return {
     icon,
     iconKey: key,
     label: stepTitle(step),
     notice: null,
+    command: shown.command,
     // A call being written and its block are one step by its tool-use id:
     // the block keeps the face the call showed, so it does not roll again.
     rollKey: stepKey(step),
@@ -220,7 +219,10 @@ function pick(path: string): void {
         <component :is="face.icon" :size="ICON_PX.in28" />
       </template>
       <NoticeStepFace v-if="face.notice" :step="face.notice" />
-      <span v-else class="min-w-0 truncate">{{ face.label }}</span>
+      <template v-else>
+        <span class="min-w-0 truncate">{{ face.label }}</span>
+        <ShellRowTag v-if="face.command" :block="face.command" />
+      </template>
       <!-- A thinking with no text has nothing to open: no body, so no chevron. -->
       <template v-if="!lone || loneText !== ''" #body>
         <ThinkingText v-if="lone" :content="lone.text" :streaming="thinkingLive" />
