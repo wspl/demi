@@ -117,7 +117,7 @@ watch([() => props.files, expanded], () => { void measure() })
       <span class="inline-flex min-w-0 items-baseline gap-1.5">
         <span
           class="min-w-0 truncate"
-          :class="file.kind === 'deleted' ? 'line-through text-fg-muted' : ''"
+          :class="file.kind === 'deleted' ? 'deleted-name' : ''"
         >{{ baseName(file.path) }}</span>
         <LineCounts :added="file.added" :removed="file.removed" />
       </span>
