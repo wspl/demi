@@ -127,6 +127,8 @@ impl ProviderAssembly {
                     })
                 })
             }
+            // An incomplete entry's availability says what it lacks.
+            (None, Err(AssemblyError::Incomplete)) => return unfetched(Vec::new(), Vec::new()),
             (None, Err(error)) => return unfetched(Vec::new(), vec![error.to_string()]),
         };
         match self
@@ -177,7 +179,7 @@ impl ProviderAssembly {
             source_fetched_at: catalog.source_fetched_at,
             stale: catalog.stale,
             warnings: catalog.warnings,
-            availability: super::details::availability(&auth, &runtime),
+            availability: super::details::availability(entry, &auth, &runtime),
             auth,
             runtime,
         }
@@ -224,7 +226,7 @@ mod tests {
             family: "openai".into(),
             label: "Work".into(),
             credential: EntryCredential::ApiKey(ApiKeyConfig {
-                api_key: Secret::try_from("sk-1".to_owned()).unwrap(),
+                api_key: Some(Secret::try_from("sk-1".to_owned()).unwrap()),
                 base_url: None,
                 wire_api: None,
                 vendor_id: None,

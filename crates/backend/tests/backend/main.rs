@@ -50,6 +50,7 @@ mod outputs;
 mod panel;
 mod permissions;
 mod plugins;
+mod provider_commands;
 mod providers;
 mod real_browser;
 mod real_cloud;

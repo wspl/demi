@@ -116,45 +116,6 @@ pub enum Unavailable {
     Failed(String),
 }
 
-/// How a provider entry reaches its vendor, the kind Settings names it by.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum EntryKind {
-    /// An account the user signs in to, such as Claude Code.
-    Subscription,
-    ApiKey,
-}
-
-/// One provider entry of the composer's model menu as the user has it now,
-/// with the models the menu offers of it (`subagents.md` § Managing
-/// profiles).
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MenuEntry {
-    pub id: String,
-    /// The entry's name as Settings shows it.
-    pub name: String,
-    pub kind: EntryKind,
-    pub models: Vec<MenuModel>,
-}
-
-/// One model the menu offers, with what a profile's model settings can
-/// name of it.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MenuModel {
-    pub id: String,
-    pub name: String,
-    /// The context window in tokens; none when the catalog does not say.
-    pub window: Option<u32>,
-    /// The efforts it lists, the first being the one settings that name
-    /// none take.
-    pub efforts: Vec<String>,
-    /// Whether thinking can be turned off.
-    pub can_turn_off: bool,
-    /// The ids of the service tiers it offers, such as `fast`.
-    pub tiers: Vec<String>,
-    /// Whether it reads images.
-    pub images: bool,
-}
-
 /// The model options of a profile change: `--model`, `--provider`,
 /// `--effort` and `--tier`. On an edit, a choice without a model changes
 /// the effort or the tier of the profile's own model.
@@ -241,11 +202,6 @@ pub struct ProfileEdit {
 /// checks and its words. A change reaches the next read.
 pub trait SubagentSource {
     fn current(&self) -> LocalBoxFuture<'_, Result<SubagentSettings, String>>;
-
-    /// What the composer's model menu offers the user now.
-    fn models(&self) -> LocalBoxFuture<'_, Result<Vec<MenuEntry>, String>> {
-        Box::pin(async { Err("this product has no model menu".to_owned()) })
-    }
 
     /// What a round on `selection` runs on, in the names the model menu
     /// shows now ([`runs_on`]).

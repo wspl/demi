@@ -28,3 +28,12 @@ pub struct Refresh {
     #[serde(default)]
     pub refresh: StrictBool,
 }
+
+/// `?q=<query>&entry=<id>` of `GET /models/search`: the words to match,
+/// and the entry whose vendor fills the matches it lists.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ModelSearch {
+    pub q: String,
+    #[serde(default)]
+    pub entry: Option<crate::ids::ProviderId>,
+}

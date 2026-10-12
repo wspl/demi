@@ -1,7 +1,6 @@
-//! `demi agent models` and the `demi agent profiles` group (`subagents.md`
-//! § Managing profiles): what the composer's model menu offers, and the
-//! user's profiles listed, shown, created, edited and deleted through the
-//! product's settings path. The changes need the user's permission, the
+//! The `demi agent profiles` group (`subagents.md` § Managing profiles):
+//! the user's profiles listed, shown, created, edited and deleted through
+//! the product's settings path. The changes need the user's permission, the
 //! category [`PROFILES_CATEGORY`] names.
 
 use std::rc::Weak;
@@ -15,7 +14,7 @@ use serde::Deserialize;
 use super::{
     AgentServer,
     commands::{Invoked, fail, json, out, verb},
-    tree::{Deleted, ModelListing, ProfileAnswer, ProfileListing},
+    tree::{Deleted, ProfileAnswer, ProfileListing},
 };
 
 /// The permission category the profile changes need, which the `agent`
@@ -31,8 +30,6 @@ pub(super) const PROFILES_CATEGORY: (&str, &str, &str) = (
 /// The `--model` value that makes a profile inherit the parent's model.
 const PARENT: &str = "parent";
 
-pub(super) const MODELS_SUMMARY: &str = "List the models the user's model menu offers now, by provider entry: each model's id, name, context window, efforts (* marks the default; off when thinking can be turned off), service tiers and whether it reads images. The model you run on is marked. These are the values `demi agent profiles create` and `edit` take. A read.";
-
 const PROFILES_GROUP: &str = "The user's subagent profiles: list them, show one, and create, edit or delete them; a change needs the user's permission and reaches every conversation.";
 
 const LIST_SUMMARY: &str = "List the user's enabled subagent profiles with when to use each, as the user's settings say now; an unavailable one says what is missing, and a line says so when the user turned subagents off. A read, not a wait.";
@@ -47,16 +44,11 @@ const DELETE_SUMMARY: &str = "Delete a subagent profile; a child already running
 
 const NAME: &str = "The profile's name, the --profile value of spawn: 1 to 40 lowercase letters, digits and hyphens, starting with a letter; not default.";
 const DESCRIPTION: &str = "When an agent should use the profile: one line of 1 to 500 characters, which `demi agent profiles list` shows.";
-const MODEL: &str = "A model id `demi agent models` lists.";
+const MODEL: &str = "A model id `demi providers list` lists.";
 const PROVIDER: &str = "The provider entry offering --model, by its name or id; needed only when more than one entry offers that id.";
 const EFFORT: &str = "An effort the model lists, or off to turn thinking off; without it the model's default effort.";
 const TIER: &str = "A service tier the model offers, such as fast, or default for the vendor's default tier.";
 const INSTRUCTIONS: &str = "Text added to a child's system prompt after Demi's, which it never replaces: what this kind of subagent is for and how it works.";
-
-/// The input of `demi agent models`, which takes none.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub(super) struct ModelsArgs {}
 
 /// The input of `demi agent profiles list`, which takes none.
 #[derive(Deserialize, JsonSchema)]
@@ -177,20 +169,6 @@ pub(super) fn profiles_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> G
                 .permission(category)
                 .bind(TypedRpc::new(verb(server, delete))),
         )
-}
-
-pub(super) async fn models<H: HostResolver>(
-    call: Invoked<H, ModelsArgs>,
-    port: RpcPort,
-) -> Result<u8, RpcError> {
-    let listing: ModelListing = match call.tree.models(&call.caller).await {
-        Ok(listing) => listing,
-        Err(error) => return fail(&error),
-    };
-    if call.json {
-        return json(&port, &listing).await;
-    }
-    out(&port, listing.render()).await
 }
 
 async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
