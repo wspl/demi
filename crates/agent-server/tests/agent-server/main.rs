@@ -4,6 +4,7 @@
 mod compaction;
 mod connections;
 mod editing;
+mod fork;
 mod live;
 mod profiles;
 mod subagents;
