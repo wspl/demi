@@ -14,6 +14,12 @@ pub(crate) fn builder() -> reqwest::ClientBuilder {
         .redirect(reqwest::redirect::Policy::none())
         .connect_timeout(Duration::from_secs(15))
         .read_timeout(Duration::from_secs(60))
+        // zstd is the one coding an artifact arrives in; the workspace's one
+        // reqwest has the other decoders on for `demi-fetch`, and a coding
+        // the download does not name must fail rather than be decoded.
+        .no_gzip()
+        .no_brotli()
+        .no_deflate()
 }
 
 /// The client every artifact download uses: HTTPS only, no redirects, 15

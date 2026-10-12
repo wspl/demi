@@ -40,6 +40,8 @@ members = [
   "crates/command-package-browser",
   "crates/command-package-browser-chrome",
   "crates/command-package-claude-code",
+  "crates/command-package-fetch",
+  "crates/command-package-fetch-protocol",
   "crates/command-package-file",
   "crates/command-package-file-protocol",
   "crates/shared-gates",
