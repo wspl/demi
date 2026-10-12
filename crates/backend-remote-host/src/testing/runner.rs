@@ -351,6 +351,7 @@ async fn adopt(
             } else {
                 Ok((
                     host_identity(&runner),
+                    (runner.kernel.clone(), runner.shell.clone()),
                     Hello {
                         instance: *instance,
                         release: runner.version.clone(),
@@ -365,7 +366,7 @@ async fn adopt(
         }
         _ => return,
     };
-    let (identity, said) = match answer {
+    let (identity, (kernel, shell), said) = match answer {
         Ok(answer) => answer,
         Err(refusal) => {
             let frame = wire::encode(&refusal)
@@ -389,6 +390,8 @@ async fn adopt(
     let (link, driver) = Link::new(LinkOptions {
         device: TEST_DEVICE.into(),
         identity: identity.clone(),
+        kernel,
+        shell,
         pipes,
         policy,
         ping: None,
