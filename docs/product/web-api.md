@@ -894,7 +894,7 @@ configured override. The Test endpoint deliberately makes a real inference
 request. A change of an entry, its accounts included, holds the entry while it
 runs; another change meanwhile answers 409 `provider_busy`.
 
-API providers accept `models` as a complete manual list of 1–1000 entries. Each entry supplies
+API providers accept `models` as a complete manual list of 0–1000 entries; an empty list leaves the entry [incomplete](../providers/models.md#a-provider-is-in-the-list-from-the-start). Each entry supplies
 `id`, `displayName`, positive `contextWindow`, nullable `outputLimit`,
 `thinkingEfforts`, nullable `acceptedExtensions` (without dots) and nullable
 `fastTier`. IDs must be unique and output limits cannot exceed context length.
@@ -914,7 +914,7 @@ CLI its requests start on the user's Cloud, such as `demi.claude-code`, or
 null when its requests are HTTP; the page knows by it that the provider
 needs the Cloud. The entries of the product state carry the same `cliPackage`. `availability` is
 `{ type: "unavailable", reason: "setup", message, missing }` while the entry
-is incomplete, `missing` naming what it lacks (`apiKey`, `baseUrl`, `models`,
+is incomplete, `missing` naming what it lacks (`apiKey`, `models`,
 `account`)
 ([A provider is in the list from the start](../providers/models.md#a-provider-is-in-the-list-from-the-start)),
 `{ type: "unavailable", reason: "authentication", message }` while the
