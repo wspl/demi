@@ -139,6 +139,7 @@ import {
   severalReports,
   removedToolBlocks,
   runningRunBlocks,
+  leftRunningBlocks,
   shellView,
   unsizedRecordingTool,
   wideImageTool,
@@ -153,7 +154,7 @@ import { composerModels, setGalleryContextLimit } from '../fixtures/context-limi
 import { galleryBlobs } from '../fixtures/blobs'
 import { agentLinksWrapMarkdown, agentReceiptMessages, briefSubagent, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
 import GalleryReceipts from '../components/GalleryReceipts.vue'
-import { galleryTerminals, runningRunCommand } from '../fixtures/terminals'
+import { galleryTerminals, leftRunningCommand, runningRunCommand } from '../fixtures/terminals'
 import { demoDeviceStart } from '../fixtures/device-installation'
 import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow, type TurnFlowKind } from '../turn-flow'
@@ -800,10 +801,30 @@ function toggleRunningRun(): void {
   delete command.endedAt
   runningRun.blocks[index] = { ...call, status: 'executing', view: null }
 }
+/**
+ * An ended turn that left its command running: End Command ends it as its
+ * last frame would, exited with 0, and the run's tag goes; Run Again
+ * starts it anew.
+ */
+const leftRunning = reactive({ blocks: leftRunningBlocks(), command: leftRunningCommand() })
+function toggleLeftRunning(): void {
+  const command = leftRunning.command
+  if (command.phase === 'running') {
+    Object.assign(command, { phase: 'exited', exitCode: 0, endedAt: new Date().toISOString() })
+    return
+  }
+  Object.assign(command, { phase: 'running', startedAt: new Date().toISOString() })
+  delete command.exitCode
+  delete command.endedAt
+}
 // The specimens' calls show their commands' output while they run: the live
 // call's and the Turn's, whose flow runs its own command.
 provideLiveCalls((toolUseId) =>
-  callTerminal([...terminals, ...turnFlow.state.terminals, ...workFlow.state.terminals, returnedFailingCommand, runningRun.command], undefined, toolUseId),
+  callTerminal(
+    [...terminals, ...turnFlow.state.terminals, ...workFlow.state.terminals, returnedFailingCommand, runningRun.command, leftRunning.command],
+    undefined,
+    toolUseId,
+  ),
 )
 /** The devices an offline primary Host's card offers, as Run On lists them: it shows the online ones. */
 const offlineMenuDevices: HostDeviceOption[] = [
@@ -2286,7 +2307,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'changes'">
       <GallerySection
         title="Work Groups"
-        note="Consecutive steps show as one row, the same row from the first step to the turn's end. While they run, each new step rolls over the one before: Requesting, thinking, a call being written, from its description, the call. The row shimmers until the turn moves past it, also after a command ended, while the model's next output is waited for; no Requesting row shows under it. Thinking without text is covered by the step after it. A command's notice and an agent's receipt between the steps are steps of the run too: the replay's background build reports its end and a child sends an update between two calls, and the row stays one row, its face their notice row while they are the newest step; the agent's text, the user's messages and steers, and the receipts of the user's decisions end a run. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a run without a call reads what its notices and receipts told, such as 2 commands finished, heard from 1 agent. A failure shows on its own call inside. Opened, the notice and the receipt are rows of their own among the calls: the notice's title brings the build's call into view and marks the call's own row, or the run's row while it is folded, which stays folded; and the agent's name opens the Agents window at the call that sent the update. Opened while it runs, past 3 seconds, its title says for how long, Running 3 commands for 1m32s, counting up from its first step; an ended run's title names no time. Folded while it runs, the row is its newest step and wears what that step's own row wears: a command that has run more than 3 seconds wears the time, 1m32s, counting up, as in the run whose newest command runs, where End Command ends it and the tag goes, and Run Again starts it anew. Folded, the pictures the calls and notices returned stand in its own line, in order, as a call's do, and the files the steps changed under it, each once; open, each call shows its own."
+        note="Consecutive steps show as one row, the same row from the first step to the turn's end. While they run, each new step rolls over the one before: Requesting, thinking, a call being written, from its description, the call. The row shimmers until the turn moves past it, also after a command ended, while the model's next output is waited for; no Requesting row shows under it. Thinking without text is covered by the step after it. A command's notice and an agent's receipt between the steps are steps of the run too: the replay's background build reports its end and a child sends an update between two calls, and the row stays one row, its face their notice row while they are the newest step; the agent's text, the user's messages and steers, and the receipts of the user's decisions end a run. Opened while it runs, the row stands still as a stack and what runs, and the steps show under it, a new one sliding in as a row joining the transcript does; opening and folding cut the face over at once. Once the run ends, the row is a stack and what it did, each kind of call once, in the order the run first made it, such as Ran 2 commands, checked 1 command, never a count of steps; a run without a call reads what its notices and receipts told, such as 2 commands finished, heard from 1 agent. A failure shows on its own call inside. Opened, the notice and the receipt are rows of their own among the calls: the notice's title brings the build's call into view and marks the call's own row, or the run's row while it is folded, which stays folded; and the agent's name opens the Agents window at the call that sent the update. Opened while it runs, past 3 seconds, its title says for how long, Running 3 commands for 1m32s, counting up from its first step; an ended run's title names no time. Folded while it runs, the row is its newest step and wears what that step's own row wears: a command that has run more than 3 seconds wears the time, 1m32s, counting up, as in the run whose newest command runs, where End Command ends it and the tag goes, and Run Again starts it anew. An ended run whose command the agent left running wears that command's time after what it did, Ran 1 command 2m16s, until the command ends. Folded, the pictures the calls and notices returned stand in its own line, in order, as a call's do, and the files the steps changed under it, each once; open, each call shows its own."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="workFlow.play('work')">Replay</Button>
@@ -2340,6 +2361,24 @@ onBeforeUnmount(() => {
           </div>
           <Button size="sm" variant="ghost" class="mt-1" @click="toggleRunningRun">
             {{ runningRun.command.phase === 'running' ? 'End Command' : 'Run Again' }}
+          </Button>
+        </GallerySpecimen>
+        <GallerySpecimen variant="an ended run whose command still runs" wide>
+          <div class="gallery-frame h-[16rem] bg-surface">
+            <AgentMessageList
+              class="h-full"
+              conversation-id="gallery-work-left-running"
+              :blocks="leftRunning.blocks"
+              :pending-steers="[]"
+              :queue="[]"
+              phase="idle"
+              :bottom-offset="0"
+              :persisted-scroll-state="undefined"
+              read-only
+            />
+          </div>
+          <Button size="sm" variant="ghost" class="mt-1" @click="toggleLeftRunning">
+            {{ leftRunning.command.phase === 'running' ? 'End Command' : 'Run Again' }}
           </Button>
         </GallerySpecimen>
         <GallerySpecimen variant="runs that check a command, or run one and check" wide>

@@ -211,12 +211,19 @@ describe('what a group says it did', () => {
 // call running for minutes, showed no time until the row was opened.
 describe('the face that wears a running command’s tag', () => {
   const merge = call('m', 'shell', { script: 'git merge && bun run test', description: 'Review and merge' }, 'executing')
-  /** The face of the run at the end of the transcript `blocks`, `open` or folded. */
+  /** The face of the last run in the transcript `blocks`, `open` or folded. */
   const face = (blocks: (Block | MessageListBlock)[], running: boolean, open = false) => {
-    const row = groupWork([text('r'), ...blocks], running).at(-1) as WorkGroupBlock
+    const row = groupWork([text('r'), ...blocks], running).findLast((each) => each.type === 'work_group') as WorkGroupBlock
     const shown = runFace(row, open)
-    return shown.kind === 'step' ? { kind: 'step', step: shown.step.id, command: shown.command?.id ?? null } : { kind: shown.kind }
+    if (shown.kind === 'step')
+      return { kind: 'step', step: shown.step.id, command: shown.command?.id ?? null }
+    return shown.kind === 'done' ? { kind: 'done', running: shown.running.map((step) => step.id) } : { kind: shown.kind }
   }
+  /** A call that returned while its command ran on, as its stored view says. */
+  const runsOn = (id: string): Block => ({
+    ...call(id, 'shell', { script: 'sleep 600', description: `Run ${id}` }),
+    view: { kind: 'shell', status: 'running', commandId: '7', runningMs: 15_000, idleMs: 0, viewTruncated: false, chunks: [] },
+  } as Block)
 
   test('a running call alone, or after thinking that goes, is its own row', () => {
     expect(face(run('m', merge), true)).toEqual({ kind: 'call' })
@@ -239,7 +246,18 @@ describe('the face that wears a running command’s tag', () => {
       .toEqual({ kind: 'step', step: 'g', command: null })
     // Open, the run says for how long it has run, and each step's row inside wears its own tag.
     expect(face(run('a', call('a'), merge), true, true)).toEqual({ kind: 'stack' })
-    expect(face(run('a', call('a'), merge), false)).toEqual({ kind: 'done' })
+    expect(face(run('a', call('a'), call('b')), false)).toEqual({ kind: 'done', running: [] })
+  })
+
+  // `runtime.md` § Work groups: the agent thought, left a command running and
+  // ended its turn; the ended run's row wears that command's time until it
+  // ends, so the folded row never hides that something still runs. Whether
+  // it still runs is the live frames' to say, which the row's tag reads.
+  test('an ended run names the calls whose command ran on after they returned', () => {
+    expect(face([...run('t', thinking('t', 'Start the suite.'), runsOn('s')), text('d')], false))
+      .toEqual({ kind: 'done', running: ['s'] })
+    expect(face(run('a', call('a'), runsOn('s'), call('b'), runsOn('w'), call('g', 'browse', { description: 'Open' })), false))
+      .toEqual({ kind: 'done', running: ['s', 'w'] })
   })
 })
 

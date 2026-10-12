@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import type { ToolCallBlock } from './block-types'
-import { commandEndMark, runningTime } from './command-end'
+import { commandEndMark } from './command-end'
 import { useLiveCalls } from './live-calls'
 import { shellRowEnd, shellRowRunning, shellRowTime } from './terminals'
 import { useElapsedTime } from '../composables/useElapsedTime'
@@ -31,8 +31,6 @@ export function useShellRow(block: () => ToolCallBlock) {
     endMark,
     /** How long the command has run or ran; none while unknown. */
     elapsedMs: computed(() => (time.value?.kind === 'ran' ? time.value.ms : runningFor.value)),
-    /** While the command runs, past 3 seconds, the time it has run, where Failed or Stopped stands once it ends. */
-    runningTag: computed(() => (time.value?.kind === 'running' ? runningTime(runningFor.value) : null)),
     /** The row shimmers while its call runs and, after, while its command still does. */
     running: computed(() => shellRowRunning(block().status, started.value)),
   }
