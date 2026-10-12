@@ -29,8 +29,8 @@ use demi_backend_remote_host::decode_output;
 use demi_conversation_socket_protocol::{PageAt, light_bytes, page, requests};
 use demi_web_api_protocol::conversations::{CompactionSummary, TranscriptQuery};
 use demi_shared_types::{
-    Block, BlockId, CommandEnd, CommandId, CompletionId, INSTRUCTIONS_SOURCE, InstructionEntry, NodeId,
-    QueuedMessage, Sequence, SessionPhase, Timestamp, ToolCallBlock, is_blank,
+    Block, BlockId, CommandEnd, CommandId, CompletionId, INSTRUCTIONS_SOURCE, InstructionEntry,
+    ModelSelection, NodeId, QueuedMessage, Sequence, SessionPhase, Timestamp, ToolCallBlock, is_blank,
 };
 use futures_util::future::LocalBoxFuture;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
@@ -125,8 +125,8 @@ impl AgentTreeStore for SqliteTreeStore {
                     transaction.execute(
                         "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at,
                            can_spawn, closed_phase, closed_at, result, failure, delivered, state, block_count,
-                           output_revision)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, 0)",
+                           output_revision, forked_from)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, 0, ?16)",
                         params![
                             record.id.as_str(),
                             integer(record.number),
@@ -143,6 +143,7 @@ impl AgentTreeStore for SqliteTreeStore {
                             failure,
                             record.delivered,
                             to_json(&initial.state),
+                            record.forked_from.map(integer),
                         ],
                     )?;
                     if let Err(refused) = write_checkpoint(&transaction, &record.id, &initial, &completions)? {
@@ -588,7 +589,7 @@ fn node_state(
 
 const NODE_COLUMNS: &str =
     "id, number, parent_id, description, profile, instructions, round, started_at, can_spawn,
-     closed_phase, closed_at, result, failure, delivered";
+     closed_phase, closed_at, result, failure, delivered, forked_from";
 
 fn node_by_id(connection: &Connection, id: &NodeId) -> Result<Option<NodeRecord>, StorageError> {
     let mut statement =
@@ -660,6 +661,10 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
         can_spawn_subagents: row.get("can_spawn")?,
         closed,
         delivered: row.get("delivered")?,
+        forked_from: row
+            .get::<_, Option<i64>>("forked_from")?
+            .map(|number| decode(TABLE, "forked_from", u64::try_from(number)))
+            .transpose()?,
     })
 }
 
@@ -1230,15 +1235,20 @@ pub fn read_page(
     })
 }
 
-/// The subagents of the tree, in the order they started.
-pub fn subagents(connection: &Connection) -> Result<Vec<NodeRecord>, StorageError> {
+/// The subagents of the tree, in the order they started, each with the
+/// model selection its checkpoint saved.
+pub fn subagents(
+    connection: &Connection,
+) -> Result<Vec<(NodeRecord, ModelSelection)>, StorageError> {
     let mut statement = connection.prepare(&format!(
-        "SELECT {NODE_COLUMNS} FROM nodes WHERE parent_id IS NOT NULL ORDER BY number"
+        "SELECT {NODE_COLUMNS}, json_extract(state, '$.model') AS model FROM nodes
+         WHERE parent_id IS NOT NULL ORDER BY number"
     ))?;
     let mut rows = statement.query([])?;
     let mut nodes = Vec::new();
     while let Some(row) = rows.next()? {
-        nodes.push(node_row(row)?);
+        let model: String = row.get("model")?;
+        nodes.push((node_row(row)?, json("nodes", "state", &model)?));
     }
     Ok(nodes)
 }
@@ -1352,6 +1362,7 @@ mod tests {
             can_spawn_subagents: true,
             closed: None,
             delivered: false,
+            forked_from: None,
         }
     }
 
