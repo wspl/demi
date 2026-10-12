@@ -18,6 +18,8 @@ use crate::placement::StartSteps;
 pub(crate) enum Took {
     /// The process the runtime kept from the session's previous run.
     Kept,
+    /// A process started ahead of the request.
+    Prepared,
     /// A process started for the request.
     New,
 }
@@ -26,6 +28,7 @@ impl Took {
     fn as_str(self) -> &'static str {
         match self {
             Self::Kept => "kept",
+            Self::Prepared => "prepared",
             Self::New => "new",
         }
     }

@@ -14,6 +14,8 @@ use demi_host_interface::{HostError, Process, SpawnRequest};
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use tokio_util::sync::CancellationToken;
 
+use crate::prepared::PreparedProcesses;
+
 /// Where a new CLI process runs on the machine the placement chose.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliSite {
@@ -74,6 +76,11 @@ pub trait Placement {
         &'a self,
         start: &'a dyn Fn(&CliSite) -> CliStart,
     ) -> LocalBoxFuture<'a, Result<Placed, StartError>>;
+
+    /// The processes prepared ahead on the placement's machine and not yet
+    /// used, which every placement of that machine shares
+    /// (`claude-code.md` § Preparing a process ahead).
+    fn prepared(&self) -> Rc<PreparedProcesses>;
 }
 
 /// A started CLI process and its configuration directory, with how long

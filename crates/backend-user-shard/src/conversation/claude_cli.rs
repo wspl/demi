@@ -32,7 +32,7 @@ use demi_host_interface::{
 };
 use demi_provider_claude_code::{
     AccountMachine, AccountWork, CliSite, CliStart, CliSystem, ConfigDir, Placed, Placement,
-    StartError, StartSteps,
+    PreparedProcesses, StartError, StartSteps,
 };
 use demi_shared_types::StreamKind;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
@@ -114,12 +114,24 @@ const CONFIG_PARENT: &str = "/tmp";
 pub(crate) struct CloudPlacement {
     shard: Weak<Shard>,
     work: ProcessWork,
+    /// The processes prepared ahead on the user's Cloud.
+    prepared: Rc<PreparedProcesses>,
 }
 
 impl CloudPlacement {
     /// The placement a provider's process starts with.
     pub fn placement(shard: Weak<Shard>, work: ProcessWork) -> Rc<dyn Placement> {
-        Rc::new(Self { shard, work })
+        // A shard that is gone starts nothing, so what it would share
+        // matters to nobody.
+        let prepared = shard
+            .upgrade()
+            .map(|shard| shard.claude_cli().prepared.clone())
+            .unwrap_or_default();
+        Rc::new(Self {
+            shard,
+            work,
+            prepared,
+        })
     }
 }
 
@@ -226,6 +238,10 @@ impl Placement for CloudPlacement {
                 steps,
             })
         })
+    }
+
+    fn prepared(&self) -> Rc<PreparedProcesses> {
+        self.prepared.clone()
     }
 }
 
@@ -403,10 +419,11 @@ impl AccountMachine for ShardMachine {
 }
 
 /// The CLI work of one user's shard: the versions being installed beside
-/// the one in use.
+/// the one in use, and the processes prepared ahead on the user's Cloud.
 #[derive(Default)]
 pub(crate) struct ClaudeCli {
     upgrading: RefCell<HashSet<String>>,
+    prepared: Rc<PreparedProcesses>,
 }
 
 impl Shard {
@@ -482,6 +499,16 @@ impl Shard {
             }
             shard.claude_cli().upgrading.borrow_mut().remove(&release.version);
         });
+    }
+
+    /// The active account of the provider entry `entry` changed in Settings
+    /// (`claude-code.md` § Preparing a process ahead): the processes
+    /// prepared on the user's Cloud with the previous account's token are
+    /// closed, and the conversations on the entry that a page has open
+    /// prepare again.
+    pub(crate) fn account_changed(&self, entry: &ProviderId) {
+        self.claude_cli().prepared.close_entry(entry.as_str());
+        self.agent().prepare_open_of(entry.as_str());
     }
 
     /// Installs the CLI on the user's Cloud for account work of `entry`, as
@@ -718,6 +745,22 @@ impl CliInstalls {
     /// Forgets the installs of a deleted entry.
     pub fn forget(&self, entry: &ProviderId) {
         self.lock().retain(|(_, installed), _| installed != entry);
+    }
+}
+
+/// Tells `user`'s shard that the active account of `entry` changed, so its
+/// Cloud's processes prepared with the previous account's token close and
+/// the conversations a page has open on the entry prepare again. A shard
+/// that cannot be reached prepares nothing: each next request starts its
+/// process as it would have.
+pub async fn active_account_changed(shards: &Shards, user: &UserId, entry: &ProviderId) {
+    let entry = entry.clone();
+    let told = shards
+        .of(user)
+        .call(move |shard, _| async move { shard.account_changed(&entry) })
+        .await;
+    if let Err(error) = told {
+        tracing::debug!(%user, "the account's change prepared nothing ahead: {error}");
     }
 }
 

@@ -21,6 +21,7 @@ mod mcp;
 mod models;
 mod output;
 mod placement;
+mod prepared;
 mod mirror;
 mod quota;
 mod run;
@@ -48,6 +49,7 @@ pub use placement::{
     AccountMachine, AccountWork, CliSite, CliStart, CliSystem, ConfigDir, Placed, Placement,
     StartError, StartSteps,
 };
+pub use prepared::PreparedProcesses;
 
 use crate::account::ClaudeAuth;
 use crate::login::ClaudeKit;

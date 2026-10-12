@@ -16,7 +16,7 @@ use demi_conversation_socket_protocol::{
     ClientFrame, ClientFrameKind, EditOutcome, RemoveOutcome, ServerFrame, SteerOutcome,
 };
 use demi_provider_common::{
-    ProviderEvent,
+    Ahead, InferenceItem, ProviderEvent,
     testing::{ScriptedRuntime, Turn, event},
 };
 use demi_shared_types::{Block, BlockId, CommandId, NodeId, SessionPhase};
@@ -35,6 +35,46 @@ fn rejected(command: ClientFrameKind, reason: &str) -> ServerFrame {
         command,
         reason: reason.to_owned(),
     }
+}
+
+/// A page that opens a conversation makes its next request known but for
+/// its input, and so does each action's end from then on: the session asks
+/// its runtime to ready that request ahead, with the history the request
+/// then extends (`claude-code.md` § Preparing a process ahead).
+#[tokio::test(flavor = "local")]
+async fn a_page_that_opens_a_conversation_has_its_next_request_readied_ahead_after_each_action() {
+    let script = ScriptedRuntime::new([
+        Turn::Events(vec![event::text("answer"), event::response(1, 1)]),
+        Turn::Events(vec![event::text("again"), event::response(1, 1)]),
+    ]);
+    let fixture = Fixture::new(&script);
+    let mut client = fixture.client();
+
+    client.send(open()).await;
+    let readied = script.readied(1).await;
+    assert_eq!(readied[0].0, Ahead::Opened);
+    assert!(readied[0].1.items.is_empty(), "{:?}", readied[0].1.items);
+
+    client.send(send("m1", "hi")).await;
+    client.next_until(is_idle).await;
+    let readied = script.readied(2).await;
+    let (ahead, history) = &readied[1];
+    assert_eq!(*ahead, Ahead::Ended);
+    assert!(
+        matches!(history.items.last(), Some(InferenceItem::AssistantText { text, .. }) if text == "answer"),
+        "{:?}",
+        history.items
+    );
+
+    // The next request extends exactly the history readied for it; its
+    // turn's end asks again.
+    client.send(send("m2", "more")).await;
+    script.readied(3).await;
+    let next = &script.requests()[1];
+    assert_eq!(next.items[..history.items.len()], history.items[..]);
+    assert_eq!(next.system_prompt, history.system_prompt);
+    assert_eq!(next.model_id, history.model_id);
+    assert_eq!(next.session_id, history.session_id);
 }
 
 #[tokio::test(flavor = "local")]
