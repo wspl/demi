@@ -4,6 +4,7 @@
 mod encoding;
 mod kept;
 mod messages;
+mod pipe_frames;
 mod replies;
 
 pub use encoding::{Timestamp, WireBytes};
@@ -19,6 +20,10 @@ pub use messages::{
     StreamArtifactOwner, VolumeName, WriteExists,
 };
 pub use demi_shared_types::ReadAt;
+pub use pipe_frames::{
+    PIPE_DATA_BYTES, PIPE_IDLE, PipeEnd, PipeFrame, PipeFrameDecoder, PipeFrameError,
+    encode_data, end_frame, idle_frame,
+};
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
 
 use std::time::Duration;
@@ -27,7 +32,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names.
-pub const VERSION: u32 = 43;
+pub const VERSION: u32 = 44;
 /// How long a runner keeps its jobs and services without a connection
 /// before it stops them (`runner.md` § Command lifetime).
 pub const UNREACHED_GRACE: Duration = Duration::from_secs(10 * 60);
