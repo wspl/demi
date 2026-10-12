@@ -98,16 +98,19 @@ function submit() {
         <div
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
+          <!-- A code is 32 characters, wider than a control beside the label may be. -->
           <SettingsRow label="Pairing code">
-            <TextInput
-              v-model="code"
-              focused
-              aria-label="Pairing code"
-              placeholder="Paste code"
-              literal
-              class="w-60 max-w-full font-mono"
-              :disabled="phase.kind === 'pairing'"
-            />
+            <template #below>
+              <TextInput
+                v-model="code"
+                focused
+                aria-label="Pairing code"
+                placeholder="Paste code"
+                literal
+                class="w-full font-mono"
+                :disabled="phase.kind === 'pairing'"
+              />
+            </template>
           </SettingsRow>
         </div>
         <InlineError
