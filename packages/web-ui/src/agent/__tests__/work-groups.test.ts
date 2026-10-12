@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test'
 import type { Block } from '@demicodes/protocol'
 import type { MessageListBlock } from '../pending-steers'
-import { groupWork, workRunning, workSummary, type WorkGroupBlock } from '../work-groups'
+import { groupWork, runFace, workRunning, workSummary, type WorkGroupBlock } from '../work-groups'
 import { createdAt, model } from './agent-harness'
 
 // Cost: pure, a few milliseconds for the file.
@@ -12,7 +12,7 @@ const call = (
   id: string,
   toolName = 'shell',
   input: Record<string, unknown> = { script: 'true', description: `Run ${id}` },
-  status: 'completed' | 'error' = 'completed',
+  status: Extract<Block, { type: 'tool_call' }>['status'] = 'completed',
 ): Block => ({
   type: 'tool_call',
   id,
@@ -200,6 +200,46 @@ describe('what a group says it did', () => {
     expect(workRunning(run, 2_000)).toBe('Running 4 commands')
     expect(workRunning(run, 92_000)).toBe('Running 4 commands for 1m32s')
     expect(workRunning(steps(plan, check('s', 17)), 9_000)).toBe('Checking 1 command for 9s')
+  })
+})
+
+// A shell row wears the time its command has run, or how it went wrong, on
+// whatever face shows it (`runtime.md` § Rendering boundary, § Work groups):
+// a lone call is its own row, which wears its tag; a folded running run is
+// its newest step and wears that step's tag too. Before, the folded face
+// showed the step's title bare, so the lead's merge, a thinking and then a
+// call running for minutes, showed no time until the row was opened.
+describe('the face that wears a running command’s tag', () => {
+  const merge = call('m', 'shell', { script: 'git merge && bun run test', description: 'Review and merge' }, 'executing')
+  /** The face of the run at the end of the transcript `blocks`, `open` or folded. */
+  const face = (blocks: (Block | MessageListBlock)[], running: boolean, open = false) => {
+    const row = groupWork([text('r'), ...blocks], running).at(-1) as WorkGroupBlock
+    const shown = runFace(row, open)
+    return shown.kind === 'step' ? { kind: 'step', step: shown.step.id, command: shown.command?.id ?? null } : { kind: shown.kind }
+  }
+
+  test('a running call alone, or after thinking that goes, is its own row', () => {
+    expect(face(run('m', merge), true)).toEqual({ kind: 'call' })
+    expect(face(run('t', thinking('t'), merge), true)).toEqual({ kind: 'call' })
+    // After the turn, a command that runs on keeps its own row.
+    expect(face([...run('m', { ...merge, status: 'completed' } as Block)], false)).toEqual({ kind: 'call' })
+  })
+
+  test('a folded running run whose newest step is a shell call wears that call’s tag', () => {
+    expect(face(run('t', thinking('t', 'Merge it.'), merge), true)).toEqual({ kind: 'step', step: 'm', command: 'm' })
+    expect(face(run('a', call('a'), call('b'), call('c'), merge), true)).toEqual({ kind: 'step', step: 'm', command: 'm' })
+    // A check is a shell row too, with its own tag.
+    expect(face(run('a', call('a'), check('s', 17)), true)).toEqual({ kind: 'step', step: 's', command: 's' })
+  })
+
+  test('a face that is no shell call, an open run and an ended run wear none', () => {
+    // Nothing runs while the call is written; its block takes over the face once whole.
+    expect(face([...run('a', call('a')), writing('m')], true)).toEqual({ kind: 'step', step: 'pending-call:m-use', command: null })
+    expect(face(run('a', call('a'), call('g', 'browse', { description: 'Open the page' }, 'executing')), true))
+      .toEqual({ kind: 'step', step: 'g', command: null })
+    // Open, the run says for how long it has run, and each step's row inside wears its own tag.
+    expect(face(run('a', call('a'), merge), true, true)).toEqual({ kind: 'stack' })
+    expect(face(run('a', call('a'), merge), false)).toEqual({ kind: 'done' })
   })
 })
 
