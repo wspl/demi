@@ -13,7 +13,7 @@ use tokio::sync::watch;
 
 use crate::{
     NOW, NOW_SECONDS, NPM_LATEST, access_token, fresh_token, pool_with, provider, provider_at,
-    secret,
+    releases_at, secret,
 };
 
 const MODELS: &str = "/backend-api/codex/models";
@@ -119,9 +119,12 @@ async fn the_catalog_asks_with_the_newest_codex_release_and_lists_the_models_it_
     vendor.respond_at(MODELS, answer(&fixture()));
     guarded(UNWAITED, provider.list_models()).await.unwrap();
     assert_eq!(catalog_versions(&vendor), [BUILT_IN]);
+    assert_eq!(provider.catalog_revision().as_deref(), Some(BUILT_IN));
     open.send(true).unwrap();
 
+    // The catalog's revision is the version its requests ask with.
     let list = catalog_at(&provider, &vendor, "0.163.0", LIVE_CATALOG).await;
+    assert_eq!(provider.catalog_revision().as_deref(), Some("0.163.0"));
     let models: Vec<(&str, Option<u32>)> = list
         .models
         .iter()
@@ -164,7 +167,8 @@ async fn a_registry_that_fails_leaves_the_version_last_read_and_is_read_again_af
     // A token that outlives the hours the test moves the clock by.
     let token = access_token(NOW_SECONDS + 24 * 3_600);
     let pool = pool_with(secret(&token, "refresh-1", NOW)).await;
-    let provider = provider_at(&vendor, &pool, TransportMode::Sse, clock.clone());
+    let releases = releases_at(&vendor, clock.clone());
+    let provider = provider_at(&vendor, &pool, TransportMode::Sse, clock.clone(), releases);
 
     // The registry cannot be reached: the catalog asks with the built-in
     // version, without waiting for the read.
