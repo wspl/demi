@@ -25,7 +25,7 @@ import type { CloudState } from '@demicodes/web-ui/cloud/types'
 import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
-import { mockVendors } from '../fixtures/settings'
+import { mockModelMatches, mockVendors, searchMockModels } from '../fixtures/settings'
 import { demoDeviceInstallation, developmentDeviceInstallation } from '../fixtures/device-installation'
 import { createGalleryFileHosts } from '../fixtures/files'
 import { useGalleryView } from '../gallery-views'
@@ -172,14 +172,29 @@ const loginPhases = [
   ...codexPhases.map((item) => ({ ...item, vendor: 'Codex' })),
   ...grokPhases.map((item) => ({ ...item, vendor: 'Grok Build' })),
 ]
+/** A match models.dev lists, which choosing in Add Model fills the whole model from. */
+const matchedModel = mockModelMatches[0]!.model
 const modelEditors: {
   variant: string
   mode: 'create' | 'edit' | 'view'
   model: SettingsModelDraft
   pending: boolean
+  /** Whether the dialog searches models.dev as the product's does. */
+  search?: boolean
+  error?: string
 }[] = [
   { variant: 'view', mode: 'view', model, pending: false },
-  { variant: 'create', mode: 'create', model: emptyModel, pending: false },
+  { variant: 'add · empty', mode: 'create', model: emptyModel, pending: false, search: true },
+  { variant: 'add · name typed, matches listed', mode: 'create', model: { ...emptyModel, name: 'gemini fl' }, pending: false, search: true },
+  { variant: 'add · filled from a match', mode: 'create', model: matchedModel, pending: false, search: true },
+  {
+    variant: 'add · refused',
+    mode: 'create',
+    model: matchedModel,
+    pending: false,
+    search: true,
+    error: 'The model gemini-3.8-flash is already in Google’s list.',
+  },
   { variant: 'edit', mode: 'edit', model, pending: false },
   { variant: 'edit · saving', mode: 'edit', model, pending: true },
 ]
@@ -395,7 +410,7 @@ const resetPhases: {
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="Model" note="A manually configured model: read-only from a catalog, or created and edited for a bare endpoint.">
+      <GallerySection title="Model" note="A model of a provider: read-only from a catalog, edited, or added. Add Model asks for the name first: typing searches models.dev, the list under the field offers Custom first and then the matches with their vendor and context window, the arrows and Return choose, Escape puts the list away. Choosing a match fills every field, still editable; Custom shows them empty but for the typed name. Add saves the model, and a refusal shows under the fields in the backend’s words.">
         <div class="grid items-start gap-6 xl:grid-cols-2">
           <GallerySpecimen v-for="editor in modelEditors" :key="editor.variant" wide :variant="editor.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -405,6 +420,8 @@ const resetPhases: {
                 :mode="editor.mode"
                 :model="editor.model"
                 :pending="editor.pending"
+                :error="editor.error"
+                :search="editor.search ? searchMockModels : undefined"
                 @close="close"
                 @save="(saved) => finish(close, `Save ${saved.name || saved.id}`)"
               />

@@ -4,7 +4,6 @@ import { formatTokens } from '../ui/token-count'
 import { contextLimitOptions, contextWindowInUse } from './context-limit'
 import { fastServiceTier, isFastMode } from './fast-mode'
 import {
-  availableProviders,
   composerModel,
   resolveSelectedModel,
   type ModelSettings,
@@ -30,10 +29,18 @@ export interface ModelMenuRows {
     value: string
     options: { label: string; window: number; tokens: number | null; selected: boolean }[]
   } | null
-  /** Model: the models of each usable provider, the chosen one marked. */
+  /**
+   * Model: the models of each usable provider, the chosen one marked, and
+   * those of an incomplete entry too, which cannot be chosen: `unchoosable`
+   * is the reason, shown on each dimmed row.
+   */
   model: {
     value: string
-    groups: { provider: ProviderInfo; models: { model: ModelInfo; selected: boolean }[] }[]
+    groups: {
+      provider: ProviderInfo
+      unchoosable: string | null
+      models: { model: ModelInfo; selected: boolean }[]
+    }[]
   }
 }
 
@@ -87,13 +94,16 @@ export function modelMenuRows(
       value: parentChosen
         ? ''
         : model?.name ?? composerModel(providers, models, settings?.providerId, settings?.modelId).label,
-      groups: availableProviders(providers, models).map((provider) => ({
-        provider,
-        models: (models[provider.id] ?? []).map((candidate) => ({
-          model: candidate,
-          selected: selected?.providerId === provider.id && selected.modelId === candidate.id,
+      groups: providers
+        .filter((provider) => (provider.isAvailable || provider.setupReason !== undefined) && (models[provider.id]?.length ?? 0) > 0)
+        .map((provider) => ({
+          provider,
+          unchoosable: provider.isAvailable ? null : provider.setupReason ?? null,
+          models: (models[provider.id] ?? []).map((candidate) => ({
+            model: candidate,
+            selected: selected?.providerId === provider.id && selected.modelId === candidate.id,
+          })),
         })),
-      })),
     },
   }
 }
