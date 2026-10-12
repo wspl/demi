@@ -310,10 +310,13 @@ The web app decides when to ask:
 - A manual **Refresh usage** action ignores the minute and reports a failure.
   Settings offers it on each account, and the context card at the end of its
   *Usage limits* line, as an icon button with the tip *Refresh usage*: the
-  icon turns while the request runs, the windows stay as they were until the
-  answer replaces them, and a failure shows in one line under the header in
-  the card's secondary color, with the vendor's words, until the next
-  answer.
+  icon turns while the request runs, and the windows stay as they were until
+  the answer replaces them. A failure is a fact of the account, not of the
+  surface that asked: it shows where that account's windows show, under the
+  card's header and under the account in Settings, in the secondary color
+  with the vendor's words, wrapping when they are long, until the account's
+  next answer. No toast reports it, since the line already stands where the
+  user looked.
   If an automatic request for the account is running, the manual action joins
   it and receives its outcome.
 - Concurrent requests for one provider and account share one request;
