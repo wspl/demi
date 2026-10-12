@@ -3,7 +3,9 @@
 //! and a resident native service, and an open stream as the conversation's
 //! activity (`resource-lifecycle.md` § Activity). The streams bind the
 //! runner's test fixture package: `echo` answers what the page sends,
-//! `where` reports its context and directory.
+//! `where` reports its context and directory, `tell` tells the fixture's
+//! plugin what the page sends (`native-runtime.md` § Messages to the
+//! plugin).
 
 use std::time::Duration;
 
@@ -17,7 +19,7 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 
 use crate::cloud::{idle_after, the_cloud};
 use crate::holding_edge::HoldingEdge;
-use crate::support::{Harness, PATIENCE, Paired, Session, TestBackend, answer, pattern};
+use crate::support::{Harness, PATIENCE, PackageHeard, Paired, Session, TestBackend, answer, pattern};
 
 pub(crate) const CONVERSATION: &str = "5d4c3b2a-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 /// A conversation that works on the Cloud.
@@ -416,5 +418,66 @@ async fn behind_an_edge_that_holds_request_bodies_a_streams_bytes_arrive_as_writ
     assert_eq!((code, reason.as_str()), (1000, "completed"));
     let reported: Value = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(reported["context"]["conversation"], json!(CONVERSATION));
+    backend.close().await;
+}
+
+/// What the fixture's plugin heard of its package, once it heard `count`
+/// things.
+async fn heard(harness: &Harness, count: usize) -> Vec<PackageHeard> {
+    let mut heard = harness.package_heard.subscribe();
+    tokio::time::timeout(PATIENCE, heard.wait_for(|heard| heard.len() >= count))
+        .await
+        .unwrap_or_else(|_| panic!("the plugin hears {count} things within {PATIENCE:?}"))
+        .unwrap()
+        .clone()
+}
+
+// Several seconds: a real device installs the native fixture and starts its
+// service, which then crashes.
+#[tokio::test]
+async fn a_services_messages_reach_its_plugin_about_its_devices_conversations_and_its_crash_where_the_plugin_shows_tabs() {
+    let harness = Harness::new().with_native_fixture();
+    let (backend, master, _laptop) = conversation(&harness).await;
+    let mut telling = socket(&backend, &master, CONVERSATION, "tell").await;
+    // A conversation that does not reach the device hears nothing; the
+    // message about the stream's own does, behind it.
+    for said in [
+        json!({ "conversation": ON_CLOUD, "said": "elsewhere" }),
+        json!({ "said": "hello" }),
+    ] {
+        telling
+            .send(Message::Binary(said.to_string().into()))
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        heard(&harness, 1).await,
+        [PackageHeard::Message {
+            conversation: CONVERSATION.into(),
+            message: json!({ "said": "hello" }),
+        }]
+    );
+
+    // The service crashes: the plugin, which shows a tab in the
+    // conversation, hears that what the package kept there is lost.
+    let created = backend
+        .post(
+            &format!("/api/conversations/{CONVERSATION}/panel/changes"),
+            Some(&master),
+            json!({ "changes": [{ "op": "create", "id": "kept", "kind": "fixture", "data": {} }] }),
+        )
+        .await;
+    assert!(
+        created.status.is_success(),
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
+    let _crashing = socket(&backend, &master, CONVERSATION, "crash").await;
+    assert_eq!(
+        heard(&harness, 2).await[1],
+        PackageHeard::Lost {
+            conversation: CONVERSATION.into(),
+        }
+    );
     backend.close().await;
 }

@@ -12,7 +12,7 @@ use demi_command_protocol::{
 };
 use demi_runner_command_packages::{
     ArtifactResolver, ArtifactSource, Decision, Resident, RuntimeError, ServiceHandle,
-    ServiceRegistry, testing::NoNumbers,
+    ServiceRegistry, testing::NoBackend,
 };
 use futures_util::future::BoxFuture;
 use sha2::{Digest, Sha256};
@@ -139,7 +139,7 @@ async fn acquire(
         .acquire(
             descriptor,
             resolver,
-            Arc::new(NoNumbers),
+            Arc::new(NoBackend),
             &CancellationToken::new(),
         )
         .await
@@ -385,7 +385,7 @@ async fn a_caller_that_gives_up_leaves_the_shared_start_to_the_others() {
             let impatient = impatient.clone();
             async move {
                 services
-                    .acquire(&descriptor, resolver, Arc::new(NoNumbers), &impatient)
+                    .acquire(&descriptor, resolver, Arc::new(NoBackend), &impatient)
                     .await
                     .map(|_| ())
             }
@@ -401,7 +401,7 @@ async fn a_caller_that_gives_up_leaves_the_shared_start_to_the_others() {
                     .acquire(
                         &descriptor,
                         resolver,
-                        Arc::new(NoNumbers),
+                        Arc::new(NoBackend),
                         &CancellationToken::new(),
                     )
                     .await
@@ -445,7 +445,7 @@ async fn a_start_nobody_waits_for_stops() {
             let impatient = impatient.clone();
             async move {
                 services
-                    .acquire(&descriptor, resolver, Arc::new(NoNumbers), &impatient)
+                    .acquire(&descriptor, resolver, Arc::new(NoBackend), &impatient)
                     .await
                     .map(|_| ())
             }
@@ -463,7 +463,7 @@ async fn a_start_nobody_waits_for_stops() {
                     .acquire(
                         &descriptor,
                         resolver,
-                        Arc::new(NoNumbers),
+                        Arc::new(NoBackend),
                         &CancellationToken::new(),
                     )
                     .await
@@ -506,7 +506,7 @@ async fn stopping_all_services_ends_every_one_and_closing_ends_the_registry() {
                 .acquire(
                     &descriptor,
                     local(path),
-                    Arc::new(NoNumbers),
+                    Arc::new(NoBackend),
                     &CancellationToken::new()
                 )
                 .await

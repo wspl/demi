@@ -265,7 +265,9 @@ impl Plugin for Instance {
                     Ok(Reply::Exit { code })
                 }
                 Request::PanelTab { .. } => Err(PluginError::undeclared("panel kind")),
-                Request::Topic { .. } => Err(PluginError::undeclared("topic")),
+                Request::PackageMessage { .. } | Request::PackageLost { .. } => {
+                    Err(PluginError::undeclared("package messages"))
+                }
             }
         })
     }

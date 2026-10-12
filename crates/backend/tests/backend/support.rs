@@ -280,6 +280,9 @@ pub struct Harness {
     /// The user streams of a test plugin registered beside the built-in
     /// ones.
     user_streams: Option<Vec<Stream>>,
+    /// What the native fixture's plugin heard of its package, in order
+    /// (`native-runtime.md` § Messages to the plugin).
+    pub package_heard: Arc<tokio::sync::watch::Sender<Vec<PackageHeard>>>,
     pub lifecycle: LifecycleTuning,
     pub cloud: CloudTuning,
     /// How long logins wait for their user.
@@ -350,6 +353,7 @@ impl Harness {
             release: None,
             public_url: None,
             user_streams: None,
+            package_heard: Arc::new(tokio::sync::watch::Sender::new(Vec::new())),
             lifecycle: LifecycleTuning::default(),
             cloud: CloudTuning::default(),
             logins: LoginTiming::default(),
@@ -419,7 +423,9 @@ impl Harness {
     /// conversation, as the browser service holds a conversation's Chrome
     /// until its release, `held` answers what the service holds,
     /// `stall_release` holds the conversation so that its release never ends
-    /// by itself, and `stalled` ends once such a release waits.
+    /// by itself, `stalled` ends once such a release waits, `tell` tells the
+    /// fixture's plugin each JSON chunk the page sends, and `crash` ends the
+    /// service.
     pub fn with_native_fixture(mut self) -> Self {
         let package = FIXTURE.descriptor.id.clone();
         let stream = |operation: &str| NativeOperation {
@@ -434,6 +440,8 @@ impl Harness {
                 "held",
                 "stall_release",
                 "stalled",
+                "tell",
+                "crash",
             ]
             .map(|name| Stream::new::<Value, Value>(name, stream(name)))
             .into(),
@@ -642,7 +650,7 @@ impl Harness {
         if let Some(streams) = &self.user_streams {
             config
                 .plugins
-                .push(Box::new(StreamsPlugin::new(streams.clone())));
+                .push(Box::new(StreamsPlugin::new(streams.clone(), self.package_heard.clone())));
         }
         if self.panel_fixture {
             config.plugins.push(Box::new(PanelPlugin::new()));
@@ -1213,29 +1221,67 @@ pub fn session_from(answer: &Answer) -> Session {
     }
 }
 
-/// A plugin that declares only user streams, bound to the runner's native
-/// test fixture.
-struct StreamsPlugin(Manifest);
+/// What the native fixture's plugin heard of its package.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PackageHeard {
+    Message { conversation: String, message: Value },
+    Lost { conversation: String },
+}
+
+/// A plugin of user streams bound to the runner's native test fixture, and
+/// of the work panel kind `fixture`, which keeps what its package tells it.
+struct StreamsPlugin {
+    manifest: Manifest,
+    heard: Arc<tokio::sync::watch::Sender<Vec<PackageHeard>>>,
+}
 
 impl StreamsPlugin {
-    fn new(streams: Vec<Stream>) -> Self {
+    fn new(streams: Vec<Stream>, heard: Arc<tokio::sync::watch::Sender<Vec<PackageHeard>>>) -> Self {
         let mut manifest = Manifest::new(
             PluginId::try_from("fixture").unwrap(),
             "Fixture streams",
             "The native test fixture's user streams.",
         );
         manifest.streams = streams;
-        Self(manifest)
+        manifest.page = Some(Page::new("@demicodes/plugin-fixture").panel_kind("fixture"));
+        Self { manifest, heard }
     }
 }
 
 impl PluginFactory for StreamsPlugin {
     fn manifest(&self) -> &Manifest {
-        &self.0
+        &self.manifest
     }
 
     fn instance(&self) -> Rc<dyn Plugin> {
-        Rc::new(NoRequests)
+        Rc::new(Hearing(self.heard.clone()))
+    }
+}
+
+/// Keeps what its package tells it, and does nothing with its panel tabs.
+struct Hearing(Arc<tokio::sync::watch::Sender<Vec<PackageHeard>>>);
+
+impl Plugin for Hearing {
+    fn call(&self, request: Request, _: PluginPort) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
+        let heard = match request {
+            Request::PackageMessage {
+                conversation,
+                message,
+                ..
+            } => Some(PackageHeard::Message {
+                conversation: conversation.to_string(),
+                message,
+            }),
+            Request::PackageLost { conversation, .. } => Some(PackageHeard::Lost {
+                conversation: conversation.to_string(),
+            }),
+            Request::PanelTab { .. } => None,
+            _ => unreachable!("a plugin of streams and a panel kind is told of nothing else"),
+        };
+        if let Some(heard) = heard {
+            self.0.send_modify(|all| all.push(heard));
+        }
+        Box::pin(async { Ok(Reply::Done) })
     }
 }
 
@@ -1276,16 +1322,6 @@ impl Plugin for PanelTabs {
                 _ => unreachable!("a plugin of a panel kind only is told of its tabs"),
             }
         })
-    }
-}
-
-/// An instance that is sent no request: the plugin declares no command and
-/// no page.
-struct NoRequests;
-
-impl Plugin for NoRequests {
-    fn call(&self, _: Request, _: PluginPort) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
-        unreachable!("a plugin of streams only receives no request")
     }
 }
 

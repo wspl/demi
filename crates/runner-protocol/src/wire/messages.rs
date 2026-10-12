@@ -779,6 +779,21 @@ pub enum Outbound {
         #[garde(range(min = 1, max = MAX_NUMBERS))]
         count: u32,
     },
+    /// A message of the service of `package` to its plugin about the
+    /// conversation (`native-runtime.md` § Messages to the plugin).
+    PackageMessage {
+        #[garde(length(min = 1))]
+        package: String,
+        #[garde(custom(conversation_name))]
+        conversation_id: String,
+        message: serde_json::Value,
+    },
+    /// The service of `package` ended without releasing its conversations,
+    /// so what it kept for them is lost.
+    PackageLost {
+        #[garde(length(min = 1))]
+        package: String,
+    },
     /// Where to fetch an artifact, for the live work it serves.
     ArtifactResolve {
         id: String,

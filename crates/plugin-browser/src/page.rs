@@ -2,8 +2,9 @@
 //! tab methods): each runs the operation the agent's `demi browser` command
 //! runs, as a package call for the conversation's user, and holds no
 //! browser logic. The tab list is the plugin's conversation state, which
-//! follows the conversation's jobs, since the agent's commands open and
-//! close tabs; listing never wakes a stopped Cloud and is no activity.
+//! the browser package's messages mark changed, since the agent's commands
+//! and the pages open and close tabs; listing never wakes a stopped Cloud
+//! and is no activity.
 //! Closing, moving and stopping a tab operate the browser without waking it; opening
 //! a tab is work the user starts. Each method that did its work marks the
 //! tab list changed. Opening and closing browser tabs for panel tabs is the
@@ -20,7 +21,7 @@ use demi_command_package_browser_protocol::browser::{
     ReloadInput, StopInput, TabId, TabMoved, TabsInput, TabsResult,
 };
 use demi_plugin_interface::{
-    CallKind, Method, Page, PluginError, PluginPort, PortFailure, PortRefusal, Scope, State, Topic,
+    CallKind, Method, Page, PluginError, PluginPort, PortFailure, PortRefusal, Scope, State,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ConversationId;
@@ -70,11 +71,6 @@ pub struct TabBound {
     pub tab: Option<String>,
 }
 
-/// `sync {}`: the panel's tabs updated from the browser's.
-#[derive(Debug, Default, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-pub struct SyncTabs {}
-
 /// `navigate { tab, url }`.
 #[derive(Debug, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -118,23 +114,17 @@ fn operation(name: &str) -> NativeOperation {
 
 /// The page: its tab list, its methods, each declared with the operations
 /// it calls, and its panel kind, whose tabs the plugin brings up to date
-/// after each job.
+/// whenever the browser package says the conversation's tabs changed.
 pub(crate) fn page() -> Page {
     Page::new("@demicodes/plugin-browser")
-        .conversation_state(
-            State::new::<BrowserTabs>()
-                .follows(Topic::Jobs)
-                .calls(operation("tabs")),
-        )
+        .conversation_state(State::new::<BrowserTabs>().calls(operation("tabs")))
         .panel_kind(KIND)
-        .told(Topic::Jobs)
         .method(
             Method::new::<BindTab, TabBound>("bind", Scope::Conversation)
                 .calls(operation("open"))
                 .calls(operation("goto"))
                 .calls(operation("close")),
         )
-        .method(Method::new::<SyncTabs, ()>("sync", Scope::Conversation).calls(operation("tabs")))
         .method(
             Method::new::<NavigateTab, TabMoved>("navigate", Scope::Conversation)
                 .calls(operation("goto")),
@@ -273,11 +263,6 @@ async fn run_method(
             let BindTab { panel_tab } = decode(params)?;
             let tab = work.bind(conversation, port, &panel_tab).await?;
             to_value(TabBound { tab })
-        }
-        "sync" => {
-            let SyncTabs {} = decode(params)?;
-            work.sync(conversation, port).await?;
-            Ok(Value::Null)
         }
         "navigate" => {
             let NavigateTab { tab, url } = decode(params)?;

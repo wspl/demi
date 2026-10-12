@@ -9,7 +9,7 @@ use std::rc::{Rc, Weak};
 use demi_command_declarations::NativeOperation;
 use demi_plugin_browser::Browser;
 use demi_plugin_interface::{
-    CallKind, PanelTabChange, Plugin, PluginFactory, PortFailure, PortRefusal, Reply, Request, Topic,
+    CallKind, PanelTabChange, Plugin, PluginFactory, PortFailure, PortRefusal, Reply, Request,
     testing::{TestDemi, loopback},
 };
 use demi_web_api_protocol::error::ErrorCode;
@@ -66,12 +66,12 @@ async fn told(plugin: &Rc<dyn Plugin>, demi: &Rc<TestDemi>, change: PanelTabChan
     assert_eq!(plugin.call(request, demi.port()).await, Ok(Reply::Done));
 }
 
-/// A job of the conversation ended.
-async fn job_ended(plugin: &Rc<dyn Plugin>, demi: &Rc<TestDemi>) {
-    let request = Request::Topic {
+/// The browser package says the conversation's tabs changed.
+async fn tabs_changed(plugin: &Rc<dyn Plugin>, demi: &Rc<TestDemi>) {
+    let request = Request::PackageMessage {
         user: UserId::try_from("u1").unwrap(),
-        topic: Topic::Jobs,
-        conversation: Some(conversation()),
+        conversation: conversation(),
+        message: serde_json::json!({ "tabs": "changed" }),
     };
     assert_eq!(plugin.call(request, demi.port()).await, Ok(Reply::Done));
 }
@@ -291,13 +291,13 @@ async fn the_agents_tabs_are_added_once_and_never_again_once_their_user_closed_t
     let browser = listed.clone();
     let (plugin, demi) = world(Box::new(move |_, operation, _| match operation {
         "browser.tabs" => Ok(json!({ "list": 1, "tabs": browser.borrow().clone(), "truncated": false })),
-        "browser.open" => Ok(json!({ "tab": "t4", "url": "https://user.test/" })),
+        "browser.open" => Ok(json!({ "tab": "t4", "url": "https://t1.test/" })),
         _ => Ok(json!({})),
     }));
     created(
         &demi,
         "a",
-        json!({ "url": "https://user.test/", "tab": "t1" }),
+        json!({ "url": "https://t1.test/", "tab": "t1" }),
     );
     let tab = |id: &str, by: Value| json!({ "id": id, "title": id, "url": format!("https://{id}.test/"), "createdBy": by, "loading": false, "canGoBack": false, "canGoForward": false, "shows": 0 });
     listed.replace(json!([
@@ -308,7 +308,7 @@ async fn the_agents_tabs_are_added_once_and_never_again_once_their_user_closed_t
         tab("t5", json!({ "kind": "user" })),
     ]));
 
-    job_ended(&plugin, &demi).await;
+    tabs_changed(&plugin, &demi).await;
     let ids = |demi: &TestDemi| -> Vec<String> {
         demi.panel().tabs.into_iter().map(|tab| tab.id).collect()
     };
@@ -319,28 +319,29 @@ async fn the_agents_tabs_are_added_once_and_never_again_once_their_user_closed_t
     );
     // Reading the list again adds nothing, and a tab the user closed stays closed.
     let revision = demi.panel().revision;
-    job_ended(&plugin, &demi).await;
+    tabs_changed(&plugin, &demi).await;
     assert_eq!(demi.panel().revision, revision);
     demi.change_panel(PanelChange::Remove {
         id: "browser-t2".into(),
     });
-    job_ended(&plugin, &demi).await;
+    tabs_changed(&plugin, &demi).await;
     assert_eq!(ids(&demi), ["a", "browser-t3"]);
 
     // The browser lost the user's tab and the page's: both say so, and stay.
     listed.replace(json!([tab("t2", json!({ "kind": "agent", "number": 1 }))]));
-    job_ended(&plugin, &demi).await;
+    tabs_changed(&plugin, &demi).await;
     assert_eq!(ids(&demi), ["a", "browser-t3"]);
     assert_eq!(tab_data(&demi, "a")["closed"], json!(true));
     assert_eq!(tab_data(&demi, "browser-t3")["closed"], json!(true));
-    // Shown, it opens a new browser tab on the saved address.
+    // Shown, it opens a new browser tab on the address and with the title
+    // its page last had.
     assert_eq!(
         call(&plugin, &demi, "bind", json!({ "panelTab": "a" })).await,
         Ok(json!({ "tab": "t4" }))
     );
     assert_eq!(
         tab_data(&demi, "a"),
-        json!({ "url": "https://user.test/", "tab": "t4" })
+        json!({ "url": "https://t1.test/", "tab": "t4", "title": "t1" })
     );
 }
 
@@ -369,7 +370,7 @@ async fn a_tab_closed_on_purpose_leaves_the_panel_and_one_lost_with_the_browser_
 
     // The agent closed t1; the browser that had t2 ended.
     listed.replace(json!({ "tabs": [], "closed": ["t1"] }));
-    job_ended(&plugin, &demi).await;
+    tabs_changed(&plugin, &demi).await;
     let ids: Vec<String> = demi.panel().tabs.into_iter().map(|tab| tab.id).collect();
     assert_eq!(ids, ["lost"]);
     assert_eq!(
@@ -413,7 +414,7 @@ async fn a_tab_the_agent_showed_carries_the_count_into_its_panel_tab() {
         tab("t3", json!({ "kind": "agent", "number": 1 }), 0),
     ]));
 
-    job_ended(&plugin, &demi).await;
+    tabs_changed(&plugin, &demi).await;
     assert_eq!(tab_data(&demi, "a")["shows"], json!(2));
     assert_eq!(
         tab_data(&demi, "browser-t2"),
@@ -423,14 +424,14 @@ async fn a_tab_the_agent_showed_carries_the_count_into_its_panel_tab() {
     assert_eq!(tab_data(&demi, "browser-t3").get("shows"), None);
     // The same counts change nothing; a higher one is written again.
     let revision = demi.panel().revision;
-    job_ended(&plugin, &demi).await;
+    tabs_changed(&plugin, &demi).await;
     assert_eq!(demi.panel().revision, revision);
     listed.replace(json!([
         tab("t1", json!({ "kind": "user" }), 2),
         tab("t2", json!({ "kind": "agent", "number": 1 }), 1),
         tab("t3", json!({ "kind": "agent", "number": 1 }), 1),
     ]));
-    job_ended(&plugin, &demi).await;
+    tabs_changed(&plugin, &demi).await;
     assert_eq!(tab_data(&demi, "browser-t3")["shows"], json!(1));
 }
 
@@ -474,7 +475,7 @@ async fn a_tab_a_page_opened_stands_beside_its_opener() {
     ];
     listed.replace(Value::Array(tabs.clone()));
 
-    job_ended(&plugin, &demi).await;
+    tabs_changed(&plugin, &demi).await;
     assert_eq!(
         ids(&demi),
         ["a", "link", "browser-t3", "browser-t4", "b", "browser-t5", "browser-t6", "browser-t7"]
@@ -485,9 +486,57 @@ async fn a_tab_a_page_opened_stands_beside_its_opener() {
     // remembers which those are, not the page or the plugin.
     tabs.push(tab("t8", by_page("t1")));
     listed.replace(Value::Array(tabs));
-    job_ended(&plugin, &demi).await;
+    tabs_changed(&plugin, &demi).await;
     assert_eq!(
         ids(&demi),
         ["a", "link", "browser-t3", "browser-t4", "browser-t8", "b", "browser-t5", "browser-t6", "browser-t7"]
     );
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_lost_package_marks_every_bound_tab_lost_with_the_browser_without_reading_the_host() {
+    let (plugin, demi) = world(Box::new(|_, operation, _| {
+        panic!("the plugin asks the Host nothing after its package was lost: {operation}")
+    }));
+    created(&demi, "bound", json!({ "url": "https://bound.test/", "tab": "t1" }));
+    created(&demi, "lost", json!({ "url": "https://lost.test/", "tab": "t2", "closed": true }));
+    created(&demi, "new", json!({ "url": "about:blank" }));
+    let request = Request::PackageLost {
+        user: UserId::try_from("u1").unwrap(),
+        conversation: conversation(),
+    };
+    assert_eq!(plugin.call(request, demi.port()).await, Ok(Reply::Done));
+    assert_eq!(
+        tab_data(&demi, "bound"),
+        json!({ "url": "https://bound.test/", "tab": "t1", "closed": true })
+    );
+    assert_eq!(tab_data(&demi, "lost")["closed"], json!(true));
+    assert_eq!(tab_data(&demi, "new"), json!({ "url": "about:blank" }));
+    assert!(demi.called.borrow().is_empty());
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_tab_added_while_its_page_loaded_takes_the_pages_address_and_title_once_it_has_them() {
+    let listed: Rc<RefCell<Value>> = Rc::new(RefCell::new(json!([])));
+    let browser = listed.clone();
+    let (plugin, demi) = world(Box::new(move |_, operation, _| match operation {
+        "browser.tabs" => Ok(json!({ "list": 1, "tabs": browser.borrow().clone(), "truncated": false })),
+        _ => Ok(json!({})),
+    }));
+    let tab = |url: &str, title: &str, loading: bool| json!([{ "id": "t2", "title": title, "url": url, "createdBy": { "kind": "agent", "number": 1 }, "loading": loading, "canGoBack": false, "canGoForward": false, "shows": 0 }]);
+    // The browser tells of the tab as soon as it opens, before its page loaded.
+    listed.replace(tab("about:blank", "about:blank", true));
+    tabs_changed(&plugin, &demi).await;
+    assert_eq!(tab_data(&demi, "browser-t2")["url"], json!("about:blank"));
+    // Its page loaded and named itself: the panel tab follows, though no view shows it.
+    listed.replace(tab("https://example.org/", "Example Domain", false));
+    tabs_changed(&plugin, &demi).await;
+    assert_eq!(
+        tab_data(&demi, "browser-t2"),
+        json!({ "url": "https://example.org/", "tab": "t2", "title": "Example Domain" })
+    );
+    // A read that says nothing new writes nothing.
+    let revision = demi.panel().revision;
+    tabs_changed(&plugin, &demi).await;
+    assert_eq!(demi.panel().revision, revision);
 }

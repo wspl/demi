@@ -18,7 +18,7 @@ mod web;
 
 pub use manifest::{
     Commands, Constant, DEMI_ROOT, DEMI_SUMMARY, EXECUTION_SOURCE, Manifest, Method, OAuth, Page,
-    Placement, PluginId, PluginIdError, Scope, State, Stream, Topic,
+    Placement, PluginId, PluginIdError, Scope, State, Stream,
 };
 pub use web::{
     SecretName, SecretNameError, StoredSecret, WebFailure, WebHeader, WebMethod, WebRequest,

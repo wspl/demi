@@ -29,6 +29,9 @@ pub const KIND: &str = "browser";
 #[serde(rename_all = "camelCase")]
 struct TabData {
     url: String,
+    /// The page's title as the plugin or the page last wrote it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    title: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     tab: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -133,11 +136,33 @@ impl Work {
         }
     }
 
+    /// Marks every bound tab lost with the browser, whose package's state
+    /// on the Host ended unsaid (`live-view.md` § A browser tab in the
+    /// panel): each opens again when shown. Nothing is read from the Host,
+    /// whose browser is gone.
+    pub async fn lost(
+        &self,
+        conversation: &ConversationId,
+        port: &PluginPort,
+    ) -> Result<(), PluginError> {
+        let lock = self.lock(conversation);
+        let _turn = lock.lock().await;
+        let panel = port.panel_tabs().await?;
+        for tab in panel.tabs.iter().filter(|tab| tab.kind == KIND) {
+            if TabData::of(tab).as_ref().and_then(TabData::live).is_some() {
+                port.update_panel_tab(tab.id.as_str(), fields([("closed", Value::Bool(true))]))
+                    .await?;
+            }
+        }
+        Ok(())
+    }
+
     /// Reads the browser's tabs and updates the panel from them: a tab for
     /// each tab the agent or a page opened, a page's beside its opener's
     /// (`after_opened`) and the agent's after the others, each bound tab's
     /// count of the times the agent showed its browser tab when the count rose
-    /// (`live-view.md` § Showing a tab), every bound tab whose browser tab
+    /// (`live-view.md` § Showing a tab), each bound tab's address and title
+    /// as the list says them, every bound tab whose browser tab
     /// was closed on purpose removed, and every one whose browser tab was
     /// lost with the browser marked closed, to open again when shown
     /// (`live-view.md` § A browser tab in the panel).
@@ -201,11 +226,23 @@ impl Work {
                     port.update_panel_tab(id.as_str(), fields([("closed", Value::Bool(true))]))
                         .await?;
                 }
-                Some(tab) if tab.shows > data.shows.unwrap_or(0) => {
-                    port.update_panel_tab(id.as_str(), fields([("shows", Value::from(tab.shows))]))
-                        .await?;
+                // The tab follows its page: its address and title as the list
+                // says them, and the count of its showings when it rose.
+                Some(tab) => {
+                    let mut follows = Map::new();
+                    if data.url != tab.url {
+                        follows.insert("url".into(), Value::from(tab.url.clone()));
+                    }
+                    if data.title.as_deref() != Some(tab.title.as_str()) {
+                        follows.insert("title".into(), Value::from(tab.title.clone()));
+                    }
+                    if tab.shows > data.shows.unwrap_or(0) {
+                        follows.insert("shows".into(), Value::from(tab.shows));
+                    }
+                    if !follows.is_empty() {
+                        port.update_panel_tab(id.as_str(), follows).await?;
+                    }
                 }
-                Some(_) => {}
             }
         }
         Ok(())

@@ -32,7 +32,7 @@ use demi_backend_providers::llm::assembly::ProviderAssembly;
 use demi_backend_providers::vault::entries::Vault;
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::public_url::PublicUrl;
-use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::WaitForCancellationFuture;
 use tokio_util::task::TaskTracker;
@@ -120,6 +120,10 @@ pub trait CloudShard {
         files_on_cloud: bool,
         hold: Duration,
     ) -> LocalBoxFuture<'a, Option<Box<dyn ConversationHold>>>;
+    /// The Cloud `device` stopped, and with it whatever its command
+    /// packages kept for its conversations (`native-runtime.md` § Messages
+    /// to the plugin).
+    fn packages_lost(&self, device: &DeviceId);
 }
 
 /// What the shard holds of one conversation for an idle stop or a reset of

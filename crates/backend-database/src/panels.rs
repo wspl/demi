@@ -3,7 +3,7 @@
 //! of changes reads the row and writes it in one transaction, so one
 //! conversation's requests apply one at a time, each whole or not at all. The backend never interprets a tab.
 
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::panel::{PanelChange, PanelDocument, PanelEffect, Refused, WorkPanel};
 use rusqlite::{Connection, OptionalExtension, params};
 
@@ -35,6 +35,32 @@ pub enum PanelOutcome {
 }
 
 impl ControlService {
+    /// `owner`'s conversations that are not archived and whose panel has
+    /// a tab: those a lost package's plugin may have something to correct
+    /// in (`native-runtime.md` § Messages to the plugin).
+    pub async fn panelled_conversations(
+        &self,
+        owner: UserId,
+    ) -> Result<Vec<ConversationId>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare(
+                "SELECT conversations.id FROM conversations
+                 JOIN conversation_panels ON conversation_panels.conversation_id = conversations.id
+                 WHERE conversations.user_id = ?1 AND conversations.archived = 0
+                   AND json_array_length(conversation_panels.document, '$.tabs') > 0",
+            )?;
+            let ids = statement
+                .query_map([owner.as_str()], |row| row.get::<_, String>(0))?
+                .map(|id| {
+                    let id = id?;
+                    decode("conversations", "id", ConversationId::try_from(id.as_str()))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(ids)
+        })
+        .await
+    }
+
     /// The conversation's panel; the empty one when it never changed. A
     /// stored document that no longer matches the panel's shape is corrupt,
     /// not repaired.

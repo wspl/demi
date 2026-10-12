@@ -104,7 +104,9 @@ impl Plugin for Instance {
                 }
                 Request::Context { .. } => Err(PluginError::undeclared("context source")),
                 Request::PanelTab { .. } => Err(PluginError::undeclared("panel kind")),
-                Request::Topic { .. } => Err(PluginError::undeclared("topic")),
+                Request::PackageMessage { .. } | Request::PackageLost { .. } => {
+                    Err(PluginError::undeclared("package messages"))
+                }
             }
         })
     }

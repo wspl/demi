@@ -7,7 +7,7 @@ use demi_command_protocol::{
 };
 use demi_runner_command_packages::{
     ArtifactResolver, ArtifactSource, Resident, RuntimeError, ServiceLease, ServiceRegistry,
-    testing::NoNumbers,
+    testing::NoBackend,
 };
 use futures_util::future::BoxFuture;
 use serde_json::json;
@@ -94,7 +94,7 @@ async fn resident(root: &Path) -> (ServiceRegistry, ServiceLease, Resident) {
         .acquire(
             &descriptor,
             Arc::new(Local(path)),
-            Arc::new(NoNumbers),
+            Arc::new(NoBackend),
             &CancellationToken::new(),
         )
         .await

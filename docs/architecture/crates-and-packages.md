@@ -175,8 +175,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   - invocation metadata (`Invocation`, `LocalInvocation`), the command context
     (`CommandContext`, `CommandCaller`, `CommandLocale`), completion
     (`Completion`), service information (`ServiceInfo`), the conversation
-    release and status requests, and the conversation numbers stream's
-    messages (`NumbersRequest`, `NumbersAnswer`);
+    release and status requests, the conversation numbers stream's
+    messages (`NumbersRequest`, `NumbersAnswer`), and the messages stream's
+    (`PluginMessage`, `MessageAnswer`);
   - the line counts of a change (`line_counts`, with `gix-imara-diff`), which
     the runner's edit report and the stored lists of changed files share
     ([What the conversation shows](../execution/edit-tracking.md#what-the-conversation-shows));
@@ -313,8 +314,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 - **Conversation scope:** jobs and service streams carry the
   [command context](../execution/native-runtime.md#command-context);
   `conversation_release` is the one generic release message, and
-  `numbers_reserve` the one generic request for a conversation's numbers; the
-  wire carries no conversation browser policy.
+  `numbers_reserve` the one generic request for a conversation's numbers;
+  `package_message` and `package_lost` carry a package's word to its plugin
+  without reading it; the wire carries no conversation browser policy.
 - **Public boundary:** the items above. The runner and the backend link it; the
   machine manager uses `ManagedBoot`, and `machine-manager-protocol`'s image manifest
   check and `xtask`'s image build use `ARTIFACTS_PATH`. `xtask` writes a server
@@ -367,8 +369,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 
 - **Owns:** the SDK that speaks the command wire of `command-protocol`:
   - the HTTP/2 client and server, the one invocation exchange (`Exchange`),
-    bounded invocation IO and handler cancellation, and the handler's
-    conversation numbers (`Numbers`);
+    bounded invocation IO and handler cancellation, the handler's
+    conversation numbers (`Numbers`), and its messages to its plugin
+    (`Messages`);
   - the invocation edit recorder: bounded file snapshots and a journal
     coordinated across processes by an OS file lock;
   - path resolution against an invocation's working directory, and waiting out
@@ -905,8 +908,9 @@ demi-runner (executable: connection, registration, Host log, composition)
 - **Owns:** the artifact cache with its lines, the preinstalled artifacts of
   a Cloud image, the installs in progress, and the resident service
   registry: installing a pinned executable, starting, checking and reusing a
-  service, its leases, conversation status and release, its numbers stream
-  through a source the composition supplies (`NumberSource`), its artifacts
+  service, its leases, conversation status and release, its numbers and
+  messages streams and the loss of a service that ended unsaid, through the
+  backend the composition supplies (`ServiceBackend`), its artifacts
   stream, whose installs resolve through the invocation's work, and its
   retirement
   ([Native command execution](../execution/native-runtime.md)).

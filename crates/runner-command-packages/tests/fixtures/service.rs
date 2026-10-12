@@ -4,7 +4,7 @@ use demi_command_protocol::{
     ArtifactForm, ArtifactInstall, ArtifactProgress, Completion, ConversationRequest, Invocation, ServiceSequence,
 };
 use demi_command_sdk::{
-    Artifacts, ConversationContext, Handler, InvocationContext, Numbers, ServiceError,
+    Artifacts, ConversationContext, Handler, InvocationContext, Messages, Numbers, ServiceError,
 };
 use std::{
     collections::BTreeSet,
@@ -28,6 +28,8 @@ struct Fixture {
     numbers: Arc<Mutex<Option<Numbers>>>,
     /// The connection's artifacts source.
     artifacts: Arc<Mutex<Option<Artifacts>>>,
+    /// The connection's message sender.
+    messages: Arc<Mutex<Option<Messages>>>,
 }
 
 impl Handler for Fixture {
@@ -47,6 +49,10 @@ impl Handler for Fixture {
         *self.artifacts.lock().unwrap() = Some(artifacts);
     }
 
+    fn messages(&self, messages: Messages) {
+        *self.messages.lock().unwrap() = Some(messages);
+    }
+
     fn invoke(
         &self,
         mut context: InvocationContext,
@@ -55,9 +61,26 @@ impl Handler for Fixture {
         let (stalled, proceed) = (self.stalled.clone(), self.proceed.clone());
         let numbers = self.numbers.lock().unwrap().clone();
         let artifacts = self.artifacts.lock().unwrap().clone();
+        let messages = self.messages.lock().unwrap().clone();
         Box::pin(async move {
             let mut exit_code = 0;
             match context.request.operation.as_str() {
+                // Tells the plugin each JSON chunk the caller sends, about
+                // the invoking conversation or the chunk's `conversation`,
+                // and prints `told` once each was taken.
+                "tell" => {
+                    let messages =
+                        messages.ok_or_else(|| ServiceError::failed("no message sender"))?;
+                    while let Some(chunk) = context.input.next().await? {
+                        let message: serde_json::Value =
+                            serde_json::from_slice(&chunk).map_err(ServiceError::failed)?;
+                        let conversation = message["conversation"]
+                            .as_str()
+                            .map_or_else(|| context.request.context.conversation.clone(), str::to_owned);
+                        messages.send(&conversation, message).await?;
+                        context.output.stdout(Bytes::from_static(b"told")).await?;
+                    }
+                }
                 // Installs the file of the arguments' `sha256` and `size`
                 // from their `url`, as a program installs software from its
                 // official source, and prints how many bytes had arrived at

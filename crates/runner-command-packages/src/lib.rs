@@ -140,11 +140,12 @@ pub trait ArtifactResolver: Send + Sync + 'static {
     ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>>;
 }
 
-/// Where a service's requests for conversation numbers go
-/// (`native-runtime.md` § Conversation numbers): the backend connection the
+/// Where a service's requests to the backend go: its conversation numbers
+/// (`native-runtime.md` § Conversation numbers) and its messages to its
+/// plugin (§ Messages to the plugin). It is the backend connection the
 /// service started under, which a lost connection ends together with the
 /// service.
-pub trait NumberSource: Send + Sync + 'static {
+pub trait ServiceBackend: Send + Sync + 'static {
     /// The first of `count` numbers of `conversation`'s `sequence`, or why
     /// the backend gave none.
     fn reserve(
@@ -153,4 +154,19 @@ pub trait NumberSource: Send + Sync + 'static {
         sequence: ServiceSequence,
         count: u32,
     ) -> BoxFuture<'_, Result<u64, String>>;
+
+    /// Hands `message` about `conversation` from the service of `package`
+    /// to the connection, once the connection has room; waits for a
+    /// connection while the runner has none, and fails once it stopped
+    /// waiting.
+    fn tell(
+        &self,
+        package: String,
+        conversation: String,
+        message: serde_json::Value,
+    ) -> BoxFuture<'_, Result<(), String>>;
+
+    /// Says that the service of `package` ended without releasing its
+    /// conversations, as a crash does, so what it kept is lost.
+    fn lost(&self, package: String) -> BoxFuture<'_, ()>;
 }

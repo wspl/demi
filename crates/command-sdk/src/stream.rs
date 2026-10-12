@@ -36,6 +36,10 @@ pub enum ServiceError {
     /// (`native-runtime.md` § Conversation numbers).
     #[error("conversation numbers: {0}")]
     Numbers(String),
+    /// The service's message did not reach the runner's connection
+    /// (`native-runtime.md` § Messages to the plugin).
+    #[error("plugin message: {0}")]
+    Messages(String),
     /// The runner installed no artifact the service asked for
     /// (`native-runtime.md` § The artifacts stream).
     #[error("artifact: {0}")]
