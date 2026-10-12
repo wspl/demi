@@ -42,9 +42,14 @@ fn document() -> Value {
                     "modalities": { "input": ["text"], "output": ["text"] },
                     "limit": { "context": 1_048_576 }
                 },
-                // A video and a speech model, whose output limits exceed
-                // their windows as Veo's and the TTS models' do on
-                // models.dev: no agent works with them.
+                // A model whose window models.dev does not state, which
+                // compaction needs, and a video and a speech model, whose
+                // output limits exceed their windows as Veo's and the TTS
+                // models' do on models.dev: no agent works with them.
+                "gemini-3.8-flash-live": {
+                    "name": "Gemini 3.8 Flash Live", "tool_call": true,
+                    "modalities": { "input": ["text"], "output": ["text"] }
+                },
                 "veo-3.1-lite-generate-preview": {
                     "name": "Veo 3.1 Lite", "modalities": { "input": ["text"], "output": ["video"] },
                     "limit": { "context": 480, "output": 8_192 }
@@ -163,8 +168,8 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
     assert!(!asked.contains(KEY), "a key reached the transcript: {asked}");
 
     // The model holds every fact models.dev states, as the page saves one,
-    // and the vendor's other model an agent can work with stays; its video
-    // and speech models are not taken in.
+    // and the vendor's other model an agent can work with stays; its
+    // windowless, video and speech models are not taken in.
     let providers = backend
         .get("/api/providers", Some(&master))
         .await
