@@ -150,10 +150,10 @@ const shownPictures = computed(() => (props.pictures ?? []).slice(0, picturesFit
           </span>
         </Shimmer>
       </ChromeRoll>
-      <!-- 8 px after the face, the face row's gap; one line, never wrapping, the rest counted. -->
+      <!-- At the row's end, right-aligned, and at least 8 px (the face row's gap) after the face; one line, never wrapping, the rest counted. -->
       <div
         v-if="picturesFit.shown > 0 || picturesFit.more > 0"
-        class="relative flex shrink-0 items-center gap-1"
+        class="relative ml-auto flex shrink-0 items-center gap-1"
         data-row-pictures
       >
         <RowPicture
@@ -163,7 +163,6 @@ const shownPictures = computed(() => (props.pictures ?? []).slice(0, picturesFit
         />
         <span v-if="picturesFit.more > 0" class="tabular-nums text-fg-faint">+{{ picturesFit.more }}</span>
       </div>
-      <div class="flex-1"></div>
     </div>
     <Fold v-if="isExpandable" :open="isOpen">
       <div class="mb-1 flex overflow-hidden">
