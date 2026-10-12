@@ -13,6 +13,7 @@ export {
   withWholeBlock,
   type HeldBlock,
   type HeldTranscript,
+  type TextArrival,
   type TranscriptWindow,
 } from './transcript'
 export {
