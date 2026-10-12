@@ -879,6 +879,8 @@ async fn ask_socket(
                 hostname: "raw".into(),
                 home_dir: "/home/raw".into(),
             },
+            kernel: None,
+            shell: None,
             managed: None,
             installation: None,
         },

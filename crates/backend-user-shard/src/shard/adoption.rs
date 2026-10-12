@@ -218,6 +218,8 @@ impl Shard {
         let (link, driver) = Link::new(LinkOptions {
             device: device.to_string(),
             identity: host_identity(&runner),
+            kernel: runner.kernel.clone(),
+            shell: runner.shell.clone(),
             pipes: self.pipes().clone(),
             policy: Rc::new(ShardPolicy::new(self, device.clone())),
             ping: self.services().runners.ping,
@@ -391,6 +393,8 @@ impl Shard {
                 hostname: "test".into(),
                 home_dir: home.into(),
             },
+            kernel: None,
+            shell: None,
             managed: None,
             installation: None,
         };

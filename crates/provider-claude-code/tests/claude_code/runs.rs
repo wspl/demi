@@ -146,7 +146,7 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
     // The access token is on descriptor 3, never in the environment, which
     // removes a token the machine's own environment holds; the process
     // claims to be no other client, finds its sessions in a directory of
-    // Demi's and answers what the session ends with.
+    // Demi's, sends no telemetry and answers what the session ends with.
     let env = BTreeMap::from([
         ("CLAUDECODE".to_owned(), None),
         ("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), None),
@@ -168,6 +168,7 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
         ),
         ("DISABLE_AUTOUPDATER".to_owned(), Some("1".to_owned())),
         ("DISABLE_AUTO_COMPACT".to_owned(), Some("1".to_owned())),
+        ("DISABLE_TELEMETRY".to_owned(), Some("1".to_owned())),
         (
             "MAX_MCP_OUTPUT_TOKENS".to_owned(),
             Some("1000000".to_owned()),

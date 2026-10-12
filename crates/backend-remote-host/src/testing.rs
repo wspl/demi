@@ -240,6 +240,8 @@ impl TestDevice {
         let (link, driver) = Link::new(LinkOptions {
             device: TEST_DEVICE.into(),
             identity: self.identity.clone(),
+            kernel: None,
+            shell: None,
             pipes: self.pipes.clone(),
             policy: self.policy.clone(),
             ping,

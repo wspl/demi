@@ -6,7 +6,11 @@
 //! directory that goes however the sign-in ends; a sign-in whose Cloud cannot install the CLI
 //! says why, with the version, and so does a request; the settings read the
 //! newest version and the Cloud's versions; a Cloud with an older CLI
-//! answers with it; a conversation on a paired device infers through the
+//! answers with it; a Cloud with a CLI starts it without waiting for the
+//! release pointer, whose answer a read in the background keeps, while a
+//! Cloud with none waits for it; a session describes the Cloud as its
+//! runner's hello reported it, with no process run for it; a
+//! conversation on a paired device infers through the
 //! Cloud, whose CLI process reads the account's token from a descriptor in
 //! a private directory of its own; and after another account is selected,
 //! the next request closes that process, whose directory goes, and starts
@@ -20,11 +24,14 @@
 //! the code names as the CLI writes it; its other runs answer each message
 //! with where they run and with which token. No test runs the real CLI.
 
+use std::collections::BTreeMap;
+use std::os::unix::fs::PermissionsExt as _;
 use std::time::Duration;
 
 use demi_command_protocol::{ArtifactForm, PackageArtifact};
 use demi_runner_command_packages::cache::{ArtifactCache, SILENT, Wanted};
 use demi_runner_command_packages::{ArtifactResolver, ArtifactSource, RuntimeError};
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use demi_provider_common::testing::{MockResponse, MockVendor};
@@ -583,6 +590,155 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
     assert_eq!(distribution.requests().len(), 2);
     backend.close().await;
     assert!(!std::path::Path::new(&third_config).exists());
+}
+
+/// The release pointer holds up only a start that has no CLI to run
+/// (`claude-code.md` § Which version): on a Cloud with none, a sign-in waits
+/// for the read and fails with it; on a Cloud with one, a sign-in and a
+/// conversation start it while the read hangs, and the read, in the
+/// background, keeps its answer for later starts, which the settings read
+/// as it ends rather than reading again. The session describes the Cloud
+/// by the kernel and the `SHELL` its runner reported in its hello: a
+/// `uname` first on the Cloud's `PATH` that names another kernel never
+/// runs (§ The session a process resumes).
+// About two seconds: the Cloud boots, and runs a sign-in and a process of
+// the scripted CLI.
+#[tokio::test]
+async fn a_cloud_with_a_cli_starts_it_at_once_while_the_release_pointer_is_read_in_the_background()
+{
+    let distribution = MockVendor::start().await;
+    let catalog = MockVendor::start().await;
+    catalog.respond_at("/api.json", claude_models());
+    let shim = tempfile::tempdir().unwrap();
+    let uname_runs = shim.path().join("uname-runs.log");
+    let uname = shim.path().join("uname");
+    std::fs::write(
+        &uname,
+        format!(
+            "#!/bin/sh\necho \"$@\" >> '{}'\necho Shimmed\n",
+            uname_runs.display()
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&uname, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let harness = Harness::new()
+        .with_claude_package()
+        .with_claude_releases(distribution.url("/releases"))
+        .with_models_dev(catalog.url("/api.json"));
+    harness.manager.script(|script| {
+        script.cloud_env = Some(BTreeMap::from([
+            (
+                "PATH".to_owned(),
+                format!("{}:/usr/bin:/bin", shim.path().display()),
+            ),
+            ("SHELL".to_owned(), "/bin/zsh".to_owned()),
+        ]));
+    });
+    let (backend, master) = harness.start_set_up().await;
+    let new_entry = json!({ "providerType": "claude-code", "label": "Claude" });
+
+    // The Cloud has no CLI: the sign-in waits for the pointer and fails
+    // with its read.
+    let (answer_pointer, held) = watch::channel(false);
+    distribution.respond_at("/releases/latest", MockResponse::status(503).held(held));
+    let id = start_login(&backend, &master, LOGIN, new_entry.clone()).await;
+    distribution.received(1).await;
+    assert!(matches!(
+        login_state(&backend, &master, &id).await,
+        LoginState::Pending { .. }
+    ));
+    answer_pointer.send_replace(true);
+    let LoginState::Failed { message } = awaited(&backend, &master, &id, ended).await else {
+        panic!("the sign-in without a CLI did not fail");
+    };
+    let reason = "Claude Code could not be installed: the distribution answered 503 Service Unavailable";
+    assert!(message.starts_with(reason), "{message}");
+    let cloud = the_cloud(&harness);
+    let home = harness.manager.home(&cloud);
+    let older = install_by_hand(&harness.manager.artifacts(&cloud), OLDER).await;
+
+    // The Cloud has a CLI: the sign-in starts it while the pointer's read,
+    // which nothing kept an answer of, hangs.
+    let (answer_pointer, held) = watch::channel(false);
+    distribution.respond_at(
+        "/releases/latest",
+        MockResponse::status(200)
+            .chunk(format!("{NEWEST}\n"))
+            .held(held),
+    );
+    distribution.respond_at(
+        &format!("/releases/{NEWEST}/manifest.json"),
+        manifest(NEWEST),
+    );
+    let id = waiting_login(&backend, &master, LOGIN, new_entry).await;
+    distribution.received(2).await;
+    let LoginState::Completed { provider_id, .. } =
+        pasted(&backend, &master, &id, "first#state").await
+    else {
+        panic!("the sign-in did not complete");
+    };
+    let provider = provider_id.as_str().to_owned();
+
+    // So does a conversation's process, whose session describes the Cloud
+    // as its runner reported it.
+    create(&backend, &master, CONVERSATION).await;
+    choose(&backend, &master, CONVERSATION, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, CONVERSATION).await;
+    socket.open().await;
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello")
+        .await;
+    let said = last_text(&saved(&backend, &master).await);
+    let config = config_of(&said);
+    assert_eq!(said, answer(&older, &home, "access-first-state", &config));
+    let session = std::fs::read_dir(format!("{config}/projects/demi"))
+        .unwrap()
+        .next()
+        .expect("the process's session is written")
+        .unwrap()
+        .path();
+    let session = std::fs::read_to_string(session).unwrap();
+    let environment: Value = serde_json::from_str(session.lines().next().unwrap()).unwrap();
+    let uname_of = |flag: &str| {
+        let printed = std::process::Command::new("/usr/bin/uname")
+            .arg(flag)
+            .output()
+            .unwrap()
+            .stdout;
+        String::from_utf8(printed).unwrap().trim().to_owned()
+    };
+    let (kernel, release) = (uname_of("-s"), uname_of("-r"));
+    let run_dir = std::fs::canonicalize(format!("{home}/.demi/claude/run")).unwrap();
+    assert_eq!(
+        environment["attachment"]["snapshot"],
+        json!({
+            "workingDirectory": run_dir.to_string_lossy(),
+            "isWorktree": false,
+            "isGitRepo": false,
+            "additionalWorkingDirectories": [],
+            "platform": kernel.to_lowercase(),
+            "shell": "zsh",
+            "osVersion": format!("{kernel} {release}"),
+        })
+    );
+    assert!(
+        !uname_runs.exists(),
+        "a start ran uname: {}",
+        std::fs::read_to_string(&uname_runs).unwrap_or_default()
+    );
+
+    // The read in the background keeps the pointer's answer: the settings
+    // take it once it ends, and nothing reads the pointer again.
+    answer_pointer.send_replace(true);
+    let read = cli(&backend, &master, &provider).await;
+    assert_eq!(
+        read.newest,
+        NewestVersion::Read {
+            version: NEWEST.into()
+        }
+    );
+    assert_eq!(distribution.requests().len(), 3);
+    backend.close().await;
 }
 
 /// A sign-in that makes its account the entry's active one is a change of
