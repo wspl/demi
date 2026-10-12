@@ -1,6 +1,6 @@
-//! The `demi web` group (`web.md`): `fetch` runs `fetch.get` of the
-//! `demi.fetch` package on the Host, its arguments declared from the
-//! `command-package-fetch-protocol` types.
+//! The `demi web` group (`web.md`): `search` runs in the plugin, against
+//! Exa; `fetch` runs `fetch.get` of the `demi.fetch` package on the Host,
+//! its arguments declared from the `command-package-fetch-protocol` types.
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_fetch_protocol::{
@@ -8,14 +8,43 @@ use demi_command_package_fetch_protocol::{
     PACKAGE,
 };
 use demi_host_interface::{GroupBuilder, LeafBuilder};
+use demi_plugin_interface::{CommandPlugin, Placement, PortHandled};
+
+use crate::search::{DEFAULT_COUNT, MAX_COUNT, SearchArgs, SearchResults};
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Reads a web page from the Host: `fetch` prints it as Markdown, a part at a time, and saves a PDF, an image or any other file for `demi file view`. Use it for documentation, articles, release notes or an API's JSON at a URL you have. Not for a page that needs JavaScript, a sign-in or clicks, where `demi browser` works.";
+const ENTRY: &str = "Searches the web and reads pages: `search` lists pages for one to four queries, with their links and the lines that matter, and `fetch` reads a URL from the Host as Markdown, a part at a time, and saves a PDF, an image or any other file for `demi file view`. Use them for documentation, release notes, news or an API's JSON. Not for a page that needs JavaScript, a sign-in or clicks, where `demi browser` works.";
 
-pub(crate) fn web_group() -> GroupBuilder {
-    GroupBuilder::new("web", "Read web pages from this Host.")
+/// The plugin's commands: the `demi web` group.
+pub(crate) fn commands() -> CommandPlugin {
+    CommandPlugin::new(Placement::Demi, vec![web_group()])
+        .expect("the web group is a valid declaration")
+}
+
+fn web_group() -> GroupBuilder {
+    GroupBuilder::new("web", "Search the web and read pages from this Host.")
         .index_entry(ENTRY)
+        .leaf(
+            LeafBuilder::rpc(
+                "search",
+                "Search the web for one to four queries, run at once, and list the pages found, merged in turn: each page's title, domain, date, URL and up to three lines that matter. Searches with the user's Exa account or API key from Settings › Web Search, or anonymously within a shared limit.",
+            )
+            .input::<SearchArgs>()
+            .positionals(["query"])
+            .describe(
+                "count",
+                format!("How many pages to list in all, 1 to {MAX_COUNT}; default {DEFAULT_COUNT}"),
+            )
+            .json_output::<SearchResults>()
+            .success_output(
+                "a line saying that what follows is untrusted web content, then the pages, numbered, and a line asking to cite the pages used as Markdown links; or \"No pages found. Try other words or fewer filters.\"",
+            )
+            .failure_output(
+                "an option the search cannot honour without an Exa API key, the anonymous limit, the account's rate limit or credit, an expired sign-in, or Exa not answering within 30 s, each named on stderr with exit status 1",
+            )
+            .bind(PortHandled),
+        )
         .leaf(
             LeafBuilder::native(
                 "fetch",

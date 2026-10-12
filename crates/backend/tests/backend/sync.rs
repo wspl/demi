@@ -184,8 +184,12 @@ async fn the_snapshot_is_the_users_product_state() {
             instructions: String::new(),
             // Checked below by what the page needs of them.
             plugins: state.plugins.clone(),
-            // A new user has no skill source.
-            plugin_states: [("skills".to_owned(), json!({ "sources": [] }))].into(),
+            // A new user has no skill source, and searches anonymously.
+            plugin_states: [
+                ("skills".to_owned(), json!({ "sources": [] })),
+                ("web".to_owned(), json!({ "account": null, "key": null, "inUse": "anonymous" })),
+            ]
+            .into(),
             // The backend serves no web app.
             web_build: None,
             // No mail sender is configured: the page offers no email change.
