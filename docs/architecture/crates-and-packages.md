@@ -1126,7 +1126,10 @@ demi-backend (executable: configuration, composition)
   sources in registration order; each user's instances, with the `rpc`
   handlers that forward a command to its plugin; the port's operations over
   the user's plugin values, blobs, Host directory sets, Host file reads,
-  package calls and page-state marks; the
+  package calls and page-state marks, and over its secrets, sealed through
+  the product's port by the one owner of sealing, its outbound requests and
+  its OAuth sign-ins with their registrations, flows and renewals
+  ([OAuth sign-in](plugins.md#oauth-sign-in)); the
   plugins' user stream declarations; the marks of a plugin's page state when
   a product change it follows happens;
   and page state and page calls, with the validation of a call's parameters
@@ -1702,7 +1705,7 @@ backend-providers -> backend-database, backend-page-sync, command-package-claude
 backend-runners -> shared-artifacts, backend-blobs, backend-database, backend-page-sync, command-protocol, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol
 backend-idle-watch -> shared-gates
 backend-cloud -> backend-idle-watch, backend-providers, backend-runners, backend-database, backend-page-sync, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol
-backend-plugins -> plugin-interface, command-declarations, shared-types, host-interface, backend-database, backend-page-sync, web-api-protocol
+backend-plugins -> plugin-interface, command-declarations, shared-types, host-interface, backend-database, backend-page-sync, web-api-protocol, provider-common
 backend-permissions -> command-declarations, shared-types, host-interface, backend-database, backend-page-sync, web-api-protocol
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
