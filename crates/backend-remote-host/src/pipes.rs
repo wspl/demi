@@ -72,9 +72,8 @@ enum End {
     Device(String),
 }
 
-/// What the ends of one pipe share: its outcome, and whether a source that
-/// sends bytes is there, a writer or a device's `PUT` (a held source is
-/// not).
+/// What the ends of one pipe share: its outcome, and whether a source is
+/// there: a writer, a device's `PUT`, or a source this process holds.
 struct Core {
     state: watch::Sender<Outcome>,
     source_arrived: watch::Sender<bool>,
@@ -498,13 +497,17 @@ impl Pipe {
 
     /// This process owns the source, which counts as arrived, until it takes
     /// the writer or hands the source to a device: an rpc call's standard
-    /// output, whose handler may never write or may hand it on.
+    /// output, whose handler may never write or may hand it on. The sink's
+    /// response opens at once, before the first byte, so a call that prints
+    /// nothing for long outlasts a proxy's limit on an unanswered request
+    /// (`commands.md` § Handle an rpc call); a later failure ends its body.
     pub fn hold_source(&self) -> Result<(), PipeError> {
         self.pipes.with_slot(&self.id, |slot, arrival| {
             if slot.source != End::Open {
                 return Err(PipeError::AlreadyFixed("source"));
             }
             slot.source_arrived = true;
+            slot.core.source_arrived.send_replace(true);
             slot.update_deadline(arrival);
             Ok(())
         })
@@ -819,8 +822,9 @@ impl DeviceSink {
         let _ = self.reader.core.sink_connection.set(connection);
     }
 
-    /// Waits until the source has something to send: the response's head
-    /// goes out only then, and a pipe that fails first is the refusal.
+    /// Waits until a source is there, a device's upload, a writer or a
+    /// source this process holds: the response's head goes out only then,
+    /// and a pipe that fails first is the refusal.
     pub async fn source_arrived(&mut self) -> Result<(), PipeFailure> {
         let mut arrived = self.reader.core.source_arrived.subscribe();
         let failed = self.reader.core.failed();

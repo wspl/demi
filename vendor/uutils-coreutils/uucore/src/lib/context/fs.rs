@@ -1,6 +1,6 @@
 //! Filesystem calls resolve relative paths against the utility's cwd.
 
-pub use std::fs::{DirEntry, FileTimes, FileType, Metadata, Permissions, ReadDir};
+pub use std::fs::{DirEntry, FileTimes, FileType, Metadata, Permissions};
 use std::{
     io::{self, Read, Seek, SeekFrom, Write},
     ops::{Deref, DerefMut},
@@ -215,8 +215,21 @@ pub fn read_to_string(path: impl AsRef<Path>) -> io::Result<String> {
     File::open(path)?.read_to_string(&mut text)?;
     Ok(text)
 }
+/// A directory's entries. Each one read checks the invocation's
+/// cancellation, so a walk that prints nothing, such as a quiet `du -s` or
+/// `rm -r`, still stops at its next entry.
+#[derive(Debug)]
+pub struct ReadDir(std::fs::ReadDir);
+impl Iterator for ReadDir {
+    type Item = io::Result<DirEntry>;
+    fn next(&mut self) -> Option<Self::Item> {
+        super::check_cancelled();
+        self.0.next()
+    }
+}
 pub fn read_dir(path: impl AsRef<Path>) -> io::Result<ReadDir> {
-    std::fs::read_dir(super::resolve(path))
+    super::check_cancelled();
+    std::fs::read_dir(super::resolve(path)).map(ReadDir)
 }
 pub fn read_link(path: impl AsRef<Path>) -> io::Result<PathBuf> {
     std::fs::read_link(super::resolve(path))

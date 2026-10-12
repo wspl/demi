@@ -250,9 +250,13 @@ fn execute_utility(
             stderr: Arc::new(invocation_file(&context, 2)?),
         };
         let args = args.into_iter().map(|arg| arg.to_string().into()).collect();
+        let running = scope.work.utility(name);
         let code = scope
             .tasks
-            .spawn_blocking(move || crate::utilities::run(invocation, args))
+            .spawn_blocking(move || {
+                let _running = running;
+                crate::utilities::run(invocation, args)
+            })
             .await
             .map_err(io::Error::other)?
             .map_err(io::Error::other)?;

@@ -471,6 +471,8 @@ pub(crate) fn copy_directory(
         .same_file_system(options.one_file_system)
         .follow_links(options.dereference)
     {
+        // A copy stops at its next entry once the invocation is cancelled.
+        uucore::context::check_cancelled();
         match direntry_result {
             Ok(direntry) => {
                 let direntry_type = direntry.file_type();
