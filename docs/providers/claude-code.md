@@ -563,6 +563,53 @@ the agent stops reading a run at its failure.
 Closing sends SIGTERM, waits up to five seconds for the process to exit, then
 sends SIGKILL and waits for it.
 
+### Preparing a process ahead
+
+A request that finds no kept process waits for a new one: on prod the median
+first turn of a subagent waited 3.0 s before its CLI was ready and 5.7 s for
+its first word, against 1.4 s for a kept process, and a long conversation's
+new process took 5.3 s before its CLI was ready. So the runtime starts the
+process before the request whenever the request it will serve is already
+known but for its input. For example, the user opens a conversation that ran
+on Claude Opus yesterday; while they type, its process starts on their
+Cloud, resumes the history and waits, and the message they send goes to it
+as to a kept process.
+
+- **When.** A conversation whose model is a Claude Code model and whose
+  runtime holds no process prepares one when a page opens the conversation,
+  when the user picks another model, effort or account in it, and when a
+  turn ends and its kept process would be refused by the next request
+  because its token expires within 30 minutes: the token is refreshed and
+  the replacement prepared then. Nothing else prepares one: a subagent
+  starts its process at its spawn, as now.
+- **What.** Everything a start does: the placement, the session file of the
+  history up to its last answered turn, with no input at its end, the spawn,
+  and the `initialize` exchange that declares the SDK MCP server. The
+  process then waits for its input on standard input, as a kept process
+  does. A conversation whose history ends in input not yet answered, such as
+  a turn that failed, prepares nothing, since its next request answers that
+  input.
+- **Used or dropped.** The next request of the conversation takes the
+  prepared process when its model, effort, account, system prompt and the
+  history before its input are those it was prepared for, and starts a new
+  one otherwise, closing the prepared one. A prepared process unused for 10
+  minutes is closed, and so is one whose conversation's history changed
+  beneath it, by an edit, a fork point or a compaction. A Cloud holds at most
+  two prepared processes not yet used; a third preparation closes the oldest.
+- **Never in the way.** A preparation that fails is logged and forgotten:
+  the request then starts its process as it would have, and the user sees
+  nothing of it. Preparing takes no admission the user's own commands wait
+  for.
+
+**Timing.** Each run's `tracing` span carries whether it took a kept, a
+prepared or a new process, and, for a new or prepared one, the milliseconds
+of each step of the placement (waking or admitting the Cloud, finding the
+executable, the directories, writing the session file and its size, the
+spawn on the Host), of the `initialize` answer, and of the first content
+delta, counted from the request; the backend logs them at `info` when the
+run ends, so the time to a first word can be read from prod's journal
+without turning on the wire trace.
+
 A runtime stands for one account. Selecting another account builds a new
 provider, the session's next request builds a new runtime from it and closes
 the previous one, and the new process starts with the newly active account's
