@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Copy, Folder, Pencil, Plus, Settings, Trash2 } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import { showArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { productWould } from '../product-would'
@@ -11,6 +12,7 @@ import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import FloatingWindow from '@demicodes/web-ui/ui/FloatingWindow.vue'
+import HelpPopover from '@demicodes/web-ui/ui/HelpPopover.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import type { WindowRect } from '@demicodes/web-ui/ui/floating-window'
 import { KEEPS_WINDOWS } from '@demicodes/web-ui/ui/window-stack'
@@ -228,6 +230,17 @@ const submenuModels: MenuChoice[] = [
 
 function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
   return list.find(item => item.id === id)?.label ?? id
+}
+
+// One menu for several rows, opened by their handlers; a row with nothing to offer keeps the browser's own menu.
+const sharedRows = ['Project notes', 'Release checklist', 'Scratch']
+const sharedRow = ref('')
+const sharedMenu = useContextMenuOwner()
+function openSharedMenu(row: string, event: MouseEvent): void {
+  if (row === 'Scratch')
+    return
+  sharedRow.value = row
+  sharedMenu.open(event)
 }
 </script>
 
@@ -908,6 +921,39 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
               />
             </template>
           </ContextMenu>
+        </GallerySpecimen>
+        <!-- Rows that share one menu, as the sidebar's do: the rows' handlers open it with `owner.open`, and a row with nothing to offer leaves the browser's own menu. -->
+        <GallerySpecimen variant="right-click, one menu for several rows">
+          <div class="flex w-72 flex-col gap-1 rounded-lg bg-surface-raised p-1.5 ring-1 ring-line">
+            <div
+              v-for="row in sharedRows"
+              :key="row"
+              class="flex h-8 items-center rounded-md px-2 text-[13px] text-fg-muted hover:bg-hover"
+              @contextmenu="openSharedMenu(row, $event)"
+            >
+              {{ row }}
+            </div>
+            <div class="px-2 pb-1 pt-0.5 text-[12px] text-fg-faint">Right-click a row; the last one has no menu.</div>
+          </div>
+          <ContextMenu :overlay-store="appOverlayStore" :owner="sharedMenu">
+            <template #menu>
+              <MenuItem :icon="Pencil" label="Rename" @select="productWould(`Rename ${sharedRow}`)" />
+              <MenuItem :icon="Copy" label="Duplicate" @select="productWould(`Duplicate ${sharedRow}`)" />
+              <MenuDivider />
+              <MenuItem :icon="Trash2" label="Delete" is-danger @select="productWould(`Delete ${sharedRow}`)" />
+            </template>
+          </ContextMenu>
+        </GallerySpecimen>
+      </GallerySection>
+
+      <GallerySection title="HelpPopover" note="A ? button that opens help about the thing beside it; Escape or a click outside closes it, as the button does a second time.">
+        <GallerySpecimen variant="in a settings row">
+          <div class="flex w-80 items-center justify-between rounded-lg bg-surface-raised py-1.5 pl-3 pr-1.5 text-[13px] text-fg-muted ring-1 ring-line">
+            <span>Keep Awake</span>
+            <HelpPopover label="About Keep Awake" :overlay-store="appOverlayStore">
+              Keeps the device awake while a conversation runs on it, so a long turn is not cut off by sleep.
+            </HelpPopover>
+          </div>
         </GallerySpecimen>
       </GallerySection>
     </template>

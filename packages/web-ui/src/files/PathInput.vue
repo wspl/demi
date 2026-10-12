@@ -2,6 +2,7 @@
 import { computed, h, nextTick, ref, watch } from 'vue'
 import { useElementSize, useEventListener } from '@vueuse/core'
 import { appOverlayStore } from '../overlay/appOverlay'
+import { revealRow } from '../composables/list-highlight'
 import HighlightText from '../ui/HighlightText.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
@@ -145,7 +146,7 @@ watch(completion.highlighted, (index) => {
   if (index < 0)
     return
   void nextTick(() => {
-    rowsEl.value?.querySelectorAll('[data-menu-item]')[index]?.scrollIntoView({ block: 'nearest' })
+    revealRow(rowsEl.value, '[data-menu-item]', index)
   })
 })
 
