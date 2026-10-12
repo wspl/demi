@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
+import { useFitMore } from './fit-more'
 import Tag from './Tag.vue'
 import Tooltip from './Tooltip.vue'
 
@@ -8,61 +9,30 @@ const props = defineProps<{
   items: string[]
 }>()
 
+/** The space between tags, `gap-1`. */
+const GAP_PX = 4
+
 const root = ref<HTMLElement | null>(null)
+// An invisible copy of every tag and of the count, which gives the widths the line is fitted by.
 const meter = ref<HTMLElement | null>(null)
-const shown = ref(props.items.length)
+
+const shown = useFitMore({
+  items: () => props.items,
+  box: () => root.value,
+  measure: () => {
+    const strip = meter.value
+    if (!root.value || !strip)
+      return null
+    const more = strip.querySelector<HTMLElement>('[data-more]')
+    return {
+      room: root.value.clientWidth,
+      widths: [...strip.querySelectorAll<HTMLElement>('[data-chip]')].map((chip) => chip.offsetWidth),
+      gap: GAP_PX,
+      countWidth: () => more?.offsetWidth ?? 28,
+    }
+  },
+})
 const hidden = computed(() => props.items.slice(shown.value))
-
-let observer: ResizeObserver | undefined
-
-function fit() {
-  const box = root.value
-  const strip = meter.value
-  if (!box || !strip || props.items.length === 0) {
-    shown.value = props.items.length
-    return
-  }
-  const max = box.clientWidth
-  const chips = [...strip.querySelectorAll<HTMLElement>('[data-chip]')]
-  const more = strip.querySelector<HTMLElement>('[data-more]')
-  const gap = 4
-  const moreWidth = more?.offsetWidth ?? 28
-  const widths = chips.map((chip) => chip.offsetWidth)
-  const full = widths.reduce((sum, width, index) => sum + width + (index
-    ? gap
-    : 0), 0)
-  if (full <= max) {
-    shown.value = widths.length
-    return
-  }
-  let used = 0
-  let count = 0
-  for (let i = 0; i < widths.length; i++) {
-    const next = used + (count ? gap : 0) + widths[i]!
-    const rest = widths.length - i - 1
-    if (next + (rest > 0 ? gap + moreWidth : 0) > max)
-      break
-    used = next
-    count++
-  }
-  shown.value = count
-}
-
-onMounted(() => {
-  observer = new ResizeObserver(() => {
-    void nextTick(fit)
-  })
-  if (root.value)
-    observer.observe(root.value)
-  void nextTick(fit)
-})
-
-watch(() => props.items, () => {
-  shown.value = props.items.length
-  void nextTick(fit)
-})
-
-onBeforeUnmount(() => observer?.disconnect())
 </script>
 
 <template>

@@ -1,3 +1,4 @@
+import { fitMore, type FitMore } from '../ui/fit-more'
 import { declaredSize, ROW_PICTURE, thumbnailBox, type PixelSize } from '../files/thumbnail'
 import type { ToolPicture } from './tool-media'
 
@@ -23,12 +24,6 @@ export const ROW_PICTURES_LEAD = 8
 /** The space between two pictures, and between the last one shown and the count of the rest. */
 export const ROW_PICTURES_GAP = 4
 
-/** What a row's line holds: how many of its pictures show, and how many the count after them names (0 for none). */
-export interface RowPicturesFit {
-  shown: number
-  more: number
-}
-
 /**
  * Which of the pictures of `widths`, in their order, show in a row `row`
  * pixels wide whose face is `face` pixels wide when nothing cuts it, given
@@ -43,25 +38,7 @@ export function fitRowPictures(
   face: number,
   widths: readonly number[],
   moreWidth: (count: number) => number,
-): RowPicturesFit {
+): FitMore {
   const room = row - ROW_PICTURES_LEAD - Math.min(face, row / 2)
-  const all = widths.length
-  let used = 0
-  // How wide the first `shown` pictures stand, gaps included.
-  const extent: number[] = [0]
-  for (const [index, width] of widths.entries()) {
-    used += width + (index > 0 ? ROW_PICTURES_GAP : 0)
-    extent.push(used)
-  }
-  if (extent[all]! <= room) {
-    return { shown: all, more: 0 }
-  }
-  for (let shown = all - 1; shown >= 0; shown -= 1) {
-    const more = all - shown
-    const width = extent[shown]! + (shown > 0 ? ROW_PICTURES_GAP : 0) + moreWidth(more)
-    if (width <= room) {
-      return { shown, more }
-    }
-  }
-  return { shown: 0, more: 0 }
+  return fitMore({ room, widths, gap: ROW_PICTURES_GAP, countWidth: moreWidth })
 }
