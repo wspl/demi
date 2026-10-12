@@ -432,6 +432,9 @@ Context window                      285.1k / 1M (29%)
   frame, so opening the card costs nothing and shows what the ring shows.
   Exact counts from a vendor's token-counting endpoint are left out: only one
   vendor family has one.
+- **The rows stand largest first**, the rows of what the request carries by
+  their tokens, then Compaction buffer, then Free space last, so the eye
+  meets what fills the context first.
 - **A row opens only into two parts or more**: a row that holds one thing,
   such as Other context while the execution context is its only block,
   shows no chevron, since opening it would repeat the row.
