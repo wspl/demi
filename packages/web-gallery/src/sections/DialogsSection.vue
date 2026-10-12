@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { countOf } from '@demicodes/utils'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ChangeEmailDialog, { type ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import ChangePasswordDialog, { type ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
@@ -490,7 +491,7 @@ const resetPhases: {
                 :overlay-store="appOverlayStore"
                 :titles="item.titles"
                 @close="close"
-                @delete="finish(close, item.titles.length === 1 ? 'Delete the Conversation' : `Delete ${item.titles.length} Conversations`)"
+                @delete="finish(close, item.titles.length === 1 ? 'Delete the Conversation' : `Delete ${countOf(item.titles.length, 'Conversation')}`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>

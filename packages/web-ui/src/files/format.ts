@@ -1,5 +1,3 @@
-import dayjs from 'dayjs'
-
 /** `1.2 MB`, `840 KB`, `12 B`. */
 export function formatBytes(size: number): string {
   if (size < 1024)
@@ -12,14 +10,6 @@ export function formatBytes(size: number): string {
     unit += 1
   }
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
-}
-
-/** One shape for every row, `Sep 2, 2026 18:12`; empty for an unknown time. */
-export function formatModified(iso: string | undefined): string {
-  if (!iso)
-    return ''
-  const time = dayjs(iso)
-  return time.isValid() ? time.format('MMM D, YYYY HH:mm') : ''
 }
 
 /** A name's extension in capitals, `TS` for `index.ts`; null for a name without one, such as `Makefile` or `.zshrc`. */

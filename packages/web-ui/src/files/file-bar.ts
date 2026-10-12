@@ -1,4 +1,4 @@
-import { baseName } from '@demicodes/utils'
+import { baseName, pluralize } from '@demicodes/utils'
 import { languageName } from '../editor/language'
 import { entryKind, fileExtension, formatBytes } from './format'
 import { formatZoom } from './image-zoom'
@@ -77,7 +77,7 @@ function facts(shown: ShownFile): string[] {
   switch (shown.as) {
     case 'text': {
       const lines = lineCount(shown.text)
-      return [`${lines.toLocaleString('en-US')} ${lines === 1 ? 'line' : 'lines'}`, formatBytes(new TextEncoder().encode(shown.text).length)]
+      return [`${lines.toLocaleString('en-US')} ${pluralize(lines, 'line')}`, formatBytes(new TextEncoder().encode(shown.text).length)]
     }
     // Its lines are not known: the page holds only the start.
     case 'start':

@@ -1,6 +1,7 @@
 import { expect, spyOn, test } from 'bun:test'
 import { effectScope, nextTick, ref } from 'vue'
 import { useElapsedTime } from '../useElapsedTime'
+import { useRelativeTime, useResetTime } from '../useRelativeTime'
 import { providerWaitLabel, thinkingFaceLabel } from '../../agent/thinking-label'
 
 test('thinking and requesting show durations only after one second', () => {
@@ -14,6 +15,8 @@ test('thinking and requesting show durations only after one second', () => {
   expect(providerWaitLabel(1001)).toBe('Requesting for 1s')
   expect(providerWaitLabel(42_000)).toBe('Requesting for 42s')
   expect(thinkingFaceLabel(false, 60000)).toBe('Thought for 1m')
+  expect(thinkingFaceLabel(false, 134_900)).toBe('Thought for 2m 14s')
+  expect(providerWaitLabel(3_900_000)).toBe('Requesting for 1h 5m')
 })
 
 test('live intervals tick, freeze to their persisted end, reset and release clocks', async () => {
@@ -74,6 +77,33 @@ test('running rows share one clock, released by the last of them', () => {
   } finally {
     first.stop()
     second.stop()
+    intervals.mockRestore()
+    clear.mockRestore()
+  }
+})
+
+// A running command's time and the relative times on the page ("3 minutes
+// ago", a reset countdown) read one clock, so the app keeps one timer.
+test('elapsed and relative times share one timer, released when none reads it', () => {
+  const intervals = spyOn(globalThis, 'setInterval')
+  const clear = spyOn(globalThis, 'clearInterval')
+  const running = effectScope()
+  const relative = effectScope()
+  const reset = effectScope()
+  try {
+    running.run(() => useElapsedTime(() => 0, () => true))
+    relative.run(() => useRelativeTime('2026-10-07T10:30:00.000Z'))
+    reset.run(() => useResetTime('2026-10-07T10:30:00.000Z'))
+    expect(intervals).toHaveBeenCalledTimes(1)
+    running.stop()
+    relative.stop()
+    expect(clear).not.toHaveBeenCalled()
+    reset.stop()
+    expect(clear).toHaveBeenCalledTimes(1)
+  } finally {
+    running.stop()
+    relative.stop()
+    reset.stop()
     intervals.mockRestore()
     clear.mockRestore()
   }
