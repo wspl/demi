@@ -796,9 +796,11 @@ was, archived or live, and goes on if it was running.
   does, not the source's profile, so a fork never carries a configuration
   the caller did not ask for. The history replays to the new model as it
   does after a model switch ([A conversation's model
-  settings](../providers/models.md#a-conversations-model-settings)), and a
-  history too large for the new model's window is compacted before the
-  fork's first request ([Compaction](compaction.md)).
+  settings](../providers/models.md#a-conversations-model-settings)): the fork
+  starts on the source's model and switches at its first request, so the
+  copied history and the message are recorded with the source's model and
+  effort, and a history too large for the new model's window is compacted
+  with the source's model first ([Compaction](compaction.md)).
 - **What it is.** A new child of the caller, a sibling of its source, with
   the next agent number, the description `--description` gives or the
   source's followed by ` (fork)`, and the source's Host and directory. It
