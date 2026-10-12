@@ -1061,6 +1061,13 @@ utilities run in the runner, with the runner's limits. The other builtins act
 on the shell alone already: `cd` and the directory stack, `trap`, which
 installs no signal handler in the runner, `set` and `shopt`, `exit`, `wait`,
 `jobs` and `bg`. `times` shows the runner's processor time, not the job's.
+`time` reports the processor time of the processes the timed pipeline
+started, each from its own `wait4` usage, and none of the runner's: a
+builtin or standard utility in the pipeline runs inside the runner, so its
+time is left out, and the report says so with a line `(work inside the
+runner not counted)` when the pipeline held any. For example, `time sleep 60`
+reports about 0 seconds of user and system time, where it once reported the
+runner's and other jobs' 36 seconds.
 
 ### A job's own input
 
