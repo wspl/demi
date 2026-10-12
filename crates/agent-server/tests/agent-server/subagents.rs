@@ -2,15 +2,18 @@
 //! `demi agent` calls a node's jobs make, the frames the root's connection
 //! receives, what each model is asked, and the tree store's records.
 
-use std::cell::RefCell;
+use std::{cell::RefCell, rc::Rc, time::Duration};
 
-use demi_agent_server::ServerConfig;
+use demi_agent_server::{
+    ServerConfig,
+    testing::{ScriptedProviders, TestClient},
+};
 use demi_agent_store::{
     AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord,
     testing::{MemoryTreeStore, test_model, text},
 };
 use demi_conversation_socket_protocol::{
-    ClientFrame, JobPhase, ServerFrame, SubagentEvent, TranscriptPatch,
+    ClientFrame, JobPhase, ServerFrame, ShellStatus, SubagentEvent, TranscriptPatch,
 };
 use demi_provider_common::{
     InferenceItem, UserPart,
@@ -26,8 +29,9 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    AGENT_CALL, CommandRun, Fixture, Gate, Model, TestProduct, agent, agent_call, conversation, held, is_idle,
-    is_pending_steers, listed_model, named_node, open, request_text, send, texts, until,
+    AGENT_CALL, CommandRun, Fixture, Gate, Model, ScriptedShells, TestProduct, agent, agent_call, conversation,
+    held, is_idle, is_pending_steers, listed_model, named_node, open, request_text, scripted_host_server, send,
+    shell_command, texts, until,
 };
 
 pub(crate) fn said(text: &str) -> Turn {
@@ -724,6 +728,107 @@ async fn abort_closes_the_subtree_and_dispose_detaches_it_for_the_next_open() {
         })
     );
     assert!(model.is_done());
+}
+
+/// Whether `frame` is the pages' view of a command of the subagent `child`
+/// that `stopping` or has ended as stopped.
+fn is_child_command(child: &NodeId, stopping: bool) -> impl Fn(&ServerFrame) -> bool + '_ {
+    move |frame| match frame {
+        ServerFrame::ShellOutput { subagent_id: Some(id), status } if id == child => match **status {
+            ShellStatus::Running { stopping: shown, .. } => stopping && shown,
+            ShellStatus::Aborted { .. } => !stopping,
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+/// Polls `show`'s view of agent 1 for the root until its execution is
+/// `execution`; the time between two looks passes on the paused clock.
+async fn wait_for_execution(server: &Rc<demi_agent_server::AgentServer<crate::support::LiveHosts>>, execution: &str) {
+    let mut shown = String::new();
+    for _ in 0..100 {
+        shown = agent(server, &root(), "show", json!({ "id": [1] })).await.stdout;
+        if shown.contains(&format!("execution: {execution}")) {
+            return;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    panic!("agent 1 never reached {execution}:\n{shown}");
+}
+
+// A child that ended its turn while its command runs is idle: a message
+// opens its next turn at once. An abort of it closes it at once, although
+// its command's runner never answers the stop, as a runner whose thread a
+// macOS privacy prompt held once kept an aborted child live for an hour:
+// the command stays in the pages' Running window as stopping, any agent can
+// still look at it, and its end reaches the pages when its runner reports
+// it (`subagents.md` § Abort). Under a second on the paused clock.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
+    let model = Model::default();
+    model.child(
+        "task serve",
+        [
+            Turn::Events(vec![event::tool_call(
+                "call-1",
+                "shell",
+                json!({"script": "serve", "description": "Start the server", "intervalMs": null}),
+            )]),
+            said("serving"),
+            said("still serving"),
+        ],
+    );
+    // The aborted child's completion wakes the idle root once.
+    model.root([said("noted")]);
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide_runtime("stub", model.clone());
+    let shells = Rc::new(ScriptedShells::default());
+    let store = MemoryTreeStore::new();
+    let server = scripted_host_server(providers, shells.clone(), store.clone());
+    let mut page = TestClient::connect(&server, &conversation(), "/workspace");
+    page.send(open()).await;
+    page.next_until(is_pending_steers).await;
+    let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task serve" })).await;
+    let child = named_node(&store, &spawned);
+    wait_for_execution(&server, "waiting").await;
+
+    // A message to the idle child, whose command still runs, opens its turn.
+    let sent = agent(&server, &root(), "send", json!({ "id": "1", "message": "Is it serving?" })).await;
+    assert_eq!(sent.stdout, "sent to 1\n", "{sent:?}");
+    wait_for_execution(&server, "waiting").await;
+    let requests = model.requests_of("task serve");
+    assert_eq!(requests.len(), 3);
+    assert!(request_text(&requests[2]).contains("Is it serving?"));
+
+    // The abort returns with the child closed, its command still stopping.
+    let aborted = tokio::time::timeout(
+        Duration::from_secs(60),
+        agent(&server, &root(), "abort", json!({ "id": [1] })),
+    )
+    .await
+    .expect("an abort waits for no command's end");
+    assert_eq!(aborted.stdout, "aborted 1\n", "{aborted:?}");
+    assert_eq!(
+        store.record(&child).and_then(|record| record.closed).map(|close| close.phase),
+        Some(ClosePhase::Aborted)
+    );
+    let frames = page.received();
+    assert!(frames.iter().any(is_child_command(&child, true)), "{frames:?}");
+    assert!(frames.iter().any(is_closed(&child)), "{frames:?}");
+    let status = shell_command(&server, &root(), "status", json!({ "id": ["1"] })).await;
+    assert!(status.stdout.contains("status: running"), "{status:?}");
+
+    // A page that opens now finds it stopping in its handshake.
+    let mut second = TestClient::connect(&server, &conversation(), "/workspace");
+    second.send(open()).await;
+    let handshake = second.received();
+    assert!(handshake.iter().any(is_child_command(&child, true)), "{handshake:?}");
+
+    // Its runner reports its end, which reaches the pages.
+    shells.0.borrow().clone().expect("the child's call made it").end();
+    page.next_until(is_child_command(&child, false)).await;
+    second.next_until(is_child_command(&child, false)).await;
 }
 
 pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> CheckpointUpdate {

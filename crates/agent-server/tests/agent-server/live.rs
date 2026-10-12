@@ -6,23 +6,20 @@
 //! scripted shell environment ([`ScriptedShells`]) that prints when the test
 //! says, on Tokio's paused clock.
 
-use std::{rc::Rc, sync::Arc, time::Duration};
+use std::{rc::Rc, time::Duration};
 
 use demi_agent_server::{
-    AgentServer, ServerConfig, ServerDeps,
+    AgentServer, ServerConfig,
     testing::{ScriptedProviders, TestClient},
 };
-use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
-use demi_agent_tools::{SubagentSettings, Toolset};
-use demi_agent_transcript::testing::SequentialIds;
+use demi_agent_store::testing::MemoryTreeStore;
 use demi_conversation_socket_protocol::{ServerFrame, ShellStatus};
-use demi_host_interface::CommandSet;
-use demi_provider_common::testing::{FixedClock, ScriptedRuntime, Turn, event};
-use demi_shared_types::NodeId;
+use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
 use serde_json::json;
 
 use crate::support::{
-    LiveHosts, ScriptedShell, ScriptedShells, conversation, is_idle, is_pending_steers, open, send,
+    LiveHosts, ScriptedShell, ScriptedShells, conversation, is_idle, is_pending_steers, open,
+    scripted_host_server, send,
 };
 
 /// How often a tree sends its commands' new output, at most.
@@ -73,30 +70,7 @@ async fn serving() -> (
     let providers = Rc::new(ScriptedProviders::default());
     providers.provide("stub", &script);
     let shells = Rc::new(ScriptedShells::default());
-    let store = MemoryTreeStore::new();
-    let server = AgentServer::new(ServerDeps {
-        toolsets: Rc::new(Toolset {
-            commands: Rc::new(CommandSet::new()),
-            revision: Rc::from("none"),
-        }),
-        subagents: Rc::new(SubagentSettings {
-            enabled: true,
-            max_live: None,
-            max_depth: None,
-            profiles: Vec::new(),
-        }),
-        instructions: Rc::from("system prompt"),
-        guide: Rc::from("harness guide"),
-        hosts: Rc::new(LiveHosts),
-        context: Rc::new([]),
-        providers,
-        shells: shells.clone(),
-        stores: Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>),
-        clock: Arc::new(FixedClock("2026-09-24T12:00:00.000Z".parse().unwrap())),
-        ids: Rc::new(SequentialIds::new("id")),
-        config: ServerConfig::default(),
-        status_changed: Rc::new(|_| {}),
-    });
+    let server = scripted_host_server(providers, shells.clone(), MemoryTreeStore::new());
     let mut first = TestClient::connect(&server, &conversation(), "/workspace");
     first.send(open()).await;
     first.next_until(is_pending_steers).await;
