@@ -636,8 +636,9 @@ POST /api/conversations/c_81/permissions/requests/pr_3k9
 
 Each request carries its `kind`: `permission`, with its categories as above;
 `credential`, a [credential](../agent/credentials.md) the agent asks the
-user to save, with its name, reason, fields `{ name, label, kind }` and the
-keep it proposes; or `allowance`, a stored credential the conversation asks
+user to save, with its name, reason, fields `{ name, label, kind }`, the
+keep it proposes and `renewal`, true when it asks new values for a saved
+credential; or `allowance`, a stored credential the conversation asks
 to use, with its name. `keep` is `1h`, `1d`, `30d` or `always`; `values` maps
 each field's name to its value, every field required.
 
@@ -656,7 +657,7 @@ reads and changes:
 
 | Route | Body | Does |
 | --- | --- | --- |
-| `GET /api/credentials` | None | `{ credentials }`: each `{ id, name, note, fields: [{ name, label, kind }], keepUntil, lastUsedAt, createdAt, updatedAt }`, values left out, `keepUntil` null for always |
+| `GET /api/credentials` | None | `{ credentials }`: each `{ id, name, note, fields: [{ name, label, kind, value? }], keepUntil, lastUsedAt, createdAt, updatedAt }`, a visible field with its `value` and a secret one without, `keepUntil` null for always |
 | `GET /api/credentials/:id/values` | None | `{ values }`, every field's value, for Settings' reveal; it is logged by name, never by value |
 | `POST /api/credentials` | `{ name, note?, fields: [{ name, label, kind, value }], keep }` | Saves a new one; a taken name is 409 `credential_name_taken` |
 | `PATCH /api/credentials/:id` | Any of `name`, `note`, `fields` (the whole list, a field's `value` left out to keep it), `keep` | Changes it |
@@ -668,7 +669,9 @@ name), a field name 1 to 32 of
 lowercase letters, digits, `_` and `-`, a label 1 to 80, a value up to 64 KiB,
 and a credential one to ten fields. A change reaches the user's other pages
 through the synchronization channel's `credentials` part, which carries no
-value. Errors: 400 `invalid_body` for a malformed body, a new field without a
+value. Each error's `message` is a sentence for the user, which the page shows as
+it is: *A value can be at most 64 KiB.*, *“GitHub token” already has other
+fields; answer with the same fields or choose another name.* Errors: 400 `invalid_body` for a malformed body, a new field without a
 value included; 400 `invalid_answer` for a credential request's answer whose
 values do not match its fields; 404 `credential_not_found`; 409
 `credential_name_taken`; 409 `credential_fields_differ` for an answer that
