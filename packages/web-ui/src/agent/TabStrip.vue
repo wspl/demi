@@ -20,6 +20,7 @@ import {
   stripGap,
   tabsChanged,
 } from './tab-strip'
+import { usePhone } from '../ui/phone'
 
 /** The edge fades' width; a revealed tab is scrolled clear of them. */
 const FADE_PX = 24
@@ -58,6 +59,13 @@ const FADE_PX = 24
  *
  * The arrow keys, Home and End move the keyboard's focus between the tabs,
  * the leading ones included.
+ *
+ * On a phone the tabs never shrink: each keeps its content's width up to its
+ * maximum, the leading tabs too, and the leading tabs and the strip's own
+ * scroll as one row under a finger, with no scrollbar and their overscroll
+ * kept to the row; the selected tab is revealed as above, a leading one
+ * included. A touch there scrolls the row and drags no tab.
+ *
  * A host that listens to `reorder` lets the user drag a tab along the strip,
  * as in a web browser: the others step aside as it passes their middle, and
  * on release `reorder` names where it was and its index among the others,
@@ -88,7 +96,10 @@ const colors = computed(() =>
         '--tab-hover': 'var(--surface-base)',
       },
 )
+const phone = usePhone()
 const root = ref<HTMLElement | null>(null)
+/** The box the row shows in, which the edge fades lie over on a phone, where the row scrolls inside it. */
+const view = ref<HTMLElement | null>(null)
 const list = ref<HTMLElement | null>(null)
 const leading = ref<HTMLElement | null>(null)
 const el = ref<HTMLElement | null>(null)
@@ -135,8 +146,30 @@ function bindEl(instance: Element | ComponentPublicInstance | null): void {
         : null
 }
 
-function updateEdges(): void {
+/** What scrolls: the strip's own tabs, or on a phone the whole tab list, the leading tabs with them. */
+function scroller(): HTMLElement | null {
+  return phone.value ? list.value : el.value
+}
+
+/** Where the selected `tab` sits in the scroller's content once the strip's motion ends. */
+function activeBounds(scrolling: HTMLElement, tab: HTMLElement): { left: number; right: number } {
   const strip = el.value
+  if (!strip || scrolling === strip) {
+    return settledTabBounds(scrolling, tab)
+  }
+  // On a phone: a leading tab where it stands, a tab of the strip after the leading ones.
+  const origin = scrolling.getBoundingClientRect().left - scrolling.scrollLeft
+  if (!strip.contains(tab)) {
+    const rect = tab.getBoundingClientRect()
+    return { left: rect.left - origin, right: rect.right - origin }
+  }
+  const offset = strip.getBoundingClientRect().left - origin
+  const own = settledTabBounds(strip, tab)
+  return { left: own.left + offset, right: own.right + offset }
+}
+
+function updateEdges(): void {
+  const strip = scroller()
   if (!strip) {
     return
   }
@@ -187,11 +220,13 @@ function measureRoom(): void {
   }
   let trailing = 0
   for (const child of strip.children) {
-    if (child !== list.value && child instanceof HTMLElement) {
+    if (child !== view.value && child instanceof HTMLElement) {
       trailing += child.offsetWidth + Number.parseFloat(getComputedStyle(child).marginLeft || '0')
     }
   }
-  const room = `${Math.max(0, strip.clientWidth - trailing - leadingMinimum())}px`
+  // On a phone the leading tabs scroll away with the rest, so a tab may take the whole view.
+  const leadingTabs = phone.value ? 0 : leadingMinimum()
+  const room = `${Math.max(0, strip.clientWidth - trailing - leadingTabs)}px`
   // Unchanged, it is not written again: writing it resizes the tabs, which the observer reports.
   if (strip.style.getPropertyValue('--tab-room') !== room) {
     strip.style.setProperty('--tab-room', room)
@@ -206,7 +241,7 @@ function resized(): void {
 
 // Only the strip scrolls, never the page: scrollIntoView would move both.
 function revealActive(): void {
-  const strip = el.value
+  const strip = scroller()
   const active = strip?.querySelector<HTMLElement>('[aria-selected="true"]') ?? null
   if (active !== watchedTab) {
     if (watchedTab) {
@@ -218,7 +253,7 @@ function revealActive(): void {
     watchedTab = active
   }
   if (strip && active) {
-    const target = revealScroll(strip, settledTabBounds(strip, active), FADE_PX)
+    const target = revealScroll(strip, activeBounds(strip, active), FADE_PX)
     if (target !== null) {
       scrollStripTo(strip, target)
     }
@@ -229,7 +264,7 @@ function revealActive(): void {
 // A wheel over the tabs moves them, whichever axis it turns on; the page
 // keeps the event only when the strip has nothing to scroll that way.
 function onWheel(event: WheelEvent): void {
-  const strip = el.value
+  const strip = scroller()
   if (!strip || strip.scrollWidth <= strip.clientWidth) {
     return
   }
@@ -307,6 +342,10 @@ function onPointerdown(event: PointerEvent): void {
   const strip = el.value
   const tab = event.target instanceof Element ? event.target.closest<HTMLElement>('[role="tab"]') : null
   if (!props.onReorder || event.button !== 0 || !strip || !tab) {
+    return
+  }
+  // A finger on a phone's strip scrolls it; the browser's pan would cut a drag short anyway.
+  if (phone.value && event.pointerType === 'touch') {
     return
   }
   const tabs = tabElements()
@@ -412,8 +451,9 @@ onMounted(() => {
       resizeObserver.observe(watched)
     }
   }
-  // A tab becoming active, or tabs coming and going, is what moves the view;
-  // any other change, such as a title that widens a tab, moves the marks.
+  // A tab becoming active, a leading one included, or tabs coming and going,
+  // is what moves the view; any other change, such as a title that widens a
+  // tab, moves the marks.
   mutationObserver = new MutationObserver((records) => {
     if (tabsChanged(strip, records, (node) => node instanceof HTMLElement)) {
       revealActive()
@@ -421,7 +461,7 @@ onMounted(() => {
       updateEdges()
     }
   })
-  mutationObserver.observe(strip, {
+  mutationObserver.observe(list.value ?? strip, {
     childList: true,
     subtree: true,
     attributes: true,
@@ -441,6 +481,12 @@ watch(leading, (now, before) => {
   }
 }, { flush: 'post' })
 
+// Crossing the phone's width changes what scrolls and the room a tab has.
+watch(phone, () => {
+  cancelScroll()
+  void nextTick(resized)
+})
+
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onDragKeydown)
   cancelDrag()
@@ -455,21 +501,35 @@ defineExpose({ el })
 
 <template>
   <div ref="root" class="flex min-w-0 items-center" :style="colors">
+    <!-- On a phone the fades' frame: the whole tab list scrolls inside it, so the fades stay put
+         over the row's ends. -->
+    <div ref="view" class="flex min-w-0 shrink phone:relative phone:isolate">
     <!-- One tab list holds the leading tabs and the strip's own, so the keyboard and assistive
-         technology meet them as one row of tabs. -->
-    <div ref="list" role="tablist" class="flex min-w-0 shrink items-center gap-1" @keydown="onKeydown">
-    <!-- The leading tabs give way first: their shrink outweighs the strip's a hundredfold. -->
-    <div v-if="$slots.leading" ref="leading" class="flex shrink-[100] items-center gap-1">
+         technology meet them as one row of tabs. On a phone it is what scrolls. -->
+    <div
+      ref="list"
+      role="tablist"
+      class="flex min-w-0 shrink items-center gap-1 phone:overflow-x-auto phone:overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      @keydown="onKeydown"
+      @scroll.passive="updateEdges"
+    >
+    <!-- The leading tabs give way first: their shrink outweighs the strip's a hundredfold. On a
+         phone they keep their width and scroll with the rest. -->
+    <div v-if="$slots.leading" ref="leading" class="flex shrink-[100] items-center gap-1 phone:shrink-0">
       <slot name="leading" />
     </div>
-    <!-- Its own stacking context, so the fades lie over the scrolled tabs and nothing else. -->
-    <div ref="fades" class="relative isolate min-w-0 shrink [--fade-after:0px] [--fade-before:0px]">
+    <!-- Its own stacking context, so the fades lie over the scrolled tabs and nothing else. On a
+         phone it takes its tabs' whole width and the view holds the fades. -->
+    <div
+      ref="fades"
+      class="relative isolate min-w-0 shrink [--fade-after:0px] [--fade-before:0px] phone:static phone:isolation-auto phone:shrink-0"
+    >
     <TransitionGroup
       :ref="bindEl"
       :name="TAB_TRANSITION"
       :css="!still"
       tag="div"
-      class="flex items-center gap-0.5 overflow-x-auto [scrollbar-width:none]"
+      class="flex items-center gap-0.5 overflow-x-auto phone:overflow-x-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       @scroll.passive="updateEdges"
       @wheel="onWheel"
       @pointerdown="onPointerdown"
@@ -497,6 +557,7 @@ defineExpose({ el })
       aria-hidden="true"
       class="pointer-events-none absolute inset-y-0 right-0 z-1 w-[min(calc(var(--fade-after)_+_--spacing(6)),var(--fade-after-room))] bg-[linear-gradient(to_left,var(--tab-row)_var(--fade-after),transparent)]"
     />
+    </div>
     </div>
     </div>
     <slot name="trailing" />
