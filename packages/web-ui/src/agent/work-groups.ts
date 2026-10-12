@@ -136,6 +136,43 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
   return rows
 }
 
+type ThinkingStep = Extract<WorkStep, { type: 'thinking' }>
+type CallBlockStep = Extract<WorkStep, { type: 'tool_call' }>
+
+/**
+ * What a run's row shows (`runtime.md` § Work groups): a lone call, notice
+ * or receipt is that step's own row, and a lone thinking the thinking's; an
+ * ended run says what it did; open while it runs, it stands as the stack of
+ * what runs; folded while it runs, it is its newest step, and wears what
+ * that step's own row wears after its title: a `shell` call's tag, the time
+ * its command has run or how it went wrong (§ Rendering boundary).
+ */
+export type RunFace =
+  | { kind: 'call'; call: CallBlockStep }
+  | { kind: 'notice'; notice: NoticeStep }
+  | { kind: 'thinking'; thinking: ThinkingStep }
+  | { kind: 'done' }
+  | { kind: 'stack' }
+  | { kind: 'step'; step: WorkStep; command: CallBlockStep | null }
+
+/** The face of `group`'s row, `open` or folded by the reader. */
+export function runFace(group: WorkGroupBlock, open: boolean): RunFace {
+  const only = group.steps.length === 1 ? group.steps[0]! : null
+  if (only?.type === 'tool_call')
+    return { kind: 'call', call: only }
+  if (only !== null && isNoticeStep(only))
+    return { kind: 'notice', notice: only }
+  if (only?.type === 'thinking')
+    return { kind: 'thinking', thinking: only }
+  if (!group.live)
+    return { kind: 'done' }
+  if (open)
+    return { kind: 'stack' }
+  const step = group.steps.at(-1)!
+  const shell = step.type === 'tool_call' && toolRenderKind(step.toolName) === 'shell'
+  return { kind: 'step', step, command: shell ? step : null }
+}
+
 /** The name of the row a run starting with `first` shows as; a step of an ended run without a call, shown alone, takes its own. */
 export function workRowId(first: WorkStep): string {
   return `work:${stepKey(first)}`

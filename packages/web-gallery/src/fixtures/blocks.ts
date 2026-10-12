@@ -1431,6 +1431,38 @@ export function commandLookBlocks(): Block[] {
   ]
 }
 
+/** The call whose command the running run's specimen runs (`runningRunBlocks`). */
+export const RUNNING_RUN_CALL = 'running-run-merge'
+
+/**
+ * A turn whose run still goes (`runtime.md` § Work groups): it thought,
+ * checked the branch, and its newest call has merged and run the tests for
+ * a minute and a half. Folded, the run's row is that call and wears the time
+ * its command has run, as the call's own row does; open, it says what runs
+ * and for how long. The gallery's `runningRunCommand` is that command.
+ */
+export function runningRunBlocks(): Block[] {
+  const shell = (id: string, at: number, script: string, description: string, done: boolean): Block => toolCall({
+    id,
+    createdAt: iso(at),
+    toolName: 'shell',
+    status: done ? 'completed' : 'executing',
+    input: JSON.stringify({ script, description }),
+    view: done ? shellView({ commandId: '61', runningMs: 400, chunks: [{ stream: 'stdout', text: 'On branch fix/reset-wording\nnothing to commit, working tree clean\n' }] }) : null,
+  })
+  return [
+    {
+      type: 'user', id: 'running-run-ask', turnId: 'running-run-turn', createdAt: iso(100_000), model: demoModel,
+      content: [{ type: 'text', text: 'Merge the reset wording and run the tests.' }], preamble: null,
+    },
+    ...inRun(
+      { type: 'thinking', id: 'running-run-think', createdAt: iso(98_000), model: demoModel, text: 'Check the branch is clean, then merge and run the suite.', signature: null },
+      shell('running-run-status', 96_000, 'git status', 'Check the branch', true),
+      shell(RUNNING_RUN_CALL, 92_000, 'git merge --no-ff fix/reset-wording && bun run test', 'Review and merge the reset wording', false),
+    ),
+  ]
+}
+
 /**
  * A run that viewed two screenshots, then a report that carried two
  * (`file-previews.md` § Media a tool returned): folded, the run's row shows
