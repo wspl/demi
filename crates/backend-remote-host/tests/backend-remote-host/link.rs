@@ -9,7 +9,7 @@ use std::{
 
 use bytes::Bytes;
 use demi_backend_remote_host::{
-    Admission, ArtifactResolver, CommandCatalog, CommandKeeper, EnvironmentOptions, JobOrigin,
+    Admission, ArtifactResolver, CommandCatalog, CommandKeeper, END_GRACE, EnvironmentOptions, JobOrigin,
     JobStart, LinkEnd, LinkPolicy, RemoteHost, RemoteShellEnvironment,
     testing::{CommandPolicy, TEST_DEVICE, TestDevice, TestLink},
 };
@@ -1626,6 +1626,76 @@ async fn a_call_stops_on_its_first_cause_releases_its_live_input_and_exits_after
             context.borrow().as_ref().unwrap()["caller"],
             serde_json::to_value(caller()).unwrap()
         );
+    }
+}
+
+/// Marks its flag when dropped: the handler holding it was aborted or ended.
+struct DropFlag(Rc<Cell<bool>>);
+
+impl Drop for DropFlag {
+    fn drop(&mut self) {
+        self.0.set(true);
+    }
+}
+
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_connections_end_waits_for_its_calls_up_to_its_grace_then_aborts_them() {
+    // A handler that ignores the call's stop, as one committing does,
+    // finishing after the delay or never.
+    for delay in [Some(Duration::from_secs(3)), None] {
+        let finished = Rc::new(Cell::new(false));
+        let dropped = Rc::new(Cell::new(false));
+        let mut commands = CommandSet::new();
+        let handler = {
+            let finished = finished.clone();
+            let dropped = dropped.clone();
+            TypedRpc::new(move |_: Call<Map<String, Value>>, _: RpcPort| {
+                let finished = finished.clone();
+                let held = DropFlag(dropped.clone());
+                async move {
+                    let _held = held;
+                    match delay {
+                        Some(delay) => tokio::time::sleep(delay).await,
+                        None => std::future::pending().await,
+                    }
+                    finished.set(true);
+                    Ok(0)
+                }
+            })
+        };
+        commands
+            .register(
+                GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
+                    .leaf(LeafBuilder::rpc("live", "Live input.").bind(handler)),
+            )
+            .unwrap();
+        let device = TestDevice::new(CommandPolicy::new(commands));
+        let mut link = device.connect(None);
+        let job = device
+            .host("/work", Admission::Free)
+            .start_job(job_start("probe live"))
+            .await
+            .unwrap();
+        drain(&mut link).await;
+        link.send(rpc_call(job.id(), "call")).await;
+        assert!(matches!(link.next().await, Inbound::RpcPipes { .. }));
+        let closed = tokio::time::Instant::now();
+        let end = tokio::time::timeout(Duration::from_secs(60), link.close())
+            .await
+            .expect("the connection's end waits no longer than its grace");
+        assert_eq!(end, LinkEnd::Closed("runner disconnected".into()));
+        let waited = closed.elapsed();
+        match delay {
+            Some(delay) => {
+                assert!(finished.get(), "a handler that finishes within the grace finishes");
+                assert!(waited >= delay && waited < END_GRACE, "{waited:?}");
+            }
+            None => {
+                assert!(!finished.get());
+                assert!(dropped.get(), "the handler still running is aborted");
+                assert!(waited >= END_GRACE && waited < END_GRACE * 2, "{waited:?}");
+            }
+        }
     }
 }
 
