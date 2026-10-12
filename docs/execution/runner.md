@@ -1108,7 +1108,18 @@ child of `/bin/sh` whose parent still runs is found that way. A process
 that cleared its environment, or an Apple program orphaned by a double fork,
 escapes, and none of the runner's own resident services carries a job's id. The job ends once every process of those groups, and every process a signal of the stop reached, has exited.
 `KILL` kills whatever remains, and is what a
-stop sends when the job has not ended 5 seconds after `TERM`
+stop sends when the job has not ended 5 seconds after `TERM`. Work running
+inside the runner, an embedded utility or an interpreter unit, cannot be
+killed: it stops at its next check of the job's cancellation, and each such
+utility checks it at least once per entry or block it reads, so even a quiet
+`find /` stops. A thread can still sit in a system call that only a signal
+would interrupt, such as an `open()` the kernel holds while macOS asks the
+user for access to another app's data. So once `KILL` has gone, the job ends
+1 second later whatever in-process work is left, reporting `SIGKILL`, and
+the Host log names the work it left behind, which ends by itself at its next
+check. For example, `find ~ -name AGENTS.md` blocked under
+`~/Library/Group Containers` behind an unanswered privacy prompt ends 6
+seconds after its stop, where it once ran until the prompt was answered
 ([The `demi shell` commands](../agent/runtime.md#the-demi-shell-commands)). Before, a
 stop went straight to `SIGKILL`, and a dev server killed that way left its
 backend running in a group of its own, holding its port.
