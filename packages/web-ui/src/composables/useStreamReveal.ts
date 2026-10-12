@@ -1,12 +1,5 @@
 import { onBeforeUnmount, ref, shallowRef, toValue, watch, type MaybeRefOrGetter } from 'vue'
-import { alignShown, nextStepEnd, STREAM_PACE, stepInterval } from '../ui/stream-reveal'
-
-/** A part of the text the reader was shown at once, `start` to `end` in the source, at `at` (performance.now()). */
-export interface RevealStep {
-  start: number
-  end: number
-  at: number
-}
+import { alignShown, nextStepEnd, STREAM_PACE, stepInterval, type RevealStep } from '../ui/stream-reveal'
 
 /**
  * The part of a streaming text the reader sees, a step at a time

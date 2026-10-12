@@ -1,4 +1,7 @@
 import { expect, test } from 'bun:test'
+import { existsSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+import { chromium } from 'playwright'
 import {
   alignShown,
   closeOpenInlineMarkdown,
@@ -9,6 +12,7 @@ import {
   startOfLast,
   STREAM_PACE,
   stepInterval,
+  wrapSteps,
 } from '../stream-reveal'
 
 // Cost: pure, a few milliseconds for the file.
@@ -89,3 +93,37 @@ test('closeOpenInlineMarkdown closes what the last paragraph left open', () => {
   expect(closeOpenInlineMarkdown('```ts\nconst a = 1')).toBe('')
   expect(closeOpenInlineMarkdown('~~gone')).toBe('~~')
 })
+
+// A step's fade in a real Chromium, since happy-dom computes no animated
+// style: about 1 s, the browser's start. The flash lives in what the engine
+// draws between a step being shown and its fade starting on the timeline.
+test.skipIf(!existsSync(chromium.executablePath()))(
+  'a step\'s new text shows transparent until its fade starts, never solid first',
+  async () => {
+    const build = await Bun.build({
+      entrypoints: ['/entry.ts'],
+      files: { '/entry.ts': `import { wrapSteps } from ${JSON.stringify(fileURLToPath(new URL('../stream-reveal.ts', import.meta.url)))}\nObject.assign(window, { wrapSteps })` },
+      target: 'browser',
+    })
+    const browser = await chromium.launch()
+    try {
+      const page = await browser.newPage()
+      await page.addScriptTag({ content: await build.outputs[0]!.text() })
+      const opacity = await page.evaluate(() => new Promise<number>((resolve) => {
+        const wrap: typeof wrapSteps = Reflect.get(window, 'wrapSteps')
+        // A step is shown by the stream's timer, a task after a frame began,
+        // so the timeline still reads that frame's time, before the step's.
+        requestAnimationFrame(() => setTimeout(() => {
+          const message = document.createElement('p')
+          message.textContent = 'Seen before. Just shown.'
+          document.body.append(message)
+          wrap(message, message.textContent, [{ start: 13, end: 24, at: performance.now() }])
+          resolve(Number(getComputedStyle(message.querySelector('.stream-ink')!).opacity))
+        }))
+      }))
+      expect(opacity).toBe(0)
+    } finally {
+      await browser.close()
+    }
+  },
+)
