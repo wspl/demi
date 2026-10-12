@@ -442,15 +442,15 @@ test('a call being written without its description leaves the face as it was, th
   asked.waitingSince = Date.now() - 480_000
   const first = follow(asked)
   const requesting = first.list.keyOf(first.list.rows.value.at(-1)!)
-  // The call's first output ends the wait the server counts.
   await first.step('call opened', () => {
     asked.pendingCalls = opened(null)
-    asked.waitingSince = null
   })
   expect(first.list.rows.value.at(-1)?.type).toBe('activity_slot')
   expect(first.list.slot.value).toEqual({ kind: 'requesting', since: Date.now() - 480_000 })
+  // The title shows, which ends the wait the server counts.
   await first.step('title written', () => {
     asked.pendingCalls = opened('Write the categorizer')
+    asked.waitingSince = null
   })
   const call = first.list.rows.value.at(-1)!
   expect(call.type === 'work_group' && call.steps.map((each) => each.id)).toEqual(['pending-call:c-2-use'])

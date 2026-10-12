@@ -2,7 +2,7 @@
 //! `retry` and `resume`.
 
 use demi_agent_transcript::testing::RESUME_TEXT;
-use demi_provider_common::{ProviderFailure, testing::TokioClock};
+use demi_provider_common::ProviderFailure;
 use demi_shared_types::{BlockId, SteerBlock};
 
 use super::*;
@@ -30,30 +30,20 @@ fn retries(session: &AgentSession) -> (Subscription, Rc<RefCell<Vec<SessionEvent
     (subscription, reports)
 }
 
-/// Every change of the session's wait for the model, as how long it had
-/// waited, or none once it ended.
-fn waits(session: &AgentSession) -> (Subscription, Rc<RefCell<Vec<Option<u64>>>>) {
-    let waits = Rc::new(RefCell::new(Vec::new()));
-    let subscription = session.subscribe({
-        let waits = waits.clone();
-        move |event| {
-            if let SessionEvent::WaitingChanged { waited_ms } = event {
-                waits.borrow_mut().push(*waited_ms);
-            }
-        }
-    });
-    (subscription, waits)
-}
-
-// A paused clock: a second and a half of the vendor's wait before the retry.
+// A paused clock: a second and a half of the vendor's wait before each
+// retry.
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_wait_for_the_model_starts_with_the_first_attempt_runs_on_across_its_retry_and_ends_with_output()
-{
+async fn a_wait_for_the_model_runs_on_across_a_retry_and_starts_again_when_unwound_output_goes() {
     let provider = ScriptedRuntime::new([
         Turn::Events(vec![failure(
             Some(ErrorCode::RateLimit),
             Some(Duration::from_millis(1_500)),
         )]),
+        Turn::Events(vec![
+            ProviderEvent::ThinkingStart,
+            event::thinking("plan the answer"),
+            failure(Some(ErrorCode::RateLimit), Some(Duration::from_millis(1_500))),
+        ]),
         Turn::Events(vec![event::text("made it"), event::response(1, 1)]),
     ]);
     let store = MemoryTreeStore::new();
@@ -75,11 +65,15 @@ async fn a_wait_for_the_model_starts_with_the_first_attempt_runs_on_across_its_r
         Some(1_000),
         "the wait runs on through the retry's delay"
     );
+    // The second attempt's reasoning showed at a second and a half and
+    // went with the attempt: the row says Requesting again from then.
+    tokio::time::sleep(Duration::from_millis(1_500)).await;
+    assert_eq!(session.waited_ms(), Some(1_000));
     assert_eq!(end.await, Ok(ActionEnd::Completed));
 
-    // One wait, from the first attempt to the answer's first text: the
-    // retry started none of its own.
-    assert_eq!(*waits.borrow(), [Some(0), None]);
+    // The first wait runs on across the first retry, the reasoning ends it,
+    // and a second wait runs from the cut to the answer's text.
+    assert_eq!(*waits.borrow(), [Some(0), None, Some(0), None]);
     assert_eq!(session.waited_ms(), None);
 }
 

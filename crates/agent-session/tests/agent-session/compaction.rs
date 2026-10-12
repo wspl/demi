@@ -158,13 +158,15 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
     ]);
     let store = MemoryTreeStore::new();
     let session = small_session(&provider, Vec::new(), &store).await;
-    let phases = Rc::new(RefCell::new(Vec::new()));
+    let changes = Rc::new(RefCell::new(Vec::new()));
     let _listener = session.subscribe({
-        let phases = phases.clone();
-        move |event| {
-            if let SessionEvent::PhaseChanged { phase } = event {
-                phases.borrow_mut().push(*phase);
-            }
+        let changes = changes.clone();
+        move |event| match event {
+            SessionEvent::PhaseChanged { phase } => changes.borrow_mut().push(format!("{phase:?}")),
+            SessionEvent::WaitingChanged { waited_ms } => changes
+                .borrow_mut()
+                .push(if waited_ms.is_some() { "waits" } else { "waits no more" }.to_owned()),
+            _ => {}
         }
     });
     session
@@ -173,6 +175,7 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
         .await
         .unwrap();
 
+    changes.borrow_mut().clear();
     session
         .send(text(&"y".repeat(400)), turn("t2"))
         .unwrap()
@@ -237,7 +240,13 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
         ]
         .concat()
     );
-    assert!(phases.borrow().contains(&SessionPhase::Compacting));
+    // The turn waits for the model from its start; the page shows the pass
+    // instead of the wait, which starts again at the pass's end
+    // (`runtime.md` § Waiting for the model).
+    assert_eq!(
+        *changes.borrow(),
+        ["Running", "waits", "Compacting", "waits no more", "Running", "waits", "waits no more", "Idle"]
+    );
     // The copy saved nothing and its runtime was closed.
     assert!(store.saves().iter().all(|(node, _)| node == &root()));
     assert_eq!(provider.closes(), 1);
