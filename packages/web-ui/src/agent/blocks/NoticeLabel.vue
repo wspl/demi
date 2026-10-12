@@ -37,7 +37,7 @@ defineProps<{
     :class="subject ? 'notice-label-subject' : ''"
   >
     <span v-if="!subject" class="notice-words">{{ notice }}:</span>
-    <Tooltip class="notice-title" :disabled="!$slots.tip">
+    <Tooltip class="notice-title" :disabled="!$slots.tip" wide>
       <!-- The title's click is its own, never the row's. -->
       <button
         v-if="go"

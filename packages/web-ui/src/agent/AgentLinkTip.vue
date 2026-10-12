@@ -29,7 +29,7 @@ const plain = computed(() => agent.value?.description ?? `No agent ${props.numbe
   <Teleport v-if="agent && markPlace" :to="markPlace">
     <AgentMark :phase="agent.run?.phase ?? null" :size="ICON_PX.in28" />
   </Teleport>
-  <Tooltip :trigger="element" :content="agent?.run ? undefined : plain">
+  <Tooltip :trigger="element" :content="agent?.run ? undefined : plain" wide>
     <template v-if="agent?.run" #overlay>
       <AgentTip :number="agent.number" :description="agent.description" :run="agent.run" />
     </template>

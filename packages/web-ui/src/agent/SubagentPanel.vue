@@ -5,7 +5,7 @@ import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import AgentMessageList from './AgentMessageList.vue'
-import AgentRunLine from './AgentRunLine.vue'
+import AgentStatusBar from './AgentStatusBar.vue'
 import SessionOverlay from './SessionOverlay.vue'
 import SubagentHistoryMenu from './SubagentHistoryMenu.vue'
 import TabItem from './TabItem.vue'
@@ -150,9 +150,7 @@ function closeTab(id: string): void {
         @select="pick"
       />
     </template>
-    <!-- What the shown tab's child runs on, under the tabs (`subagents.md` § What an agent runs on). -->
     <div v-if="active" class="flex h-full flex-col">
-      <AgentRunLine class="shrink-0 px-4 pt-2 pb-1.5 text-chrome text-fg-muted" :run="active" />
       <AgentMessageList
         class="min-h-0 flex-1"
         :conversation-id="active.id"
@@ -173,6 +171,7 @@ function closeTab(id: string): void {
         @revealed="emit('revealed')"
         @read-before="emit('read', active.id, 'before')"
       />
+      <AgentStatusBar :run="active" />
     </div>
     <RegionStatus v-else class="h-full" status="note" :icon="Bot" label="No agents are running." />
   </SessionOverlay>
