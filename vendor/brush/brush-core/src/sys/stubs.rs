@@ -8,7 +8,7 @@
 
 pub mod async_pipe;
 pub mod commands;
-pub(crate) mod env;
+pub mod env;
 pub mod fd;
 pub mod fs;
 pub mod input;

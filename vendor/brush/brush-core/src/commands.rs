@@ -177,6 +177,12 @@ pub fn compose_std_command<S: AsRef<OsStr>, SE: extensions::ShellExtensions>(
     args: &[S],
     empty_env: bool,
 ) -> Result<std::process::Command, error::Error> {
+    // A program's own command line starts with its path as the shell wrote
+    // it, and cmd.exe reads the slashes of `C:/Windows/System32/cmd.exe` as
+    // switches, so on Windows the path is given with the system's separator.
+    #[cfg(windows)]
+    let mut cmd = std::process::Command::new(command_name.replace('/', "\\"));
+    #[cfg(not(windows))]
     let mut cmd = std::process::Command::new(command_name);
 
     // Override argv[0].

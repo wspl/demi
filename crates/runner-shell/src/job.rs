@@ -531,7 +531,7 @@ fn pump(
     stream: OutputStream,
     sender: mpsc::Sender<OutputChunk>,
     cancel: CancellationToken,
-    mut drains: Option<mpsc::UnboundedReceiver<oneshot::Sender<()>>>,
+    drains: Option<mpsc::UnboundedReceiver<oneshot::Sender<()>>>,
 ) -> tokio::task::JoinHandle<io::Result<()>> {
     let cancelled = || io::Error::new(io::ErrorKind::Interrupted, "job output cancelled");
     let closed = || io::Error::new(io::ErrorKind::BrokenPipe, "job output consumer closed");
@@ -539,6 +539,8 @@ fn pump(
     {
         use tokio::io::AsyncReadExt;
         let _ = shell;
+        // Only here does it change: it is dropped once the drains end.
+        let mut drains = drains;
         tokio::spawn(async move {
             let mut pipe = tokio::net::unix::pipe::Receiver::from_file(file)?;
             let mut buffer = vec![0; OUTPUT_CHUNK_BYTES];

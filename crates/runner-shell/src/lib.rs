@@ -21,6 +21,16 @@ use demi_runner_process::job_shell::{JobShell, JobStart, ShellJob};
 use futures_util::future::BoxFuture;
 use std::{collections::BTreeSet, io};
 
+/// The runner's own environment as a shell of this platform reads it: on
+/// Windows the well-known names in their POSIX spelling, such as `Path` as
+/// `PATH`, which brush does for the environment it inherits. A job's shell
+/// does not inherit the runner's environment but is given one built from
+/// this, so without it a job on Windows would find `PATH` holding only the
+/// alias directory and run no program of the device.
+pub fn host_environment() -> impl Iterator<Item = (String, String)> {
+    brush_core::sys::env::get_host_env_vars()
+}
+
 /// The shell runtime (`concurrency.md` § Runner): every interpreter unit
 /// and utility of a job runs on a thread of its blocking pool, apart from the
 /// control thread. A unit blocked on a full pipe waits for a sibling that has
