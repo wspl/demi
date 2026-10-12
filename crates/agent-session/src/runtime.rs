@@ -11,18 +11,18 @@ use std::{
 
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
-use demi_host_interface::CapabilityIndex;
 use demi_shared_types::{
-    CommandId, CommandReport, ErrorDevice, InstructionEntry, ModelSelection, PromptLayerKind,
-    ShellToolView, ToolView, TurnId,
+    CommandId, CommandReport, ErrorDevice, InstructionEntry, ModelSelection, ShellToolView,
+    ToolView, TurnId,
 };
 use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
 use serde_json::Value;
 use tokio::sync::watch;
 
 /// A system prompt by its layers (`system-prompt.md` § The layers): a
-/// request carries their texts joined, and the context card weighs each
-/// (`compaction.md` § What fills the context).
+/// request carries their texts joined, and the context card weighs the
+/// capability index apart from the rest (`compaction.md` § What fills the
+/// context).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SystemPrompt {
     /// The layers in their order.
@@ -32,17 +32,16 @@ pub struct SystemPrompt {
 /// One layer of a system prompt.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PromptLayer {
-    Text { kind: PromptLayerKind, text: String },
-    /// The capability index: its text as the prompt holds it, with its
-    /// heading, and its groups.
-    Commands { text: String, index: CapabilityIndex },
+    Text(String),
+    /// The capability index, as the prompt holds it with its heading.
+    Commands(String),
 }
 
 impl PromptLayer {
     /// The layer's text as the prompt holds it.
     pub fn text(&self) -> &str {
         match self {
-            Self::Text { text, .. } | Self::Commands { text, .. } => text,
+            Self::Text(text) | Self::Commands(text) => text,
         }
     }
 }
@@ -51,10 +50,7 @@ impl SystemPrompt {
     /// A prompt of one layer, as a test's runtime gives.
     pub fn identity(text: impl Into<String>) -> Self {
         Self {
-            layers: vec![PromptLayer::Text {
-                kind: PromptLayerKind::Identity,
-                text: text.into(),
-            }],
+            layers: vec![PromptLayer::Text(text.into())],
         }
     }
 

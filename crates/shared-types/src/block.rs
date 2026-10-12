@@ -342,33 +342,6 @@ impl InstructionEntry {
     }
 }
 
-/// Each of `entries` with its section of the instructions block `text`, in
-/// their order: from its opening tag up to the next entry's, or to the end.
-/// An entry whose section the text does not hold is left out.
-pub fn instruction_sections<'a>(
-    text: &'a str,
-    entries: &'a [InstructionEntry],
-) -> Vec<(&'a InstructionEntry, &'a str)> {
-    let mut starts = Vec::new();
-    let mut from = 0;
-    for entry in entries {
-        let (opening, _) = entry.tags();
-        if let Some(offset) = text[from..].find(&opening) {
-            from += offset;
-            starts.push((entry, from));
-            from += opening.len();
-        }
-    }
-    starts
-        .iter()
-        .enumerate()
-        .map(|(index, (entry, start))| {
-            let end = starts.get(index + 1).map_or(text.len(), |(_, next)| *next);
-            (*entry, &text[*start..end])
-        })
-        .collect()
-}
-
 /// Command reports that arrived together (`runtime.md` § Command reports).
 /// The model receives their text, one paragraph each, as a user message or
 /// as a steer, as the placement says; the text is rendered from the reports

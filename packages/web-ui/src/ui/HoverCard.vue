@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useSlots } from 'vue'
+import HoverCardRow from './HoverCardRow.vue'
 import Popover from './Popover.vue'
 import { usePhone } from './phone'
 import { useLayerElevation } from '../overlay/layerElevation'
@@ -11,12 +12,13 @@ import type { OverlayStore } from '../overlay/overlayStore'
  * and act in: the pointer crosses into it and it stays, a click on the
  * trigger does nothing by itself, and its controls may carry their own tips.
  * It closes when the pointer and the focus have left both, on Escape and on
- * a click outside. Like a tip, it does not open over another menu, popover
- * or dialog.
+ * a click outside. Once the user clicks inside it, it stays like a popover
+ * until Escape, a click outside or the focus leaving: a click may resize it,
+ * as a disclosure in it does, and move its edge past a pointer that never
+ * moved. Like a tip, it does not open over another menu, popover or dialog.
  *
- * The card is one row: what it says, and an optional `action` at its end,
- * one `sm` Button, which keeps the same inset from the card's top, end and
- * bottom. Optional `details` follow below a divider, such as a list whose
+ * The card is one row (`HoverCardRow`): what it says, and an optional
+ * `action` at its end, one `sm` Button. Optional `details` follow below a divider, such as a list whose
  * entries act; they get `close`, for an entry whose action leaves the card.
  */
 const props = withDefaults(defineProps<{
@@ -47,6 +49,8 @@ const cardRef = ref<HTMLElement | null>(null)
 const elevation = useLayerElevation()
 /** Opened by the pointer or the focus. */
 const shown = ref(false)
+/** Clicked inside since it opened: the pointer leaving no longer closes it. */
+const engaged = ref(false)
 const isOpen = computed(() => props.pinned || shown.value)
 const phone = usePhone()
 /** The card is a sheet now: a tap on the trigger opens it, the pointer and the focus neither. */
@@ -79,6 +83,7 @@ function open(): void {
 function close(): void {
   clearTimers()
   shown.value = false
+  engaged.value = false
 }
 
 function scheduleOpen(): void {
@@ -97,7 +102,9 @@ function scheduleClose(): void {
     return
   }
   clearTimers()
-  closeTimer = setTimeout(close, props.closeDelayMs)
+  if (!engaged.value) {
+    closeTimer = setTimeout(close, props.closeDelayMs)
+  }
 }
 
 /** A tap on the trigger opens a card that is a sheet; elsewhere a click on it does nothing by itself. */
@@ -107,7 +114,7 @@ function onTriggerClick(): void {
   }
 }
 
-/** Focus that moves between the trigger and the card keeps it open. */
+/** Focus that moves between the trigger and the card keeps it open; focus that leaves both closes it, an engaged card too. */
 function onFocusOut(event: FocusEvent): void {
   if (asSheet.value) {
     return
@@ -115,6 +122,9 @@ function onFocusOut(event: FocusEvent): void {
   const next = event.relatedTarget
   if (next instanceof Node && (triggerRef.value?.contains(next) || cardRef.value?.contains(next))) {
     return
+  }
+  if (next instanceof Node) {
+    engaged.value = false
   }
   scheduleClose()
 }
@@ -150,48 +160,18 @@ onBeforeUnmount(clearTimers)
       :style="{ '--elevation': elevation }"
       @mouseenter="clearTimers"
       @mouseleave="scheduleClose"
+      @pointerdown="engaged = true"
       @focusout="onFocusOut"
     >
-      <div class="hover-card">
-        <div class="hover-card-body min-w-0 flex-1">
-          <slot name="card" />
-        </div>
-        <div v-if="slots.action" class="hover-card-action">
+      <HoverCardRow>
+        <slot name="card" />
+        <template v-if="slots.action" #action>
           <slot name="action" />
-        </div>
-      </div>
+        </template>
+      </HoverCardRow>
       <div v-if="slots.details" class="border-t border-line">
         <slot name="details" :close="close" />
       </div>
     </div>
   </Popover>
 </template>
-
-<style scoped>
-/* The card's height and side padding are named so the action cell derives
-   its inset from them: (card height - control height) / 2 on every edge it
-   touches. The control is an `sm` Button, 1.5rem high. */
-.hover-card {
-  --hover-card-h: 2.25rem;
-  --hover-card-px: 0.75rem;
-  --hover-card-action-h: 1.5rem;
-  display: flex;
-  align-items: stretch;
-  min-height: var(--hover-card-h);
-  padding-left: var(--hover-card-px);
-}
-
-.hover-card-body {
-  display: flex;
-  align-items: center;
-  padding-block: 0.5rem;
-  padding-right: var(--hover-card-px);
-  line-height: 1.25rem;
-}
-
-.hover-card-action {
-  display: flex;
-  align-items: center;
-  padding-right: calc((var(--hover-card-h) - var(--hover-card-action-h)) / 2);
-}
-</style>
