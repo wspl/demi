@@ -63,7 +63,8 @@ const hostStatusItems = hostDevices.map((device) => ({
  */
 const menuDevices: HostDeviceOption[] = [
   { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer' },
-  { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork' },
+  // A Windows computer keeps the name Windows gave it, which fits the button whole.
+  { id: 'studio', name: 'ALEX-PC', state: 'online', path: 'localNetwork' },
   { id: 'build', name: 'build-box', state: 'online', path: 'internet' },
   { id: 'office', name: 'Office Mac mini', state: 'online', path: 'relay' },
   { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'online' },
