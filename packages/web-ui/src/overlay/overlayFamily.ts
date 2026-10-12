@@ -23,3 +23,10 @@ export function createOverlayFamily(): OverlayFamily {
     },
   }
 }
+
+/**
+ * The overlay-store id of the layer a family belongs to (the dialog, sheet or
+ * root menu that provides it): a menu or popover opened inside registers under
+ * it as a nested layer.
+ */
+export const overlayOwnerKey: InjectionKey<string> = Symbol('overlayOwner')
