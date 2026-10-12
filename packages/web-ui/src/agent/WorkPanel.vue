@@ -184,7 +184,7 @@ function reorder(from: number, to: number): void {
             role="tab"
             tabindex="0"
             :aria-selected="item.kind.kind === selection"
-            class="grid h-7 phone:h-9 phone:text-[15px] grid-flow-col grid-cols-[auto_minmax(0,auto)] auto-cols-auto items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome select-none hover:bg-surface-base hover:text-fg"
+            class="focus-ring grid h-7 phone:h-9 phone:text-[15px] grid-flow-col grid-cols-[auto_minmax(0,auto)] auto-cols-auto items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome select-none hover:bg-surface-base hover:text-fg"
             :class="item.kind.kind === selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle'"
             @pointerdown.left="emit('select', item.kind.kind)"
             @keydown.enter.self="emit('select', item.kind.kind)"
