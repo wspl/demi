@@ -12,6 +12,7 @@ import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import SectionRow from '../ui/SectionRow.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { useLayerElevation } from '../overlay/layerElevation'
 import { usePhone } from '../ui/phone'
@@ -187,7 +188,7 @@ const ringColor = computed(() => {
         </button>
       </template>
       <template #content="{ close }">
-        <div class="overlay-shell overlay-card rounded-md text-xs text-fg" :style="{ '--elevation': elevation }">
+        <div class="overlay-shell rounded-md text-xs text-fg" :style="{ '--elevation': elevation }">
           <div class="context-card-head">
             <span v-if="isCompacting" class="text-fg-body">Compacting context…</span>
             <!-- The header is the list's disclosure, as a Finder disclosure row is. -->
@@ -248,7 +249,7 @@ const ringColor = computed(() => {
                     <span class="shrink-0">Usage limits</span>
                     <template v-if="limits.accountLabel">
                       <span class="shrink-0 px-1">·</span>
-                      <span class="min-w-0 truncate" :title="limits.accountLabel">{{ limits.accountLabel }}</span>
+                      <TruncatedText :text="limits.accountLabel" />
                     </template>
                     <template #end>
                       <!-- The click keeps the card open: it only asks, and the answer replaces the windows. -->
@@ -278,16 +279,17 @@ const ringColor = computed(() => {
                   <div class="px-3 pt-2 pb-1 text-[11px] font-medium text-fg-subtle">Instructions</div>
                   <ul class="px-1">
                     <li v-for="row in instructionList" :key="row.path ?? 'personal'">
-                      <button
-                        type="button"
-                        :title="row.path ?? undefined"
-                        class="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-hover"
-                        @click="openEntry(row.entry, close)"
-                      >
-                        <UserRound v-if="row.path === null" :size="14" class="shrink-0 text-fg-subtle" />
-                        <FileText v-else :size="14" class="shrink-0 text-fg-subtle" />
-                        <span class="min-w-0 flex-1 truncate text-fg-body">{{ row.label }}</span>
-                      </button>
+                      <Tooltip tag="div" :content="row.path ?? undefined">
+                        <button
+                          type="button"
+                          class="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-hover"
+                          @click="openEntry(row.entry, close)"
+                        >
+                          <UserRound v-if="row.path === null" :size="14" class="shrink-0 text-fg-subtle" />
+                          <FileText v-else :size="14" class="shrink-0 text-fg-subtle" />
+                          <span class="min-w-0 flex-1 truncate text-fg-body">{{ row.label }}</span>
+                        </button>
+                      </Tooltip>
                     </li>
                   </ul>
                 </div>

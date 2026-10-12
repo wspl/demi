@@ -38,7 +38,7 @@ function setMode(mode: 'light' | 'dark') {
     </template>
     <template #content>
       <div
-        class="overlay-shell overlay-panel flex max-h-[min(36rem,calc(100vh-2rem))] w-72 flex-col overflow-hidden"
+        class="overlay-shell flex max-h-[min(36rem,calc(100vh-2rem))] w-72 flex-col overflow-hidden"
       >
         <ScrollArea viewport-class="flex flex-col gap-3 p-3">
           <AxisPicker

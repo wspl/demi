@@ -1,27 +1,21 @@
 <script lang="ts">
-/**
- * The one card that shows at a time, and when the last one closed: moving
- * from one picture to the next shows the next one's card at once, as
- * tooltips after the first do.
- */
-let openCard: { close(): void } | null = null
-let closedAt = Number.NEGATIVE_INFINITY
-
 /** How long the pointer rests on a picture before its card shows. */
 const OPEN_DELAY_MS = 300
 /** How soon after a card closed the next picture's shows without the delay. */
 const WARM_MS = 300
 /** The narrowest a card is, so a small picture's line still reads. */
 const CARD_MIN_WIDTH = 240
+/** The card's padding, on each side. */
+const CARD_PAD = 6
 </script>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { autoUpdate, getOverflowAncestors, offset, shift, useFloating, type Middleware } from '@floating-ui/vue'
+import { computed, ref, watch } from 'vue'
+import type { Placement } from '@floating-ui/vue'
 import { loadedSize, type PixelSize } from '../files/thumbnail'
-import { useLayerElevation } from '../overlay/layerElevation'
 import { usePhone } from './phone'
-import { PREVIEW_GAP, previewBox, previewLimit, previewPlacement, usePreviewPage } from './picture-preview'
+import { previewBox, previewLimit, previewPlacement, usePreviewPage } from './picture-preview'
+import Tooltip from './Tooltip.vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -41,8 +35,10 @@ defineOptions({ inheritAttrs: false })
  * pixel ratio, known before the bytes arrive, so it never grows as they
  * load, and follows the window's resizing and its move to another screen.
  * The card takes no pointer: leaving the picture closes it at
- * once, and a press on the picture, which opens the viewer, closes it. A
- * touch shows none.
+ * once, and a press on the picture, which opens the viewer, and Escape
+ * close it. A touch shows none. It is a `Tooltip` card (`card`, `warmMs`,
+ * `placeBy`), so it dismisses, stacks and yields to other overlays as every
+ * tip does; this component sizes its picture and picks its side.
  *
  * The picture is the slot, or an element the page did not render through a
  * component, `trigger`, such as an image in a rendered message.
@@ -58,13 +54,8 @@ const props = defineProps<{
   tag?: 'span' | 'div'
 }>()
 
-const wrapper = ref<HTMLElement | null>(null)
-const anchor = computed(() => props.trigger ?? wrapper.value)
-const card = ref<HTMLElement | null>(null)
 /** The card's image or video. */
 const picture = ref<HTMLElement | null>(null)
-const open = ref(false)
-const elevation = useLayerElevation()
 /** The picture's size once the card's copy loaded, for a picture whose size was unknown. */
 const loaded = ref<PixelSize | null>(null)
 /** The card's copy has loaded: the checkerboard shows only under a picture, never in an empty box. */
@@ -88,103 +79,33 @@ watch(() => props.src, () => {
  * Picks the card's side and its picture's size there (`previewPlacement`)
  * each time the card is positioned, so it follows the picture's moving and
  * the window's resizing. A picture whose size is unknown yet is placed as it
- * shows, unscaled.
+ * shows, unscaled. The card is kept within the page across by the tooltip,
+ * and never moved up or down over the picture, which this sizes it to stay off.
  */
-const room: Middleware = {
-  name: 'pictureRoom',
-  fn({ placement, elements }) {
-    const image = picture.value
-    if (!image)
-      return {}
-    const own = box.value ?? { width: image.offsetWidth, height: image.offsetHeight }
-    const rect = elements.reference.getBoundingClientRect()
-    const next = previewPlacement(own, elements.floating.offsetHeight - image.offsetHeight, {
-      above: rect.top,
-      below: page.value.size.height - rect.bottom,
-    })
-    const size = box.value ? next.picture : null
-    if (size?.width !== placed.value?.width || size?.height !== placed.value?.height)
-      placed.value = size
-    return next.side === placement ? {} : { reset: { placement: next.side } }
-  },
+function placeCard({ reference, floating, placement }: { reference: HTMLElement; floating: HTMLElement; placement: Placement }): Placement {
+  const image = picture.value
+  if (!image)
+    return placement
+  const own = box.value ?? { width: image.offsetWidth, height: image.offsetHeight }
+  const rect = reference.getBoundingClientRect()
+  const next = previewPlacement(own, floating.offsetHeight - image.offsetHeight, {
+    above: rect.top,
+    below: page.value.size.height - rect.bottom,
+  })
+  const size = box.value ? next.picture : null
+  if (size?.width !== placed.value?.width || size?.height !== placed.value?.height)
+    placed.value = size
+  return next.side
 }
 
-const { floatingStyles } = useFloating(anchor, card, {
-  placement: 'top',
-  strategy: 'fixed',
-  // Kept within the page across; never moved up or down over the picture, which `room` sizes it to stay off.
-  middleware: [room, offset(PREVIEW_GAP), shift({ padding: PREVIEW_GAP })],
-  whileElementsMounted: autoUpdate,
-  transform: false,
-})
-
-let openTimer: ReturnType<typeof setTimeout> | undefined
-/** The picture was pressed: no card until the pointer leaves it. */
-let pressed = false
-let scrollTargets: EventTarget[] = []
-const self = { close }
-
-function clearOpenTimer(): void {
-  if (openTimer !== undefined) {
-    clearTimeout(openTimer)
-    openTimer = undefined
-  }
-}
-
-function show(): void {
-  clearOpenTimer()
-  if (open.value)
-    return
-  if (openCard && openCard !== self)
-    openCard.close()
-  openCard = self
+/** Each showing places the card anew for where the picture is now. */
+function onOpen(): void {
   ready.value = false
-  // Placed anew for where the picture is now.
   placed.value = null
-  open.value = true
-  // The picture moving away under a resting pointer, as the transcript scrolls, leaves it: the card goes.
-  scrollTargets = anchor.value ? getOverflowAncestors(anchor.value) : []
-  for (const target of scrollTargets)
-    target.addEventListener('scroll', close, { passive: true })
 }
 
-function close(): void {
-  clearOpenTimer()
-  if (!open.value)
-    return
-  open.value = false
-  for (const target of scrollTargets)
-    target.removeEventListener('scroll', close)
-  scrollTargets = []
-  if (openCard === self) {
-    openCard = null
-    closedAt = performance.now()
-  }
-}
-
-// A phone has no hover, and shows no card (`file-previews.md`); a finger's touch elsewhere hovers nothing either.
+// A phone has no hover, and shows no card (`file-previews.md`).
 const phone = usePhone()
-
-function onPointerenter(event: PointerEvent): void {
-  if (pressed || phone.value || event.pointerType === 'touch')
-    return
-  clearOpenTimer()
-  if (openCard !== null || performance.now() - closedAt < WARM_MS) {
-    show()
-    return
-  }
-  openTimer = setTimeout(show, OPEN_DELAY_MS)
-}
-
-function onPointerleave(): void {
-  pressed = false
-  close()
-}
-
-function onPointerdown(): void {
-  pressed = true
-  close()
-}
 
 function onLoaded(event: Event): void {
   if (event.target instanceof HTMLImageElement || event.target instanceof HTMLVideoElement) {
@@ -192,63 +113,30 @@ function onLoaded(event: Event): void {
     ready.value = true
   }
 }
-
-/** Gives a `trigger` element the listeners the slot's wrapper has in the template, or takes them away. */
-function listen(element: HTMLElement, on: boolean): void {
-  if (on) {
-    element.addEventListener('pointerenter', onPointerenter)
-    element.addEventListener('pointerleave', onPointerleave)
-    element.addEventListener('pointerdown', onPointerdown, { capture: true })
-    return
-  }
-  element.removeEventListener('pointerenter', onPointerenter)
-  element.removeEventListener('pointerleave', onPointerleave)
-  element.removeEventListener('pointerdown', onPointerdown, { capture: true })
-}
-
-watch(() => props.trigger, (element, before) => {
-  if (before)
-    listen(before, false)
-  if (element)
-    listen(element, true)
-}, { immediate: true })
-
-onBeforeUnmount(() => {
-  close()
-  if (props.trigger)
-    listen(props.trigger, false)
-})
 </script>
 
 <template>
-  <component
-    :is="tag ?? 'span'"
-    v-if="!trigger"
-    ref="wrapper"
+  <!-- A glance at the picture, which its trigger names already: the card takes no pointer and is not read twice. -->
+  <Tooltip
     v-bind="$attrs"
-    @pointerenter="onPointerenter"
-    @pointerleave="onPointerleave"
-    @pointerdown.capture="onPointerdown"
+    :tag="tag"
+    :trigger="trigger"
+    card
+    placement="top"
+    :open-delay-ms="OPEN_DELAY_MS"
+    :warm-ms="WARM_MS"
+    :disabled="phone"
+    :place-by="placeCard"
+    @open="onOpen"
   >
     <slot />
-  </component>
-  <Teleport to="body">
-    <Transition
-      enter-active-class="transition-[opacity,scale] duration-120 ease-out"
-      leave-active-class="transition-[opacity,scale] duration-100 ease-out"
-      enter-from-class="opacity-0 scale-95"
-      leave-to-class="opacity-0 scale-95"
-    >
-      <!-- A glance at the picture, which its trigger names already: no pointer, and not read twice. -->
+    <template #overlay>
       <div
-        v-if="open"
-        ref="card"
-        class="overlay-shell pointer-events-none z-[60] select-none rounded-lg p-1.5 text-fg"
+        class="text-fg"
         :style="{
-          ...floatingStyles,
-          '--elevation': elevation,
-          width: shown ? `${Math.max(shown.width, CARD_MIN_WIDTH) + 12}px` : undefined,
-          maxWidth: shown ? undefined : `${limit.width + 12}px`,
+          padding: `${CARD_PAD}px`,
+          width: shown ? `${Math.max(shown.width, CARD_MIN_WIDTH) + 2 * CARD_PAD}px` : undefined,
+          maxWidth: shown ? undefined : `${limit.width + 2 * CARD_PAD}px`,
         }"
         aria-hidden="true"
         data-picture-preview
@@ -281,6 +169,6 @@ onBeforeUnmount(() => {
           <span v-if="known" class="shrink-0 tabular-nums text-fg-faint">{{ known.width }} × {{ known.height }}</span>
         </div>
       </div>
-    </Transition>
-  </Teleport>
+    </template>
+  </Tooltip>
 </template>

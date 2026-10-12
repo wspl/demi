@@ -76,8 +76,9 @@ const sizeClass = computed(() => {
 
 <template>
   <!-- The tip sits on a wrapper so a disabled face can still be hovered. The face itself
-       ignores pointer events, so a parent's click does not fire. It takes the focus when
-       clicked or given it, as a native button does, but is no Tab stop, as on macOS. A
+       ignores pointer events, so a parent's click does not fire. It is a Tab stop and takes
+       the focus when clicked, as a native button does, and shows the focus ring only for the
+       keyboard (`web-application.md` § Keyboard); a disabled or loading one is skipped. A
        primary button is a dialog's default button: Return presses it, and a dialog without
        a field opens on it (Dialog). -->
   <Tooltip
@@ -98,10 +99,11 @@ const sizeClass = computed(() => {
         blockUnavailableButtonEvent($event, disabled || loading)
       "
       @keydown="pressOnKey"
+      @keyup="pressOnKey"
       role="button"
-      :tabindex="disabled ? undefined : -1"
+      :tabindex="disabled || loading ? undefined : 0"
       :data-default-action="variant === 'primary' || undefined"
-      class="relative inline-flex w-full cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow] duration-200 ease-out select-none"
+      class="focus-ring relative inline-flex w-full cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow] duration-200 ease-out select-none"
       :aria-disabled="disabled || loading || undefined"
       :aria-busy="loading || undefined"
       :data-loading="loading || undefined"

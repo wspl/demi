@@ -4,6 +4,7 @@ import { ChevronRight } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Popover from '../ui/Popover.vue'
+import { pressOnKey } from '../ui/button-events'
 import Tooltip from '../ui/Tooltip.vue'
 import { menuRootKey } from '../ui/menu-context'
 import DirectoryMenu from './DirectoryMenu.vue'
@@ -208,7 +209,8 @@ watch(() => props.path, () => {
             :role="mode === 'browse' ? 'button' : 'link'"
             :aria-label="index < fit.collapsed ? crumb.name : undefined"
             :aria-expanded="mode === 'browse' ? menuCrumb?.path === crumb.path : undefined"
-            class="transition-colors duration-200 ease-out"
+            tabindex="0"
+            class="focus-ring transition-colors duration-200 ease-out"
             :class="[
               CRUMB_LAYOUT,
               index === crumbs.length - 1 ? 'text-fg-emphasis' : 'text-fg-muted',
@@ -216,6 +218,8 @@ watch(() => props.path, () => {
               menuCrumb?.path === crumb.path ? 'bg-hover text-fg' : '',
             ]"
             @click.stop="onCrumbClick(crumb.path)"
+            @keydown="pressOnKey"
+            @keyup="pressOnKey"
           >
             <!-- The root and the home wear their landmark glyphs; every crumb has the same shape. -->
             <FileIcon
