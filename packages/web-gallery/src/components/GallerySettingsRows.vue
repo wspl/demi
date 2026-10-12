@@ -84,7 +84,7 @@ function refreshUsage(): void {
         <p>A request that keeps failing is then tried again without end.</p>
       </LimitField>
     </SettingsRow>
-    <SettingsRow label="Transcript text size" description="Sizes the conversation’s messages and steps.">
+    <SettingsRow label="Message text size">
       <Slider
         v-model="fontSize"
         :min="12"

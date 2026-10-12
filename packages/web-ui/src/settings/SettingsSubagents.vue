@@ -169,9 +169,7 @@ const empty = computed(() => props.profiles.length === 0)
     <SettingsGroup>
       <SettingsRow
         label="Subagents"
-        :description="enabled
-          ? 'Agents may start child agents.'
-          : 'No agent starts a child agent. Children already running go on.'"
+        description="Turned off, children already running go on."
       >
         <Switch
           :model-value="enabled"
