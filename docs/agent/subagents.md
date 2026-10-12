@@ -1171,8 +1171,8 @@ Wherever the page names a child it says, in two groups, what the child is
 doing and what it runs on:
 
 ```text
-● Running · 16m 48s · Forked from agent 7        [research] Sonnet 5.5 · Medium
-● Finished · 8m 3s                                          Opus 5.5 · High · Fast
+● Running · 16m 48s · Forked from agent 7  [research] Claude Sonnet 5.5 · Medium
+● Finished · 8m 3s                              Claude Opus 5.5 · High · Fast
 ```
 
 - **State**, on the left: the child's state dot, the one its tab wears; the
@@ -1182,8 +1182,8 @@ doing and what it runs on:
   agent N* for a fork, a link to that agent ([Linking an
   agent](#linking-an-agent)). The round is not shown.
 - **What it runs on**, on the right: the profile as a tag, none for the
-  inherit profile; the model's short name, which the model menu shows, its
-  tip naming the provider and the full name, and for the inherit profile
+  inherit profile; the model's name as the model menu shows it, its tip
+  naming the provider entry and the name, and for the inherit profile
   *Inherited from this conversation*; the effort, or *Thinking off*; *Fast*
   when it is on.
 
