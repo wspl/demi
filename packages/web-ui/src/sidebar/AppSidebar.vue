@@ -619,7 +619,7 @@ function selectProjectConversations(project: SidebarProject): void {
     <Teleport to="body">
       <div
         v-if="drag.source.value"
-        class="pointer-events-none fixed z-50 max-w-56 truncate rounded-md border border-line bg-surface-raised px-3 py-1 text-chrome text-fg shadow-md"
+        class="overlay-shell pointer-events-none fixed z-50 max-w-56 truncate rounded-md px-3 py-1 text-chrome text-fg"
         :style="{ left: `${drag.pointer.value.x + 12}px`, top: `${drag.pointer.value.y + 12}px` }"
         aria-hidden="true"
       >

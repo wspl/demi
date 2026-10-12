@@ -673,8 +673,7 @@ html[data-theme="light"] .file-pill {
    cover it; the hairline and the drop are the box shadow (--shadow-overlay; --shadow-2xl
    for dialogs, which carry overlay-dialog).
    Composer stays on surface-raised; menus must not. */
-.overlay-shell,
-.overlay-panel {
+.overlay-shell {
   --surface-current: color-mix(
     in oklab,
     var(--surface-float),
@@ -692,20 +691,17 @@ html[data-theme="light"] .file-pill {
    the layer. */
 @layer components {
   .overlay-shell,
-  .overlay-panel,
   .overlay-dialog {
     position: relative;
   }
 }
 
 .overlay-shell,
-.overlay-panel,
 .overlay-dialog {
   isolation: isolate;
 }
 
 .overlay-shell::after,
-.overlay-panel::after,
 .overlay-dialog::after {
   content: "";
   position: absolute;
@@ -717,7 +713,7 @@ html[data-theme="light"] .file-pill {
 }
 
 /* Large float on a page surface. One overlay line, modest drop.
-   Menus keep overlay-shell; dialogs sit on a scrim with shadow-2xl. */
+   Menus, cards, tips and the like are overlay-shell; dialogs sit on a scrim with shadow-2xl. */
 .overlay-window {
   box-shadow: var(--shadow-window);
 }
@@ -757,24 +753,17 @@ html[data-theme="light"] .file-pill {
   max-width: none;
   max-height: none;
   min-width: 0;
+}
+
+/* A floating surface a phone shows as a sheet (a menu, the context indicator's
+   card) is the sheet's content, with no surface of its own around it. */
+.sheet .overlay-shell {
   border-radius: 0;
   background: none;
   box-shadow: none;
 }
 
-.sheet .overlay-menu::after {
-  display: none;
-}
-
-/* A card a phone shows as a sheet (the context indicator's) is the
-   sheet's content, with no card of its own around it. */
-.sheet .overlay-card {
-  border-radius: 0;
-  background: none;
-  box-shadow: none;
-}
-
-.sheet .overlay-card::after {
+.sheet .overlay-shell::after {
   display: none;
 }
 
