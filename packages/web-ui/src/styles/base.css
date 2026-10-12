@@ -1293,7 +1293,7 @@ html[data-theme="light"] .file-pill {
    in Slack or Notion: it keeps 0.2em of space on each side, inside its hover
    fill and outside its underline, which stays under the text, so the word
    before its icon and the punctuation after its name never touch it. */
-.markdown-body .icon-link {
+.icon-link {
   padding-inline: 0.2em;
   border-radius: 0.3em;
 }
@@ -1307,7 +1307,7 @@ html[data-theme="light"] .file-pill {
    dotted underline in the faintest text color, and the hover fill behind the
    mark and the text. The dot on the mark is cut out of the fill the link sits
    on, the message's surface or the hovered fill. */
-.markdown-body .agent-link {
+.agent-link {
   --fill-color: var(--surface-current);
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
@@ -1320,23 +1320,23 @@ html[data-theme="light"] .file-pill {
   transition: background-color 0.15s;
 }
 
-.markdown-body .agent-link:hover {
+.agent-link:hover {
   @apply bg-hover;
 }
 
-.markdown-body .agent-link:focus-visible {
+.agent-link:focus-visible {
   outline: 2px solid var(--line-focus);
   outline-offset: 1px;
 }
 
 /* The mark and the link's first word, which a line never parts. */
-.markdown-body .agent-link-lead {
+.agent-link-lead {
   white-space: nowrap;
 }
 
 /* The icon before a Host file's name and the mark before an agent's, which the page fills (`StreamedMarkdown`). */
 .markdown-body .message-file-icon,
-.markdown-body .agent-link-mark {
+.agent-link-mark {
   display: inline-flex;
   width: 14px;
   height: 14px;
