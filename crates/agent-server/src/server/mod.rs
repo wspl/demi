@@ -28,7 +28,7 @@ use demi_agent_tools::{
     ContextSource, HostResolver, INTERVAL_FLOOR_MS, ProfileModel, ShellEnvironmentFactory,
     SubagentSource, ToolsetSource, Unavailable,
 };
-use demi_agent_transcript::IdSource;
+use demi_agent_transcript::{ForkEnd, IdSource};
 
 use demi_provider_common::ProviderRuntime;
 use demi_host_interface::{CommandSet, RegisterError};
@@ -113,6 +113,24 @@ pub enum RestoreError {
 
 fn fork_store(error: StoreError) -> ForkError {
     ForkError::Store(error.to_string())
+}
+
+/// A Fork's seed from the committed checkpoint of the stored node `source`,
+/// through the completed text `end` names (`conversation-fork.md` § The fork
+/// seed): a closed conversation's root, or an archived child
+/// (`subagents.md` § Fork).
+pub(crate) async fn stored_fork_seed(
+    store: &dyn AgentTreeStore,
+    source: &NodeId,
+    end: ForkEnd<'_>,
+) -> Result<Checkpoint, ForkError> {
+    let checkpoint = store
+        .session_store(source)
+        .load()
+        .await
+        .map_err(fork_store)?
+        .ok_or(ForkError::NoCheckpoint)?;
+    fork_seed(&checkpoint.transcript, checkpoint.state, end)
 }
 
 /// The tree store of each conversation, by its root.
@@ -378,21 +396,16 @@ impl<H: HostResolver> AgentServer<H> {
         source: &NodeId,
         target: &BlockId,
     ) -> Result<Checkpoint, ForkError> {
+        let end = ForkEnd::At(target);
         if let Some(tree) = self.tree(source) {
-            return tree.root().session().prepare_fork(target);
+            return tree.root().session().prepare_fork(end);
         }
         let store = (self.deps.stores)(source);
         let stored = store.node(source).await.map_err(fork_store)?;
         if !stored.is_some_and(|record| record.parent.is_none()) {
             return Err(ForkError::NotRoot);
         }
-        let checkpoint = store
-            .session_store(source)
-            .load()
-            .await
-            .map_err(fork_store)?
-            .ok_or(ForkError::NoCheckpoint)?;
-        fork_seed(&checkpoint.transcript, checkpoint.state, target)
+        stored_fork_seed(store.as_ref(), source, end).await
     }
 
     /// Stores a Fork's seed as the first checkpoint of the new root

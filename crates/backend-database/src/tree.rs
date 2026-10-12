@@ -1245,7 +1245,9 @@ pub fn subagents(connection: &Connection) -> Result<Vec<NodeRecord>, StorageErro
 
 /// The call that started the command `command`, with the node that ran
 /// it: of the calls whose view names the command, the first, since a stored
-/// look at a command, from before such looks were removed, came after it.
+/// look at a command, from before such looks were removed, came after it;
+/// of calls equally early, the oldest agent's, since a fork's copy of its
+/// source's call keeps the call's time (`subagents.md` § Fork).
 pub fn command_call(
     connection: &Connection,
     command: &CommandId,
@@ -1255,7 +1257,7 @@ pub fn command_call(
             "SELECT blocks.node_id, blocks.block FROM blocks JOIN nodes ON nodes.id = blocks.node_id
              WHERE json_extract(blocks.block, '$.view.commandId') = ?1
                AND blocks.idx < nodes.block_count
-             ORDER BY json_extract(blocks.block, '$.createdAt') LIMIT 1",
+             ORDER BY json_extract(blocks.block, '$.createdAt'), nodes.number LIMIT 1",
             [command.as_str()],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -1406,12 +1408,70 @@ mod tests {
         })
     }
 
+    /// A completed `shell` call that started the command `command`.
+    fn shell_call(block: &str, command: &str) -> Block {
+        serde_json::from_value(serde_json::json!({
+            "type": "tool_call",
+            "id": block,
+            "createdAt": Timestamp::UNIX_EPOCH,
+            "model": test_model(),
+            "toolUseId": "call-1",
+            "toolName": "shell",
+            "input": "{}",
+            "status": "completed",
+            "output": [],
+            "view": {
+                "kind": "shell",
+                "status": "exited",
+                "commandId": command,
+                "exitCode": 0,
+                "runningMs": 1,
+                "idleMs": 0,
+                "chunks": [],
+                "viewTruncated": false,
+            },
+        }))
+        .unwrap()
+    }
+
     async fn facts(stores: &ConversationStores) -> SummaryFacts {
         stores
             .read(&conversation(), summary)
             .await
             .unwrap()
             .unwrap()
+    }
+
+    // A fork of a child copies the child's calls, with their times
+    // (`subagents.md` § Fork); the call that started a command is still the
+    // source's, also when the fork saved its copy before the source saved
+    // the call, as a fork of a running child can.
+    #[tokio::test(flavor = "local")]
+    async fn a_commands_call_is_its_source_agents_when_a_fork_holds_a_copy() {
+        let (tree, stores, _data) = store().await;
+        tree.create_node(record("root", None, 0), update(Vec::new(), 0))
+            .await
+            .unwrap();
+        tree.create_node(record("source", Some("root"), 1), update(Vec::new(), 0))
+            .await
+            .unwrap();
+        let call = || vec![(0, user("u1")), (1, shell_call("call", "c1"))];
+        tree.create_node(record("fork", Some("root"), 2), update(call(), 2))
+            .await
+            .unwrap();
+        tree.session_store(&id("source"))
+            .save(update(call(), 2))
+            .await
+            .unwrap();
+
+        let command = CommandId::try_from("c1").unwrap();
+        let found = stores
+            .read(&conversation(), move |connection| command_call(connection, &command))
+            .await
+            .unwrap()
+            .unwrap()
+            .map(|(node, _)| node);
+        assert_eq!(found, Some(id("source")));
     }
 
     #[tokio::test(flavor = "local")]

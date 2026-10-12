@@ -130,6 +130,18 @@ pub enum CutError {
     NotCompletedText,
     #[error("The Fork boundary contains unfinished tool calls")]
     UnfinishedToolCalls,
+    #[error("No completed assistant message to fork from yet")]
+    NothingCompleted,
+}
+
+/// Where a Fork's history ends (`conversation-fork.md` § Eligibility).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForkEnd<'a> {
+    /// The completed text the user picked, which a conversation Fork names.
+    At(&'a BlockId),
+    /// The newest completed text with no call before it still executing,
+    /// which `demi agent fork` takes (`subagents.md` § Fork).
+    Newest,
 }
 
 /// The blocks before the `user` block `target`, which an edit keeps.
@@ -142,25 +154,33 @@ pub fn before_user<'a>(blocks: &'a [Block], target: &BlockId) -> Result<&'a [Blo
     Ok(&blocks[..index])
 }
 
-/// The blocks through the completed text block `target`, which a Fork
-/// keeps: none of them may be a call still executing.
-pub fn through_assistant<'a>(
-    blocks: &'a [Block],
-    target: &BlockId,
-) -> Result<&'a [Block], CutError> {
-    let index = blocks
-        .iter()
-        .position(|block| block.id() == target)
-        .filter(|index| matches!(&blocks[*index], Block::Text(text) if text.forkable))
-        .ok_or(CutError::NotCompletedText)?;
+/// The blocks a Fork keeps, through the completed text block `end` names:
+/// none of them may be a call still executing.
+pub fn fork_prefix<'a>(blocks: &'a [Block], end: ForkEnd<'_>) -> Result<&'a [Block], CutError> {
+    let is_completed = |block: &Block| matches!(block, Block::Text(text) if text.forkable);
+    let index = match end {
+        ForkEnd::At(target) => blocks
+            .iter()
+            .position(|block| block.id() == target)
+            .filter(|index| is_completed(&blocks[*index]))
+            .ok_or(CutError::NotCompletedText)?,
+        ForkEnd::Newest => {
+            let executing = blocks.iter().position(is_executing).unwrap_or(blocks.len());
+            blocks[..executing]
+                .iter()
+                .rposition(is_completed)
+                .ok_or(CutError::NothingCompleted)?
+        }
+    };
     let prefix = &blocks[..=index];
-    let executing = prefix.iter().any(
-        |block| matches!(block, Block::ToolCall(call) if call.status == ToolCallStatus::Executing),
-    );
-    if executing {
+    if prefix.iter().any(is_executing) {
         return Err(CutError::UnfinishedToolCalls);
     }
     Ok(prefix)
+}
+
+fn is_executing(block: &Block) -> bool {
+    matches!(block, Block::ToolCall(call) if call.status == ToolCallStatus::Executing)
 }
 
 /// The last `text` block from `since` on, the agent's last answer.
