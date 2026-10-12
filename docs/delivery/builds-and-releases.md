@@ -78,20 +78,30 @@ runtime.
 
 ### Memory allocator
 
-Every executable built for a musl target allocates with mimalloc, and every
-other target keeps its system's allocator. musl's own allocator returns
-memory to the kernel and takes it back again around small allocations, with
-`munmap` and `mmap`, and serializes threads on a lock; inside the Cloud's
-gVisor sandbox every system call costs about fifteen times what it costs on
-a plain kernel, so the allocator alone made a large share of a program's
-work there. Measured in the sandbox, a 128 MiB WebRTC transfer took about
-39,000 `mmap` and as many `munmap` calls with musl's allocator, and mimalloc
-halved the sandbox kernel's CPU time for it and doubled its throughput. The
-allocators of macOS and Windows have no such cost, so they stay.
+The programs that run on a Host, the runner and the command programs, allocate
+with mimalloc when they are built for a musl target; every other program and
+target keeps its own allocator. musl's allocator returns memory to the kernel
+and takes it back again around small allocations, with `munmap` and `mmap`,
+and serializes threads on a lock, and inside the Cloud's gVisor sandbox every
+system call costs about fifteen times what it costs on a plain kernel.
+Measured on a gVisor Cloud, mimalloc cut the sandbox kernel's CPU by 20 to 50%
+where the runner allocates most, command output, file transfer and many small
+commands, and their wall time with it (five runs of `seq 1 3000000`: 1.45 s
+to 1.10 s; a 50 MiB download: 0.36 s to 0.16 s), and halved it for a WebRTC
+transfer. The runner's own resident size grows from about 47 MB to 85 MB in
+gVisor's accounting, while the sandbox's memory moves by 1 to 2 MB, since what
+mimalloc reserves stays untouched.
 
-`shared-cli` declares it, under `cfg(target_env = "musl")`, and every program
-links `shared-cli`, so no program declares an allocator of its own. mimalloc
-is C, which the Linux build's Zig compiles as it does `aws-lc-sys`'s.
+The backend keeps musl's allocator: it runs on the server's plain kernel,
+where mimalloc saved about a tenth of its CPU on streamed replies but held
+35 MB more idle and about 150 MB more at its peak, a poor trade on a small
+server. The machine manager, `demi-server` and `xtask` keep it too.
+
+`shared-cli` declares it, as the global allocator under
+`cfg(target_env = "musl")` and its `host-allocator` feature, which the runner
+and each command program turn on; no program declares an allocator of its
+own. mimalloc is C, which the Linux build's Zig compiles as it does
+`aws-lc-sys`'s.
 
 `xtask` itself is not released. It runs on the developer's machine and on the
 release workflow's runners, where each build job builds it and the later Linux
