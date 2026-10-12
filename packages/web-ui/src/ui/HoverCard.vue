@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useSlots } from 'vue'
-import HoverCardRow from './HoverCardRow.vue'
 import Popover from './Popover.vue'
 import { usePhone } from './phone'
 import { useLayerElevation } from '../overlay/layerElevation'
@@ -17,9 +16,11 @@ import type { OverlayStore } from '../overlay/overlayStore'
  * as a disclosure in it does, and move its edge past a pointer that never
  * moved. Like a tip, it does not open over another menu, popover or dialog.
  *
- * The card is one row (`HoverCardRow`): what it says, and an optional
- * `action` at its end, one `sm` Button. Optional `details` follow below a divider, such as a list whose
- * entries act; they get `close`, for an entry whose action leaves the card.
+ * The card is one row: what it says, and an optional `action` at its end,
+ * one `sm` Button, which keeps the same inset from the card's top, end and
+ * bottom. Optional `details` follow below a divider, or `joined` to the row
+ * as one section with it, such as a list whose entries act; they get
+ * `close`, for an entry whose action leaves the card.
  */
 const props = withDefaults(defineProps<{
   /** Whether the card opens above the trigger or below it; it grows toward the inside of the trigger's region (Popover). */
@@ -37,6 +38,8 @@ const props = withDefaults(defineProps<{
    * pointer to leave it, and the sheet takes the focus.
    */
   sheet?: boolean
+  /** The details continue the row's section, with no divider between them, as a header's own content does. */
+  joined?: boolean
 }>(), {
   side: 'top',
   openDelayMs: 120,
@@ -163,15 +166,46 @@ onBeforeUnmount(clearTimers)
       @pointerdown="engaged = true"
       @focusout="onFocusOut"
     >
-      <HoverCardRow>
-        <slot name="card" />
-        <template v-if="slots.action" #action>
+      <div class="hover-card">
+        <div class="hover-card-body min-w-0 flex-1">
+          <slot name="card" />
+        </div>
+        <div v-if="slots.action" class="hover-card-action">
           <slot name="action" />
-        </template>
-      </HoverCardRow>
-      <div v-if="slots.details" class="border-t border-line">
+        </div>
+      </div>
+      <div v-if="slots.details" :class="joined ? '' : 'border-t border-line'">
         <slot name="details" :close="close" />
       </div>
     </div>
   </Popover>
 </template>
+
+<style scoped>
+/* The card's height and side padding are named so the action cell derives
+   its inset from them: (card height - control height) / 2 on every edge it
+   touches. The control is an `sm` Button, 1.5rem high. */
+.hover-card {
+  --hover-card-h: 2.25rem;
+  --hover-card-px: 0.75rem;
+  --hover-card-action-h: 1.5rem;
+  display: flex;
+  align-items: stretch;
+  min-height: var(--hover-card-h);
+  padding-left: var(--hover-card-px);
+}
+
+.hover-card-body {
+  display: flex;
+  align-items: center;
+  padding-block: 0.5rem;
+  padding-right: var(--hover-card-px);
+  line-height: 1.25rem;
+}
+
+.hover-card-action {
+  display: flex;
+  align-items: center;
+  padding-right: calc((var(--hover-card-h) - var(--hover-card-action-h)) / 2);
+}
+</style>
