@@ -130,6 +130,14 @@ pub enum PermissionRefusal {
     Removed(String),
 }
 
+/// What answering a credential request saved, with the other conversations
+/// whose credential requests of its name wait, whose renewal follows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Answered {
+    pub credential: StoredCredential,
+    pub others: Vec<ConversationId>,
+}
+
 /// An undecided request as a page lists it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Undecided {
@@ -416,7 +424,7 @@ impl ControlService {
         values: BTreeMap<String, String>,
         keep: Keep,
         seal: std::sync::Arc<dyn CredentialSeal>,
-    ) -> Result<Result<StoredCredential, PermissionRefusal>, StorageError> {
+    ) -> Result<Result<Answered, PermissionRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let stored = match undecided(&transaction, &conversation, &request)? {
@@ -461,8 +469,12 @@ impl ControlService {
             transaction.execute("DELETE FROM permission_requests WHERE id = ?1", [request.as_str()])?;
             let credential =
                 credentials::by_id(&transaction, &owner, &id)?.expect("the credential was just written");
+            let others = credentials::waiting_for(&transaction, &owner, &[name])?;
             transaction.commit()?;
-            Ok(Ok(credential))
+            Ok(Ok(Answered {
+                credential,
+                others: others.into_iter().collect(),
+            }))
         })
         .await
     }
