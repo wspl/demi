@@ -1,6 +1,6 @@
 //! Embedding hooks for job ownership and cancellable machine IO.
 
-use std::{any::Any, fs::File, io, process::Command, sync::Arc};
+use std::{any::Any, fs::File, io, process::Command, sync::Arc, time::Duration};
 
 use crate::{openfiles::OpenFile, processes::ChildProcess};
 
@@ -44,6 +44,25 @@ pub struct BackgroundTask {
     pub guard: Box<dyn Send + Sync>,
 }
 
+/// Processor time, as `time` reports it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ProcessorTime {
+    /// Time spent in user mode.
+    pub user: Duration,
+    /// Time the system spent on its behalf.
+    pub system: Duration,
+}
+
+/// What a host measures of one pipeline `time` runs, from its start until it
+/// is dropped.
+pub trait Timing: Send + Sync {
+    /// The processor time of what the pipeline ran so far.
+    fn processor_time(&self) -> ProcessorTime;
+    /// A line for `time`'s report that says what the measure left out, when
+    /// it left something out.
+    fn uncounted(&self) -> Option<&'static str>;
+}
+
 /// Ownership hooks shared by a shell and every cloned subshell.
 pub trait ExecutionHost: Any + Send + Sync {
     /// Starts a background task's ownership. With none, the task runs under this host and goes
@@ -80,6 +99,13 @@ pub trait ExecutionHost: Any + Send + Sync {
     }
     /// Resolve shell-specific path conventions against an explicit cwd.
     fn resolve_path(&self, path: &std::path::Path, cwd: &std::path::Path) -> std::path::PathBuf;
+    /// Starts measuring a pipeline `time` runs. With none, `time` reports the
+    /// processor time of the shell's process and of the children it reaped.
+    fn time(&self) -> Option<Box<dyn Timing>> {
+        None
+    }
+    /// Tells the host that a builtin starts, which runs in the shell's process.
+    fn builtin_started(&self) {}
 }
 
 impl OpenFile {
