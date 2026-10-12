@@ -71,6 +71,15 @@ pub fn model_media_type_for(media_type: &str) -> Option<&'static ModelMediaType>
         .find(|entry| entry.media_type == media_type)
 }
 
+/// Whether `model`'s catalog says it reads images natively, any of the image
+/// types a model can receive. Unknown support counts as no.
+pub fn model_reads_images(model: &Model) -> bool {
+    MODEL_MEDIA_TYPES
+        .iter()
+        .filter(|entry| entry.kind == ModelMediaKind::Image)
+        .any(|entry| model_accepts_media_type(model, entry.media_type))
+}
+
 /// Whether `model`'s catalog says it reads `media_type` natively. Unknown
 /// support counts as no.
 pub fn model_accepts_media_type(model: &Model, media_type: &str) -> bool {

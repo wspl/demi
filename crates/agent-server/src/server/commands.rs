@@ -17,8 +17,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     AgentServer,
+    profile_commands::{MODELS_SUMMARY, ModelsArgs, PROFILES_CATEGORY, models, profiles_group},
     shell_output::shell_group,
-    tree::{ProfileListing, ShownAgent, StartInput, Tree, TreeEntry},
+    tree::{ModelListing, ShownAgent, StartInput, Tree, TreeEntry},
 };
 
 /// The one description of a spawn's brief (`subagents.md` § Command help).
@@ -34,12 +35,10 @@ const RESUME_SUMMARY: &str = "Revive one of your own archived children with a ne
 
 const LIST_SUMMARY: &str = "Render the whole session tree from the root down, marking your own position. Live agents show phase, ages, execution, and activity; each node's archived (finished, revivable by its parent) children render beneath it. Every age is relative to now. A read, not a wait — not for polling loops.";
 
-const PROFILES_SUMMARY: &str = "List the user's enabled subagent profiles with when to use each, as the user's settings say now; an unavailable one says what is missing, and a line says so when the user turned subagents off. A read, not a wait.";
-
 /// The `--profile` option's description, which names no profile: the help
 /// is rendered once per tree, and the profiles change with the user's
 /// settings (`subagents.md` § Command help).
-const PROFILE_OPTION: &str = "The name of one of the user's subagent profiles; `demi agent profiles` lists them with when to use each. Omit to inherit the parent's model, prompt, Host and commands.";
+const PROFILE_OPTION: &str = "The name of one of the user's subagent profiles; `demi agent profiles list` lists them with when to use each. Omit to inherit the parent's model, prompt, Host and commands.";
 
 const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state, recent tool titles with durations, last assistant text; for an archived one, how and when it closed with its result or failure. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. Several ids show each in order; --json takes one. A read, not a wait — not for polling loops.";
 
@@ -88,11 +87,6 @@ struct ResumeArgs {
 #[serde(deny_unknown_fields)]
 struct ListArgs {}
 
-/// The input of `demi agent profiles`, which takes none.
-#[derive(Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
-struct ProfilesArgs {}
-
 /// The input of `demi agent show`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -104,7 +98,7 @@ struct ShowArgs {
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const AGENT_ENTRY: &str = "Runs subagents, each with a fresh context of its own, that work in parallel on parts of a task and report back; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites, pages or libraries to look into; for a long investigation whose details would crowd your context; or for a task one of the user's subagent profiles fits (`demi agent profiles`). A single lookup or edit is faster done yourself.";
+const AGENT_ENTRY: &str = "Runs subagents, each with a fresh context of its own, that work in parallel on parts of a task and report back; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites, pages or libraries to look into; for a long investigation whose details would crowd your context; or for a task one of the user's subagent profiles fits (`demi agent profiles list`). A single lookup or edit is faster done yourself.";
 
 /// `demi agent spawn --json` and `resume --json`.
 #[derive(Serialize, JsonSchema)]
@@ -175,7 +169,10 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
     } else {
         "Agent tree communication: this session may not spawn subagents; send, list and show any live agent."
     };
-    let mut group = GroupBuilder::new("agent", summary).index_entry(AGENT_ENTRY);
+    let (category, action, description) = PROFILES_CATEGORY;
+    let mut group = GroupBuilder::new("agent", summary)
+        .index_entry(AGENT_ENTRY)
+        .permission(category, action, description);
     if can_spawn {
         group = group.leaf(
             LeafBuilder::rpc("spawn", SPAWN_SUMMARY)
@@ -229,10 +226,12 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
                 .bind(TypedRpc::new(verb(server.clone(), show))),
         )
         .leaf(
-            LeafBuilder::rpc("profiles", PROFILES_SUMMARY)
-                .json_output::<ProfileListing>()
-                .bind(TypedRpc::new(verb(server.clone(), profiles))),
+            LeafBuilder::rpc("models", MODELS_SUMMARY)
+                .input::<ModelsArgs>()
+                .json_output::<ModelListing>()
+                .bind(TypedRpc::new(verb(server.clone(), models))),
         )
+        .group(profiles_group(server))
 }
 
 /// A verb's call against the live tree of the invoking job's conversation,
@@ -246,7 +245,7 @@ pub(super) struct Invoked<H: HostResolver, A> {
     /// The command's path, which a failure of one of several values
     /// begins with (`commands.md` § Handle an rpc call).
     pub(super) command: String,
-    json: bool,
+    pub(super) json: bool,
     pub(super) args: A,
 }
 
@@ -432,20 +431,6 @@ async fn show<H: HostResolver>(call: Invoked<H, ShowArgs>, port: RpcPort) -> Res
     Ok(u8::from(failed))
 }
 
-async fn profiles<H: HostResolver>(
-    call: Invoked<H, ProfilesArgs>,
-    port: RpcPort,
-) -> Result<u8, RpcError> {
-    let listing = match call.tree.profiles().await {
-        Ok(listing) => listing,
-        Err(error) => return fail(&error),
-    };
-    if call.json {
-        return json(&port, &listing).await;
-    }
-    out(&port, listing.render()).await
-}
-
 async fn started(port: &RpcPort, json_output: bool, child: u64) -> Result<u8, RpcError> {
     if json_output {
         return json(port, &Started { subagent_id: child }).await;
@@ -453,19 +438,19 @@ async fn started(port: &RpcPort, json_output: bool, child: u64) -> Result<u8, Rp
     out(port, format!("subagentId: {child}\n")).await
 }
 
-async fn json(port: &RpcPort, value: &impl Serialize) -> Result<u8, RpcError> {
+pub(super) async fn json(port: &RpcPort, value: &impl Serialize) -> Result<u8, RpcError> {
     let text = serde_json::to_string(value).expect("a command's output serializes");
     out(port, format!("{text}\n")).await
 }
 
-async fn out(port: &RpcPort, text: String) -> Result<u8, RpcError> {
+pub(super) async fn out(port: &RpcPort, text: String) -> Result<u8, RpcError> {
     port.stdout(text.into_bytes()).await?;
     Ok(0)
 }
 
 /// A verb's failure, which the dispatcher tells after the command's path:
 /// `demi agent <verb>: <reason>` on stderr, exit 1.
-fn fail(reason: &str) -> Result<u8, RpcError> {
+pub(super) fn fail(reason: &str) -> Result<u8, RpcError> {
     Err(RpcError::Failed(reason.to_owned()))
 }
 

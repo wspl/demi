@@ -5,10 +5,12 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import ProviderLoginDialog from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import { useResources } from '../state/resources'
+import { usePreferences } from '../state/preferences'
 import { useProduct } from '../state/product'
 import { useProviderSettings } from './providers'
 
 const resources = useResources()
+const preferences = usePreferences()
 const product = useProduct()
 const settings = useProviderSettings()
 const { providers, draft, testing, refreshing, login } = storeToRefs(settings)
@@ -96,7 +98,7 @@ onUnmounted(() => {
     @change="change"
     @toggle-model="
       (provider, model, enabled) =>
-        resources.hideModel(provider.id, model.id, enabled)
+        preferences.showModel(provider.id, model.id, enabled)
     "
     @add="addProvider"
     @add-endpoint="addEndpoint"

@@ -120,11 +120,13 @@ impl ControlService {
         .await
     }
 
-    /// Creates `profile` for `user`, enabled, and answers it as stored.
+    /// Creates `profile` for `user`, enabled or not, and answers it as
+    /// stored.
     pub async fn create_profile(
         &self,
         user: UserId,
         profile: NewProfile,
+        enabled: bool,
     ) -> Result<Result<SubagentProfile, ProfileRefusal>, StorageError> {
         let id = ProfileId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         self.call(move |connection, _| {
@@ -139,7 +141,7 @@ impl ControlService {
                 model: profile.model,
                 instructions: profile.instructions,
                 can_spawn: profile.can_spawn,
-                enabled: true,
+                enabled,
             };
             transaction.execute(
                 "INSERT INTO subagent_profiles
