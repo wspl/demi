@@ -196,7 +196,11 @@ and release as its runner last reported them with the architecture, the
 directory its shells start in, and that the standard utilities are GNU's
 ([Standard utilities](runner.md#standard-utilities)). On macOS it adds where
 the system's own are: `Standard utilities (sed, grep, cp, ls, find, …) are
-GNU's on every host; macOS's own are in /usr/bin.` A Host whose runner never connected, such as
+GNU's on every host; macOS's own are in /usr/bin.` On Windows it says what the
+shell is, since a model otherwise guesses Git Bash or MSYS and writes `/c/…`
+paths: `Shells are bash (Demi's own, not Git Bash or WSL); Windows programs
+such as cmd, powershell and git run by name. Write paths as C:/Users/…, not
+/c/….` A Host whose runner never connected, such as
 a Cloud that has not run yet, is named without the system.
 Its persisted context block describes the switch, attached hosts, and any Cloud
 reset. Observation is node-specific: the root seeing an update does not consume
