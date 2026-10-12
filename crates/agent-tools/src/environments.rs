@@ -14,7 +14,7 @@ use std::{
 };
 
 use demi_agent_session::ToolOutcome;
-use demi_host_interface::{HostError, HostKey, PageView, Seen, ShellEnvironment};
+use demi_host_interface::{HostError, HostKey, PageState, PageView, Seen, ShellEnvironment};
 use demi_provider_common::ResultPart;
 use demi_shared_types::{CommandId, ToolView};
 use futures_util::future::join_all;
@@ -192,17 +192,42 @@ impl Environments {
     /// Stops every command of every environment made so far and forgets them,
     /// so the next call on a Host makes a fresh environment there.
     pub async fn end_all(&self) {
-        let slots: Vec<Rc<Slot>> = self.slots.borrow_mut().drain(..).collect();
-        let environments: Vec<Rc<dyn ShellEnvironment>> = slots
-            .iter()
-            .filter_map(|slot| slot.environment.get().cloned())
-            .collect();
         join_all(
-            environments
+            self.forget_all()
                 .iter()
                 .map(|environment| environment.dispose_all()),
         )
         .await;
+    }
+
+    /// Asks every command of every environment made so far to stop, without
+    /// waiting for its end, and hands those environments over: the node
+    /// forgets them, as [`end_all`](Self::end_all) does, so its disposal
+    /// lets none of their commands go. Each command reads as stopping until
+    /// its runner reports its end, which its environment then records
+    /// (`subagents.md` § Abort).
+    pub async fn stop_all(&self) -> Vec<Rc<dyn ShellEnvironment>> {
+        let environments = self.forget_all();
+        for environment in &environments {
+            for view in environment.page_views() {
+                if view.state == PageState::Running {
+                    // An environment refuses only a command it does not
+                    // hold, and it holds every command its views show.
+                    let _ = environment.abort(&view.command_id).await;
+                }
+            }
+        }
+        environments
+    }
+
+    /// Forgets every environment made so far, so the next call on a Host
+    /// makes a fresh one there.
+    fn forget_all(&self) -> Vec<Rc<dyn ShellEnvironment>> {
+        self.slots
+            .borrow_mut()
+            .drain(..)
+            .filter_map(|slot| slot.environment.get().cloned())
+            .collect()
     }
 
     /// A look showed the node `command`'s end, and all of its output.

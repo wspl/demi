@@ -29,6 +29,9 @@ export function galleryTerminals(): TerminalRecord[] {
       phase: 'running',
       startedAt: ago(45_000),
       output: DEMO_RG,
+      // The search of the running child Find the cookie assertion: stopping
+      // the child leaves it stopping.
+      subagentId: 'ag-cookie',
     },
     {
       id: 'term-diff',
