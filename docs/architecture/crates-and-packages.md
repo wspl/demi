@@ -417,6 +417,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   panic hook every program installs at start, which writes a panic's
   message, location and backtrace to standard error before an abort can
   end the process ([Builds and releases](../delivery/builds-and-releases.md)).
+  And the memory allocator of every program built for a musl target,
+  mimalloc, declared once here as the global allocator, so each program that
+  links this crate gets it ([Memory allocator](../delivery/builds-and-releases.md#memory-allocator)).
 - **Public boundary:** `unknown_variable`, over the program's clap command,
   and `install_panic_hook`.
 - **Must not:** parse a program's settings, which its clap command does.
