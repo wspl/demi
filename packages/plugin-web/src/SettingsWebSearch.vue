@@ -54,15 +54,9 @@ function save(): void {
 </script>
 
 <template>
-  <SettingsPage
-    title="Web Search"
-    description="How the agent searches the web with demi web search, through Exa."
-  >
+  <SettingsPage title="Web Search">
     <SettingsGroup title="Exa">
-      <SettingsRow
-        label="Exa account"
-        description="Searches bill your Exa team, whose free credit renews each month."
-      >
+      <SettingsRow label="Exa account">
         <span class="text-chrome text-fg-muted">{{
           account ? (account.email ?? 'Signed in') : 'Not connected'
         }}</span>
@@ -83,10 +77,7 @@ function save(): void {
           >Sign In</Button
         >
       </SettingsRow>
-      <SettingsRow
-        label="API key"
-        description="A key offers every filter, such as domains and dates. One search checks it before it is saved."
-      >
+      <SettingsRow label="API key" description="Offers every filter, such as domains and dates.">
         <template v-if="keyProblem && !key" #detail>
           <InlineError :message="keyProblem" />
         </template>
@@ -127,10 +118,7 @@ function save(): void {
           >
         </template>
       </SettingsRow>
-      <SettingsRow
-        label="In use"
-        :description="state?.inUse === 'anonymous' ? 'Every user of this server shares Exa’s anonymous allowance.' : undefined"
-      >
+      <SettingsRow label="In use">
         <span class="text-chrome text-fg-muted">{{ IN_USE[state?.inUse ?? 'anonymous'] }}</span>
       </SettingsRow>
     </SettingsGroup>
