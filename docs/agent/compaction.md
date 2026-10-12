@@ -432,6 +432,9 @@ Context window                      285.1k / 1M (29%)
   frame, so opening the card costs nothing and shows what the ring shows.
   Exact counts from a vendor's token-counting endpoint are left out: only one
   vendor family has one.
+- **A row opens only into two parts or more**: a row that holds one thing,
+  such as Other context while the execution context is its only block,
+  shows no chevron, since opening it would repeat the row.
 - **A row with no tokens is left out**, and so are Summary before the first
   compaction and Skills while no skill is on.
 
