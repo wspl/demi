@@ -88,6 +88,8 @@ const props = withDefaults(defineProps<{
    * arrives, such as text that may or may not be cut.
    */
   showIf?: (trigger: HTMLElement) => boolean
+  /** A tip of the `overlay` slot that has room for a line of facts, such as what an agent runs on, not a few sentences. */
+  wide?: boolean
   openDelayMs?: number
   closeDelayMs?: number
   tag?: 'span' | 'div'
@@ -414,7 +416,7 @@ onBeforeUnmount(() => {
         ref="floatingRef"
         class="overlay-shell select-none pointer-events-none z-[60] w-max min-w-max rounded-md text-fg"
         :class="hasOverlay
-          ? 'max-w-xs px-3 py-2 text-xs leading-relaxed'
+          ? [wide ? 'max-w-2xl' : 'max-w-xs', 'px-3 py-2 text-xs leading-relaxed']
           : 'line-clamp-2 max-w-sm px-2.5 py-1.5 text-[12px] leading-4'"
         :style="{ ...floatingStyles, '--elevation': elevation }"
         role="tooltip"
