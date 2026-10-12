@@ -75,6 +75,10 @@ impl PipeClient {
         })
     }
 
+    /// Reads the pipe at `path`: the bytes of its data frames, until its end
+    /// frame (`runner.md` § Pipes and output). An end frame with a cause is
+    /// that cause's error; a body that stops without an end frame is a
+    /// broken pipe; idle frames pass nothing on.
     pub async fn get(
         &self,
         path: &str,
@@ -88,20 +92,20 @@ impl PipeClient {
                 request.send().await.map_err(io::Error::other)
             }) => expect_ok(response?).await?,
         };
-        let stream = response
-            .bytes_stream()
-            .map(|result| result.map_err(io::Error::other));
-        Ok(
-            futures_util::stream::unfold(Some((Box::pin(stream), cancel)), |state| async move {
-                let (mut stream, cancel) = state?;
-                tokio::select! {
-                    biased;
-                    _ = cancel.cancelled() => Some((Err(cancelled()), None)),
-                    chunk = stream.next() => chunk.map(|chunk| (chunk, Some((stream, cancel)))),
-                }
-            })
-            .boxed(),
-        )
+        let reading = Reading {
+            body: response.bytes_stream().boxed(),
+            frames: wire::PipeFrameDecoder::new(),
+            cancel,
+        };
+        Ok(futures_util::stream::unfold(Some(reading), |reading| async move {
+            let mut reading = reading?;
+            match reading.next_data().await {
+                Ok(Some(bytes)) => Some((Ok(bytes), Some(reading))),
+                Ok(None) => None,
+                Err(error) => Some((Err(error), None)),
+            }
+        })
+        .boxed())
     }
 
     pub async fn put<S>(&self, path: &str, body: S, cancel: &CancellationToken) -> io::Result<()>
@@ -173,7 +177,23 @@ impl PipeClient {
         let (mut sender, mut receiver) = socket.split();
         let sending = async {
             tokio::pin!(body);
-            while let Some(chunk) = body.next().await {
+            loop {
+                // A ping after 30 s without a message keeps the socket
+                // through an edge that ends a silent connection, as a still
+                // page's live view is (`runner.md` § Pipes and output).
+                let chunk = tokio::select! {
+                    chunk = body.next() => chunk,
+                    () = tokio::time::sleep(wire::PIPE_IDLE) => {
+                        sender
+                            .send(Message::Ping(Bytes::new()))
+                            .await
+                            .map_err(socket_error)?;
+                        continue;
+                    }
+                };
+                let Some(chunk) = chunk else {
+                    break;
+                };
                 let bytes = match chunk {
                     Ok(bytes) => bytes,
                     Err(error) => {
@@ -275,6 +295,51 @@ impl PipeClient {
             )
         })
     }
+}
+
+/// A pipe's response being read: its body and the frames read of it so far.
+struct Reading {
+    body: BoxStream<'static, reqwest::Result<Bytes>>,
+    frames: wire::PipeFrameDecoder,
+    cancel: CancellationToken,
+}
+
+impl Reading {
+    /// The next data frame's bytes; none at a whole pipe's end.
+    async fn next_data(&mut self) -> io::Result<Option<Bytes>> {
+        loop {
+            match self.frames.next_frame().map_err(io::Error::other)? {
+                Some(wire::PipeFrame::Data(bytes)) => return Ok(Some(bytes)),
+                Some(wire::PipeFrame::Idle) => continue,
+                Some(wire::PipeFrame::End(Ok(()))) => return Ok(None),
+                // The cause, in the words the backend gave it, stands alone
+                // (`commands.md` § Handle an rpc call).
+                Some(wire::PipeFrame::End(Err(cause))) => return Err(io::Error::other(cause)),
+                None => {}
+            }
+            let chunk = tokio::select! {
+                biased;
+                _ = self.cancel.cancelled() => return Err(cancelled()),
+                chunk = self.body.next() => chunk,
+            };
+            match chunk {
+                Some(Ok(bytes)) => self.frames.extend(&bytes),
+                Some(Err(error)) => return Err(broken(&error.to_string())),
+                None if self.frames.is_partial() => {
+                    return Err(broken("its response ended within a frame"));
+                }
+                None => return Err(broken("its response ended without an end frame")),
+            }
+        }
+    }
+}
+
+/// A pipe whose response stopped before its end frame, for `cause`.
+fn broken(cause: &str) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::ConnectionAborted,
+        format!("the pipe broke off before its end: {cause}"),
+    )
 }
 
 /// A stream pipe's WebSocket failure as an IO error: the system's own when
