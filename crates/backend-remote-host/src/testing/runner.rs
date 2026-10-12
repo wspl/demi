@@ -509,18 +509,17 @@ async fn pipe_sink(
     {
         return StatusCode::SERVICE_UNAVAILABLE.into_response();
     }
-    let mut sink = match claim.await {
+    let sink = match claim.await {
         Ok(Ok(sink)) => sink,
         Ok(Err(refusal)) => return refused(refusal),
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
     };
-    if let Err(failure) = sink.source_arrived().await {
-        return (StatusCode::CONFLICT, failure.reason().to_owned()).into_response();
-    }
+    // As the backend's edge answers (`runner.md` § Pipes and output).
+    let frames = sink.into_frames().map(Ok::<_, std::convert::Infallible>);
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/octet-stream")
         .header(header::CACHE_CONTROL, "no-store")
-        .body(Body::from_stream(sink.into_stream()))
+        .body(Body::from_stream(frames))
         .expect("a valid response")
 }

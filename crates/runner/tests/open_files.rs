@@ -225,11 +225,17 @@ async fn backend() -> u16 {
                         .write_all(b"HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n")
                         .await;
                 } else {
-                    let _ = socket
-                        .write_all(
-                            b"HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n2\r\nok\r\n",
-                        )
-                        .await;
+                    // One data frame (`runner.md` § Pipes and output).
+                    let mut frame = bytes::BytesMut::new();
+                    demi_runner_protocol::wire::encode_data(b"ok", &mut frame);
+                    let mut answer = format!(
+                        "HTTP/1.1 200 OK\r\ntransfer-encoding: chunked\r\n\r\n{:x}\r\n",
+                        frame.len()
+                    )
+                    .into_bytes();
+                    answer.extend_from_slice(&frame);
+                    answer.extend_from_slice(b"\r\n");
+                    let _ = socket.write_all(&answer).await;
                 }
                 let _ = socket.read(&mut buffer).await;
             });
