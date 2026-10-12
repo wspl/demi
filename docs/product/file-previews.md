@@ -422,16 +422,25 @@ it was, not dimmed, so the user can go on reading and typing beside it.
   open, and it stays open while the transcript changes beneath it.
 - **Move and resize.** Dragging its title bar moves it, and dragging any edge
   or corner resizes it, as a window on the desktop does; it stays at least
-  240 × 180 and no larger than the page, and its title bar never leaves the
-  page. The first time it opens, it is as large as the picture at its actual
-  size, at most 60% of the page's width and 70% of its height, centred over
-  the conversation; after that it opens where the user last left it, at the
-  size they gave it, for as long as the page is open.
+  320 × 240, whether the user drags it smaller or the picture is tiny, and
+  no larger than the page, and its title bar never leaves the page.
+- **Its size follows the picture.** Every picture opens the window at the
+  picture's actual size, the size at which one of its pixels covers one
+  pixel of the screen: a 2880 × 1800 screenshot on a display of two device
+  pixels per page pixel opens 1440 × 900 page pixels large, plus the title
+  bar. A picture larger than 60% of the page's width or 70% of its height
+  opens scaled down, keeping its proportions, to the largest size within
+  both; a picture smaller than 320 × 240 sits centred in a window of that
+  size. The first picture opens the window centred over the conversation;
+  another picture opened while it shows resizes the window about its centre,
+  kept within the page. A size the user dragged lasts while that picture
+  shows; a video opens at its frame's size by the same rule.
 - **One viewer.** Opening another picture or video shows it in the same
   window, in place of the one it showed.
 - **What it shows.** An image opens fitted to the window, scaled down and
   never enlarged, over a checkerboard where it is transparent; its pixel
-  size and the zoom show in the title bar, *1280 × 720 · 150%*.
+  size and the zoom show in the title bar, *1280 × 720 · 50%*, where 100% is
+  the actual size above.
 - **Zoom and move.** As in an image viewer, the wheel, and a pinch on a
   trackpad, zoom the image about the pointer, so the spot under it stays
   under it: from the fitted size, or the actual size when that is smaller,
