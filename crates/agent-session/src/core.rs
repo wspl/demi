@@ -1739,6 +1739,15 @@ impl SessionCore {
         }
     }
 
+    /// Whether the runtime the next request lands on readies anything ahead.
+    pub(super) fn landing_prepares_ahead(&self) -> bool {
+        self.switch
+            .as_ref()
+            .and_then(|switch| switch.runtime.as_deref())
+            .or(self.provider.held())
+            .is_some_and(|runtime| runtime.prepares_ahead())
+    }
+
     /// Takes out the runtime the next request lands on, to ready it: the
     /// recorded switch's own when it has one, else the one in the slot.
     pub(super) fn take_landing_runtime(&mut self) -> Option<Box<dyn ProviderRuntime>> {

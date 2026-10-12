@@ -242,12 +242,12 @@ impl ControlService {
 
     /// Inserts the account, or replaces the one with its id and advances its
     /// version, and selects it when the entry has no active account, all in
-    /// one transaction; `false` for an entry that no longer exists.
+    /// one transaction; none for an entry that no longer exists.
     pub async fn write_credential(
         &self,
         provider: ProviderId,
         account: CredentialWrite,
-    ) -> Result<bool, StorageError> {
+    ) -> Result<Option<CredentialWritten>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let exists: bool = transaction.query_row(
@@ -256,11 +256,11 @@ impl ControlService {
                 |row| row.get(0),
             )?;
             if !exists {
-                return Ok(false);
+                return Ok(None);
             }
-            write_credential(&transaction, &provider, &account, now)?;
+            let written = write_credential(&transaction, &provider, &account, now)?;
             transaction.commit()?;
-            Ok(true)
+            Ok(Some(written))
         })
         .await
     }
@@ -435,7 +435,7 @@ fn write_credential(
     provider: &ProviderId,
     account: &CredentialWrite,
     now: Timestamp,
-) -> Result<(), StorageError> {
+) -> Result<CredentialWritten, StorageError> {
     connection.execute(
         "INSERT INTO provider_credentials
            (provider_id, id, identity_key, label, detail, source, secret, version, updated_at)
@@ -455,11 +455,20 @@ fn write_credential(
             now.as_millisecond()
         ],
     )?;
-    connection.execute(
+    let selected = connection.execute(
         "UPDATE providers SET active_credential_id = ?2 WHERE id = ?1 AND active_credential_id IS NULL",
         params![provider.as_str(), account.id.as_str()],
     )?;
-    Ok(())
+    Ok(CredentialWritten {
+        activated: selected > 0,
+    })
+}
+
+/// How a stored account changed its entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CredentialWritten {
+    /// The entry had no active account, and this one became it.
+    pub activated: bool,
 }
 
 fn provider_row(row: &Row<'_>) -> Result<ProviderRow, StorageError> {

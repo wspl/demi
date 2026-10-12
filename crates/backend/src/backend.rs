@@ -494,6 +494,19 @@ impl Backend {
             .expect("the user's shard serves while the backend runs");
     }
 
+    /// Resolves once `count` Claude Code processes began to be prepared
+    /// ahead on `user`'s Cloud (`claude-code.md` § Preparing a process
+    /// ahead).
+    #[cfg(feature = "testing")]
+    pub async fn until_prepared(&self, user: &demi_web_api_protocol::ids::UserId, count: u64) {
+        self.shards
+            .shards()
+            .of(user)
+            .call(move |shard, _| async move { shard.until_prepared(count).await })
+            .await
+            .expect("the user's shard serves while the backend runs");
+    }
+
     /// Stores `secret`, a secret document of `family`, as the one account of
     /// a new entry of `owner`'s labelled `label`, as a sign-in would store
     /// it, for a suite whose vendor sign-in cannot run (`scenarios.md` §

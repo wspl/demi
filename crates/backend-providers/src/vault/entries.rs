@@ -42,7 +42,13 @@ struct Shared {
     gates: RefreshGates,
     /// The pages' channels, on which each change of an entry is marked.
     sync: SyncRegistry,
+    /// The entries whose active account changed, as each changes.
+    account_changes: tokio::sync::broadcast::Sender<ProviderId>,
 }
+
+/// How many announced account changes a follower may fall behind before it
+/// misses some: they come from the user's own clicks in Settings.
+const ACCOUNT_CHANGES_KEPT: usize = 64;
 
 /// A provider entry, read and decoded.
 #[derive(Debug, Clone, PartialEq)]
@@ -156,7 +162,79 @@ impl Vault {
             master: tokio::sync::OnceCell::new(),
             gates: RefreshGates::new(),
             sync,
+            account_changes: tokio::sync::broadcast::Sender::new(ACCOUNT_CHANGES_KEPT),
         }))
+    }
+
+    /// Makes `account` the one the entry `entry` infers with, and announces
+    /// the change (`claude-code.md` § Preparing a process ahead); `false`
+    /// when the entry holds no such account.
+    pub async fn set_active_account(
+        &self,
+        entry: &ProviderId,
+        account: CredentialId,
+    ) -> Result<bool, StorageError> {
+        let selected = self
+            .0
+            .control
+            .set_active_credential(entry.clone(), account)
+            .await?;
+        if selected {
+            self.announce_account_change(entry);
+        }
+        Ok(selected)
+    }
+
+    /// Stores `account` in the entry `entry`, which selects it when the
+    /// entry has none, as a sign-in's first account; that selection is an
+    /// announced change of the active account. `false` for an entry that no
+    /// longer exists.
+    pub async fn write_account(
+        &self,
+        entry: &ProviderId,
+        account: CredentialWrite,
+    ) -> Result<bool, StorageError> {
+        let written = self
+            .0
+            .control
+            .write_credential(entry.clone(), account)
+            .await?;
+        if written.is_some_and(|written| written.activated) {
+            self.announce_account_change(entry);
+        }
+        Ok(written.is_some())
+    }
+
+    /// Removes `account` from `entry` and answers the account active
+    /// afterwards; removing the active one is an announced change of it.
+    pub async fn remove_account(
+        &self,
+        entry: &ProviderEntry,
+        account: CredentialId,
+    ) -> Result<Option<CredentialId>, StorageError> {
+        let was_active = entry.active() == Some(&account);
+        let active = self
+            .0
+            .control
+            .remove_credential(entry.id.clone(), account)
+            .await?;
+        if was_active {
+            self.announce_account_change(&entry.id);
+        }
+        Ok(active)
+    }
+
+    /// The entries whose active account changes from now on, whoever
+    /// changed it: the user in Settings, or a sign-in that made its account
+    /// the active one.
+    pub fn account_changes(&self) -> tokio::sync::broadcast::Receiver<ProviderId> {
+        self.0.account_changes.subscribe()
+    }
+
+    fn announce_account_change(&self, entry: &ProviderId) {
+        // With no follower, as before any user's shard started, nobody holds
+        // a process to close.
+        let _ = self.0.account_changes.send(entry.clone());
     }
 
     pub fn control(&self) -> &ControlService {
