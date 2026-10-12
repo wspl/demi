@@ -34,7 +34,7 @@ what it returns, then the page's state; a call ends after ten minutes unless
     demi.emulate({ viewport, scale, theme, device, locale, timeZone, reset })   without reloading
     demi.grant(permission, { origin })   such as 'clipboard' or 'local-network-access'
     demi.gallery(path)                   open a gallery page, such as '/session?view=blocks'
-    demi.message(text, { wait, timeout })   send in the open conversation and wait for its turn, not for subagents; fails at once, with the page's words, when it is not delivered or the turn fails
+    demi.message(text, { files, wait, timeout })   send in the open conversation, with files from this machine, and wait for its turn, not for subagents; fails at once, with the page's words, when it is not delivered or the turn fails, and before writing when the draft holds files
     demi.turn({ timeout })               wait until the open conversation no longer runs, from a message on its way to the subagents and background jobs it started
     demi.runner({ fresh, backend }) .stop() .start({ backend })   the slot's runner, paired through Add Device; backend: another address to reach the backend at, such as a proxy
     demi.log.console() .network() .sockets() ({ all, modules }), demi.log.mark(name)
