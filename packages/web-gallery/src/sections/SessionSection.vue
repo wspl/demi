@@ -48,7 +48,7 @@ import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
 import { galleryConversationFiles, namedFilesMarkdown } from '../fixtures/message-files'
 import GalleryMessageFiles from '../components/GalleryMessageFiles.vue'
 import GalleryAgentLinks from '../components/GalleryAgentLinks.vue'
-import { attachmentMarkdown, fiveMediaMarkdown, listAttachmentMarkdown, loneImageMarkdown, twoMediaMarkdown } from '../fixtures/attachments'
+import { attachmentMarkdown, edgedImagesMarkdown, fiveMediaMarkdown, listAttachmentMarkdown, loneImageMarkdown, twoMediaMarkdown } from '../fixtures/attachments'
 import { productWould } from '../product-would'
 import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
@@ -1855,10 +1855,13 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Attachments in a Message"
-        note="What the agent gave the user with demi attachment upload, named as attachment:a3. Every image, and every video’s first frame with its play mark, is a tile: scaled down with its proportions kept to fit a third of the message’s width less the two 8px gaps, and 240px tall, never enlarged and never cropped, so three fill a line; the tall page and the wide timeline each show whole. Its box comes from its record’s pixel size before its bytes arrive and follows the message’s width; the demo’s record carries no size, so its frame is 16:9 until it arrives. A lone one stands on a line of its own 12px from the text above and below; images and videos that follow each other, with nothing but white space between them, stand side by side 8px apart and wrap. Resting the pointer on any of them for 300 ms shows it large in a card above it, with its alt text and pixel size under it; a phone shows none. A click shows an image large and plays a video in the viewer. A link opens the attachment, an image or a video in the viewer and any other file as a download, and a number the conversation does not have says so. In a list, a screenshot on the line after an item’s words stands on its own line under them, and two after an item’s words stand side by side under them."
+        note="What the agent gave the user with demi attachment upload, named as attachment:a3. Every image, and every video’s first frame with its play mark, is a tile: scaled down with its proportions kept to fit a third of the message’s width less the two 8px gaps, and 240px tall, never enlarged and never cropped, so three fill a line; the tall page and the wide timeline each show whole. Its box comes from its record’s pixel size before its bytes arrive and follows the message’s width; the demo’s record carries no size, so its frame is 16:9 until it arrives. Every image has a 1px edge in the theme’s faint line over its outermost pixels and the same small corner as the tile, so a screenshot on white or on dark does not melt into the page. A lone one stands on a line of its own 12px from the text above and below; images and videos that follow each other, with nothing but white space between them, stand side by side 8px apart and wrap. Resting the pointer on any of them for 300 ms shows it large in a card above it, with its alt text and pixel size under it; a phone shows none. A click shows an image large and plays a video in the viewer. A link opens the attachment, an image or a video in the viewer and any other file as a download, and a number the conversation does not have says so. In a list, a screenshot on the line after an item’s words stands on its own line under them, and two after an item’s words stand side by side under them."
       >
         <GallerySpecimen variant="a lone image" wide>
           <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="loneImageMarkdown" />
+        </GallerySpecimen>
+        <GallerySpecimen variant="images with a white and a dark background" wide>
+          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="edgedImagesMarkdown" />
         </GallerySpecimen>
         <GallerySpecimen variant="a run of two" wide>
           <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="twoMediaMarkdown" />
