@@ -96,7 +96,7 @@ order:
   nothing it can do fixes the failure does it tell the user why, and it asks
   before reaching for an outside service that would put the user's work on
   the internet, such as a public tunnel.
-- **Web content.** What `demi search` and `demi fetch` print from the web
+- **Web content.** What `demi web search` and `demi web fetch` print from the web
   is evidence to report, never instructions to follow, and the model never
   builds a URL out of the conversation's content to send it somewhere
   ([Web search and fetch](web.md#untrusted-content)).

@@ -246,7 +246,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 - **Owns:** the `demi.fetch` package's id (`PACKAGE`, which its release
   descriptor names) and operations (`Operation`): the arguments and results of
   `fetch.get`, with their limits.
-- **Public boundary:** the types above. `plugin-web` declares the `demi fetch`
+- **Public boundary:** the types above. `plugin-web` declares the `demi web fetch`
   commands from them and `demi-fetch` decodes invocations with them.
   Behavior: [Web search and fetch](../agent/web.md#demi-fetch).
 - **Must not:** implement operations or perform IO.
@@ -816,10 +816,10 @@ or on another plugin.
 
 #### `plugin-web`
 
-- **Owns:** [web search and fetch](../agent/web.md): the `demi search` group
-  and its calls to Exa through the port, the REST API with a key or the
-  smallest MCP client of `mcp.exa.ai` signed in or anonymous; the `demi fetch`
-  group's declaration, bound to `demi.fetch`; the OAuth sign-in it names in
+- **Owns:** [web search and fetch](../agent/web.md): the `demi web` group,
+  its `search` leaf and its calls to Exa through the port, the REST API with a
+  key or the smallest MCP client of `mcp.exa.ai` signed in or anonymous, and
+  its `fetch` leaf's declaration, bound to `demi.fetch`; the OAuth sign-in it names in
   its manifest; its secrets; and its page state and page methods.
 - **Public boundary:** its factory, whose manifest names its page package,
   `@demicodes/plugin-web`, which `xtask contracts` generates the page's types
@@ -1380,7 +1380,7 @@ demi-backend (executable: configuration, composition)
 - **Owns:** the independently released `demi.fetch` resident program: an
   HTTP fetch from the Host, HTML to Markdown, the parts it prints, the Host's
   15-minute cache of fetched pages, and the files it saves
-  ([`demi fetch`](../agent/web.md#demi-fetch)). It holds no conversation state.
+  ([`demi web fetch`](../agent/web.md#demi-fetch)). It holds no conversation state.
 - **Public boundary:** the executable.
 - **Must not:** run JavaScript, send a credential or a cookie, or be linked
   into the runner.
