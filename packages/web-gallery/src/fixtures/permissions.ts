@@ -1,4 +1,9 @@
-import type { PermissionCategoryView, PermissionRequestView } from '@demicodes/web-ui/permissions/types'
+import type {
+  AllowanceRequestView,
+  CredentialRequestView,
+  PermissionCategoryView,
+  PermissionRequestView,
+} from '@demicodes/web-ui/permissions/types'
 
 /** Manage Skills, as `plugin-skills` declares it. */
 export const manageSkills: PermissionCategoryView = {
@@ -34,6 +39,7 @@ export const manageDevices: PermissionCategoryView = {
 /** A move into a project on a device the conversation lacks, without either grant: one request of both categories. */
 export function moveRequest(): PermissionRequestView {
   return {
+    kind: 'permission',
     id: 'pr-move',
     categories: [organizeConversations, manageDevices],
     command: 'demi conversation move ledable-app',
@@ -44,6 +50,7 @@ export function moveRequest(): PermissionRequestView {
 /** The root's request, as the design's example raises it. */
 export function rootRequest(): PermissionRequestView {
   return {
+    kind: 'permission',
     id: 'pr-root',
     categories: [manageSkills],
     command: 'demi skills add vercel-labs/agent-skills --skill web-design-guidelines',
@@ -54,6 +61,7 @@ export function rootRequest(): PermissionRequestView {
 /** A subagent's request. */
 export function subagentRequest(): PermissionRequestView {
   return {
+    kind: 'permission',
     id: 'pr-subagent',
     categories: [manageSkills],
     command: 'demi skills enable vercel-labs/agent-skills --skill react-best-practices',
@@ -67,10 +75,62 @@ export function queuedRequests(): PermissionRequestView[] {
     rootRequest(),
     subagentRequest(),
     {
+      kind: 'permission',
       id: 'pr-retired',
       categories: [retiredCategory],
       command: 'demi conversations show 12',
       subagent: { number: 3, description: 'History search' },
     },
   ]
+}
+
+/** The design's example: an API key to add Google as a provider, one hidden field, kept for an hour unless the user says otherwise. */
+export function googleKeyRequest(): CredentialRequestView {
+  return {
+    kind: 'credential',
+    id: 'cr-google',
+    name: 'Google API key',
+    reason: 'To add Google as a provider',
+    fields: [{ name: 'key', label: 'API key', kind: 'secret' }],
+    keep: '1h',
+    renewal: false,
+  }
+}
+
+/** A sign-in: a visible user name and a hidden password, the agent proposing 30 days. */
+export function signInRequest(): CredentialRequestView {
+  return {
+    kind: 'credential',
+    id: 'cr-linear',
+    name: 'Linear sign-in for zan',
+    reason: 'To file the issues you listed in the Linear workspace',
+    fields: [
+      { name: 'user', label: 'User name', kind: 'visible' },
+      { name: 'password', label: 'Password', kind: 'secret' },
+    ],
+    keep: '30d',
+    renewal: false,
+  }
+}
+
+/** A credential kept an hour that ran out: the agent asks for its fields again. */
+export function renewalRequest(): CredentialRequestView {
+  return { ...googleKeyRequest(), id: 'cr-renewal', reason: 'The saved key was rejected; it may have been rotated', renewal: true }
+}
+
+/** What the backend says of values that do not match the request's fields. */
+export const INVALID_ANSWER = 'values.key: a value is at most 65536 bytes'
+
+/** What the backend says of an answer that would renew a saved credential with other fields. */
+export const FIELDS_DIFFER =
+  '“Google API key” is saved with other fields (token:secret): ask for those fields, or under another name'
+
+/** A stored credential the conversation asks to use. */
+export function allowanceRequest(): AllowanceRequestView {
+  return { kind: 'allowance', id: 'al-github', name: 'GitHub token for zan', removed: false }
+}
+
+/** The same request after the user removed the credential in Settings. */
+export function removedAllowanceRequest(): AllowanceRequestView {
+  return { ...allowanceRequest(), id: 'al-removed', removed: true }
 }

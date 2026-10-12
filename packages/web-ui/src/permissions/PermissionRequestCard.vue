@@ -4,7 +4,7 @@ import { ShieldQuestionMark } from '@lucide/vue'
 import Button from '../ui/Button.vue'
 import CodeText from '../ui/CodeText.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
-import { ICON_PX } from '../ui/icon-metrics'
+import RequestFrame from './RequestFrame.vue'
 import {
   categoryTitle,
   requestAction,
@@ -13,18 +13,16 @@ import {
 } from './types'
 
 /**
- * The oldest undecided permission request of the conversation, pinned above
- * the composer (`permissions.md` § What the user sees): what the agent asks
- * to do, its categories' actions joined with "and", the command it ran,
- * which subagent ran it, what a grant of each category allows, under the
- * category's title when there are several, and Deny or Allow for This
- * Conversation. It is not modal: the transcript and
- * the composer stay usable. With several requests it says which one of how
- * many it shows; the next one takes its place once it is decided.
+ * The body of a permission request's card (`permissions.md` § What the user
+ * sees): what the agent asks to do, its categories' actions joined with
+ * "and", the command it ran, which subagent ran it, what a grant of each
+ * category allows, under the category's title when there are several, and
+ * Deny or Allow for This Conversation.
  */
 const props = defineProps<{
-  /** The undecided requests, oldest first; the card shows the first. */
-  requests: readonly PermissionRequestView[]
+  request: PermissionRequestView
+  /** How many requests wait, this one included. */
+  count: number
   /** A decision is on its way: the buttons wait for its answer. */
   deciding?: boolean
 }>()
@@ -33,12 +31,11 @@ const emit = defineEmits<{
   decide: [id: string, decision: PermissionDecision]
 }>()
 
-const request = computed(() => props.requests[0] ?? null)
-const title = computed(() => (request.value ? `Allow this conversation to ${requestAction(request.value)}?` : ''))
+const title = computed(() => `Allow this conversation to ${requestAction(props.request)}?`)
 /** The categories whose grant the card explains: each with a description the command set still declares. */
-const described = computed(() => request.value?.categories.filter((category) => category.description) ?? [])
+const described = computed(() => props.request.categories.filter((category) => category.description))
 const ran = computed(() => {
-  const subagent = request.value?.subagent
+  const subagent = props.request.subagent
   return subagent
     ? `Subagent ${subagent.number}, “${subagent.description}”, ran`
     : 'The agent ran'
@@ -46,28 +43,7 @@ const ran = computed(() => {
 </script>
 
 <template>
-  <section
-    v-if="request"
-    class="permission-card overlay-window flex w-full flex-col gap-2.5 rounded-lg bg-surface-raised p-3 text-chrome"
-    role="alertdialog"
-    :aria-label="title"
-  >
-    <header class="flex items-start gap-2">
-      <ShieldQuestionMark
-        :size="ICON_PX.in32"
-        class="mt-px shrink-0 text-on-attention"
-        aria-hidden="true"
-      />
-      <h3 class="min-w-0 flex-1 font-medium text-fg-emphasis">
-        {{ title }}
-      </h3>
-      <span
-        v-if="requests.length > 1"
-        class="shrink-0 tabular-nums text-fg-subtle"
-      >
-        1 of {{ requests.length }}
-      </span>
-    </header>
+  <RequestFrame :title="title" :icon="ShieldQuestionMark" :count="count">
     <div class="flex flex-col gap-1 pl-6">
       <span class="text-fg-muted">{{ ran }}</span>
       <ScrollArea class="max-h-24 rounded-md bg-sunken" viewport-class="px-2 py-1.5">
@@ -90,7 +66,7 @@ const ran = computed(() => {
         {{ described[0]!.description }}
       </p>
     </div>
-    <footer class="flex flex-wrap justify-end gap-2">
+    <template #footer>
       <Button
         size="sm"
         :disabled="deciding"
@@ -104,6 +80,6 @@ const ran = computed(() => {
         @click="emit('decide', request.id, 'allow')"
         >Allow for This Conversation</Button
       >
-    </footer>
-  </section>
+    </template>
+  </RequestFrame>
 </template>

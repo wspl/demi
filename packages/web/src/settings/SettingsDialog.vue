@@ -39,6 +39,7 @@ import { usePluginSettings } from './plugins'
 import ProvidersPanel from './ProvidersPanel.vue'
 import InstructionsPanel from './InstructionsPanel.vue'
 import SubagentsPanel from './SubagentsPanel.vue'
+import CredentialsPanel from './CredentialsPanel.vue'
 
 const emit = defineEmits<{ signOut: [] }>()
 const resources = useResources()
@@ -423,6 +424,7 @@ function resetShortcuts(): void {
     />
     <ProvidersPanel v-else-if="section === 'models' && resources.canConfigure" />
     <DevicesPanel v-else-if="section === 'devices'" />
+    <CredentialsPanel v-else-if="section === 'credentials'" />
     <InstructionsPanel v-else-if="section === 'instructions'" />
     <SubagentsPanel v-else-if="section === 'subagents'" />
     <SettingsPlugins

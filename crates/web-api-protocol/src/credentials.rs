@@ -184,7 +184,7 @@ pub struct CredentialDto {
 /// `GET /credentials`, and the synchronization channel's `credentials`
 /// part: the user's credentials in name order.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct Credentials {
+pub struct CredentialList {
     pub credentials: Vec<CredentialDto>,
 }
 

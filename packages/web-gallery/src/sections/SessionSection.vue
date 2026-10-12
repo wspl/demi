@@ -20,9 +20,25 @@ import GalleryTranscript from '../components/GalleryTranscript.vue'
 import GalleryStepPlaces from '../components/GalleryStepPlaces.vue'
 import { stepPlaces } from '../fixtures/step-places'
 import GalleryEditSelection from '../components/GalleryEditSelection.vue'
-import PermissionCard from '@demicodes/web-ui/permissions/PermissionCard.vue'
-import { afterDecision, type PermissionDecision, type PermissionRequestView } from '@demicodes/web-ui/permissions/types'
-import { moveRequest, queuedRequests, rootRequest, subagentRequest } from '../fixtures/permissions'
+import RequestCard from '@demicodes/web-ui/permissions/RequestCard.vue'
+import {
+  afterDecision,
+  type PermissionDecision,
+  type RequestView,
+} from '@demicodes/web-ui/permissions/types'
+import {
+  allowanceRequest,
+  FIELDS_DIFFER,
+  googleKeyRequest,
+  INVALID_ANSWER,
+  moveRequest,
+  queuedRequests,
+  removedAllowanceRequest,
+  renewalRequest,
+  rootRequest,
+  signInRequest,
+  subagentRequest,
+} from '../fixtures/permissions'
 import { readGalleryEdit } from '../fixtures/blobs'
 import ErrorBlock from '@demicodes/web-ui/agent/blocks/ErrorBlock.vue'
 import ToolShellBlock from '@demicodes/web-ui/agent/blocks/ToolShellBlock.vue'
@@ -196,20 +212,54 @@ const stepPlaceCases = stepPlaces()
  * deny that one) and says what the product would tell the agent; Show Again
  * brings the requests back.
  */
-const permissionSpecimens = reactive([
-  { variant: 'one request', fixture: () => [rootRequest()], requests: [rootRequest()] },
-  { variant: 'a queue of three', fixture: queuedRequests, requests: queuedRequests() },
-  { variant: 'a subagent asked', fixture: () => [subagentRequest()], requests: [subagentRequest()] },
-  { variant: 'two categories', fixture: () => [moveRequest()], requests: [moveRequest()] },
+const permissionSpecimens = reactive<
+  {
+    variant: string
+    fixture: () => RequestView[]
+    requests: RequestView[]
+    /** What the backend refused the last credential answer for; a new answer clears it, Show Again brings `refusal` back. */
+    error: string | null
+    refusal: string | null
+  }[]
+>([
+  { variant: 'one request', fixture: () => [rootRequest()], requests: [rootRequest()], error: null, refusal: null },
+  { variant: 'a queue of three', fixture: queuedRequests, requests: queuedRequests(), error: null, refusal: null },
+  { variant: 'a subagent asked', fixture: () => [subagentRequest()], requests: [subagentRequest()], error: null, refusal: null },
+  { variant: 'two categories', fixture: () => [moveRequest()], requests: [moveRequest()], error: null, refusal: null },
+  { variant: 'credential · one hidden field, an hour proposed', fixture: () => [googleKeyRequest()], requests: [googleKeyRequest()], error: null, refusal: null },
+  { variant: 'credential · a visible and a hidden field, 30 days proposed', fixture: () => [signInRequest()], requests: [signInRequest()], error: null, refusal: null },
+  { variant: 'credential · renewal of a saved one', fixture: () => [renewalRequest()], requests: [renewalRequest()], error: null, refusal: null },
+  { variant: 'credential · the values refused', fixture: () => [googleKeyRequest()], requests: [googleKeyRequest()], error: INVALID_ANSWER, refusal: INVALID_ANSWER },
+  { variant: 'credential · other fields than the saved ones', fixture: () => [renewalRequest()], requests: [renewalRequest()], error: FIELDS_DIFFER, refusal: FIELDS_DIFFER },
+  { variant: 'allowance', fixture: () => [allowanceRequest()], requests: [allowanceRequest()], error: null, refusal: null },
+  { variant: 'allowance · the credential was removed', fixture: () => [removedAllowanceRequest()], requests: [removedAllowanceRequest()], error: null, refusal: null },
+  {
+    variant: 'a queue of all three kinds',
+    fixture: () => [rootRequest(), googleKeyRequest(), allowanceRequest()],
+    requests: [rootRequest(), googleKeyRequest(), allowanceRequest()],
+    error: null,
+    refusal: null,
+  },
 ])
 function decidePermission(
-  requests: PermissionRequestView[],
+  requests: RequestView[],
   id: string,
   decision: PermissionDecision,
-): PermissionRequestView[] {
-  productWould(decision === 'allow'
-    ? 'Allow the Categories and Tell Each Agent That Asked'
-    : 'Tell the Agent the Request Was Denied')
+): RequestView[] {
+  const kind = requests.find((request) => request.id === id)?.kind
+  productWould(
+    kind === 'credential'
+      ? decision === 'allow'
+        ? 'Save the Credential and Tell the Agent'
+        : 'Tell the Agent the User Declined'
+      : kind === 'allowance'
+        ? decision === 'allow'
+          ? 'Allow the Conversation to Use the Credential'
+          : 'Tell the Agent the Use Was Not Allowed'
+        : decision === 'allow'
+          ? 'Allow the Categories and Tell Each Agent That Asked'
+          : 'Tell the Agent the Request Was Denied',
+  )
   return afterDecision(requests, id, decision)
 }
 /** A receipt specimen's name: what the message is. */
@@ -240,7 +290,7 @@ const dockSpecimens = reactive([
   {
     variant: 'offline card over chips · Resume waits for the primary Host, and goes after a move',
     asks: false,
-    requests: [] as PermissionRequestView[],
+    requests: [] as RequestView[],
     chips: true,
     offline: true,
     device: true,
@@ -255,10 +305,10 @@ const dockSpecimens = reactive([
     device: true,
     host: 'Old Laptop',
   },
-  { variant: 'chips alone', asks: false, requests: [] as PermissionRequestView[], chips: true, offline: false, device: false, host: 'Old Laptop' },
+  { variant: 'chips alone', asks: false, requests: [] as RequestView[], chips: true, offline: false, device: false, host: 'Old Laptop' },
 ])
 // The product session opens with the root's request waiting, above its chips.
-const sessionRequests = ref<PermissionRequestView[]>([rootRequest()])
+const sessionRequests = ref<RequestView[]>([rootRequest()])
 // A first message the server never confirmed. Retry sends it again with the
 // same id; this time it arrives and its turn runs.
 const deliveryFlow = useTurnFlow({ id: 'gallery-delivery' })
@@ -338,7 +388,7 @@ function resetWindows(): void {
   exhibitTerminalId.value = firstRunningTerminalId(terminals)
 }
 // The Agents panel open while a request waits: the card stands over the panel's lower part.
-const coverRequests = ref<PermissionRequestView[]>([rootRequest()])
+const coverRequests = ref<RequestView[]>([rootRequest()])
 const coverOpen = ref(true)
 const coverAgentId = ref<string | null>(firstRunningSubagentId(agents))
 const coverBlocks = transcriptDemoBlocks()
@@ -1679,8 +1729,8 @@ onBeforeUnmount(() => {
       </GallerySection>
 
       <GallerySection
-        title="PermissionCard"
-        note="An agent’s command needs the user’s permission (permissions.md): the oldest request waits above the composer, below the transcript and over the dock’s chips, while the transcript and the composer stay usable. It says what the conversation would be allowed, the command the agent ran, the subagent that ran it, what a grant allows, and which one of how many it is. A command that needs two categories, such as a move into a project on a device the conversation lacks, asks for both at once, with each category’s title and what it allows. Allow for This Conversation grants the request’s categories and decides every request they complete; Deny decides this one, and the next takes its place. A category the user’s command set no longer declares shows its id."
+        title="RequestCard"
+        note="An agent’s command needs the user’s answer (permissions.md, credentials.md): the oldest request waits above the composer, below the transcript and over the dock’s chips, while the transcript and the composer stay usable. It says what the conversation would be allowed, the command the agent ran, the subagent that ran it, what a grant allows, and which one of how many it is. A command that needs two categories, such as a move into a project on a device the conversation lacks, asks for both at once, with each category’s title and what it allows. Allow for This Conversation grants the request’s categories and decides every request they complete; Deny decides this one, and the next takes its place. A category the user’s command set no longer declares shows its id. A credential request (Save a Credential) shows the credential’s name, the agent’s reason and one input per field under its label, a hidden one with an eye that shows what was typed, and Keep until, with the agent’s proposal chosen; Save waits until every field has a value, and Decline answers the agent that the user declined. A renewal of a saved credential says Update the Credential and asks for its fields empty. A refusal of the values shows under the form, which keeps what was typed. An allowance request asks to let the conversation use a stored credential; one for a credential the user removed says Removed and offers only Don’t Allow."
       >
         <div class="specimen-stack">
           <GallerySpecimen
@@ -1690,14 +1740,15 @@ onBeforeUnmount(() => {
             wide
           >
             <div class="w-full max-w-[44rem]">
-              <PermissionCard
+              <RequestCard
                 v-if="specimen.requests.length"
                 :requests="specimen.requests"
-                @decide="(id, decision) => (specimen.requests = decidePermission(specimen.requests, id, decision))"
+                :error="specimen.error"
+                @decide="(id, decision) => { specimen.error = null; specimen.requests = decidePermission(specimen.requests, id, decision) }"
               />
               <div v-else class="flex items-center gap-3 text-chrome text-fg-subtle">
                 Every request is decided.
-                <Button size="sm" @click="specimen.requests = specimen.fixture()">Show Again</Button>
+                <Button size="sm" @click="specimen.requests = specimen.fixture(); specimen.error = specimen.refusal">Show Again</Button>
               </div>
             </div>
           </GallerySpecimen>
@@ -1737,7 +1788,7 @@ onBeforeUnmount(() => {
               >
                 <SessionDock>
                   <template v-if="specimen.requests.length" #above>
-                    <PermissionCard
+                    <RequestCard
                       :requests="specimen.requests"
                       @decide="(id, decision) => (specimen.requests = decidePermission(specimen.requests, id, decision))"
                     />
@@ -2967,7 +3018,7 @@ onBeforeUnmount(() => {
             <template #dock>
               <SessionDock>
                 <template v-if="coverRequests.length" #above>
-                  <PermissionCard
+                  <RequestCard
                     :requests="coverRequests"
                     @decide="(id, decision) => (coverRequests = decidePermission(coverRequests, id, decision))"
                   />
