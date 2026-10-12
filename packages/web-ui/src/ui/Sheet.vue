@@ -224,7 +224,8 @@ const panelStyle = computed(() => ({
 
 <style scoped>
 .sheet {
-  max-height: 90dvh;
+  /* 90% of the visible area, the keyboard's part left out (`phone-page.ts`). */
+  max-height: 90%;
   padding-bottom: var(--safe-bottom);
   transform: translateY(var(--sheet-offset, 0px));
   /* A short spring, as a phone's sheet rises and falls. */
