@@ -12,7 +12,7 @@ function found(query: string) {
 test('the filter finds a setting by its label or what people call it, under its section', () => {
   expect(found('dark mode')).toEqual([['general', 'Theme']])
   expect(found('Password')).toEqual([['account', 'Password']])
-  expect(found('font size')).toEqual([['general', 'Transcript text size']])
+  expect(found('font size')).toEqual([['general', 'Message text size']])
 })
 
 test('a section found by its own name lists none of its settings', () => {
