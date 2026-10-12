@@ -130,4 +130,8 @@ export interface UsageLimits {
   accountLabel: string
   windows: SettingsQuotaWindow[]
   autoRefresh: boolean
+  /** A manual refresh runs: the card's button turns and the windows stay as they were. */
+  refreshing?: boolean
+  /** The vendor's words for the last manual refresh that failed, shown under the header until the next answer. */
+  error?: string | null
 }
