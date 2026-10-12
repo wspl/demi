@@ -9,9 +9,8 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import CornerDot from '../ui/CornerDot.vue'
 import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
-import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
-import Popover from '../ui/Popover.vue'
+import ContextMenu from '../ui/ContextMenu.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import FileUploadList from './FileUploadList.vue'
@@ -278,7 +277,6 @@ function openMenu(row: TreeRow | null, event: MouseEvent): void {
 }
 
 function download(path: string): void {
-  menu.close()
   if (props.source.contents)
     downloadUrl(props.source.contents.url(path, { download: true }))
 }
@@ -306,7 +304,6 @@ let pickingFor: string | null = null
 const question = ref<{ directory: string; items: UploadItem[]; clashes: UploadClash[] } | null>(null)
 
 function chooseFiles(directory: string): void {
-  menu.close()
   pickingFor = directory
   picker.value?.click()
 }
@@ -540,22 +537,12 @@ defineExpose({
       />
     </template>
   </div>
-  <Popover
-    :key="menu.menuKey.value"
-    :overlay-store="appOverlayStore"
-    :is-open="menu.isOpen.value"
-    :anchor-x="menu.anchorX.value"
-    :anchor-y="menu.anchorY.value"
-    :anchor-context-el="menu.anchorContextEl.value"
-    :offset="0"
-    sheet
-    @close="menu.close()"
-  >
-    <Menu>
+  <ContextMenu :overlay-store="appOverlayStore" :owner="menu">
+    <template #menu>
       <MenuItem v-if="menuTarget?.kind === 'file'" :icon="Download" label="Download" @select="download(menuTarget.path)" />
       <MenuItem v-else-if="menuTarget" :icon="Upload" label="Upload Files…" @select="chooseFiles(menuTarget.path)" />
-    </Menu>
-  </Popover>
+    </template>
+  </ContextMenu>
   <input ref="picker" type="file" multiple class="hidden" @change="onPicked">
   <UploadConflictDialog
     :is-open="question !== null"

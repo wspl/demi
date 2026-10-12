@@ -5,6 +5,7 @@
  * Gallery: Files › Address Bar, and the New Project dialog's Directory.
  */
 import { computed, ref, watch, type ComputedRef } from 'vue'
+import { stepHighlight } from '../composables/list-highlight'
 import fuzzysort from 'fuzzysort'
 import { compareFileNames } from './file-browser-state'
 import { expandHome, isHiddenName, normalizePath, resolveHostPath } from './paths'
@@ -189,11 +190,11 @@ export function usePathCompletion(options: PathCompletionOptions) {
       return { kind: 'pass' }
     const count = rows.value.length
     if (key === 'ArrowDown') {
-      highlighted.value = highlighted.value < count - 1 ? highlighted.value + 1 : 0
+      highlighted.value = stepHighlight(highlighted.value, 1, count)
       return { kind: 'handled' }
     }
     if (key === 'ArrowUp') {
-      highlighted.value = highlighted.value > 0 ? highlighted.value - 1 : count - 1
+      highlighted.value = stepHighlight(highlighted.value, -1, count)
       return { kind: 'handled' }
     }
     if (key === 'Tab')

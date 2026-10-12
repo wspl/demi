@@ -3,7 +3,7 @@ import { computed, inject, provide, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
 import IconButton from './IconButton.vue'
 import ScrollArea from './ScrollArea.vue'
-import { onKeyStroke } from '@vueuse/core'
+import { useEscapeClose } from '../composables/useEscapeClose'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayInlineKey, useOverlayTarget } from '../overlay/overlayContainer'
@@ -166,12 +166,7 @@ function pressDefault(event: KeyboardEvent): void {
 }
 
 // An Escape a field inside used, to revert its edit or clear its filter, closes nothing.
-onKeyStroke('Escape', (event) => {
-  if (!props.isOpen || container || !props.overlayStore.isTop(id) || event.defaultPrevented)
-    return
-  event.preventDefault()
-  emit('close')
-})
+useEscapeClose(() => props.isOpen && !container && props.overlayStore.isTop(id), () => emit('close'))
 </script>
 
 <template>
