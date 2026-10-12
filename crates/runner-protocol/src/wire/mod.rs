@@ -4,6 +4,7 @@
 mod encoding;
 mod kept;
 mod messages;
+mod pipe_frames;
 mod replies;
 
 pub use encoding::{Timestamp, WireBytes};
@@ -19,6 +20,10 @@ pub use messages::{
     StreamArtifactOwner, VolumeName, WriteExists,
 };
 pub use demi_shared_types::ReadAt;
+pub use pipe_frames::{
+    PIPE_DATA_BYTES, PIPE_IDLE, PipeEnd, PipeFrame, PipeFrameDecoder, PipeFrameError,
+    encode_data, end_frame, idle_frame,
+};
 pub use replies::{FsOk, FsResult, GitOk, GitResult};
 
 use std::time::Duration;

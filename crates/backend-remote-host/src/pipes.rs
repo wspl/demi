@@ -25,7 +25,7 @@ use std::{
 };
 
 use bytes::Bytes;
-use demi_runner_protocol::wire::PipeRef;
+use demi_runner_protocol::wire::{self, PipeRef};
 use futures_util::{Sink, Stream, StreamExt, stream::BoxStream};
 use tokio::{
     sync::{mpsc, watch},
@@ -72,11 +72,10 @@ enum End {
     Device(String),
 }
 
-/// What the ends of one pipe share: its outcome, and whether a source is
-/// there: a writer, a device's `PUT`, or a source this process holds.
+/// What the ends of one pipe share: its outcome, and the connection a
+/// device's sink reads it on.
 struct Core {
     state: watch::Sender<Outcome>,
-    source_arrived: watch::Sender<bool>,
     /// Closes the HTTP connection a device's sink reads the pipe on, once
     /// the device claimed it.
     sink_connection: OnceLock<CancellationToken>,
@@ -137,7 +136,6 @@ impl Core {
     fn new() -> Arc<Self> {
         Arc::new(Self {
             state: watch::Sender::new(Outcome::Open),
-            source_arrived: watch::Sender::new(false),
             sink_connection: OnceLock::new(),
         })
     }
@@ -294,7 +292,6 @@ impl Pipes {
         }
         let sender = slot.sender.take().ok_or(PipeRefusal::AlreadyConnected)?;
         slot.source_arrived = true;
-        slot.core.source_arrived.send_replace(true);
         slot.update_deadline(self.0.arrival);
         Ok(DeviceSource {
             writer: PipeWriter {
@@ -485,7 +482,6 @@ impl Pipe {
             }
             let sender = slot.sender.take().ok_or(PipeError::Taken("source"))?;
             slot.source_arrived = true;
-            slot.core.source_arrived.send_replace(true);
             slot.update_deadline(arrival);
             Ok(PipeWriter {
                 sender: Some(sender),
@@ -497,17 +493,13 @@ impl Pipe {
 
     /// This process owns the source, which counts as arrived, until it takes
     /// the writer or hands the source to a device: an rpc call's standard
-    /// output, whose handler may never write or may hand it on. The sink's
-    /// response opens at once, before the first byte, so a call that prints
-    /// nothing for long outlasts a proxy's limit on an unanswered request
-    /// (`commands.md` § Handle an rpc call); a later failure ends its body.
+    /// output, whose handler may never write or may hand it on.
     pub fn hold_source(&self) -> Result<(), PipeError> {
         self.pipes.with_slot(&self.id, |slot, arrival| {
             if slot.source != End::Open {
                 return Err(PipeError::AlreadyFixed("source"));
             }
             slot.source_arrived = true;
-            slot.core.source_arrived.send_replace(true);
             slot.update_deadline(arrival);
             Ok(())
         })
@@ -822,23 +814,33 @@ impl DeviceSink {
         let _ = self.reader.core.sink_connection.set(connection);
     }
 
-    /// Waits until a source is there, a device's upload, a writer or a
-    /// source this process holds: the response's head goes out only then,
-    /// and a pipe that fails first is the refusal.
-    pub async fn source_arrived(&mut self) -> Result<(), PipeFailure> {
-        let mut arrived = self.reader.core.source_arrived.subscribe();
-        let failed = self.reader.core.failed();
-        tokio::select! {
-            biased;
-            failure = failed => Err(failure),
-            _ = arrived.wait_for(|arrived| *arrived) => Ok(()),
-        }
-    }
-
-    /// The response body. Its end drains the pipe; a response cut short
-    /// fails it.
-    pub fn into_stream(mut self) -> BoxStream<'static, Result<Bytes, PipeFailure>> {
+    /// The response body, which goes out at once, before the source is
+    /// there, in the pipe's frames (`runner.md` § Pipes and output): its
+    /// bytes in data frames, an idle frame after [`wire::PIPE_IDLE`] without
+    /// a frame, so an edge that ends a silent response keeps it, and its end
+    /// in an end frame, with the cause when it failed. Reading the source to
+    /// its end drains the pipe; a response cut short fails it.
+    pub fn into_frames(mut self) -> BoxStream<'static, Bytes> {
         self.reader.abandoned = Abandoned::Fail("sink HTTP response disconnected before EOF");
-        self.reader.into_stream()
+        futures_util::stream::unfold(Some(self.reader), |reader| async move {
+            let mut reader = reader?;
+            let next = tokio::select! {
+                biased;
+                chunk = reader.next() => chunk,
+                () = tokio::time::sleep(wire::PIPE_IDLE) => {
+                    return Some((wire::idle_frame(), Some(reader)));
+                }
+            };
+            Some(match next {
+                Some(Ok(bytes)) => {
+                    let mut frames = bytes::BytesMut::new();
+                    wire::encode_data(&bytes, &mut frames);
+                    (frames.freeze(), Some(reader))
+                }
+                Some(Err(failure)) => (wire::end_frame(&Err(failure.reason().to_owned())), None),
+                None => (wire::end_frame(&Ok(())), None),
+            })
+        })
+        .boxed()
     }
 }

@@ -38,6 +38,7 @@ use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
+use crate::Framed;
 use crate::runner::Watched;
 
 fn device() -> TestDevice {
@@ -171,7 +172,6 @@ async fn an_fs_reply_is_read_as_the_operation_the_caller_asked_for() {
 // A paused clock stands in for the minute the reply may take.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_write_whose_reply_is_overdue_once_its_bytes_left_fails_and_closes_their_connection() {
-    use futures_util::StreamExt as _;
     let device = device();
     let mut link = device.connect(None);
     let host = device.host("/work", Admission::Free);
@@ -187,14 +187,12 @@ async fn a_write_whose_reply_is_overdue_once_its_bytes_left_fails_and_closes_the
     let Inbound::FsWriteFile { input, .. } = link.next().await else {
         panic!("expected a write request")
     };
-    let mut sink = device.pipes().claim_sink(&input.id, TEST_DEVICE).unwrap();
+    let sink = device.pipes().claim_sink(&input.id, TEST_DEVICE).unwrap();
     let connection = CancellationToken::new();
     sink.closes_with(connection.clone());
-    sink.source_arrived().await.unwrap();
     // The runner reads every byte and the end, and never answers, as when
     // its read of the connection stalled before the end reached its file.
-    let read: Vec<Bytes> = sink.into_stream().map(Result::unwrap).collect().await;
-    assert_eq!(read.concat(), b"contents");
+    assert_eq!(Framed::new(sink).read().await, (b"contents".to_vec(), Ok(())));
 
     tokio::time::sleep(Duration::from_secs(59)).await;
     assert!(!write.is_finished(), "the reply may still come");
@@ -1631,61 +1629,6 @@ async fn a_call_stops_on_its_first_cause_releases_its_live_input_and_exits_after
     }
 }
 
-/// A call's standard output opens at once, before its handler first
-/// writes, so a call that prints nothing for long, as a stop that waits for
-/// its command's end, outlasts a proxy's limit on an unanswered request.
-/// Before, the response's head waited for the first byte, and Cloudflare
-/// ended such a stop after 100 s with `pipe refused (524)`.
-#[tokio::test(flavor = "local")]
-async fn a_quiet_calls_standard_output_opens_before_its_first_byte() {
-    let mut commands = CommandSet::new();
-    let released = Rc::new(tokio::sync::Notify::new());
-    let release = released.clone();
-    let handler = TypedRpc::new(move |_: Call<Map<String, Value>>, port: RpcPort| {
-        let released = released.clone();
-        async move {
-            released.notified().await;
-            port.stdout("late").await?;
-            Ok(0)
-        }
-    });
-    commands
-        .register(
-            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
-                .leaf(LeafBuilder::rpc("live", "Waits, then speaks.").bind(handler)),
-        )
-        .unwrap();
-    let device = TestDevice::new(CommandPolicy::new(commands));
-    let mut link = device.connect(None);
-    let job = device
-        .host("/work", Admission::Free)
-        .start_job(job_start("probe live"))
-        .await
-        .unwrap();
-    drain(&mut link).await;
-    let mut call = rpc_call(job.id(), "call");
-    if let Outbound::RpcCall { stdin, .. } = &mut call {
-        *stdin = false;
-    }
-    link.send(call).await;
-    let Inbound::RpcPipes { stdout, .. } = link.next().await else {
-        panic!("the call is handed its stdout pipe")
-    };
-    let mut sink = device.pipes().claim_sink(&stdout.id, TEST_DEVICE).unwrap();
-    tokio::time::timeout(Duration::from_secs(10), sink.source_arrived())
-        .await
-        .expect("the response opens while the handler waits")
-        .unwrap();
-    release.notify_one();
-    let mut body = sink.into_stream();
-    let mut read = Vec::new();
-    while let Some(chunk) = futures_util::StreamExt::next(&mut body).await {
-        read.extend_from_slice(&chunk.unwrap());
-    }
-    assert_eq!(read, b"late");
-    assert_eq!(call_outcome(&mut link).await, (String::new(), 0));
-}
-
 #[tokio::test(flavor = "local")]
 async fn a_call_exits_after_its_standard_output_drained() {
     let mut commands = CommandSet::new();
@@ -1724,14 +1667,8 @@ async fn a_call_exits_after_its_standard_output_drained() {
         drain(&mut link).await.is_empty(),
         "the exit waits for the drain"
     );
-    let mut sink = device.pipes().claim_sink(&stdout.id, TEST_DEVICE).unwrap();
-    sink.source_arrived().await.unwrap();
-    let mut body = sink.into_stream();
-    let mut read = Vec::new();
-    while let Some(chunk) = futures_util::StreamExt::next(&mut body).await {
-        read.extend_from_slice(&chunk.unwrap());
-    }
-    assert_eq!(read, b"hello");
+    let sink = device.pipes().claim_sink(&stdout.id, TEST_DEVICE).unwrap();
+    assert_eq!(Framed::new(sink).read().await, (b"hello".to_vec(), Ok(())));
     assert_eq!(call_outcome(&mut link).await, (String::new(), 3));
 }
 
@@ -1770,10 +1707,8 @@ async fn a_call_that_fails_at_once_keeps_its_standard_output_until_drained() {
         drain(&mut link).await.is_empty(),
         "the exit waits for the drain"
     );
-    let mut sink = device.pipes().claim_sink(&stdout.id, TEST_DEVICE).unwrap();
-    sink.source_arrived().await.unwrap();
-    let mut body = sink.into_stream();
-    assert!(futures_util::StreamExt::next(&mut body).await.is_none());
+    let sink = device.pipes().claim_sink(&stdout.id, TEST_DEVICE).unwrap();
+    assert_eq!(Framed::new(sink).read().await, (Vec::new(), Ok(())));
     assert_eq!(
         call_outcome(&mut link).await,
         ("probe live: refused\n".to_owned(), 1)
