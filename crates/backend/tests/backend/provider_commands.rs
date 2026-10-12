@@ -37,7 +37,23 @@ fn document() -> Value {
                     "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
                     "limit": { "context": 1_048_576, "output": 65_536 }
                 },
-                "gemini-3.8-pro": { "name": "Gemini 3.8 Pro", "limit": { "context": 1_048_576 } }
+                "gemini-3.8-pro": {
+                    "name": "Gemini 3.8 Pro", "tool_call": true,
+                    "modalities": { "input": ["text"], "output": ["text"] },
+                    "limit": { "context": 1_048_576 }
+                },
+                // A video and a speech model, whose output limits exceed
+                // their windows as Veo's and the TTS models' do on
+                // models.dev: no agent works with them.
+                "veo-3.1-lite-generate-preview": {
+                    "name": "Veo 3.1 Lite", "modalities": { "input": ["text"], "output": ["video"] },
+                    "limit": { "context": 480, "output": 8_192 }
+                },
+                "gemini-3.8-flash-preview-tts": {
+                    "name": "Gemini 3.8 Flash TTS", "tool_call": false,
+                    "modalities": { "input": ["text"], "output": ["audio"] },
+                    "limit": { "context": 8_192, "output": 16_384 }
+                }
             }
         }
     })
@@ -147,7 +163,8 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
     assert!(!asked.contains(KEY), "a key reached the transcript: {asked}");
 
     // The model holds every fact models.dev states, as the page saves one,
-    // and the vendor's other model stays.
+    // and the vendor's other model an agent can work with stays; its video
+    // and speech models are not taken in.
     let providers = backend
         .get("/api/providers", Some(&master))
         .await
@@ -162,7 +179,7 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
         json!([
             {
                 "id": "gemini-3.8-pro", "displayName": "Gemini 3.8 Pro", "contextWindow": 1_048_576,
-                "outputLimit": null, "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
+                "outputLimit": null, "thinkingEfforts": [], "acceptedExtensions": [], "fastTier": null
             },
             {
                 "id": "gemini-3.8-flash", "displayName": "Gemini 3.8 Flash", "contextWindow": 1_048_576,

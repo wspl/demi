@@ -383,10 +383,14 @@ fn models_dev_document() -> Value {
             "models": {
                 "deepseek-v4": {
                     "name": "DeepSeek V4", "reasoning": true, "tool_call": true, "attachment": false,
+                    "modalities": { "input": ["text"], "output": ["text"] },
                     "limit": { "context": 128_000, "output": 32_000 },
                     "cost": { "input": 0.3, "output": 1.2, "cache_read": 0.03, "cache_write": 0 }
                 },
-                "deepseek-v4-flash": { "name": "DeepSeek V4 Flash", "limit": { "context": 128_000 } }
+                "deepseek-v4-flash": {
+                    "name": "DeepSeek V4 Flash", "tool_call": true,
+                    "modalities": { "input": ["text"], "output": ["text"] }, "limit": { "context": 128_000 }
+                }
             }
         },
         "minimax": {
@@ -973,6 +977,120 @@ fn setup(missing: &[&str]) -> Value {
     })
 }
 
+/// Google as models.dev lists it: two models an agent can work with, one of
+/// them stating an output limit above its window, and a video and a speech
+/// model whose output limits exceed their windows too, as Veo's and the TTS
+/// models' do.
+fn google_with_media_models() -> Value {
+    let agentic = |name: &str, context: u32, output: u32| {
+        json!({
+            "name": name, "tool_call": true,
+            "modalities": { "input": ["text", "image"], "output": ["text"] },
+            "limit": { "context": context, "output": output }
+        })
+    };
+    json!({
+        "google": {
+            "id": "google", "name": "Google", "npm": "@ai-sdk/google",
+            "models": {
+                "gemini-3.8-flash": agentic("Gemini 3.8 Flash", 1_048_576, 65_536),
+                "gemini-3.8-nano": agentic("Gemini 3.8 Nano", 32_768, 65_536),
+                "veo-3.1-lite-generate-preview": {
+                    "name": "Veo 3.1 Lite", "modalities": { "input": ["text"], "output": ["video"] },
+                    "limit": { "context": 480, "output": 8_192 }
+                },
+                "gemini-3.8-flash-preview-tts": {
+                    "name": "Gemini 3.8 Flash TTS", "tool_call": false,
+                    "modalities": { "input": ["text"], "output": ["audio"] },
+                    "limit": { "context": 8_192, "output": 16_384 }
+                }
+            }
+        }
+    })
+}
+
+// About 0.1 s: a backend and a scripted models.dev, no inference.
+#[tokio::test]
+async fn a_vendor_entry_offers_the_models_an_agent_can_work_with_and_the_page_adds_one_to_them() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_models_dev(vendor.url("/api.json"));
+    let (backend, master) = harness.start_set_up().await;
+    vendor.respond(served(&google_with_media_models()));
+    for _ in 0..4 {
+        vendor.respond(unchanged());
+    }
+    let google = create(
+        &backend,
+        &master,
+        json!({ "source": "vendor", "vendorId": "google", "apiKey": "sk-google" }),
+    )
+    .await;
+
+    // The video and speech models stay out, and an output limit above the
+    // window states none.
+    let catalog = catalog_of(&backend, &master, "").await;
+    let offered: Vec<(&str, Option<u32>, Option<u32>)> = catalog.providers[0]
+        .models
+        .iter()
+        .map(|model| {
+            (
+                model.model.id.as_str(),
+                model.model.context_window,
+                model.model.output_limit,
+            )
+        })
+        .collect();
+    assert_eq!(
+        offered,
+        [
+            ("gemini-3.8-flash", Some(1_048_576), Some(65_536)),
+            ("gemini-3.8-nano", Some(32_768), None)
+        ]
+    );
+
+    // The page adds a model as it does to an entry that follows its
+    // vendor: the vendor's models as the catalog states them, and the new
+    // one, as one complete list.
+    let mut models: Vec<Value> = catalog.providers[0]
+        .models
+        .iter()
+        .map(|model| {
+            let model = &model.model;
+            json!({
+                "id": model.id, "displayName": model.display_name,
+                "contextWindow": model.context_window, "outputLimit": model.output_limit,
+                "thinkingEfforts": model.supported_thinking_efforts.clone().unwrap_or_default(),
+                "acceptedExtensions": model.accepted_extensions, "fastTier": null
+            })
+        })
+        .collect();
+    models.push(configured("gemini-custom"));
+    let added = backend
+        .patch(
+            &format!("/api/providers/{}", google.id),
+            &master,
+            json!({ "models": models }),
+        )
+        .await;
+    assert_eq!(
+        added.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&added.body)
+    );
+    let listed: Vec<String> = added
+        .json::<ProviderAnswer>()
+        .provider
+        .models
+        .expect("the entry keeps its own list")
+        .0
+        .iter()
+        .map(|model| model.id.as_str().to_owned())
+        .collect();
+    assert_eq!(listed, ["gemini-3.8-flash", "gemini-3.8-nano", "gemini-custom"]);
+    backend.close().await;
+}
+
 #[tokio::test]
 async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_saved() {
     let vendor = MockVendor::start().await;
@@ -981,7 +1099,10 @@ async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_
     vendor.respond(served(&json!({
         "google": {
             "id": "google", "name": "Google", "npm": "@ai-sdk/google",
-            "models": { "gemini-3.8-flash": { "name": "Gemini 3.8 Flash", "limit": { "context": 1_048_576 } } }
+            "models": { "gemini-3.8-flash": {
+                "name": "Gemini 3.8 Flash", "tool_call": true,
+                "modalities": { "input": ["text"], "output": ["text"] }, "limit": { "context": 1_048_576 }
+            } }
         }
     })));
     for _ in 0..4 {
