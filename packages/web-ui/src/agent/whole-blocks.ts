@@ -1,5 +1,5 @@
 import { computed, inject, provide, ref, type InjectionKey, type Ref } from 'vue'
-import type { HeldBlock } from '@demicodes/conversation-client'
+import type { HeldBlock, TextArrival } from '@demicodes/conversation-client'
 import { useTranscript } from './edit-selection'
 
 /**
@@ -21,6 +21,12 @@ export function provideBlockReader(reader: () => BlockReader | undefined): void 
 /** Names the block the rows below show, for a row that opens to read it whole. */
 export function provideBlockScope(block: () => HeldBlock | undefined): void {
   provide(scopeKey, block)
+}
+
+/** When each piece of the text of the row's block reached the page, for its fade; none outside a transcript. */
+export function useTextArrivals(): () => readonly TextArrival[] | undefined {
+  const scope = inject(scopeKey, () => undefined)
+  return () => scope()?.arrivals
 }
 
 /**

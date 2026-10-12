@@ -107,7 +107,7 @@ onBeforeUnmount(() => clearTimeout(timer))
 <template>
   <GallerySection
     title="Streaming Text"
-    note="A reply streams in a step at a time, about 22 characters cut on a word, each fading in over 400 ms; the steps come faster as text waits, keeping the view about half a second behind what has arrived, so many steps fade at once and the text settles a few lines at a time, as Claude's own reply does, rather than looking typed. Text that arrives in a burst shows at the fastest pace, 22 characters every 25 ms, slowing as it catches up; what has not shown when the stream ends shows at once, fading as one step."
+    note="A reply streams in a step at a time, about 22 characters cut on a word, each fading in over 400 ms; the steps come faster as text waits, keeping the view about half a second behind what has arrived, so many steps fade at once and the text settles a few lines at a time, as Claude's own reply does, rather than looking typed. Text that arrives in a burst shows at the fastest pace, 22 characters every 25 ms, slowing as it catches up; what has not shown when the stream ends shows at once, fading as one step. A view that mounts while the reply streams, as a new reply's row with its first piece already there or a row scrolled back into view, fades each piece from when the page received it: one received more than 400 ms before shows solid at once, one received 40 ms before is 40 ms into its fade, so no text ever fades in a second time."
   >
     <div class="mb-3 flex flex-wrap items-center gap-3">
       <Segmented v-model="arrival" :options="arrivalOptions" size="sm" />

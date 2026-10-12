@@ -1,4 +1,5 @@
 import { sliceHead } from '@demicodes/utils'
+import type { TextArrival } from '@demicodes/conversation-client'
 
 /**
  * How a streaming reply's text reaches the reader (the gallery's Streaming
@@ -186,6 +187,22 @@ export interface RevealStep {
   start: number
   end: number
   at: number
+}
+
+/**
+ * The steps of a text shown whole up to `shown` at `now`, a step for each
+ * piece that arrived (`arrivals`) less than a fade ago, fading from its
+ * arrival: what a view that mounts on a streaming text shows still fading.
+ */
+export function arrivedSteps(arrivals: readonly TextArrival[], shown: number, now: number): RevealStep[] {
+  const steps: RevealStep[] = []
+  let start = 0
+  for (const { end, at } of arrivals) {
+    if (now - at < STREAM_PACE.fadeMs && start < shown && end > start)
+      steps.push({ start, end: Math.min(end, shown), at })
+    start = end
+  }
+  return steps
 }
 
 /** How a step's text fades in. */

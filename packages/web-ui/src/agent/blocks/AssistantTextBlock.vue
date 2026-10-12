@@ -2,6 +2,7 @@
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import AssistantMessageFooter from './AssistantMessageFooter.vue'
 import type { MessageForkState } from '../message-fork'
+import { useTextArrivals } from '../whole-blocks'
 
 withDefaults(defineProps<{
   content: string
@@ -15,6 +16,8 @@ withDefaults(defineProps<{
 }>(), {
   isStreaming: false,
 })
+
+const arrivals = useTextArrivals()
 </script>
 
 <template>
@@ -22,6 +25,7 @@ withDefaults(defineProps<{
     <StreamedMarkdown
       :content="content"
       :streaming="isStreaming"
+      :arrivals="arrivals()"
       class="text-conversation text-fg-body"
     />
     <AssistantMessageFooter
