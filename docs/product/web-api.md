@@ -632,7 +632,14 @@ POST /api/conversations/c_81/permissions/requests/pr_3k9
 | Route | Body | Does |
 | --- | --- | --- |
 | `GET /api/conversations/:id/permissions` | None | Returns `{ revision, requests }`: the undecided requests, oldest first, each with its categories, one or more ([Several categories](../agent/permissions.md#several-categories)), and its agent as null for the root or `{ number, description }`; a category no longer in the user's command set has its `id` alone |
-| `POST /api/conversations/:id/permissions/requests/:request` | `{ decision: "allow" \| "deny" }` | Decides the request ([Requests](../agent/permissions.md#requests)), sends its message to the agent, and answers 204 |
+| `POST /api/conversations/:id/permissions/requests/:request` | `{ decision: "allow" \| "deny" }`, and for a credential request `credential: { values, keep }` with an allow | Decides the request ([Requests](../agent/permissions.md#requests)), sends its message to the agent, and answers 204 |
+
+Each request carries its `kind`: `permission`, with its categories as above;
+`credential`, a [credential](../agent/credentials.md) the agent asks the
+user to save, with its name, reason, fields `{ name, label, kind }` and the
+keep it proposes; or `allowance`, a stored credential the conversation asks
+to use, with its name. `keep` is `1h`, `1d`, `30d` or `always`; `values` maps
+each field's name to its value, every field required.
 
 A request that is no longer undecided, because another page decided it, an
 Allow of its categories decided it, or a newer request replaced it, answers 404
@@ -641,6 +648,25 @@ conversation's summary. An archived conversation has no requests and
 refuses a decision with 409 `conversation_archived`. The page takes an answer only when its revision is
 higher than the one it holds, since a read and the summary can reach it in
 either order.
+
+## Credentials
+
+The user's [credentials](../agent/credentials.md), which only their owner
+reads and changes:
+
+| Route | Body | Does |
+| --- | --- | --- |
+| `GET /api/credentials` | None | `{ credentials }`: each `{ id, name, note, fields: [{ name, label, kind }], keepUntil, lastUsedAt, createdAt, updatedAt }`, values left out, `keepUntil` null for always |
+| `GET /api/credentials/:id/values` | None | `{ values }`, every field's value, for Settings' reveal; it is logged by name, never by value |
+| `POST /api/credentials` | `{ name, note?, fields: [{ name, label, kind, value }], keep }` | Saves a new one; a taken name is 409 `credential_name_taken` |
+| `PATCH /api/credentials/:id` | Any of `name`, `note`, `fields` (the whole list, a field's `value` left out to keep it), `keep` | Changes it |
+| `DELETE /api/credentials/:id` | None | Removes it and its allowances |
+
+A name has 1 to 80 characters after trimming, a field name 1 to 32 of
+lowercase letters, digits, `_` and `-`, a label 1 to 80, a value up to 64 KiB,
+and a credential one to ten fields. A change reaches the user's other pages
+through the synchronization channel's `credentials` part, which carries no
+value.
 
 ## Device log
 

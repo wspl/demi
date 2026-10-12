@@ -102,6 +102,22 @@ prints it.
 `--json` returns `{ credentials }`, `{ credential }` or `{ saved }`, never a
 secret value.
 
+## Requests and routes
+
+The two cards a credential brings, *Save a credential* for `request` and
+*Allow this conversation to use …* for a stored one, are conversation
+requests as permission requests are ([Requests](permissions.md#requests)):
+the same list, the same yellow mark, read and answered through the same
+routes, each request carrying its `kind`, `permission`, `credential` or
+`allowance` ([Conversation permissions](../product/web-api.md#conversation-permissions)).
+A credential request is answered with its values and how long to keep it,
+`{ decision: "allow", credential: { values, keep } }`, or declined with
+`{ decision: "deny" }`; the command that asked then returns. An agent's
+request for a name already saved asks for new values of the same fields.
+
+Settings › Credentials reads and changes the user's credentials through
+`/api/credentials` ([Credentials](../product/web-api.md#credentials)).
+
 ## Storage and expiry
 
 A credential's fields are sealed as plugin secrets are
