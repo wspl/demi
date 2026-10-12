@@ -67,7 +67,7 @@ pub fn protocol() -> Vec<Root> {
 /// `packages/web/src/api/generated`: every REST request and response body.
 pub fn web() -> Vec<Root> {
     use api::{
-        attachments, auth, cloud, conversations, devices, drafts, error, files, hosts, instructions,
+        attachments, auth, cloud, conversations, credentials, devices, drafts, error, files, hosts, instructions,
         panel,
         permissions,
         plugins, providers, search, settings, sidebar, state, subagents, usage, users, workspaces,
@@ -90,6 +90,11 @@ pub fn web() -> Vec<Root> {
         sends::<settings::PreferencesPatch>(),
         sends::<plugins::PluginSwitch>(),
         sends::<instructions::InstructionsBody>(),
+        receives::<credentials::CredentialList>(),
+        receives::<credentials::CredentialAnswer>(),
+        receives::<credentials::CredentialValues>(),
+        sends::<credentials::NewCredential>(),
+        sends::<credentials::CredentialPatch>(),
         sends::<subagents::SubagentsPatch>(),
         sends::<subagents::NewProfile>(),
         sends::<subagents::ProfilePatch>(),
