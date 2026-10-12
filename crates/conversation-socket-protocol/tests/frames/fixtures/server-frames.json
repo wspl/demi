@@ -367,7 +367,15 @@
       "number": 1,
       "parentSessionId": "root",
       "description": "Runs the tests",
-      "profile": null,
+      "profile": "research",
+      "model": {
+        "provider": "Anthropic",
+        "model": "Claude Sonnet 5.5",
+        "effort": "medium",
+        "fast": false
+      },
+      "round": 1,
+      "forkedFrom": null,
       "phase": "running",
       "startedAt": "2026-09-21T14:13:20.000Z",
       "endedAt": null
@@ -382,6 +390,14 @@
       "parentSessionId": "root",
       "description": "Runs the tests",
       "profile": null,
+      "model": {
+        "provider": "Anthropic",
+        "model": "Claude Opus 5.5",
+        "effort": "off",
+        "fast": true
+      },
+      "round": 2,
+      "forkedFrom": 3,
       "phase": "completed",
       "startedAt": "2026-09-21T14:13:20.000Z",
       "endedAt": "2026-09-21T14:15:00.000Z",

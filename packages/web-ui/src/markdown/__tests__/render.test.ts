@@ -99,7 +99,7 @@ test('inline code that names a file the Host has opens it in its code look; any 
 
 test('a link to an agent shows its mark and opens it; a number the conversation does not have is its text', () => {
   const agents: MessageAgents = {
-    find: (number) => (number === 4 ? { number: 4, description: 'File icons', phase: 'running' } : null),
+    find: (number) => (number === 4 ? { number: 4, description: 'File icons', run: null } : null),
     open: () => {},
   }
   expect(renderMarkdown('I gave the icons to [File icons](agent:4) and the rest to [Fonts](agent:9).', { files, agents }))

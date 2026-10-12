@@ -618,6 +618,7 @@ pub mod store_contract {
             can_spawn_subagents: true,
             closed: None,
             delivered: false,
+            forked_from: None,
         }
     }
 

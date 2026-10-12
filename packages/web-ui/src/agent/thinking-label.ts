@@ -1,6 +1,7 @@
 
-export function formatThinkingDuration(ms: number): string {
-  const s = Math.round(ms / 1000)
+/** A compact elapsed time: `12s`, `2m`, `2m14s`, `1h3m`. */
+export function formatDuration(ms: number): string {
+  const s = Math.max(0, Math.round(ms / 1000))
   if (s < 60)
     return `${s}s`
   const m = Math.floor(s / 60)
@@ -17,12 +18,12 @@ export function thinkingFaceLabel(streaming: boolean, elapsedMs: number | null):
     return 'Thinking'
   if (elapsedMs <= 1000)
     return streaming ? 'Thinking' : 'Thought briefly'
-  return `${streaming ? 'Thinking for' : 'Thought for'} ${formatThinkingDuration(elapsedMs)}`
+  return `${streaming ? 'Thinking for' : 'Thought for'} ${formatDuration(elapsedMs)}`
 }
 
 /** The tail row while the provider is asked, with how long the request has waited. */
 export function providerWaitLabel(elapsedMs: number): string {
   if (elapsedMs <= 1000)
     return 'Requesting'
-  return `Requesting for ${formatThinkingDuration(elapsedMs)}`
+  return `Requesting for ${formatDuration(elapsedMs)}`
 }
