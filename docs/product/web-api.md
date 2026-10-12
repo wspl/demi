@@ -668,8 +668,10 @@ credentials whatever its case (*GitHub token* and *github token* are one
 name), a field name 1 to 32 of
 lowercase letters, digits, `_` and `-`, a label 1 to 80, a value up to 64 KiB,
 and a credential one to ten fields. A change reaches the user's other pages
-through the synchronization channel's `credentials` part, which carries no
-value. Each error's `message` is a sentence for the user, which the page shows as
+through the synchronization channel's `credentials` part, which carries a
+visible field's value and never a secret's. A save, rename or removal also
+raises the permissions revision of each conversation that has a credential
+request of that name waiting, so its card's `renewal` follows. Each error's `message` is a sentence for the user, which the page shows as
 it is: *A value can be at most 64 KiB.*, *“GitHub token” already has other
 fields; answer with the same fields or choose another name.* Errors: 400 `invalid_body` for a malformed body, a new field without a
 value included; 400 `invalid_answer` for a credential request's answer whose
@@ -1276,7 +1278,7 @@ later one is the current value of one part of it that changed:
 | `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |
 | `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
 | `plugins` | `plugins`, the plugin list below | The user turns a plugin on or off |
-| `credentials` | `credentials`, as `GET /api/credentials` lists them, never a value | A credential of the user is saved, changed, removed or expires |
+| `credentials` | `credentials`, as `GET /api/credentials` lists them, a visible field's value included and never a secret's | A credential of the user is saved, changed, removed or expires |
 | `subagents` | `subagents`, the user's [Subagent switch and profiles](#subagents) | The switch is turned on or off; a profile is created, changed, enabled, disabled or deleted |
 | `instructions` | `instructions`, the user's [personal instructions](#instructions) | The user saves them |
 | `plugin` | `plugin`, the plugin's id, and `state`, its user state | The plugin marks its user state changed ([The page](../architecture/plugins.md#the-page)) |
