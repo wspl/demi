@@ -5,7 +5,10 @@ import type { PixelSize } from './thumbnail'
  * How a picture is zoomed and moved in its frame, as an image viewer does
  * it (`file-previews.md` § The media viewer, Zoom and move): the media
  * viewer's window and the File view's image show it through `ImagePreview`.
- * Sizes and points are in the frame's CSS px, from its top-left corner.
+ * Sizes and points are in the frame's CSS px, from its top-left corner. A
+ * picture's `image` size is its actual size in those px, its pixel size over
+ * the display's device pixels per CSS px, and a scale counts from it: 1 is
+ * 100%.
  */
 
 /** The most a picture is enlarged: eight times its actual size. */
@@ -60,6 +63,15 @@ export function clampView(view: ImageView, image: PixelSize, frame: PixelSize): 
     x: clampAxis(view.x, image.width * view.scale, frame.width),
     y: clampAxis(view.y, image.height * view.scale, frame.height),
   }
+}
+
+/**
+ * `view` after the scale it counts from changed by `ratio` (the display's pixel ratio went
+ * from 2 to 1, so the actual size doubled): the picture keeps its size and place on the page, and
+ * so reads another zoom.
+ */
+export function rescaledView(view: ImageView, ratio: number): ImageView {
+  return { ...view, scale: view.scale * ratio }
 }
 
 /** The picture fitted to the frame and centred in it, as it opens. */
