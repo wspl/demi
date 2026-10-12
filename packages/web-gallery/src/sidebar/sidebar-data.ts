@@ -26,45 +26,63 @@ export function demoProjects(): SidebarProject[] {
   return [
     {
       id: 'p-demi',
+      // The same name runs on another device below: both rows name their device before the mark.
       name: 'demi',
-      host: 'alex-mbp',
       hostKind: 'device',
-      state: 'online',
+      device: { kind: 'paired', name: 'alex-mbp', state: 'online' },
+      path: '/Users/alex/Projects/demi'
+    },
+    {
+      id: 'p-demi-mini',
+      name: 'demi',
+      hostKind: 'device',
+      device: { kind: 'paired', name: 'mac-mini', state: 'online' },
       path: '/Users/alex/Projects/demi'
     },
     {
       id: 'p-ledable',
-      // A short name on a long device's name: the device's name takes half of the text and is cut there.
+      // The only project of its name: the mark alone shows its device, whose name shows in its tip.
       name: 'ledable-app',
-      host: 'Alexs-MacBook-Pro.local',
       hostKind: 'device',
-      state: 'online',
+      device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'online' },
       path: '/Users/alex/Projects/ledable-app'
     },
     {
       id: 'p-assets',
-      // A long name on a short device's name: the device's name shows whole and the project's name is cut.
+      // A long name, cut at its end; the device is offline.
       name: 'assetsfactory-render-pipeline',
-      host: 'build-01',
       hostKind: 'device',
-      state: 'offline',
+      device: { kind: 'paired', name: 'build-01', state: 'offline' },
       path: '/srv/assetsfactory-render-pipeline'
     },
     {
       id: 'p-dotfiles',
-      // Both long: the device's name is cut at half of the text, the project's name in the rest;
-      // each shows whole on hover.
+      // A long name on a long device's name, with a namesake on another device: the device's
+      // name is cut at half of the text, the project's name in the rest; each shows whole on hover.
       name: 'dotfiles-and-machine-setup-scripts',
-      host: 'Alexs-MacBook-Pro.local',
       hostKind: 'device',
       // Its runner replaces itself with the server's release.
-      state: 'updating',
+      device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'updating' },
       path: '/Users/alex/dotfiles-and-machine-setup-scripts'
+    },
+    {
+      id: 'p-dotfiles-build',
+      name: 'dotfiles-and-machine-setup-scripts',
+      hostKind: 'device',
+      device: { kind: 'paired', name: 'build-01', state: 'offline' },
+      path: '/home/build/dotfiles-and-machine-setup-scripts'
+    },
+    {
+      id: 'p-old',
+      // Its device was removed since: the mark has no dot.
+      name: 'old-experiments',
+      hostKind: 'device',
+      device: { kind: 'removed' },
+      path: '/Users/alex/old-experiments'
     },
     {
       id: 'p-notebooks',
       name: 'notebooks',
-      host: 'Cloud',
       hostKind: 'cloud',
       path: '/home/demi/notebooks'
     },

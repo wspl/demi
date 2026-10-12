@@ -2,18 +2,19 @@
 import { Folder, FolderOpen, SquarePen } from '@lucide/vue'
 import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import StatusDot from '@demicodes/web-ui/ui/StatusDot.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
-import { hostIcon } from '@demicodes/web-ui/hosts/icons'
-import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '@demicodes/web-ui/devices/state'
+import DeviceMark from './DeviceMark.vue'
+import { projectHostName } from './project-hosts'
 import type { SidebarProject } from './types'
 
-/** A project row: the checkout's name, the host it is on with a device's state, and the fold. */
+/** A project row: the checkout's name, the host it is on as the row's end mark, and the fold. */
 defineProps<{
   project: SidebarProject
+  /** Another project of this name runs on another host: the row names its host in words before the mark. */
+  namesake: boolean
   collapsed: boolean
   /** The keyboard cursor is here. */
   focused: boolean
@@ -32,7 +33,7 @@ const emit = defineEmits<{
   <div
     role="button"
     :aria-expanded="!collapsed"
-    class="group/project flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-0.5 text-chrome text-fg transition-colors duration-200 ease-out phone:h-11 phone:gap-3 phone:rounded-lg phone:pl-3 phone:text-[16px]"
+    class="group/project relative flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-0.5 text-chrome text-fg transition-colors duration-200 ease-out phone:h-11 phone:gap-3 phone:rounded-lg phone:pl-3 phone:text-[16px]"
     :class="[focused ? 'ring-1 ring-inset ring-line-focus' : '']"
     @click="emit('toggle')"
     @contextmenu.prevent="emit('contextmenu', $event)"
@@ -42,12 +43,16 @@ const emit = defineEmits<{
       :size="phone ? ICON_PX.phoneRow : ICON_PX.in28"
       class="shrink-0 text-fg-muted"
     />
-    <!-- The text and the host's mark phone: the mark stands in its own button-sized box. -->
-    <span class="flex min-w-0 flex-1 items-center">
-      <!-- The project's name takes what the device's name leaves; the device's name takes its own
-           width, at most half of the text's, and each is cut at its end. The hover chevron and
-           the gaps around it (4px, 12px, 4px) are not text, so the device's half leaves out half of
-           their 20px. -->
+    <!-- The text, then the host's mark in its own box at the row's end, as a conversation's row
+         ends. The mark stays on hover; New conversation stands to its left, over the end of the
+         text, which gives it the place by the same margin a conversation's title does. -->
+    <span
+      class="flex min-w-0 flex-1 items-center transition-[margin] duration-[80ms] ease-out group-hover/project:mr-6 group-focus-within/project:mr-6 phone:mr-8"
+    >
+      <!-- The project's name takes what the device's name leaves; the device's name, shown only
+           beside a namesake on another device and only while no button shows, takes its own width,
+           at most half of the text's, and each is cut at its end. The hover chevron and the gaps around it (4px, 12px, 4px)
+           are not text, so the device's half leaves out half of their 20px. -->
       <span class="flex min-w-0 flex-1 items-center gap-1">
         <span class="flex min-w-0 flex-1 items-center gap-1">
           <TruncatedText class="font-medium text-fg-emphasis" :text="project.name" />
@@ -57,49 +62,33 @@ const emit = defineEmits<{
             class="text-fg-subtle opacity-0 group-hover/project:opacity-100 phone:opacity-100"
           />
         </span>
-        <TruncatedText
-          v-if="project.hostKind === 'device'"
-          class="max-w-[calc(50%-10px)] flex-[0_1_auto] text-[11px] text-fg-subtle phone:text-[13px]"
-          :text="project.host"
+        <!-- The name stands only where the row shows no button: it gives its place to New
+             conversation while the pointer is over the row, and a phone row, whose button always
+             shows, has none. -->
+        <span
+          v-if="namesake"
+          class="flex min-w-0 max-w-[calc(50%-10px)] flex-[0_1_auto] group-hover/project:hidden group-focus-within/project:hidden phone:hidden"
+        >
+          <TruncatedText class="text-[11px] text-fg-subtle" :text="projectHostName(project)" />
+        </span>
+      </span>
+    </span>
+    <DeviceMark :host="project.hostKind === 'cloud' ? { kind: 'cloud' } : project.device" />
+    <span
+      class="absolute inset-y-0 right-[calc(var(--spacing-hit-sm)+4px)] flex items-center opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto phone:right-9 phone:opacity-100 phone:pointer-events-auto"
+    >
+      <Tooltip content="New conversation" class="flex items-center">
+        <IconButton
+          :icon="SquarePen"
+          :size="phone ? 'lg' : 'sm'"
+          variant="ghost"
+          aria-label="New conversation"
+          tabindex="0"
+          @keydown.enter.stop.prevent="emit('create')"
+          @keydown.space.stop.prevent="emit('create')"
+          @click.stop="emit('create')"
         />
-      </span>
-      <!-- The host's mark stands where New conversation appears, so it keeps the button's inset from the row's edges. -->
-      <span class="grid shrink-0 items-center">
-        <span
-          class="pointer-events-none col-start-1 row-start-1 flex size-hit-sm items-center justify-center text-fg-subtle transition-opacity phone:size-8 duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0 phone:opacity-0"
-        >
-          <component
-            :is="hostIcon({ kind: 'cloud' })"
-            v-if="project.hostKind === 'cloud'"
-            role="img"
-            :aria-label="project.host"
-            :size="phone ? ICON_PX.in32 : ICON_PX.in20"
-          />
-          <!-- A device's state is the small dot, as on DeviceIcon, so a row's status dot is never mistaken for it. -->
-          <StatusDot
-            v-else
-            size="xs"
-            :tone="DEVICE_STATE_TONE[project.state]"
-            :label="DEVICE_STATE_LABEL[project.state]"
-          />
-        </span>
-        <span
-          class="col-start-1 row-start-1 flex items-center justify-self-end opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto phone:opacity-100 phone:pointer-events-auto"
-        >
-          <Tooltip content="New conversation" class="flex items-center">
-            <IconButton
-              :icon="SquarePen"
-              :size="phone ? 'lg' : 'sm'"
-              variant="ghost"
-              aria-label="New conversation"
-              tabindex="0"
-              @keydown.enter.stop.prevent="emit('create')"
-              @keydown.space.stop.prevent="emit('create')"
-              @click.stop="emit('create')"
-            />
-          </Tooltip>
-        </span>
-      </span>
+      </Tooltip>
     </span>
   </div>
 </template>
