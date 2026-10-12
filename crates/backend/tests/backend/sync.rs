@@ -516,7 +516,7 @@ async fn an_entry_reaches_the_page_of_every_user_who_infers_with_it_and_only_a_c
         .iter()
         .map(|entry| entry.provider.label.as_str())
         .collect();
-    assert_eq!(labels, ["device subscription", "Work"]);
+    assert_eq!(labels, ["device", "Work"]);
     assert!(!serde_json::to_string(&seen).unwrap().contains("sk-state"));
     let subscription = details(&seen[0].details);
     assert_eq!(subscription.accounts.len(), 1);

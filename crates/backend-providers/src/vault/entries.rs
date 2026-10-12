@@ -17,7 +17,7 @@ use demi_provider_common::credentials::{
 use demi_shared_types::{Timestamp, WireApi};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
-use demi_web_api_protocol::providers::{ConfiguredModels, CredentialKind, ProviderDto};
+use demi_web_api_protocol::providers::{ConfiguredModels, CredentialKind, ProviderDto, SetupPart};
 use demi_web_api_protocol::settings::InstanceMode;
 use demi_web_api_protocol::text::EndpointUrl;
 use garde::Validate;
@@ -79,8 +79,14 @@ pub enum EntryCredential {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ApiKeyConfig {
+    /// None until the user saves one: the entry is incomplete meanwhile.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(skip)]
-    pub api_key: Secret,
+    pub api_key: Option<Secret>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -120,6 +126,30 @@ impl ProviderEntry {
         }
     }
 
+    /// What the entry lacks to infer, in the order the page lists it
+    /// (`models.md` § A provider is in the list from the start): an API-key
+    /// entry's key, a model when its configured list is empty, and a
+    /// subscription's account. An address is never missing: an entry
+    /// without one uses its family's default. Empty for a complete entry.
+    pub fn missing(&self) -> Vec<SetupPart> {
+        match &self.credential {
+            EntryCredential::ApiKey(config) => [
+                (config.api_key.is_none(), SetupPart::ApiKey),
+                (
+                    config.models.as_ref().is_some_and(|models| models.0.is_empty()),
+                    SetupPart::Models,
+                ),
+            ]
+            .into_iter()
+            .filter_map(|(lacks, part)| lacks.then_some(part))
+            .collect(),
+            EntryCredential::Subscription { active } => match active {
+                Some(_) => Vec::new(),
+                None => vec![SetupPart::Account],
+            },
+        }
+    }
+
     /// A subscription entry's active account.
     pub fn active(&self) -> Option<&CredentialId> {
         match &self.credential {
@@ -142,6 +172,7 @@ impl ProviderEntry {
             wire_api: config.and_then(|config| config.wire_api),
             vendor_id: config.and_then(|config| config.vendor_id.clone()),
             base_url: config.and_then(|config| config.base_url.clone()),
+            has_api_key: config.is_some_and(|config| config.api_key.is_some()),
             models: config.and_then(|config| config.models.clone()),
             created_at: self.created_at,
         }

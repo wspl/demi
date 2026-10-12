@@ -17,7 +17,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use demi_backend_providers::llm::families::{
-    FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
+    FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
 };
 use demi_conversation_socket_protocol::{
     JobModel, JobPhase, ServerFrame, SubagentEvent, SubagentJob,
@@ -262,11 +262,27 @@ pub(crate) async fn tree_on(
     String,
     String,
 ) {
+    tree_among(scripts, harness, demi_backend::families::builtin()).await
+}
+
+/// [`tree_on`], with the tree's families beside the families of `base`.
+pub(crate) async fn tree_among(
+    scripts: &Arc<Scripts>,
+    harness: Harness,
+    base: FamilyRegistry,
+) -> (
+    Harness,
+    TestBackend,
+    Session,
+    crate::support::Paired,
+    String,
+    String,
+) {
     let tree = |process| Tree {
         scripts: scripts.clone(),
         process,
     };
-    let families = demi_backend::families::builtin()
+    let families = base
         .with("tree", tree(false))
         .with("tree-process", tree(true));
     let harness = harness.with_families(families);

@@ -149,8 +149,7 @@ export function providerView(
     providerType: entry.providerType,
     configured: true,
     cliPackage: details?.cliPackage ?? catalog?.cliPackage ?? null,
-    // An API-key entry is created with its key, which is kept until the entry goes.
-    keyConfigured: entry.kind === 'api_key',
+    keyConfigured: entry.hasApiKey,
     vendorId: entry.vendorId,
     baseUrl: entry.baseUrl ?? '',
     wireApi: wireApi(entry.providerType, entry.wireApi),

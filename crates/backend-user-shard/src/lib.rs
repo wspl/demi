@@ -10,6 +10,7 @@ pub mod conversation;
 #[cfg(feature = "testing")]
 pub mod holds;
 pub mod lifecycle;
+pub mod provider_settings;
 pub mod services;
 pub mod shard;
 pub mod sync;

@@ -1,16 +1,16 @@
 //! The user's subagent settings as a tree reads them (`subagents.md`
 //! § Profiles, § Limits, § Managing profiles): the checks a spawn makes
-//! against the settings as they are at that moment, `demi agent profiles`
-//! and `demi agent models`. Nothing here is kept between two reads, so a
+//! against the settings as they are at that moment, and `demi agent
+//! profiles`. Nothing here is kept between two reads, so a
 //! change in settings reaches the next spawn of every tree.
 
 use std::{num::NonZeroU32, rc::Rc};
 
 use demi_agent_tools::{
-    EFFORT_OFF, EntryKind, HostResolver, MenuEntry, NewProfileDraft, Profile, ProfileEdit,
+    EFFORT_OFF, HostResolver, NewProfileDraft, Profile, ProfileEdit,
     SubagentSettings, Unavailable,
 };
-use demi_shared_types::{ModelSelection, NodeId, THINKING_OFF};
+use demi_shared_types::{ModelSelection, THINKING_OFF};
 use futures_util::future::join_all;
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -148,49 +148,6 @@ impl<H: HostResolver> Tree<H> {
     }
 }
 
-/// `demi agent models --json`: what the composer's model menu offers the
-/// user now (`subagents.md` § Managing profiles).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
-pub(crate) struct ModelListing {
-    providers: Vec<ListedEntry>,
-}
-
-/// A provider entry of the menu.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
-struct ListedEntry {
-    id: String,
-    /// The entry's name as Settings shows it.
-    name: String,
-    kind: ListedKind,
-    models: Vec<ListedModel>,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-enum ListedKind {
-    Subscription,
-    ApiKey,
-}
-
-/// A model of the menu.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-struct ListedModel {
-    id: String,
-    name: String,
-    /// The context window in tokens; null when the catalog does not say.
-    window: Option<u32>,
-    efforts: Vec<String>,
-    /// The effort a profile that names none takes: the first one listed.
-    default_effort: Option<String>,
-    /// Whether `--effort off` turns its thinking off.
-    can_turn_off: bool,
-    tiers: Vec<String>,
-    images: bool,
-    /// Whether the calling agent runs on it.
-    current: bool,
-}
-
 /// `demi agent profiles show --json` and the answer of a profile change.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub(crate) struct ProfileAnswer {
@@ -244,15 +201,6 @@ impl Deleted {
 }
 
 impl<H: HostResolver> Tree<H> {
-    /// `demi agent models`: the menu's catalog now, the model `caller` runs
-    /// on marked.
-    pub(crate) async fn models(&self, caller: &NodeId) -> Result<ModelListing, String> {
-        let server = self.server.upgrade().ok_or("the agent server is gone")?;
-        let entries = server.deps.subagents.models().await?;
-        let current = self.node(caller).map(|node| node.session().model());
-        Ok(ModelListing::of(entries, current.as_ref()))
-    }
-
     /// `demi agent profiles show`: the user's profile `name`, enabled or
     /// not, checked now.
     pub(crate) async fn profile(&self, name: &str) -> Result<ProfileAnswer, String> {
@@ -295,129 +243,6 @@ impl<H: HostResolver> Tree<H> {
             name: name.to_owned(),
             deleted: true,
         })
-    }
-}
-
-impl ModelListing {
-    fn of(entries: Vec<MenuEntry>, current: Option<&ModelSelection>) -> Self {
-        let providers = entries
-            .into_iter()
-            .map(|entry| {
-                let models = entry
-                    .models
-                    .into_iter()
-                    .map(|model| ListedModel {
-                        current: current.is_some_and(|current| {
-                            current.provider_id == entry.id && current.model.id == model.id
-                        }),
-                        default_effort: model.efforts.first().cloned(),
-                        id: model.id,
-                        name: model.name,
-                        window: model.window,
-                        efforts: model.efforts,
-                        can_turn_off: model.can_turn_off,
-                        tiers: model.tiers,
-                        images: model.images,
-                    })
-                    .collect();
-                ListedEntry {
-                    id: entry.id,
-                    name: entry.name,
-                    kind: match entry.kind {
-                        EntryKind::Subscription => ListedKind::Subscription,
-                        EntryKind::ApiKey => ListedKind::ApiKey,
-                    },
-                    models,
-                }
-            })
-            .collect();
-        Self { providers }
-    }
-
-    /// The text `demi agent models` prints: each entry's name and kind, then
-    /// a row per model in columns, the calling agent's marked with `*`, as
-    /// is each default effort, and the mark's key last.
-    pub(crate) fn render(&self) -> String {
-        if self.providers.is_empty() {
-            return "The model menu offers no model: the user has no provider entry that can run, or turned every one off in Settings > Providers.\n".to_owned();
-        }
-        let rows: Vec<(&ListedEntry, Vec<[String; 6]>)> = self
-            .providers
-            .iter()
-            .map(|entry| {
-                let rows = entry
-                    .models
-                    .iter()
-                    .map(|model| {
-                        let mut efforts: Vec<String> = model
-                            .efforts
-                            .iter()
-                            .enumerate()
-                            .map(|(index, effort)| {
-                                if index == 0 {
-                                    format!("{effort}*")
-                                } else {
-                                    effort.clone()
-                                }
-                            })
-                            .collect();
-                        if model.can_turn_off {
-                            efforts.push(EFFORT_OFF.to_owned());
-                        }
-                        [
-                            format!("{} {}", if model.current { '*' } else { ' ' }, model.id),
-                            model.name.clone(),
-                            model.window.map_or_else(|| "-".to_owned(), window),
-                            efforts.join(" "),
-                            model.tiers.join(" "),
-                            if model.images { "images" } else { "-" }.to_owned(),
-                        ]
-                    })
-                    .collect();
-                (entry, rows)
-            })
-            .collect();
-        let mut widths = [0; 6];
-        for row in rows.iter().flat_map(|(_, rows)| rows) {
-            for (width, cell) in widths.iter_mut().zip(row) {
-                *width = (*width).max(cell.chars().count());
-            }
-        }
-        let mut text = String::new();
-        for (entry, rows) in rows {
-            let kind = match entry.kind {
-                ListedKind::Subscription => "subscription",
-                ListedKind::ApiKey => "API key",
-            };
-            text.push_str(&format!("{} · {kind}\n", entry.name));
-            for row in rows {
-                // A column no model fills, such as tiers when none has one,
-                // is left out.
-                let line: Vec<String> = row
-                    .iter()
-                    .zip(widths)
-                    .filter(|(_, width)| *width > 0)
-                    .map(|(cell, width)| format!("{cell:width$}"))
-                    .collect();
-                text.push_str(line.join("  ").trim_end());
-                text.push('\n');
-            }
-        }
-        text.push_str("* the model this agent runs on; an effort with * is the model's default\n");
-        text
-    }
-}
-
-/// A context window as a menu shows it: `1M`, `128K`, `1.2M`.
-fn window(tokens: u32) -> String {
-    let scaled = |value: f64, unit: &str| {
-        let text = format!("{value:.1}");
-        format!("{}{unit}", text.strip_suffix(".0").unwrap_or(&text))
-    };
-    match tokens {
-        1_000_000.. => scaled(f64::from(tokens) / 1_000_000.0, "M"),
-        1_000.. => scaled(f64::from(tokens) / 1_000.0, "K"),
-        _ => tokens.to_string(),
     }
 }
 

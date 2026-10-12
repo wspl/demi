@@ -1,19 +1,18 @@
-//! What `demi agent models` and the profile changes of `demi agent
-//! profiles` need of the user's shard (`subagents.md` § Managing profiles):
-//! the composer's model menu as the user has it now, and a command's
-//! change resolved into the body the settings page sends, written by the
-//! same path with the same checks and the same words.
+//! What the profile changes of `demi agent profiles` need of the user's
+//! shard (`subagents.md` § Managing profiles): a command's change resolved
+//! into the body the settings page sends, written by the same path with the
+//! same checks and the same words; and the user's entries with their
+//! catalogs, which `demi providers` lists too.
 
 use demi_agent_tools::{
-    EFFORT_OFF, EntryKind, MenuEntry, MenuModel, ModelChoice, ModelEdit, NewProfileDraft,
-    ProfileEdit, TIER_DEFAULT,
+    EFFORT_OFF, ModelChoice, ModelEdit, NewProfileDraft, ProfileEdit, TIER_DEFAULT,
 };
 use demi_backend_database::StorageError;
 use demi_backend_providers::vault::entries::ProviderEntry;
-use demi_shared_types::{THINKING_OFF, model_reads_images};
+use demi_shared_types::THINKING_OFF;
 use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::ProviderId;
-use demi_web_api_protocol::providers::{Availability, CatalogProvider, CredentialKind};
+use demi_web_api_protocol::providers::{Availability, CatalogProvider};
 use demi_web_api_protocol::settings::Preferences;
 use demi_web_api_protocol::subagents::{NewProfile, ProfilePatch, SubagentProfile};
 
@@ -21,10 +20,10 @@ use super::Shard;
 
 /// The user's provider entries with their catalogs, and the preferences
 /// that hide some of them, read together.
-struct Scope {
-    entries: Vec<ProviderEntry>,
-    catalog: Vec<CatalogProvider>,
-    preferences: Preferences,
+pub(crate) struct Scope {
+    pub(crate) entries: Vec<ProviderEntry>,
+    pub(crate) catalog: Vec<CatalogProvider>,
+    pub(crate) preferences: Preferences,
 }
 
 impl Scope {
@@ -35,6 +34,13 @@ impl Scope {
             && matches!(catalog.availability, Availability::Available {})
     }
 
+    /// The catalog of `entry`, read with the entries.
+    pub(crate) fn catalog_of(&self, entry: &ProviderEntry) -> Option<&CatalogProvider> {
+        self.catalog
+            .iter()
+            .find(|catalog| catalog.provider_id == entry.id)
+    }
+
     fn entry(&self, catalog: &CatalogProvider) -> Option<&ProviderEntry> {
         self.entries
             .iter()
@@ -43,53 +49,6 @@ impl Scope {
 }
 
 impl Shard {
-    /// The composer's model menu now: each entry in the user's scope that
-    /// the user has on and whose catalog can be used, with the models the
-    /// user has on, and none left without a model, as the menu leaves it.
-    pub(crate) async fn model_menu(&self) -> Result<Vec<MenuEntry>, StorageError> {
-        let scope = self.scope().await?;
-        Ok(scope
-            .catalog
-            .iter()
-            .filter(|catalog| scope.offers(catalog))
-            .filter_map(|catalog| {
-                let entry = scope.entry(catalog)?;
-                let models: Vec<MenuModel> = catalog
-                    .models
-                    .iter()
-                    .filter(|model| {
-                        !scope
-                            .preferences
-                            .hides_model(&catalog.provider_id, &model.model.id)
-                    })
-                    .map(|model| MenuModel {
-                        id: model.model.id.clone(),
-                        name: model.model.display_name.clone(),
-                        window: model.model.context_window,
-                        efforts: model.model.efforts(),
-                        can_turn_off: model.model.can_turn_thinking_off(),
-                        tiers: model
-                            .model
-                            .service_tiers
-                            .iter()
-                            .map(|tier| tier.id.clone())
-                            .collect(),
-                        images: model_reads_images(&model.selection.model),
-                    })
-                    .collect();
-                (!models.is_empty()).then(|| MenuEntry {
-                    id: entry.id.as_str().to_owned(),
-                    name: entry.label.clone(),
-                    kind: match entry.kind() {
-                        CredentialKind::Subscription => EntryKind::Subscription,
-                        CredentialKind::ApiKey => EntryKind::ApiKey,
-                    },
-                    models,
-                })
-            })
-            .collect())
-    }
-
     /// Creates the profile a `create` command gives.
     pub(crate) async fn create_drafted_profile(
         &self,
@@ -202,7 +161,7 @@ impl Shard {
     }
 
     /// The user's provider entries, their catalogs and preferences now.
-    async fn scope(&self) -> Result<Scope, StorageError> {
+    pub(crate) async fn scope(&self) -> Result<Scope, StorageError> {
         let services = self.services();
         let owner = services.vault.owner_for(self.user()).await?;
         let entries = services.vault.entries(owner).await?;
@@ -223,26 +182,7 @@ fn named_entry(
     named: &str,
     model: &str,
 ) -> Result<ProviderId, String> {
-    let matching: Vec<&ProviderEntry> = scope
-        .entries
-        .iter()
-        .filter(|entry| entry.id.as_str() == named || entry.label == named)
-        .collect();
-    let entry = match matching.as_slice() {
-        [] => {
-            return Err(format!(
-                "no provider entry is named or has the id \"{named}\"; `demi agent models` lists them"
-            ));
-        }
-        [entry] => *entry,
-        several => {
-            let ids: Vec<&str> = several.iter().map(|entry| entry.id.as_str()).collect();
-            return Err(format!(
-                "several provider entries are named \"{named}\"; give --provider one's id: {}",
-                ids.join(", ")
-            ));
-        }
-    };
+    let entry = super::provider_commands::named(&scope.entries, named)?;
     if scope.preferences.hides_provider(&entry.id) {
         return Err(hidden_entry(&entry.label));
     }
@@ -293,12 +233,12 @@ fn offering_entry(
             if !listing.is_empty() {
                 let entries: Vec<String> = listing.iter().map(|catalog| label(catalog)).collect();
                 return Err(format!(
-                    "model \"{model}\" is offered only by provider entries that cannot run now: {}; `demi agent models` lists the models the user can use",
+                    "model \"{model}\" is offered only by provider entries that cannot run now: {}; `demi providers list` lists the models the user can use",
                     entries.join(", ")
                 ));
             }
             Err(format!(
-                "no provider entry offers the model \"{model}\"; `demi agent models` lists the models the user can use"
+                "no provider entry offers the model \"{model}\"; `demi providers list` lists the models the user can use"
             ))
         }
         several => {
@@ -320,13 +260,13 @@ fn offering_entry(
 /// Why a profile cannot take a model of an entry the user turned off.
 fn hidden_entry(entry: &str) -> String {
     format!(
-        "the provider entry \"{entry}\" is turned off in Settings > Providers; choose a model `demi agent models` lists, or ask the user to turn the entry on"
+        "the provider entry \"{entry}\" is turned off in Settings > Providers; choose a model `demi providers list` lists, or ask the user to turn the entry on"
     )
 }
 
 /// Why a profile cannot take a model the user turned off.
 fn hidden_model(model: &str, entry: &str) -> String {
     format!(
-        "the model \"{model}\" of \"{entry}\" is turned off in Settings > Providers; choose a model `demi agent models` lists, or ask the user to turn it on"
+        "the model \"{model}\" of \"{entry}\" is turned off in Settings > Providers; choose a model `demi providers list` lists, or ask the user to turn it on"
     )
 }
