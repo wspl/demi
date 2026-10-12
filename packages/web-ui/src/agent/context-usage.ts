@@ -155,18 +155,6 @@ function cardPart(part: ContextPart, index: number): ContextCardPart {
       return plain(part.name, true)
     case 'source':
       return plain(SOURCE_LABELS[part.source] ?? part.source)
-    case 'userMessages':
-      return plain('Your messages')
-    case 'agentText':
-      return plain('Agent’s text')
-    case 'thinking':
-      return plain('Thinking')
-    case 'images':
-      return plain('Images and documents')
-    case 'reports':
-      return plain('Reports and agent messages')
-    case 'unattributed':
-      return plain('Unattributed')
   }
 }
 

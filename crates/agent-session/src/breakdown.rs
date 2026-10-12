@@ -1,18 +1,19 @@
 //! What fills the context (`compaction.md` § What fills the context): the
 //! rows of the context card, computed from what the session holds, with no
 //! request to count. Messages is the rest of the estimate after the rows
-//! above it, so the rows add up to the estimate by construction.
+//! above it, so the rows add up to the estimate by construction; it does
+//! not open.
 
 use std::collections::{BTreeMap, HashSet};
 
 use demi_agent_store::media::{ModelView, references};
 use demi_agent_transcript::{
-    estimate::{BlockWeight, block_weight, prompt_tokens, text_tokens, tool_tokens},
-    replay_start, tool_input,
+    estimate::{block_tokens, prompt_tokens, text_tokens, tool_tokens},
+    replay_start,
 };
 use demi_shared_types::{
     Block, ContextBlock, ContextPart, ContextRow, ContextRowKind, INSTRUCTIONS_SOURCE,
-    InstructionEntry, SKILLS_SOURCE, ToolCallBlock, instruction_sections,
+    InstructionEntry, SKILLS_SOURCE, instruction_sections,
 };
 
 use super::{
@@ -20,9 +21,6 @@ use super::{
     core::SessionCore,
     runtime::{PromptLayer, SystemPrompt},
 };
-
-/// What calls that run no `demi` command group are counted under.
-const SHELL_GROUP: &str = "shell";
 
 /// The rows of `core`'s next request with `prompt`, whose text is
 /// `prompt_text`, and whose estimate is `estimate`, in `window`, the window in use, in the card's order, the
@@ -65,17 +63,8 @@ pub(super) fn rows(
             tokens: tool_tokens(tool),
         });
     }
-    let groups: Vec<&str> = prompt
-        .layers
-        .iter()
-        .flat_map(|layer| match layer {
-            PromptLayer::Commands { index, .. } => index.groups.as_slice(),
-            PromptLayer::Text { .. } => &[],
-        })
-        .map(|group| group.path.as_str())
-        .collect();
     for block in &view.blocks {
-        fill.add(block, block_weight(block, &request), &groups);
+        fill.add(block, block_tokens(block, &request));
     }
     fill.rows(estimate, window.map(|window| (window, core.model.model.output_limit)))
 }
@@ -119,51 +108,26 @@ struct Fill {
     skills_tokens: u64,
     sources: BTreeMap<String, u64>,
     summary: u64,
-    user_messages: u64,
-    agent_text: u64,
-    thinking: u64,
-    images: u64,
-    /// Command reports, agent messages and the records of a turn.
-    reports: u64,
-    calls: BTreeMap<String, u64>,
 }
 
 impl Fill {
-    /// Counts `block`, which weighs `weight`; `groups` are the command
-    /// groups of the capability index.
-    fn add(&mut self, block: &Block, weight: BlockWeight, groups: &[&str]) {
+    /// Counts `block`, which weighs `tokens`. Every block no row above
+    /// Messages names is in Messages, the rest of the estimate, which does
+    /// not open: its share is the provider's count less estimates.
+    fn add(&mut self, block: &Block, tokens: u64) {
         match block {
             Block::Context(context) if context.source == INSTRUCTIONS_SOURCE => {
-                self.add_instructions(context, weight.tokens());
+                self.add_instructions(context, tokens);
             }
             Block::Context(context) if context.source == SKILLS_SOURCE => {
-                self.skills_tokens += weight.tokens();
+                self.skills_tokens += tokens;
                 self.skills.extend(skill_parts(&context.text));
             }
             Block::Context(context) => {
-                *self.sources.entry(context.source.clone()).or_default() += weight.tokens();
+                *self.sources.entry(context.source.clone()).or_default() += tokens;
             }
-            Block::CompactionBoundary(_) => self.summary += weight.tokens(),
-            Block::User(_) | Block::Steer(_) => {
-                self.user_messages += weight.text;
-                self.images += weight.media;
-            }
-            Block::Text(_) => self.agent_text += weight.text,
-            Block::Thinking(_) | Block::RedactedThinking(_) => self.thinking += weight.text,
-            Block::ToolCall(call) => {
-                *self.calls.entry(call_group(call, groups)).or_default() += weight.text;
-                self.images += weight.media;
-            }
-            Block::Wakeup(_) => {
-                self.reports += weight.text;
-                self.images += weight.media;
-            }
-            Block::AgentMessage(_)
-            | Block::Resume(_)
-            | Block::Response(_)
-            | Block::Error(_)
-            | Block::Abort(_)
-            | Block::CompactionMarker(_) => self.reports += weight.text,
+            Block::CompactionBoundary(_) => self.summary += tokens,
+            _ => {}
         }
     }
 
@@ -195,36 +159,6 @@ impl Fill {
         .iter()
         .sum::<u64>();
         let messages = estimate.saturating_sub(above);
-        let mut message_parts = vec![
-            ContextPart::UserMessages {
-                tokens: self.user_messages,
-            },
-            ContextPart::AgentText {
-                tokens: self.agent_text,
-            },
-            ContextPart::Thinking {
-                tokens: self.thinking,
-            },
-            ContextPart::Images {
-                tokens: self.images,
-            },
-            ContextPart::Reports {
-                tokens: self.reports,
-            },
-        ];
-        message_parts.extend(
-            self.calls
-                .into_iter()
-                .map(|(group, tokens)| ContextPart::CommandGroup { group, tokens }),
-        );
-        // Parts that add up to more than the rest, as when the provider
-        // counts less than the text estimates, are scaled down to it.
-        let message_parts = ContextPart::scaled_to(message_parts, messages);
-        let attributed: u64 = message_parts.iter().map(ContextPart::tokens).sum();
-        let mut message_parts = largest_first(message_parts);
-        message_parts.push(ContextPart::Unattributed {
-            tokens: messages.saturating_sub(attributed),
-        });
         let instruction_parts = self
             .instructions
             .into_iter()
@@ -242,7 +176,7 @@ impl Fill {
             parts: parts.into_iter().filter(|part| part.tokens() > 0).collect(),
         };
         let mut rows = vec![
-            estimated(ContextRowKind::Messages, messages, message_parts),
+            estimated(ContextRowKind::Messages, messages, Vec::new()),
             estimated(
                 ContextRowKind::SystemPrompt,
                 system_prompt_tokens,
@@ -320,30 +254,4 @@ fn skill_parts(text: &str) -> Vec<ContextPart> {
         rest = &rest[start + end..];
     }
     parts
-}
-
-/// The command group a call runs: the first of `groups` its script names
-/// as a command, such as `demi browser`; `shell` for a script that runs
-/// none; the tool's name for another tool.
-fn call_group(call: &ToolCallBlock, groups: &[&str]) -> String {
-    let input = tool_input(&call.input);
-    let Some(script) = input.get("script").and_then(|script| script.as_str()) else {
-        return call.tool_name.clone();
-    };
-    let words: Vec<&str> = script
-        .split(|c: char| c.is_whitespace() || matches!(c, ';' | '&' | '|' | '(' | ')' | '`'))
-        .filter(|word| !word.is_empty())
-        .collect();
-    for (index, word) in words.iter().enumerate() {
-        if let Some(next) = words.get(index + 1) {
-            let path = format!("{word} {next}");
-            if groups.contains(&path.as_str()) {
-                return path;
-            }
-        }
-        if groups.contains(word) {
-            return (*word).to_owned();
-        }
-    }
-    SHELL_GROUP.to_owned()
 }

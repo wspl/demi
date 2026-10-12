@@ -37,32 +37,8 @@ pub fn text_tokens(text: &str) -> u64 {
 /// § Block estimates): with its bytes, weighed by them, or as the text that
 /// names it, which counts as text.
 pub fn block_tokens(block: &Block, request: &RequestView) -> u64 {
-    block_weight(block, request).tokens()
-}
-
-/// A block's estimate in its two parts: its text's and its media's.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct BlockWeight {
-    /// The estimate of its text, as the request carries it.
-    pub text: u64,
-    /// The weight of the media the request carries with their bytes.
-    pub media: u64,
-}
-
-impl BlockWeight {
-    /// The block's estimate, [`block_tokens`].
-    pub fn tokens(self) -> u64 {
-        self.text + self.media
-    }
-}
-
-/// A block's estimate in `request`, its text's and its media's apart.
-pub fn block_weight(block: &Block, request: &RequestView) -> BlockWeight {
     let (text, media) = block_estimate(block, request);
-    BlockWeight {
-        text: text_tokens(&text),
-        media,
-    }
+    text_tokens(&text) + media
 }
 
 /// The estimate of a tool's definition: its JSON's, as a request declares
