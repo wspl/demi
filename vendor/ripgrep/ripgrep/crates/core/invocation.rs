@@ -44,7 +44,16 @@ impl BufferWriter {
         if buffer.is_empty() {
             return Ok(());
         }
-        let mut output = self.output.lock().unwrap();
+        // A poisoned lock means another worker's write ended the invocation
+        // while it held it, as the exit a closed pipe makes or a
+        // cancellation does: the output has ended, which a worker takes as
+        // a closed pipe and quits on.
+        let Ok(mut output) = self.output.lock() else {
+            return Err(io::Error::new(
+                io::ErrorKind::BrokenPipe,
+                "the invocation's output has ended",
+            ));
+        };
         if output.1 {
             if let Some(separator) = &self.separator {
                 output.0.write_all(separator)?;

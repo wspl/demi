@@ -232,6 +232,9 @@ fn process_dir(
     // using current_dir is a workaround to check leaving directory.
     let mut current_dir: Option<PathBuf> = None;
     while let Some(result) = it.next() {
+        // A walk that prints nothing, such as `find / -name x 2>/dev/null`,
+        // still stops at its next entry once the invocation is cancelled.
+        uucore::context::check_cancelled();
         match WalkEntry::from_walkdir(result, config.follow).map(|entry| entry.with_lexical_root(&root, std::path::Path::new(dir))) {
             Err(err) => {
                 ret = 1;

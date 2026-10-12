@@ -106,4 +106,5 @@ version = "0.11"
 maintainer = "demi-runner"
 patches = [
     "The working directory and the variables that locate git's configuration are the shell job's, through uucore::context",
+    "A parallel walk joins every worker and then ends with the payload of the first that unwound, where upstream's unwrap replaced it with a panic of its own: the embedding's early end from inside a visitor, a closed pipe's exit or a cancellation, reaches the caller as it began",
 ]
