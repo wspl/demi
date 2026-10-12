@@ -39,6 +39,11 @@ const props = withDefaults(defineProps<{
    * the row's content box, and the prefix sits flush with the left edge.
    */
   bare?: boolean
+  /**
+   * The value is wrong or missing: the frame turns red, as a form marks a field
+   * it cannot do without. The words under it are an `InlineError`'s, in the caller's layout.
+   */
+  invalid?: boolean
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: SentenceText
@@ -142,7 +147,7 @@ defineExpose({
       class="flex min-w-0 flex-1 items-center rounded-md ring-1 transition-[box-shadow,background-color] duration-200 ease-out"
       :class="[
       frameHeightClass,
-      bare ? 'bg-transparent ring-transparent' : ['bg-surface-raised', showFocus || isFocused ? 'ring-line-focus' : 'ring-line'],
+      bare ? 'bg-transparent ring-transparent' : ['bg-surface-raised', invalid ? 'ring-on-danger' : showFocus || isFocused ? 'ring-line-focus' : 'ring-line'],
       disabled ? 'cursor-not-allowed opacity-40' : '',
     ]"
       :data-bare="bare ? true : undefined"
@@ -163,6 +168,7 @@ defineExpose({
         :value="modelValue"
         :placeholder="placeholder"
         :disabled="disabled || undefined"
+        :aria-invalid="invalid || undefined"
         class="h-full min-w-0 flex-1 bg-transparent text-chrome text-fg outline-none placeholder:text-fg-subtle"
         :class="inputPadClass"
         @input="input"

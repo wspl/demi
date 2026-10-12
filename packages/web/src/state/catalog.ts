@@ -2,6 +2,7 @@ import type { ModelInfo } from '@demicodes/web-ui/transport/protocol'
 import type {
   SettingsProviderEntry,
   SettingsProviderModel,
+  SettingsSetupPart,
   SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
@@ -97,6 +98,18 @@ export interface Hidden {
   model(providerId: string, modelId: string): boolean
 }
 
+/**
+ * What an incomplete entry lacks, from its catalog's availability
+ * (`models.md` § A provider is in the list from the start); null once it has
+ * everything it needs to try.
+ */
+export function setupOf(catalog: CatalogProvider | undefined): { message: string; missing: SettingsSetupPart[] } | null {
+  const availability = catalog?.availability
+  return availability?.type === 'unavailable' && availability.reason === 'setup'
+    ? { message: availability.message, missing: availability.missing ?? [] }
+    : null
+}
+
 /** What a provider's health says in words, when it says anything. */
 function healthMessage(health: AuthState | RuntimeState): string | undefined {
   return 'message' in health ? health.message : undefined
@@ -134,8 +147,11 @@ export function providerView(
   const details = entry.details.type === 'read' ? entry.details : null
   const auth = details?.auth.status
   const runtime = details?.runtime.status
+  const setup = setupOf(catalog)
   const state =
-    !details || auth === 'error' || runtime === 'error'
+    setup
+      ? 'setup'
+      : !details || auth === 'error' || runtime === 'error'
       ? 'error'
       : auth === 'unauthenticated'
         ? 'signed-out'
@@ -155,10 +171,13 @@ export function providerView(
     wireApi: wireApi(entry.providerType, entry.wireApi),
     apiKey: '',
     modelSource: entry.models ? 'manual' : 'catalog',
-    catalogFetched: catalog?.sourceFetchedAt ?? null,
+    // The Unix epoch is what a list that was never downloaded reports: no time to show.
+    catalogFetched: catalog && Date.parse(catalog.sourceFetchedAt) > 0 ? catalog.sourceFetchedAt : null,
     state,
-    // A healthy provider's messages are notes ("Uses the … API"), not failures.
-    detail: state === 'ready'
+    ...(setup ? { missing: setup.missing } : {}),
+    // A healthy provider's messages are notes ("Uses the … API"), not failures;
+    // an incomplete one says what it lacks on its fields.
+    detail: state === 'ready' || state === 'setup'
       ? undefined
       : entry.details.type === 'failed'
         ? entry.details.message

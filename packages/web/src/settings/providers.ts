@@ -7,11 +7,10 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
-import { defaultEndpointUrl } from '@demicodes/web-ui/settings/provider-defaults'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import {
-  WIRE_API_LABELS,
   type SettingsModelDraft,
+  type SettingsModelMatch,
   type SettingsQuotaRefresh,
   type SettingsModelEditor,
   type SettingsProviderCli,
@@ -25,6 +24,7 @@ import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   loginAnswerSchema,
   loginStartedSchema,
+  modelSearchResultsSchema,
   providerAnswerSchema,
   providerCliSchema,
   testResultSchema,
@@ -46,11 +46,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   const resources = useResources()
   const preferences = usePreferences()
   const product = useProduct()
-  /**
-   * The provider being added: its form shows in the page's detail, and it
-   * joins the list only once it is saved. Choosing another provider drops it.
-   */
-  const draft = ref<ProductProvider | null>(null)
   const modelEditor = ref<SettingsModelEditor | null>(null)
   const edits = ref<Record<string, Partial<SettingsProviderEntry>>>({})
   const manualDrafts = ref<Record<string, SettingsProviderModel[]>>({})
@@ -215,7 +210,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       apiKey: '',
       modelSource: 'catalog',
       catalogFetched: null,
-      state: 'unconfigured',
+      state: 'setup',
       enabled: true,
       models: [],
       accounts: [],
@@ -229,57 +224,42 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     resources.providerDetailOpen = true
   }
 
-  function vendorDraft(vendor: SettingsVendor): ProductProvider {
-    const provider = emptyProvider(crypto.randomUUID(), vendor.name, 'api_key')
-    provider.vendorId = vendor.id
-    provider.baseUrl = vendor.baseUrl ?? ''
-    provider.wireApi = vendor.wireApi
-    provider.logo = vendor.logo
-    return provider
-  }
-
-  /** Opens `provider`'s form in place of any other draft. */
-  function openDraft(provider: ProductProvider): void {
-    if (draft.value) {
-      delete edits.value[draft.value.id]
-    }
-    draft.value = provider
-    select(provider.id)
+  /**
+   * Adding asks only the kind and creates the entry at once: it joins the list
+   * once the channel brings it, selected, and its page shows what it still
+   * lacks (`models.md` § A provider is in the list from the start).
+   */
+  function create(body: CreateProvider): void {
+    const current = lifetime
+    void run('new', { kind: 'saving' }, async (signal) => {
+      const response = await apiRequest('/providers', {
+        method: 'POST',
+        signal,
+        ...jsonBody(body),
+      })
+      const saved = await readResponse(response, providerAnswerSchema)
+      signal.throwIfAborted()
+      await product.until((state) => state.providers.some((entry) => entry.id === saved.provider.id), signal)
+      select(saved.provider.id)
+    }).catch((error) => {
+      if (!current.signal.aborted) {
+        report('Could Not Add the Provider', error)
+      }
+    })
   }
 
   function addProvider(vendor: SettingsVendor): void {
-    openDraft(vendorDraft(vendor))
+    create({ source: 'vendor', vendorId: vendor.id })
   }
-
-  /** Drops the provider being added; nothing of it was saved. */
-  function discardDraft(): void {
-    if (!draft.value || operations.value[draft.value.id]) {
-      return
-    }
-    delete edits.value[draft.value.id]
-    draft.value = null
-  }
-
-  // Choosing another provider leaves the form of the one being added.
-  watch(
-    () => resources.selectedProviderId,
-    (id) => {
-      if (draft.value && id !== draft.value.id) {
-        discardDraft()
-      }
-    },
-  )
 
   function addEndpoint(wireApi: SettingsWireApi): void {
-    const provider = emptyProvider(
-      crypto.randomUUID(),
-      `${WIRE_API_LABELS[wireApi]} API`,
-      'api_key',
+    create(
+      wireApi === 'anthropic-messages'
+        ? { source: 'custom', providerType: 'anthropic' }
+        : wireApi === 'google-generative'
+          ? { source: 'custom', providerType: 'google' }
+          : { source: 'custom', providerType: 'openai', wireApi: wireApi === 'openai-chat' ? 'chat-completions' : 'responses' },
     )
-    provider.wireApi = wireApi
-    provider.baseUrl = defaultEndpointUrl(resources.vendors, wireApi)
-    provider.modelSource = 'manual'
-    openDraft(provider)
   }
 
   function modelConfig(model: SettingsModelDraft): ConfiguredModel {
@@ -297,58 +277,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         : null,
       fastTier: model.fastTier,
     }
-  }
-
-  function canPersistDraft(provider: ProductProvider): boolean {
-    return (
-      !!provider.apiKey &&
-      (provider.modelSource !== 'manual' || provider.models.length > 0)
-    )
-  }
-
-  async function saveDraft(provider: ProductProvider): Promise<void> {
-    const signal = lifetime.signal
-    const family =
-      provider.wireApi === 'anthropic-messages'
-        ? 'anthropic'
-        : provider.wireApi === 'google-generative'
-          ? 'google'
-          : 'openai'
-    const shared = {
-      label: provider.name,
-      apiKey: provider.apiKey,
-      ...(provider.baseUrl ? { baseUrl: provider.baseUrl } : {}),
-      ...(provider.modelSource === 'manual'
-        ? { models: provider.models.map(modelConfig) }
-        : {}),
-    }
-    const body: CreateProvider = provider.vendorId
-      ? { source: 'vendor', vendorId: provider.vendorId, ...shared }
-      : {
-          source: 'custom',
-          providerType: family,
-          ...(family === 'openai'
-            ? { wireApi: provider.wireApi === 'openai-chat' ? 'chat-completions' : 'responses' }
-            : {}),
-          ...shared,
-        }
-    const response = await apiRequest('/providers', {
-      method: 'POST',
-      signal,
-      ...jsonBody(body),
-    })
-    const saved = await readResponse(response, providerAnswerSchema)
-    signal.throwIfAborted()
-    provider.apiKey = ''
-    preferences.showProvider(saved.provider.id, provider.enabled)
-    // The new entry's page opens once the channel brings it; the catalog
-    // follows the channel's providers (`web-application.md` § Requests for
-    // one action).
-    await product.until((state) => state.providers.some((entry) => entry.id === saved.provider.id), signal)
-    if (draft.value?.id === provider.id) {
-      draft.value = null
-    }
-    select(saved.provider.id)
   }
 
   async function patch(
@@ -371,13 +299,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     provider: SettingsProviderEntry,
     changes: Partial<SettingsProviderEntry>,
   ): void {
-    const adding = draft.value?.id === provider.id ? draft.value : null
     if (changes.enabled !== undefined) {
-      if (adding) {
-        adding.enabled = changes.enabled
-      } else {
-        preferences.showProvider(provider.id, changes.enabled)
-      }
+      preferences.showProvider(provider.id, changes.enabled)
       return
     }
     const busy = operations.value[provider.id]
@@ -391,19 +314,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       void running.get(provider.id)?.then(() => change(provider, {}))
       return
     }
-    if (adding) {
-      Object.assign(adding, changes)
-      if (!canPersistDraft(adding)) {
-        delete edits.value[provider.id]
-        return
-      }
-    }
     perform(provider.id, { kind: 'saving' }, async (signal) => {
-      if (adding) {
-        await saveDraft(adding)
-        delete edits.value[provider.id]
-        return
-      }
       if (changes.modelSource === 'manual') {
         manualDrafts.value[provider.id] = provider.models.map((model) => ({
           ...model,
@@ -459,19 +370,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     for (let pending = running.get(provider.id); pending; pending = running.get(provider.id)) {
       await pending
     }
-    const adding = draft.value?.id === provider.id ? draft.value : null
-    if (adding) {
-      adding.models = models
-      if (!canPersistDraft(adding)) {
-        return
-      }
-    }
     await run(provider.id, { kind: 'saving' }, async (signal) => {
       signal.throwIfAborted()
-      if (adding) {
-        await saveDraft(adding)
-        return
-      }
       await patch(provider, { models: models.map(modelConfig) })
       delete manualDrafts.value[provider.id]
       delete edits.value[provider.id]
@@ -483,6 +383,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     model: SettingsModelDraft,
     original: SettingsProviderModel | null,
   ): Promise<void> {
+    // An entry that follows its vendor's list starts a list of its own from it
+    // (the vendor's copy of a model gives way to the one added), so adding removes none.
     const models = original
       ? provider.models.map((entry) =>
           entry.id === original.id
@@ -493,18 +395,44 @@ export const useProviderSettings = defineStore('provider-settings', () => {
             : entry,
         )
       : [
-          ...provider.models,
+          ...provider.models.filter((entry) => provider.modelSource !== 'catalog' || entry.id !== model.id),
           {
             ...model,
             enabled: true,
           },
         ]
-    try {
-      await saveModels(provider, models)
-    } catch (error) {
-      report('Could Not Save the Model', error)
-      throw error
-    }
+    // A refusal is the dialog's own, shown under its fields; it is no toast too.
+    await saveModels(provider, models)
+  }
+
+  /**
+   * The models.dev models `query` matches, filled from the entry's own vendor
+   * where it lists them (`web-api.md` § Model configuration and provider
+   * inspection); the backend reads its kept copy, so every keystroke may ask.
+   */
+  async function searchModels(
+    providerId: string,
+    query: string,
+    signal: AbortSignal,
+  ): Promise<SettingsModelMatch[]> {
+    const response = await apiRequest(
+      `/models/search?q=${encodeURIComponent(query)}&entry=${encodeURIComponent(providerId)}`,
+      { signal },
+    )
+    const found = await readResponse(response, modelSearchResultsSchema)
+    return found.results.map((match) => ({
+      ref: match.ref,
+      vendor: match.vendor,
+      model: {
+        id: match.id,
+        name: match.displayName,
+        contextWindow: match.contextWindow,
+        outputLimit: match.outputLimit,
+        efforts: match.thinkingEfforts,
+        extensions: match.acceptedExtensions?.map((extension) => `.${extension}`) ?? null,
+        fastTier: null,
+      },
+    }))
   }
 
   /**
@@ -876,7 +804,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       lifetime.abort()
       lifetime = new AbortController()
       closeLogin()
-      draft.value = null
       edits.value = {}
       modelEditor.value = null
       manualDrafts.value = {}
@@ -900,8 +827,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     refreshingUsage,
     usageFailures,
     providers,
-    draft,
-    discardDraft,
     testing,
     refreshing,
     login,
@@ -917,6 +842,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     accountAction,
     saveModel,
     saveModels,
+    searchModels,
     submitCode,
     refreshUsage,
     loadCli,
