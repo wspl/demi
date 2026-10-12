@@ -25,6 +25,10 @@ export const galleryBlobs = {
   screenshot: fixture('5c'.repeat(32), '/fixtures/preview/photo.png', { width: 480, height: 300 }),
   /** A 360 × 2400 capture of a whole page. */
   fullPage: fixture('9f'.repeat(32), '/fixtures/preview/page-full.png', { width: 360, height: 2400 }),
+  /** A 480 × 300 screenshot with a white background, as a phone's settings list. */
+  whiteScreen: fixture('7a'.repeat(32), '/fixtures/preview/screen-white.png', { width: 480, height: 300 }),
+  /** A 480 × 300 screenshot with a dark background. */
+  darkScreen: fixture('8b'.repeat(32), '/fixtures/preview/screen-dark.png', { width: 480, height: 300 }),
   /** A 480 × 300 chart. */
   chart: fixture('3d'.repeat(32), '/fixtures/preview/photo-before.png', { width: 480, height: 300 }),
   /** A 48 × 48 icon, smaller than a preview card. */
