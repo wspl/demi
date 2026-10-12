@@ -4,33 +4,49 @@ import { useOverlay } from '../../composables/useOverlay'
 import { createOverlayStore } from '../overlayStore'
 import { usePinnedOpen } from '../pinnedOpen'
 
-// A dialog in a catalog host, as the Dialog wires it: it joins the overlay
-// store (and so answers Escape as the top layer) unless it is pinned open.
+// A dialog or popover in a catalog host joins the overlay store (and so answers
+// Escape as the top layer) unless it is pinned open as the host renders.
 // Reactive state and an effect scope only; milliseconds.
 
-/** A dialog's layer wiring, the way Dialog.vue does it. */
-function dialog(options: { hosted: boolean; open: boolean }) {
+/** A dialog's or popover's layer wiring, the way Dialog.vue and Popover.vue do it. */
+function surface(options: { host: 'none' | 'mounting' | 'mounted'; open: boolean }) {
   const store = createOverlayStore()
   const isOpen = ref(options.open)
+  // A host's element exists only once the host has mounted, after its content is set up.
+  const host = ref<object | undefined>(options.host === 'mounted' ? {} : undefined)
   let id = ''
   const scope = effectScope()
   scope.run(() => {
-    const pinned = usePinnedOpen(() => isOpen.value, options.hosted)
+    const pinned = usePinnedOpen(() => isOpen.value, options.host === 'none' ? null : host)
     id = useOverlay(store, () => (pinned.value ? false : isOpen.value), () => {})
   })
-  return { store, isOpen, isTop: () => store.isTop(id), stop: () => scope.stop() }
+  return {
+    store,
+    isOpen,
+    mountHost: () => (host.value = {}),
+    isTop: () => store.isTop(id),
+    stop: () => scope.stop(),
+  }
 }
 
-test('a dialog the user opens in a catalog host is the top layer, so Escape closes it', async () => {
-  const live = dialog({ hosted: true, open: false })
+test('a surface the user opens in a catalog host is the top layer, so Escape closes it', async () => {
+  const live = surface({ host: 'mounting', open: false })
+  live.mountHost()
   live.isOpen.value = true
   await nextTick()
   expect(live.isTop()).toBe(true)
   live.stop()
 })
 
-test('a dialog pinned open in a catalog host owns no layer, until it is closed and opened again', async () => {
-  const pinned = dialog({ hosted: true, open: true })
+test('a surface mounted open after the host stands, as a context menu keyed to each opening is, is the top layer', () => {
+  const menu = surface({ host: 'mounted', open: true })
+  expect(menu.isTop()).toBe(true)
+  menu.stop()
+})
+
+test('a surface pinned open as the host first renders owns no layer, until it is closed and opened again', async () => {
+  const pinned = surface({ host: 'mounting', open: true })
+  pinned.mountHost()
   expect(pinned.store.hasExclusive()).toBe(false)
   pinned.isOpen.value = false
   await nextTick()
@@ -40,8 +56,8 @@ test('a dialog pinned open in a catalog host owns no layer, until it is closed a
   pinned.stop()
 })
 
-test('outside a catalog host a dialog open from the start is the top layer', () => {
-  const page = dialog({ hosted: false, open: true })
+test('outside a catalog host a surface open from the start is the top layer', () => {
+  const page = surface({ host: 'none', open: true })
   expect(page.isTop()).toBe(true)
   page.stop()
 })
