@@ -292,7 +292,11 @@
 /* Interface text keeps the platform's own smoothing, as the system's own
    controls draw theirs; reading text (`.markdown-body`) is antialiased, and
    so is all of a transcript, whose rows sit between its paragraphs and drew
-   heavier than them with the platform's smoothing. */
+   heavier than them with the platform's smoothing.
+   The page is the app's: it fills the window and never scrolls, only the
+   scrollers inside it do; the phone layout narrows it to what the keyboard
+   leaves visible (below). This rule is the one place that says so: a
+   product's own stylesheet that repeats it after this file undoes that. */
 html,
 body,
 #app {
@@ -318,7 +322,11 @@ body,
 /* The phone layout: the page is the app's and stays put. It never zooms (a
    picture zooms itself), never rubber-bands or pulls as a whole, shows no
    tap highlight, and is exactly the visible area, the on-screen keyboard's
-   part left out (`phone-page.ts`); only the scrollers inside it scroll. */
+   part left out (`phone-page.ts`); only the scrollers inside it scroll.
+   The body is that area: it stands where the visual viewport stands, as
+   tall, and is the containing block of every fixed layer (layout
+   containment), so the work panel, the sheets and the dialogs teleported
+   to it end at the keyboard as the app does. */
 @media (max-width: 767px) {
   html {
     -webkit-tap-highlight-color: transparent;
@@ -330,11 +338,12 @@ body,
     touch-action: pan-x pan-y;
   }
 
-  #app {
+  body {
     position: fixed;
     inset-inline: 0;
     top: var(--app-top, 0px);
     height: var(--app-height, 100dvh);
+    contain: layout;
   }
 }
 
