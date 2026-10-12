@@ -234,7 +234,7 @@ Google entry" in a conversation:
 | `edit <entry>` | Changes the name, the endpoint, or the key with `--api-key-stdin` |
 | `remove <entry>` | Removes the entry, as Settings does |
 | `models search <query>` | The same search as Add Model, each match on one line with its `<vendor>/<model id>`, name, context window, output limit, efforts and files |
-| `models add <entry> [<vendor>/<model id>]` | Adds a model to the entry's configured list, filled from that match; options `--id`, `--name`, `--context`, `--output`, `--efforts`, `--extensions` and `--fast-tier` set or override fields, and without a match they are the whole model. An entry that offers its vendor's list and has none of its own starts its list from the models its vendor offers now, so adding one model removes none, and the answer says so: *Google now keeps its own list of 13 models; it no longer follows models.dev.* |
+| `models add <entry> [<vendor>/<model id>]` | Adds a model to the entry's configured list, filled from that match; options `--id`, `--name`, `--context`, `--output`, `--efforts`, `--extensions` and `--fast-tier` set or override fields, and without a match they are the whole model. An entry that offers its vendor's list and has none of its own starts its list from the models its vendor offers now that an agent can work with (text output, tool calls, as the search offers), each filled as the search fills it, an output limit above the model's window read as none, so adding one model removes none an agent could use, and the answer says so: *Google now keeps its own list of 13 models; it no longer follows models.dev.* |
 | `models edit <entry> <model id>` | Changes the fields its options name |
 | `models remove <entry> <model id>` | Removes the model from the list |
 
