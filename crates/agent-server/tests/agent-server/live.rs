@@ -76,12 +76,7 @@ async fn serving() -> (
     first.next_until(is_pending_steers).await;
     first.send(send("m1", "Serve.")).await;
     first.next_until(is_idle).await;
-    let shell = shells
-        .0
-        .borrow()
-        .clone()
-        .expect("the call made the environment");
-    (server, shell, first, script)
+    (server, shells.last(), first, script)
 }
 
 #[tokio::test(flavor = "local", start_paused = true)]

@@ -31,6 +31,7 @@ fn a_page_accepts_frame_fields_it_does_not_know() {
     assert_eq!(
         decode(&frame),
         ServerFrame::Phase {
+            subagent_id: None,
             phase: demi_shared_types::SessionPhase::Idle
         }
     );

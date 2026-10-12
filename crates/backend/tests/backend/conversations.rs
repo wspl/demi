@@ -254,12 +254,14 @@ impl Socket {
             let frame = self.frame().await;
             let idle = match &frame {
                 ServerFrame::Phase {
+                    subagent_id: None,
                     phase: SessionPhase::Running,
                 } => {
                     ran = true;
                     false
                 }
                 ServerFrame::Phase {
+                    subagent_id: None,
                     phase: SessionPhase::Idle,
                 } => ran,
                 _ => false,
@@ -281,6 +283,7 @@ impl Socket {
             match self.frame().await {
                 ServerFrame::AbortResult { .. } => answered = true,
                 ServerFrame::Phase {
+                    subagent_id: None,
                     phase: SessionPhase::Idle,
                 } => idle = true,
                 _ => {}
@@ -906,8 +909,8 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     let mut ran = false;
     let end = loop {
         let message = socket.message().await.expect("the socket stays open");
-        ran |= message.contains(&ServerFrame::Phase { phase: SessionPhase::Running });
-        if ran && message.contains(&ServerFrame::Phase { phase: SessionPhase::Idle }) {
+        ran |= message.contains(&ServerFrame::Phase { subagent_id: None, phase: SessionPhase::Running });
+        if ran && message.contains(&ServerFrame::Phase { subagent_id: None, phase: SessionPhase::Idle }) {
             break message;
         }
     };
@@ -923,7 +926,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     });
     let idle = end
         .iter()
-        .position(|frame| *frame == ServerFrame::Phase { phase: SessionPhase::Idle });
+        .position(|frame| *frame == ServerFrame::Phase { subagent_id: None, phase: SessionPhase::Idle });
     assert!(matches!((completes, idle), (Some(completes), Some(idle)) if completes < idle), "{end:?}");
 
     let sent = &vendor.requests()[0];
@@ -1164,6 +1167,7 @@ async fn a_request_the_vendor_refuses_as_too_large_compacts_and_goes_again_from_
         turn.iter().any(|frame| matches!(
             frame,
             ServerFrame::Phase {
+                subagent_id: None,
                 phase: SessionPhase::Compacting
             }
         )),
@@ -1210,6 +1214,7 @@ fn compacted(turn: &[ServerFrame]) -> bool {
         matches!(
             frame,
             ServerFrame::Phase {
+                subagent_id: None,
                 phase: SessionPhase::Compacting
             }
         )
