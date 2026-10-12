@@ -8,6 +8,7 @@ import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayInlineKey, useOverlayTarget } from '../overlay/overlayContainer'
 import { dialogNestingKey } from '../overlay/dialogNesting'
+import { usePinnedOpen } from '../overlay/pinnedOpen'
 import { DEFAULT_ACTION, useDialogFocus } from '../overlay/dialogFocus'
 import { provideLayerElevation } from '../overlay/layerElevation'
 import { LAYER_Z, provideStacking } from '../overlay/stacking'
@@ -28,7 +29,9 @@ import type { HeadlineText } from './ui-text'
  * own size, with no scrim and no centering.
  * Focus: a dialog over the page takes the focus when it opens, keeps Tab inside
  * while it is the top layer, and gives the focus back when it closes
- * (`useDialogFocus`). One in a catalog host takes no focus.
+ * (`useDialogFocus`). A dialog pinned open in a catalog host (open when it mounts)
+ * is no layer, takes no focus and hears no Escape; once closed and opened again there,
+ * it behaves as the product's: the top layer, with the focus, and Escape closes it.
  * Nesting: a dialog opened from inside another stacks on it; the one beneath stays,
  * Escape and the scrim close only the top, and closing the one beneath takes the
  * stack with it. An Escape a field handled first (it called preventDefault, as a
@@ -91,7 +94,8 @@ const slots = defineSlots<{
   'footer-leading'?(): unknown
 }>()
 
-// A dialog confined to a host container never blocks the page, so it is not exclusive.
+// A dialog confined to a host container and pinned open never blocks the page, so it is not
+// exclusive. One the user opens there is a layer of the page as in the product (`usePinnedOpen`).
 const { container, to: teleportTarget, ready } = useOverlayTarget()
 // Inline: the panel sits in flow at its own size, with no scrim, for a catalog specimen.
 const inline = inject(overlayInlineKey, false)
@@ -106,9 +110,10 @@ provideLayerElevation()
 // A shell or a viewer is a page of its own: on a narrow screen it takes the whole window.
 const fillsWhenNarrow = computed(() => props.size === 'xl' || props.size === 'full')
 
+const pinned = usePinnedOpen(() => props.isOpen, container !== null)
 const id = useOverlay(
   props.overlayStore,
-  () => (container ? false : props.isOpen),
+  () => (pinned.value ? false : props.isOpen),
   () => {
     if (props.isOpen)
       emit('close')
@@ -136,14 +141,12 @@ watch(
 provideStacking(() => LAYER_Z + depth.value)
 
 const panel = ref<HTMLElement>()
-// A dialog in a catalog host is a specimen beside others, not the page's: it leaves the focus alone.
-if (!container) {
-  useDialogFocus({
-    panel,
-    isOpen: () => props.isOpen,
-    isTop: () => props.overlayStore.isTop(id),
-  })
-}
+// A dialog pinned open in a catalog host is a specimen beside others, not the page's: it leaves the focus alone.
+useDialogFocus({
+  panel,
+  isOpen: () => props.isOpen && !pinned.value,
+  isTop: () => props.overlayStore.isTop(id),
+})
 
 /** A control Return acts on itself, so it never reaches the default button. */
 const OWN_RETURN = 'button, a[href], select, textarea, [contenteditable]:not([contenteditable=false]), [role=button], [role=link]'
@@ -154,7 +157,7 @@ const footer = ref<HTMLElement>()
 function pressDefault(event: KeyboardEvent): void {
   if (event.key !== 'Enter' || event.defaultPrevented || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey)
     return
-  if (!container && !props.overlayStore.isTop(id))
+  if (!pinned.value && !props.overlayStore.isTop(id))
     return
   if (event.target instanceof Element && event.target.closest(OWN_RETURN) !== null)
     return
@@ -166,7 +169,7 @@ function pressDefault(event: KeyboardEvent): void {
 }
 
 // An Escape a field inside used, to revert its edit or clear its filter, closes nothing.
-useEscapeClose(() => props.isOpen && !container && props.overlayStore.isTop(id), () => emit('close'))
+useEscapeClose(() => props.isOpen && !pinned.value && props.overlayStore.isTop(id), () => emit('close'))
 </script>
 
 <template>
