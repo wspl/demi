@@ -30,7 +30,7 @@ withDefaults(defineProps<{
 
 <style scoped>
 .fold-chevron {
-  transition: color var(--fold-ms) ease-out, rotate var(--fold-ms) ease-out;
+  transition: color var(--fold-ms) ease-out, opacity var(--fold-ms) ease-out, rotate var(--fold-ms) ease-out;
 }
 
 .fold-chevron.is-open {

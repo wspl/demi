@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ChevronRight, FileText, RefreshCw, UserRound } from '@lucide/vue'
+import { FileText, RefreshCw, UserRound } from '@lucide/vue'
 import type { ContextRowKind, ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import ProviderQuota from '../settings/ProviderQuota.vue'
 import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
+import FoldChevron from '../ui/FoldChevron.vue'
+import { ICON_PX } from '../ui/icon-metrics'
 import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
@@ -200,11 +202,7 @@ const ringColor = computed(() => {
               <span class="ml-auto tabular-nums text-fg-muted">
                 {{ formatTokens(filled) }}<template v-if="usage.window"> / {{ formatTokens(usage.window) }} ({{ percent }})</template>
               </span>
-              <ChevronRight
-                :size="12"
-                class="shrink-0 self-center text-fg-subtle transition-transform"
-                :class="listOpen ? 'rotate-90' : ''"
-              />
+              <FoldChevron :open="listOpen" :size="ICON_PX.in20" class="self-center text-fg-subtle" />
             </button>
             <span v-else class="text-fg-muted">Context usage unavailable</span>
           </div>
