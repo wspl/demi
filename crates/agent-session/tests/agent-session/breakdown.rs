@@ -146,7 +146,7 @@ fn assert_adds_up(usage: &ContextUsage) {
     }
 }
 
-// Three sessions and six scripted requests: a few milliseconds.
+// Two sessions and four scripted requests: a few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn the_rows_add_up_to_the_estimate_anchored_after_a_compaction_and_when_the_rest_exceeds_it() {
     let provider = ScriptedRuntime::new([
@@ -162,26 +162,11 @@ async fn the_rows_add_up_to_the_estimate_anchored_after_a_compaction_and_when_th
     session.send(text("Open the page"), turn("t1")).unwrap().await.unwrap();
 
     // Anchored: Messages is the provider's count less the rows above it,
-    // its parts the blocks' estimates and the gap Unattributed.
+    // and it does not open.
     let anchored = session.context_usage().await.unwrap();
     assert_eq!(anchored.tokens, 60_050);
     assert_adds_up(&anchored);
-    let messages = row(&anchored, ContextRowKind::Messages).unwrap();
-    assert_eq!(
-        messages.parts.iter().map(ContextPart::tokens).sum::<u64>(),
-        messages.tokens
-    );
-    let named: Vec<&ContextPart> = messages.parts.iter().collect();
-    assert!(
-        named.iter().any(|part| matches!(part, ContextPart::CommandGroup { group, .. } if group == "demi browser")),
-        "{named:?}"
-    );
-    assert!(matches!(named.last(), Some(ContextPart::Unattributed { .. })), "{named:?}");
-    // The responses' usage is a turn record.
-    assert!(
-        named.iter().any(|part| matches!(part, ContextPart::Reports { .. })),
-        "{named:?}"
-    );
+    assert!(row(&anchored, ContextRowKind::Messages).unwrap().parts.is_empty());
     let parts = |kind| -> Vec<String> {
         row(&anchored, kind)
             .unwrap()
@@ -195,7 +180,6 @@ async fn the_rows_add_up_to_the_estimate_anchored_after_a_compaction_and_when_th
                 ContextPart::Instruction { entry: InstructionEntry::File { path }, .. } => path.clone(),
                 ContextPart::Skill { name, .. } => name.clone(),
                 ContextPart::Source { source, .. } => source.clone(),
-                other => format!("{other:?}"),
             })
             .collect()
     };
@@ -236,34 +220,4 @@ async fn the_rows_add_up_to_the_estimate_anchored_after_a_compaction_and_when_th
     assert_eq!(exceeded.tokens, 10);
     assert_adds_up(&exceeded);
     assert!(row(&exceeded, ContextRowKind::Messages).is_none(), "{exceeded:#?}");
-    let above: u64 = exceeded
-        .rows
-        .iter()
-        .filter(|row| row.estimated)
-        .map(|row| row.tokens)
-        .sum();
-
-    // A provider that counts 100 tokens more than those rows for a message
-    // the text estimates weigh at 4,000: the parts are scaled down to the
-    // 100, and nothing is left Unattributed.
-    let provider = ScriptedRuntime::new([Turn::Events(vec![
-        event::text("Done."),
-        event::response(above + 100, 0),
-    ])]);
-    let store = MemoryTreeStore::new();
-    let session = start_on(&provider, runtime(&long), &store, SessionConfig::default()).await;
-    session.send(text(&"y".repeat(16_000)), turn("t1")).unwrap().await.unwrap();
-    let scaled = session.context_usage().await.unwrap();
-    assert_adds_up(&scaled);
-    let messages = row(&scaled, ContextRowKind::Messages).unwrap();
-    assert_eq!(messages.tokens, 100, "{scaled:#?}");
-    assert_eq!(messages.parts.iter().map(ContextPart::tokens).sum::<u64>(), 100);
-    assert!(
-        matches!(messages.parts.first(), Some(ContextPart::UserMessages { tokens }) if *tokens > 90),
-        "{messages:?}"
-    );
-    assert!(
-        !messages.parts.iter().any(|part| matches!(part, ContextPart::Unattributed { .. })),
-        "{messages:?}"
-    );
 }
