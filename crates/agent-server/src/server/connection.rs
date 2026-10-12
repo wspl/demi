@@ -264,15 +264,17 @@ impl<H: HostResolver> Connection<H> {
             }
         };
         tree.attach(self.id, self.outbox.clone(), from, edge);
-        // The user will likely send next: its request is known but for its
-        // input (`claude-code.md` § Preparing a process ahead).
-        tree.root().session().prepare_ahead(Ahead::Opened);
         // The usage follows the handshake, since the window in use is asked
         // for (`compaction.md` § Context estimate). It is the estimate at
         // the moment it is sent, so a later change still arrives after it.
         if let Some(usage) = tree.root().session().held_context_usage().await {
             self.send(ServerFrame::ContextUsage { usage });
         }
+        // The open is answered. The user will likely send next: its request
+        // is known but for its input, and readying it may read the media
+        // the open read none of (`claude-code.md` § Preparing a process
+        // ahead).
+        tree.root().session().prepare_ahead(Ahead::Opened);
         if let Some(continuation) = continuation
             && let Err(error) = tree.continue_restored(continuation).await
         {

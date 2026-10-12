@@ -68,8 +68,7 @@ pub async fn activate(
     subscription(entry)?;
     let selected = assembly
         .vault()
-        .control()
-        .set_active_credential(entry.id.clone(), account.clone())
+        .set_active_account(&entry.id, account.clone())
         .await?;
     if !selected {
         return Err(AccountRefusal::NotFound);
@@ -97,8 +96,7 @@ pub async fn remove(
     }
     let active = assembly
         .vault()
-        .control()
-        .remove_credential(entry.id.clone(), account.clone())
+        .remove_account(entry, account.clone())
         .await?;
     assembly.quotas().forget_account(&entry.id, &account);
     assembly.vault().mark_changed(&entry.owner);
