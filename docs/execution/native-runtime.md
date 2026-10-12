@@ -712,7 +712,8 @@ no message moves.
 ```text
 Service                         Runner                           Backend
   |<-- POST /v1/messages ----------|  opened after GET /v1/info      |
-  |--- {c1, {"tabs":"changed"}} -->|--- package_message ------------>|--> plugin of the package
+  |--- {id 4, c1, {"tabs":..}} --->|--- package_message ------------>|--> plugin of the package
+  |<-- {id 4} ---------------------|  taken by the connection        |
 ```
 
 - Once it has checked a new service's catalog, and before it admits a call,
@@ -721,16 +722,19 @@ Service                         Runner                           Backend
   gives the handler its message sender when the service starts, and a
   message sent before the stream opens waits for it.
 - The service writes each message as one standard output record, JSON with
+  `id`, its own number for the message, as on the numbers stream;
   `conversation`, a conversation name it received in a
-  [command context](#command-context), and `message`, a JSON value of at most
-  64 KiB whose meaning is the package's and its plugin's. The stream carries
-  no answers.
+  [command context](#command-context); and `message`, a JSON value of at
+  most 64 KiB whose meaning is the package's and its plugin's.
 - The runner sends each record to the backend as `package_message` on its
-  connection, adding the service's package, in the order the service wrote
-  them. It reads the next record only when its connection has room for it,
-  and while it has no connection it reads none, so a service that writes
-  faster than the backend takes waits in its write, and nothing piles up in
-  between. A service that would have said the same thing twice says it once:
+  connection, adding the service's package, one after another in the order
+  the service wrote them, and answers each `{id}` once its connection took
+  it, or `{id, error}` once the runner stopped waiting for a connection. A
+  service has at most 32 messages unanswered, as on the numbers stream, and
+  its next send waits for an answer; while the runner has no connection it
+  takes none. So a service that writes faster than the backend reads waits
+  in its send, and nothing piles up in between. A service that would have
+  said the same thing twice says it once:
   the browser keeps the conversations whose tabs changed since its last
   message and writes one message for each, so a page that loads and sets its
   title and favicon in a burst costs one message, not three.
@@ -743,13 +747,16 @@ Service                         Runner                           Backend
   saying so, whoever sees it end says it in the service's place, and the
   plugin receives a `package_lost` request for the conversation:
   - **The service ends** without releasing its conversations, as a crash
-    does: the runner sends `package_lost` with the package for each
-    conversation it routed an invocation of the service for.
+    does: the runner sends `package_lost` with the package.
   - **The runner starts anew**, its hello naming another instance than the
-    device's last, or **a Cloud stops**: the backend sends `package_lost`
-    to each plugin with [panel tabs](../architecture/plugins.md#panel-kinds)
-    in a conversation that reaches the device, for that conversation, since
-    whatever its package kept there went with the runner.
+    device's last, or **a Cloud stops**: the backend sees it, for every
+    package.
+
+  For each package that lost its state, the backend sends `package_lost` to
+  the plugin whose commands bind it, if that plugin has
+  [panel tabs](../architecture/plugins.md#panel-kinds) in a conversation
+  that reaches the device, once for each such conversation. A plugin that
+  shows nothing of a conversation has nothing to correct.
 
 ### User streams
 
