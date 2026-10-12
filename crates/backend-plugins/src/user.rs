@@ -567,6 +567,7 @@ impl UserPlugins {
             conversation: asked.conversation.clone(),
             node: asked.node,
             cwd: asked.cwd,
+            paths: asked.paths,
             turn: asked.turn,
             seen: asked.seen,
         };
@@ -914,6 +915,8 @@ pub struct ContextAsk {
     pub node: NodeId,
     /// The node's working directory.
     pub cwd: String,
+    /// How the node's Host writes its paths.
+    pub paths: demi_host_interface::HostPaths,
     /// The node's current input turn.
     pub turn: TurnId,
     /// The text of the source's own blocks the model receives, oldest

@@ -11,7 +11,7 @@ use std::rc::Weak;
 use demi_agent_tools::{ContextAnswer, ContextSource, NodeContext};
 use demi_backend_host_access::conversation_of;
 use demi_backend_host_access::plugin_files::ReadFilesError;
-use demi_plugin_interface::project::{self, join};
+use demi_plugin_interface::project;
 use demi_plugin_interface::{HostFile, HostRead};
 use demi_shared_types::{INSTRUCTIONS_SOURCE, InstructionEntry, TurnId};
 use demi_web_api_protocol::ids::ConversationId;
@@ -147,8 +147,13 @@ async fn search(
     cwd: &str,
     cancel: &CancellationToken,
 ) -> Result<Vec<ProjectFile>, ReadFilesError> {
-    let ancestors = project::ancestors(cwd);
-    let mut reads = project::root_reads(&ancestors);
+    let paths = shard
+        .host_paths(conversation)
+        .await
+        .map_err(|error| ReadFilesError::Access(error.into()))?;
+    let join = |directory: &str, name: &str| paths.join(directory, name);
+    let ancestors = paths.ancestors(cwd);
+    let mut reads = project::root_reads(paths, &ancestors);
     for directory in &ancestors {
         for name in NAMES {
             reads.push(HostRead {
