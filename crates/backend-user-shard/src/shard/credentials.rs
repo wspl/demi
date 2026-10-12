@@ -68,8 +68,10 @@ impl Shard {
 
     /// The user's credentials as a page lists them, in name order.
     pub async fn credential_list(&self) -> Result<Vec<CredentialDto>, StorageError> {
-        let stored = self.services().control.user_credentials(self.user().clone()).await?;
-        Ok(stored.iter().map(|credential| credential.dto()).collect())
+        self.services()
+            .control
+            .user_credential_list(self.user().clone(), self.vault_seal())
+            .await
     }
 
     /// `POST /credentials`.
@@ -96,7 +98,7 @@ impl Shard {
             .create_user_credential(self.user().clone(), record, self.vault_seal())
             .await??;
         self.mark_credentials();
-        Ok(created.dto())
+        Ok(created)
     }
 
     /// `PATCH /credentials/:id`: a rename seals the values again under the
@@ -134,7 +136,7 @@ impl Shard {
             .change_user_credential(self.user().clone(), id, change, self.vault_seal())
             .await??;
         self.mark_credentials();
-        Ok(changed.dto())
+        Ok(changed)
     }
 
     /// `GET /credentials/:id/values`, for Settings' reveal; it is logged by
