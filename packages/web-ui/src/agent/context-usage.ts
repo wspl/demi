@@ -1,8 +1,8 @@
-import type { ContextPart, ContextRowKind, ContextUsage, InstructionEntry, PromptLayerKind } from '@demicodes/protocol'
-import { baseName } from '../files/paths'
+import type { Ref } from 'vue'
+import { useLocalStorage } from '@vueuse/core'
+import type { ContextRowKind, ContextUsage } from '@demicodes/protocol'
 import type { SettingsQuotaWindow } from '../settings/types'
 import { formatPercent } from '../ui/percent'
-import { instructionRows } from './instructions'
 
 /** How full the context is, from 0 to 1 of its window, full at most; null without a window. */
 export function contextRatio(usage: ContextUsage | null): number | null {
@@ -48,39 +48,12 @@ const ROW_LABELS: Record<ContextRowKind, string> = {
   freeSpace: 'Free space',
 }
 
-const LAYER_LABELS: Record<PromptLayerKind, string> = {
-  identity: 'Identity',
-  harnessGuide: 'Harness guide',
-  toolRules: 'Tool rules',
-  modelIdentity: 'Model identity',
-  profileInstructions: 'Instructions for this subagent',
-}
-
-/** What a context source is called where it is not a plugin's id. */
-const SOURCE_LABELS: Record<string, string> = {
-  execution: 'Execution context',
-}
-
-/** One part a row of the context card opens into. */
-export interface ContextCardPart {
-  key: string
-  label: string
-  /** The label is a command, a skill or a tool's name, set as code. */
-  code: boolean
-  tokens: number | null
-  /** The instructions entry the part is, which a click opens. */
-  entry: InstructionEntry | null
-  /** The full path of a file, as the part's tip. */
-  path: string | null
-}
-
-/** One row of the context card. */
+/** One row of the context card, one figure. */
 export interface ContextCardRow {
   kind: ContextRowKind
   label: string
   tokens: number
   estimated: boolean
-  parts: ContextCardPart[]
 }
 
 /**
@@ -95,68 +68,44 @@ export function contextFilled(usage: ContextUsage): number {
   return Math.max(usage.tokens, filled)
 }
 
+/** The rows that stand after what the request carries, in this order. */
+const TRAILING_ROWS: readonly ContextRowKind[] = ['compactionBuffer', 'freeSpace']
+
 /**
- * The context card's rows for `usage`, each with its parts. The Instructions
- * row lists `instructions`, what the newest instructions block holds, in its
- * order (`instructions.md` § What the card lists), each with the estimate the
- * session gave its file.
+ * The context card's rows for `usage`: what the request carries largest
+ * first, equal sizes in the frame's order, then Compaction buffer, then Free
+ * space (`compaction.md` § What fills the context).
  */
-export function contextCardRows(
-  usage: ContextUsage,
-  instructions: readonly InstructionEntry[],
-): ContextCardRow[] {
-  return usage.rows.map((row) => ({
-    kind: row.kind,
-    label: ROW_LABELS[row.kind],
-    tokens: row.tokens,
-    estimated: row.estimated,
-    parts: row.kind === 'instructions' ? instructionParts(row.parts, instructions) : row.parts.map(cardPart),
-  }))
+export function contextCardRows(usage: ContextUsage): ContextCardRow[] {
+  const rows = usage.rows.map((row) => ({ ...row, label: ROW_LABELS[row.kind] }))
+  const carried = rows.filter((row) => !TRAILING_ROWS.includes(row.kind)).toSorted((a, b) => b.tokens - a.tokens)
+  const trailing = TRAILING_ROWS.flatMap((kind) => rows.filter((row) => row.kind === kind))
+  return [...carried, ...trailing]
 }
 
-function instructionParts(parts: readonly ContextPart[], entries: readonly InstructionEntry[]): ContextCardPart[] {
-  return instructionRows(entries).map((row) => {
-    const part = parts.find((part) => part.kind === 'instruction' && sameEntry(part.entry, row.entry))
-    return {
-      key: row.path ?? 'personal',
-      label: row.label,
-      code: false,
-      tokens: part?.tokens ?? null,
-      entry: row.entry,
-      path: row.path,
-    }
-  })
-}
-
-function sameEntry(a: InstructionEntry, b: InstructionEntry): boolean {
-  return a.kind === 'personal' ? b.kind === 'personal' : b.kind === 'file' && a.path === b.path
-}
-
-function cardPart(part: ContextPart, index: number): ContextCardPart {
-  const plain = (label: string, code = false): ContextCardPart => ({
-    key: `${part.kind}:${index}`,
-    label,
-    code,
-    tokens: part.tokens,
-    entry: null,
-    path: null,
-  })
-  switch (part.kind) {
-    case 'prompt':
-      return plain(LAYER_LABELS[part.layer])
-    case 'tool':
-      // The definition of the one tool the model calls, apart from the calls of it under Messages.
-      return plain(part.name === 'shell' ? 'Shell tool' : `${part.name} tool`)
-    case 'commandGroup':
-      return plain(part.group, true)
-    case 'instruction':
-      return { ...plain(part.entry.kind === 'personal' ? 'Personal instructions' : baseName(part.entry.path)), entry: part.entry }
-    case 'skill':
-      return plain(part.name, true)
-    case 'source':
-      return plain(SOURCE_LABELS[part.source] ?? part.source)
+/**
+ * The room before compaction runs: the threshold, the window less the
+ * compaction buffer, less the estimate, never below zero; null without a
+ * window (`compaction.md` § What fills the context).
+ */
+export function untilCompaction(usage: ContextUsage): number | null {
+  if (!usage.window) {
+    return null
   }
+  const buffer = usage.rows.find((row) => row.kind === 'compactionBuffer')?.tokens ?? 0
+  return Math.max(0, usage.window - buffer - usage.tokens)
 }
+
+/**
+ * Whether the context card lists its rows: closed at first, then as the user
+ * last left it, kept in the browser for the next card.
+ */
+export function useContextListOpen(): Ref<boolean> {
+  return useLocalStorage(CONTEXT_LIST_KEY, false)
+}
+
+/** Where the browser keeps whether the context card lists its rows. */
+export const CONTEXT_LIST_KEY = 'demi-context-list-open'
 
 const SHARE = new Intl.NumberFormat('en-US', {
   style: 'percent',

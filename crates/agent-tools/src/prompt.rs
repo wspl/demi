@@ -5,7 +5,6 @@
 
 use demi_agent_session::{PromptLayer, SystemPrompt};
 use demi_host_interface::CapabilityIndex;
-use demi_shared_types::PromptLayerKind;
 
 use crate::input::DESCRIPTION;
 
@@ -48,39 +47,29 @@ pub fn system_prompt(
     added: Option<&str>,
 ) -> SystemPrompt {
     let mut layers = Vec::new();
-    for (kind, text) in [
-        (PromptLayerKind::Identity, identity),
-        (PromptLayerKind::HarnessGuide, guide),
-    ] {
+    for text in [identity, guide] {
         if !text.trim().is_empty() {
-            layers.push(PromptLayer::Text {
-                kind,
-                text: text.to_owned(),
-            });
+            layers.push(PromptLayer::Text(text.to_owned()));
         }
     }
-    layers.push(PromptLayer::Text {
-        kind: PromptLayerKind::ToolRules,
-        text: format!("{}\n- Tool description: {DESCRIPTION}", TOOL_RULES.join("\n")),
-    });
+    layers.push(PromptLayer::Text(format!(
+        "{}\n- Tool description: {DESCRIPTION}",
+        TOOL_RULES.join("\n")
+    )));
     if !index.is_empty() {
-        layers.push(PromptLayer::Commands {
-            text: format!("Capabilities:\n\n{}", index.text()),
-            index: index.clone(),
-        });
+        layers.push(PromptLayer::Commands(format!(
+            "Capabilities:\n\n{}",
+            index.text()
+        )));
     }
-    layers.push(PromptLayer::Text {
-        kind: PromptLayerKind::ModelIdentity,
-        text: format!(
-            "This conversation runs on {} ({}, {}). If asked which model you are, answer with this.",
-            model.name, model.family, model.id
-        ),
-    });
+    layers.push(PromptLayer::Text(format!(
+        "This conversation runs on {} ({}, {}). If asked which model you are, answer with this.",
+        model.name, model.family, model.id
+    )));
     if let Some(added) = added.filter(|added| !added.trim().is_empty()) {
-        layers.push(PromptLayer::Text {
-            kind: PromptLayerKind::ProfileInstructions,
-            text: format!("Instructions for this subagent:\n\n{added}"),
-        });
+        layers.push(PromptLayer::Text(format!(
+            "Instructions for this subagent:\n\n{added}"
+        )));
     }
     SystemPrompt { layers }
 }
