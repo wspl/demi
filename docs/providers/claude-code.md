@@ -164,8 +164,14 @@ when someone wants to know. The backend keeps no table of it. A machine that is
 offline or asleep has no answer, and showing a version is never a reason to
 wake one.
 
-A newer version does not interrupt work. A machine that already has a usable
-version keeps answering with it while the newer one installs beside it; the
+A newer version does not interrupt work, and neither does reading the
+pointer: a start on a machine that has a usable version never waits for the
+read, which runs in the background when the kept answer is older than six
+hours or none is kept, as after the backend starts, and is used by a later
+start. So a start does not pay the read's 0.7–0.9 s, and a start while the
+release host is unreachable still runs the installed version. A machine that
+already has a usable version keeps answering with it while the newer one
+installs beside it; the
 next CLI process after the install is the newer one. Only a machine with no
 usable version waits for an install. Installing a version removes the others,
 as installing any artifact removes the older ones of its line
@@ -339,7 +345,9 @@ thinking setting.
 - the account's access token on a file descriptor, the process's private
   configuration directory, and an environment with the CLI's
   updater and its automatic compaction turned off (Demi compacts the
-  conversation itself), an MCP tool-output limit of one million tokens so the
+  conversation itself), its telemetry off (`DISABLE_TELEMETRY=1`), which in a
+  Cloud sandbox halved the CLI's start, 1.5–2.0 s to 0.8–0.9 s, with no
+  difference natively, an MCP tool-output limit of one million tokens so the
   CLI does not cut a result Demi sends, `CLAUDECODE` unset so the CLI never
   treats itself as running inside another Claude Code session,
   `CLAUDE_CODE_PROJECT_DIR_NAME` naming the session's directory, and
@@ -408,9 +416,11 @@ shell_exec with input: …]`, under names unlike its tools'.
   text, which the CLI leaves out of the request (an empty text makes the CLI
   render its own), and with the snapshot of the machine the CLI runs on, its
   run directory, platform, shell and kernel release, which the CLI compares
-  with its own and so adds no other. The placement reads them from the
-  machine before each start: the run directory's real path, `uname -s`,
-  `uname -r` and `$SHELL`. The `model` and `date` entries are the CLI's and stay true.
+  with its own and so adds no other. The placement takes them from the
+  runner's connection, not before each start: the runner reports its
+  system, kernel release and `$SHELL` in its hello, and the run directory's
+  real path is resolved once per connection, so a start runs no shell for
+  them. The `model` and `date` entries are the CLI's and stay true.
 - **What cuts or copies history** needs nothing of the CLI: an edit, a retry
   or a resume cuts the blocks, and the next process resumes the file written
   from what remains. A fork copies the blocks with their entries; its file
