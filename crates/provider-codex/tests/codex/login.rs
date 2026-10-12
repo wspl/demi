@@ -17,7 +17,7 @@ use crate::NOW;
 
 /// A provider built to log in: no account yet, over a staged pool.
 fn staged(vendor: &MockVendor, pool: &MemoryCredentialPool) -> CodexProvider {
-    let mut config = CodexConfig::new(None);
+    let mut config = CodexConfig::new(None, crate::releases(vendor));
     config.auth_url = vendor.url("").parse().unwrap();
     let clock = Arc::new(FixedClock(NOW.parse().unwrap()));
     CodexProvider::new(

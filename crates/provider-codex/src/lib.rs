@@ -12,6 +12,7 @@ mod failure;
 mod login;
 mod models;
 mod quota;
+mod releases;
 mod request;
 mod run;
 #[cfg(feature = "testing")]
@@ -43,6 +44,7 @@ use reqwest::Url;
 use crate::{auth::CodexAuth, login::CodexKit, quota::CodexQuota};
 
 pub use failure::read_codex_failure;
+pub use releases::CodexReleases;
 
 /// How failure messages name the vendor.
 const LABEL: &str = "Codex";
@@ -72,6 +74,8 @@ pub struct CodexConfig {
     pub backend_url: Url,
     /// The sign-in service, `https://auth.openai.com` in the product.
     pub auth_url: Url,
+    /// The newest Codex CLI release, the backend's one.
+    pub releases: CodexReleases,
     pub transport: TransportMode,
     /// How long a server-sent events request waits for its response headers.
     pub header_timeout: Duration,
@@ -85,12 +89,14 @@ impl CodexConfig {
     pub const BACKEND_URL: &str = "https://chatgpt.com/backend-api";
     pub const AUTH_URL: &str = "https://auth.openai.com";
 
-    /// The product's configuration of an entry's provider for `account`.
-    pub fn new(account: Option<String>) -> Self {
+    /// The product's configuration of an entry's provider for `account`,
+    /// asking for models with the version `releases` names.
+    pub fn new(account: Option<String>, releases: CodexReleases) -> Self {
         Self {
             account,
             backend_url: Url::parse(Self::BACKEND_URL).expect("the backend URL parses"),
             auth_url: Url::parse(Self::AUTH_URL).expect("the sign-in URL parses"),
+            releases,
             transport: TransportMode::Auto,
             header_timeout: Duration::from_secs(20),
             connect_timeout: Duration::from_secs(10),
@@ -109,7 +115,9 @@ pub struct CodexProvider {
 struct Shared {
     responses_url: Url,
     websocket_url: Url,
+    /// The catalog's address, without the client version.
     models_url: Url,
+    releases: CodexReleases,
     transport: TransportMode,
     header_timeout: Duration,
     connect_timeout: Duration,
@@ -168,7 +176,8 @@ impl CodexProvider {
             shared: Arc::new(Shared {
                 websocket_url: websocket_url(&responses_url),
                 responses_url,
-                models_url: models::models_url(&config.backend_url),
+                models_url: codex_url(&config.backend_url, "/models"),
+                releases: config.releases,
                 transport: config.transport,
                 header_timeout: config.header_timeout,
                 connect_timeout: config.connect_timeout,
@@ -236,6 +245,10 @@ impl Provider for CodexProvider {
 
     fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>> {
         Box::pin(models::list(&self.shared))
+    }
+
+    fn catalog_revision(&self) -> Option<String> {
+        Some(self.shared.releases.version())
     }
 
     fn read_failure(

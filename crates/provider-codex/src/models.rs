@@ -1,7 +1,7 @@
 //! The Codex catalog (`models.md` § The Codex catalog): the account's model
-//! list on the ChatGPT backend, read with the version of the Codex CLI
-//! release the provider was last checked against, because the backend picks
-//! the models it lists by that version.
+//! list on the ChatGPT backend, read with the version of the newest Codex
+//! CLI release ([`CodexReleases`](crate::CodexReleases)), because the
+//! backend picks the models it lists by that version.
 
 use std::num::NonZeroU32;
 
@@ -16,15 +16,14 @@ use serde::{Deserialize, Deserializer};
 
 use crate::{Shared, request::account_headers};
 
-/// The Codex CLI release the provider was last checked against.
-pub(crate) const CLIENT_VERSION: &str = "0.153.4";
-
 /// Codex offers its Fast mode as the `priority` service tier.
 const FAST_TIER: &str = "priority";
 
 /// A fresh read of the account's model list. A request refused with HTTP 401
 /// refreshes the token that was refused, once, and reads again.
 pub(crate) async fn list(shared: &Shared) -> Result<ProviderModelList, CatalogError> {
+    let url = models_url(&shared.models_url, &shared.releases.current());
+    tracing::debug!("reading the Codex catalog at {url}");
     let mut refused_token = None;
     loop {
         let credentials = shared
@@ -36,7 +35,7 @@ pub(crate) async fn list(shared: &Shared) -> Result<ProviderModelList, CatalogEr
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
         let response = shared
             .http
-            .get(shared.models_url.clone())
+            .get(url.clone())
             .headers(headers)
             .send()
             .await
@@ -220,11 +219,10 @@ fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Option<S
     Option::<String>::deserialize(deserializer).map(Some)
 }
 
-/// The catalog request's URL: the models under the backend, with the client
+/// The catalog request's URL: the backend's `models`, with the client
 /// version the backend picks models by.
-pub(crate) fn models_url(backend: &Url) -> Url {
-    let mut url = crate::codex_url(backend, "/models");
-    url.query_pairs_mut()
-        .append_pair("client_version", CLIENT_VERSION);
+fn models_url(models: &Url, version: &str) -> Url {
+    let mut url = models.clone();
+    url.query_pairs_mut().append_pair("client_version", version);
     url
 }

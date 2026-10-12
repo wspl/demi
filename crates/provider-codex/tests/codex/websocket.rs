@@ -47,7 +47,7 @@ fn provider_at(
     idle: Option<Duration>,
     clock: Arc<dyn Clock>,
 ) -> CodexProvider {
-    let mut config = CodexConfig::new(Some(crate::ACCOUNT.into()));
+    let mut config = CodexConfig::new(Some(crate::ACCOUNT.into()), crate::releases(vendor));
     config.backend_url = socket.backend_url().parse().unwrap();
     config.auth_url = vendor.url("").parse().unwrap();
     config.transport = transport;
