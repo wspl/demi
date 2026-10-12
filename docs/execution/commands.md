@@ -429,7 +429,9 @@ ends in a shell; so `demi shell output 17 --raw | head -n 20` prints its
 lines and no error. A call stopped for another reason, such as its job
 exiting, a relayed pipe failing, or the backend shutting down, ends with 1 and
 its cause on stderr. When several causes stop a call, the first is the one
-reported.
+reported. A call whose runner connection ends is stopped as well, and a
+handler that has not ended 5 seconds later is aborted
+([Connection and identity](runner.md#connection-and-identity)).
 
 ## External command clients
 
