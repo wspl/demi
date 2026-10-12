@@ -1683,7 +1683,7 @@ code in the tag's tooltip, *Exit code 1*; one that succeeded shows nothing,
 and one whose command runs shimmers, as long as it runs: also after its call
 returned and the command runs on as one of the conversation's running
 commands, until its end arrives. A command that has run more than 3 seconds
-wears how long, counting up, as a grey tag in that place, *1m32s*, since its
+wears how long, counting up, as a grey tag in that place, *1m 32s*, since its
 title is the agent's own words and takes no time; a shorter one shows
 none, so a quick command does not flash a tag. The tag goes when the command
 ends: a succeeded row shows nothing, a failed or stopped one its tag. The expanded row shows the script highlighted as Bash, in the colors all code shows in
