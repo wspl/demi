@@ -238,7 +238,7 @@ async fn a_read_without_the_allowance_asks_the_user_and_a_removal_needs_the_user
     scripts.root(
         FIRST,
         vec![
-            shell("t1", "demi credentials read 'GitHub token' token; echo exit=$?"),
+            shell("t1", "demi credentials read 'github token' token; echo exit=$?"),
             say("I asked the user"),
         ],
     );
@@ -261,7 +261,7 @@ async fn a_read_without_the_allowance_asks_the_user_and_a_removal_needs_the_user
     scripts.root(
         FIRST,
         vec![
-            shell("t2", "demi credentials read 'GitHub token' token | wc -c"),
+            shell("t2", "demi credentials read 'github token' token | wc -c"),
             say("read"),
         ],
     );
@@ -271,7 +271,7 @@ async fn a_read_without_the_allowance_asks_the_user_and_a_removal_needs_the_user
     let woken = scripts.asked(|session| session == FIRST);
     assert!(
         woken[woken.len() - 2].contains(
-            "The user allowed this conversation to use the credential \u{201c}GitHub token\u{201d}; the command `demi credentials read 'GitHub token' token` can now run."
+            "The user allowed this conversation to use the credential \u{201c}GitHub token\u{201d}; the command `demi credentials read 'github token' token` can now run."
         ),
         "{}",
         woken[woken.len() - 2]
@@ -307,7 +307,7 @@ async fn a_read_without_the_allowance_asks_the_user_and_a_removal_needs_the_user
     assert_eq!(categories(&asked.requests[0])[0].id, "credentials.manage");
     scripts.root(
         FIRST,
-        vec![shell("t4", "demi credentials remove 'GitHub token'"), say("removed")],
+        vec![shell("t4", "demi credentials remove 'GITHUB TOKEN'"), say("removed")],
     );
     let allowed = decide(
         &backend,
@@ -378,17 +378,34 @@ async fn a_renamed_credential_keeps_its_values() {
     assert_eq!(values.get("key").map(String::as_str), Some("lin_api_1"));
     assert_eq!(values.get("team").map(String::as_str), Some("OPS"));
 
+    // A name is one whatever its case: another credential's is taken, and a
+    // new credential of it is refused; a change of its own case is not.
     let taken = backend
-        .patch(&format!("/api/credentials/{id}"), &master, json!({ "name": "Other" }))
+        .patch(&format!("/api/credentials/{id}"), &master, json!({ "name": "OTHER" }))
         .await;
     assert_eq!(taken.refusal(), (StatusCode::CONFLICT, ErrorCode::CredentialNameTaken));
+    let again = backend
+        .post(
+            "/api/credentials",
+            Some(&master),
+            json!({
+                "name": "linear KEY for eng", "keep": "always",
+                "fields": [{ "name": "key", "label": "Key", "kind": "secret", "value": "y" }]
+            }),
+        )
+        .await;
+    assert_eq!(again.refusal(), (StatusCode::CONFLICT, ErrorCode::CredentialNameTaken));
+    let recased = backend
+        .patch(&format!("/api/credentials/{id}"), &master, json!({ "name": "Linear Key for ENG" }))
+        .await;
+    assert_eq!(recased.status, StatusCode::OK, "{}", String::from_utf8_lossy(&recased.body));
     let names: Vec<String> = credentials(&backend, &master)
         .await
         .credentials
         .into_iter()
         .map(|credential| credential.name)
         .collect();
-    assert_eq!(names, ["Linear key for ENG", "Other"]);
+    assert_eq!(names, ["Linear Key for ENG", "Other"]);
     backend.close().await;
 }
 

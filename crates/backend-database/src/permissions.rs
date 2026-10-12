@@ -146,10 +146,10 @@ pub enum CredentialRead {
     NoCredential,
     /// The credential has no field of that name, but these.
     NoField(Vec<CredentialField>),
-    /// The conversation may not use it yet: a request asks the user, in
-    /// place of the undecided one of the same credential from the same
-    /// agent.
-    Raised,
+    /// The conversation may not use the credential of this name, as it is
+    /// saved, yet: a request asks the user, in place of the undecided one of
+    /// the same credential from the same agent.
+    Raised(String),
 }
 
 /// A decided request whose message the backend still holds, with the owner
@@ -515,7 +515,7 @@ impl ControlService {
                     now,
                 )?;
                 transaction.commit()?;
-                return Ok(CredentialRead::Raised);
+                return Ok(CredentialRead::Raised(stored.name));
             }
             let mut values = values_of(&transaction, &stored, &*seal)?;
             let value = values.remove(&field).ok_or_else(|| StorageError::Corrupt {

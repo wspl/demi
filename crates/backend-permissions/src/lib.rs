@@ -379,11 +379,11 @@ pub async fn read_credential(
                 .collect::<Vec<_>>()
                 .join(", ")
         ))),
-        CredentialRead::Raised => {
+        CredentialRead::Raised(saved) => {
             changed(shard, &conversation);
             Err(RpcError::Failed(format!(
                 "this conversation needs the user's permission to {}; the request was sent to the user, and you will be told when the user decides",
-                use_action(&name)
+                use_action(&saved)
             )))
         }
     }

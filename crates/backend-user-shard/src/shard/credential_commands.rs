@@ -48,7 +48,7 @@ const SHOW_SUMMARY: &str = "Show one credential: its fields, the values of its v
 
 const REQUEST_SUMMARY: &str = "Ask the user for a credential on a card in the conversation, or for new values of the saved one of that name, which then must have the same fields. Waits for the user's answer, however long, and prints what was saved, or fails when the user declines. The credential is then allowed in this conversation.";
 
-const READ_SUMMARY: &str = "Write one field's value to standard output, exactly as saved, without a newline. Pass a secret field where you do not read it: into a pipe, a file, or a command substitution `$(…)`, such as `demi credentials read \"GitHub token\" token | gh auth login --with-token` or `TOKEN=$(demi credentials read \"GitHub token\" token) git push`, since a value the command prints joins the transcript and reaches the model's vendor. A program that takes the secret on standard input or from its environment keeps it out of the Host's process list too. A credential this conversation may not use yet asks the user first, and the read fails until they allow it.";
+const READ_SUMMARY: &str = "Write one field's value to standard output, exactly as saved, without a newline. A value you print is sent to the model's vendor and stays in the transcript; to avoid that, pipe it into a command (`demi credentials read \"GitHub token\" token | gh auth login --with-token`), redirect it into a file (`… > token.txt`), or substitute it (`TOKEN=$(demi credentials read \"GitHub token\" token) git push`). A credential this conversation may not use yet asks the user first, and the read fails until they allow it.";
 
 const REMOVE_SUMMARY: &str = "Remove a credential, its values and every conversation's allowance to use it. Only when the user asks for it. Needs the user's permission.";
 
@@ -475,6 +475,8 @@ async fn remove(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result
             "\u{201c}{name}\u{201d}: the user has no credential of that name"
         )));
     };
+    // Named as it is saved, whatever the case it was asked for in.
+    let name = credential.name;
     match shard.remove_credential(credential.id).await {
         Ok(()) => {}
         Err(CredentialError::Refused(_)) => {
