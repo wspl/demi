@@ -98,6 +98,7 @@ function openInstruction(entry: InstructionEntry): void {
   }
 }
 
+const providerSettings = useProviderSettings()
 /** The subscription account the conversation's model runs on: its entry's active account; none on an API key. */
 const account = computed(() => {
   const provider = resources.providers.find((entry) => entry.id === props.conversation.model.providerId)
@@ -112,15 +113,16 @@ const limits = computed<UsageLimits | null>(() => {
         accountLabel: current.account.label,
         windows: current.account.quota,
         autoRefresh: current.provider.autoRefreshUsage ?? false,
+        refreshing: providerSettings.refreshingUsage[current.provider.id]?.[current.account.id] === 'manual',
+        error: providerSettings.usageFailures[current.provider.id]?.[current.account.id] ?? null,
       }
     : null
 })
-const providerSettings = useProviderSettings()
-/** The card showed the limits: a free probe, at most once a minute per account, as Settings asks. */
-function refreshLimits(): void {
+/** The card showed the limits (automatic, at most once a minute per account) or its Refresh usage button was pressed: the store's request, as Settings asks. */
+function refreshLimits(automatic: boolean): void {
   const current = account.value
   if (current) {
-    void providerSettings.refreshUsage(current.provider, current.account.id, true)
+    void providerSettings.refreshUsage(current.provider, current.account.id, automatic)
   }
 }
 
