@@ -138,6 +138,9 @@ pub struct Listener {
     directory: tempfile::TempDir,
     #[cfg(windows)]
     socket: tokio::net::windows::named_pipe::NamedPipeServer,
+    /// Who may connect to each instance of the pipe, as SDDL.
+    #[cfg(windows)]
+    access: Vec<u16>,
 }
 
 impl Listener {
@@ -165,15 +168,25 @@ impl Listener {
         #[cfg(windows)]
         {
             let endpoint = format!(r"\\.\pipe\demi-{}", uuid::Uuid::new_v4().simple());
-            // The process token's default DACL controls local access. Remote
-            // clients are rejected, and first-instance creation prevents taking
-            // over an existing pipe. Invocation context secrets are checked by
-            // the command dispatcher independently of transport access.
-            let socket = tokio::net::windows::named_pipe::ServerOptions::new()
-                .first_pipe_instance(true)
-                .reject_remote_clients(true)
-                .create(&endpoint)?;
-            Ok(Self { endpoint, socket })
+            // Only the account the runner runs as may connect, from any of
+            // its sessions: an elevated one, such as an SSH logon of an
+            // administrator, and a desktop one alike. Remote clients are
+            // rejected, and first-instance creation prevents taking over an
+            // existing pipe. Invocation context secrets are checked by the
+            // command dispatcher independently of transport access.
+            let access = pipe_access::account_only()?;
+            let socket = pipe_access::create(
+                tokio::net::windows::named_pipe::ServerOptions::new()
+                    .first_pipe_instance(true)
+                    .reject_remote_clients(true),
+                &endpoint,
+                &access,
+            )?;
+            Ok(Self {
+                endpoint,
+                socket,
+                access,
+            })
         }
     }
 
@@ -190,9 +203,11 @@ impl Listener {
         #[cfg(windows)]
         {
             self.socket.connect().await?;
-            let next = tokio::net::windows::named_pipe::ServerOptions::new()
-                .reject_remote_clients(true)
-                .create(&self.endpoint)?;
+            let next = pipe_access::create(
+                tokio::net::windows::named_pipe::ServerOptions::new().reject_remote_clients(true),
+                &self.endpoint,
+                &self.access,
+            )?;
             Ok(Box::new(std::mem::replace(&mut self.socket, next)))
         }
     }
@@ -208,5 +223,127 @@ impl Listener {
             drop(self.socket);
             Ok(())
         }
+    }
+}
+
+/// Who may open the local endpoint's pipe on Windows: the account the
+/// runner runs as, whatever session it opens it from, and no one else.
+/// Without it the pipe took the default access of the runner's token, which
+/// for an administrator's elevated session, such as an SSH logon, grants the
+/// Administrators group rather than the account: `run.ps1 uninstall` from a
+/// desktop window, which holds the group only to deny, failed with "Access
+/// is denied. (os error 5)" on a runner started over SSH.
+#[cfg(windows)]
+mod pipe_access {
+    use std::io;
+    use std::ptr::null_mut;
+
+    use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, LocalFree};
+    use windows_sys::Win32::Security::Authorization::{
+        ConvertSidToStringSidW, ConvertStringSecurityDescriptorToSecurityDescriptorW,
+        SDDL_REVISION_1,
+    };
+    use windows_sys::Win32::Security::{
+        GetTokenInformation, PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER,
+        TokenUser,
+    };
+    use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
+
+    /// The pipe's security descriptor as NUL-terminated SDDL: full access
+    /// for the runner's account alone, protected from inheritance, and a
+    /// medium integrity label, so that the account's ordinary processes may
+    /// write to a pipe an elevated runner made, and sandboxed ones may not.
+    pub(super) fn account_only() -> io::Result<Vec<u16>> {
+        let sid = account_sid()?;
+        Ok(format!("D:P(A;;GA;;;{sid})S:(ML;;NW;;;ME)")
+            .encode_utf16()
+            .chain([0])
+            .collect())
+    }
+
+    /// Creates an instance of the pipe `endpoint` with `options`, which
+    /// `access` alone may open.
+    pub(super) fn create(
+        options: &ServerOptions,
+        endpoint: &str,
+        access: &[u16],
+    ) -> io::Result<NamedPipeServer> {
+        let mut descriptor: PSECURITY_DESCRIPTOR = null_mut();
+        // SAFETY: `access` is NUL-terminated UTF-16; the call allocates the
+        // descriptor, which is freed below.
+        let converted = unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                access.as_ptr(),
+                SDDL_REVISION_1,
+                &mut descriptor,
+                null_mut(),
+            )
+        };
+        if converted == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let mut attributes = SECURITY_ATTRIBUTES {
+            nLength: size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: descriptor,
+            bInheritHandle: 0,
+        };
+        // SAFETY: `attributes` is a valid SECURITY_ATTRIBUTES whose
+        // descriptor lives until after the call.
+        let created =
+            unsafe { options.create_with_security_attributes_raw(endpoint, (&raw mut attributes).cast()) };
+        // SAFETY: the conversion allocated the descriptor with LocalAlloc,
+        // and the pipe keeps a copy of its own. A failed free leaks a few
+        // bytes, which is safe to ignore.
+        unsafe { LocalFree(descriptor) };
+        created
+    }
+
+    /// The SID of the account the runner runs as, in its string form.
+    fn account_sid() -> io::Result<String> {
+        let mut token: HANDLE = null_mut();
+        // SAFETY: the pseudo handle of the current process needs no closing;
+        // the token handle is closed below.
+        if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        let sid = token_user_sid(token);
+        // SAFETY: `token` is the open handle from above. A failed close
+        // leaks one handle, which is safe to ignore.
+        unsafe { CloseHandle(token) };
+        sid
+    }
+
+    fn token_user_sid(token: HANDLE) -> io::Result<String> {
+        let mut length = 0u32;
+        // SAFETY: a null buffer of length 0 asks only for the length; the
+        // call fails with ERROR_INSUFFICIENT_BUFFER, which is expected.
+        unsafe { GetTokenInformation(token, TokenUser, null_mut(), 0, &mut length) };
+        // u64 words keep TOKEN_USER, which holds pointers, aligned.
+        let mut buffer = vec![0u64; (length as usize).div_ceil(size_of::<u64>())];
+        // SAFETY: `buffer` holds at least `length` bytes.
+        let read = unsafe {
+            GetTokenInformation(token, TokenUser, buffer.as_mut_ptr().cast(), length, &mut length)
+        };
+        if read == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: the call wrote a TOKEN_USER at the start of `buffer`,
+        // whose SID points into `buffer`, which outlives its use here.
+        let user = unsafe { &*buffer.as_ptr().cast::<TOKEN_USER>() };
+        let mut text = null_mut();
+        // SAFETY: the SID is valid; the call allocates `text`, freed below.
+        if unsafe { ConvertSidToStringSidW(user.User.Sid, &mut text) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // SAFETY: `text` is a NUL-terminated UTF-16 string the call made.
+        let sid = unsafe {
+            let length = (0..).take_while(|&index| *text.add(index) != 0).count();
+            String::from_utf16_lossy(std::slice::from_raw_parts(text, length))
+        };
+        // SAFETY: allocated with LocalAlloc by the conversion. A failed
+        // free leaks a few bytes, which is safe to ignore.
+        unsafe { LocalFree(text.cast()) };
+        Ok(sid)
     }
 }
