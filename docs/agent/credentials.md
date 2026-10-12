@@ -1,8 +1,8 @@
 # Credentials
 
 A user keeps the secrets their agents need, an API key, a token, a password,
-as **credentials**: named records in Demi that an agent can ask for, and use
-on a Host, without ever reading a secret value itself.
+as **credentials**: named records in Demi that an agent can ask for and use on a Host,
+best without reading a secret value itself.
 
 ## An example
 
@@ -39,7 +39,7 @@ allowed it there.
 | Part | Meaning |
 | --- | --- |
 | Name | What the user and the agent call it, 1 to 80 characters, unique among the user's credentials: *Google API key*, *GitHub token for zan* |
-| Fields | One to ten, each a name (lowercase letters, digits, `_` and `-`), a label the card and Settings show, a kind, and a value. A **secret** field is never shown to an agent: `show` prints its name and kind only. A **visible** field, such as a user name or a host, is shown to an agent as it is |
+| Fields | One to ten, each a name (lowercase letters, digits, `_` and `-`), a label the card and Settings show, a kind, and a value. A **secret** field is typed hidden and left out of `list` and `show`, which print its name and kind only; an agent reads it with `read`, as advice suggests into a pipe or a variable. A **visible** field, such as a user name or a host, is shown to an agent as it is |
 | Keep until | *Always*, or a time: a credential kept for a while is destroyed when the time comes. A request offers *1 hour* (the default), *1 day*, *30 days* and *Always*; the agent's `--keep` sets the default the card shows, and the user decides |
 | Note | The reason it was asked for, editable |
 
@@ -60,15 +60,15 @@ allow it, as a permission request does
 ([Requests](permissions.md#requests)). An allowance lasts the conversation's
 life, for every agent of its tree.
 
-`demi credentials read <name> <field>` writes a field's value anywhere the
-model cannot read it: a command substitution, `$(…)`, into a variable or
-straight into another command's argument, a pipe, or a file. It refuses only
-one place, the job's own output, which the model reads. When its
-standard output is the job's own output, which the model reads, it writes
-nothing and fails with *demi credentials read: the value would show to the
-agent; pipe it into the command that needs it, or assign it to a variable.*
-The runner knows where each command's output goes, so this holds for a
-secret field; a visible field is printed anywhere.
+`demi credentials read <name> <field>` writes the field's value to its
+standard output, wherever that goes; Demi refuses and masks nothing, and how
+a value is passed on is the agent's choice. A field's kind is advice, not a
+rule: a **secret** field is typed into a hidden input on the card and
+Settings, `list` and `show` leave its value out, and the command's help
+recommends passing it where the model does not read it, into a pipe, a file
+or a command substitution, `$(…)`, since a value the job prints joins the
+transcript and reaches the model's vendor. A visible field is meant to be
+read.
 
 ```text
 demi credentials read "Google API key" key | demi providers edit google --api-key-stdin
@@ -81,16 +81,13 @@ The command line the model wrote, and the transcript keeps, holds the
 `$(…)` as written, never its value. A value put in an argument is visible to
 the Host's other processes while the program runs, as any argument is, so a
 program that takes a secret on standard input or from its environment is the
-better place for it; that is the Host's own trust, which Demi does not narrow.
+better place for it.
 
-As a second guard the runner masks a secret it delivered wherever it later
-shows in the conversation's command output: `echo $GITHUB_TOKEN` prints
-`[credential "GitHub token for zan" token]`. A secret it never delivered is
-not known to it, so nothing else can be masked, and nothing needs to be.
-
-A secret never enters the transcript, a log or a frame to the page other than
-the Settings page's reveal: the command line shows only the credential's name
-and field, and the card's fields are sent from the page to the backend once.
+Demi itself writes no value into the transcript, a log or a frame to the
+page other than the Settings page's reveal: the command line shows only the
+credential's name and field, and the card's fields are sent from the page to
+the backend once. A value enters the transcript only when an agent's command
+prints it.
 
 ## Commands
 
@@ -99,7 +96,7 @@ and field, and the card's fields are sent from the page to the backend once.
 | `list` | Each credential's name, fields (name, label, kind), *Kept until*, and whether this conversation may use it |
 | `show <name>` | One credential: its fields, the values of its visible fields, its note and its dates |
 | `request <name> --field <name>:<secret|visible>:<label>… [--reason <text>] [--keep <1h|1d|30d|always>]` | Asks the user for a new credential, or for new values of an existing one of that name with the same fields; it waits for the user's answer and returns what was saved, or that the user declined. A card the user has not answered waits as long as the conversation does |
-| `read <name> <field>` | One field's value, by the rule above |
+| `read <name> <field>` | One field's value on standard output |
 | `remove <name>` | Removes it; needs the permission `credentials.manage` |
 
 `--json` returns `{ credentials }`, `{ credential }` or `{ saved }`, never a

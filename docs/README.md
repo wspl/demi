@@ -37,7 +37,7 @@ layout and interaction; these documents do not repeat it.
 - [Instructions](agent/instructions.md): the user's personal instructions and a project's `AGENTS.md` or `CLAUDE.md` files, which files are read, the block the model receives, and what the context card lists.
 - [Skills](agent/skills.md): the Agent Skills format, user skills from git sources, project skills from the repository, the catalog the model sees, and the settings section.
 - [Web search and fetch](agent/web.md): `demi web search` through the user's Exa account, a key or anonymously; `demi web fetch` from the Host; the sign-in and untrusted content.
-- [Credentials](agent/credentials.md): named secrets an agent asks the user for and uses on a Host without reading them: requests, fields, keeping, allowances, the pipe-only read and masking, and Settings › Credentials.
+- [Credentials](agent/credentials.md): named secrets an agent asks the user for and uses on a Host without reading them: requests, fields, keeping, allowances, reading, and Settings › Credentials.
 - [Conversation permissions](agent/permissions.md): the categories of operations on Demi itself, the check every command passes before its handler, the requests a refused command raises, the per-conversation grants, the decision's message to the agent, and the card and needs-you mark.
 
 ## Where does work execute, and how do commands run?
