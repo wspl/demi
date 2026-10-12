@@ -544,7 +544,7 @@ window, efforts, defaultEffort, canTurnOff, tiers, images, current }] }] }`.
 | `list` | Each enabled profile's name and description, or the line about subagents being off ([What the model sees](#what-the-model-sees)) |
 | `show <name>` | Every field of one profile, enabled or not: name, description, model (*parent's*, or provider entry, model, effort and tier), spawning, enabled, and its instructions in full |
 | `create <name>` | A new profile with the [fields](#profiles) the options give; the instructions are stdin when stdin is given, else none; it starts enabled unless `--disabled` |
-| `edit <name>` | Changes the fields its options name and keeps the others; stdin replaces the instructions, `--no-instructions` removes them |
+| `edit <profile>` | Changes the fields its options name and keeps the others; stdin replaces the instructions, `--no-instructions` removes them |
 | `delete <name>` | Removes the profile; a child already running on it goes on |
 
 The model options are `--model <id>`, a model `demi agent models` lists, with
@@ -556,7 +556,12 @@ checks are the settings page's, with the same words: a name that is taken or
 malformed, `default`, an effort or tier the model does not offer, a model the
 entry does not list, a description over 500 characters
 ([Profiles](#profiles)). A change reaches the settings page at once, as one
-made there does, and the next `profiles list` and `spawn` read it.
+made there does, and the next `profiles list` and `spawn` read it. On
+`edit`, a new `--model` without `--effort` or `--tier` takes the model's first
+effort and the vendor's default tier, as a switch in the model menu does. An
+unknown name reads `No such subagent profile "x"`. `--json` returns
+`{ profile }` for `show`, `create` and `edit`, with every field `show`
+prints, and `{ name, deleted }` for `delete`.
 
 **Permission.** `create`, `edit` and `delete` change a setting of the user's
 that every conversation reads, so they need the user's permission in each
