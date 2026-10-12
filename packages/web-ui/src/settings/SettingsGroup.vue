@@ -36,6 +36,7 @@ defineProps<{
     <div class="@container flex flex-col gap-4 @lg:flex-row @lg:items-stretch">
       <div
         class="settings-card @container min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-surface-float"
+        :class="$slots.aside ? 'settings-card-beside' : ''"
       >
         <slot />
       </div>
@@ -49,5 +50,23 @@ defineProps<{
 <style>
 .settings-card > * + * {
   border-top: 1px solid var(--line-subtle);
+}
+
+/* Beside an aside taller than its rows, the card is as tall as the aside
+   and the rows share the extra height, each keeping its content centred,
+   so no blank band stands under the last row. */
+.settings-card-beside {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-card-beside > * {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+}
+
+.settings-card-beside > * > * {
+  flex: 1 0 auto;
 }
 </style>
