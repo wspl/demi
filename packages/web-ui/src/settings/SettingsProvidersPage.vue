@@ -91,6 +91,8 @@ const props = defineProps<{
   /** The provider whose model list is being fetched. */
   refreshing?: string | null
   refreshingUsage?: Record<string, Record<string, SettingsQuotaRefresh>>
+  /** The vendor's words for each account's last manual usage refresh that failed, by provider and account. */
+  usageFailures?: Record<string, Record<string, string>>
 }>()
 
 const emit = defineEmits<{
@@ -604,6 +606,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       :key="`${selected.id}:${account.id}`"
                       :windows="account.quota"
                       :auto-refresh="selected.autoRefreshUsage === true"
+                      :error="usageFailures?.[selected.id]?.[account.id]"
                       @refresh="emit('refreshUsage', selected, account.id, true)"
                     />
                   </template>
