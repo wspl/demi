@@ -992,17 +992,14 @@ the dev server it started runs on, holding its port.
 
 ### Windows paths
 
-On Windows a job's shell takes a drive path in either of the forms a model
-writes: `C:/Users/alex/notes.txt`, and `/c/Users/alex/notes.txt` as Git Bash and
-MSYS write it. The shell itself and the utilities that run in the runner read
-`/c/…` as `C:/…`: `cd /c/Users`, `cat /c/Users/alex/notes.txt` and a
-redirection to `/c/tmp/out.txt` all work. An argument handed to a Windows
-program is passed as written, never rewritten, since `cmd /c ver` would break
-if `/c` were read as a drive; such a program takes `C:/…` or `C:\…`. A path
-with backslashes works quoted, `'C:\Users\zan'`, and not bare, where bash
-reads each backslash as an escape, as it does on every system. Paths the
-runner prints, such as the directory a shell starts in, use the system's own
-form, `C:\Users\zan\Downloads`.
+On Windows a job's shell takes drive paths as Windows writes them,
+`C:/Users/alex/notes.txt` or, quoted, `'C:\Users\zan\notes.txt'`; a bare
+backslash path does not work, since bash reads each backslash as an escape,
+as it does on every system. The Git Bash and MSYS form `/c/Users/…` is not a
+drive path here: it names `/c` at the root of the current drive, which does
+not exist, and the context block tells the model to write `C:/…` instead.
+Paths the runner prints, such as the directory a shell starts in, use the
+system's own form, `C:\Users\zan\Downloads`.
 
 ### Standard utilities
 
