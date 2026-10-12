@@ -106,9 +106,11 @@ const windowNote = ref('')
 
 /** Pictures of the gallery's blobs that the Media Viewer specimen opens in the page's viewer. */
 const viewerPictures = [
-  { name: 'login.png', variant: 'a screenshot, 480 × 300', blob: galleryBlobs.screenshot },
+  { name: 'login.png', variant: 'a small screenshot, 480 × 300', blob: galleryBlobs.screenshot },
+  { name: 'settings-retina.png', variant: 'a retina screenshot, 2880 × 1800', blob: galleryBlobs.retina },
+  { name: 'icon.png', variant: 'a tiny icon, 40 × 40', blob: galleryBlobs.tinyIcon },
+  { name: 'dashboard-full.png', variant: 'a very tall page, 360 × 2400', blob: galleryBlobs.fullPage },
   { name: 'timeline.png', variant: 'wider than the window, 1600 × 300', blob: galleryBlobs.timeline },
-  { name: 'dashboard-full.png', variant: 'a whole page, 360 × 2400', blob: galleryBlobs.fullPage },
 ]
 const mediaViewer = useMediaViewer()
 
@@ -1181,7 +1183,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="FloatingWindow"
-        note="A small window over the page that blocks nothing, as Quick Look’s does: the page beside it stays usable, with no scrim. Drag the title bar to move it and any edge or corner to resize it; it stays at least 240 × 180, no larger than the page, with its title bar on the page, also when the browser window shrinks. Opening moves the focus into it and closing gives the focus back. The windows of a page stand in the order they opened, the newest in front: a press outside every window closes the newest alone, and so does Escape, unless the focus is in a text field, such as the one inside, or a menu or a dialog is open; a press on the Open button, the window’s own control, does not count as outside. It opens again where it was left. The media viewer is this window: see Media Viewer below."
+        note="A small window over the page that blocks nothing, as Quick Look’s does: the page beside it stays usable, with no scrim. Drag the title bar to move it and any edge or corner to resize it; it stays at least 320 × 240, no larger than the page, with its title bar on the page, also when the browser window shrinks. Opening moves the focus into it and closing gives the focus back. The windows of a page stand in the order they opened, the newest in front: a press outside every window closes the newest alone, and so does Escape, unless the focus is in a text field, such as the one inside, or a menu or a dialog is open; a press on the Open button, the window’s own control, does not count as outside. It opens again where it was left. The media viewer is this window: see Media Viewer below."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="live">
@@ -1207,7 +1209,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Media Viewer"
-        note="The page’s one viewer, the floating window above showing a picture (file-previews.md § The media viewer). A picture opens fitted, scaled down and never enlarged, and the title bar gives its pixel size and zoom, 480 × 300 · 100%. The wheel, and a pinch on a trackpad, zoom it about the pointer, so the spot under it stays under it, from the fitted size, or the actual size when smaller, up to 800%. While it is larger than the window, a drag moves it with the grab hand, and it never leaves an empty band on a side that still has pixels. A click without a drag toggles the fitted and the actual size about the clicked spot. Resizing the window keeps a fitted picture fitted and a zoomed one at its zoom. Each button shows its picture in the same window, fitted; the buttons are the viewer’s controls, so a press on one does not close it, while a press anywhere else outside the window does."
+        note="The page’s one viewer, the floating window above showing a picture (file-previews.md § The media viewer). The window opens at the picture’s actual size in device pixels: on a display of two device pixels per page pixel a 2880 × 1800 screenshot is 1440 × 900 page pixels large, and a window opens that large plus its title bar when the page allows, otherwise scaled down to fit 60% of the page’s width and 70% of its height; a picture smaller than 320 × 240 sits centred in a window of that size, never enlarged. The first picture opens centred over the conversation; another opened while the window shows resizes it about its centre; a size you drag lasts while that picture shows. The title bar gives the pixel size and the zoom, 480 × 300 · 100%, where 100% is the actual size. The wheel, and a pinch on a trackpad, zoom it about the pointer, so the spot under it stays under it, from the fitted size, or the actual size when smaller, up to 800%. While it is larger than the window, a drag moves it with the grab hand, and it never leaves an empty band on a side that still has pixels. A click without a drag toggles the fitted and the actual size about the clicked spot. Resizing the window keeps a fitted picture fitted and a zoomed one at its zoom. The buttons are the viewer’s controls, so a press on one does not close it, while a press anywhere else outside the window does."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen v-for="picture in viewerPictures" :key="picture.name" :variant="picture.variant">
