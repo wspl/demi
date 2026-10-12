@@ -408,7 +408,8 @@ call's stdout before the handler first writes, so a call that prints nothing
 for a long time, `demi shell status 17 --wait 5m` or a stop that waits for its
 command's end, outlasts a proxy's limit on an unanswered request, such as
 Cloudflare's 100 seconds, which once ended such a call with
-`pipe refused (524)`. A stdout pipe handed to a job on another device that then
+`pipe refused (524)`, and its body keeps itself alive while the call says
+nothing ([Pipes and output](runner.md#pipes-and-output)). A stdout pipe handed to a job on another device that then
 fails ends the call with 1 and its cause on stderr, as any failing relayed
 pipe does, below.
 
