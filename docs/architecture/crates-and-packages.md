@@ -1183,7 +1183,10 @@ demi-backend (executable: configuration, composition)
   context source, the conversation socket, history and fork, the
   [permission check](../agent/permissions.md#the-check) in the rpc dispatch
   with the delivery of a decision's message,
-  summaries and titles, the providers a session resolves, with a child's
+  summaries and titles, the providers a session resolves, the changes of
+  provider entries and their models that Settings and the `demi providers`
+  group both make (`provider_settings`), and the user's credentials with the
+  `demi credentials` group, with a child's
   model selection built from its profile and checked against the catalog,
   and its failure facts; the conversations' idle watches, release and the daily retention
   pass; the pages' product state and synchronization channels; the Claude Code
