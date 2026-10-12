@@ -9,11 +9,15 @@ import { PHONE_QUERY } from './phone'
  *   everywhere but iOS, which ignores it for a pinch and is stopped through
  *   its own gesture events.
  * - With the on-screen keyboard open, the app is exactly what the keyboard
- *   leaves visible, so the composer sits right above it. Chrome's
- *   `interactive-widget=resizes-content` does that itself; iOS keeps the page
- *   its size and moves the visible part over it, which the app follows
- *   (`--app-height`, `--app-top`, and `data-keyboard` on the root, which
- *   drops the bottom safe area the keyboard covers).
+ *   leaves visible, so the composer sits right above it and the transcript's
+ *   end stays in view. Chrome's `interactive-widget=resizes-content` does
+ *   that itself; Safari on iOS ignores it, keeps the page its full height
+ *   under the keyboard and scrolls the page to show the focused field. So
+ *   the page's own scroll is held at 0, and the body, the app's frame
+ *   (`base.css`), takes the visual viewport's height and top (`--app-height`,
+ *   `--app-top`, and `data-keyboard` on the root, which drops the bottom
+ *   safe area the keyboard covers), following it as the keyboard opens,
+ *   closes, changes its height or the phone turns.
  * - A long press opens what a right-click opens where the page marks it
  *   (`data-touch-menu`), as iOS gives no `contextmenu` for one; Android
  *   gives its own, and then none is added.
@@ -57,6 +61,14 @@ export function installPhonePage(): () => void {
   }
   viewport?.addEventListener('resize', fit, { signal })
   viewport?.addEventListener('scroll', fit, { signal })
+  // A phone turned to a desktop's width or back: the frame is the phone layout's alone.
+  phone.addEventListener('change', fit, { signal })
+  // Safari scrolls the page to show a focused field, though nothing in it
+  // overflows; the app stands at the visual viewport instead.
+  window.addEventListener('scroll', () => {
+    if (phone.matches && (window.scrollX !== 0 || window.scrollY !== 0))
+      window.scrollTo(0, 0)
+  }, { passive: true, signal })
 
   let press: { timer: number; x: number; y: number; target: Element; opened: boolean } | null = null
   const endPress = (): void => {

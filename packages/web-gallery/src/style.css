@@ -10,13 +10,6 @@
 @source "../../plugin-*/src/**/*";
 @source ".";
 
-html,
-body,
-#app {
-  height: 100%;
-  overflow: hidden;
-}
-
 /* The catalog scroller must not anchor on nodes inside a live session pane: every
    height change in the pane would otherwise nudge the whole page by a few pixels. */
 .gallery-viewport {
