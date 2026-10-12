@@ -16,7 +16,7 @@ use demi_plugin_interface::{
 };
 use futures_util::future::LocalBoxFuture;
 
-use crate::support::user_plugins;
+use crate::support::{PortProbe, user_plugins};
 
 /// A plugin whose every command prints the user and the path it was
 /// handed.
@@ -213,6 +213,19 @@ fn a_manifest_that_breaks_a_rule_stops_the_start_and_names_the_plugin() {
                 Probe::new("notes").rpc(Placement::Demi, "notes").boxed(),
             ],
             "plugin \"jira\" declares \"demi\", which is taken",
+        ),
+        // A sign-in's issuer is an https URL, and it names its vendor.
+        (
+            vec![PortProbe::new("web", Some("http://auth.example.test".parse().unwrap())).boxed()],
+            "plugin \"web\"'s OAuth sign-in names http://auth.example.test/",
+        ),
+        (
+            vec![{
+                let mut probe = PortProbe::new("web", Some("https://auth.example.test".parse().unwrap()));
+                probe.vendor("");
+                probe.boxed()
+            }],
+            "plugin \"web\"'s OAuth sign-in names no vendor",
         ),
     ];
     for (factories, refusal) in refusals {

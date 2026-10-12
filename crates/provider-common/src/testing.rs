@@ -551,25 +551,7 @@ impl MockVendor {
     /// nothing but `https`, such as `demi.claude-code` downloading from a
     /// distribution. The client trusts the chain's issuer by its own means.
     pub async fn start_tls(certificate: &[u8], key: &[u8]) -> Self {
-        use tokio_rustls::rustls::pki_types::pem::PemObject as _;
-        use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-        use tokio_rustls::rustls::{ServerConfig, crypto::aws_lc_rs};
-
-        let chain = CertificateDer::pem_slice_iter(certificate)
-            .collect::<Result<Vec<_>, _>>()
-            .expect("the vendor's certificate is PEM");
-        let key = PrivateKeyDer::from_pem_slice(key).expect("the vendor's key is PEM");
-        let config = ServerConfig::builder_with_provider(Arc::new(aws_lc_rs::default_provider()))
-            .with_safe_default_protocol_versions()
-            .expect("ring offers the default protocol versions")
-            .with_no_client_auth()
-            .with_single_cert(chain, key)
-            .expect("the key is the certificate's");
-        let listener = TlsListener {
-            tcp: bind().await,
-            acceptor: tokio_rustls::TlsAcceptor::from(Arc::new(config)),
-        };
-        Self::serve(listener, "https")
+        Self::serve(TlsListener::bind(certificate, key).await, "https")
     }
 
     /// Serves the vendor's answers on `listener`, whose URLs have `scheme`.
@@ -778,11 +760,38 @@ async fn bind() -> tokio::net::TcpListener {
 /// How long a client has to complete its TLS handshake.
 const HANDSHAKE: Duration = Duration::from_secs(10);
 
-/// A listener that completes each connection's TLS handshake before the
-/// vendor serves it.
-struct TlsListener {
+/// A listener on a free port of `127.0.0.1` that completes each
+/// connection's TLS handshake before its server serves it, for a test's
+/// HTTPS server that `axum::serve` runs.
+pub struct TlsListener {
     tcp: tokio::net::TcpListener,
     acceptor: tokio_rustls::TlsAcceptor,
+}
+
+impl TlsListener {
+    /// A listener presenting `certificate`, a PEM chain for `127.0.0.1`,
+    /// with its PEM `key`. The client trusts the chain's issuer by its own
+    /// means.
+    pub async fn bind(certificate: &[u8], key: &[u8]) -> Self {
+        use tokio_rustls::rustls::pki_types::pem::PemObject as _;
+        use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
+        use tokio_rustls::rustls::{ServerConfig, crypto::aws_lc_rs};
+
+        let chain = CertificateDer::pem_slice_iter(certificate)
+            .collect::<Result<Vec<_>, _>>()
+            .expect("the server's certificate is PEM");
+        let key = PrivateKeyDer::from_pem_slice(key).expect("the server's key is PEM");
+        let config = ServerConfig::builder_with_provider(Arc::new(aws_lc_rs::default_provider()))
+            .with_safe_default_protocol_versions()
+            .expect("aws-lc-rs offers the default protocol versions")
+            .with_no_client_auth()
+            .with_single_cert(chain, key)
+            .expect("the key is the certificate's");
+        Self {
+            tcp: bind().await,
+            acceptor: tokio_rustls::TlsAcceptor::from(Arc::new(config)),
+        }
+    }
 }
 
 impl axum::serve::Listener for TlsListener {

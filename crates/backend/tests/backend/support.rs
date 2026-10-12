@@ -33,8 +33,8 @@ use demi_command_protocol::testing::built_program;
 use demi_command_protocol::{PackageDescriptor, host_target};
 use demi_runner_protocol::release::{SERVER_RELEASE, ServerRelease, compressed_file};
 use demi_plugin_interface::{
-    Manifest, Page, Plugin, PluginError, PluginFactory, PluginId, PluginPort, Reply, Request,
-    Stream,
+    Manifest, Method as PageMethod, OAuth, Page, Plugin, PluginError, PluginFactory, PluginId, PluginPort,
+    PortFailure, PortRefusal, Reply, Request, Scope, SecretName, State, Stream,
 };
 use demi_plugin_skills::testing::Repos;
 pub use demi_provider_common::testing::ManualClock;
@@ -306,6 +306,10 @@ pub struct Harness {
     /// Whether the backends have the `fixture-panel` plugin and its `page`
     /// kind.
     panel_fixture: bool,
+    /// The issuer the backends' `fixture-sign-in` plugin signs in at, and
+    /// the authority its HTTPS certificate is of, which the plugins'
+    /// outbound requests trust.
+    sign_in_fixture: Option<(url::Url, reqwest::Certificate)>,
 }
 
 impl Harness {
@@ -356,6 +360,7 @@ impl Harness {
             objects: None,
             skill_repos: None,
             panel_fixture: false,
+            sign_in_fixture: None,
         }
     }
 
@@ -371,6 +376,13 @@ impl Harness {
     /// beside them.
     pub fn with_panel_fixture(mut self) -> Self {
         self.panel_fixture = true;
+        self
+    }
+
+    /// Backends with the `fixture-sign-in` plugin, which signs in at
+    /// `issuer`, whose certificate `authority` issued.
+    pub fn with_sign_in_fixture(mut self, issuer: url::Url, authority: reqwest::Certificate) -> Self {
+        self.sign_in_fixture = Some((issuer, authority));
         self
     }
 
@@ -634,6 +646,10 @@ impl Harness {
         }
         if self.panel_fixture {
             config.plugins.push(Box::new(PanelPlugin::new()));
+        }
+        if let Some((issuer, authority)) = &self.sign_in_fixture {
+            config.plugins.push(Box::new(SignInPlugin::new(issuer.clone())));
+            config.web_roots = vec![authority.clone()];
         }
         if let Some(repos) = &self.skill_repos {
             let skills = config
@@ -1270,5 +1286,81 @@ struct NoRequests;
 impl Plugin for NoRequests {
     fn call(&self, _: Request, _: PluginPort) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
         unreachable!("a plugin of streams only receives no request")
+    }
+}
+
+/// A plugin that signs its user in at a vendor's authorization server and
+/// keeps a key as a secret. Its user state says whether the user is signed
+/// in and the last four characters of the key, as a page may learn them.
+struct SignInPlugin(Manifest);
+
+impl SignInPlugin {
+    fn new(issuer: url::Url) -> Self {
+        let mut manifest = Manifest::new(
+            PluginId::try_from("fixture-sign-in").unwrap(),
+            "Fixture sign-in",
+            "Signs in to an example vendor.",
+        );
+        manifest.page = Some(
+            Page::new("@demicodes/plugin-fixture-sign-in")
+                .user_state(State::new::<Value>())
+                .method(PageMethod::new::<serde_json::Map<String, Value>, Value>("sign_in", Scope::User))
+                .method(PageMethod::new::<serde_json::Map<String, Value>, Value>("save_key", Scope::User)),
+        );
+        manifest.oauth = Some(OAuth {
+            vendor: "Example".into(),
+            issuer,
+            resource: "https://mcp.example.test/mcp".into(),
+            scopes: vec!["tools".into()],
+        });
+        Self(manifest)
+    }
+}
+
+impl PluginFactory for SignInPlugin {
+    fn manifest(&self) -> &Manifest {
+        &self.0
+    }
+
+    fn instance(&self) -> Rc<dyn Plugin> {
+        Rc::new(SignIns)
+    }
+}
+
+struct SignIns;
+
+impl Plugin for SignIns {
+    fn call(&self, request: Request, port: PluginPort) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
+        Box::pin(async move {
+            let key = SecretName::try_from("api-key").unwrap();
+            match request {
+                Request::PageState { .. } => {
+                    let signed_in = match port.oauth_token().await {
+                        Ok(_) => true,
+                        Err(PortFailure::Refused(PortRefusal::SignedOut)) => false,
+                        Err(failure) => return Err(failure.into()),
+                    };
+                    let key = port.secret(key).await?;
+                    let ending = key.map(|key| key.value[key.value.len() - 4..].to_owned());
+                    Ok(Reply::State {
+                        state: json!({ "signedIn": signed_in, "keyEnding": ending }),
+                    })
+                }
+                Request::PageCall { method, params, .. } => match method.as_str() {
+                    "sign_in" => Ok(Reply::Result {
+                        result: json!({ "url": port.oauth_start().await? }),
+                    }),
+                    "save_key" => {
+                        let value = params["key"].as_str().unwrap().to_owned();
+                        let revision = port.secret(key.clone()).await?.map(|key| key.revision);
+                        port.write_secret(key, value, revision).await?;
+                        port.changed(Scope::User).await?;
+                        Ok(Reply::Result { result: Value::Null })
+                    }
+                    method => unreachable!("the fixture declares no method {method}"),
+                },
+                request => unreachable!("the fixture is asked {request:?}"),
+            }
+        })
     }
 }

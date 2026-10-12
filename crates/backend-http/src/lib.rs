@@ -26,6 +26,7 @@ mod install;
 mod instructions;
 mod listener;
 mod models;
+mod oauth;
 mod page_client;
 mod panel;
 mod permissions;
@@ -325,6 +326,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(plugins::conversation_state),
         )
         .route("/plugins/{plugin}/calls/{method}", post(plugins::user_call))
+        .route("/plugins/{plugin}/oauth/callback", get(oauth::callback))
         .route("/plugins/{plugin}", put(plugins::switch))
         .route("/instructions", put(instructions::replace))
         .route("/subagents", put(subagents::switch))

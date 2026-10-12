@@ -3,6 +3,7 @@
 //! the user's blobs. The plugin host answers the rest itself.
 
 use std::rc::Weak;
+use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_backend_host_access::HostShard;
@@ -11,18 +12,20 @@ use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_backend_host_access::stream::{ServiceBinding, ServiceCall, UserCallError, UserCallKind};
 use demi_backend_page_sync::Part;
 use demi_backend_plugins::ProductPort;
+use demi_backend_providers::vault::seal::Row;
 use demi_backend_remote_host::ServiceCallError;
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{HostErrorKind, PortError};
 use demi_plugin_interface::{CallKind, HostFile, HostRead, PortFailure, PortRefusal};
-use demi_shared_types::{B64Bytes, BlobRef};
+use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, UserId};
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
 use super::Shard;
+use crate::services::Services;
 
 /// The most bytes of a package call's JSON answer.
 const CALL_ANSWER_MAX_BYTES: usize = 1024 * 1024;
@@ -31,6 +34,9 @@ const CALL_ANSWER_MAX_BYTES: usize = 1024 * 1024;
 /// plugins that hold it.
 pub(crate) struct ShardPort {
     pub(crate) shard: Weak<Shard>,
+    pub(crate) services: Arc<Services>,
+    /// The shard thread's client of the plugins' outbound requests.
+    pub(crate) web: reqwest::Client,
 }
 
 impl ShardPort {
@@ -118,6 +124,45 @@ impl ProductPort for ShardPort {
             Ok(bytes.map(B64Bytes::from))
         })
     }
+
+    fn seal(&self, user: &UserId, plugin: &str, name: &str, plaintext: &[u8]) -> Vec<u8> {
+        let row = Row::PluginSecret { plugin, user, name };
+        self.services.vault.key().seal(row, plaintext)
+    }
+
+    fn open(&self, user: &UserId, plugin: &str, name: &str, sealed: &[u8]) -> Option<Vec<u8>> {
+        let row = Row::PluginSecret { plugin, user, name };
+        self.services.vault.key().open(row, sealed).ok()
+    }
+
+    fn web_client(&self) -> reqwest::Client {
+        self.web.clone()
+    }
+
+    fn public_url(&self) -> Option<url::Url> {
+        self.services
+            .public_url
+            .get()
+            .map(|backend| backend.url().clone())
+    }
+
+    fn now(&self) -> Timestamp {
+        self.services.clock.now()
+    }
+}
+
+/// The client of a shard thread's plugins' outbound requests
+/// (`plugins.md` § Outbound requests). A test's backend trusts the
+/// authorities its HTTPS servers present.
+pub(crate) fn web_client(services: &Services) -> reqwest::Client {
+    #[cfg(feature = "testing")]
+    let roots = services.web_roots.as_slice();
+    #[cfg(not(feature = "testing"))]
+    let roots = {
+        let _ = services;
+        &[]
+    };
+    demi_backend_plugins::web_client(roots)
 }
 
 fn failed(error: impl ToString) -> PortFailure {

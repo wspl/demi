@@ -14,10 +14,15 @@ pub mod project;
 mod request;
 #[cfg(feature = "testing")]
 pub mod testing;
+mod web;
 
 pub use manifest::{
-    Commands, Constant, DEMI_ROOT, DEMI_SUMMARY, EXECUTION_SOURCE, Manifest, Method, Page,
+    Commands, Constant, DEMI_ROOT, DEMI_SUMMARY, EXECUTION_SOURCE, Manifest, Method, OAuth, Page,
     Placement, PluginId, PluginIdError, Scope, State, Stream, Topic,
+};
+pub use web::{
+    SecretName, SecretNameError, StoredSecret, WebFailure, WebHeader, WebMethod, WebRequest,
+    WebResponse,
 };
 pub use plugin::{CommandPlugin, NoRequests, Plugin, PluginFactory, PortHandled};
 pub use port::{

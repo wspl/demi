@@ -266,7 +266,7 @@ pub struct ValueWrite {
     pub blobs: Vec<BlobRef>,
 }
 
-/// What a write of a plugin value did.
+/// What a conditional write of a plugin value or secret did.
 #[derive(Debug)]
 pub enum Written {
     /// The value's new revision.
