@@ -1140,11 +1140,21 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   }
 
+  /**
+   * Stop Agent: the child stops at once, and each command it still runs
+   * shows Stopping… until its runner, simulated here, says that it ended
+   * (`subagents.md` § Abort).
+   */
   function abortSubagent(id: string): void {
     const agent = state.subagents.find((entry) => entry.id === id)
     if (agent?.phase === 'running') {
       agent.phase = 'aborted'
       agent.endedAt = now()
+      for (const terminal of state.terminals) {
+        if (terminal.subagentId === id) {
+          abortTerminal(terminal.id)
+        }
+      }
     }
   }
 
@@ -1164,7 +1174,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       return
     }
     terminal.stopping = true
-    timers.push(window.setTimeout(() => endTerminal(terminal, 'aborted'), STOPPING_MS))
+    // A specimen that ran its commands again meanwhile took the stop back.
+    timers.push(window.setTimeout(() => terminal.stopping && endTerminal(terminal, 'aborted'), STOPPING_MS))
   }
 
   /** Reset to a fixture and play it. */

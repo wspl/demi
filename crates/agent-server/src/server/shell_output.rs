@@ -219,14 +219,14 @@ fn milliseconds(text: &str) -> Result<u64, String> {
     }
 }
 
-/// Waits until each of the commands `ids` names that a node's shells run
+/// Waits until each of the commands `ids` names that shells of the tree run
 /// has ended, or `wait` has passed.
 async fn wait_for_ends<H: HostResolver>(tree: &Tree<H>, ids: &[String], wait: Duration) {
     let environments: Vec<_> = ids
         .iter()
         .filter_map(|id| CommandId::try_from(id.as_str()).ok())
         .filter_map(|command| {
-            let environment = tree.holder(&command)?.environment_of(&command)?;
+            let environment = tree.environment_of(&command)?;
             Some((command, environment))
         })
         .collect();
@@ -259,10 +259,16 @@ async fn status_one<H: HostResolver>(
         .node(caller)
         .ok_or_else(|| "the calling agent is not live".to_owned())?;
     let mut lines = Vec::new();
-    let held = match tree.command_place(&command).await? {
+    // The node whose shells hold it, and those shells: a closed child's
+    // hold it without a node while it stops.
+    let (held, environment) = match tree.command_place(&command).await? {
         CommandPlace::Unknown => return Err(unknown()),
-        CommandPlace::Stored => None,
-        CommandPlace::Held(node) => Some(node),
+        CommandPlace::Stored => (None, None),
+        CommandPlace::Held(node) => {
+            let environment = node.environment_of(&command);
+            (Some(node), environment)
+        }
+        CommandPlace::Stopping(environment) => (None, Some(environment)),
     };
     if let Some(interval) = change {
         let changed = held
@@ -286,8 +292,8 @@ async fn status_one<H: HostResolver>(
         ..Look::default()
     };
     if let Some(node) = held.as_ref().filter(|node| node.id() == caller) {
-        let environment = node
-            .environment_of(&command)
+        let environment = environment
+            .as_ref()
             .ok_or_else(|| format!("command {id} is no longer held"))?;
         let status = environment.status(&command).map_err(|error| error.to_string())?;
         let look = Look {
@@ -300,23 +306,16 @@ async fn status_one<H: HostResolver>(
         }
         return Ok(lines.join("\n"));
     }
-    let running = held.as_ref().and_then(|node| {
-        let environment = node.environment_of(&command)?;
-        environment
-            .ended(&command)
-            .now_or_never()
-            .is_none()
-            .then_some((node, environment))
-    });
+    let running = environment.filter(|environment| environment.ended(&command).now_or_never().is_none());
     let place = looking.place(&command).await;
     let shown = match running {
-        Some((node, environment)) => {
+        Some(environment) => {
             let whole = environment
                 .read_output(&command)
                 .await
                 .map_err(|error| format!("the output of {id} could not be read: {error}"))?;
-            let running_ms = node
-                .live_views()
+            let running_ms = environment
+                .page_views()
                 .into_iter()
                 .find(|view| view.command_id == command)
                 .map_or(0, |view| view.running_ms);
@@ -406,6 +405,7 @@ async fn input<H: HostResolver>(call: Invoked<H, InputArgs>, _port: RpcPort) -> 
         CommandPlace::Unknown => return fail(&unknown()),
         CommandPlace::Stored => None,
         CommandPlace::Held(node) => node.environment_of(&command),
+        CommandPlace::Stopping(environment) => Some(environment),
     };
     let Some(environment) = environment else {
         return fail(&format!("command {id} is not running"));
@@ -443,38 +443,43 @@ async fn stop<H: HostResolver>(call: Invoked<H, StopArgs>, port: RpcPort) -> Res
 async fn stop_one<H: HostResolver>(tree: &Tree<H>, caller: &NodeId, id: &str) -> Result<String, String> {
     let unknown = || "no such command in this conversation".to_owned();
     let command = CommandId::try_from(id).map_err(|_| unknown())?;
-    Ok(match tree.command_place(&command).await? {
+    let already = || format!("[command {id} had already ended]\n");
+    // The node whose shells hold it, which its end's report goes to, and
+    // those shells: a closed child's hold it without a node while it stops.
+    let (held, environment) = match tree.command_place(&command).await? {
         CommandPlace::Unknown => return Err(unknown()),
-        CommandPlace::Stored => format!("[command {id} had already ended]\n"),
-        CommandPlace::Held(node) => match node.environment_of(&command) {
-            Some(environment) if environment.ended(&command).now_or_never().is_none() => {
-                let stopper = if node.id() == caller {
-                    Some(Stopper::Itself)
-                } else {
-                    tree.node(caller)
-                        .map(|stopping| Stopper::Agent(stopping.record().number))
-                };
-                if let Some(stopper) = stopper {
-                    node.stopped_by(&command, stopper);
-                }
-                // The environment that runs it stops it, as for a page's
-                // stop; no Host is resolved, so the call never enters the
-                // conversation's file gate its own job holds a lease of.
-                let stopped = match environment.abort(&command).await {
-                    Ok(()) => environment.ended(&command).await,
-                    Err(error) => Err(error),
-                };
-                match stopped.map_err(|error| error.to_string())? {
-                    Ending::Aborted => format!("[command {id} stopped]\n"),
-                    // It ended by itself, or was lost, before the stop
-                    // reached it.
-                    Ending::Exited(_) | Ending::Lost(_) => {
-                        format!("[command {id} had already ended]\n")
-                    }
-                }
-            }
-            _ => format!("[command {id} had already ended]\n"),
-        },
+        CommandPlace::Stored => return Ok(already()),
+        CommandPlace::Held(node) => {
+            let environment = node.environment_of(&command);
+            (Some(node), environment)
+        }
+        CommandPlace::Stopping(environment) => (None, Some(environment)),
+    };
+    let Some(environment) = environment.filter(|environment| environment.ended(&command).now_or_never().is_none()) else {
+        return Ok(already());
+    };
+    if let Some(node) = held {
+        let stopper = if node.id() == caller {
+            Some(Stopper::Itself)
+        } else {
+            tree.node(caller)
+                .map(|stopping| Stopper::Agent(stopping.record().number))
+        };
+        if let Some(stopper) = stopper {
+            node.stopped_by(&command, stopper);
+        }
+    }
+    // The environment that runs it stops it, as for a page's stop; no Host
+    // is resolved, so the call never enters the conversation's file gate
+    // its own job holds a lease of.
+    let stopped = match environment.abort(&command).await {
+        Ok(()) => environment.ended(&command).await,
+        Err(error) => Err(error),
+    };
+    Ok(match stopped.map_err(|error| error.to_string())? {
+        Ending::Aborted => format!("[command {id} stopped]\n"),
+        // It ended by itself, or was lost, before the stop reached it.
+        Ending::Exited(_) | Ending::Lost(_) => already(),
     })
 }
 
@@ -576,8 +581,8 @@ fn range(lines: &str) -> Option<(u64, u64)> {
 async fn find<H: HostResolver>(tree: &Tree<H>, id: &str) -> Result<Found, String> {
     let unknown = || format!("no command {id} in this conversation");
     let command = CommandId::try_from(id).map_err(|_| unknown())?;
-    if let Some(node) = tree.holder(&command) {
-        match node.read_output(&command).await {
+    if let Some(environment) = tree.environment_of(&command) {
+        match environment.read_output(&command).await {
             Ok(output) => {
                 return Ok(Found { output, end: None });
             }
