@@ -1505,6 +1505,10 @@ as any string without `/`, `**` as any string, and all other characters
 literally, including `?`, brackets, and braces. They are not implicit regular
 expressions.
 
+A wait checks its condition at once, then again after 20, 50, 100 and 100
+milliseconds, and every 500 milliseconds after that until its timeout, as
+Playwright does, so a long wait costs the page almost nothing.
+
 Element states use the same computations as the actionability conditions.
 `visible` requires a rendered box and visible `visibility`; `hidden` is
 satisfied when no element matches or none is visible, which includes removal
