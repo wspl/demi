@@ -25,8 +25,8 @@ use demi_agent_transcript::{
 };
 use demi_conversation_socket_protocol::AbortTarget;
 use demi_provider_common::{
-    EntriesOf, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, ProviderRuntime,
-    RequestBlock, RequestLimits, ToolDefinition,
+    Ahead, EntriesOf, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure,
+    ProviderRuntime, RequestBlock, RequestLimits, ToolDefinition,
 };
 use demi_shared_types::{
     AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, CommandReport, ErrorDevice, FailureSource, ReportEvent,
@@ -104,6 +104,12 @@ pub(crate) struct SessionCore {
     pub(super) one_request: bool,
     /// Dispose started: every admission is refused.
     pub(super) disposing: bool,
+    /// What the next request's runtime is to ready ahead, once the session
+    /// is idle (`claude-code.md` § Preparing a process ahead).
+    ahead: Option<Ahead>,
+    /// Whether the session readies ahead: a page opened its conversation,
+    /// or the user chose its model; a subagent's session never does.
+    prepares_ahead: bool,
     pub(super) persist: PersistMarks,
     /// Events of the current change, delivered once it is complete.
     pub(super) outbox: Vec<SessionEvent>,
@@ -394,6 +400,8 @@ impl SessionCore {
             held: parts.held,
             one_request: parts.one_request,
             disposing: false,
+            ahead: None,
+            prepares_ahead: false,
             persist: PersistMarks::default(),
             outbox: Vec::new(),
             waiting_since: None,
@@ -1650,6 +1658,118 @@ impl SessionCore {
                 answered_items: replayed.answered,
             },
             cancel,
+        }
+    }
+
+    // Readying ahead (`claude-code.md` § Preparing a process ahead).
+
+    /// Asks for the next request's runtime to ready ahead, once the session
+    /// is idle. A page that opened the conversation or a choice of the user
+    /// asks first, and makes every later action's end ask too; what they
+    /// ask goes before an action's end.
+    pub(super) fn ask_ahead(&mut self, ahead: Ahead) {
+        if self.disposing {
+            return;
+        }
+        match ahead {
+            Ahead::Ended if !self.prepares_ahead => return,
+            Ahead::Ended => {
+                self.ahead.get_or_insert(ahead);
+            }
+            Ahead::Opened | Ahead::Chosen => {
+                self.prepares_ahead = true;
+                self.ahead = Some(ahead);
+            }
+        }
+        self.requests.wake_worker = true;
+    }
+
+    /// What was asked to ready ahead, taken once the session is idle with
+    /// its runtime in its slot and nothing waits to run.
+    pub(super) fn take_ahead(&mut self) -> Option<Ahead> {
+        if self.idle_with_runtime() { self.ahead.take() } else { None }
+    }
+
+    /// Whether the session is idle, with nothing waiting to run and its
+    /// runtime in its slot.
+    pub(super) fn idle_with_runtime(&self) -> bool {
+        matches!(self.activity, Activity::Idle)
+            && self.pending.is_empty()
+            && self.provider.held().is_some()
+    }
+
+    /// The request the next one is but for its input: the history as the
+    /// selection the next request lands with replays it, under
+    /// `system_prompt`. No turn has opened it yet.
+    pub(super) fn ahead_request(
+        &self,
+        view: &ModelView,
+        system_prompt: String,
+        request_id: String,
+    ) -> InferenceRequest {
+        let (model, limits) = self
+            .switch_target()
+            .unwrap_or_else(|| (self.model.clone(), self.request_limits()));
+        let replayed = replay(&RequestView::new(view, &model.model, limits, &self.tools));
+        let blocks = replayed
+            .blocks
+            .into_iter()
+            .map(|block| RequestBlock {
+                items: block.items,
+                entries: block.entries,
+            })
+            .collect::<Vec<_>>();
+        InferenceRequest {
+            session_id: self.id.to_string(),
+            turn_id: String::new(),
+            request_id,
+            model_id: model.model.id.clone(),
+            output_limit: model.model.output_limit.and_then(NonZeroU32::new),
+            output_cap: None,
+            system_prompt,
+            items: replayed.items.into(),
+            blocks: blocks.into(),
+            tools: self.tools.clone(),
+            thinking: model.thinking.clone(),
+            service_tier_id: model.service_tier_id.clone(),
+            prompt_cache: PromptCache::Session {
+                answered_items: replayed.answered,
+            },
+            cancel: CancellationToken::new(),
+        }
+    }
+
+    /// Takes out the runtime the next request lands on, to ready it: the
+    /// recorded switch's own when it has one, else the one in the slot.
+    pub(super) fn take_landing_runtime(&mut self) -> Option<Box<dyn ProviderRuntime>> {
+        if let Some(runtime) = self.switch.as_mut().and_then(|switch| switch.runtime.take()) {
+            return Some(runtime);
+        }
+        self.take_runtime()
+    }
+
+    /// Puts back a runtime [`take_landing_runtime`](Self::take_landing_runtime)
+    /// took, to land with the switch it came from when that switch is still
+    /// the recorded one. One whose switch was replaced meanwhile serves
+    /// nothing any more and is returned for closing, as is every runtime
+    /// once dispose began.
+    pub(super) fn return_landing_runtime(
+        &mut self,
+        runtime: Box<dyn ProviderRuntime>,
+        from_switch: bool,
+    ) -> Option<Box<dyn ProviderRuntime>> {
+        if self.disposing {
+            return Some(runtime);
+        }
+        if !from_switch {
+            return self.place_runtime(runtime);
+        }
+        match self.switch.as_mut() {
+            Some(switch) if switch.runtime.is_none() => {
+                switch.runtime = Some(runtime);
+                None
+            }
+            _ => Some(runtime),
         }
     }
 

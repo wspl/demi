@@ -30,7 +30,7 @@ use demi_agent_tools::{
 };
 use demi_agent_transcript::{ForkEnd, IdSource};
 
-use demi_provider_common::ProviderRuntime;
+use demi_provider_common::{Ahead, ProviderRuntime};
 use demi_host_interface::{CommandSet, RegisterError};
 use demi_shared_gates::KeyedSerialGate;
 use demi_shared_types::{AgentMessage, BlockId, Clock, ModelSelection, NodeId, SessionPhase};
@@ -302,6 +302,20 @@ impl<H: HostResolver> AgentServer<H> {
         }
     }
 
+    /// Readies ahead the next request of every conversation a page has open
+    /// whose model is of the provider entry `provider_id`, as when the
+    /// entry's active account changed (`claude-code.md` § Preparing a
+    /// process ahead).
+    pub fn prepare_open_of(&self, provider_id: &str) {
+        let trees: Vec<Rc<Tree<H>>> = self.trees.borrow().values().cloned().collect();
+        for tree in trees {
+            let session = tree.root().session();
+            if tree.sink().attached() && session.latest_model().provider_id == provider_id {
+                session.prepare_ahead(Ahead::Chosen);
+            }
+        }
+    }
+
     /// Prepares a switch of the conversation `root`'s live tree to `model`
     /// (`runtime.md` § Model switch): a model of another provider than the
     /// root's latest selection gets its runtime now, so one that cannot run
@@ -332,7 +346,16 @@ impl<H: HostResolver> AgentServer<H> {
     /// next open takes the selection from its record.
     pub async fn switch_model(&self, root: &NodeId, switch: ModelSwitch) {
         let refused = match self.tree(root) {
-            Some(tree) => tree.root().session().update_model(switch).err(),
+            Some(tree) => {
+                let session = tree.root().session();
+                let refused = session.update_model(switch).err();
+                if refused.is_none() {
+                    // The next request is known but for its input
+                    // (`claude-code.md` § Preparing a process ahead).
+                    session.prepare_ahead(Ahead::Chosen);
+                }
+                refused
+            }
             None => Some(switch),
         };
         if let Some(switch) = refused {
