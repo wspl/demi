@@ -1774,7 +1774,13 @@ commands*, and a click opens it to every step.
   word capitalized; a run of thinking and notices alone reads the same. A lone notice or receipt is its own row,
   as a lone call is. The row never reads a bare count of steps,
   which says nothing of what happened. A failed command shows its tag on its
-  own row inside, not on the group's.
+  own row inside, not on the group's. A command still running after its run
+  ended, as one the agent left running and ended its turn on, wears its
+  time on the ended run's row too, *Ran 3 commands* then the time tag, until
+  it ends, so a folded row never hides that something still runs.
+- A running run's folded face is its newest step's, its tag included: the
+  time while the step's command runs, and *Failed* or *Stopped* once it
+  ended so, while the turn waits for the model.
 - Folded, the files the run's calls changed show under the row, each once,
   counted from its two ends within the run ([What the conversation
   shows](../execution/edit-tracking.md#what-the-conversation-shows)); open,
