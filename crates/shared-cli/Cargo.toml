@@ -12,5 +12,14 @@ test = false
 doctest = false
 bench = false
 
+[features]
+# The programs that run on a Host, the runner and the command programs, turn
+# it on: built for a musl target, they allocate with mimalloc
+# (`builds-and-releases.md` § Memory allocator).
+host-allocator = ["dep:mimalloc"]
+
 [dependencies]
 clap = { version = "4", features = ["env"] }
+
+[target.'cfg(target_env = "musl")'.dependencies]
+mimalloc = { version = "0.1", optional = true }
