@@ -67,7 +67,7 @@ function key(event: KeyboardEvent): void {
       role="alertdialog"
       tabindex="-1"
       :aria-label="dialogTitle(dialog.type, host)"
-      class="pointer-events-auto w-full max-w-md rounded-lg border border-line bg-surface p-3 shadow-lg outline-none"
+      class="overlay-shell pointer-events-auto w-full max-w-md rounded-lg p-3 outline-none"
       @keydown="key"
     >
       <p class="text-[12px] text-fg-subtle">{{ dialogTitle(dialog.type, host) }}</p>
