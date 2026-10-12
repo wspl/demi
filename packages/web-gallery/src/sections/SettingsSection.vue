@@ -21,7 +21,11 @@ import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixt
 import { PLUGIN_PAGES } from '../generated/pages'
 import { providePageHost, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { useGalleryView } from '../gallery-views'
+import GalleryCredentials from '../components/GalleryCredentials.vue'
 import GallerySubagents from '../components/GallerySubagents.vue'
+import CredentialDialog from '@demicodes/web-ui/settings/CredentialDialog.vue'
+import type { SettingsCredentialDraft } from '@demicodes/web-ui/settings/types'
+import { createCredentialState, demoCredentials } from '../fixtures/credentials'
 import SubagentProfileDialog from '@demicodes/web-ui/settings/SubagentProfileDialog.vue'
 import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
 import { createSubagentState, demoSubagentProfiles } from '../fixtures/subagent-profiles'
@@ -103,6 +107,10 @@ const anatomy: [string, string][] = [
     'A switch that turns subagents on or off for the user; Maximum subagents and Maximum depth, each a number or Unlimited, which asks first in a dialog whose default button, Cancel, keeps the number; then the user’s profiles, each with its own switch. A row names the profile’s model, its prompt and whether its children spawn; a profile whose provider entry, model, effort or tier is gone carries Unavailable, with the missing part as its tooltip. The editor chooses the parent’s model or any provider’s with its effort and tier, and the parent’s prompt or text that replaces it.'
   ],
   [
+    'Agent credentials',
+    'Keys, tokens and passwords the user keeps for their agents, listed by name with each field’s label and a tag for its kind, Kept until and Last used. A secret field shows dots and an eye that reads its value from the backend and shows it to the user; the value goes again when the pointer or the focus leaves the row. New Credential and Edit open the editor: name, note, how long to keep it, and one card per field with its label, kind and value; a saved field’s value left empty keeps it. Delete asks first.'
+  ],
+  [
     'Skills',
     'A plugin’s section: the rail lists it under Agent, and the sidebar has an entry that opens it, both only while the Skills plugin is on. Git sources are packs of SKILL.md files; a source’s state is one status label after its name, and a skill’s labels say why it is off or never offered. The showcase below pins every state at once.'
   ],
@@ -182,6 +190,26 @@ function pinnedEditor(id: string | null) {
     : { name: '', description: '', model: null, instructions: null, canSpawn: true }
   return { open: ref(true), draft }
 }
+/** The Credentials section without a credential: its list says how one comes. */
+const noCredentials = createCredentialState([])
+
+/** A credential pinned in its editor, which closes from its buttons and opens again from Open. */
+function pinnedCredentialEditor(id: string | null) {
+  return { open: ref(true), credential: demoCredentials().find((candidate) => candidate.id === id) ?? null }
+}
+const newCredentialEditor = pinnedCredentialEditor(null)
+const editedCredentialEditor = pinnedCredentialEditor('cred-linear')
+
+function savedCredential(editor: ReturnType<typeof pinnedCredentialEditor>, draft: SettingsCredentialDraft) {
+  editor.open.value = false
+  productWould(`The product would save the credential ${draft.name}`)
+}
+
+function deletedCredential(editor: ReturnType<typeof pinnedCredentialEditor>) {
+  editor.open.value = false
+  productWould(`The product would delete the credential ${editor.credential?.name}`)
+}
+
 const inheritEditor = pinnedEditor(null)
 const ownEditor = pinnedEditor('explore')
 
@@ -356,6 +384,57 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
         <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
           <GallerySubagents :state="subagentsOff" />
         </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Credentials"
+        note="The user’s credentials, each with its fields and a tag for their kind, Kept until and Last used. The eye of a secret field reads its value and shows it, and the value goes when the pointer or the focus leaves the row; the Linear sign-in’s user name is visible, its password hidden. Click a row or Edit to change it; New Credential adds one. Every write waits a beat, and a name another credential has is refused."
+      >
+        <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
+          <GalleryCredentials :state="full.credentials" />
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Credentials · Empty"
+        note="No credential yet: the list says how one comes. New Credential adds one to this list."
+      >
+        <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
+          <GalleryCredentials :state="noCredentials" />
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Credential Editor · New"
+        note="A new credential: one empty hidden field, kept always. A field’s name is made from its label and shown under it. Create Credential stays off until the name, the labels and the values are filled; a problem shows under its field once the field is left. Add Field adds a card, up to ten; a card’s bin removes it, except the last."
+      >
+        <GalleryOverlayWell size="tall">
+          <Button v-if="!newCredentialEditor.open.value" size="md" @click="newCredentialEditor.open.value = true">Open</Button>
+          <CredentialDialog
+            :is-open="newCredentialEditor.open.value"
+            :overlay-store="appOverlayStore"
+            :credential="newCredentialEditor.credential"
+            @close="newCredentialEditor.open.value = false"
+            @save="savedCredential(newCredentialEditor, $event)"
+          />
+        </GalleryOverlayWell>
+      </GallerySection>
+
+      <GallerySection
+        title="Credential Editor · Edit"
+        note="The Linear sign-in in its editor: its fields keep their names, and a value left empty keeps the saved one. Keep until shows the time it has now; choosing one keeps it that long from now."
+      >
+        <GalleryOverlayWell size="tall">
+          <Button v-if="!editedCredentialEditor.open.value" size="md" @click="editedCredentialEditor.open.value = true">Open</Button>
+          <CredentialDialog
+            :is-open="editedCredentialEditor.open.value"
+            :overlay-store="appOverlayStore"
+            :credential="editedCredentialEditor.credential"
+            @close="editedCredentialEditor.open.value = false"
+            @save="savedCredential(editedCredentialEditor, $event)"
+            @delete="deletedCredential(editedCredentialEditor)"
+          />
+        </GalleryOverlayWell>
       </GallerySection>
 
       <GallerySection

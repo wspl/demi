@@ -3,12 +3,14 @@ import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import {
   afterDecision,
+  type CredentialAnswer,
   type PermissionDecision,
   type PermissionRequestView,
+  type RequestView,
 } from '@demicodes/web-ui/permissions/types'
 import { ApiError } from '../api/client'
 import { decidePermission, readPermissions } from '../api/permissions'
-import type { ConversationPermissions, PermissionCategory } from '../api/generated/web-api'
+import type { ConversationPermissions, PermissionCategory, PermissionRequest } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
 import { isNewer, type RunRevision } from '../state/revisions'
 
@@ -16,9 +18,11 @@ import { isNewer, type RunRevision } from '../state/revisions'
 export interface PermissionsState {
   /** The revision of the answer the page holds; null before the first. */
   held: RunRevision | null
-  requests: PermissionRequestView[]
+  requests: RequestView[]
   /** A decision of this page is on its way. */
   deciding: boolean
+  /** What the backend refused the last credential answer for, shown in the card; null while none was. */
+  error: string | null
 }
 
 function category(answer: PermissionCategory): PermissionRequestView['categories'][number] {
@@ -27,6 +31,37 @@ function category(answer: PermissionCategory): PermissionRequestView['categories
     action: answer.action ?? null,
     description: answer.description ?? null,
   }
+}
+
+/** The request as the card shows it; a credential request is a renewal when a credential of its name is saved. */
+function view(request: PermissionRequest, saved: ReadonlySet<string>): RequestView {
+  switch (request.kind) {
+    case 'permission':
+      return {
+        kind: 'permission',
+        id: request.id,
+        categories: request.categories.map(category),
+        command: request.command,
+        subagent: request.agent,
+      }
+    case 'credential':
+      return {
+        kind: 'credential',
+        id: request.id,
+        name: request.name,
+        reason: request.reason,
+        fields: request.fields,
+        keep: request.keep,
+        renewal: saved.has(credentialKey(request.name)),
+      }
+    case 'allowance':
+      return { kind: 'allowance', id: request.id, name: request.name, removed: request.removed }
+  }
+}
+
+/** A credential's name as the backend compares names: whatever the case (`web-api.md` § Credentials). */
+function credentialKey(name: string): string {
+  return name.trim().toLowerCase()
 }
 
 /**
@@ -50,6 +85,7 @@ export const usePermissions = defineStore('permissions', () => {
         held: null,
         requests: [],
         deciding: false,
+        error: null,
       })
     }
     return states.get(conversationId)!
@@ -62,20 +98,9 @@ export const usePermissions = defineStore('permissions', () => {
       return
     }
     state.held = taken
-    // The card shows permission requests; a credential's requests share the
-    // list and the mark, and their cards come with Settings › Credentials.
-    state.requests = answer.requests.flatMap((request) =>
-      request.kind === 'permission'
-        ? [
-            {
-              id: request.id,
-              categories: request.categories.map(category),
-              command: request.command,
-              subagent: request.agent,
-            },
-          ]
-        : [],
-    )
+    const saved = new Set((product.snapshot?.credentials ?? []).map((credential) => credentialKey(credential.name)))
+    state.requests = answer.requests.map((request) => view(request, saved))
+    state.error = null
   }
 
   /** The reads on their way, each with whether a newer revision was heard of meanwhile. */
@@ -132,21 +157,40 @@ export const usePermissions = defineStore('permissions', () => {
     },
   )
 
+  /**
+   * Decides a request. The card shows the outcome at once, except for a
+   * credential's values: that card stays, form and typed values with it,
+   * until the backend accepted them or told what is wrong with them.
+   */
   async function decide(
     conversationId: string,
     requestId: string,
     decision: PermissionDecision,
+    credential?: CredentialAnswer,
   ): Promise<void> {
     const state = stateFor(conversationId)
     state.deciding = true
+    state.error = null
     const before = { held: state.held, requests: state.requests }
-    state.requests = afterDecision(state.requests, requestId, decision)
+    if (!credential) {
+      state.requests = afterDecision(state.requests, requestId, decision)
+    }
     try {
-      await decidePermission(conversationId, requestId, decision)
+      await decidePermission(conversationId, requestId, decision, credential)
+      if (credential) {
+        state.requests = afterDecision(state.requests, requestId, decision)
+      }
     } catch (error) {
-      // Another page decided it first: the summary brings its outcome.
-      if (error instanceof ApiError && error.code === 'permission_request_not_found') {
-        return
+      if (error instanceof ApiError) {
+        // Another page decided it first, or the credential was removed since: the summary brings the outcome.
+        if (error.code === 'permission_request_not_found' || error.code === 'credential_removed') {
+          return
+        }
+        // The values do not suit the request: said under the form, which keeps what was typed.
+        if (error.code === 'invalid_answer' || error.code === 'credential_fields_differ') {
+          state.error = error.message
+          return
+        }
       }
       reportError('Could Not Answer the Request', error, { userVisible: true })
       // The request is as it was, unless a newer read came meanwhile.

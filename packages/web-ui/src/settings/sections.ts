@@ -5,6 +5,7 @@ import {
   Bot,
   CircleUser,
   Database,
+  KeyRound,
   Keyboard,
   Monitor,
   ScrollText,
@@ -78,6 +79,12 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
           'base url',
           'catalog'
         ]
+      },
+      {
+        id: 'credentials',
+        label: 'Credentials',
+        icon: KeyRound,
+        keywords: ['token', 'secret', 'sign-in', 'saved login'],
       },
       {
         id: 'instructions',
