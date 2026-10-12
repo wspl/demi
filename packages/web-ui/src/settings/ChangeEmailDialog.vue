@@ -165,10 +165,7 @@ function resend() {
               class="w-48 max-w-full"
             />
           </SettingsRow>
-          <SettingsRow
-            label="Current password"
-            description="Confirms it is you."
-          >
+          <SettingsRow label="Current password">
             <TextInput
               v-model="password"
               aria-label="Current password"

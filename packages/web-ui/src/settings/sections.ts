@@ -31,7 +31,7 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
           { label: 'Theme', keywords: ['dark mode', 'light mode', 'appearance'] },
           { label: 'Tone' },
           { label: 'Accent', keywords: ['color', 'colour'] },
-          { label: 'Transcript text size', keywords: ['font size', 'text size'] },
+          { label: 'Message text size', keywords: ['font size', 'text size', 'transcript'] },
         ],
       },
       {
