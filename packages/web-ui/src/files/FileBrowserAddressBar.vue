@@ -249,6 +249,7 @@ watch(() => props.path, () => {
       :anchor-el="menuCrumb?.el ?? null"
       :ignore-els="menuCrumb ? [menuCrumb.el] : []"
       :offset="4"
+      sheet
       @close="closeMenu"
     >
       <DirectoryMenu
