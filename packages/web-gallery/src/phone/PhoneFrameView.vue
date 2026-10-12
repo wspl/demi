@@ -20,7 +20,7 @@ import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
 import { galleryBrowser } from '../fixtures/live-browser'
 import { galleryConversationFiles } from '../fixtures/message-files'
-import { galleryPageHost, skillsPlugin } from '../fixtures/plugins'
+import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
 import { createSettingsState } from '../fixtures/settings'
 import { gallerySubagents } from '../fixtures/subagents'
 import { galleryTerminals } from '../fixtures/terminals'
@@ -104,7 +104,12 @@ function leaveShown(would: TitleText): void {
 
 // Settings reaches the fixture's skills plugin, as the Settings page does.
 const settings = createSettingsState()
-providePageHost(galleryPageHost({ skills: skillsPlugin(settings.skills) }))
+providePageHost(
+  galleryPageHost(
+    { skills: skillsPlugin(settings.skills), web: webPlugin(settings.web) },
+    { openLink: openExaSignIn },
+  ),
+)
 const settingsOpen = ref(false)
 const settingsTab = ref<SettingsTab | null>(null)
 const settingsSections = computed(() =>

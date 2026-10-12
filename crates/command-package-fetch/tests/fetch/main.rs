@@ -41,6 +41,9 @@ const ARTICLE: &str = r#"<!doctype html>
 <p>Read the <a href="https://example.com/guide">guide</a> first.
 <a href="https://example.com/icon-link"><svg><title>SECRET-ICON</title></svg></a>
 <img alt="Logo" src="data:image/svg+xml,SECRET-DATA"></p>
+<p><a href="https://viteconf.org/"><img alt="Vite icon" src="data:image/svg+xml,SECRET-DATA">ViteConf 2026</a></p>
+<p>See <a href="/blog/announcing">the post</a>, <a href="next">the next page</a>
+and <img alt="A chart" src="charts/speed.png">.</p>
 <div hidden>SECRET-HIDDEN</div>
 <p aria-hidden="true">SECRET-ARIA</p>
 <p style="color: blue; display : none">SECRET-DISPLAY</p>
@@ -164,7 +167,7 @@ async fn a_page_prints_as_markdown_without_what_a_reader_never_sees() {
         let accepted = Arc::new(std::sync::Mutex::new(String::new()));
         let seen = accepted.clone();
         let fixture = Fixture::new(Router::new().route(
-            "/notes",
+            "/docs/notes",
             get(move |headers: HeaderMap| async move {
                 *seen.lock().unwrap() =
                     headers[header::ACCEPT].to_str().unwrap().to_owned();
@@ -172,7 +175,7 @@ async fn a_page_prints_as_markdown_without_what_a_reader_never_sees() {
             }),
         ))
         .await;
-        let url = fixture.url("/notes");
+        let url = fixture.url("/docs/notes");
         let (completion, output) = fixture.fetch(json!({"url": url}), false).await;
         assert_eq!(completion.exit_code, 0, "{completion:?}");
         assert_eq!(
@@ -193,6 +196,12 @@ async fn a_page_prints_as_markdown_without_what_a_reader_never_sees() {
             "## Changes",
             "| Version | Change   |\n| ------- | -------- |\n| 7.0     | Rolldown |",
             "```sh\nnpm install vite\n```",
+            // An inline-data image keeps its alt text, apart from the next word.
+            "[Vite icon ViteConf 2026](https://viteconf.org/)",
+            // Relative links and image sources are made absolute against the page.
+            &format!("[the post]({})", fixture.url("/blog/announcing")),
+            &format!("[the next page]({})", fixture.url("/docs/next")),
+            &format!("![A chart]({})", fixture.url("/docs/charts/speed.png")),
         ] {
             assert!(output.contains(kept), "{kept} is missing from:\n{output}");
         }
@@ -259,17 +268,18 @@ async fn a_long_page_prints_in_parts_and_reading_on_fetches_it_once() {
     .await;
 }
 
-/// A redirect to another host is followed, as `curl -L` does, and the
-/// Fetched line names where it led.
+/// A redirect to another host is followed, as `curl -L` does, the Fetched
+/// line names where it led, and a relative link is made absolute against
+/// where it led.
 #[tokio::test]
 async fn a_redirect_to_another_host_is_followed_and_named() {
     within(async {
         let other = serve(Router::new().route(
-            "/new",
-            get(|| async { typed("text/markdown", "# Moved here\n") }),
+            "/new/page",
+            get(|| async { typed("text/html", "<h1>Moved here</h1><p><a href=\"docs\">Docs</a></p>") }),
         ))
         .await;
-        let target = format!("http://localhost:{}/new", other.port());
+        let target = format!("http://localhost:{}/new/page", other.port());
         let moved = target.clone();
         let fixture = Fixture::new(Router::new().route(
             "/old",
@@ -279,11 +289,13 @@ async fn a_redirect_to_another_host_is_followed_and_named() {
         let url = fixture.url("/old");
         let (completion, output) = fixture.fetch(json!({"url": url}), false).await;
         assert_eq!(completion.exit_code, 0, "{completion:?}");
+        let page = format!("# Moved here\n\n[Docs](http://localhost:{}/new/docs)", other.port());
         assert_eq!(
             output,
             format!(
-                "Fetched {url} (HTTP 200, text/markdown, 13 characters), redirected to {target}\n\
-                 {UNTRUSTED}\n\n# Moved here\n\n"
+                "Fetched {url} (HTTP 200, text/html, {} characters as Markdown), redirected to {target}\n\
+                 {UNTRUSTED}\n\n{page}\n",
+                page.chars().count(),
             )
         );
     })
