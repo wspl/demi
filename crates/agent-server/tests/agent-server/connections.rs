@@ -502,12 +502,15 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
         ))
     );
     client.send(send("m1", "hang")).await;
+    // The turn's start: its phase, then its wait for the model, which
+    // starts with it.
     client
         .next_until(|frame| {
             matches!(
                 frame,
-                ServerFrame::Phase {
-                    phase: SessionPhase::Running
+                ServerFrame::Waiting {
+                    subagent_id: None,
+                    waited_ms: Some(_)
                 }
             )
         })

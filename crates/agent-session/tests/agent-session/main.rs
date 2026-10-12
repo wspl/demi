@@ -22,7 +22,7 @@ use demi_conversation_socket_protocol::{AbortResult, AbortTarget, TranscriptPatc
 use demi_provider_common::{
     EntriesOf, ErrorCode, InferenceItem, MediaBytes, PromptCache, ProviderEvent, ProviderRuntime,
     RequestLimits, ResultPart, ToolDefinition, UserPart,
-    testing::{FixedClock, ScriptedRuntime, Turn, event},
+    testing::{FixedClock, ScriptedRuntime, TokioClock, Turn, event},
 };
 use demi_shared_gates::{ActivityGate, GateLease, Purpose};
 use demi_shared_types::{
@@ -1204,6 +1204,94 @@ async fn stop_while_a_hook_hangs_records_the_stop_without_waiting_for_the_hook()
     // The message never wrote its turn, so the stop has no turn to mark.
     assert!(session.transcript().blocks.is_empty());
     assert!(provider.requests().is_empty());
+}
+
+/// Every change of the session's wait for the model, as how long it had
+/// waited, or none once it ended.
+fn waits(session: &AgentSession) -> (Subscription, Rc<RefCell<Vec<Option<u64>>>>) {
+    let waits = Rc::new(RefCell::new(Vec::new()));
+    let subscription = session.subscribe({
+        let waits = waits.clone();
+        move |event| {
+            if let SessionEvent::WaitingChanged { waited_ms } = event {
+                waits.borrow_mut().push(*waited_ms);
+            }
+        }
+    });
+    (subscription, waits)
+}
+
+/// A run that plays each event once the milliseconds before it have passed.
+fn paced(events: Vec<(u64, ProviderEvent)>) -> Turn {
+    use futures_util::StreamExt;
+    Turn::Stream(Box::new(move |_| {
+        futures_util::stream::iter(events)
+            .then(|(after, event)| async move {
+                tokio::time::sleep(Duration::from_millis(after)).await;
+                event
+            })
+            .boxed_local()
+    }))
+}
+
+// The row says Requesting from the turn's start, so the wait the server
+// tells a page that opens meanwhile starts there too, not once the request
+// is built: here a preamble hook, which a Host answers, holds it back
+// (`runtime.md` § Waiting for the model). A paused clock.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_wait_for_the_model_starts_with_the_turn_before_its_request_is_built() {
+    let provider = ScriptedRuntime::new(Vec::new());
+    let store = MemoryTreeStore::new();
+    let runtime = TestRuntime {
+        hanging_preamble: Rc::new(Cell::new(true)),
+        ..test_runtime(Vec::new())
+    };
+    let clock = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
+    let session = start_at(&provider, runtime, &store, SessionConfig::default(), clock).await;
+    let (_subscription, waits) = waits(&session);
+
+    let running = session.send(text("go"), turn("t1")).unwrap();
+    tokio::time::sleep(Duration::from_millis(1_000)).await;
+    assert_eq!(session.waited_ms(), Some(1_000));
+
+    session.abort().await;
+    assert_eq!(running.await, Ok(ActionEnd::Aborted));
+    // The stop ends the wait with the turn.
+    assert_eq!(*waits.borrow(), [Some(0), None]);
+    assert!(provider.requests().is_empty());
+}
+
+// Until something of the answer shows, the row says Requesting, and the
+// wait runs on: hidden reasoning and a call whose title is not written yet
+// show nothing (`runtime.md` § Waiting for the model). The next request
+// waits again from the end of the step. A paused clock.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_wait_for_the_model_runs_on_until_its_answer_shows_something() {
+    let provider = ScriptedRuntime::new([
+        paced(vec![
+            (1_000, ProviderEvent::RedactedThinking("opaque".into())),
+            (1_000, event::tool_call_start("call-1", "read")),
+            (500, event::tool_call_input("call-1", r#"{"descr"#)),
+            (500, event::tool_call_input("call-1", r#"iption":"Read the notes","#)),
+            (0, event::tool_call("call-1", "read", json!({ "description": "Read the notes" }))),
+            (0, event::response(1, 1)),
+        ]),
+        Turn::Events(vec![event::text("done"), event::response(1, 1)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let read = tool("read", |_| Box::pin(async { Ok(output("42")) }));
+    let clock = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
+    let session = start_at(&provider, test_runtime(vec![read]), &store, SessionConfig::default(), clock).await;
+    let (_subscription, waits) = waits(&session);
+
+    let running = session.send(text("go"), turn("t1")).unwrap();
+    tokio::time::sleep(Duration::from_millis(2_750)).await;
+    assert_eq!(session.waited_ms(), Some(2_750), "nothing showed yet");
+    assert_eq!(running.await, Ok(ActionEnd::Completed));
+
+    // One wait until the call's title, at three seconds, and one for the
+    // next request, from the end of the call to the text.
+    assert_eq!(*waits.borrow(), [Some(0), None, Some(0), None]);
 }
 
 #[tokio::test(flavor = "local")]
