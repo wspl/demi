@@ -386,6 +386,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     let removal = (boot.is_none() && !removing)
         .then(|| removal::command(&directory, installed.is_some(), &executable));
     let identity = identity(home.to_string_lossy().into_owned())?;
+    let login_shell = env.get("SHELL").filter(|path| !path.is_empty()).cloned();
     let runner = wire::RunnerInfo {
         native_target: Some(host_target().into()),
         name: name.unwrap_or_else(|| identity.hostname.clone()),
@@ -401,6 +402,8 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             .release
             .unwrap_or_else(|| demi_shared_artifacts::WORKSPACE_VERSION.into()),
         identity,
+        kernel: kernel(),
+        shell: login_shell,
         managed: boot
             .as_ref()
             .map(|_| true)
@@ -633,6 +636,23 @@ fn operating_system() -> wire::OperatingSystem {
         name,
         arch: std::env::consts::ARCH.to_owned(),
     }
+}
+
+/// The kernel as `uname -s` and `uname -r` print it, read natively, which
+/// the hello names (`claude-code.md` § The session a process resumes).
+#[cfg(unix)]
+fn kernel() -> Option<wire::Kernel> {
+    let named = rustix::system::uname();
+    Some(wire::Kernel {
+        name: named.sysname().to_string_lossy().into_owned(),
+        release: named.release().to_string_lossy().into_owned(),
+    })
+}
+
+/// Windows has no `uname` to answer as.
+#[cfg(windows)]
+fn kernel() -> Option<wire::Kernel> {
+    None
 }
 
 fn identity(home_dir: String) -> io::Result<wire::HostIdentity> {

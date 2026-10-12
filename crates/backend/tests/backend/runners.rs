@@ -236,6 +236,8 @@ pub(crate) fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -
                 hostname: "raw".into(),
                 home_dir: "/home/raw".into(),
             },
+            kernel: None,
+            shell: None,
             managed,
             installation: None,
         },

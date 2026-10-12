@@ -102,7 +102,9 @@ pub struct StartSteps {
     pub executable: Duration,
     /// Making the run directory and the process's configuration directory.
     pub directories: Duration,
-    /// Asking the machine what it tells a process of itself.
+    /// Reading what the machine tells a process of itself: what its
+    /// runner's connection reported, and the run directory's real path on
+    /// the connection's first start.
     pub system: Duration,
     /// Writing the start's files, the session among them, and how many
     /// bytes they hold.
