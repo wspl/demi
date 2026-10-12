@@ -4,6 +4,14 @@ import type { InjectionKey } from 'vue'
 /** How a tip tells the tip around it that something inside is showing. One key for every instance. */
 const tooltipNestKey: InjectionKey<{ showing(delta: 1 | -1): void }> = Symbol('tooltip-nest')
 
+/**
+ * The one tip with a warm window (`warmMs`) that shows at a time, and when
+ * the last one closed: moving from one picture to the next shows the next
+ * one's card at once, as moving along a toolbar does on macOS.
+ */
+let warmOpen: { close(): void } | null = null
+let warmClosedAt = Number.NEGATIVE_INFINITY
+
 /** Where the pointer last moved on the page; null before it moved. */
 let lastMove: { x: number; y: number } | null = null
 let following = false
@@ -43,13 +51,14 @@ import {
   autoUpdate,
   getOverflowAncestors
 } from '@floating-ui/vue'
-import type { Placement } from '@floating-ui/vue'
+import type { Middleware, Placement } from '@floating-ui/vue'
 import { injectTooltipPlacement } from './tooltip-placement'
 import { onClickOutside } from '@vueuse/core'
 import { appOverlayStore } from '../overlay/appOverlay'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayFamilyKey } from '../overlay/overlayFamily'
 import { useLayerElevation } from '../overlay/layerElevation'
+import { showAbove } from '../overlay/stacking'
 import { useOverlay } from '../composables/useOverlay'
 import type { SentenceText } from './ui-text'
 
@@ -88,6 +97,25 @@ const props = withDefaults(defineProps<{
    * arrives, such as text that may or may not be cut.
    */
   showIf?: (trigger: HTMLElement) => boolean
+  /**
+   * The `overlay` slot is a card of its own, such as a picture's preview:
+   * the tip adds only its surface, with a larger radius, and the slot brings
+   * its own padding, size and text.
+   */
+  card?: boolean
+  /**
+   * How long after a tip with a warm window closed another one opens
+   * without its delay; a tip with one also closes the one still showing.
+   * For a run of cards the pointer moves along, such as a message's pictures.
+   */
+  warmMs?: number
+  /**
+   * Chooses the side the tip opens on, each time it is positioned, from the
+   * trigger, the tip itself and the side it is on now; the tip then never
+   * flips by itself, since the chooser knows the room better. For a card
+   * that is sized to the room it has on a side.
+   */
+  placeBy?: (context: { reference: HTMLElement; floating: HTMLElement; placement: Placement }) => Placement
   /** A tip of the `overlay` slot that has room for a line of facts, such as what an agent runs on, not a few sentences. */
   wide?: boolean
   openDelayMs?: number
@@ -108,9 +136,22 @@ const props = withDefaults(defineProps<{
   tag: 'span',
 })
 
+const emit = defineEmits<{
+  /** The tip shows. */
+  open: []
+  /** The tip went, however it did. */
+  close: []
+}>()
+
 followPointer()
 
-const triggerRef = ref<HTMLElement | null>(null)
+/** The wrapper this component renders around its slot; none while `trigger` stands in for it. */
+const wrapperRef = ref<HTMLElement | null>(null)
+/**
+ * What the tip describes: the `trigger` element, or the wrapper. A computed rather than one ref both fill, since
+ * the wrapper goes when a trigger arrives after the first render and would clear a shared ref as it unmounts.
+ */
+const triggerRef = computed(() => props.trigger ?? wrapperRef.value)
 const floatingRef = ref<HTMLElement | null>(null)
 const isOpen = ref(false)
 const hiddenByScroll = ref(false)
@@ -120,6 +161,7 @@ const overlayStore = computed(() => props.overlayStore ?? appOverlayStore)
 // A trigger inside an exclusive panel (a menu row) may still hint; triggers outside yield to it.
 const family = inject(overlayFamilyKey, null)
 const elevation = useLayerElevation()
+const z = showAbove()
 const blockedByExclusive = computed(() => family == null && overlayStore.value.hasExclusive())
 const hasOverlay = computed(() => !!slots.overlay)
 const hasContent = computed(() => !!props.content?.trim() || hasOverlay.value)
@@ -148,12 +190,25 @@ onBeforeUnmount(() => {
 
 /** The side the tip opens on when it names none, as the component around it says. */
 const surroundingPlacement = injectTooltipPlacement()
+/** Hands the side to `placeBy`, each time the tip is positioned. */
+const placer: Middleware = {
+  name: 'placeBy',
+  fn({ placement, elements }) {
+    const reference = triggerRef.value
+    const floating = elements.floating
+    if (!props.placeBy || !reference)
+      return {}
+    const next = props.placeBy({ reference, floating, placement })
+    return next === placement ? {} : { reset: { placement: next } }
+  },
+}
 const { floatingStyles } = useFloating(triggerRef, floatingRef, {
   placement: computed(() => props.placement ?? surroundingPlacement),
   strategy: 'fixed',
   middleware: computed(() => [
+    ...(props.placeBy ? [placer] : []),
     offsetMiddleware(props.offset),
-    flip(),
+    ...(props.placeBy ? [] : [flip()]),
     shift({ padding: 8, limiter: limitShift() }),
   ]),
   whileElementsMounted: autoUpdate,
@@ -174,7 +229,20 @@ function onAnchorScroll() {
   closeNow()
 }
 
+/** Escape dismissed the tip: none again until the pointer or the focus leaves its trigger. */
+let dismissed = false
+
+/** Escape closes a showing tip, and goes on to whatever else it closes: the tip never takes the key. */
+function onEscape(event: KeyboardEvent) {
+  if (event.key !== 'Escape')
+    return
+  dismissed = true
+  clearTimers()
+  closeNow()
+}
+
 function unbindDismiss() {
+  document.removeEventListener('keydown', onEscape, { capture: true })
   for (const target of scrollTargets) {
     target.removeEventListener('scroll', onAnchorScroll)
   }
@@ -189,6 +257,7 @@ function bindDismiss() {
   const el = triggerRef.value
   if (!el)
     return
+  document.addEventListener('keydown', onEscape, { capture: true })
   scrollTargets = getOverflowAncestors(el)
   for (const target of scrollTargets) {
     target.addEventListener('scroll', onAnchorScroll, { passive: true })
@@ -241,6 +310,24 @@ function openNow() {
   isOpen.value = true
 }
 
+const warming = { close: closeNow }
+// Of the tips with a warm window, the one that shows closes the one that did.
+watch(visible, (now) => {
+  if (now)
+    emit('open')
+  else emit('close')
+  if (props.warmMs === undefined)
+    return
+  if (now) {
+    if (warmOpen && warmOpen !== warming)
+      warmOpen.close()
+    warmOpen = warming
+  } else if (warmOpen === warming) {
+    warmOpen = null
+    warmClosedAt = performance.now()
+  }
+})
+
 function closeNow() {
   isOpen.value = false
 }
@@ -248,10 +335,11 @@ function closeNow() {
 function scheduleOpen() {
   clearCloseTimer()
   clearOpenTimer()
-  if (!wanted())
+  if (dismissed || !wanted())
     return
   hiddenByScroll.value = false
-  if (props.openDelayMs <= 0) {
+  const warm = props.warmMs !== undefined && (warmOpen !== null || performance.now() - warmClosedAt < props.warmMs)
+  if (props.openDelayMs <= 0 || warm) {
     openNow()
     return
   }
@@ -305,6 +393,7 @@ function onFocusin(event: FocusEvent) {
 }
 
 function scheduleClose() {
+  dismissed = false
   clearOpenTimer()
   clearCloseTimer()
   if (props.closeDelayMs <= 0) {
@@ -372,15 +461,18 @@ function listen(element: HTMLElement, on: boolean): void {
 watch(() => props.trigger, (element, before) => {
   if (before)
     listen(before, false)
-  if (element) {
+  if (element)
     listen(element, true)
-    triggerRef.value = element
-  }
 }, { immediate: true })
 
 onBeforeUnmount(() => {
   clearTimers()
   unbindDismiss()
+  // A tip that goes with its page closes as any does, for the warm window and for the owner's `close`.
+  if (visible.value && warmOpen === warming) {
+    warmOpen = null
+    warmClosedAt = performance.now()
+  }
   if (props.trigger)
     listen(props.trigger, false)
 })
@@ -390,7 +482,7 @@ onBeforeUnmount(() => {
   <component
     :is="props.tag"
     v-if="!props.trigger"
-    ref="triggerRef"
+    ref="wrapperRef"
     v-bind="attrs"
     @pointerenter="onPointerenter"
     @pointermove="onPointermove"
@@ -414,11 +506,16 @@ onBeforeUnmount(() => {
       <div
         v-if="visible"
         ref="floatingRef"
-        class="overlay-shell select-none pointer-events-none z-[60] w-max min-w-max rounded-md text-fg"
-        :class="hasOverlay
-          ? [wide ? 'max-w-2xl' : 'max-w-xs', 'px-3 py-2 text-xs leading-relaxed']
-          : 'line-clamp-2 max-w-sm px-2.5 py-1.5 text-[12px] leading-4'"
-        :style="{ ...floatingStyles, '--elevation': elevation }"
+        class="overlay-shell select-none pointer-events-none w-max min-w-max text-fg"
+        :class="card
+          ? 'rounded-lg'
+          : [
+              'rounded-md',
+              hasOverlay
+                ? [wide ? 'max-w-2xl' : 'max-w-xs', 'px-3 py-2 text-xs leading-relaxed']
+                : 'line-clamp-2 max-w-sm px-2.5 py-1.5 text-[12px] leading-4',
+            ]"
+        :style="{ ...floatingStyles, '--elevation': elevation, zIndex: z() }"
         role="tooltip"
       >
         <slot v-if="hasOverlay" name="overlay" />

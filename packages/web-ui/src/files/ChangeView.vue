@@ -11,6 +11,7 @@ import RegionNote from '../ui/RegionNote.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import ChangeTree from './ChangeTree.vue'
 import RequestFileList from './RequestFileList.vue'
 import { useRequestSides } from './request-sides'
@@ -415,7 +416,7 @@ function pick(path: string): void {
           <LineCounts v-if="counts" :added="counts.added" :removed="counts.removed" />
         </span>
         <!-- The edit shown is named by its call's title; the file's name keeps its width first. -->
-        <span v-if="editAt !== null" class="ml-auto min-w-0 truncate pl-2 text-fg-subtle" :title="edits[editAt]?.title">{{ edits[editAt]?.title }}</span>
+        <TruncatedText v-if="editAt !== null" class="ml-auto pl-2 text-fg-subtle" :text="edits[editAt]?.title ?? ''" />
       </div>
       <RegionNote
         v-if="unwatched"

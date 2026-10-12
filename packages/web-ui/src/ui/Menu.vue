@@ -302,7 +302,7 @@ function handleKeydown(event: KeyboardEvent) {
   <div
     ref="panelRef"
     role="menu"
-    class="overlay-panel overlay-menu rounded-lg text-fg outline-none"
+    class="overlay-shell overlay-menu rounded-lg text-fg outline-none"
     :class="filterable ? 'min-w-48' : 'min-w-40'"
     :style="{ '--elevation': elevation }"
     tabindex="-1"

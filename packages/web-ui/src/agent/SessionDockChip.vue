@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pressOnKey } from '../ui/button-events'
 import StatusDot from '../ui/StatusDot.vue'
 
 withDefaults(defineProps<{
@@ -14,8 +15,11 @@ withDefaults(defineProps<{
   <span
     role="button"
     :aria-disabled="disabled || undefined"
-    class="btn-solid inline-flex h-7 cursor-default select-none items-center gap-1.5 rounded-full px-2.5 text-chrome"
+    :tabindex="disabled ? undefined : 0"
+    class="focus-ring btn-solid inline-flex h-7 cursor-default select-none items-center gap-1.5 rounded-full px-2.5 text-chrome"
     :class="disabled ? 'text-fg-faint' : 'text-fg-body hover:text-fg-emphasis'"
+    @keydown="pressOnKey"
+    @keyup="pressOnKey"
   >
     <StatusDot v-if="dot" :tone="dot" :breathing="breathing" />
     <slot />

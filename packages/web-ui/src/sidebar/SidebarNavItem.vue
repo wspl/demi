@@ -5,6 +5,7 @@ import { disabledTooltip } from '@demicodes/web-ui/ui/disabled'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
+import { pressOnKey } from '@demicodes/web-ui/ui/button-events'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /**
@@ -22,10 +23,12 @@ const props = defineProps<{
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: SentenceText
+  /** What the entry stands for, as a tooltip, such as a place's full path; a disabled entry's reason comes first. */
+  hint?: SentenceText
 }>()
 
 const phone = usePhone()
-const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
+const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason) ?? props.hint)
 
 const emit = defineEmits<{
   click: []
@@ -43,7 +46,8 @@ const emit = defineEmits<{
       role="button"
       :aria-label="label"
       :aria-disabled="disabled || undefined"
-      class="flex cursor-default select-none items-center gap-2 rounded-md transition-colors duration-200 ease-out"
+      :tabindex="disabled ? undefined : 0"
+      class="focus-ring flex cursor-default select-none items-center gap-2 rounded-md transition-colors duration-200 ease-out"
       :class="[
         'pl-2.5 pr-2',
         size === 'lg' ? 'h-10 text-[15px] phone:h-11 phone:text-[17px]' : 'h-7 text-chrome phone:h-11 phone:text-[16px]',
@@ -55,6 +59,8 @@ const emit = defineEmits<{
             : 'text-fg-muted hover:bg-hover hover:text-fg',
       ]"
       @click="!disabled && emit('click')"
+      @keydown="pressOnKey"
+      @keyup="pressOnKey"
     >
       <component
         :is="icon"

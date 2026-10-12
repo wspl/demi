@@ -34,6 +34,7 @@ import type { HostMenuHost } from '../hosts/types'
 import type { MessageForkHandler } from './message-fork'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import { isTextCut } from '@demicodes/web-ui/ui/truncation'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import Sheet from '../ui/Sheet.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -502,11 +503,12 @@ watch(
             ref="title"
             class="min-w-0 select-none truncate text-chrome font-normal text-fg"
             :style="{ maxWidth: `${TITLE_MAX_PX}px` }"
-            :title="conversation.title"
             @dblclick="beginRename"
           >
             {{ conversation.title }}
           </h1>
+          <!-- A cut title shows whole in its tip, as a sidebar row's does. -->
+          <Tooltip :trigger="title" :content="conversation.title" :show-if="isTextCut" placement="bottom-start" />
           <Tooltip content="Rename" class="shrink-0">
             <IconButton
               :icon="TextCursorInput"

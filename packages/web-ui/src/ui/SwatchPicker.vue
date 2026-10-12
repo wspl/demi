@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import Tooltip from './Tooltip.vue'
+
 /** A row of colour swatches as a radio group; the chosen one wears a ring in its own colour. */
 defineProps<{
   modelValue: string
@@ -16,23 +18,22 @@ const emit = defineEmits<{
 
 <template>
   <div class="flex flex-wrap items-center gap-1.5" role="radiogroup">
-    <button
-      v-for="item in options"
-      :key="item.id"
-      type="button"
-      role="radio"
-      class="flex size-6 cursor-default items-center justify-center rounded-full outline-offset-0 transition-[outline-color,background-color] duration-200 ease-out"
-      :class="modelValue === item.id ? 'outline outline-[1.5px]' : 'hover:bg-hover'"
-      :style="modelValue === item.id ? { outlineColor: item.swatch } : undefined"
-      :title="item.name"
-      :aria-label="item.name"
-      :aria-checked="modelValue === item.id"
-      @click="emit('update:modelValue', item.id)"
-    >
-      <span
-        class="size-3.5 rounded-full"
-        :style="{ background: item.swatch }"
-      />
-    </button>
+    <Tooltip v-for="item in options" :key="item.id" :content="item.name" class="flex">
+      <button
+        type="button"
+        role="radio"
+        class="flex size-6 cursor-default items-center justify-center rounded-full outline-offset-0 transition-[outline-color,background-color] duration-200 ease-out"
+        :class="modelValue === item.id ? 'outline outline-[1.5px]' : 'hover:bg-hover'"
+        :style="modelValue === item.id ? { outlineColor: item.swatch } : undefined"
+        :aria-label="item.name"
+        :aria-checked="modelValue === item.id"
+        @click="emit('update:modelValue', item.id)"
+      >
+        <span
+          class="size-3.5 rounded-full"
+          :style="{ background: item.swatch }"
+        />
+      </button>
+    </Tooltip>
   </div>
 </template>

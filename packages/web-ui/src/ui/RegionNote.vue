@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { Component } from 'vue'
 import Button from './Button.vue'
+import TruncatedText from './TruncatedText.vue'
 import type { SentenceText, TitleText } from './ui-text'
 
 /**
@@ -29,9 +30,9 @@ defineEmits<{ action: [] }>()
     :class="action ? 'pr-1' : 'pr-3'"
   >
     <component :is="icon" :size="12" class="shrink-0 text-fg-subtle" aria-hidden="true" />
-    <p class="min-w-0 flex-1 truncate" :title="detail ?? undefined">
+    <TruncatedText class="flex-1" :text="detail ? `${label} ${detail}` : label">
       {{ label }}<span v-if="detail" class="ml-1 text-fg-subtle">{{ detail }}</span>
-    </p>
+    </TruncatedText>
     <Button v-if="action" size="xs" variant="ghost" class="shrink-0" @click="$emit('action')">{{ action }}</Button>
   </div>
 </template>

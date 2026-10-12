@@ -49,7 +49,7 @@ function onKeydown(event: KeyboardEvent) {
   >
     <span
       v-bind="$attrs"
-      class="inline-flex cursor-default items-center gap-1.5"
+      class="focus-ring inline-flex cursor-default items-center gap-1.5 rounded-sm"
       :class="disabled ? 'pointer-events-none cursor-not-allowed opacity-40' : ''"
       role="switch"
       :tabindex="disabled ? undefined : 0"
