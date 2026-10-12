@@ -140,6 +140,7 @@ impl Shard {
         user: UserId,
         services: Arc<Services>,
         http: reqwest::Client,
+        web: reqwest::Client,
     ) -> Self {
         // The user's request rate limit, which every runtime of the user's
         // conversations counts against.
@@ -150,6 +151,8 @@ impl Shard {
             user.clone(),
             Rc::new(plugins::ShardPort {
                 shard: shard.clone(),
+                services: services.clone(),
+                web,
             }),
             services.control.clone(),
             services.sync.of(&user),
@@ -657,6 +660,7 @@ async fn spawn_thread(
 async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
     let calls = TaskTracker::new();
     let http = reqwest::Client::new();
+    let web = plugins::web_client(&services);
     let mut shards: HashMap<UserId, Rc<Shard>> = HashMap::new();
     let mut closer = None;
     while let Some(message) = queue.recv().await {
@@ -666,7 +670,13 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                     .entry(job.user().clone())
                     .or_insert_with_key(|user| {
                         let shard = Rc::new_cyclic(|shard| {
-                            Shard::new(shard.clone(), user.clone(), services.clone(), http.clone())
+                            Shard::new(
+                                shard.clone(),
+                                user.clone(),
+                                services.clone(),
+                                http.clone(),
+                                web.clone(),
+                            )
                         });
                         // The search index follows the user's changes from
                         // the shard's first call until it closes.

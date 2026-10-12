@@ -61,9 +61,9 @@ impl ReadBlob for NoBlobs {
 /// release before the one that ships the current schema, and of each
 /// development build a server keeps data of (`upgrades.md` § A development
 /// build on a server); 0.1.22-dev.20261011T123543Z shipped the last of
-/// those. The schemas with the subagent limits and without Detect Title
-/// after it no server keeps, but development databases do, and the server's
-/// migrate through them.
+/// those. The schemas with the subagent limits, without Detect Title and
+/// with the kept limits after it no server keeps, but development databases
+/// do, and the server's migrate through them.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -111,8 +111,33 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.no-detect-title.sql"),
             migration: Migration::Sql(CONTROL_FROM_NO_DETECT_TITLE),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.kept-limits.sql"),
+            migration: Migration::Sql(CONTROL_FROM_KEPT_LIMITS),
+        },
     ],
 };
+
+/// From the control schema whose subagent limits keep their numbers to the
+/// one with the plugins' secrets and OAuth clients (`plugins.md` § Secrets,
+/// § OAuth sign-in): two new tables, empty.
+const CONTROL_FROM_KEPT_LIMITS: &str = "
+CREATE TABLE plugin_secrets (
+  user_id  TEXT NOT NULL REFERENCES users (id),
+  plugin   TEXT NOT NULL,
+  name     TEXT NOT NULL,
+  sealed   BLOB NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  PRIMARY KEY (user_id, plugin, name)
+) STRICT, WITHOUT ROWID;
+CREATE TABLE plugin_oauth_clients (
+  plugin       TEXT NOT NULL,
+  issuer       TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  client_id    TEXT NOT NULL,
+  PRIMARY KEY (plugin, issuer)
+) STRICT, WITHOUT ROWID;
+";
 
 /// Each conversation's database's. Its history holds the schema of each
 /// published release before the one that ships the current schema, and of
@@ -1197,6 +1222,30 @@ CREATE TABLE plugin_directories (
   digest  TEXT NOT NULL,
   files   TEXT NOT NULL,
   PRIMARY KEY (user_id, plugin, name)
+) STRICT, WITHOUT ROWID;
+
+-- Each plugin's secrets for a user (`plugins.md` § Secrets): sealed, with
+-- the plugin, the user and the name as the additional data, and the
+-- revision a conditional write names. The plugin host keeps a sign-in's
+-- tokens here too, under a name no plugin can give.
+CREATE TABLE plugin_secrets (
+  user_id  TEXT NOT NULL REFERENCES users (id),
+  plugin   TEXT NOT NULL,
+  name     TEXT NOT NULL,
+  sealed   BLOB NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  PRIMARY KEY (user_id, plugin, name)
+) STRICT, WITHOUT ROWID;
+
+-- The public client each plugin registered with its vendor's authorization
+-- server (`plugins.md` § OAuth sign-in), and the redirect URI it was
+-- registered with: a client of another URI is registered again.
+CREATE TABLE plugin_oauth_clients (
+  plugin       TEXT NOT NULL,
+  issuer       TEXT NOT NULL,
+  redirect_uri TEXT NOT NULL,
+  client_id    TEXT NOT NULL,
+  PRIMARY KEY (plugin, issuer)
 ) STRICT, WITHOUT ROWID;
 
 -- The conversation index. The web app chooses a conversation's id and its

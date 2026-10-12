@@ -4,9 +4,11 @@
 //! conversation's tree opens with and which page states, page calls and
 //! user streams exist; the context sources among them; the Host directories
 //! of the plugins on; and the answers to their port operations. The plugin
-//! host answers values, directories and changes itself; what reaches the
-//! user's blobs or a conversation's Hosts goes to the product, which owns
-//! the blob namespace and the conversation's host access.
+//! host answers values, directories, changes, secrets, outbound requests
+//! and sign-ins itself; what reaches the user's blobs or a conversation's
+//! Hosts goes to the product, which owns the blob namespace and the
+//! conversation's host access, and so do the sealing of a secret, the
+//! client an outbound request is sent with, the public URL and the time.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -25,7 +27,7 @@ use demi_plugin_interface::{
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
     PortRefusal, Reply, Request, Scope, StoredValue, Topic,
 };
-use demi_shared_types::{B64Bytes, BlobRef, NodeId, TurnId};
+use demi_shared_types::{B64Bytes, BlobRef, NodeId, Timestamp, TurnId};
 use demi_web_api_protocol::conversations::PluginRevision;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
@@ -34,9 +36,12 @@ use demi_web_api_protocol::plugins::{PluginEntry, PluginStateAnswer};
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
+use url::Url;
 
 use crate::Registry;
 use crate::commands::compose;
+use crate::oauth::{Callback, CallbackError, SignIns};
+use crate::web;
 
 /// What the product does for the plugins' port: the operations that reach
 /// a conversation's Hosts through its host access, and the user's blobs.
@@ -66,6 +71,25 @@ pub trait ProductPort {
     fn put_blob(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, PortFailure>>;
 
     fn get_blob(&self, blob: BlobRef) -> LocalBoxFuture<'_, Result<Option<B64Bytes>, PortFailure>>;
+
+    /// `plaintext` sealed as `user`'s secret `name` of `plugin`, by the one
+    /// owner of sealing (`storage.md` § Passwords and credentials at rest).
+    fn seal(&self, user: &UserId, plugin: &str, name: &str, plaintext: &[u8]) -> Vec<u8>;
+
+    /// What `sealed` holds as that secret; none when it does not open.
+    fn open(&self, user: &UserId, plugin: &str, name: &str, sealed: &[u8]) -> Option<Vec<u8>>;
+
+    /// The client every outbound request of the plugins goes through
+    /// (`plugins.md` § Outbound requests): the shard's, which sends only
+    /// `https` and follows no redirect away from it.
+    fn web_client(&self) -> reqwest::Client;
+
+    /// The backend's public URL, which an OAuth redirect URI starts with;
+    /// none before the backend listens.
+    fn public_url(&self) -> Option<Url>;
+
+    /// The wall clock.
+    fn now(&self) -> Timestamp;
 }
 
 /// A page's call of a plugin method.
@@ -156,11 +180,13 @@ pub struct PluginToolset {
 
 /// What every request of the user's plugins shares.
 pub(crate) struct Shared {
-    registry: Arc<Registry>,
+    pub(crate) registry: Arc<Registry>,
     pub(crate) user: UserId,
     instances: Vec<Rc<dyn Plugin>>,
-    product: Rc<dyn ProductPort>,
-    control: ControlService,
+    pub(crate) product: Rc<dyn ProductPort>,
+    pub(crate) control: ControlService,
+    /// The user's OAuth sign-ins under way, and the turns of their renewals.
+    pub(crate) sign_ins: SignIns,
     marks: UserMarks,
     /// Whether the user has each plugin on, by its index, once read: every
     /// switch goes through this shard, so the copy stays current.
@@ -204,7 +230,7 @@ impl Shared {
         self.instances[plugin].call(request, port).await
     }
 
-    fn plugin_id(&self, plugin: usize) -> String {
+    pub(crate) fn plugin_id(&self, plugin: usize) -> String {
         self.registry.plugins[plugin].id().as_str().to_owned()
     }
 
@@ -216,7 +242,7 @@ impl Shared {
     /// Marks plugin `plugin`'s page state of `scope` changed: the user's
     /// goes to every page of the user; a conversation's raises its revision,
     /// which the conversation's summary carries.
-    fn changed(&self, plugin: usize, conversation: Option<&ConversationId>) {
+    pub(crate) fn changed(&self, plugin: usize, conversation: Option<&ConversationId>) {
         match conversation {
             None => self.marks.mark(Part::Plugin(self.plugin_id(plugin))),
             Some(conversation) => {
@@ -384,12 +410,14 @@ impl UserPlugins {
             .iter()
             .map(|_| CancellationToken::new())
             .collect();
+        let sign_ins = SignIns::new(registry.plugins.len());
         Self(Rc::new(Shared {
             registry,
             user,
             instances,
             product,
             control,
+            sign_ins,
             marks,
             enabled: RefCell::new(None),
             stream_ends: RefCell::new(stream_ends),
@@ -728,6 +756,25 @@ impl UserPlugins {
         Ok((revision, changed))
     }
 
+    /// The vendor sent the browser back to `plugin`'s OAuth callback
+    /// (`plugins.md` § OAuth sign-in): a sign-in this user started, of a
+    /// plugin the user has on, is completed; answers the vendor's name.
+    pub async fn oauth_callback(
+        &self,
+        plugin: &str,
+        callback: Callback,
+        cancel: CancellationToken,
+    ) -> Result<String, CallbackError> {
+        let unknown = || CallbackError::UnknownPlugin(plugin.to_owned());
+        let Some((index, _)) = self.0.registry.plugin(plugin) else {
+            return Err(unknown());
+        };
+        if !self.enabled().await?[index] {
+            return Err(unknown());
+        }
+        self.0.oauth_callback(index, callback, &cancel).await
+    }
+
     async fn state_of(
         &self,
         plugin: usize,
@@ -977,6 +1024,40 @@ impl RequestPort {
                 self.own_tab(&id).await?;
                 self.panel_change(PanelChange::Remove { id }).await?
             }
+            PortMessage::ReadSecret { name } => PortAnswer::Secret {
+                secret: shared.read_secret(self.plugin, name.as_str()).await?,
+            },
+            PortMessage::WriteSecret {
+                name,
+                value,
+                revision,
+            } => PortAnswer::Written {
+                revision: shared
+                    .write_secret(self.plugin, name.as_str(), &value, revision)
+                    .await?,
+            },
+            PortMessage::RemoveSecret { name, revision } => {
+                shared
+                    .remove_secret(self.plugin, name.as_str(), revision)
+                    .await?;
+                PortAnswer::Done
+            }
+            PortMessage::SendRequest { request } => {
+                let id = shared.registry.plugins[self.plugin].id();
+                PortAnswer::Response {
+                    response: web::send(&product.web_client(), id, request, &self.cancel).await?,
+                }
+            }
+            PortMessage::OauthStart => PortAnswer::AuthorizationUrl {
+                url: shared.oauth_start(self.plugin, &self.cancel).await?,
+            },
+            PortMessage::OauthToken => PortAnswer::AccessToken {
+                token: shared.oauth_token(self.plugin, &self.cancel).await?,
+            },
+            PortMessage::OauthSignOut => {
+                shared.oauth_sign_out(self.plugin, &self.cancel).await?;
+                PortAnswer::Done
+            }
         };
         Ok(answer)
     }
@@ -1038,6 +1119,6 @@ fn stored(value: demi_backend_database::plugin_values::PluginValue) -> StoredVal
 
 /// A storage failure as the port reports it: the operation failed, which a
 /// plugin cannot cause.
-fn storage(error: StorageError) -> PortFailure {
+pub(crate) fn storage(error: StorageError) -> PortFailure {
     PortFailure::Port(PortError::Failed(error.to_string()))
 }

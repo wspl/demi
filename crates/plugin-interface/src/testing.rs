@@ -20,8 +20,7 @@ use tokio_util::sync::CancellationToken;
 use crate::{
     CallKind, DirectoryPath, EntryKind, HostDirectory, HostEntry, HostFile, HostRead, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
-    PortRefusal,
-    Reply, Request, StoredValue,
+    PortRefusal, Reply, Request, SecretName, StoredSecret, StoredValue, WebRequest, WebResponse,
 };
 
 /// `plugin` behind the JSON loopback.
@@ -77,6 +76,10 @@ impl PluginTransport for JsonMessages {
 pub type PackageCalls =
     Box<dyn Fn(&NativeOperation, &Map<String, Value>, CallKind) -> Result<Value, PortFailure>>;
 
+/// How a test answers an outbound request: the vendor's response, or a
+/// refusal.
+pub type WebRequests = Box<dyn Fn(&WebRequest) -> Result<WebResponse, PortRefusal>>;
+
 /// A package call a plugin made.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackageCall {
@@ -89,7 +92,8 @@ pub struct PackageCall {
 /// plugin's values and the blobs they name, the user's blobs, the plugin's
 /// Host directories, the files of the conversation's primary Host, the
 /// package calls a test answers, how often the plugin marked its state
-/// as changed, and the conversation's work panel.
+/// as changed, the conversation's work panel, the plugin's secrets, the
+/// outbound requests a test answers and the user's sign-in.
 pub struct TestDemi {
     /// The plugin whose port this is, which names its directories' paths.
     pub plugin: RefCell<PluginId>,
@@ -110,6 +114,12 @@ pub struct TestDemi {
     /// The conversation's work panel and its revision, which the plugin's
     /// changes and a test's, as the page's, go through.
     panel: RefCell<(u64, PanelDocument)>,
+    secrets: RefCell<BTreeMap<SecretName, StoredSecret>>,
+    pub web_requests: RefCell<Option<WebRequests>>,
+    /// Each outbound request the plugin sent.
+    pub sent: RefCell<Vec<WebRequest>>,
+    /// The access token of the user's sign-in; none while signed out.
+    pub access_token: RefCell<Option<String>>,
     /// Woken at each port message the plugin sends.
     answered: tokio::sync::Notify,
 }
@@ -136,6 +146,10 @@ impl TestDemi {
             called: RefCell::default(),
             changed: Cell::new(0),
             panel: RefCell::default(),
+            secrets: RefCell::default(),
+            web_requests: RefCell::default(),
+            sent: RefCell::default(),
+            access_token: RefCell::default(),
             answered: tokio::sync::Notify::new(),
         }
     }
@@ -187,6 +201,11 @@ impl TestDemi {
     /// How many times the plugin marked its state as changed.
     pub fn changes(&self) -> u32 {
         self.changed.get()
+    }
+
+    /// The plugin's secret `name`.
+    pub fn secret(&self, name: &SecretName) -> Option<StoredSecret> {
+        self.secrets.borrow().get(name).cloned()
     }
 
     /// The conversation's work panel.
@@ -319,6 +338,51 @@ impl TestDemi {
                 self.panel_answer(PanelChange::Update { id, data })?
             }
             PortMessage::RemovePanelTab { id } => self.panel_answer(PanelChange::Remove { id })?,
+            PortMessage::ReadSecret { name } => PortAnswer::Secret {
+                secret: self.secrets.borrow().get(&name).cloned(),
+            },
+            PortMessage::WriteSecret {
+                name,
+                value,
+                revision,
+            } => {
+                let mut secrets = self.secrets.borrow_mut();
+                if secrets.get(&name).map(|stored| stored.revision) != revision {
+                    return Err(PortRefusal::Conflict);
+                }
+                let revision = revision.map_or(1, |revision| revision + 1);
+                secrets.insert(name, StoredSecret { value, revision });
+                PortAnswer::Written { revision }
+            }
+            PortMessage::RemoveSecret { name, revision } => {
+                let mut secrets = self.secrets.borrow_mut();
+                if secrets.get(&name).map(|stored| stored.revision) != Some(revision) {
+                    return Err(PortRefusal::Conflict);
+                }
+                secrets.remove(&name);
+                PortAnswer::Done
+            }
+            PortMessage::SendRequest { request } => {
+                let requests = self.web_requests.borrow();
+                let answer = requests.as_ref().expect("the test answers outbound requests");
+                let answer = answer(&request);
+                self.sent.borrow_mut().push(request);
+                PortAnswer::Response { response: answer? }
+            }
+            PortMessage::OauthStart => PortAnswer::AuthorizationUrl {
+                url: "https://auth.example.test/authorize?state=test".into(),
+            },
+            PortMessage::OauthToken => PortAnswer::AccessToken {
+                token: self
+                    .access_token
+                    .borrow()
+                    .clone()
+                    .ok_or(PortRefusal::SignedOut)?,
+            },
+            PortMessage::OauthSignOut => {
+                self.access_token.replace(None);
+                PortAnswer::Done
+            }
         };
         Ok(answer)
     }
