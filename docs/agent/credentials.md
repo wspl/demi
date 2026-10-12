@@ -94,8 +94,8 @@ prints it.
 | Leaf | Does |
 | --- | --- |
 | `list` | Each credential's name, fields (name, label, kind), *Kept until*, and whether this conversation may use it |
-| `show <name>` | One credential: its fields, the values of its visible fields, its note and its dates |
-| `request <name> --field <name>:<secret|visible>:<label>… [--reason <text>] [--keep <1h|1d|30d|always>]` | Asks the user for a new credential, or for new values of an existing one of that name with the same fields; it waits for the user's answer and returns what was saved, or that the user declined. A card the user has not answered waits as long as the conversation does |
+| `show <name>` | One credential: its fields, its note and its dates, and the values of its visible fields once the conversation may use it |
+| `request <name> --field <name>:<secret|visible>:<label>… [--reason <text>] [--keep <1h|1d|30d|always>]` | Asks the user for a new credential, or for new values of an existing one of that name with the same fields; it waits for the user's answer and returns what was saved, or that the user declined. Its card stays while the command waits; a command that stops waiting, stopped or ended by a backend restart, withdraws its card, and the next `request` asks again. A renewal keeps the saved note |
 | `read <name> <field>` | One field's value on standard output |
 | `remove <name>` | Removes it; needs the permission `credentials.manage` |
 
