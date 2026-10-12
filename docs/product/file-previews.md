@@ -428,13 +428,16 @@ it was, not dimmed, so the user can go on reading and typing beside it.
   picture's actual size, the size at which one of its pixels covers one
   pixel of the screen: a 2880 × 1800 screenshot on a display of two device
   pixels per page pixel opens 1440 × 900 page pixels large, plus the title
-  bar. A picture larger than 60% of the page's width or 70% of its height
-  opens scaled down, keeping its proportions, to the largest size within
+  bar. A picture whose window would be wider than 60% of the page or, title
+  bar included, taller than 70% of it opens scaled down, keeping its proportions, to the largest size within
   both; a picture smaller than 320 × 240 sits centred in a window of that
   size. The first picture opens the window centred over the conversation;
   another picture opened while it shows resizes the window about its centre,
   kept within the page. A size the user dragged lasts while that picture
-  shows; a video opens at its frame's size by the same rule.
+  shows; a video opens at its frame's size by the same rule. A picture
+  whose size is not known yet opens the window at the largest size and
+  takes its own size about the window's centre once it loads, unless the
+  user has moved the window by then.
 - **One viewer.** Opening another picture or video shows it in the same
   window, in place of the one it showed.
 - **What it shows.** An image opens fitted to the window, scaled down and
