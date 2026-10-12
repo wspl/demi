@@ -162,19 +162,23 @@ is one limit the vendor meters:
 
 Every surface that shows a window says its use and its reset the same way, on
 one line over its bar, the window's name, then its reset and its use at the
-line's end, *5h session · · · Resets in 4 hr 42 min · 4% used*, the reset
+line's end, *5h session · · · Resets in 4h 42m · 4% used*, the reset
 giving way first where the line is short: a bar of `usedPercent`, *18% used*, and when it resets, as specifically as the
 user would say it, counted from now in the user's time zone:
 
 | When it resets | Wording |
 | --- | --- |
-| Within the hour | *Resets in 12 min* |
-| Within 24 hours | *Resets in 3 hr 38 min*, the minutes left out on the hour |
-| Within 7 days | *Resets Sat 4:00 PM* |
-| Later | *Resets Oct 15 at 4:00 PM*, with the year when it is not this year |
+| Passed, before the next snapshot | *Resets now* |
+| Within a minute | *Resets in <1m* |
+| Within the hour | *Resets in 42m* |
+| Within 24 hours | *Resets in 3h 42m*, *Resets in 3h* on the hour |
+| 24 hours or more, less than 7 days | *Resets Sat 4:00 PM*: 7 days ahead would name today's weekday, so the weekday stops at 6 |
+| 7 days or more | *Resets Oct 24*, the day alone; *Resets Jan 3, 2027* when it is not this year |
 | Unknown | No reset line |
 
-The wording follows the clock while it shows. Settings show every account's
+The wording follows the clock while it shows. One web-ui row and one
+formatter say it on every surface, Settings and the context card alike, so
+the two never differ. Settings show every account's
 windows, and the context indicator's card shows, under the context's rows,
 the windows of the account the conversation's model runs on, under a line
 naming the plan, *Usage limits · Max*: the plan the snapshot reports, or,
