@@ -268,9 +268,9 @@ const ringColor = computed(() => {
                     </template>
                   </SectionRow>
                   <div class="px-3 pt-0.5">
-                    <p v-if="limits.error" class="mb-2 text-[12px] leading-4 break-words text-fg-muted">{{ limits.error }}</p>
                     <ProviderQuota
                       :windows="limits.windows"
+                      :error="limits.error"
                       :auto-refresh="limits.autoRefresh"
                       @refresh="emit('refreshLimits', true)"
                     />
