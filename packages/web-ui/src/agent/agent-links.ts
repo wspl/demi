@@ -1,16 +1,16 @@
 import { inject, provide, type InjectionKey } from 'vue'
-import type { SubagentPhase, SubagentRecord } from './subagents'
+import type { AgentRun, SubagentPhase, SubagentRecord } from './subagents'
 
 /**
  * An agent a message links as `agent:<number>` (`subagents.md` § Linking an
- * agent): a subagent with its description and its phase, which changes as
- * it runs and ends, or the conversation's own agent, number 0, which has no
- * phase of its own here.
+ * agent): a subagent with its description and its round, whose phase
+ * changes as it runs and ends, or the conversation's own agent, number 0,
+ * which has no round of its own here.
  */
 export interface MessageAgent {
   number: number
   description: string
-  phase: SubagentPhase | null
+  run: AgentRun | null
 }
 
 /** What the messages below know of the conversation's agents, and how a link opens one. */
@@ -30,9 +30,9 @@ export function linkedAgent(target: string): number | null {
 /** The agents of a conversation that a message's links find: its own agent, 0, and its subagents by their numbers. */
 export function findAgent(agents: readonly SubagentRecord[], number: number): MessageAgent | null {
   if (number === 0)
-    return { number: 0, description: 'Main agent', phase: null }
+    return { number: 0, description: 'Main agent', run: null }
   const agent = agents.find((candidate) => candidate.number === number)
-  return agent ? { number, description: agent.name, phase: agent.phase } : null
+  return agent ? { number, description: agent.name, run: agent } : null
 }
 
 /** What the Agents window shows: whether it is open, and the agent's tab it is on. */

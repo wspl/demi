@@ -53,7 +53,7 @@ pub use result::{
 pub use product::{
     ContextAnswer, ContextSource, EFFORT_OFF, EntryKind, HostResolver, MenuEntry, MenuModel,
     ModelChoice, ModelEdit, NewProfileDraft, NodeContext, Profile, ProfileEdit, ProfileModel,
-    SubagentSettings, SubagentSource, TIER_DEFAULT, Toolset, ToolsetSource, Unavailable,
+    SubagentSettings, SubagentSource, TIER_DEFAULT, Toolset, ToolsetSource, Unavailable, runs_on,
 };
 pub use prompt::{ModelIdentity, system_prompt};
 
