@@ -42,15 +42,16 @@ withDefaults(defineProps<{
       :class="isOpen ? 'rotate-180' : ''"
     />
   </Button>
-  <!-- Each face takes the focus as Button does (on its click, no Tab stop), so a closing menu
-       can give it back, and Return or Space opens the menu again. -->
+  <!-- Each face is a Tab stop and takes the focus as Button does, so a closing menu can give
+       it back, and Return or Space opens the menu again. -->
   <span
     v-else-if="variant === 'field'"
     role="button"
     :aria-label="ariaLabel"
-    :tabindex="disabled ? undefined : -1"
+    :tabindex="disabled ? undefined : 0"
     @keydown="pressOnKey"
-    class="flex w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
+    @keyup="pressOnKey"
+    class="focus-ring flex w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
     :class="[
       size === 'sm' ? 'h-6' : 'h-7',
       disabled
@@ -69,9 +70,10 @@ withDefaults(defineProps<{
     v-else
     role="button"
     :aria-label="ariaLabel"
-    :tabindex="disabled ? undefined : -1"
+    :tabindex="disabled ? undefined : 0"
     @keydown="pressOnKey"
-    class="inline-flex cursor-default select-none items-center gap-0.5 rounded-md text-chrome transition-colors duration-200 ease-out"
+    @keyup="pressOnKey"
+    class="focus-ring inline-flex cursor-default select-none items-center gap-0.5 rounded-md text-chrome transition-colors duration-200 ease-out"
     :class="[
       size === 'sm' ? 'h-6 pl-1.5 pr-0.5 text-[12px]' : 'h-7 pl-2 pr-1',
       disabled

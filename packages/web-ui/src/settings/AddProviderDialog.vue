@@ -80,11 +80,11 @@ const results = computed(() =>
       <div
         class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float"
       >
-        <div
+        <button
           v-for="p in protocolResults"
           :key="p.value"
-          role="button"
-          class="flex h-10 cursor-default select-none items-center gap-3 px-3 hover:bg-hover"
+          type="button"
+          class="flex h-10 w-full cursor-default select-none items-center gap-3 px-3 text-left hover:bg-hover"
           @click="emit('addEndpoint', p.value)"
         >
           <span
@@ -94,7 +94,7 @@ const results = computed(() =>
           <span class="min-w-0 flex-1 truncate text-chrome text-fg"
             ><HighlightText :text="p.label" :query="query"
           /></span>
-        </div>
+        </button>
       </div>
     </div>
     <AsyncRegion :state="load" label="Loading vendors…" @retry="emit('retry')">
@@ -107,11 +107,11 @@ const results = computed(() =>
         <div
           class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float"
         >
-          <div
+          <button
             v-for="v in results"
             :key="v.id"
-            role="button"
-            class="flex h-10 cursor-default select-none items-center gap-3 px-3 hover:bg-hover"
+            type="button"
+            class="flex h-10 w-full cursor-default select-none items-center gap-3 px-3 text-left hover:bg-hover"
             @click="emit('add', v)"
           >
             <VendorMark :label="v.name" :src="v.logo" size="sm" />
@@ -128,7 +128,7 @@ const results = computed(() =>
                 <HighlightText :text="v.id" :query="query" /> </span
             ></span>
             <Tag>{{ WIRE_API_LABELS[v.wireApi] }}</Tag>
-          </div>
+          </button>
         </div>
       </div>
       <div
