@@ -10,8 +10,8 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent_tools::{
-    ContextAnswer, ContextSource, HostResolver, NodeContext, Profile, ProfileModel, SubagentSettings,
-    SubagentSource, Toolset, ToolsetSource,
+    ContextAnswer, ContextSource, HostResolver, MenuEntry, NewProfileDraft, NodeContext, Profile,
+    ProfileEdit, ProfileModel, SubagentSettings, SubagentSource, Toolset, ToolsetSource,
 };
 use demi_backend_host_access::attachment_commands::attachment_group;
 use demi_backend_host_access::host_commands::host_group;
@@ -23,6 +23,9 @@ use demi_backend_remote_host::RemoteHost;
 use demi_host_interface::HostError;
 use demi_plugin_interface::{EXECUTION_SOURCE, PluginId};
 use demi_shared_types::TurnId;
+use demi_backend_database::StorageError;
+use demi_backend_providers::vault::entries::ProviderEntry;
+use demi_web_api_protocol::subagents::SubagentProfile;
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
@@ -69,41 +72,37 @@ impl ToolsetSource for ShardToolsets {
     }
 }
 
-/// The user's subagent settings as the control store holds them now.
+/// The user's subagent settings as the control store holds them now, and
+/// the changes `demi agent profiles` makes to them through the settings
+/// page's path.
 pub(crate) struct ShardSubagents {
     /// Weak: the shard owns the agent server that holds the source.
     pub(crate) shard: Weak<Shard>,
 }
 
+impl ShardSubagents {
+    fn shard(&self) -> Result<Rc<Shard>, String> {
+        self.shard
+            .upgrade()
+            .ok_or_else(|| "the backend is shutting down".to_owned())
+    }
+}
+
 impl SubagentSource for ShardSubagents {
     fn current(&self) -> LocalBoxFuture<'_, Result<SubagentSettings, String>> {
         Box::pin(async move {
-            let shard = self
-                .shard
-                .upgrade()
-                .ok_or_else(|| "the backend is shutting down".to_owned())?;
+            let shard = self.shard()?;
             let settings = shard
                 .services()
                 .control
                 .subagent_settings(shard.user().clone())
                 .await
                 .map_err(|error| error.to_string())?;
+            let entries = entries(&shard).await.map_err(|error| error.to_string())?;
             let profiles = settings
                 .profiles
                 .into_iter()
-                .map(|profile| Profile {
-                    name: profile.name,
-                    description: profile.description,
-                    model: profile.model.map(|model| ProfileModel {
-                        provider_id: model.provider_id.as_str().to_owned(),
-                        model_id: model.model_id,
-                        thinking_effort: model.thinking_effort,
-                        service_tier_id: model.service_tier_id,
-                    }),
-                    instructions: profile.instructions,
-                    can_spawn: profile.can_spawn,
-                    enabled: profile.enabled,
-                })
+                .map(|profile| profile_of(profile, &entries))
                 .collect();
             Ok(SubagentSettings {
                 enabled: settings.enabled,
@@ -112,6 +111,79 @@ impl SubagentSource for ShardSubagents {
                 profiles,
             })
         })
+    }
+
+    fn models(&self) -> LocalBoxFuture<'_, Result<Vec<MenuEntry>, String>> {
+        Box::pin(async move {
+            self.shard()?
+                .model_menu()
+                .await
+                .map_err(|error| error.to_string())
+        })
+    }
+
+    fn create_profile(
+        &self,
+        profile: NewProfileDraft,
+    ) -> LocalBoxFuture<'_, Result<Profile, String>> {
+        Box::pin(async move {
+            let shard = self.shard()?;
+            let created = shard.create_drafted_profile(profile).await?;
+            Ok(answered(&shard, created).await)
+        })
+    }
+
+    fn edit_profile<'a>(
+        &'a self,
+        name: &'a str,
+        edit: ProfileEdit,
+    ) -> LocalBoxFuture<'a, Result<Profile, String>> {
+        Box::pin(async move {
+            let shard = self.shard()?;
+            let changed = shard.edit_named_profile(name, edit).await?;
+            Ok(answered(&shard, changed).await)
+        })
+    }
+
+    fn delete_profile<'a>(&'a self, name: &'a str) -> LocalBoxFuture<'a, Result<(), String>> {
+        Box::pin(async move { self.shard()?.delete_named_profile(name).await })
+    }
+}
+
+/// The provider entries in the user's scope.
+async fn entries(shard: &Shard) -> Result<Vec<ProviderEntry>, StorageError> {
+    let vault = &shard.services().vault;
+    let owner = vault.owner_for(shard.user()).await?;
+    vault.entries(owner).await
+}
+
+/// The profile a change wrote, as the agent reads it.
+async fn answered(shard: &Shard, profile: SubagentProfile) -> Profile {
+    // The write is done: entries that cannot be read only leave the entry's
+    // name out of the answer.
+    let entries = entries(shard).await.unwrap_or_default();
+    profile_of(profile, &entries)
+}
+
+/// A stored profile as the agent reads it, with its entry's name among
+/// `entries`.
+fn profile_of(profile: SubagentProfile, entries: &[ProviderEntry]) -> Profile {
+    Profile {
+        name: profile.name,
+        description: profile.description,
+        model: profile.model.map(|model| ProfileModel {
+            provider_name: entries
+                .iter()
+                .find(|entry| entry.id == model.provider_id)
+                .map(|entry| entry.label.clone()),
+            provider_id: model.provider_id.as_str().to_owned(),
+            model_id: model.model_id,
+            thinking_effort: model.thinking_effort,
+            service_tier_id: model.service_tier_id,
+        }),
+        instructions: profile.instructions,
+        can_spawn: profile.can_spawn,
+        enabled: profile.enabled,
     }
 }
 

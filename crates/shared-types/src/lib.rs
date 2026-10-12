@@ -64,7 +64,7 @@ pub use ids::{
 };
 pub use media::{
     MODEL_MEDIA_TYPES, ModelMediaKind, ModelMediaType, model_accepts_media_type,
-    model_media_type_for,
+    model_media_type_for, model_reads_images,
 };
 pub use model::{
     ATTACHMENT_FILE_EXTENSIONS, FileExtension, IMAGE_FILE_EXTENSIONS, modality_extensions, Model, ModelSelection, THINKING_OFF,

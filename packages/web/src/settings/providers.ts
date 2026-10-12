@@ -38,11 +38,13 @@ import {
   type TestRequest,
 } from '../api/generated/web-api'
 import { useResources } from '../state/resources'
+import { usePreferences } from '../state/preferences'
 import { useProduct } from '../state/product'
 import { subscriptionName, type ProductProvider } from '../state/catalog'
 
 export const useProviderSettings = defineStore('provider-settings', () => {
   const resources = useResources()
+  const preferences = usePreferences()
   const product = useProduct()
   /**
    * The provider being added: its form shows in the page's detail, and it
@@ -336,7 +338,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     const saved = await readResponse(response, providerAnswerSchema)
     signal.throwIfAborted()
     provider.apiKey = ''
-    resources.hideProvider(saved.provider.id, provider.enabled)
+    preferences.showProvider(saved.provider.id, provider.enabled)
     // The new entry's page opens once the channel brings it; the catalog
     // follows the channel's providers (`web-application.md` § Requests for
     // one action).
@@ -372,7 +374,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       if (adding) {
         adding.enabled = changes.enabled
       } else {
-        resources.hideProvider(provider.id, changes.enabled)
+        preferences.showProvider(provider.id, changes.enabled)
       }
       return
     }

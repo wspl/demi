@@ -75,6 +75,9 @@ pub struct Profile {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProfileModel {
     pub provider_id: String,
+    /// The entry's name as Settings shows it, read with the settings; none
+    /// once the entry is gone from the user's scope.
+    pub provider_name: Option<String>,
     pub model_id: String,
     /// An effort the model listed, or thinking off; none only for a model
     /// that lists no efforts.
@@ -110,11 +113,136 @@ pub enum Unavailable {
     Failed(String),
 }
 
-/// Where the agent reads the user's subagent settings: at each spawn and
-/// each `demi agent profiles`, never once per tree.
+/// How a provider entry reaches its vendor, the kind Settings names it by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EntryKind {
+    /// An account the user signs in to, such as Claude Code.
+    Subscription,
+    ApiKey,
+}
+
+/// One provider entry of the composer's model menu as the user has it now,
+/// with the models the menu offers of it (`subagents.md` § Managing
+/// profiles).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MenuEntry {
+    pub id: String,
+    /// The entry's name as Settings shows it.
+    pub name: String,
+    pub kind: EntryKind,
+    pub models: Vec<MenuModel>,
+}
+
+/// One model the menu offers, with what a profile's model settings can
+/// name of it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MenuModel {
+    pub id: String,
+    pub name: String,
+    /// The context window in tokens; none when the catalog does not say.
+    pub window: Option<u32>,
+    /// The efforts it lists, the first being the one settings that name
+    /// none take.
+    pub efforts: Vec<String>,
+    /// Whether thinking can be turned off.
+    pub can_turn_off: bool,
+    /// The ids of the service tiers it offers, such as `fast`.
+    pub tiers: Vec<String>,
+    /// Whether it reads images.
+    pub images: bool,
+}
+
+/// The model options of a profile change: `--model`, `--provider`,
+/// `--effort` and `--tier`. On an edit, a choice without a model changes
+/// the effort or the tier of the profile's own model.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModelChoice {
+    /// A model id the menu offers.
+    pub model: Option<String>,
+    /// The entry's name or id, needed when several entries offer the model.
+    pub provider: Option<String>,
+    /// An effort the model lists, or `off`.
+    pub effort: Option<String>,
+    /// A tier the model offers, or `default` for the vendor's default.
+    pub tier: Option<String>,
+}
+
+/// The effort option that turns thinking off.
+pub const EFFORT_OFF: &str = "off";
+/// The tier option that names the vendor's default tier.
+pub const TIER_DEFAULT: &str = "default";
+
+/// A new profile as `demi agent profiles create` gives it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NewProfileDraft {
+    pub name: String,
+    pub description: String,
+    /// None for the parent's model.
+    pub model: Option<ModelChoice>,
+    pub instructions: Option<String>,
+    pub can_spawn: bool,
+    pub enabled: bool,
+}
+
+/// How `demi agent profiles edit` changes a profile's model.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelEdit {
+    /// `--model parent`: the parent's model again.
+    Parent,
+    Choose(ModelChoice),
+}
+
+/// The fields `demi agent profiles edit` changes; each it leaves none
+/// stays.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProfileEdit {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub model: Option<ModelEdit>,
+    /// `Some(None)` removes the instructions.
+    pub instructions: Option<Option<String>>,
+    pub can_spawn: Option<bool>,
+    pub enabled: Option<bool>,
+}
+
+/// Where the agent reads the user's subagent settings, at each spawn and
+/// each `demi agent profiles` call, never once per tree, and changes the
+/// user's profiles through the same path as the settings page, with its
+/// checks and its words. A change reaches the next read.
 pub trait SubagentSource {
     fn current(&self) -> LocalBoxFuture<'_, Result<SubagentSettings, String>>;
+
+    /// What the composer's model menu offers the user now.
+    fn models(&self) -> LocalBoxFuture<'_, Result<Vec<MenuEntry>, String>> {
+        Box::pin(async { Err("this product has no model menu".to_owned()) })
+    }
+
+    /// Creates a profile; answers it as stored, or why it was refused.
+    fn create_profile(
+        &self,
+        _profile: NewProfileDraft,
+    ) -> LocalBoxFuture<'_, Result<Profile, String>> {
+        Box::pin(async { Err(FIXED.to_owned()) })
+    }
+
+    /// Changes the profile `name`; answers it as stored, or why it was
+    /// refused.
+    fn edit_profile<'a>(
+        &'a self,
+        _name: &'a str,
+        _edit: ProfileEdit,
+    ) -> LocalBoxFuture<'a, Result<Profile, String>> {
+        Box::pin(async { Err(FIXED.to_owned()) })
+    }
+
+    /// Deletes the profile `name`, or answers why it was not.
+    fn delete_profile<'a>(&'a self, _name: &'a str) -> LocalBoxFuture<'a, Result<(), String>> {
+        Box::pin(async { Err(FIXED.to_owned()) })
+    }
 }
+
+/// Why a source whose settings never change refuses a change.
+const FIXED: &str = "the subagent settings of this product cannot be changed";
 
 /// Settings that never change.
 impl SubagentSource for SubagentSettings {

@@ -260,7 +260,7 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     assert!(
         asked[0]
             .system_prompt
-            .contains("Operations: spawn, send, abort, resume, list, show, profiles\n")
+            .contains("Operations: spawn, send, abort, resume, list, show, models, profiles list, profiles show, profiles create, profiles edit, profiles delete\n")
     );
     let [InferenceItem::UserMessage { content }] = &*asked[0].items else {
         panic!("{:?}", asked[0].items)
@@ -1464,6 +1464,7 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
         name: "worker".into(),
         description: "Works through a task list.".into(),
         model: Some(ProfileModel {
+            provider_name: None,
             provider_id: "stub".into(),
             model_id: "worker-model".into(),
             thinking_effort: None,

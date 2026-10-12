@@ -8,6 +8,7 @@
 mod commands;
 mod connection;
 mod content;
+mod profile_commands;
 mod shell_output;
 mod tree;
 
@@ -30,6 +31,7 @@ use demi_agent_tools::{
 use demi_agent_transcript::IdSource;
 
 use demi_provider_common::ProviderRuntime;
+use demi_host_interface::{CommandSet, RegisterError};
 use demi_shared_gates::KeyedSerialGate;
 use demi_shared_types::{AgentMessage, BlockId, Clock, ModelSelection, NodeId, SessionPhase};
 use futures_util::future::{LocalBoxFuture, join_all};
@@ -218,6 +220,17 @@ impl<H: HostResolver> AgentServer<H> {
         let id = self.next_connection.get();
         self.next_connection.set(id + 1);
         Connection::new(self.clone(), id, root, cwd, resolver)
+    }
+
+    /// The commands a root node starts from when the product's are
+    /// `product`: those with the server's `demi agent` and `demi shell`
+    /// groups grafted, whose declarations, such as their permission
+    /// categories, the product reads beside its own.
+    pub fn node_commands(
+        self: &Rc<Self>,
+        product: &CommandSet,
+    ) -> Result<CommandSet, RegisterError> {
+        commands::with_runtime_groups(product, self, true)
     }
 
     /// The conversation's live tree, if it has one.

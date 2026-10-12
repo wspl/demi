@@ -410,7 +410,8 @@ pub const AGENT_CALL: &str = "call";
 
 /// Runs `demi agent <verb>` with `args` as a job of `node`'s call
 /// [`AGENT_CALL`] would, through the node's commands; `cancel` is the
-/// call's cancellation.
+/// call's cancellation. A verb of a subgroup is its path, such as
+/// `profiles list`.
 pub async fn agent_call<H: HostResolver>(
     server: &Rc<AgentServer<H>>,
     node: &NodeId,
@@ -419,7 +420,8 @@ pub async fn agent_call<H: HostResolver>(
     json: bool,
     cancel: CancellationToken,
 ) -> Result<CommandRun, RpcError> {
-    demi_call(server, node, ["agent", verb], args, json, cancel).await
+    let path: Vec<&str> = std::iter::once("agent").chain(verb.split(' ')).collect();
+    demi_call(server, node, &path, args, json, cancel).await
 }
 
 /// `demi shell <verb>` run to its end as a job of `node`.
@@ -429,16 +431,16 @@ pub async fn shell_command<H: HostResolver>(
     verb: &str,
     args: Value,
 ) -> CommandRun {
-    demi_call(server, node, ["shell", verb], args, false, CancellationToken::new())
+    demi_call(server, node, &["shell", verb], args, false, CancellationToken::new())
         .await
         .expect("the call is dispatched")
 }
 
-/// Runs `demi <group> <verb>` as [`agent_call`] does.
+/// Runs `demi <path>` as [`agent_call`] does.
 async fn demi_call<H: HostResolver>(
     server: &Rc<AgentServer<H>>,
     node: &NodeId,
-    [group, verb]: [&str; 2],
+    path: &[&str],
     args: Value,
     json: bool,
     cancel: CancellationToken,
@@ -447,7 +449,7 @@ async fn demi_call<H: HostResolver>(
         .node(&conversation(), node)
         .expect("the calling node is live");
     let mut invocation: RpcInvocation = serde_json::from_value(json!({
-        "path": ["demi", group, verb],
+        "path": std::iter::once("demi").chain(path.iter().copied()).collect::<Vec<_>>(),
         "argv": [],
         "args": args,
         "json": json,
