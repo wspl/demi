@@ -192,4 +192,5 @@ check-cfg = [
 maintainer = "demi-runner"
 patches = [
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
+    "An error of the operating system without a message of ls's own reads cannot access <path>: <message>, with uucore::error::io_message's wording, as GNU ls words it, instead of the error's debug form (ls-error-cannot-access in place of ls-error-unknown-io-error)",
 ]
