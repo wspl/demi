@@ -42,7 +42,8 @@ An entry's catalog comes from one source, chosen in this order:
    one, is its only service tier, and it is taken to call tools.
 2. **Its vendor's model list in models.dev**, when the entry was added from the
    vendor list: the models an agent can work with, those whose output
-   includes text and that call tools, so a vendor's speech, image and video
+   includes text, that call tools and whose context window models.dev
+   states, since compaction needs it, so a vendor's speech, image and video
    models stay out of the model menu. [Providers](providers.md#vendors-from-modelsdev) defines which
    vendors the list offers.
 3. **The provider's own directory** ([Directories](#directories)).
@@ -207,9 +208,9 @@ An entry whose catalog is its configured list gets a model in one step:
 3. **Add** saves it. Choosing *Custom* shows the same fields empty but the
    name typed so far.
 
-The search offers only models an agent can work with: those whose output
-includes text and that call tools; a model that writes speech or images, or
-calls no tool, is left out.
+The search offers only models an agent can work with, by the same rule as a
+vendor's catalog: output that includes text, tool calls and a stated context
+window.
 
 The search reads the backend's copy of the models.dev document
 ([The models.dev document](#the-modelsdev-document)), so it makes no request
