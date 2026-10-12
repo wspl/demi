@@ -41,7 +41,9 @@ An entry's catalog comes from one source, chosen in this order:
    A configured model states its facts directly. Its Fast tier, when it names
    one, is its only service tier, and it is taken to call tools.
 2. **Its vendor's model list in models.dev**, when the entry was added from the
-   vendor list. [Providers](providers.md#vendors-from-modelsdev) defines which
+   vendor list: the models an agent can work with, those whose output
+   includes text and that call tools, so a vendor's speech, image and video
+   models stay out of the model menu. [Providers](providers.md#vendors-from-modelsdev) defines which
    vendors the list offers.
 3. **The provider's own directory** ([Directories](#directories)).
 
@@ -86,7 +88,8 @@ A models.dev model becomes a catalog model as follows: `limit.context` and
 `reasoning` is thinking support, the values of its `effort` reasoning option
 are its thinking efforts, `tool_call` is tool support, and `cost` is its
 prices. A limit that is not a positive whole number, such as an output limit
-of 0, states no limit and reads as unknown.
+of 0, or an output limit above the model's window, states no limit and reads
+as unknown.
 
 ### Directories
 
@@ -234,7 +237,7 @@ Google entry" in a conversation:
 | `edit <entry>` | Changes the name, the endpoint, or the key with `--api-key-stdin` |
 | `remove <entry>` | Removes the entry, as Settings does |
 | `models search <query>` | The same search as Add Model, each match on one line with its `<vendor>/<model id>`, name, context window, output limit, efforts and files |
-| `models add <entry> [<vendor>/<model id>]` | Adds a model to the entry's configured list, filled from that match; options `--id`, `--name`, `--context`, `--output`, `--efforts`, `--extensions` and `--fast-tier` set or override fields, and without a match they are the whole model. An entry that offers its vendor's list and has none of its own starts its list from the models its vendor offers now that an agent can work with (text output, tool calls, as the search offers), each filled as the search fills it, an output limit above the model's window read as none, so adding one model removes none an agent could use, and the answer says so: *Google now keeps its own list of 13 models; it no longer follows models.dev.* |
+| `models add <entry> [<vendor>/<model id>]` | Adds a model to the entry's configured list, filled from that match; options `--id`, `--name`, `--context`, `--output`, `--efforts`, `--extensions` and `--fast-tier` set or override fields, and without a match they are the whole model. An entry that offers its vendor's list and has none of its own starts its list from the models its vendor offers now, so adding one model removes none, and the answer says so: *Google now keeps its own list of 13 models; it no longer follows models.dev.* |
 | `models edit <entry> <model id>` | Changes the fields its options name |
 | `models remove <entry> <model id>` | Removes the model from the list |
 
