@@ -714,7 +714,7 @@ patch sets it. `hiddenProviders`, provider entry ids, and `hiddenModels`,
 `{ providerId, modelId }` pairs, are the switches of Settings › Providers that
 take an entry or a model out of the model menu without deleting it; a patch
 replaces the list it names. They are the user's, not a browser's: every
-device's menu, the profile editor's menu and `demi agent models` leave out
+device's menu, the profile editor's menu and `demi providers list` leave out
 the same entries and models
 ([Managing profiles](../agent/subagents.md#managing-profiles)). A conversation
 or a profile already on a hidden model keeps it; the menus no longer offer
@@ -842,8 +842,11 @@ every node of the user's conversations.
 ## Model configuration and provider inspection
 
 `POST /api/providers` takes
-`{ source: "vendor", vendorId, label, apiKey, baseUrl?, models? }` or
-`{ source: "custom", providerType, wireApi?, label, apiKey, baseUrl?, models? }`.
+`{ source: "vendor", vendorId, label?, apiKey?, baseUrl?, models? }` or
+`{ source: "custom", providerType, wireApi?, label?, apiKey?, baseUrl?, models? }`:
+everything but the kind may come later, and the entry is
+[incomplete](../providers/models.md#a-provider-is-in-the-list-from-the-start)
+until it has what it needs; `label` defaults to the vendor's or family's name.
 The first derives the family, its wire and its endpoint from the vendor
 catalog, `GET /api/providers/catalog`, which lists the
 [vendors from models.dev](../providers/providers.md#vendors-from-modelsdev);
@@ -876,8 +879,11 @@ from that health, and `cliPackage`: the command package that installs the
 CLI its requests start on the user's Cloud, such as `demi.claude-code`, or
 null when its requests are HTTP; the page knows by it that the provider
 needs the Cloud. The entries of the product state carry the same `cliPackage`. `availability` is
+`{ type: "unavailable", reason: "setup", message }` while the entry is
+incomplete, with what it lacks
+([A provider is in the list from the start](../providers/models.md#a-provider-is-in-the-list-from-the-start)),
 `{ type: "unavailable", reason: "authentication", message }` while the
-credential is missing or refused, `{ type: "unavailable", reason: "runtime",
+credential is refused or a subscription's account expired, `{ type: "unavailable", reason: "runtime",
 message }` with the runtime's message while the provider cannot run, and
 `{ type: "available" }` otherwise, unknown health included. Each model carries
 the `selection` the backend built from it. The first effort of a model's
@@ -894,6 +900,14 @@ state of the conversation's target and, for a provider whose transport is a
 process, of the user's Cloud. Inference admission checks the actual target.
 Unknown auth/runtime status stays explicit; catalog availability is not a
 successful inference test.
+
+`GET /api/models/search?q=<query>&entry=<id>` answers `{ results }`, the
+models.dev models the query matches, filled from `entry`'s vendor where it
+lists them ([Adding a model from models.dev](../providers/models.md#adding-a-model-from-modelsdev)):
+each `{ ref, displayName, id, vendor, contextWindow, outputLimit,
+thinkingEfforts, acceptedExtensions, releaseDate }`, `ref` being
+`<vendor>/<model id>`. It reads the backend's kept copy and asks models.dev
+only when there is none.
 
 `GET /api/providers/:id/status` returns auth/runtime state, account metadata,
 active account, capabilities and quota. An entry whose provider cannot be built
