@@ -220,7 +220,7 @@ page                         backend (panel, plugin-browser)            Host
   download directory until the browser retires.
 - **Tabs a page opens.** A link with `target=_blank`, a `window.open`, a
   sign-in or payment pop-up: the new tab appears in the strip at once, as in
-  any browser, not when the agent's next job ends. The view's tab list names
+  any browser, not when the agent's next `demi browser` command ends. The view's tab list names
   it within the module's state delay, and the page asks the plugin to
   `sync`, which adds it right after the tab that opened it, behind the tabs
   that tab opened before, as Chrome places them; the agent's tabs still go
@@ -297,7 +297,7 @@ keeps looking at `t3`.
 
 - **The request.** `show`, and `open --show`, raise the tab's `shows` count in
   the browser's tab list. Nothing else changes in the browser.
-- **The panel tab.** When the plugin reads the list after a job, it adds the
+- **The panel tab.** When the plugin reads the list after a `demi browser` command, it adds the
   agent's new tabs as before, and writes each tab's count into `shows` of the
   panel tab bound to it when the count is higher. A tab the user created is
   shown the same way.
@@ -827,7 +827,7 @@ and `reload` names the number of the last list before the request started.
 | --- | --- | --- | --- |
 | Conversation state | None | `{ tabs: [{ id, title, url, createdBy, loading, canGoBack, canGoForward, shows }], closed }`, where `closed` names the tabs closed on purpose, by the agent, by their page or with the last tab, which the conversation's Host keeps across browsers, its 256 most recent; a browser that does not run has no tabs | Is not woken: `{ tabs: [] }` |
 | `bind` | `panelTab` | Opens a browser tab for a panel tab that has none, or whose browser tab is closed or failed to open, as for a new tab, and answers `{ tab }`, the browser tab it bound | Is woken: opening a tab is ordinary demand |
-| `sync` | None | Reads the tab list and updates the panel's tabs from it, as after a job | Is not woken: every bound tab is closed |
+| `sync` | None | Reads the tab list and updates the panel's tabs from it, as after a `demi browser` command | Is not woken: every bound tab is closed |
 | `navigate` | `tab`, `url` | Starts loading the URL in the tab | Is not woken: refused with `host_stopped` |
 | `history` | `tab`, `action`: `back`, `forward` or `reload` | Moves the tab or reloads it | Is not woken: refused with `host_stopped` |
 | `stop` | `tab` | Stops loading the tab's page, as a browser's Stop does; a tab that is not loading is left as it is. Its answer names the tab list number as `history`'s does. It runs the package's `browser.stop` operation, which only a `user` caller reaches: the agent waits for its commands rather than stopping a load, so `demi browser` has no `stop` command | Is not woken: refused with `host_stopped` |
@@ -867,7 +867,7 @@ crate and package; for the live view:
 | `command-package-browser-chrome`'s `tabs` | Each tab's viewport, dialog, whether it loads its top-level page, and the upload directory the viewers' files go to. |
 | `demi-browser` | Starting the live hub of each browser it runs, and the conversation browser that the viewer trait reaches. |
 | `command-protocol`, `command-sdk`, the runner's crates, `runner-protocol`, `backend-remote-host` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
-| `plugin-browser` | Declaring `viewport set --scale` with the other `demi browser` commands; declaring the `browser` user stream and the `browser` panel kind; its conversation state, the tab list, following the `jobs` topic; the [tab methods](#the-tab-methods); and its kind's tabs: opening and closing browser tabs for the panel tabs its user creates and closes, adding the agent's tabs and marking gone ones, one conversation's work at a time. It calls the browser's own operations and holds no browser logic. |
+| `plugin-browser` | Declaring `viewport set --scale` with the other `demi browser` commands; declaring the `browser` user stream and the `browser` panel kind; its conversation state, the tab list, following the `calls` topic; the [tab methods](#the-tab-methods); and its kind's tabs: opening and closing browser tabs for the panel tabs its user creates and closes, adding the agent's tabs and marking gone ones, one conversation's work at a time. It calls the browser's own operations and holds no browser logic. |
 | `backend` | The user stream route, where the user's shard admits and ends the stream and the edge relays its bytes with backpressure; the plugin call routes and the conversation state route. None names the browser. |
 | `@demicodes/plugin-browser` | The `browser` tab kind: its panel session, which follows the plugin's conversation state for the tabs' titles and keeps the page's one view; and its content, the live view over the plugin's `browser` user stream: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab opens or loads, is gone or out of reach, or in a user's browser that cannot decode the pictures. The live protocol's schemas are generated into the package. It is built from the plugin SDK's primitives ([Plugin pages](../architecture/plugin-pages.md)). |
 | `web`, `web-gallery` | The product's page context over the plugin call routes, the conversation state route and the user stream route; a gallery client that encodes its own picture, keeps its own tab list and speaks the protocol, so the kind shows without a Host. |
