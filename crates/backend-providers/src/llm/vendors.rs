@@ -115,8 +115,9 @@ impl VendorCatalog {
         Ok(snapshot.listing(vendor, id).map(filled))
     }
 
-    /// The live model list of vendor `vendor_id`, read again: a vendor the
-    /// document no longer offers has an empty list, never its family's.
+    /// The live model list of vendor `vendor_id`, read again: the models an
+    /// agent can work with; a vendor the document no longer offers has an
+    /// empty list, never its family's.
     pub async fn models(&self, vendor_id: &str) -> Result<ProviderModelList, String> {
         let snapshot = self
             .models_dev
@@ -126,7 +127,7 @@ impl VendorCatalog {
         let list = snapshot
             .vendor(vendor_id)
             .and_then(offered)
-            .and_then(|_| snapshot.vendor_models(vendor_id));
+            .and_then(|_| snapshot.agent_models(vendor_id));
         Ok(list.unwrap_or_else(|| ProviderModelList {
             models: Vec::new(),
             default_model_id: None,
