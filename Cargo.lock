@@ -1680,6 +1680,7 @@ dependencies = [
  "demi-backend-database",
  "demi-backend-host-access",
  "demi-backend-http",
+ "demi-backend-plugins",
  "demi-backend-providers",
  "demi-backend-remote-host",
  "demi-backend-runners",
@@ -1971,12 +1972,16 @@ dependencies = [
 name = "demi-backend-plugins"
 version = "0.1.21"
 dependencies = [
+ "axum",
+ "base64 0.22.1",
  "demi-agent-server",
  "demi-agent-store",
  "demi-agent-tools",
  "demi-agent-transcript",
  "demi-backend-database",
  "demi-backend-page-sync",
+ "demi-backend-plugins",
+ "demi-backend-providers",
  "demi-backend-remote-host",
  "demi-command-declarations",
  "demi-command-package-file-protocol",
@@ -1989,13 +1994,20 @@ dependencies = [
  "demi-shared-types",
  "demi-web-api-protocol",
  "futures-util",
+ "jiff",
+ "rand 0.9.5",
+ "rcgen",
+ "reqwest",
  "rustix",
+ "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror",
  "tokio",
  "tokio-util",
  "tracing",
+ "url",
 ]
 
 [[package]]
@@ -2541,6 +2553,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tokio-util",
+ "url",
 ]
 
 [[package]]
@@ -6875,6 +6888,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7011d97b484a5ebdc4b1fdb3b12d5e4bbbea56e9d22b688f2e79e04b65a7d8a6"
 
 [[package]]
+name = "pem"
+version = "4.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d354a98a3d1251555de99e8fdd8afda05573c31b82f59063a7b0a29b5527f120"
+dependencies = [
+ "base64 0.23.1",
+ "serde_core",
+]
+
+[[package]]
 name = "pem-rfc7468"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7520,6 +7543,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8774e05a7d0de114588e6a28fe7e71694b82614ed569d86d8b389dfbc98b8ad8"
 dependencies = [
  "aws-lc-rs",
+ "pem",
  "rustls-pki-types",
  "time",
  "x509-parser",

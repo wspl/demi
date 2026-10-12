@@ -118,6 +118,10 @@ pub struct Services {
     /// (`Backend::hold_sync`).
     #[cfg(feature = "testing")]
     pub syncs: crate::holds::StepHolds<crate::sync::SyncStep>,
+    /// The authorities the plugins' outbound requests trust besides the
+    /// system's, for a test's HTTPS servers.
+    #[cfg(feature = "testing")]
+    pub web_roots: Vec<reqwest::Certificate>,
 }
 
 /// What the provider services start with.
@@ -156,6 +160,10 @@ pub struct ServiceSettings {
     pub plugins: Vec<Box<dyn PluginFactory>>,
     pub cloud: CloudServices,
     pub lifecycle: LifecycleTuning,
+    /// The authorities the plugins' outbound requests trust besides the
+    /// system's, for a test's HTTPS servers.
+    #[cfg(feature = "testing")]
+    pub web_roots: Vec<reqwest::Certificate>,
 }
 
 /// Why the services did not start.
@@ -381,6 +389,8 @@ impl Services {
             hellos: crate::holds::StepHolds::default(),
             #[cfg(feature = "testing")]
             syncs: crate::holds::StepHolds::default(),
+            #[cfg(feature = "testing")]
+            web_roots: settings.web_roots,
         })
     }
 
@@ -440,6 +450,8 @@ impl Services {
             plugins: Vec::new(),
             cloud: CloudServices::new(machines, demi_backend_cloud::tuning::CloudTuning::default()),
             lifecycle,
+            #[cfg(feature = "testing")]
+            web_roots: Vec::new(),
         };
         let services = Self::start(storage, keys, providers, settings).await;
         Arc::new(services.unwrap())

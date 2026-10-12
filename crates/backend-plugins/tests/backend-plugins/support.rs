@@ -17,8 +17,9 @@ use demi_agent_tools::{
 };
 use demi_agent_transcript::testing::SequentialIds;
 use demi_backend_database::control::ControlService;
+use demi_backend_providers::vault::seal::{Row, VaultKey};
 use demi_backend_page_sync::SyncRegistry;
-use demi_backend_plugins::{ProductPort, Registry, UserPlugins};
+use demi_backend_plugins::{PageCall, PageCallError, ProductPort, Registry, UserPlugins};
 use demi_backend_remote_host::{
     CommandCatalog, ContextSource, EnvironmentOptions, RemoteHost, RemoteShellEnvironmentFactory,
     testing::{FixtureOptions, NativeFixture, RunnerFixture},
@@ -31,11 +32,15 @@ use demi_host_interface::{
     testing::test_command_context,
 };
 use demi_plugin_file::File;
-use demi_plugin_interface::PluginFactory;
-use demi_plugin_interface::{CallKind, HostFile, HostRead, PortFailure};
+use demi_plugin_interface::testing::loopback;
+use demi_plugin_interface::{
+    CallKind, HostFile, HostRead, Manifest, Method, OAuth, Page, Plugin, PluginError,
+    PluginFactory, PluginId, PluginPort, PortFailure, PortRefusal, Reply, Request, Scope,
+    SecretName, WebMethod, WebRequest,
+};
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderEvent, ResultPart, UserPart,
-    testing::{ScriptedRuntime, TokioClock, Turn, event},
+    testing::{ManualClock, ScriptedRuntime, TokioClock, Turn, event},
 };
 use demi_shared_types::SystemClock;
 use demi_shared_types::{B64Bytes, BlobRef};
@@ -261,12 +266,89 @@ pub async fn user_plugins(registry: Registry) -> (UserPlugins, TempDir) {
         .unwrap();
     let user = UserId::try_from("u1").unwrap();
     let marks = SyncRegistry::default().of(&user);
-    let plugins = UserPlugins::new(Arc::new(registry), user, Rc::new(NoProduct), control, marks);
+    let product = Rc::new(TestProduct::new(Vec::new()));
+    let plugins = UserPlugins::new(Arc::new(registry), user, product, control, marks);
     (plugins, data)
 }
 
-/// A product with no conversation Host and no blobs.
-struct NoProduct;
+/// The backend's public URL in the scenarios.
+pub const PUBLIC_URL: &str = "https://demi.example.test";
+
+/// What several users' plugins share, as one backend's shards do: the
+/// registry, a control database with each user in it, the product with
+/// its sealing key, its client of outbound requests and its clock, and the
+/// users' change marks.
+pub struct Backend {
+    pub registry: Arc<Registry>,
+    pub control: ControlService,
+    pub product: Rc<TestProduct>,
+    pub sync: SyncRegistry,
+    _data: TempDir,
+}
+
+impl Backend {
+    /// The plugins of `registry` over a new control database, whose
+    /// outbound requests trust `roots` besides the system's authorities.
+    pub async fn start(registry: Registry, roots: Vec<reqwest::Certificate>) -> Self {
+        let data = tempfile::tempdir().unwrap();
+        let control =
+            ControlService::open(&data.path().join("control.sqlite"), Arc::new(SystemClock))
+                .await
+                .unwrap();
+        Self {
+            registry: Arc::new(registry),
+            control,
+            product: Rc::new(TestProduct::new(roots)),
+            sync: SyncRegistry::default(),
+            _data: data,
+        }
+    }
+
+    /// The user `id`, created in the control database.
+    pub async fn user(&self, id: &str) -> UserId {
+        demi_backend_database::control::testing::execute(
+            &self.control,
+            "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+             VALUES (?1, ?1 || '@example.test', '', 'hash', 'user', 0)",
+            vec![id.to_owned()],
+        )
+        .await;
+        UserId::try_from(id).unwrap()
+    }
+
+    /// An instance of every plugin for `user`, as a shard makes them: two
+    /// calls are two shards, as two workers would have.
+    pub fn plugins(&self, user: &UserId) -> UserPlugins {
+        UserPlugins::new(
+            self.registry.clone(),
+            user.clone(),
+            self.product.clone(),
+            self.control.clone(),
+            self.sync.of(user),
+        )
+    }
+}
+
+/// A product with no conversation Host and no blobs, which seals with a
+/// key of its own, sends outbound requests through the plugins' client and
+/// reads the time from a clock the scenario moves.
+pub struct TestProduct {
+    key: VaultKey,
+    web: reqwest::Client,
+    pub clock: ManualClock,
+}
+
+impl TestProduct {
+    fn new(roots: Vec<reqwest::Certificate>) -> Self {
+        Self {
+            key: VaultKey::new([5; 32]),
+            web: demi_backend_plugins::web_client(&roots),
+            clock: ManualClock::new(
+                demi_shared_types::Timestamp::from_millisecond(1_790_000_000_000).unwrap(),
+            ),
+        }
+    }
+}
 
 fn none<T>() -> LocalBoxFuture<'static, Result<T, PortFailure>> {
     Box::pin(async {
@@ -276,7 +358,7 @@ fn none<T>() -> LocalBoxFuture<'static, Result<T, PortFailure>> {
     })
 }
 
-impl ProductPort for NoProduct {
+impl ProductPort for TestProduct {
     fn package_call<'a>(
         &'a self,
         _: &'a ConversationId,
@@ -303,6 +385,28 @@ impl ProductPort for NoProduct {
 
     fn get_blob(&self, _: BlobRef) -> LocalBoxFuture<'_, Result<Option<B64Bytes>, PortFailure>> {
         none()
+    }
+
+    fn seal(&self, user: &UserId, plugin: &str, name: &str, plaintext: &[u8]) -> Vec<u8> {
+        self.key.seal(Row::PluginSecret { plugin, user, name }, plaintext)
+    }
+
+    fn open(&self, user: &UserId, plugin: &str, name: &str, sealed: &[u8]) -> Option<Vec<u8>> {
+        self.key
+            .open(Row::PluginSecret { plugin, user, name }, sealed)
+            .ok()
+    }
+
+    fn web_client(&self) -> reqwest::Client {
+        self.web.clone()
+    }
+
+    fn public_url(&self) -> Option<url::Url> {
+        Some(url::Url::parse(PUBLIC_URL).unwrap())
+    }
+
+    fn now(&self) -> demi_shared_types::Timestamp {
+        demi_shared_types::Clock::now(&self.clock)
     }
 }
 
@@ -440,4 +544,138 @@ pub fn last_result(request: &InferenceRequest) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+/// A plugin whose user methods each make one port operation of the
+/// secrets, outbound requests and sign-in services, with what it answered
+/// as their result, behind the JSON loopback. A refusal is the call's
+/// failure.
+pub struct PortProbe(Manifest);
+
+/// The vendor's name the probes sign in to.
+pub const VENDOR: &str = "Example";
+
+impl PortProbe {
+    /// The probe `id`, signing in at `issuer` when it names one.
+    pub fn new(id: &str, issuer: Option<url::Url>) -> Self {
+        let mut page = Page::new(format!("@demicodes/plugin-{id}"));
+        for method in [
+            "read_secret",
+            "write_secret",
+            "remove_secret",
+            "send",
+            "sign_in",
+            "token",
+            "sign_out",
+        ] {
+            page = page.method(Method::new::<Map<String, Value>, Value>(method, Scope::User));
+        }
+        let mut manifest = Manifest::new(PluginId::try_from(id).unwrap(), id, "A port probe.");
+        manifest.page = Some(page);
+        manifest.oauth = issuer.map(|issuer| OAuth {
+            vendor: VENDOR.into(),
+            issuer,
+            resource: "https://mcp.example.test/mcp".into(),
+            scopes: vec!["tools".into()],
+        });
+        Self(manifest)
+    }
+
+    /// Its sign-in names `vendor`.
+    pub fn vendor(&mut self, vendor: &str) {
+        self.0.oauth.as_mut().expect("the probe signs in").vendor = vendor.into();
+    }
+
+    pub fn boxed(self) -> Box<dyn PluginFactory> {
+        Box::new(self)
+    }
+}
+
+impl PluginFactory for PortProbe {
+    fn manifest(&self) -> &Manifest {
+        &self.0
+    }
+
+    fn instance(&self) -> Rc<dyn Plugin> {
+        loopback(Rc::new(Operations))
+    }
+}
+
+struct Operations;
+
+impl Plugin for Operations {
+    fn call(&self, request: Request, port: PluginPort) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
+        Box::pin(async move {
+            let Request::PageCall { method, params, .. } = request else {
+                unreachable!("the probe declares only user methods")
+            };
+            let text = |field: &str| params.get(field).and_then(Value::as_str).map(str::to_owned);
+            let number = |field: &str| params.get(field).and_then(Value::as_u64);
+            let name = || SecretName::try_from(text("name").unwrap()).unwrap();
+            let result = match method.as_str() {
+                "read_secret" => match port.secret(name()).await? {
+                    Some(secret) => json!({ "value": secret.value, "revision": secret.revision }),
+                    None => Value::Null,
+                },
+                "write_secret" => {
+                    let revision = port
+                        .write_secret(name(), text("value").unwrap(), number("revision"))
+                        .await?;
+                    json!({ "revision": revision })
+                }
+                "remove_secret" => {
+                    port.remove_secret(name(), number("revision").unwrap()).await?;
+                    Value::Null
+                }
+                "send" => {
+                    let mut request = WebRequest::new(
+                        WebMethod::Get,
+                        url::Url::parse(&text("url").unwrap()).unwrap(),
+                        Duration::from_millis(number("deadlineMs").unwrap()),
+                        number("limitBytes").unwrap(),
+                    );
+                    if let Some(key) = text("key") {
+                        request = request.header("x-api-key", key);
+                    }
+                    let response = port.send(request).await?;
+                    json!({
+                        "status": response.status,
+                        "body": String::from_utf8_lossy(response.body.as_bytes()),
+                    })
+                }
+                "sign_in" => json!({ "url": port.oauth_start().await? }),
+                "token" => json!({ "token": port.oauth_token().await? }),
+                "sign_out" => {
+                    port.oauth_sign_out().await?;
+                    Value::Null
+                }
+                method => unreachable!("the probe declares no method {method}"),
+            };
+            Ok(Reply::Result { result })
+        })
+    }
+}
+
+/// Calls the user method `method` of `plugin` with `params`.
+pub async fn call(
+    plugins: &UserPlugins,
+    plugin: &str,
+    method: &str,
+    params: Value,
+) -> Result<Value, PageCallError> {
+    let call = PageCall {
+        plugin: plugin.into(),
+        method: method.into(),
+        params,
+        conversation: None,
+    };
+    plugins.page_call(call, CancellationToken::new()).await
+}
+
+/// The port's refusal a page call failed with.
+pub fn refusal(answer: Result<Value, PageCallError>) -> PortRefusal {
+    match answer {
+        Err(PageCallError::Plugin(PluginError::Port { refusal })) => refusal,
+        answer => panic!("expected a refusal, got {answer:?}"),
+    }
 }

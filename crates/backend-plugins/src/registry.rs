@@ -38,6 +38,10 @@ pub enum RegistryError {
         plugin: PluginId,
         error: RegisterError,
     },
+    #[error("plugin \"{plugin}\"'s OAuth sign-in names {issuer}; an issuer is an https URL without a query")]
+    OAuthIssuer { plugin: PluginId, issuer: String },
+    #[error("plugin \"{plugin}\"'s OAuth sign-in names no vendor")]
+    OAuthVendor { plugin: PluginId },
 }
 
 /// One registered plugin, and what of its manifest the catalog serves.
@@ -101,6 +105,21 @@ impl Registry {
             let manifest = factory.manifest();
             if !ids.insert(manifest.id.clone()) {
                 return Err(RegistryError::DuplicateId(manifest.id.clone()));
+            }
+            if let Some(oauth) = &manifest.oauth {
+                // RFC 8414 § 2: an https URL with no query or fragment.
+                let issuer = &oauth.issuer;
+                if issuer.scheme() != "https" || issuer.query().is_some() || issuer.fragment().is_some() {
+                    return Err(RegistryError::OAuthIssuer {
+                        plugin: manifest.id.clone(),
+                        issuer: issuer.to_string(),
+                    });
+                }
+                if oauth.vendor.trim().is_empty() {
+                    return Err(RegistryError::OAuthVendor {
+                        plugin: manifest.id.clone(),
+                    });
+                }
             }
             for stream in &manifest.streams {
                 if !stream_names.insert(stream.name.clone()) {

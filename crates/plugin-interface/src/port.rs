@@ -12,7 +12,7 @@ use demi_shared_types::{B64Bytes, BlobRef};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::panel::{CreatePanelTab, WorkPanel};
 
-use crate::{PluginId, Scope};
+use crate::{PluginId, Scope, SecretName, StoredSecret, WebFailure, WebRequest, WebResponse};
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -98,6 +98,36 @@ pub enum PortMessage {
     RemovePanelTab {
         id: String,
     },
+    /// The plugin's secret `name` for the user.
+    ReadSecret {
+        name: SecretName,
+    },
+    /// Writes the secret `name` if its revision is still `revision`; none
+    /// for a secret that does not exist yet.
+    WriteSecret {
+        name: SecretName,
+        value: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        revision: Option<u64>,
+    },
+    /// Removes the secret `name` if its revision is still `revision`.
+    RemoveSecret {
+        name: SecretName,
+        revision: u64,
+    },
+    /// Sends one outbound HTTPS request.
+    SendRequest {
+        request: WebRequest,
+    },
+    /// Starts the user's sign-in to the vendor the manifest names, and
+    /// answers the authorization URL the page opens.
+    OauthStart,
+    /// A live access token of the user's sign-in, renewed first when it
+    /// expires within a minute.
+    OauthToken,
+    /// Revokes the user's sign-in at the vendor when it offers revocation,
+    /// and forgets it either way.
+    OauthSignOut,
 }
 
 /// The answer to one [`PortMessage`].
@@ -153,6 +183,21 @@ pub enum PortAnswer {
     PanelRevision {
         revision: u64,
     },
+    /// A secret; none for one the plugin does not have.
+    Secret {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        secret: Option<StoredSecret>,
+    },
+    Response {
+        response: WebResponse,
+    },
+    /// Where the page sends the browser to sign in.
+    AuthorizationUrl {
+        url: String,
+    },
+    AccessToken {
+        token: String,
+    },
     Refused {
         refusal: PortRefusal,
     },
@@ -173,6 +218,10 @@ impl PortAnswer {
             Self::Called { .. } => "called",
             Self::Panel { .. } => "panel",
             Self::PanelRevision { .. } => "panel_revision",
+            Self::Secret { .. } => "secret",
+            Self::Response { .. } => "response",
+            Self::AuthorizationUrl { .. } => "authorization_url",
+            Self::AccessToken { .. } => "access_token",
             Self::Refused { .. } => "refused",
         }
     }
@@ -390,6 +439,15 @@ pub enum PortRefusal {
     /// it, such as `panel_full` (`web-api.md` § Work panel state).
     #[error("{message}")]
     Panel { code: ErrorCode, message: String },
+    /// An outbound request, or a step of an OAuth sign-in that reaches the
+    /// vendor, did not answer.
+    #[error("{failure}")]
+    Web { failure: WebFailure },
+    /// The user is not signed in to the plugin's vendor: never, signed out,
+    /// or the vendor refused to renew the sign-in, which the host then
+    /// forgot.
+    #[error("the user is not signed in")]
+    SignedOut,
 }
 
 /// Why a typed port operation did not answer.
@@ -613,6 +671,74 @@ impl PluginPort {
     pub async fn remove_panel_tab(&self, id: impl Into<String>) -> Result<u64, PortFailure> {
         let message = PortMessage::RemovePanelTab { id: id.into() };
         self.panel_change("remove_panel_tab", message).await
+    }
+
+    /// The plugin's secret `name` for the user, if it has one.
+    pub async fn secret(&self, name: SecretName) -> Result<Option<StoredSecret>, PortFailure> {
+        match self.ask(PortMessage::ReadSecret { name }).await? {
+            PortAnswer::Secret { secret } => Ok(secret),
+            answer => Err(unexpected("read_secret", &answer)),
+        }
+    }
+
+    /// Writes the secret `name` if it is still at `revision`, none for a
+    /// new secret, and answers its new revision; [`PortRefusal::Conflict`]
+    /// when another write came first.
+    pub async fn write_secret(
+        &self,
+        name: SecretName,
+        value: String,
+        revision: Option<u64>,
+    ) -> Result<u64, PortFailure> {
+        let message = PortMessage::WriteSecret {
+            name,
+            value,
+            revision,
+        };
+        match self.ask(message).await? {
+            PortAnswer::Written { revision } => Ok(revision),
+            answer => Err(unexpected("write_secret", &answer)),
+        }
+    }
+
+    /// Removes the secret `name` if it is still at `revision`;
+    /// [`PortRefusal::Conflict`] when another write came first.
+    pub async fn remove_secret(&self, name: SecretName, revision: u64) -> Result<(), PortFailure> {
+        self.done("remove_secret", PortMessage::RemoveSecret { name, revision })
+            .await
+    }
+
+    /// Sends `request`, and answers the vendor's response whatever its
+    /// status; [`PortRefusal::Web`] when none came.
+    pub async fn send(&self, request: WebRequest) -> Result<WebResponse, PortFailure> {
+        match self.ask(PortMessage::SendRequest { request }).await? {
+            PortAnswer::Response { response } => Ok(response),
+            answer => Err(unexpected("send_request", &answer)),
+        }
+    }
+
+    /// Starts the user's sign-in and answers the authorization URL, which
+    /// the page opens in a new tab.
+    pub async fn oauth_start(&self) -> Result<String, PortFailure> {
+        match self.ask(PortMessage::OauthStart).await? {
+            PortAnswer::AuthorizationUrl { url } => Ok(url),
+            answer => Err(unexpected("oauth_start", &answer)),
+        }
+    }
+
+    /// A live access token of the user's sign-in; [`PortRefusal::SignedOut`]
+    /// when the user is not signed in.
+    pub async fn oauth_token(&self) -> Result<String, PortFailure> {
+        match self.ask(PortMessage::OauthToken).await? {
+            PortAnswer::AccessToken { token } => Ok(token),
+            answer => Err(unexpected("oauth_token", &answer)),
+        }
+    }
+
+    /// Signs the user out: the vendor revokes the tokens when it offers
+    /// revocation, and the host forgets them either way.
+    pub async fn oauth_sign_out(&self) -> Result<(), PortFailure> {
+        self.done("oauth_sign_out", PortMessage::OauthSignOut).await
     }
 
     async fn panel_change(

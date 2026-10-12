@@ -11,6 +11,11 @@ test = false
 doctest = false
 bench = false
 
+[features]
+# A certificate authority and a fake OAuth authorization server over HTTPS
+# (`testing`), for the tests of outbound requests and sign-ins.
+testing = ["dep:axum", "dep:rcgen", "demi-provider-common/testing"]
+
 [dependencies]
 demi-backend-database = { path = "../backend-database" }
 demi-backend-page-sync = { path = "../backend-page-sync" }
@@ -19,14 +24,28 @@ demi-host-interface = { path = "../host-interface" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-shared-types = { path = "../shared-types" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
+# The OAuth pieces every sign-in meets (`plugins.md` § OAuth sign-in).
+demi-provider-common = { path = "../provider-common" }
+base64.workspace = true
 futures-util.workspace = true
+jiff.workspace = true
+rand = "0.9"
+reqwest = { workspace = true, features = ["rustls"] }
+serde.workspace = true
 serde_json.workspace = true
+sha2 = "0.10"
 thiserror.workspace = true
 tokio = { workspace = true, features = ["rt"] }
 tokio-util.workspace = true
 tracing.workspace = true
+url = "2"
+axum = { version = "0.8", optional = true }
+rcgen = { version = "0.14", default-features = false, features = ["aws_lc_rs", "pem"], optional = true }
 
 [dev-dependencies]
+demi-backend-plugins = { path = ".", features = ["testing"] }
+demi-backend-providers = { path = "../backend-providers" }
+demi-backend-database = { path = "../backend-database", features = ["testing"] }
 # The scenarios run the composed command set in an agent server whose
 # shells are real runner jobs, with the `demi.file` package the workspace
 # built.
@@ -40,7 +59,7 @@ demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
 demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-host-interface = { path = "../host-interface", features = ["testing"] }
 demi-plugin-file = { path = "../plugin-file" }
-demi-plugin-interface = { path = "../plugin-interface" }
+demi-plugin-interface = { path = "../plugin-interface", features = ["testing"] }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 demi-provider-common = { path = "../provider-common", features = ["testing"] }
 demi-shared-types = { path = "../shared-types" }

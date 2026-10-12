@@ -22,8 +22,10 @@ test = false
 # the scenarios that stop a save at its commit, a conversation's file gate
 # with the view of the entrants waiting at it (`Backend::file_gate`), an
 # object store that counts what reaches it (`ObjectCounts`), and the holds of
-# the runners' hellos and the pages' synchronization channels (`StepHold`).
+# the runners' hellos and the pages' synchronization channels (`StepHold`),
+# and the authorities the plugins' outbound requests trust (`web_roots`).
 testing = [
+  "dep:reqwest",
   "demi-backend-http/testing",
   "demi-backend-blobs/testing",
   "demi-backend-user-shard/testing",
@@ -74,6 +76,7 @@ tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 url = { version = "2", features = ["serde"] }
+reqwest = { workspace = true, features = ["rustls"], optional = true }
 
 [dev-dependencies]
 demi-agent-server = { path = "../agent-server", features = ["testing"] }
@@ -83,6 +86,8 @@ demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
 demi-backend = { path = ".", features = ["testing"] }
 demi-backend-runners = { path = "../backend-runners", features = ["testing"] }
 demi-backend-user-shard = { path = "../backend-user-shard", features = ["testing"] }
+# The fake authorization server the sign-in scenario runs against.
+demi-backend-plugins = { path = "../backend-plugins", features = ["testing"] }
 demi-command-package-claude-code-protocol = { path = "../command-package-claude-code-protocol" }
 demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
 demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
