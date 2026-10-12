@@ -84,13 +84,18 @@ an agent's tab and link wear, so one state has one look everywhere:
 | --- | --- |
 | Running | Blue, the accent, breathing |
 | Finished, its answer not read yet | Green |
-| Finished, its answer read | The faint ring of a settled row |
-| Failed | Red |
-| A request waits for the user | Yellow, the same size as every other dot and with nothing around it, over every other dot ([Permissions](../agent/permissions.md)) |
-| Stopped by the user, or nothing run yet | The faint ring of a settled row |
+| Failed, not read yet | Red |
+| A request waits for the user, not read yet | Yellow, the same size as every other dot and with nothing around it, over every other dot ([Permissions](../agent/permissions.md)) |
+| Anything else: read, stopped by the user, or nothing run yet | The faint ring of a settled row |
 
-Green says there is a new answer to read, so the row settles once the user
-opens the conversation and reads it, as an unread mark does in Mail. An
+Every color but the running blue says there is something new to see, so the
+row settles to the ring once the user opens the conversation and reads it,
+as an unread mark does in Mail: a green answer, a red failure and a yellow
+request alike. What happens while the user is reading the conversation is
+read as it happens, so its dot does not light. A later event lights the dot
+again: a turn that fails after the user read the last one turns it red. A
+request read but not answered still waits in the conversation, where its
+prompt shows, and in the Running window; only the sidebar settles. An
 agent's tab and link have no read state of their own and stay green once
 the agent finished. A Stop is the user's own decision, neither finished nor
 failed, and leaves the row settled ([Recovering an unfinished turn](#recovering-an-unfinished-turn)).
@@ -104,7 +109,7 @@ opens the group. A folded group shows its label alone, with two exceptions
 so that nothing the user needs hides in it: the conversation open in the
 page stays under the label, with its project's row above it in Projects so
 its place still shows, and while a conversation the fold hides waits for
-the user, the label carries the yellow dot, between the label and the
+the user and its row is yellow, not yet read, the label carries the yellow dot, between the label and the
 chevron. For
 example, the user folds Projects to see more conversations; a subagent in a
 project asks for a permission, and the dot appears after *PROJECTS* until
