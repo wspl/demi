@@ -1,24 +1,14 @@
 <script setup lang="ts">
-import { ref } from 'vue'
-import { useClipboard } from '@vueuse/core'
-import { Check, Copy } from '@lucide/vue'
 import CodeText from './CodeText.vue'
-import IconButton from './IconButton.vue'
+import CopyButton from './CopyButton.vue'
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     code: string;
     copyLabel?: string
   }>(),
   { copyLabel: 'Copy' }
 )
-const { copy, copied } = useClipboard()
-const copiedCode = ref('')
-async function copyCode() {
-  const value = props.code
-  await copy(value)
-  copiedCode.value = value
-}
 </script>
 
 <template>
@@ -28,12 +18,7 @@ async function copyCode() {
       class="copy-code-text min-w-0 flex-1 select-text font-mono text-[12px] text-fg-body"
     />
     <span class="copy-code-action">
-      <IconButton
-        :icon="copied && copiedCode === code ? Check : Copy"
-        size="sm"
-        :aria-label="copied && copiedCode === code ? 'Copied' : copyLabel"
-        @click="copyCode"
-      />
+      <CopyButton :source="code" :label="copyLabel" variant="default" />
     </span>
   </div>
 </template>

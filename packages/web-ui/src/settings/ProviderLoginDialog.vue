@@ -1,15 +1,13 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { useClipboard } from '@vueuse/core'
-import { Check, Copy, ExternalLink } from '@lucide/vue'
+import { Check, ExternalLink } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
-import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
+import CopyButton from '@demicodes/web-ui/ui/CopyButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
-import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 
 /**
@@ -48,9 +46,6 @@ function submitCode(): void {
     emit('submitCode', code.value)
   }
 }
-const { copy, copied } = useClipboard({ copiedDuring: 1500 })
-// The link has its own tick: copying it must not mark the code as copied.
-const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500 })
 </script>
 
 <template>
@@ -106,12 +101,7 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
             class="select-all font-mono text-[22px] tracking-[0.25em] text-fg-emphasis"
             >{{ phase.code }}</span
           >
-          <IconButton
-            :icon="copied ? Check : Copy"
-            variant="ghost"
-            :aria-label="copied ? 'Copied' : 'Copy code'"
-            @click="copy(phase.code)"
-          />
+          <CopyButton :source="phase.code" label="Copy code" size="md" />
         </div>
         <div class="flex flex-wrap items-center gap-3">
           <Button variant="primary" @click="emit('open', phase.url)">
@@ -119,14 +109,12 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
             <ExternalLink :size="ICON_PX.in24" />
           </Button>
           <!-- For a web browser on another machine, or another profile: the link alone. -->
-          <Tooltip :content="linkCopied ? 'Copied' : 'Copy the link to sign in from another browser or device'">
-            <IconButton
-              :icon="linkCopied ? Check : Copy"
-              variant="ghost"
-              :aria-label="linkCopied ? 'Copied' : 'Copy link'"
-              @click="copyLink(phase.url)"
-            />
-          </Tooltip>
+          <CopyButton
+            :source="phase.url"
+            label="Copy link"
+            hint="Copy the link to sign in from another browser or device"
+            size="md"
+          />
           <span class="flex items-center gap-1.5 text-[12px] text-fg-subtle">
             <IndeterminateSpinner :size="ICON_PX.in20" />
             Waiting<template v-if="phase.expiresIn">
@@ -144,14 +132,12 @@ const { copy: copyLink, copied: linkCopied } = useClipboard({ copiedDuring: 1500
             <ExternalLink :size="ICON_PX.in24" />
           </Button>
           <!-- For a web browser on another machine, or another profile: the link alone. -->
-          <Tooltip :content="linkCopied ? 'Copied' : 'Copy the link to sign in from another browser or device'">
-            <IconButton
-              :icon="linkCopied ? Check : Copy"
-              variant="ghost"
-              :aria-label="linkCopied ? 'Copied' : 'Copy link'"
-              @click="copyLink(phase.url)"
-            />
-          </Tooltip>
+          <CopyButton
+            :source="phase.url"
+            label="Copy link"
+            hint="Copy the link to sign in from another browser or device"
+            size="md"
+          />
         </div>
         <div class="flex items-center gap-2">
           <TextInput

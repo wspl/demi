@@ -6,6 +6,7 @@ import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import CornerPlus from '../../ui/CornerPlus.vue'
 import { useFitMore } from '../../ui/fit-more'
 import { textWidth } from '../../ui/text-width'
+import Tooltip from '../../ui/Tooltip.vue'
 import type { ChangeFile } from '../../files/changes'
 
 /**
@@ -36,6 +37,7 @@ function opens(path: string): boolean {
 }
 
 const container = ref<HTMLElement>()
+/** The pills in the order of `files`, which `measure` lays out and each tip points at. */
 const pillEls = ref<HTMLElement[]>([])
 const expanded = ref(false)
 
@@ -75,33 +77,34 @@ const hidden = computed(() => props.files.length - visibleCount.value)
     ref="container"
     class="flex min-w-0 flex-wrap items-center gap-1"
   >
-    <component
-      :is="opens(file.path) ? 'button' : 'span'"
-      :type="opens(file.path) ? 'button' : undefined"
-      v-for="(file, index) in files"
-      v-show="index < visibleCount"
-      :key="file.path"
-      ref="pillEls"
-      class="file-pill group/pill inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full pl-1.5 pr-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out"
-      :class="opens(file.path) ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
-      @click="opens(file.path) && emit('select', file.path)"
-      :title="file.from ? `${file.from} → ${file.path}` : file.path"
-    >
-      <!-- The pills stand under the row they belong to, quieter than it: the
-        icon a step back too, never so faint it reads as unavailable. -->
-      <span class="relative inline-flex shrink-0 opacity-80 transition-opacity duration-200 ease-out group-hover/pill:opacity-100">
-        <FileIcon :name="baseName(file.path)" :is-directory="false" :size="14" />
-        <CornerPlus v-if="file.kind === 'added'" label="New file" />
-      </span>
-      <!-- Name and counts use different fonts and sizes: align them on the baseline, not the box. -->
-      <span class="inline-flex min-w-0 items-baseline gap-1.5">
-        <span
-          class="min-w-0 truncate"
-          :class="file.kind === 'deleted' ? 'deleted-name' : ''"
-        >{{ baseName(file.path) }}</span>
-        <LineCounts :added="file.added" :removed="file.removed" />
-      </span>
-    </component>
+    <template v-for="(file, index) in files" :key="file.path">
+      <component
+        :is="opens(file.path) ? 'button' : 'span'"
+        :type="opens(file.path) ? 'button' : undefined"
+        v-show="index < visibleCount"
+        ref="pillEls"
+        class="file-pill group/pill inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full pl-1.5 pr-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out"
+        :class="opens(file.path) ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
+        @click="opens(file.path) && emit('select', file.path)"
+      >
+        <!-- The pills stand under the row they belong to, quieter than it: the
+          icon a step back too, never so faint it reads as unavailable. -->
+        <span class="relative inline-flex shrink-0 opacity-80 transition-opacity duration-200 ease-out group-hover/pill:opacity-100">
+          <FileIcon :name="baseName(file.path)" :is-directory="false" :size="14" />
+          <CornerPlus v-if="file.kind === 'added'" label="New file" />
+        </span>
+        <!-- Name and counts use different fonts and sizes: align them on the baseline, not the box. -->
+        <span class="inline-flex min-w-0 items-baseline gap-1.5">
+          <span
+            class="min-w-0 truncate"
+            :class="file.kind === 'deleted' ? 'deleted-name' : ''"
+          >{{ baseName(file.path) }}</span>
+          <LineCounts :added="file.added" :removed="file.removed" />
+        </span>
+      </component>
+      <!-- The whole path, and where a renamed file came from. -->
+      <Tooltip :trigger="pillEls[index]" :content="file.from ? `${file.from} → ${file.path}` : file.path" />
+    </template>
     <button
       v-if="hidden > 0 || expanded"
       type="button"

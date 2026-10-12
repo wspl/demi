@@ -3,6 +3,7 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import { ChevronLeft, Copy, PanelRightClose, Plus, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
 import MenuDivider from '../ui/MenuDivider.vue'
@@ -175,15 +176,14 @@ function reorder(from: number, to: number): void {
             role="tab"
             tabindex="0"
             :aria-selected="item.kind.kind === selection"
-            :title="item.kind.title(item.data)"
-            class="grid h-7 phone:h-9 phone:text-[15px] grid-flow-col grid-cols-[auto_minmax(0,auto)] auto-cols-auto items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome select-none hover:bg-surface-base hover:text-fg"
+            class="focus-ring grid h-7 phone:h-9 phone:text-[15px] grid-flow-col grid-cols-[auto_minmax(0,auto)] auto-cols-auto items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome select-none hover:bg-surface-base hover:text-fg"
             :class="item.kind.kind === selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle'"
             @pointerdown.left="emit('select', item.kind.kind)"
             @keydown.enter.self="emit('select', item.kind.kind)"
             @keydown.space.self.prevent="emit('select', item.kind.kind)"
           >
             <component :is="item.kind.mark" :data="item.data" />
-            <span class="truncate">{{ item.kind.title(item.data) }}</span>
+            <TruncatedText :text="item.kind.title(item.data)" />
             <component :is="item.kind.badge" v-if="item.kind.badge" :data="item.data" />
           </span>
         </template>
