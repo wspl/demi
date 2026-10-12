@@ -602,7 +602,7 @@ async fn add_model(
     // models the vendor offers now, so adding one removes none.
     let (mut models, started) = match list_of(entry)? {
         Some(models) => (models, false),
-        None => (vendor_list(&scope, entry)?, true),
+        None => (vendor_list(&scope, entry), true),
     };
     let found = match &args.model {
         Some(reference) => Some(
@@ -638,23 +638,11 @@ async fn add_model(
 }
 
 /// The models the entry's vendor offers now, as a configured list holds
-/// them. A model whose context window the vendor does not state cannot be
-/// held, and the list is not started rather than lose it.
-fn vendor_list(scope: &Scope, entry: &ProviderEntry) -> Result<Vec<ConfiguredModel>, RpcError> {
+/// them. A vendor's catalog offers only models whose window models.dev
+/// states (`models.md` § Catalog sources), so every one of them is kept.
+fn vendor_list(scope: &Scope, entry: &ProviderEntry) -> Vec<ConfiguredModel> {
     let catalog = scope.catalog_of(entry).map(|catalog| &catalog.models[..]).unwrap_or_default();
-    let unstated: Vec<&str> = catalog
-        .iter()
-        .filter(|model| model.model.context_window.is_none())
-        .map(|model| model.model.id.as_str())
-        .collect();
-    if !unstated.is_empty() {
-        return Err(failed(format!(
-            "{} follows its vendor's list, and adding a model starts a list of its own from it; models.dev does not state the context window of {}, so the list cannot hold it: add those models first with --context",
-            entry.label,
-            unstated.join(", ")
-        )));
-    }
-    Ok(catalog
+    catalog
         .iter()
         .filter_map(|model| {
             let model = &model.model;
@@ -672,7 +660,7 @@ fn vendor_list(scope: &Scope, entry: &ProviderEntry) -> Result<Vec<ConfiguredMod
                     .map(|tier| tier.id.clone()),
             })
         })
-        .collect())
+        .collect()
 }
 
 async fn edit_model(

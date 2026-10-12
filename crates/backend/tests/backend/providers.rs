@@ -978,9 +978,10 @@ fn setup(missing: &[&str]) -> Value {
 }
 
 /// Google as models.dev lists it: two models an agent can work with, one of
-/// them stating an output limit above its window, and a video and a speech
-/// model whose output limits exceed their windows too, as Veo's and the TTS
-/// models' do.
+/// them stating an output limit above its window; a text model that calls
+/// tools but states no window, which compaction needs; and a video and a
+/// speech model whose output limits exceed their windows, as Veo's and the
+/// TTS models' do.
 fn google_with_media_models() -> Value {
     let agentic = |name: &str, context: u32, output: u32| {
         json!({
@@ -995,6 +996,10 @@ fn google_with_media_models() -> Value {
             "models": {
                 "gemini-3.8-flash": agentic("Gemini 3.8 Flash", 1_048_576, 65_536),
                 "gemini-3.8-nano": agentic("Gemini 3.8 Nano", 32_768, 65_536),
+                "gemini-3.8-flash-live": {
+                    "name": "Gemini 3.8 Flash Live", "tool_call": true,
+                    "modalities": { "input": ["text"], "output": ["text"] }
+                },
                 "veo-3.1-lite-generate-preview": {
                     "name": "Veo 3.1 Lite", "modalities": { "input": ["text"], "output": ["video"] },
                     "limit": { "context": 480, "output": 8_192 }
@@ -1026,8 +1031,8 @@ async fn a_vendor_entry_offers_the_models_an_agent_can_work_with_and_the_page_ad
     )
     .await;
 
-    // The video and speech models stay out, and an output limit above the
-    // window states none.
+    // The windowless, video and speech models stay out, and an output limit
+    // above the window states none.
     let catalog = catalog_of(&backend, &master, "").await;
     let offered: Vec<(&str, Option<u32>, Option<u32>)> = catalog.providers[0]
         .models
@@ -1195,13 +1200,15 @@ fn searched_document() -> Value {
         })
     };
     // Newer than every match, but no agent can work with them: one speaks,
-    // one draws, one calls no tool.
+    // one draws, one calls no tool, one states no window.
     let mut speaks = gemini("Gemini 3.8 Flash TTS", "2026-10-01", 8_192);
     speaks["modalities"]["output"] = json!(["audio"]);
     let mut draws = gemini("Gemini 3.8 Flash Image", "2026-10-01", 8_192);
     draws["modalities"]["output"] = json!(["image"]);
     let mut toolless = gemini("Gemini 3.8 Flash Chat", "2026-10-01", 8_192);
     toolless["tool_call"] = json!(false);
+    let mut windowless = gemini("Gemini 3.8 Flash Live", "2026-10-01", 8_192);
+    windowless["limit"] = json!({ "output": 8_192 });
     let mut flagged = gemini("Gemini 3.8 Flash", "2026-09-01", 65_536);
     flagged["canonical_model_id"] = json!("google/gemini-3.8-flash");
     let mut routed = gemini("Google: Gemini 3.8 Flash", "2026-09-01", 32_768);
@@ -1212,7 +1219,8 @@ fn searched_document() -> Value {
                 format!("spark-flash-{day}"),
                 json!({
                     "name": format!("Spark Flash {day}"), "release_date": format!("2025-01-{day:02}"),
-                    "tool_call": true, "modalities": { "output": ["text"] }
+                    "tool_call": true, "modalities": { "output": ["text"] },
+                    "limit": { "context": 128_000 }
                 }),
             )
         })
@@ -1231,7 +1239,8 @@ fn searched_document() -> Value {
                 "gemini-3.8-pro": gemini("Gemini 3.8 Pro", "2026-09-20", 65_536),
                 "gemini-3.8-flash-tts": speaks,
                 "gemini-3.8-flash-image": draws,
-                "gemini-3.8-flash-chat": toolless
+                "gemini-3.8-flash-chat": toolless,
+                "gemini-3.8-flash-live": windowless
             }
         },
         "openrouter": {
@@ -1267,9 +1276,9 @@ async fn the_model_search_matches_every_word_lists_a_model_once_newest_first_and
     let (backend, master) = harness.start_set_up().await;
     vendor.respond(served(&searched_document()));
 
-    // Every word, in any case and order, of the models that write text and
-    // call tools; the model three vendors list is one match, filled from
-    // its publisher.
+    // Every word, in any case and order, of the models that write text,
+    // call tools and state their window; the model three vendors list is
+    // one match, filled from its publisher.
     let found = searched(&backend, &master, "q=FLASH%20gemini").await;
     let refs: Vec<&str> = found
         .iter()
