@@ -66,15 +66,17 @@ function nextStop(panel: HTMLElement, stops: HTMLElement[], active: Element | nu
  * first field, else its default action, else the panel); while it is the top
  * layer, Tab and Shift+Tab go round inside it; when it closes, the focus goes
  * back to what had it when the dialog opened. A close that put the focus
- * somewhere else on purpose keeps it there.
+ * somewhere else on purpose keeps it there. A dialog pinned open in a catalog
+ * host is not open here (the caller says so), and leaves the focus alone.
  */
 export function useDialogFocus(options: {
   panel: Readonly<Ref<HTMLElement | undefined>>
+  /** Whether the dialog is open and owns the focus: not a specimen pinned open in a catalog host. */
   isOpen: () => boolean
   /** Whether no other layer (a dialog stacked on it, a menu) stands above it. */
   isTop: () => boolean
 }): void {
-  const autofocus = useAutofocus()
+  const autofocus = useAutofocus({ userOpened: options.isOpen })
   const focusReturn = useFocusReturn((active) => options.panel.value?.contains(active) === true)
 
   // Runs before the panel renders, so the opener is what had the focus, not what the dialog's content took.
@@ -90,7 +92,7 @@ export function useDialogFocus(options: {
 
   watch(options.panel, (panel) => {
     // Content that took the focus itself (a field marked `focused`) keeps it.
-    if (!panel || panel.contains(document.activeElement)) {
+    if (!panel || !options.isOpen() || panel.contains(document.activeElement)) {
       return
     }
     autofocus(initialFocus(panel))
