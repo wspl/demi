@@ -13,7 +13,6 @@ import type {
   CatalogProvider,
   ProviderState,
 } from '../api/generated/web-api'
-import type { LocalState } from './local'
 
 /**
  * The package of the CLI that `providerId`'s requests start on the Cloud, by
@@ -72,9 +71,10 @@ export function modelInfo(model: CatalogModel, limit: number | null): ModelInfo 
   }
 }
 
+/** A catalog model as Settings › Providers lists it; `enabled` is whether the user has it on. */
 export function settingsModel(
   model: CatalogModel,
-  hidden: readonly string[],
+  enabled: boolean,
 ): SettingsProviderModel {
   return {
     id: model.id,
@@ -87,8 +87,14 @@ export function settingsModel(
         (extension) => `.${extension}`,
       ) ?? null,
     fastTier: model.serviceTiers.find((tier) => tier.fast)?.id ?? null,
-    enabled: !hidden.includes(model.id),
+    enabled,
   }
+}
+
+/** Which entries and models the user turned off, as the preferences say. */
+export interface Hidden {
+  provider(providerId: string): boolean
+  model(providerId: string, modelId: string): boolean
 }
 
 /** What a provider's health says in words, when it says anything. */
@@ -123,7 +129,7 @@ export function accountPlan(
 export function providerView(
   entry: ProviderState,
   catalog: CatalogProvider | undefined,
-  local: LocalState,
+  hidden: Hidden,
 ): ProductProvider {
   const details = entry.details.type === 'read' ? entry.details : null
   const auth = details?.auth.status
@@ -158,10 +164,10 @@ export function providerView(
       : entry.details.type === 'failed'
         ? entry.details.message
         : healthMessage(entry.details.auth) ?? healthMessage(entry.details.runtime),
-    enabled: !local.hiddenProviders.includes(entry.id),
+    enabled: !hidden.provider(entry.id),
     models:
       catalog?.models.map((model) =>
-        settingsModel(model, local.hiddenModels[entry.id] ?? []),
+        settingsModel(model, !hidden.model(entry.id, model.id)),
       ) ?? [],
     accounts:
       details?.accounts.map((account) => ({

@@ -1,6 +1,6 @@
 //! The user's subagent settings at the tree's boundary (`subagents.md`
 //! § Profiles, § Limits, Acceptance 3, 7, 14 to 17): what a spawn checks and
-//! in which order, that each spawn and each `demi agent profiles` reads the settings
+//! in which order, that each spawn and each `demi agent profiles list` reads the settings
 //! as they are then, and the provider runtime a profile's child runs on.
 
 use std::{cell::Cell, num::NonZeroU32, rc::Rc};
@@ -39,6 +39,7 @@ fn profile(name: &str, description: &str) -> Profile {
 /// Model settings of `provider`'s `model` at `effort`.
 fn model_settings(provider: &str, model: &str, effort: Option<&str>) -> Option<ProfileModel> {
     Some(ProfileModel {
+        provider_name: None,
         provider_id: provider.into(),
         model_id: model.into(),
         thinking_effort: effort.map(str::to_owned),
@@ -59,14 +60,14 @@ fn change(fixture: &Fixture, edit: impl FnOnce(&mut SubagentSettings)) {
     edit(&mut fixture.product.subagents.borrow_mut());
 }
 
-/// `demi agent profiles` as text and as JSON, run by `node`.
+/// `demi agent profiles list` as text and as JSON, run by `node`.
 async fn profiles(fixture: &Fixture, node: &demi_shared_types::NodeId) -> (String, Value) {
-    let text = agent(&fixture.server, node, "profiles", json!({})).await;
+    let text = agent(&fixture.server, node, "profiles list", json!({})).await;
     assert_eq!(text.code, 0, "{text:?}");
     let listed = agent_call(
         &fixture.server,
         node,
-        "profiles",
+        "profiles list",
         json!({}),
         true,
         CancellationToken::new(),
@@ -118,11 +119,11 @@ async fn a_spawn_checks_the_switch_the_name_the_profile_switch_and_the_model_in_
     change(&fixture, |settings| settings.enabled = true);
     assert_eq!(
         refused_spawn(&fixture, json!({ "prompt": "task x", "profile": "nope" })).await,
-        "demi agent spawn: unknown profile \"nope\"; the user's profiles are explore, helper. Run `demi agent profiles` for when to use each, or omit --profile to inherit the parent.\n"
+        "demi agent spawn: unknown profile \"nope\"; the user's profiles are explore, helper. Run `demi agent profiles list` for when to use each, or omit --profile to inherit the parent.\n"
     );
     assert_eq!(
         refused_spawn(&fixture, json!({ "prompt": "task x", "profile": "default" })).await,
-        "demi agent spawn: unknown profile \"default\"; the user's profiles are explore, helper. Run `demi agent profiles` for when to use each, or omit --profile to inherit the parent.\n"
+        "demi agent spawn: unknown profile \"default\"; the user's profiles are explore, helper. Run `demi agent profiles list` for when to use each, or omit --profile to inherit the parent.\n"
     );
     // Disabled before unavailable: the user's choice is what the model
     // learns.
@@ -228,12 +229,12 @@ async fn each_spawn_reads_the_settings_as_they_are_and_a_child_keeps_what_it_was
     assert!(
         asked_one
             .system_prompt
-            .contains("Operations: send, list, show, profiles\n")
+            .contains("Operations: send, list, show, models, profiles list, profiles show, profiles create, profiles edit, profiles delete\n")
     );
     assert!(
         asked_two
             .system_prompt
-            .contains("Operations: spawn, send, abort, resume, list, show, profiles\n")
+            .contains("Operations: spawn, send, abort, resume, list, show, models, profiles list, profiles show, profiles create, profiles edit, profiles delete\n")
     );
 
     // Deleted after the spawn, the profile changes nothing in its child:

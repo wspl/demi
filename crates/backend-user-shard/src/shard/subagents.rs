@@ -1,12 +1,13 @@
 //! The user's subagent settings (`web-api.md` § Subagents): the Subagents
-//! switch, the limits and the profiles, written here once the edge checked a body's name
-//! and texts. A profile's model is checked against its entry's catalog as a
-//! conversation's model settings are, and is stored with its effort
-//! explicit. Each change reaches the user's pages as the `subagents` part,
-//! and the next spawn of every conversation reads it, since a spawn reads
-//! the settings each time.
+//! switch, the limits and the profiles, written here for the settings page
+//! and for `demi agent profiles` alike, after the same checks: a profile's
+//! name and texts by the accounts service's rules, and its model against
+//! its entry's catalog as a conversation's model settings are, stored with
+//! its effort explicit. Each change reaches the user's pages as the
+//! `subagents` part, and the next spawn of every conversation reads it,
+//! since a spawn reads the settings each time.
 
-use demi_backend_accounts::subagents;
+use demi_backend_accounts::subagents::{self, ProfileTextError};
 use demi_backend_database::StorageError;
 use demi_backend_database::subagents::ProfileRefusal as Stored;
 use demi_backend_host_access::transition::ChangeRefusal;
@@ -20,6 +21,9 @@ use super::Shard;
 /// Why a profile was not written.
 #[derive(Debug, thiserror::Error)]
 pub enum ProfileRefusal {
+    /// A name or a text breaks its rule.
+    #[error(transparent)]
+    Text(#[from] ProfileTextError),
     #[error(transparent)]
     Stored(#[from] Stored),
     /// The model is outside the user's scope, unlisted, or does not offer
@@ -41,32 +45,34 @@ impl Shard {
         Ok(())
     }
 
-    /// Creates the user's profile `profile`, whose name and texts were
-    /// checked, enabled.
+    /// Creates the user's profile `profile`, enabled or not.
     pub async fn create_profile(
         &self,
         mut profile: NewProfile,
+        enabled: bool,
     ) -> Result<SubagentProfile, ProfileRefusal> {
+        subagents::check_new(&profile)?;
         if let Some(model) = &profile.model {
             profile.model = Some(self.profile_model(model).await?);
         }
         let created = self
             .services()
             .control
-            .create_profile(self.user().clone(), profile)
+            .create_profile(self.user().clone(), profile, enabled)
             .await??;
         self.mark_subagents();
         Ok(created)
     }
 
-    /// Applies `patch`, whose name and texts were checked, to the user's
-    /// profile `id`. Turning it on or off checks nothing else, so an
-    /// unavailable profile can be disabled and enabled as it is.
+    /// Applies `patch` to the user's profile `id`. Turning it on or off
+    /// checks nothing else, so an unavailable profile can be disabled and
+    /// enabled as it is.
     pub async fn patch_profile(
         &self,
         id: ProfileId,
         mut patch: ProfilePatch,
     ) -> Result<SubagentProfile, ProfileRefusal> {
+        subagents::check_patch(&patch)?;
         if let Some(Some(model)) = &patch.model {
             patch.model = Some(Some(self.profile_model(model).await?));
         }

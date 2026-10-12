@@ -40,8 +40,12 @@ impl PermissionShard for Shard {
                 shard: self.this.clone(),
             };
             let toolset = toolsets.current().await?;
-            Ok(toolset
-                .commands
+            // The agent runtime's groups declare categories of their own.
+            let commands = self
+                .agent()
+                .node_commands(&toolset.commands)
+                .map_err(|error| error.to_string())?;
+            Ok(commands
                 .declarations()
                 .flat_map(Node::categories)
                 .cloned()
