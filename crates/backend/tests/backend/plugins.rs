@@ -106,7 +106,7 @@ async fn an_open_conversation_keeps_its_commands_until_a_reload_opens_it_with_th
         .send(&crate::conversations::send("m4", "fourth"))
         .await;
     socket
-        .until(|frame| matches!(frame, ServerFrame::Phase { phase } if *phase != demi_shared_types::SessionPhase::Idle))
+        .until(|frame| matches!(frame, ServerFrame::Phase { subagent_id: None, phase } if *phase != demi_shared_types::SessionPhase::Idle))
         .await;
     let refused = backend
         .post(

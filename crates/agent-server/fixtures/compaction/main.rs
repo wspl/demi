@@ -740,8 +740,8 @@ fn blocks_of(server: &AgentServer<NoHosts>, root: &NodeId) -> Vec<Block> {
 /// action may take fails as a hang.
 async fn act(client: &mut TestClient<NoHosts>, frame: ClientFrame) {
     client.send(frame).await;
-    let busy = |frame: &ServerFrame| matches!(frame, ServerFrame::Phase { phase } if *phase != SessionPhase::Idle);
-    let idle = |frame: &ServerFrame| matches!(frame, ServerFrame::Phase { phase } if *phase == SessionPhase::Idle);
+    let busy = |frame: &ServerFrame| matches!(frame, ServerFrame::Phase { subagent_id: None, phase } if *phase != SessionPhase::Idle);
+    let idle = |frame: &ServerFrame| matches!(frame, ServerFrame::Phase { subagent_id: None, phase } if *phase == SessionPhase::Idle);
     client.next_until(busy).await;
     client.next_until(idle).await;
 }

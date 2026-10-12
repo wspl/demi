@@ -570,6 +570,12 @@ impl<H: HostResolver> Tree<H> {
                             waited_ms: *waited_ms,
                         });
                     }
+                    SessionEvent::PhaseChanged { phase } => {
+                        sink.emit(ServerFrame::Phase {
+                            subagent_id: Some(id.clone()),
+                            phase: *phase,
+                        });
+                    }
                     SessionEvent::ActionFailed { report } => {
                         if let Some(child) = child.upgrade() {
                             child.failure.replace(Some(report.message.clone()));
@@ -634,6 +640,7 @@ impl<H: HostResolver> Tree<H> {
                     continue;
                 }
                 if let Some(close) = &record.closed {
+                    self.take_up_stopping(&record).await;
                     if !record.delivered {
                         let origin = self.stored_origin(&record.id, &close.phase).await;
                         self.deliver(owner, &record, close, origin).await;
@@ -661,6 +668,32 @@ impl<H: HostResolver> Tree<H> {
                 if let Err(error) = self.start_child(&server, owner, origin, runtime, None).await {
                     self.delete_unbuilt(&id, &error).await;
                 }
+            }
+        })
+    }
+
+    /// Takes up the commands the closed child `record` and its closed
+    /// descendants still ran when the backend restarted or the tree was
+    /// disposed (`subagents.md` § Abort): restore skips the children, not
+    /// their commands, which show as stopping again, are asked to stop
+    /// again, and end as their runners report.
+    fn take_up_stopping<'a>(self: &'a Rc<Self>, record: &'a NodeRecord) -> LocalBoxFuture<'a, ()> {
+        Box::pin(async move {
+            let feed = self.live.feed(Some(record.id.clone()));
+            let shells = self
+                .root
+                .take_up_closed(record, feed, |command| self.environment_of(command).is_some())
+                .await;
+            self.keep_stopping(record, shells);
+            let children = match self.store.children(&record.id).await {
+                Ok(children) => children,
+                Err(error) => {
+                    self.report(format!("the children of {} were not read: {error}", record.id));
+                    return;
+                }
+            };
+            for child in children.iter().filter(|child| child.closed.is_some()) {
+                self.take_up_stopping(child).await;
             }
         })
     }
@@ -896,7 +929,7 @@ impl<H: HostResolver> Tree<H> {
         child.closed.send_replace(true);
     }
 
-    /// Keeps the shells of the closing round `record` of a child while a
+    /// Keeps the shells of the closed or closing child `record` while a
     /// command of theirs has not ended, and forgets them once each has
     /// (`subagents.md` § Abort).
     fn keep_stopping(self: &Rc<Self>, record: &NodeRecord, environments: Vec<Rc<dyn ShellEnvironment>>) {
@@ -909,9 +942,9 @@ impl<H: HostResolver> Tree<H> {
         if commands.is_empty() {
             return;
         }
-        let key = (record.id.clone(), record.round);
+        let key = self.next_stopping.get();
+        self.next_stopping.set(key + 1);
         let tree = Rc::downgrade(self);
-        let forgotten = key.clone();
         let ends = tokio::task::spawn_local(async move {
             // An environment that forgot a command answers an error: it
             // has ended either way.
@@ -922,13 +955,14 @@ impl<H: HostResolver> Tree<H> {
             )
             .await;
             if let Some(tree) = tree.upgrade() {
-                let shells = tree.stopping.borrow_mut().remove(&forgotten);
+                let shells = tree.stopping.borrow_mut().remove(&key);
                 drop(shells);
             }
         });
         self.stopping.borrow_mut().insert(
             key,
             StoppingShells {
+                subagent: record.id.clone(),
                 environments,
                 _ends: AbortOnDropHandle::new(ends),
             },
@@ -1336,9 +1370,9 @@ async fn stop_all(session: &AgentSession) {
     while session.abort().await.target.is_some() {}
 }
 
-/// A child's `started` frame, its transcript, the calls it is writing and
-/// its wait for the model.
-fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 4] {
+/// A child's `started` frame, its transcript, its phase, the calls it is
+/// writing and its wait for the model.
+fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 5] {
     let session = child.node.session();
     let transcript = session.transcript();
     [
@@ -1358,6 +1392,10 @@ fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 4] {
                 revision: transcript.version.revision,
                 failures: None,
             }
+        },
+        ServerFrame::Phase {
+            subagent_id: Some(child.id().clone()),
+            phase: session.phase(),
         },
         ServerFrame::PendingCalls {
             subagent_id: Some(child.id().clone()),

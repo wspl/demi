@@ -48,6 +48,8 @@ export function applyConversationEvent(
         number: job.number,
         name: job.description,
         phase: job.phase,
+        // Its `phase` frame follows the `started` one.
+        sessionPhase: 'idle',
         startedAt: job.startedAt,
         endedAt: job.endedAt ?? undefined,
         history: EMPTY_TRANSCRIPT,
@@ -75,6 +77,11 @@ export function applyConversationEvent(
     const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
     if (child) {
       child.pendingCalls = event.pendingCalls
+    }
+  } else if (event.type === 'phase' && event.subagentId !== undefined) {
+    const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
+    if (child) {
+      child.sessionPhase = event.phase
     }
   } else if (event.type === 'waiting' && event.subagentId !== undefined) {
     const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
