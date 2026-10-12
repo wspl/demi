@@ -254,6 +254,14 @@ input, which the multi-worker control service also relies on
   file's snippet, and creation time. Neither table contains the attachment
   bytes.
 
+- **Plugin secrets:** `plugin_secrets` stores each plugin's [secrets](../architecture/plugins.md#secrets)
+  for a user, sealed: user, plugin id, name (1 to 64 lowercase letters,
+  digits, hyphens and underscores), the sealed value and its revision, written
+  by compare-and-set as values are. A plugin's OAuth tokens are its secret
+  `oauth:tokens`, a name no plugin can write. `plugin_oauth_clients` stores
+  the client Demi registered with an authorization server, per plugin and
+  issuer: the client id and the redirect URI it was registered with, which a
+  change of the public URL registers again.
 - **Plugins:** `plugin_values` stores each plugin's values for a user
   ([The contract](../architecture/plugins.md#the-contract)): user, plugin id,
   key, the JSON document, its revision, and the SHA-256 of each blob the value
@@ -643,6 +651,7 @@ form that works as stored:
 | Email-change code | HMAC-SHA256 under a key derived from the instance secret | `email_challenges` |
 | API-key entry configuration, with its key and endpoint | Sealed | `providers` |
 | Subscription account secret | Sealed | `provider_credentials` |
+| A plugin's secret, its OAuth tokens included | Sealed | `plugin_secrets` |
 
 A PHC string records the algorithm and its parameters beside the salt and the
 hash, for example `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`, so a stored
@@ -659,7 +668,8 @@ document: an API-key entry's configuration, or a subscription account's
 secret document, which is one strictly typed document per family
 ([Subscription secrets](../providers/providers.md#subscription-secrets)). The
 additional authenticated data names the row the value belongs to: the entry
-for a configuration, the entry and the account for a secret. A sealed value
+for a configuration, the entry and the account for a secret, the plugin, the
+user and the name for a plugin's secret. A sealed value
 copied into another row therefore does not open. A value that does not open,
 because it was altered, moved, or sealed under another instance secret, is
 corrupt: the operation fails and nothing replaces the value.

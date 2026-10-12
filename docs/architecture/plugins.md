@@ -432,7 +432,9 @@ of a key.
 
 A plugin that calls a vendor sends its requests through the port, never a
 client of its own, so every outbound request of the backend's plugins has one
-owner: the shard's shared HTTP client, its proxy settings, a deadline the
+owner: the shard's HTTP client for plugins, which sends only `https` and
+follows no redirect to `http`, kept apart from the providers' client, which
+must reach local endpoints; its proxy settings, a deadline the
 plugin names up to 60 seconds, a response body limit up to 16 MiB, and the
 request's cancellation. Only `https` is sent, and a log line names the plugin,
 the host and the status, never a header or a body.
@@ -444,14 +446,20 @@ the vendor's name as the user knows it, such as *Exa*, the authorization
 server's issuer, the resource and the scopes. The plugin
 host runs the flow, one for every such plugin:
 
-1. **Registration.** Once per instance and issuer, the host registers a
-   public client by dynamic client registration, with the redirect URI
-   `<public URL>/api/plugins/<plugin>/oauth/callback`, and keeps the client
-   id in the control store. A registration the vendor forgot is made again.
+1. **Registration.** Once per instance, plugin and issuer, the host
+   registers a public client by dynamic client registration, with the
+   redirect URI `<public URL>/api/plugins/<plugin>/oauth/callback`, and keeps
+   the client id and that URI in the control store; a client serves one
+   plugin, since its redirect URI names it, and a change of the public URL
+   registers again. A registration the vendor forgot is made again at the
+   next sign-in: OAuth forbids a vendor to send the browser back for a client
+   it does not know, so the user sees the vendor's error once, and the token
+   endpoint's `invalid_client` tells the host to register anew.
 2. **Start.** A page method of the plugin asks the port to start; the host
    makes a PKCE verifier (S256) and a `state`, keeps both with the user for 10
-   minutes, and answers the authorization URL, which the page opens in a new
-   tab.
+   minutes in the user's shard, and answers the authorization URL, which the
+   page opens in a new tab. A sign-in pending when the backend restarts ends
+   there: its callback answers that it expired.
 3. **Callback.** The vendor sends the browser to the callback, which is a
    session route: the browser's own navigation carries the session cookie, so
    a `state` another user started is refused. The host exchanges the code,
@@ -464,8 +472,10 @@ host runs the flow, one for every such plugin:
    spend one refresh token twice, as for provider credentials
    ([Token refresh](../providers/providers.md#token-refresh)); a refusal
    forgets the tokens and answers *signed out*.
-5. **Sign out.** Revokes the tokens at the vendor when it offers revocation,
-   and forgets them either way.
+5. **Sign out.** Forgets the tokens, then revokes them at the vendor when it
+   offers revocation. A sign-out, and a renewal the vendor refused, mark the
+   plugin's user state changed as the callback does, so no page goes on
+   showing *Signed in*.
 
 A plugin never sees a refresh token or the verifier; it reads the access
 token only to send it in a request it makes through [Outbound
