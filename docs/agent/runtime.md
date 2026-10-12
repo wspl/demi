@@ -1823,8 +1823,10 @@ is whole, the row becomes the call's block, and the command runs.
 - A call's start completes the text before it
   ([Eligibility](conversation-fork.md#eligibility)).
 
-A vendor that sends calls only whole has no calls being written: between its
-text and its call, the tail row says Requesting
+The wait for the model ends when a call's title is written, not when the call
+opens ([Waiting for the model](#waiting-for-the-model)). A vendor that sends
+calls only whole has no calls being written: between its text and its call,
+the tail row says Requesting, and its wait runs on
 ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
 
 ### Waiting for the model
@@ -1838,12 +1840,21 @@ says Requesting for 8m, and so does a page reloaded a minute later, where a
 clock started by the page would say 0s each time and look like a request that
 starts again.
 
-- **When a wait starts.** A request's first attempt starts it. The agent's
-  retries of the same request continue it
+- **When a wait starts.** The moment the node needs the model's next answer:
+  when a turn starts (a message, a subagent's brief, a wake by a report or a
+  message, Retry, Resume), and after each step or input that the turn sends
+  on, before the request is built, since building it can read the Host and
+  run a preamble hook. A failed attempt whose output is dropped starts it
+  again. The agent's retries of the same request continue it
   ([Retries](failures-and-recovery.md#retries)): the clock runs on across
   them.
-- **When it ends.** The request's first output ends it: reasoning, text or a
-  call being written. So does the request's end, however it ends.
+- **When it ends.** The first output a page shows ends it: reasoning, text, a
+  whole call, or a call being written once its title is written
+  ([Calls being written](#calls-being-written)). Redacted reasoning, which a
+  page does not show, does not end it, nor does a request that ended showing
+  nothing. The end of the turn's action ends it, however it ends. A
+  compaction pauses it: the page shows the compaction meanwhile, and the
+  wait starts again when the compaction ends.
 - **What a page receives.** Each start and end is a `waiting` frame:
   `waitedMs`, how long the node had waited when the frame left, or null when
   it waits for nothing, and `subagentId` for a subagent. A page that opens the
@@ -1855,9 +1866,9 @@ starts again.
   has the message ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)):
   that page counts from the send, the earlier of the two starts.
 
-Between a response that completed its text and the next request, the row may
-say Requesting before a wait started; the page counts from when the row began
-to say so until the next `waiting` frame arrives.
+So whenever the row says Requesting, the server holds the wait's start, but
+for the few milliseconds while new input is saved; the page counts from when
+the row began to say so until the `waiting` frame arrives.
 
 ### Tool descriptions
 
