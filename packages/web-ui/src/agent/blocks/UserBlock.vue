@@ -4,6 +4,7 @@ import type { Component } from 'vue'
 import { useClipboardItems, useResizeObserver } from '@vueuse/core'
 import { Check, Copy, Pencil } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
+import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { reportError } from '../../infra/errors'
 import type { MessageEditContent } from '../message-editing'
@@ -203,17 +204,13 @@ useResizeObserver(bodyRef, measure)
           :content="action.hint"
           class="inline-flex"
         >
-          <button
-            type="button"
+          <IconButton
+            :icon="action.icon"
+            size="sm"
+            variant="ghost"
             :aria-label="action.hint"
-            class="flex size-5 items-center justify-center rounded text-fg-faint transition-colors hover:bg-hover hover:text-fg-muted"
             @click.stop="action.emit()"
-          >
-            <component
-              :is="action.icon"
-              :size="13"
-            />
-          </button>
+          />
         </Tooltip>
       </div>
       <div

@@ -8,6 +8,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import type { ConversationTarget } from '../api/generated/web-api'
 import type { Conversation, Project } from '../state/types'
 import { useResources } from '../state/resources'
+import { hostKindOf, hostLabel } from '../state/hosts'
 import { browserHosts, fileSourceFor, placesFor } from '../devices/files'
 import { useConversations } from '../conversation/store'
 import { executionFor, moveLocked } from './execution'
@@ -61,7 +62,7 @@ const moveQuestion = useMoveQuestion()
 function place(target: ConversationTarget): { host: string; directory: string | null } {
   if (target.kind === 'cloud') {
     // Without a directory the Cloud runs it in one of its own, which the backend names.
-    return { host: 'Cloud', directory: target.path ?? null }
+    return { host: hostLabel('cloud', null), directory: target.path ?? null }
   }
   const project = target.kind === 'workspace'
     ? resources.projects.find((item) => item.id === target.workspaceId)
@@ -69,7 +70,7 @@ function place(target: ConversationTarget): { host: string; directory: string | 
   const deviceId = target.kind === 'device' ? target.deviceId : project?.deviceId ?? null
   const path = target.kind === 'device' ? target.path : project?.path ?? null
   const device = resources.deviceById(deviceId)
-  const host = device?.kind === 'managed' ? 'Cloud' : (device?.name ?? 'Unavailable device')
+  const host = hostLabel(hostKindOf(device), device)
   return { host, directory: path === null ? null : homePath(path, device?.home) }
 }
 

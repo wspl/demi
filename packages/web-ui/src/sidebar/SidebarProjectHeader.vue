@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ChevronRight, Cloud, Folder, FolderOpen, SquarePen } from '@lucide/vue'
+import { Folder, FolderOpen, SquarePen } from '@lucide/vue'
+import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import StatusDot from '@demicodes/web-ui/ui/StatusDot.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
+import { hostIcon } from '@demicodes/web-ui/hosts/icons'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '@demicodes/web-ui/devices/state'
 import type { SidebarProject } from './types'
 
@@ -49,11 +51,10 @@ const emit = defineEmits<{
       <span class="flex min-w-0 flex-1 items-center gap-1">
         <span class="flex min-w-0 flex-1 items-center gap-1">
           <TruncatedText class="font-medium text-fg-emphasis" :text="project.name" />
-          <ChevronRight
+          <FoldChevron
+            :open="!collapsed"
             :size="ICON_PX.in20"
-            aria-hidden="true"
-            class="shrink-0 text-fg-subtle opacity-0 transition-[opacity,rotate] duration-150 ease-out motion-reduce:transition-none group-hover/project:opacity-100 phone:opacity-100"
-            :class="collapsed ? 'rotate-0' : 'rotate-90'"
+            class="text-fg-subtle opacity-0 group-hover/project:opacity-100 phone:opacity-100"
           />
         </span>
         <TruncatedText
@@ -67,7 +68,8 @@ const emit = defineEmits<{
         <span
           class="pointer-events-none col-start-1 row-start-1 flex size-hit-sm items-center justify-center text-fg-subtle transition-opacity phone:size-8 duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0 phone:opacity-0"
         >
-          <Cloud
+          <component
+            :is="hostIcon({ kind: 'cloud' })"
             v-if="project.hostKind === 'cloud'"
             role="img"
             :aria-label="project.host"

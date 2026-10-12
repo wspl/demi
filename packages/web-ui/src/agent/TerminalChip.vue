@@ -18,7 +18,7 @@ const running = computed(() => runningTerminals(props.terminals))
 <template>
   <SessionDockChip
     v-if="running.length"
-    dot="accent"
+    dot="accent" breathing
     :aria-expanded="open === true"
     aria-haspopup="dialog"
     @click="emit('open')"

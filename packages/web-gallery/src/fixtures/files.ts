@@ -1,4 +1,3 @@
-import { Cloud } from '@lucide/vue'
 import { createMemoryFileSource, dir, file, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserHost, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
 
@@ -229,7 +228,6 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
       id: 'studio',
       label: 'studio',
       state: 'offline',
-      icon: undefined,
       source: createMemoryFileSource(
         {
           platform: 'linux',
@@ -258,7 +256,7 @@ export function createGalleryRemoteFileHosts(latencyMs = 250): GalleryFileHost[]
       label: 'Cloud',
       state: 'offline',
       canWake: true,
-      icon: Cloud,
+      kind: 'cloud',
       source: createMemoryFileSource({
         platform: 'linux',
         home: '/home/build',

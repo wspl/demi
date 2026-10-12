@@ -21,31 +21,8 @@ const tone = computed(() => statusTone(props.conversation.status, { read: !props
 
 <template>
   <span class="flex size-3.5 shrink-0 items-center justify-center phone:size-4 phone:[&>*]:scale-[1.35]">
-    <span
-      v-if="conversation.needsYou"
-      class="size-1.5 rounded-full bg-on-attention"
-      role="img"
-      aria-label="Needs your decision"
-    />
-    <StatusDot v-else-if="tone" :tone="tone" :class="{ 'sidebar-breath': conversation.status === 'active' }" />
-    <span v-else class="size-1.5 rounded-full border border-fg-faint/60" />
+    <StatusDot v-if="conversation.needsYou" tone="attention" label="Needs your decision" />
+    <StatusDot v-else-if="tone" :tone="tone" :breathing="conversation.status === 'active'" />
+    <StatusDot v-else tone="muted" ring />
   </span>
 </template>
-
-<style scoped>
-.sidebar-breath {
-  animation: sidebar-breath 2.4s ease-in-out infinite;
-}
-
-@keyframes sidebar-breath {
-  0%,
-  100% {
-    opacity: 0.35;
-    transform: scale(0.8);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.15);
-  }
-}
-</style>

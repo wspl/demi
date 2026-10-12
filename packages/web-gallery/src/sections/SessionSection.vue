@@ -82,6 +82,7 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import AgentStatusBar from '@demicodes/web-ui/agent/AgentStatusBar.vue'
+import RunEndTag from '@demicodes/web-ui/agent/blocks/RunEndTag.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { firstRunningSubagentId } from '@demicodes/web-ui/agent/subagents'
@@ -1829,7 +1830,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="SessionDockChip"
-        note="28px capsule with status dots. The Agents chip counts the live children, its dot breathing gently, and shows only while one runs, as Running shows only while a command runs; a finished child opens from its receipt's name or a link to it. Running and Agents open their windows; a second click closes them (Agents Chip in Windows)."
+        note="28px capsule with status dots. The Agents chip counts the live children and Running the commands, each dot breathing gently as every running thing does (StatusDot), and shows only while one runs, as Running shows only while a command runs; a finished child opens from its receipt's name or a link to it. Running and Agents open their windows; a second click closes them (Agents Chip in Windows)."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="resume">
@@ -2001,6 +2002,19 @@ onBeforeUnmount(() => {
               />
             </div>
           </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="RunEndTag"
+        note="How a row’s work went wrong, after its title: red Failed for a command that exited with an error, a tool call that failed or an agent that failed; grey Stopped, Stopping… while a stop waits for the runner, and Lost. A command’s Failed says its exit code in a tooltip, its Lost says why. The tag never shrinks, so a long title gives up its end to it."
+      >
+        <div class="specimen-row">
+          <GallerySpecimen variant="failed"><RunEndTag kind="failed" /></GallerySpecimen>
+          <GallerySpecimen variant="failed · exit code"><RunEndTag kind="failed" hint="Exit code 2" /></GallerySpecimen>
+          <GallerySpecimen variant="stopped"><RunEndTag kind="stopped" /></GallerySpecimen>
+          <GallerySpecimen variant="stopping"><RunEndTag kind="stopping" /></GallerySpecimen>
+          <GallerySpecimen variant="lost · why"><RunEndTag kind="lost" hint="The runner went away" /></GallerySpecimen>
         </div>
       </GallerySection>
 
@@ -2261,7 +2275,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Tool Media"
-        note="The images and videos a call’s result carries stand small in the call’s own line, 8px after its face’s last part, the chevron or a tag, 4px apart, folded or open, in the order of the result: each 20px tall and 16 to 48px wide by its proportions, cropped as a thumbnail is (the tall page keeps its top, the wide timeline its middle), never enlarged, with 4px corners. The line never wraps: as many show as fit in the width the title leaves, the title truncating only down to half the row, and the rest are counted after the last one shown, +5, in the row’s faint text, which is not a control; the narrow specimen shows the title giving way to half the row, then the pictures. A command’s notice and a folded run show theirs the same way (Work Groups). Each reference carries its pixel size, so a box is final before its bytes arrive and nothing moves when they load; a video of unknown size is 16:9. A video shows its first frame with a play mark; it never plays in place. Resting the pointer on a picture for 300 ms shows it large in a card above it, with the call’s title and its pixel size under it; moving to the next picture shows that one’s at once, and leaving closes it. A click opens the medium in the viewer and closes the card. A medium that is gone shows one line under the row: that it was not stored, with the store’s reason. A medium the page cannot show is a small box that says so when pointed at. The rows with 1, 5 and 20 pictures, with and without a tag, at a wide and a narrow width, show the line holding the same after the face rolls, as a run’s face does when it ends: Roll the Faces changes their icons, and the title still truncates before a tag or the chevron is cut."
+        note="The images and videos a call’s result carries stand small at the end of the call’s own line, right-aligned, at least 8px after its face’s last part, the chevron or a tag, and 4px apart, folded or open, in the order of the result: each 20px tall and 16 to 48px wide by its proportions, cropped as a thumbnail is (the tall page keeps its top, the wide timeline its middle), never enlarged, with 4px corners. The line never wraps: as many show as fit in the width the title leaves, the title truncating only down to half the row, and the rest are counted after the last one shown, +5, in the row’s faint text, which is not a control; the narrow specimen shows the title giving way to half the row, then the pictures. A command’s notice and a folded run show theirs the same way (Work Groups). Each reference carries its pixel size, so a box is final before its bytes arrive and nothing moves when they load; a video of unknown size is 16:9. A video shows its first frame with a play mark; it never plays in place. Resting the pointer on a picture for 300 ms shows it large in a card above it, with the call’s title and its pixel size under it; moving to the next picture shows that one’s at once, and leaving closes it. A click opens the medium in the viewer and closes the card. A medium that is gone shows one line under the row: that it was not stored, with the store’s reason. A medium the page cannot show is a small box that says so when pointed at. The rows with 1, 5 and 20 pictures, with and without a tag, at a wide and a narrow width, show the line holding the same after the face rolls, as a run’s face does when it ends: Roll the Faces changes their icons, and the title still truncates before a tag or the chevron is cut."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">

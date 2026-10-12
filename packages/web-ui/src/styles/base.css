@@ -525,6 +525,13 @@ html[data-theme="light"] .file-pill {
   line-break: anywhere;
 }
 
+/* The name of a deleted file, wherever a list or a heading shows it: struck through and
+   quieter, as VS Code strikes it. */
+@utility deleted-name {
+  color: var(--fg-muted);
+  text-decoration-line: line-through;
+}
+
 /* The content of a filled element (a selected row, a capsule) sits on its fill. A
    primitive puts the controls it lays on its fill in such a slot; the slot is a plain
    wrapper, never a fill itself, since a fill reads the surface this sets. */

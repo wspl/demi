@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ChevronRight } from '@lucide/vue'
+import FoldChevron from '../ui/FoldChevron.vue'
 import HighlightText from '../ui/HighlightText.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import Tooltip from '../ui/Tooltip.vue'
@@ -55,12 +55,7 @@ defineEmits<{
     >
       <!-- Directories fold on a chevron; files keep its width so names line up. -->
       <span class="flex size-4 shrink-0 items-center justify-center text-fg-faint">
-        <ChevronRight
-          v-if="row.isDirectory"
-          :size="ICON_PX.in20"
-          class="transition-transform duration-150"
-          :class="row.open ? 'rotate-90' : ''"
-        />
+        <FoldChevron v-if="row.isDirectory" :open="row.open" :size="ICON_PX.in20" />
       </span>
       <span class="relative inline-flex shrink-0">
         <FileIcon :name="row.name" :is-directory="row.isDirectory" :class="isHiddenName(row.name) ? 'faded' : ''" />
