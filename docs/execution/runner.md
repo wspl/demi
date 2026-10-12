@@ -990,6 +990,20 @@ the dev server it started runs on, holding its port.
   For example, `timeout 600 cargo test` ends a hung suite after ten minutes
   and leaves `124` for the script to test.
 
+### Windows paths
+
+On Windows a job's shell takes a drive path in either of the forms a model
+writes: `C:/Users/alex/notes.txt`, and `/c/Users/alex/notes.txt` as Git Bash and
+MSYS write it. The shell itself and the utilities that run in the runner read
+`/c/…` as `C:/…`: `cd /c/Users`, `cat /c/Users/alex/notes.txt` and a
+redirection to `/c/tmp/out.txt` all work. An argument handed to a Windows
+program is passed as written, never rewritten, since `cmd /c ver` would break
+if `/c` were read as a drive; such a program takes `C:/…` or `C:\…`. A path
+with backslashes works quoted, `'C:\Users\zan'`, and not bare, where bash
+reads each backslash as an escape, as it does on every system. Paths the
+runner prints, such as the directory a shell starts in, use the system's own
+form, `C:\Users\zan\Downloads`.
+
 ### Standard utilities
 
 A job's standard utilities behave as GNU's do on every Host, macOS included.
