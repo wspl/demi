@@ -248,7 +248,7 @@ the web app validates count the same unit
 
 Every `--help` and the model's capability index come from one renderer over
 the declarations ([System prompt](../agent/system-prompt.md#capability-index)).
-A group's declaration carries its index entry, at most 600 characters,
+A top-level command's declaration, a group's or a leaf's directly under `demi` or a root, carries its index entry, at most 600 characters,
 refused at registration when longer. The index opens with one paragraph of
 defaults that every command follows unless its own help says otherwise: success prints raw text on
 stdout; failure writes an error message to stderr and exits non-zero; `--help`
