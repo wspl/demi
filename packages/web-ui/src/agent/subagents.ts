@@ -3,7 +3,7 @@ import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { ConversationStatus } from './conversation-status'
 import type { MessageEditContent } from './message-editing'
 import { effortWord } from './reasoning'
-import { formatDuration } from './thinking-label'
+import { formatSpan } from '../composables/useRelativeTime'
 
 export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'
 
@@ -73,38 +73,16 @@ export function subagentJobFields(job: SubagentJob): SubagentJobFields {
   }
 }
 
-const TIME_WORDS: Record<SubagentPhase, string> = {
-  running: 'Running for',
-  completed: 'Finished after',
-  aborted: 'Stopped after',
-  error: 'Failed after',
-}
-
 /**
- * The line that says what a child runs on (`subagents.md` § What an agent
- * runs on), its round `elapsedMs` old: *research · Claude Sonnet 5.5 ·
- * Medium · Running for 4m12s*. The profile, or *No profile*; the model;
- * the effort, or *Thinking off*, none for a model without a thinking
- * setting; *Fast*; the time; *Round N* from the second round; *Forked from
- * agent N*.
+ * The effort a child's round runs with, in the words the model menu shows:
+ * *Medium*, *Thinking off*; null for a model without a thinking setting
+ * (`subagents.md` § What an agent runs on).
  */
-export function agentRunLine(run: AgentRun, elapsedMs: number): string {
-  const parts = [run.profile ?? 'No profile', run.model.model]
-  const effort = run.model.effort
-  if (effort !== null) {
-    parts.push(effort === 'off' ? 'Thinking off' : effortWord(effort))
+export function runEffortWords(model: JobModel): string | null {
+  if (model.effort === null) {
+    return null
   }
-  if (run.model.fast) {
-    parts.push('Fast')
-  }
-  parts.push(`${TIME_WORDS[run.phase]} ${formatDuration(elapsedMs)}`)
-  if (run.round >= 2) {
-    parts.push(`Round ${run.round}`)
-  }
-  if (run.forkedFrom !== null) {
-    parts.push(`Forked from agent ${run.forkedFrom}`)
-  }
-  return parts.join(' · ')
+  return model.effort === 'off' ? 'Thinking off' : effortWord(model.effort)
 }
 
 export function isSubagentRunning(phase: SubagentPhase): boolean {
@@ -160,7 +138,7 @@ export function formatSubagentDuration(
   agent: SubagentRecord,
   nowMs: number,
 ): string {
-  return formatDuration(subagentDurationMs(agent, nowMs))
+  return formatSpan(subagentDurationMs(agent, nowMs))
 }
 
 /**

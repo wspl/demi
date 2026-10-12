@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { formatReset } from '../useRelativeTime'
+import { formatReset, formatSpan } from '../useRelativeTime'
 
 // When a usage window resets, as Settings and the context card both say it
 // (`usage-and-quota.md` § What a snapshot says), against a fixed clock in the
@@ -45,4 +45,17 @@ test.each([
   { scenario: 'a moment rounding into another year', at: at(2026, 11, 31, 23, 59, 59, 600), wording: 'Resets Jan 1, 2027' },
 ])('a reset $scenario reads "$wording"', ({ at, wording }) => {
   expect(formatReset(at, now)).toBe(wording)
+})
+
+// The duration words the reset times share with the time a subagent has run.
+test.each([
+  { scenario: 'under a minute', ms: 42 * SECOND + 900, wording: '42s' },
+  { scenario: 'on the minute', ms: 3 * MINUTE, wording: '3m' },
+  { scenario: 'minutes and seconds', ms: 16 * MINUTE + 48 * SECOND, wording: '16m 48s' },
+  { scenario: 'an hour and seconds', ms: HOUR + 59 * SECOND, wording: '1h' },
+  { scenario: 'hours and minutes', ms: HOUR + 5 * MINUTE + 30 * SECOND, wording: '1h 5m' },
+  { scenario: 'more than a day', ms: DAY + 3 * HOUR, wording: '27h' },
+  { scenario: 'a clock set back', ms: -5 * SECOND, wording: '0s' },
+])('a span of $scenario reads "$wording"', ({ ms, wording }) => {
+  expect(formatSpan(ms)).toBe(wording)
 })

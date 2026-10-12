@@ -49,6 +49,25 @@ const DAY_MS = 24 * HOUR_MS
 const WEEK_MS = 7 * DAY_MS
 
 /**
+ * A span of time in the interface's duration words, counted as a timer
+ * counts: "42s", "16m 48s" (the seconds left out on the minute), "1h 5m"
+ * (the minutes left out on the hour, the seconds never shown). The reset
+ * times and the time a subagent has run say their spans with it.
+ */
+export function formatSpan(ms: number): string {
+  const seconds = Math.floor(Math.max(0, ms) / 1000)
+  if (seconds < 60) {
+    return `${seconds}s`
+  }
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) {
+    return seconds % 60 ? `${minutes}m ${seconds % 60}s` : `${minutes}m`
+  }
+  const hours = Math.floor(minutes / 60)
+  return minutes % 60 ? `${hours}h ${minutes % 60}m` : `${hours}h`
+}
+
+/**
  * When a usage window resets, as specifically as the user would say it,
  * counted from `now` in the user's time zone (`usage-and-quota.md` § What a
  * snapshot says): "Resets now" once the clock has passed it, "Resets in <1m"
@@ -72,9 +91,7 @@ export function formatReset(timestamp: string, now: Date): string {
     return `Resets in ${Math.floor(left / MINUTE_MS)}m`
   }
   if (left < DAY_MS) {
-    const hours = Math.floor(left / HOUR_MS)
-    const minutes = Math.floor((left % HOUR_MS) / MINUTE_MS)
-    return minutes ? `Resets in ${hours}h ${minutes}m` : `Resets in ${hours}h`
+    return `Resets in ${formatSpan(left)}`
   }
   // A vendor states a reset to the second or less, as 3:59:59.6 PM for
   // 4:00 PM: a moment is named by its nearest minute.
