@@ -14,7 +14,9 @@ use std::sync::Arc;
 use demi_plugin_skills::testing::{Repos, skill_md};
 use demi_shared_types::Block;
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
-use demi_web_api_protocol::permissions::{ConversationPermissions, RequestingAgent};
+use demi_web_api_protocol::permissions::{
+    ConversationPermissions, PermissionCategory, PermissionRequest, RequestingAgent,
+};
 use reqwest::StatusCode;
 use serde_json::json;
 
@@ -87,11 +89,19 @@ pub(crate) async fn permissions(backend: &TestBackend, session: &Session, id: &s
     read.json()
 }
 
+/// The categories of a permission request.
+pub(crate) fn categories(request: &PermissionRequest) -> &[PermissionCategory] {
+    match request {
+        PermissionRequest::Permission { categories, .. } => categories,
+        other => panic!("not a permission request: {other:?}"),
+    }
+}
+
 /// The only undecided request of the conversation: its id.
 pub(crate) async fn the_request(backend: &TestBackend, session: &Session, id: &str) -> String {
     let read = permissions(backend, session, id).await;
     assert_eq!(read.requests.len(), 1, "{read:?}");
-    read.requests[0].id.as_str().to_owned()
+    read.requests[0].id().as_str().to_owned()
 }
 
 pub(crate) async fn decide(
@@ -174,11 +184,11 @@ async fn a_command_without_the_grant_asks_and_the_users_allow_grants_the_categor
     let asked = permissions(&backend, &master, FIRST).await;
     assert_eq!(asked.requests.len(), 1, "{asked:?}");
     let request = &asked.requests[0];
-    assert_eq!(request.command, "demi skills add acme/tools");
-    assert_eq!(request.agent, None);
-    assert_eq!(request.categories.len(), 1, "{request:?}");
-    assert_eq!(request.categories[0].id, "skills.manage");
-    assert_eq!(request.categories[0].action.as_deref(), Some("manage skills"));
+    assert_eq!(request.command(), "demi skills add acme/tools");
+    assert_eq!(request.agent(), None);
+    assert_eq!(categories(request).len(), 1, "{request:?}");
+    assert_eq!(categories(request)[0].id, "skills.manage");
+    assert_eq!(categories(request)[0].action.as_deref(), Some("manage skills"));
     assert!(granted(&harness, FIRST).is_empty());
     assert_eq!(summary(&backend, &master, FIRST).await.permission_requests, 1);
 
@@ -188,7 +198,7 @@ async fn a_command_without_the_grant_asks_and_the_users_allow_grants_the_categor
         FIRST,
         vec![shell("t2", "demi skills add acme/tools"), say("added")],
     );
-    let allowed = decide(&backend, &master, FIRST, request.id.as_str(), "allow").await;
+    let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
     socket.until_idle().await;
     let woken = scripts.asked(|session| session == FIRST);
@@ -264,10 +274,10 @@ async fn a_newer_command_replaces_the_request_and_a_deny_remembers_nothing() {
     let read = permissions(&backend, &master, FIRST).await;
     assert_eq!(read.requests.len(), 1, "{read:?}");
     assert_eq!(
-        read.requests[0].command,
+        read.requests[0].command(),
         "demi skills add acme/tools --skill review"
     );
-    let newer = read.requests[0].id.as_str().to_owned();
+    let newer = read.requests[0].id().as_str().to_owned();
 
     // Deny: the agent is told, and nothing is remembered.
     scripts.root(FIRST, vec![say("understood")]);
@@ -379,8 +389,8 @@ async fn a_closed_subagents_request_is_answered_to_its_parent_and_the_grant_cove
     let read = permissions(&backend, &master, FIRST).await;
     assert_eq!(read.requests.len(), 1, "{read:?}");
     assert_eq!(
-        read.requests[0].agent,
-        Some(RequestingAgent {
+        read.requests[0].agent(),
+        Some(&RequestingAgent {
             number: 1,
             description: "installer".into(),
         })
@@ -395,7 +405,7 @@ async fn a_closed_subagents_request_is_answered_to_its_parent_and_the_grant_cove
         &backend,
         &master,
         FIRST,
-        read.requests[0].id.as_str(),
+        read.requests[0].id().as_str(),
         "allow",
     )
     .await;
@@ -692,10 +702,10 @@ async fn a_move_that_brings_a_device_asks_for_both_categories_in_one_request() {
     let asked = permissions(&backend, &master, FIRST).await;
     assert_eq!(asked.requests.len(), 1, "{asked:?}");
     let request = &asked.requests[0];
-    let ids: Vec<&str> = request.categories.iter().map(|category| category.id.as_str()).collect();
+    let ids: Vec<&str> = categories(request).iter().map(|category| category.id.as_str()).collect();
     assert_eq!(ids, ["conversation.organize", "host.devices"]);
     assert_eq!(
-        request.categories[1].action.as_deref(),
+        categories(request)[1].action.as_deref(),
         Some("manage devices")
     );
 
@@ -708,7 +718,7 @@ async fn a_move_that_brings_a_device_asks_for_both_categories_in_one_request() {
             say("moving"),
         ],
     );
-    let allowed = decide(&backend, &master, FIRST, request.id.as_str(), "allow").await;
+    let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
     socket.until_idle().await;
     let woken = scripts.asked(|session| session == FIRST);
@@ -756,8 +766,7 @@ async fn a_move_that_brings_a_device_asks_for_both_categories_in_one_request() {
     );
     let other = permissions(&backend, &master, SECOND).await;
     assert_eq!(other.requests.len(), 1, "{other:?}");
-    let ids: Vec<&str> = other.requests[0]
-        .categories
+    let ids: Vec<&str> = categories(&other.requests[0])
         .iter()
         .map(|category| category.id.as_str())
         .collect();

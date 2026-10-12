@@ -10,6 +10,7 @@ use serde_json::Value;
 use crate::auth::UserDto;
 use crate::cloud::CloudStatus;
 use crate::conversations::ConversationSummary;
+use crate::credentials::CredentialDto;
 use crate::devices::{DeviceDto, StunUrl};
 use crate::ids::ConversationId;
 use crate::plugins::PluginEntry;
@@ -23,7 +24,8 @@ use crate::workspaces::WorkspaceDto;
 /// workspaces in their order, the user's devices, the paired ones and the
 /// Cloud, the backend's public URL, the summaries of the user's
 /// conversations, the active ones first, then the archived, the Cloud's
-/// status, the user's Subagents switch, limits and profiles, the backend's
+/// status, the user's Subagents switch, limits and profiles, the user's
+/// credentials without their values, the backend's
 /// plugins with whether the user has each on, and the state of each plugin
 /// the user has on that gives one, by its id. The backend reads it for each
 /// channel, without waking a Cloud or running inference.
@@ -54,6 +56,8 @@ pub struct ProductState {
     pub subagents: SubagentSettings,
     /// The user's personal instructions; empty when they have none.
     pub instructions: String,
+    /// The user's credentials in name order, without their values.
+    pub credentials: Vec<CredentialDto>,
     /// The backend's plugins, in their order of registration.
     pub plugins: Vec<PluginEntry>,
     /// The state of each plugin the user has on that gives one, valid
@@ -138,6 +142,11 @@ pub enum SyncEvent {
     /// The user saved their personal instructions.
     Instructions {
         instructions: String,
+    },
+    /// A credential was saved, changed, used or removed: the user's
+    /// credentials, without their values.
+    Credentials {
+        credentials: Vec<CredentialDto>,
     },
     /// Nothing else was sent for 30 seconds.
     Heartbeat,

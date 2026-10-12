@@ -13,6 +13,7 @@ mod cloud;
 mod content;
 mod conversations;
 mod cookies;
+mod credentials;
 mod devices;
 mod direct;
 mod drafts;
@@ -329,6 +330,12 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/plugins/{plugin}/oauth/callback", get(oauth::callback))
         .route("/plugins/{plugin}", put(plugins::switch))
         .route("/instructions", put(instructions::replace))
+        .route("/credentials", get(credentials::list).post(credentials::create))
+        .route("/credentials/{id}/values", get(credentials::values))
+        .route(
+            "/credentials/{id}",
+            patch(credentials::patch).delete(credentials::delete),
+        )
         .route("/subagents", put(subagents::switch))
         .route("/subagents/profiles", post(subagents::create))
         .route(

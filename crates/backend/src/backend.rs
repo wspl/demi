@@ -329,6 +329,24 @@ impl Backend {
                 "the pending moves cannot be listed"
             );
         }
+        // A credential request's command ended with the run before, so no
+        // one waits for its answer; and a credential whose time came while
+        // the backend was down is removed (`credentials.md` § Storage and
+        // expiry). A failure does not stop the start: the user's shard
+        // removes what is past due when it starts, and the next start
+        // withdraws the requests.
+        if let Err(error) = services.control.withdraw_credential_requests().await {
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "the credential requests of the run before cannot be withdrawn"
+            );
+        }
+        if let Err(error) = services.control.expire_all_user_credentials().await {
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "the expired credentials cannot be removed"
+            );
+        }
         // Each permission decision whose message a restart cut off reaches
         // the agent that asked (`permissions.md` § The decision's message).
         // A failure does not stop the start: the next start delivers it.

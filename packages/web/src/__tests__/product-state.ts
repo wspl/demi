@@ -41,6 +41,7 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
       profiles: [],
     },
     instructions: '',
+    credentials: [],
     plugins: [{ id: 'skills', name: 'Skills', description: 'Skills the agent follows.', enabled: true, packages: [] }],
     pluginStates: { skills: { sources: [] } },
     mail: false,

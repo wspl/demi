@@ -120,8 +120,9 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
         )
 }
 
-/// A handler over the live shard; a call after the shard closed fails.
-fn verb<A, F, Fut>(
+/// A handler over the live shard, for the product's groups that act in it;
+/// a call after the shard closed fails.
+pub(crate) fn verb<A, F, Fut>(
     shard: Weak<Shard>,
     run: F,
 ) -> impl Fn(Call<A>, RpcPort) -> LocalBoxFuture<'static, Result<u8, RpcError>>
@@ -141,7 +142,7 @@ where
     }
 }
 
-fn failed(error: impl ToString) -> RpcError {
+pub(crate) fn failed(error: impl ToString) -> RpcError {
     RpcError::Failed(error.to_string())
 }
 
