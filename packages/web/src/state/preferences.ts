@@ -89,6 +89,42 @@ export const usePreferences = defineStore('preferences', () => {
   )
 
   /**
+   * Whether the user turned the provider entry `providerId` off in
+   * Settings › Providers, which takes it out of every model menu
+   * (`web-api.md` § User preferences).
+   */
+  function hidesProvider(providerId: string): boolean {
+    return product.snapshot?.preferences.hiddenProviders?.includes(providerId) ?? false
+  }
+
+  /** Whether the user turned the model `modelId` of the entry `providerId` off. */
+  function hidesModel(providerId: string, modelId: string): boolean {
+    return product.snapshot?.preferences.hiddenModels?.some(
+      (hidden) => hidden.providerId === providerId && hidden.modelId === modelId,
+    ) ?? false
+  }
+
+  /** Turns the entry `providerId` on or off in every model menu, at once. */
+  function showProvider(providerId: string, shown: boolean): void {
+    if (hidesProvider(providerId) !== shown) {
+      return
+    }
+    const hidden = (product.snapshot?.preferences.hiddenProviders ?? [])
+      .filter((candidate) => candidate !== providerId)
+    update({ hiddenProviders: shown ? hidden : [...hidden, providerId] }, true)
+  }
+
+  /** Turns the model `modelId` of the entry `providerId` on or off in every model menu, at once. */
+  function showModel(providerId: string, modelId: string, shown: boolean): void {
+    if (hidesModel(providerId, modelId) !== shown) {
+      return
+    }
+    const hidden = (product.snapshot?.preferences.hiddenModels ?? [])
+      .filter((candidate) => candidate.providerId !== providerId || candidate.modelId !== modelId)
+    update({ hiddenModels: shown ? hidden : [...hidden, { providerId, modelId }] }, true)
+  }
+
+  /**
    * The limit the user stored on the model `modelId` of the entry
    * `providerId`; null for none, which is the model's full window
    * (`models.md` § Context limit).
@@ -278,6 +314,10 @@ export const usePreferences = defineStore('preferences', () => {
     sendWhileRunning,
     contextLimit,
     setContextLimit,
+    hidesProvider,
+    hidesModel,
+    showProvider,
+    showModel,
     appearance,
     keys,
     update,

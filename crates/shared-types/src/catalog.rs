@@ -145,15 +145,7 @@ impl ProviderModel {
         };
         let unavailable = || UnavailableSetting::Effort(effort.to_owned());
         if effort == THINKING_OFF {
-            // Off is a choice beside the efforts of a model that levels its
-            // thinking.
-            let leveled = capabilities.iter().any(|capability| {
-                matches!(
-                    capability,
-                    ThinkingCapability::Adaptive { .. } | ThinkingCapability::Effort { .. }
-                )
-            });
-            if !leveled || self.can_disable_thinking == Some(false) {
+            if !self.can_turn_thinking_off() {
                 return Err(unavailable());
             }
             return Ok(Some(ThinkingConfig::Disabled {}));
@@ -182,6 +174,26 @@ impl ProviderModel {
             })
             .map(Some)
             .ok_or_else(unavailable)
+    }
+
+    /// The efforts a model's settings can name on this model, in the
+    /// catalog's order: the first is the one settings that name none take.
+    pub fn efforts(&self) -> Vec<String> {
+        self.thinking_capabilities()
+            .into_iter()
+            .flat_map(|capability| match capability {
+                ThinkingCapability::Adaptive { efforts, .. }
+                | ThinkingCapability::Effort { efforts, .. } => efforts,
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
+    /// Whether [`THINKING_OFF`] can name this model's thinking: off is a
+    /// choice beside the efforts of a model that levels its thinking and
+    /// can turn it off.
+    pub fn can_turn_thinking_off(&self) -> bool {
+        !self.efforts().is_empty() && self.can_disable_thinking != Some(false)
     }
 
     /// The service tier `tier` of a conversation's model settings on this

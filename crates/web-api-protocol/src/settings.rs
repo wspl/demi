@@ -287,6 +287,42 @@ pub struct Preferences {
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[garde(custom(stored_limits))]
     pub context_limits: ContextLimits,
+    /// The provider entries the user turned off in Settings › Providers,
+    /// which every model menu and `demi agent models` leave out without the
+    /// entry being deleted.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(skip)]
+    pub hidden_providers: Vec<ProviderId>,
+    /// The models the user turned off in Settings › Providers, each of one
+    /// entry, which the menus leave out as they do a hidden entry.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub hidden_models: Vec<HiddenModel>,
+}
+
+impl Preferences {
+    /// Whether the user turned the entry `provider` off.
+    pub fn hides_provider(&self, provider: &ProviderId) -> bool {
+        self.hidden_providers.contains(provider)
+    }
+
+    /// Whether the user turned the model `model` of the entry `provider`
+    /// off.
+    pub fn hides_model(&self, provider: &ProviderId, model: &str) -> bool {
+        self.hidden_models
+            .iter()
+            .any(|hidden| hidden.provider_id == *provider && hidden.model_id == model)
+    }
+}
+
+/// A model the user turned off, of one provider entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HiddenModel {
+    #[garde(skip)]
+    pub provider_id: ProviderId,
+    #[garde(length(chars, min = 1))]
+    pub model_id: String,
 }
 
 /// The context limits of a user, by provider entry id and then model id.
@@ -406,6 +442,24 @@ pub struct PreferencesPatch {
     #[schemars(with = "ContextLimitChange")]
     #[garde(dive)]
     pub context_limit: Option<ContextLimitChange>,
+    /// Replaces the list of the entries the user turned off.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "Vec<ProviderId>")]
+    #[garde(skip)]
+    pub hidden_providers: Option<Vec<ProviderId>>,
+    /// Replaces the list of the models the user turned off.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "Vec<HiddenModel>")]
+    #[garde(dive)]
+    pub hidden_models: Option<Vec<HiddenModel>>,
 }
 
 /// `{ preferences }`: the answer of `GET` and `PATCH /settings/preferences`.

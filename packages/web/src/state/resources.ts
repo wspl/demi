@@ -161,12 +161,13 @@ export const useResources = defineStore('resources', () => {
       }
     }),
   )
+  const hidden = { provider: preferences.hidesProvider, model: preferences.hidesModel }
   const providers = computed(() =>
     (product.snapshot?.providers ?? []).map((provider) =>
       providerView(
         provider,
         product.catalog.find((catalog) => catalog.providerId === provider.id),
-        local.value,
+        hidden,
       ),
     ),
   )
@@ -177,7 +178,7 @@ export const useResources = defineStore('resources', () => {
     return (product.snapshot?.providers ?? []).map(provider => ({
       id: provider.id,
       label: provider.label,
-      isAvailable: !local.value.hiddenProviders.includes(provider.id) &&
+      isAvailable: !preferences.hidesProvider(provider.id) &&
         catalog.find(item => item.providerId === provider.id)?.availability.type === 'available',
     }))
   })
@@ -205,7 +206,7 @@ export const useResources = defineStore('resources', () => {
     Object.fromEntries(
       Object.entries(catalogModels.value).map(([providerId, list]) => [
         providerId,
-        list.filter((model) => !local.value.hiddenModels[providerId]?.includes(model.id)),
+        list.filter((model) => !preferences.hidesModel(providerId, model.id)),
       ]),
     ),
   )
@@ -237,19 +238,6 @@ export const useResources = defineStore('resources', () => {
       id,
       ...local.value.recentProjects.filter((candidate) => candidate !== id),
     ].slice(0, 30)
-  }
-
-  function hideProvider(id: string, visible: boolean): void {
-    local.value.hiddenProviders = visible
-      ? local.value.hiddenProviders.filter((candidate) => candidate !== id)
-      : [...new Set([...local.value.hiddenProviders, id])]
-  }
-
-  function hideModel(providerId: string, modelId: string, visible: boolean): void {
-    const hidden = local.value.hiddenModels[providerId] ?? []
-    local.value.hiddenModels[providerId] = visible
-      ? hidden.filter((id) => id !== modelId)
-      : [...new Set([...hidden, modelId])]
   }
 
   /**
@@ -335,8 +323,6 @@ export const useResources = defineStore('resources', () => {
     conversationDevice,
     recentProjectIds,
     rememberProject,
-    hideProvider,
-    hideModel,
     reorderProject,
     createProject,
     removeProject,
