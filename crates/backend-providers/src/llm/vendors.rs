@@ -5,10 +5,12 @@
 
 use demi_provider_anthropic_api::AnthropicConfig;
 use demi_provider_common::VendorPolicy;
-use demi_provider_common::models_dev::{ModelsDevClient, ModelsDevError, ModelsDevVendor};
+use demi_provider_common::models_dev::{
+    ModelsDevClient, ModelsDevError, ModelsDevMatch, ModelsDevVendor,
+};
 use demi_provider_openai_api::OpenAiConfig;
 use demi_shared_types::{ProviderModelList, Timestamp, WireApi};
-use demi_web_api_protocol::providers::Vendor;
+use demi_web_api_protocol::providers::{ModelMatch, Vendor};
 use icu_collator::options::CollatorOptions;
 use icu_collator::{Collator, CollatorBorrowed};
 
@@ -24,6 +26,9 @@ const FAMILIES: [(&str, &str, Option<WireApi>); 4] = [
     ("@ai-sdk/anthropic", "anthropic", None),
     ("@ai-sdk/google", "google", None),
 ];
+
+/// The most matches a model search answers.
+const SEARCH_LIMIT: usize = 20;
 
 /// Vendors whose endpoint needs an authentication scheme of its own, which
 /// an API key cannot satisfy.
@@ -83,6 +88,33 @@ impl VendorCatalog {
         Ok(snapshot.vendor(vendor_id).and_then(offered))
     }
 
+    /// The models.dev models `query` matches (`models.md` § Adding a model
+    /// from models.dev), filled from vendor `vendor_id` where it lists them,
+    /// from the backend's kept copy: only a backend without one asks
+    /// models.dev.
+    pub async fn search(
+        &self,
+        query: &str,
+        vendor_id: Option<&str>,
+    ) -> Result<Vec<ModelMatch>, ModelsDevError> {
+        let snapshot = self.models_dev.kept().await?;
+        Ok(snapshot
+            .search(query, vendor_id, SEARCH_LIMIT)
+            .into_iter()
+            .map(filled)
+            .collect())
+    }
+
+    /// The model `reference`, `<vendor>/<model id>`, as a search answers
+    /// it; none when that vendor lists no such model.
+    pub async fn model(&self, reference: &str) -> Result<Option<ModelMatch>, ModelsDevError> {
+        let Some((vendor, id)) = reference.split_once('/') else {
+            return Ok(None);
+        };
+        let snapshot = self.models_dev.kept().await?;
+        Ok(snapshot.listing(vendor, id).map(filled))
+    }
+
     /// The live model list of vendor `vendor_id`, read again: a vendor the
     /// document no longer offers has an empty list, never its family's.
     pub async fn models(&self, vendor_id: &str) -> Result<ProviderModelList, String> {
@@ -102,6 +134,22 @@ impl VendorCatalog {
             source_fetched_at: Timestamp::UNIX_EPOCH,
             stale: snapshot.stale,
         }))
+    }
+}
+
+/// A models.dev model filled as a configured model would be: a fact the
+/// document does not state is left empty.
+fn filled(found: ModelsDevMatch) -> ModelMatch {
+    ModelMatch {
+        reference: format!("{}/{}", found.vendor, found.id),
+        display_name: found.model.display_name,
+        id: found.id,
+        vendor: found.vendor,
+        context_window: found.model.context_window,
+        output_limit: found.model.output_limit,
+        thinking_efforts: found.model.supported_thinking_efforts.unwrap_or_default(),
+        accepted_extensions: found.model.accepted_extensions,
+        release_date: found.release_date,
     }
 }
 

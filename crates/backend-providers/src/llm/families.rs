@@ -115,6 +115,21 @@ pub enum FamilyError {
     Invalid(String),
 }
 
+/// The name a family's entry takes when the user gives none, such as
+/// `OpenAI` for a custom endpoint of the `openai` family; a family without
+/// one of its own is named by its id.
+pub fn family_name(family: &str) -> &str {
+    match family {
+        "openai" => "OpenAI",
+        "anthropic" => "Anthropic",
+        "google" => "Google",
+        "codex" => "Codex",
+        "claude-code" => "Claude Code",
+        "grok-build" => "Grok Build",
+        other => other,
+    }
+}
+
 /// The families of a backend by name.
 #[derive(Clone, Default)]
 pub struct FamilyRegistry {

@@ -14,6 +14,7 @@ use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
 use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
 use demi_shared_types::Clock;
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
+use demi_web_api_protocol::providers::SETUP_MESSAGE;
 
 use super::catalog_cache::ModelCatalogCache;
 use super::families::{
@@ -38,6 +39,10 @@ pub enum AssemblyError {
     /// no runtime over a placement.
     #[error("the provider family {0} cannot run its process")]
     NoProcessRuntime(String),
+    /// An API-key entry without its key: nothing is sent until the user
+    /// adds it.
+    #[error("{SETUP_MESSAGE}")]
+    Incomplete,
 }
 
 /// An entry's provider for its active account, with the entry read it was
@@ -273,15 +278,18 @@ impl ProviderAssembly {
         account: Option<&CredentialId>,
     ) -> Result<FamilyArgs, AssemblyError> {
         let credential = match &entry.credential {
-            EntryCredential::ApiKey(config) => FamilyCredential::ApiKey(ApiKeyArgs {
-                api_key: config.api_key.clone(),
-                base_url: config
-                    .base_url
-                    .as_ref()
-                    .map(|endpoint| endpoint.url().clone()),
-                wire_api: config.wire_api,
-                vendor: self.vendors.policy(config.vendor_id.as_deref()),
-            }),
+            EntryCredential::ApiKey(config) => {
+                let api_key = config.api_key.clone().ok_or(AssemblyError::Incomplete)?;
+                FamilyCredential::ApiKey(ApiKeyArgs {
+                    api_key,
+                    base_url: config
+                        .base_url
+                        .as_ref()
+                        .map(|endpoint| endpoint.url().clone()),
+                    wire_api: config.wire_api,
+                    vendor: self.vendors.policy(config.vendor_id.as_deref()),
+                })
+            }
             EntryCredential::Subscription { .. } => {
                 let binding = match account {
                     Some(account) => self

@@ -10,7 +10,7 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent_tools::{
-    ContextAnswer, ContextSource, HostResolver, MenuEntry, NewProfileDraft, NodeContext, Profile,
+    ContextAnswer, ContextSource, HostResolver, NewProfileDraft, NodeContext, Profile,
     ProfileEdit, ProfileModel, SubagentSettings, SubagentSource, Toolset, ToolsetSource,
     runs_on as job_model,
 };
@@ -22,6 +22,7 @@ use demi_backend_host_access::attachment_commands::attachment_group;
 use demi_backend_host_access::host_commands::host_group;
 
 use super::organize::conversation_group;
+use crate::shard::provider_commands::providers_group;
 use demi_backend_host_access::{HostShard, conversation_of};
 use demi_backend_plugins::ContextAsk;
 use demi_backend_remote_host::RemoteHost;
@@ -68,6 +69,7 @@ impl ToolsetSource for ShardToolsets {
                     attachment_group(hosts),
                     conversation_group(self.shard.clone()),
                     credentials_group(self.shard.clone()),
+                    providers_group(self.shard.clone()),
                 ])
                 .await
                 .map_err(|error| error.to_string())?;
@@ -120,15 +122,6 @@ impl SubagentSource for ShardSubagents {
         })
     }
 
-    fn models(&self) -> LocalBoxFuture<'_, Result<Vec<MenuEntry>, String>> {
-        Box::pin(async move {
-            self.shard()?
-                .model_menu()
-                .await
-                .map_err(|error| error.to_string())
-        })
-    }
-
     fn runs_on<'a>(&'a self, selection: &'a ModelSelection) -> LocalBoxFuture<'a, JobModel> {
         Box::pin(async move {
             let Ok(shard) = self.shard() else {
@@ -170,7 +163,7 @@ impl SubagentSource for ShardSubagents {
 }
 
 /// The provider entries in the user's scope.
-async fn entries(shard: &Shard) -> Result<Vec<ProviderEntry>, StorageError> {
+pub(crate) async fn entries(shard: &Shard) -> Result<Vec<ProviderEntry>, StorageError> {
     let vault = &shard.services().vault;
     let owner = vault.owner_for(shard.user()).await?;
     vault.entries(owner).await
