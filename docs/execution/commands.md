@@ -403,6 +403,15 @@ ids let it hand the call's stdin and stdout to a job it starts on another
 device, so those bytes flow between the two devices through the backend's pipes
 without passing through the handler.
 
+A relayed pipe opens at once: the backend answers the runner's request for the
+call's stdout before the handler first writes, so a call that prints nothing
+for a long time, `demi shell status 17 --wait 5m` or a stop that waits for its
+command's end, outlasts a proxy's limit on an unanswered request, such as
+Cloudflare's 100 seconds, which once ended such a call with
+`pipe refused (524)`. A stdout pipe handed to a job on another device that then
+fails ends the call with 1 and its cause on stderr, as any failing relayed
+pipe does, below.
+
 A handler ends with an exit status. A handler's error is a runtime error,
 written as GNU tools write theirs: the command's path, the object it concerns
 when there is one, and the reason, `demi file edit: /src/app.ts: No such file
