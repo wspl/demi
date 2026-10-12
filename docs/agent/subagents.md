@@ -1192,8 +1192,9 @@ model's name; the state and time always stay.
 
 - **The Agents window** shows it as a status bar along the window's bottom
   edge, for the tab it shows.
-- **An agent link and a receipt's name**, pointed at, show *Subagent 4 ·
-  Finished*, the description, then the two groups on one line.
+- **An agent link and a receipt's name**, pointed at, show the two groups
+  on one line and nothing more: the link's own text already names the
+  child, and the state is the line's own first word.
 - **The Completed menu** shows each child's profile tag after its
   description, and its time.
 
