@@ -1,54 +1,32 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Zap } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import FunctionalBlock from './FunctionalBlock.vue'
 import GoneMediaLines from './GoneMediaLines.vue'
+import ToolCallFace from './ToolCallFace.vue'
+import { toolRowIcon } from './tool-row-icon'
 import type { ToolCallBlock } from '../block-types'
-import { getToolErrorText } from '../block-helpers'
-import { trimToolSummary } from '../tool-rendering'
 import { splitMedia, toolMedia } from '../tool-media'
 
 const props = defineProps<{
   block: ToolCallBlock
-  input: Record<string, unknown>
   /** The row is a run's that the running turn has not moved past: it shimmers also after the call returned. */
   working?: boolean
 }>()
 const isOpen = defineModel<boolean>('open', { default: false })
 
-const summary = computed(() => {
-  const entries = Object.entries(props.input)
-  if (entries.length === 0) {
-    return ''
-  }
-  return entries
-    .map(([k, v]) => {
-      const val = typeof v === 'string' ? v : JSON.stringify(v)
-      const short = val.length > 40 ? `${val.slice(0, 37)}...` : val
-      return `${k}=${short}`
-    })
-    .join(' ')
-})
 // The result's own text; its pictures show in the row's line, and a medium that is gone under it.
 const texts = computed(() => props.block.output.flatMap((part) => part.type === 'text' ? [part.text] : []))
-const errorText = computed(() => getToolErrorText(props.block))
 const media = computed(() => splitMedia(toolMedia(props.block.output, props.block.toolName)))
-const detail = computed(() => {
-  const text = errorText.value
-  return text ? trimToolSummary(text, 160) : summary.value
-})
 </script>
 
 <template>
   <FunctionalBlock
     v-model:open="isOpen"
-    :label="block.toolName"
-    :detail="detail"
     :loading="block.status === 'executing' || working"
-    :tone="block.status === 'error' ? 'danger' : undefined"
     :pictures="media.pictures"
   >
+    <ToolCallFace :block="block" />
     <template
       v-if="texts.length > 0"
       #body
@@ -63,7 +41,7 @@ const detail = computed(() => {
       </div>
     </template>
     <template #icon>
-      <Zap :size="ICON_PX.in28" />
+      <component :is="toolRowIcon(block.toolName)" :size="ICON_PX.in28" />
     </template>
   </FunctionalBlock>
   <GoneMediaLines :lines="media.gone" />

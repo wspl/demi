@@ -29,7 +29,6 @@ const renderKind = computed(() => toolRenderKind(props.block.toolName))
     v-else
     v-model:open="isOpen"
     :block="block"
-    :input="parsedInput"
     :working="working"
   />
 </template>

@@ -227,6 +227,11 @@ describe('the face that wears a running command’s tag', () => {
 
   test('a running call alone, or after thinking that goes, is its own row', () => {
     expect(face(run('m', merge), true)).toEqual({ kind: 'call' })
+    // A call being written alone is its own row too, as the call it becomes:
+    // before, it was a run's face, with a chevron that opened a stack of one
+    // step, which the same call shows nowhere else.
+    expect(face([writing('m')], true)).toEqual({ kind: 'writing' })
+    expect(face([...run('t', thinking('t')), writing('m')], true)).toEqual({ kind: 'writing' })
     expect(face(run('t', thinking('t'), merge), true)).toEqual({ kind: 'call' })
     // After the turn, a command that runs on keeps its own row.
     expect(face([...run('m', { ...merge, status: 'completed' } as Block)], false)).toEqual({ kind: 'call' })

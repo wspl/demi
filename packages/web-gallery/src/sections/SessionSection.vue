@@ -16,6 +16,8 @@ import {
 } from '../fixtures/request-changes'
 import { useGalleryTranscripts } from '../fixtures/transcripts'
 import GalleryTranscript from '../components/GalleryTranscript.vue'
+import GalleryStepPlaces from '../components/GalleryStepPlaces.vue'
+import { stepPlaces } from '../fixtures/step-places'
 import GalleryEditSelection from '../components/GalleryEditSelection.vue'
 import PermissionCard from '@demicodes/web-ui/permissions/PermissionCard.vue'
 import { afterDecision, type PermissionDecision, type PermissionRequestView } from '@demicodes/web-ui/permissions/types'
@@ -179,6 +181,8 @@ const removedBlocks = removedToolBlocks()
 /** One report row specimen per event, and several reports in one block. */
 const reportCases = commandReportCases()
 const reportsTogether = severalReports()
+/** One step of each kind, shown in each place it stands. */
+const stepPlaceCases = stepPlaces()
 
 /**
  * The permission card's specimens, each over its own requests: a decision
@@ -2163,6 +2167,19 @@ onBeforeUnmount(() => {
                 code="rate_limit"
                 :diagnostics="{ source: 'http', httpStatus: 429 }"
               />
+            </GallerySpecimen>
+          </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="One Row per Step"
+        note="A step looks the same wherever it stands: alone, inside a run the reader opened, and as the folded face of a run that still runs, whose newest step it is. One component draws each kind in every place: the same icon, title, tags, pictures, chevron and shimmer; only the indent of an opened run differs, and a run's face opens to the run's steps rather than to the step. Each row opens and folds."
+      >
+        <div class="gallery-frame gallery-block-frame bg-surface">
+          <div class="specimen-stack">
+            <GallerySpecimen v-for="place in stepPlaceCases" :key="place.variant" :variant="place.variant" wide>
+              <GalleryStepPlaces :step="place.step" :before="place.before" />
             </GallerySpecimen>
           </div>
         </div>
