@@ -334,9 +334,6 @@ fn a_cancelled_utility_unwinds_through_a_buffered_writer_without_aborting() {
         fn sleep(&self, _: std::time::Duration) -> std::io::Result<()> {
             Err(std::io::ErrorKind::Interrupted.into())
         }
-        fn resolve(&self, path: &Path, cwd: &Path) -> std::path::PathBuf {
-            cwd.join(path)
-        }
         fn task_guard(&self) -> Box<dyn Send + Sync> {
             Box::new(())
         }
