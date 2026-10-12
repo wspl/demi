@@ -87,7 +87,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Row',
-    'A title and one quiet dot: yellow while a permission request waits for the user, over every other mark and whether the row is open or read; otherwise the tone the conversation wears on its tab, the accent breathing while it runs, green once finished until its answer is read and red once failed, read or not, and a faint ring once a finished answer is read, when stopped or when nothing has run yet (Status Dots). An answer not yet read also shows in a brighter title. A cut title ends in an ellipsis and shows whole in its tooltip. Archive appears on hover, with Unpin before it on a pinned row; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
+    'A title and one quiet dot: yellow while a permission request waits for the user and has not been read, over every other mark; otherwise the tone the conversation wears on its tab, the accent breathing while it runs, green once finished and red once failed until the user reads it, and a faint ring once a finished answer, a failure or a request is read, when stopped or when nothing has run yet (Status Dots). An answer not yet read also shows in a brighter title. A cut title ends in an ellipsis and shows whole in its tooltip. Archive appears on hover, with Unpin before it on a pinned row; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
   ],
   [
     'Selection',
@@ -120,7 +120,7 @@ function reorder(request: SidebarReorder): void {
 function select(id: string): void {
   activeId.value = id
   conversations.value = conversations.value.map((conversation) => (
-    conversation.id === id ? { ...conversation, unread: false } : conversation
+    conversation.id === id ? read(conversation) : conversation
   ))
 }
 
@@ -255,17 +255,27 @@ function hoverRows(): SidebarConversation[] {
 const hoverConversations = ref(hoverRows())
 const hoverActive = ref<string | null>(null)
 
-/** A row for each state a conversation's dot shows, read and unread where it matters. */
+/**
+ * A conversation read: its answer, its failure and its request settle to the ring, as the
+ * product's read acknowledgement settles them. A request read still waits for the decision.
+ */
+function read(conversation: SidebarConversation): SidebarConversation {
+  return { ...conversation, unread: false, needsYou: false }
+}
+
+/** A row for each state a conversation's dot shows, read and unread where it matters; a title says what happened, never whether it was read. */
 function statusRows(): SidebarConversation[] {
   const row = (id: string, title: string, status: SidebarConversation['status'], unread: boolean, needsYou?: boolean): SidebarConversation => ({
     id, title, status, unread, needsYou, updatedAt: '2026-10-10T09:00:00Z', projectId: null, pinned: false,
   })
   return [
     row('s-running', 'Running', 'active', false),
-    row('s-done-unread', 'Finished, unread', 'done', true),
-    row('s-done-read', 'Finished, read', 'done', false),
-    row('s-failed-unread', 'Failed, unread', 'error', true),
-    row('s-failed-read', 'Failed, read', 'error', false),
+    row('s-done-unread', 'Answer that came while away', 'done', true),
+    row('s-done-read', 'Answer read before', 'done', false),
+    row('s-failed-unread', 'Failure that came while away', 'error', true),
+    row('s-failed-read', 'Failure read before', 'error', false),
+    row('s-waiting-unread', 'Request that came while away', 'done', false, true),
+    row('s-waiting-read', 'Request read, still waiting', 'done', false, false),
     row('s-needs-you', 'Needs you while running', 'active', false, true),
     row('s-stopped', 'Stopped', 'aborted', false),
     row('s-idle', 'Nothing run yet', 'idle', false),
@@ -300,29 +310,44 @@ function resetFold(): void {
   foldProjects.value = ['p-dotfiles']
 }
 
-/** Opening a row reads it and answers nothing: its request still waits for the user's decision. */
+/** Opening a row reads it: its dot settles, and its request still waits for the user's decision. */
 function selectFold(id: string): void {
   foldActive.value = id
-  foldConversations.value = foldConversations.value.map((c) => (c.id === id ? { ...c, unread: false } : c))
+  foldConversations.value = foldConversations.value.map((c) => (c.id === id ? read(c) : c))
 }
 
 const statusConversations = ref(statusRows())
 const statusActive = ref<string | null>(null)
-/** The finished row Read It reads, as reading it on another device would reach this one. */
-const STATUS_FINISHED = 's-done-unread'
-const finishedUnread = computed(() => statusConversations.value.some((c) => c.id === STATUS_FINISHED && c.unread))
+/** The rows a later event lights again, and what lights: an answer, a failure or a request. */
+const STATUS_EVENTS: Record<string, 'unread' | 'needsYou'> = {
+  's-done-read': 'unread',
+  's-failed-read': 'unread',
+  's-waiting-read': 'needsYou',
+}
+const statusUnread = computed(() => statusConversations.value.some((c) => c.unread || c.needsYou))
+/** A later event lights a read row again, except the open one: the user reads that as it happens. */
+const statusRelightable = computed(() => statusConversations.value.some((c) => c.id in STATUS_EVENTS && c.id !== statusActive.value && !c.unread && !c.needsYou))
 
-/** Reads a row; a row still named for its unread state is named for the read one. */
-function readStatus(id: string): void {
-  statusConversations.value = statusConversations.value.map((c) => (
-    c.id === id ? { ...c, unread: false, title: c.title.replace(/, unread$/, ', read') } : c
-  ))
+/** Reads every row, as reading the conversations on another device of the user's would reach this one. */
+function markStatusRead(): void {
+  statusConversations.value = statusConversations.value.map(read)
+}
+
+/** A later answer, failure and request arrive: each read row lights again, the open row stays read. */
+function newStatusEvents(): void {
+  statusConversations.value = statusConversations.value.map((c) => {
+    const lights = STATUS_EVENTS[c.id]
+    if (!lights || c.id === statusActive.value) {
+      return c
+    }
+    return { ...c, [lights]: true }
+  })
 }
 
 /** Opening a row reads it, as the product acknowledges what the open conversation shows. */
 function selectStatus(id: string): void {
   statusActive.value = id
-  readStatus(id)
+  statusConversations.value = statusConversations.value.map((c) => (c.id === id ? read(c) : c))
 }
 
 function archiveStatus(ids: string[]): void {
@@ -472,7 +497,7 @@ onBeforeUnmount(() => {
 
     <GallerySection
       title="Folded Groups"
-      note="Conversations and Projects each fold under their label, as Finder’s sidebar sections do. Click a label, or the chevron after it, which shows while the pointer is over the label and always on a phone: it points down while the group is open and right while it is folded. A folded group shows its label alone, but keeps the open conversation under it, in Projects with its project’s row above it so its place still shows, and while a conversation the fold hides waits for the user, the label carries the yellow dot, between the label and the chevron; the open conversation shows its own dot. Here Projects starts folded with Cookie helper refactor open; Ask for Permission in a Project makes Thumbnail pipeline on the new bucket wait until Answer the Request. The product keeps the folded groups per browser, across reloads. Reset gives the specimen its rows and folds again."
+      note="Conversations and Projects each fold under their label, as Finder’s sidebar sections do. Click a label, or the chevron after it, which shows while the pointer is over the label and always on a phone: it points down while the group is open and right while it is folded. A folded group shows its label alone, but keeps the open conversation under it, in Projects with its project’s row above it so its place still shows, and while a conversation the fold hides waits for the user, the label carries the yellow dot, between the label and the chevron; the open conversation shows its own dot. Here Projects starts folded with Cookie helper refactor open; Ask for Permission in a Project makes Thumbnail pipeline on the new bucket wait until Answer the Request or until it is opened and read, which settles its dot. The product keeps the folded groups per browser, across reloads. Reset gives the specimen its rows and folds again."
     >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="projects folded · live">
@@ -548,16 +573,17 @@ onBeforeUnmount(() => {
 
     <GallerySection
       title="Status Dots"
-      note="A row’s dot says what the conversation’s work is doing, in the tones its tab and an agent’s link wear: the accent breathing while it runs, green once finished and red once failed; yellow while a request waits for the user, the same size as every other dot and with nothing around it, over every other dot. Green says there is a new answer to read: once the user reads it the row settles into the faint ring, as Mail’s unread mark does, while a failed row stays red. An answer not yet read also shows in a brighter title. Open a row to read it, or use Read It to read the finished row as another device of the user’s would. A Stop is the user’s own decision, and a stopped row, like one that has run nothing yet, keeps the faint ring of a settled row. An agent’s tab and link have no read state and stay green once the agent finished. Reset gives the specimen its rows again."
+      note="A row’s dot says what the conversation’s work is doing, in the tones its tab and an agent’s link wear: the accent breathing while it runs, green once finished and red once failed; yellow while a request waits for the user, the same size as every other dot and with nothing around it, over every other dot. Every color but the running blue says there is something new to see: once the user reads it the row settles into the faint ring, as Mail’s unread mark does, whether it is an answer, a failure or a request; a request read but not answered still waits in its conversation, and only the dot settles. An answer not yet read also shows in a brighter title. Open a row to read it, or use Mark Read to read every row as another device of the user’s would. What happens while the user has a row open is read as it happens, so New Events lights each read row again except the open one. A later event lights the dot again: a turn that fails after the user read the last one turns it red. A Stop is the user’s own decision, and a stopped row, like one that has run nothing yet, keeps the faint ring of a settled row. An agent’s tab and link have no read state and stay green once the agent finished. Reset gives the specimen its rows again."
     >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="every state · live">
           <div class="flex flex-col gap-2">
             <div class="flex gap-1">
-              <Button variant="ghost" size="sm" :disabled="!finishedUnread" @click="readStatus(STATUS_FINISHED)">Read It</Button>
+              <Button variant="ghost" size="sm" :disabled="!statusUnread" @click="markStatusRead">Mark Read</Button>
+              <Button variant="ghost" size="sm" :disabled="!statusRelightable" @click="newStatusEvents">New Events</Button>
               <Button variant="ghost" size="sm" @click="statusConversations = statusRows(); statusActive = null">Reset</Button>
             </div>
-            <div class="gallery-frame flex h-[30rem] overflow-hidden">
+            <div class="gallery-frame flex h-[34rem] overflow-hidden">
               <AppSidebar
                 :new-shortcut="newShortcut"
                 :search-shortcut="searchShortcut"
