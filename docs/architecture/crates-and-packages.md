@@ -276,6 +276,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     (`codec::{decode_inbound, decode_outbound, encode}`);
   - the manifest envelope (`Manifest`): its verification and canonical hash,
     and `Manifest::build`, so both ends compute the hash one way;
+  - the frames of a pipe the runner reads (`wire::pipe_frames`: data, idle
+    and end, their encoder and incremental decoder, and `PIPE_IDLE`), which
+    any transport between the two ends carries
+    ([Pipes and output](../execution/runner.md#pipes-and-output));
   - the managed boot record (`ManagedBoot`) and the runner release record
     (`RunnerRelease`);
   - a server release's record (`ServerRelease`, the root's `release.json`),
