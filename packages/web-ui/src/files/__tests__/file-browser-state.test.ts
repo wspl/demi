@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { compareFileNames, createFileBrowserHistory, DEFAULT_SORT, filterEntries, nextSort, sortEntries } from '../file-browser-state'
-import { entryKind, formatBytes, formatModified } from '../format'
+import { entryKind, formatBytes } from '../format'
 import type { FileBrowserEntry } from '../types'
 
 const entries: FileBrowserEntry[] = [
@@ -129,9 +129,6 @@ test('bytes and times format for a column', () => {
   expect(formatBytes(12)).toBe('12 B')
   expect(formatBytes(1536)).toBe('1.5 KB')
   expect(formatBytes(20 * 1024 * 1024)).toBe('20 MB')
-  expect(formatModified('2026-09-07T09:05:00')).toBe('Sep 7, 2026 09:05')
-  expect(formatModified('2025-03-02T09:05:00')).toBe('Mar 2, 2025 09:05')
-  expect(formatModified(undefined)).toBe('')
 })
 
 test('the Type column reads the extension', () => {

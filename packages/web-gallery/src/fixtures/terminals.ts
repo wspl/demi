@@ -23,7 +23,7 @@ export function runningRunCommand(): TerminalRecord {
   }
 }
 
-/** The command the ended turn left running, started 2m16s ago (`leftRunningBlocks`). */
+/** The command the ended turn left running, started 2m 16s ago (`leftRunningBlocks`). */
 export function leftRunningCommand(): TerminalRecord {
   return {
     id: 'term-e2e',

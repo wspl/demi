@@ -1,29 +1,16 @@
-
-/** A compact elapsed time: `12s`, `2m`, `2m14s`, `1h3m`. */
-export function formatDuration(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000))
-  if (s < 60)
-    return `${s}s`
-  const m = Math.floor(s / 60)
-  const rs = s % 60
-  if (m < 60)
-    return rs ? `${m}m${rs}s` : `${m}m`
-  const h = Math.floor(m / 60)
-  const rm = m % 60
-  return rm ? `${h}h${rm}m` : `${h}h`
-}
+import { formatSpan } from '@demicodes/utils'
 
 export function thinkingFaceLabel(streaming: boolean, elapsedMs: number | null): string {
   if (elapsedMs === null)
     return 'Thinking'
   if (elapsedMs <= 1000)
     return streaming ? 'Thinking' : 'Thought briefly'
-  return `${streaming ? 'Thinking for' : 'Thought for'} ${formatDuration(elapsedMs)}`
+  return `${streaming ? 'Thinking for' : 'Thought for'} ${formatSpan(elapsedMs)}`
 }
 
 /** The tail row while the provider is asked, with how long the request has waited. */
 export function providerWaitLabel(elapsedMs: number): string {
   if (elapsedMs <= 1000)
     return 'Requesting'
-  return `Requesting for ${formatDuration(elapsedMs)}`
+  return `Requesting for ${formatSpan(elapsedMs)}`
 }

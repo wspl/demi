@@ -343,7 +343,7 @@ export function terminalStatus(phase: TerminalPhase): ConversationStatus {
 }
 
 export function runningChipLabel(count: number): string {
-  return count === 1 ? '1 Running' : `${count} Running`
+  return `${count} Running`
 }
 
 export function firstRunningTerminalId(

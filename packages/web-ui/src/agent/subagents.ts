@@ -3,7 +3,8 @@ import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { ConversationStatus } from './conversation-status'
 import type { MessageEditContent } from './message-editing'
 import { effortWord } from './reasoning'
-import { formatSpan } from '../composables/useRelativeTime'
+import { formatSpan, countOf } from '@demicodes/utils'
+import { elapsedBetween } from '../composables/useElapsedTime'
 
 export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'
 
@@ -128,17 +129,13 @@ export function subagentStatus(phase: SubagentPhase): ConversationStatus {
   return 'done'
 }
 
-export function subagentDurationMs(agent: SubagentRecord, nowMs: number): number {
-  const start = Date.parse(agent.startedAt)
-  const end = agent.endedAt ? Date.parse(agent.endedAt) : nowMs
-  return Math.max(0, end - start)
-}
-
+/** How long a child has run, or ran, in the duration words: a running one counts to `nowMs`. */
 export function formatSubagentDuration(
   agent: SubagentRecord,
   nowMs: number,
 ): string {
-  return formatSpan(subagentDurationMs(agent, nowMs))
+  const end = agent.endedAt ? Date.parse(agent.endedAt) : nowMs
+  return formatSpan(elapsedBetween(Date.parse(agent.startedAt), end) ?? 0)
 }
 
 /**
@@ -174,7 +171,7 @@ export function agentsChipLabel(agents: readonly SubagentRecord[]): string | nul
   if (running === 0) {
     return null
   }
-  return running === 1 ? '1 Agent' : `${running} Agents`
+  return countOf(running, 'Agent')
 }
 
 /**

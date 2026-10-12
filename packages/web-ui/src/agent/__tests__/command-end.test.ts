@@ -27,8 +27,8 @@ test('a row marks only a command that failed or was stopped', () => {
 // An open shell row says above its output how long the command has run or
 // ran (`runtime.md` § Rendering boundary), however it ended.
 test('an open row says how long its command has run, or how it ended and after how long', () => {
-  expect(commandStatusLine(null, 88_000)).toBe('Running for 1m28s')
-  expect(commandStatusLine(view({ status: 'exited', exitCode: 0 }), 133_000)).toBe('Exited with 0 after 2m13s')
+  expect(commandStatusLine(null, 88_000)).toBe('Running for 1m 28s')
+  expect(commandStatusLine(view({ status: 'exited', exitCode: 0 }), 133_000)).toBe('Exited with 0 after 2m 13s')
   expect(commandStatusLine(view({ status: 'exited', exitCode: 1 }), 47_000)).toBe('Failed with exit code 1 after 47s')
   expect(commandStatusLine(view({ status: 'aborted' }), 5_000)).toBe('Stopped after 5s')
   // A stop waits for the runner's word of the end (`runner.md` § Cancellation
@@ -47,8 +47,8 @@ test('a running row shows its time only once it has run more than 3 seconds', ()
   expect(runningTime(2_900)).toBeNull()
   expect(runningTime(3_000)).toBeNull()
   expect(runningTime(3_400)).toBe('3s')
-  expect(runningTime(92_000)).toBe('1m32s')
-  expect(runningTime(3_720_000)).toBe('1h2m')
+  expect(runningTime(92_000)).toBe('1m 32s')
+  expect(runningTime(3_720_000)).toBe('1h 2m')
 })
 
 test('a lost command\'s call row carries its notice\'s tag, Lost with why, not a failure', () => {

@@ -198,7 +198,7 @@ describe('what a group says it did', () => {
   test('a running group says for how long it has run once past 3 seconds', () => {
     const run = steps(call('a'), call('b'), call('c'), call('d'))
     expect(workRunning(run, 2_000)).toBe('Running 4 commands')
-    expect(workRunning(run, 92_000)).toBe('Running 4 commands for 1m32s')
+    expect(workRunning(run, 92_000)).toBe('Running 4 commands for 1m 32s')
     expect(workRunning(steps(plan, check('s', 17)), 9_000)).toBe('Checking 1 command for 9s')
   })
 })

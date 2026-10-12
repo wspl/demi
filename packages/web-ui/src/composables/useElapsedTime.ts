@@ -1,69 +1,39 @@
-import { computed, onScopeDispose, ref, watch } from 'vue'
+import { computed, onScopeDispose, watch } from 'vue'
+import { clockNow, holdClock } from './useClock'
 
-/**
- * The page's one clock for live intervals: every running row reads the same
- * `now`, which one timer moves each second while any row runs, so the rows
- * tick together and a page of running commands keeps one timer, not one each.
- */
-const now = ref(Date.now())
-let timer: ReturnType<typeof setInterval> | undefined
-let readers = 0
-
-/** A row starts reading the clock: the first one starts its timer. */
-function holdClock(): void {
-  now.value = Date.now()
-  readers += 1
-  if (timer === undefined) {
-    timer = setInterval(() => {
-      now.value = Date.now()
-    }, 1000)
+/** The time from `startedAt` to `endedAt`, none until both are known; a clock set back reads 0. */
+export function elapsedBetween(startedAt: number, endedAt: number | null): number | null {
+  if (!Number.isFinite(startedAt) || endedAt === null || !Number.isFinite(endedAt)) {
+    return null
   }
+  return Math.max(0, endedAt - startedAt)
 }
 
-/** A row stops reading the clock: the last one stops its timer. */
-function releaseClock(): void {
-  readers -= 1
-  if (readers === 0 && timer !== undefined) {
-    clearInterval(timer)
-    timer = undefined
-  }
-}
-
-/** Measures a live interval or a persisted interval; each stopped scope releases its hold on the shared clock. */
+/** Measures a live interval or a persisted interval; a live one holds the shared clock until it ends or its scope stops. */
 export function useElapsedTime(
   startedAt: () => number,
   running: () => boolean,
   endedAt: () => number | null = () => null,
 ) {
-  let holding = false
+  let release: (() => void) | null = null
 
-  function release(): void {
-    if (holding) {
-      holding = false
-      releaseClock()
-    }
+  function stop(): void {
+    release?.()
+    release = null
   }
 
   watch(
     () => running() && endedAt() === null,
     (live) => {
-      if (live && !holding) {
-        holding = true
-        holdClock()
-      } else if (!live) {
-        release()
+      if (live) {
+        release ??= holdClock()
+      } else {
+        stop()
       }
     },
     { immediate: true },
   )
-  onScopeDispose(release)
+  onScopeDispose(stop)
 
-  return computed(() => {
-    const start = startedAt()
-    const end = endedAt() ?? (running() ? now.value : null)
-    if (!Number.isFinite(start) || end === null || !Number.isFinite(end)) {
-      return null
-    }
-    return Math.max(0, end - start)
-  })
+  return computed(() => elapsedBetween(startedAt(), endedAt() ?? (running() ? clockNow.value : null)))
 }

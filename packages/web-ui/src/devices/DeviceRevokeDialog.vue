@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { pluralize } from '@demicodes/utils'
 import type { OverlayStore } from '../overlay/overlayStore'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
 
@@ -37,7 +38,7 @@ const emit = defineEmits<{
       removes itself from the device.
     </p>
     <p v-if="projects.length">
-      {{ projects.length === 1 ? 'This project goes' : 'These projects go' }}
+      {{ pluralize(projects.length, 'This project goes', 'These projects go') }}
       with it. Their files stay on the device, and their conversations stay
       in the sidebar.
     </p>
