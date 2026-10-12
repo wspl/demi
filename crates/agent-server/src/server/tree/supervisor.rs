@@ -22,17 +22,18 @@ use demi_conversation_socket_protocol::{
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome,
+    AgentMessage, AgentMessageEvent, Block, BlockId, CommandId, CompletionId, CompletionOutcome,
     ModelSelection, NodeId, QueuedMessage, Sender, Sequence, ToolCallBlock, ToolCallStatus, TurnId,
     UserContentBlock,
 };
-use futures_util::future::LocalBoxFuture;
+use demi_host_interface::ShellEnvironment;
+use futures_util::future::{LocalBoxFuture, join_all};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tokio::sync::{Notify, watch};
 use tokio_util::task::AbortOnDropHandle;
 
-use super::Tree;
+use super::{StoppingShells, Tree, unended_views};
 use super::profiles::Limits;
 use crate::{
     Node,
@@ -831,8 +832,12 @@ impl<H: HostResolver> Tree<H> {
             // its final checkpoint for a later round.
             session.hold();
             stop_all(session).await;
-            // Its commands stop too: nothing of it runs on.
-            child.node.end_shells().await;
+            // Its commands are asked to stop too, and the close does not
+            // wait for their ends, which only their runners report: a
+            // runner that is away, or a job it cannot end, would hold the
+            // close as long. They stay stopping meanwhile.
+            let shells = child.node.stop_shells().await;
+            self.keep_stopping(&record, shells);
             // A start of its own under way ends first, so its child is
             // closed with the others.
             let _turn = self.starts.acquire(child.id().clone()).await;
@@ -889,6 +894,45 @@ impl<H: HostResolver> Tree<H> {
             Err(error) => self.report(format!("subagent {} did not close: {error}", record.id)),
         }
         child.closed.send_replace(true);
+    }
+
+    /// Keeps the shells of the closing round `record` of a child while a
+    /// command of theirs has not ended, and forgets them once each has
+    /// (`subagents.md` § Abort).
+    fn keep_stopping(self: &Rc<Self>, record: &NodeRecord, environments: Vec<Rc<dyn ShellEnvironment>>) {
+        let commands: Vec<(Rc<dyn ShellEnvironment>, CommandId)> = environments
+            .iter()
+            .flat_map(|environment| {
+                unended_views(environment.as_ref()).map(|view| (environment.clone(), view.command_id))
+            })
+            .collect();
+        if commands.is_empty() {
+            return;
+        }
+        let key = (record.id.clone(), record.round);
+        let tree = Rc::downgrade(self);
+        let forgotten = key.clone();
+        let ends = tokio::task::spawn_local(async move {
+            // An environment that forgot a command answers an error: it
+            // has ended either way.
+            join_all(
+                commands
+                    .iter()
+                    .map(|(environment, command)| environment.ended(command)),
+            )
+            .await;
+            if let Some(tree) = tree.upgrade() {
+                let shells = tree.stopping.borrow_mut().remove(&forgotten);
+                drop(shells);
+            }
+        });
+        self.stopping.borrow_mut().insert(
+            key,
+            StoppingShells {
+                environments,
+                _ends: AbortOnDropHandle::new(ends),
+            },
+        );
     }
 
     /// Hands a closed round's completion, which comes from the block
