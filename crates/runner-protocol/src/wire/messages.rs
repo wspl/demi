@@ -1307,6 +1307,25 @@ pub struct RunnerInfo {
     pub native_target: Option<String>,
     /// Read at shell creation, so it arrives before any Host use.
     pub identity: HostIdentity,
+    /// The kernel a process the runner starts runs on, which the Claude
+    /// Code CLI describes its machine by (`claude-code.md` § The session a
+    /// process resumes); none on Windows, which has no `uname`.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[garde(dive)]
+    pub kernel: Option<Kernel>,
+    /// The `SHELL` of the device environment, which every process the
+    /// runner starts inherits; none when it names none.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[garde(inner(length(chars, min = 1, max = 4096)))]
+    pub shell: Option<String>,
     /// A runner booted as a managed host's init: it presents its token or is
     /// refused, never paired.
     #[serde(
@@ -1351,6 +1370,19 @@ pub struct OperatingSystem {
     /// `aarch64`.
     #[garde(length(chars, min = 1, max = 64))]
     pub arch: String,
+}
+
+/// A Host's kernel as `uname -s` and `uname -r` print it, read once when
+/// the runner starts.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Kernel {
+    /// Such as `Linux` or `Darwin`.
+    #[garde(length(chars, min = 1, max = 256))]
+    pub name: String,
+    /// Such as `6.8.0-48-generic` or `25.5.0`.
+    #[garde(length(chars, min = 1, max = 256))]
+    pub release: String,
 }
 
 /// The account the runner works as.
