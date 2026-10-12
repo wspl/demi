@@ -27,8 +27,9 @@ function credentialsAnswer(next: (current: CredentialDto[]) => CredentialDto[]):
  * The user's credentials as Settings › Credentials changes them
  * (`web-api.md` § Credentials): a saved or deleted credential shows its
  * answer, and the synchronization channel's `credentials` part brings the
- * same to every other page, never a value. A value comes only from the
- * reveal, which the page shows and does not keep.
+ * same to every other page, each visible field with its value and never a
+ * secret one's. A secret value comes only from the reveal, which the page
+ * shows and does not keep.
  */
 export const useCredentialSettings = defineStore('credential-settings', () => {
   const product = useProduct()
@@ -37,10 +38,9 @@ export const useCredentialSettings = defineStore('credential-settings', () => {
       id: credential.id,
       name: credential.name,
       note: credential.note,
-      fields: credential.fields,
+      fields: credential.fields.map(({ value, ...field }) => ({ ...field, value: value ?? null })),
       keepUntil: credential.keepUntil,
       lastUsedAt: credential.lastUsedAt,
-      updatedAt: credential.updatedAt,
     })),
   )
 
@@ -76,7 +76,7 @@ export const useCredentialSettings = defineStore('credential-settings', () => {
     product.answered(at, credentialsAnswer((current) => current.filter((credential) => credential.id !== id)))
   }
 
-  /** The values of the credential's fields by name, for the user to see; null, after telling the user, when they could not be read. */
+  /** The values of the credential's fields by name, for the eye of a secret field; null, after telling the user, when they could not be read. */
   async function revealCredential(id: string): Promise<Record<string, string> | null> {
     try {
       const response = await apiRequest(`/credentials/${encodeURIComponent(id)}/values`)

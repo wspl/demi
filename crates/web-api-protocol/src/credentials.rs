@@ -143,6 +143,20 @@ pub struct ChangedField {
     pub value: Option<String>,
 }
 
+/// A field as Settings lists it (`web-api.md` § Credentials): a visible
+/// field with its value, a secret one without, which only the reveal reads.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ListedField {
+    pub name: String,
+    pub label: String,
+    pub kind: FieldKind,
+    /// A visible field's value; none for a secret one.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    pub value: Option<String>,
+}
+
 /// A credential's name: trimmed, then 1 to 80 characters.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(transparent)]
@@ -168,7 +182,7 @@ pub struct CredentialDto {
     pub name: String,
     /// The reason it was asked for, which the user can edit; empty for none.
     pub note: String,
-    pub fields: Vec<CredentialField>,
+    pub fields: Vec<ListedField>,
     /// When it is removed; null while it is kept always.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Timestamp>")]
@@ -233,7 +247,7 @@ pub struct CredentialPatch {
     pub note: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "Vec<ChangedField>")]
-    #[garde(custom(changed_fields))]
+    #[garde(dive, custom(changed_fields))]
     pub fields: Option<Vec<ChangedField>>,
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "Keep")]
@@ -258,7 +272,9 @@ pub fn distinct<'a>(names: impl IntoIterator<Item = &'a str>) -> garde::Result {
     let mut seen = BTreeSet::new();
     for name in names {
         if !seen.insert(name) {
-            return Err(garde::Error::new(format!("names the field \"{name}\" twice")));
+            return Err(garde::Error::new(format!(
+                "Two fields are named \u{201c}{name}\u{201d}; give each field its own name."
+            )));
         }
     }
     Ok(())
@@ -268,22 +284,46 @@ fn distinct_new(fields: &[NewField], _: &()) -> garde::Result {
     distinct(fields.iter().map(|field| field.name.as_str()))
 }
 
-/// A patch's whole list: one to ten fields, each valid, each named once.
+/// A patch's whole list: one to ten fields, each named once. Each field's
+/// own rules are checked where the list dives into it.
 fn changed_fields(fields: &Option<Vec<ChangedField>>, _: &()) -> garde::Result {
     let Some(fields) = fields else {
         return Ok(());
     };
     if fields.is_empty() || fields.len() > FIELDS_MAX {
-        return Err(garde::Error::new(format!(
-            "holds one to {FIELDS_MAX} fields"
-        )));
-    }
-    for field in fields {
-        field
-            .validate()
-            .map_err(|report| garde::Error::new(report.to_string()))?;
+        return Err(garde::Error::new(format!("holds one to {FIELDS_MAX} fields")));
     }
     distinct(fields.iter().map(|field| field.name.as_str()))
+}
+
+/// The words a refused credential body says to the user, who reads them as
+/// they are (`web-api.md` § Credentials): one sentence for each rule broken,
+/// found by the path of the value that broke it, since garde's own words
+/// name the check, not what to do.
+pub fn refusal(report: &garde::Report) -> String {
+    let mut sentences: Vec<String> = Vec::new();
+    for (path, error) in report.iter() {
+        let path = path.to_string();
+        let sentence = if path == "fields" {
+            format!("A credential has 1 to {FIELDS_MAX} fields, each with its own name.")
+        } else if path == "name" {
+            format!("Enter a name of up to {NAME_MAX} characters.")
+        } else if path.ends_with(".name") {
+            format!(
+                "A field\u{2019}s name has up to {FIELD_NAME_MAX} lowercase letters, digits, \u{201c}_\u{201d} and \u{201c}-\u{201d}."
+            )
+        } else if path.ends_with(".label") {
+            format!("Enter a label of up to {LABEL_MAX} characters for each field.")
+        } else if path.ends_with(".value") {
+            "A value can be at most 64 KiB.".to_owned()
+        } else {
+            error.message().to_owned()
+        };
+        if !sentences.contains(&sentence) {
+            sentences.push(sentence);
+        }
+    }
+    sentences.join(" ")
 }
 
 #[cfg(test)]

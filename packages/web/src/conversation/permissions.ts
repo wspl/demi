@@ -33,8 +33,8 @@ function category(answer: PermissionCategory): PermissionRequestView['categories
   }
 }
 
-/** The request as the card shows it; a credential request is a renewal when a credential of its name is saved. */
-function view(request: PermissionRequest, saved: ReadonlySet<string>): RequestView {
+/** The request as the card shows it. */
+function view(request: PermissionRequest): RequestView {
   switch (request.kind) {
     case 'permission':
       return {
@@ -52,16 +52,11 @@ function view(request: PermissionRequest, saved: ReadonlySet<string>): RequestVi
         reason: request.reason,
         fields: request.fields,
         keep: request.keep,
-        renewal: saved.has(credentialKey(request.name)),
+        renewal: request.renewal,
       }
     case 'allowance':
       return { kind: 'allowance', id: request.id, name: request.name, removed: request.removed }
   }
-}
-
-/** A credential's name as the backend compares names: whatever the case (`web-api.md` § Credentials). */
-function credentialKey(name: string): string {
-  return name.trim().toLowerCase()
 }
 
 /**
@@ -98,8 +93,7 @@ export const usePermissions = defineStore('permissions', () => {
       return
     }
     state.held = taken
-    const saved = new Set((product.snapshot?.credentials ?? []).map((credential) => credentialKey(credential.name)))
-    state.requests = answer.requests.map((request) => view(request, saved))
+    state.requests = answer.requests.map(view)
     state.error = null
   }
 

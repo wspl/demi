@@ -84,6 +84,10 @@ pub enum PermissionRequest {
         /// How long the card offers to keep it at first.
         #[garde(skip)]
         keep: Keep,
+        /// It asks new values for a saved credential of its name, whatever
+        /// the name's case.
+        #[garde(skip)]
+        renewal: bool,
         /// The command line as the agent ran it, quoted for a POSIX shell.
         #[garde(skip)]
         command: String,

@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use demi_backend_database::StorageError;
-use demi_backend_database::credentials::{
+use demi_backend_database::credentials::{Saved, 
     CredentialChange, CredentialRefusal, CredentialSeal, NewCredential as NewRecord,
     keep_until,
 };
@@ -68,8 +68,10 @@ impl Shard {
 
     /// The user's credentials as a page lists them, in name order.
     pub async fn credential_list(&self) -> Result<Vec<CredentialDto>, StorageError> {
-        let stored = self.services().control.user_credentials(self.user().clone()).await?;
-        Ok(stored.iter().map(|credential| credential.dto()).collect())
+        self.services()
+            .control
+            .user_credential_list(self.user().clone(), self.vault_seal())
+            .await
     }
 
     /// `POST /credentials`.
@@ -92,11 +94,10 @@ impl Shard {
             values,
             keep_until: keep_until(control.now(), new.keep)?,
         };
-        let created = control
+        let saved = control
             .create_user_credential(self.user().clone(), record, self.vault_seal())
             .await??;
-        self.mark_credentials();
-        Ok(created.dto())
+        Ok(self.saved(saved))
     }
 
     /// `PATCH /credentials/:id`: a rename seals the values again under the
@@ -130,11 +131,21 @@ impl Shard {
                 .map(|keep| keep_until(control.now(), keep))
                 .transpose()?,
         };
-        let changed = control
+        let saved = control
             .change_user_credential(self.user().clone(), id, change, self.vault_seal())
             .await??;
+        Ok(self.saved(saved))
+    }
+
+    /// A credential was saved or changed: every page receives it, and each
+    /// conversation with a credential request of its name waiting reads its
+    /// requests again, whose renewal follows it.
+    fn saved(&self, saved: Saved) -> CredentialDto {
+        for conversation in &saved.conversations {
+            demi_backend_permissions::changed(self.permission_shard(), conversation);
+        }
         self.mark_credentials();
-        Ok(changed.dto())
+        saved.credential
     }
 
     /// `GET /credentials/:id/values`, for Settings' reveal; it is logged by

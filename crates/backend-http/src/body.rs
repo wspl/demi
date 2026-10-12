@@ -95,7 +95,7 @@ where
 }
 
 /// The body's bytes, within the limit.
-async fn read<S: Send + Sync>(request: Request, state: &S) -> Result<Bytes, ApiError> {
+pub(super) async fn read<S: Send + Sync>(request: Request, state: &S) -> Result<Bytes, ApiError> {
     let declared = request
         .headers()
         .get(CONTENT_LENGTH)
@@ -116,10 +116,19 @@ async fn read<S: Send + Sync>(request: Request, state: &S) -> Result<Bytes, ApiE
 
 /// `bytes` as `T`, checked by its rules.
 fn decode<T: DeserializeOwned + Validate<Context = ()>>(bytes: &[u8]) -> Result<T, ApiError> {
+    decode_worded(bytes, problems)
+}
+
+/// `bytes` as `T`, checked by its rules; a broken rule is refused in the
+/// words `words` gives it.
+pub(super) fn decode_worded<T: DeserializeOwned + Validate<Context = ()>>(
+    bytes: &[u8],
+    words: fn(&garde::Report) -> String,
+) -> Result<T, ApiError> {
     let Json(value) = Json::<T>::from_bytes(bytes)
         .map_err(|rejection| ApiError::invalid_body(rejection.body_text()))?;
     value
         .validate()
-        .map_err(|report| ApiError::invalid_body(problems(&report)))?;
+        .map_err(|report| ApiError::invalid_body(words(&report)))?;
     Ok(value)
 }

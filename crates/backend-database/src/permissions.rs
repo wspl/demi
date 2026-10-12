@@ -120,12 +120,31 @@ pub enum PermissionRefusal {
     Archived,
     /// No undecided request of that id in the conversation.
     NotFound,
-    /// The answer does not fit the request, as the words say.
+    /// The answer does not fit the request, as the words for the user say.
     InvalidAnswer(String),
-    /// A credential of the requested name is saved with other fields.
+    /// A credential of the requested name is saved with other fields, as
+    /// the words for the user say.
     FieldsDiffer(String),
-    /// The credential the request asks to use was removed.
-    Removed,
+    /// The credential of this name, which the request asks to use, was
+    /// removed.
+    Removed(String),
+}
+
+/// What answering a credential request saved, with the other conversations
+/// whose credential requests of its name wait, whose renewal follows it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Answered {
+    pub credential: StoredCredential,
+    pub others: Vec<ConversationId>,
+}
+
+/// An undecided request as a page lists it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Undecided {
+    pub request: StoredRequest,
+    /// For a credential request, whether the user has a credential of its
+    /// name, whatever its case, whose values it asks anew.
+    pub renewal: bool,
 }
 
 /// What asking for a credential found.
@@ -213,20 +232,41 @@ impl ControlService {
         .await
     }
 
-    /// The conversation's undecided requests, oldest first.
+    /// The conversation's undecided requests, oldest first, each credential
+    /// request with whether it renews a saved credential.
     pub async fn permission_requests(
         &self,
         conversation: ConversationId,
-    ) -> Result<Vec<StoredRequest>, StorageError> {
+    ) -> Result<Vec<Undecided>, StorageError> {
         self.call(move |connection, _| {
-            connection
+            let requests = connection
                 .prepare_cached(&format!(
                     "SELECT {REQUEST_COLUMNS} FROM permission_requests
                      WHERE conversation_id = ?1 AND decision IS NULL ORDER BY created_at, rowid"
                 ))?
                 .query_map([conversation.as_str()], |row| Ok(request_row(row)))?
                 .map(|row| row?)
-                .collect()
+                .collect::<Result<Vec<_>, StorageError>>()?;
+            // Only a credential request needs the owner's credentials.
+            let owner = if requests
+                .iter()
+                .any(|request| matches!(request.ask, StoredAsk::Credential { .. }))
+            {
+                Some(owner_of(connection, &conversation)?)
+            } else {
+                None
+            };
+            let mut listed = Vec::with_capacity(requests.len());
+            for request in requests {
+                let renewal = match (&request.ask, &owner) {
+                    (StoredAsk::Credential { name, .. }, Some(owner)) => {
+                        credentials::named(connection, owner, name)?.is_some()
+                    }
+                    _ => false,
+                };
+                listed.push(Undecided { request, renewal });
+            }
+            Ok(listed)
         })
         .await
     }
@@ -255,7 +295,7 @@ impl ControlService {
                 Ok(stored) => match (&stored.ask, outcome) {
                     (StoredAsk::Credential { .. }, PermissionOutcome::Allowed) => {
                         return Ok(Err(PermissionRefusal::InvalidAnswer(
-                            "a credential request is allowed with its values and how long to keep them".into(),
+                            "Enter a value for each field to save the credential.".into(),
                         )));
                     }
                     (StoredAsk::Credential { .. }, PermissionOutcome::Denied) => {
@@ -293,8 +333,8 @@ impl ControlService {
                         }
                         complete
                     }
-                    (StoredAsk::Allowance { credential: None, .. }, PermissionOutcome::Allowed) => {
-                        return Ok(Err(PermissionRefusal::Removed));
+                    (StoredAsk::Allowance { name, credential: None }, PermissionOutcome::Allowed) => {
+                        return Ok(Err(PermissionRefusal::Removed(name.clone())));
                     }
                     (StoredAsk::Allowance { credential: Some(credential), .. }, PermissionOutcome::Allowed) => {
                         allow(&transaction, &conversation, credential, now)?;
@@ -384,7 +424,7 @@ impl ControlService {
         values: BTreeMap<String, String>,
         keep: Keep,
         seal: std::sync::Arc<dyn CredentialSeal>,
-    ) -> Result<Result<StoredCredential, PermissionRefusal>, StorageError> {
+    ) -> Result<Result<Answered, PermissionRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let stored = match undecided(&transaction, &conversation, &request)? {
@@ -393,7 +433,7 @@ impl ControlService {
             };
             let StoredAsk::Credential { name, ask } = &stored.ask else {
                 return Ok(Err(PermissionRefusal::InvalidAnswer(
-                    "only a credential request is answered with values".into(),
+                    "Only a credential request is answered with values.".into(),
                 )));
             };
             if let Err(reason) = fitting(&ask.fields, &values) {
@@ -404,7 +444,7 @@ impl ControlService {
             let id = match credentials::named(&transaction, &owner, name)? {
                 Some(saved) if !saved.same_fields(&ask.fields) => {
                     return Ok(Err(PermissionRefusal::FieldsDiffer(format!(
-                        "\u{201c}{name}\u{201d} is saved with other fields since the agent asked: remove it in Settings, or decline and let the agent ask again"
+                        "\u{201c}{name}\u{201d} already has other fields; answer with the same fields or choose another name."
                     ))));
                 }
                 Some(saved) => {
@@ -414,7 +454,7 @@ impl ControlService {
                 None => credentials::insert(
                     &transaction,
                     &owner,
-                    NewCredential {
+                    &NewCredential {
                         name: name.clone(),
                         note: ask.reason.clone(),
                         fields: ask.fields.clone(),
@@ -429,8 +469,12 @@ impl ControlService {
             transaction.execute("DELETE FROM permission_requests WHERE id = ?1", [request.as_str()])?;
             let credential =
                 credentials::by_id(&transaction, &owner, &id)?.expect("the credential was just written");
+            let others = credentials::waiting_for(&transaction, &owner, &[name])?;
             transaction.commit()?;
-            Ok(Ok(credential))
+            Ok(Ok(Answered {
+                credential,
+                others: others.into_iter().collect(),
+            }))
         })
         .await
     }
@@ -687,14 +731,15 @@ fn allow(
 
 /// Whether `values` holds a value of at most 64 KiB for each of `fields`
 /// and nothing else (`web-api.md` § Conversation permissions).
+/// The refusal is in words for the user, naming the field by its label.
 fn fitting(fields: &[CredentialField], values: &BTreeMap<String, String>) -> Result<(), String> {
     for field in fields {
+        let label = field.label.as_str();
         match values.get(&field.name) {
-            None => return Err(format!("values.{}: a value is required", field.name)),
+            None => return Err(format!("Enter a value for \u{201c}{label}\u{201d}.")),
             Some(value) if value.len() > VALUE_MAX_BYTES => {
                 return Err(format!(
-                    "values.{}: a value is at most {VALUE_MAX_BYTES} bytes",
-                    field.name
+                    "The value of \u{201c}{label}\u{201d} can be at most 64 KiB."
                 ));
             }
             Some(_) => {}
@@ -704,7 +749,7 @@ fn fitting(fields: &[CredentialField], values: &BTreeMap<String, String>) -> Res
         .keys()
         .find(|name| !fields.iter().any(|field| &field.name == *name))
     {
-        return Err(format!("values.{other}: the request has no such field"));
+        return Err(format!("The request has no field \u{201c}{other}\u{201d}."));
     }
     Ok(())
 }
