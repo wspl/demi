@@ -105,11 +105,18 @@ entry's catalog is kept.
 
 The Codex provider reads the account's model list from the ChatGPT backend's
 `/codex/models` endpoint, with the account's authorization and a
-`client_version` query parameter. The service decides which models it lists by
-that version, so the provider sends the version of the Codex CLI release it was
-last verified against, and that value is updated whenever the provider is
-checked against a newer CLI. Reading the catalog never runs the CLI or an
-inference.
+`client_version` query parameter. The service decides by that version which
+models it lists, each model naming the oldest client it is shown to, so a
+stale version hides new models: at `0.153.4` the list lacked GPT-6.1 Sol. The
+provider therefore sends the newest Codex CLI release, as the CLI's own update
+check finds it: the npm registry's `latest` version of `@openai/codex`
+(`0.162.1`), a bare `MAJOR.MINOR.PATCH`, which is what the CLI itself sends. A
+version with a prerelease suffix is ignored. The backend reads it as it reads
+the Claude Code pointer ([Which version](claude-code.md#which-version)): kept
+six hours, read again in the background, never waited for once a version is
+known, the last one read kept when a read fails, and the version built into
+the provider used only until the first read succeeds. Reading the catalog
+never runs the CLI or an inference.
 
 - The response is validated. Models are sorted by ascending `priority`, and
   only entries with `visibility: list` are kept, as in the CLI's own model
@@ -126,6 +133,10 @@ inference.
   turning reasoning off. An advertised `none` effort stays a selectable level.
 - The model's `service_tiers` are its tiers, and `priority` is Fast.
 - A model whose `input_modalities` include `image` accepts attachments.
+- `context_window` is the model's window, and `max_context_window`, when
+  larger, the most the user may raise it to
+  ([Context limit](#context-limit)); Codex sends no field for a window, it
+  only compacts later, so a raised window is Demi's compaction threshold.
 - An HTTP 401 answer makes the provider refresh the token it was refused with
   ([Token refresh](providers.md#token-refresh)) and read again, once.
 
@@ -517,6 +528,13 @@ The limits a model offers depend on its window:
 | Over 500,000 and under 1,000,000 | The full window, 300K and 200K |
 | 1,000,000 or more | The full window, 500K, 300K and 200K |
 
+- A model whose source states a maximum above its window, as Codex's
+  `max_context_window` does, also offers the window raised: 500K and 1M where
+  they lie between the window and the maximum, and the maximum itself. For
+  example, GPT-5.6 Sol with a window of 272K and a maximum of 872K offers
+  872K, 500K and 272K, its window named as the default. A raised window is
+  stored as a limit is, and it applies only while the maximum still allows
+  it.
 - The full window is the default, and it is the absence of a limit: a model
   the user never limited has no stored limit, and choosing the full window
   removes the stored one. The menu names the full window by its size, such
