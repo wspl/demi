@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch, type Component } from 'vue'
-import { Brain, Layers } from '@lucide/vue'
+import { Layers } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
 import { CHROME_ENTER_MS, chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
@@ -11,15 +11,12 @@ import PendingCallBlock from './PendingCallBlock.vue'
 import ThinkingText from './ThinkingText.vue'
 import CommandReportBlock from './CommandReportBlock.vue'
 import AgentReceiptBlock from './AgentReceiptBlock.vue'
-import NoticeStepFace from './NoticeStepFace.vue'
-import ShellRowTag from './ShellRowTag.vue'
+import StepFace from './StepFace.vue'
 import CommandTimeTag from './CommandTimeTag.vue'
 import FileChangePills from './FileChangePills.vue'
 import GoneMediaLines from './GoneMediaLines.vue'
 import { stepIcon } from './tool-row-icon'
-import { toolCallTitle } from '../block-helpers'
-import { thinkingFaceLabel } from '../thinking-label'
-import { isNoticeStep, runFace, stepKey, workRunning, workSummary, type NoticeStep, type WorkGroupBlock, type WorkStep } from '../work-groups'
+import { runFace, stepKey, workRunning, workSummary, type WorkGroupBlock, type WorkStep } from '../work-groups'
 import { useEditSelection, useTranscript } from '../edit-selection'
 import { changeFile, pillSelection, runFiles } from '../../files/request-changes'
 import { foldedMedia, splitMedia } from '../tool-media'
@@ -36,8 +33,10 @@ import { provideBlockScope } from '../whole-blocks'
  * stack and what they did. A lone thinking is the thinking's own row, so the
  * first call rolls over it in place; a lone call is the call's own row, which
  * opens to the call, and a step that joins it turns the same row into the
- * stack, open if the reader opened the call; a lone notice or receipt is its
- * own notice row likewise. Opening the row shows every step as its own row,
+ * stack, open if the reader opened the call; a lone call being written, a
+ * lone notice or a lone receipt is its own row likewise. Wherever a step
+ * shows, its line is the same face (`StepFace`), the run's folded face
+ * included. Opening the row shows every step as its own row,
  * a command's notice and an agent's receipt among them; a step that joins
  * while it is open enters as a row joining the transcript does. Folded, the
  * pictures the calls and notices returned stand in its line, and the files
@@ -55,6 +54,7 @@ const lone = computed(() => (shape.value.kind === 'thinking' ? shape.value.think
 provideBlockScope(() => lone.value ?? undefined)
 const loneCall = computed(() => (shape.value.kind === 'call' ? shape.value.call : null))
 const loneNotice = computed(() => (shape.value.kind === 'notice' ? shape.value.notice : null))
+const loneWriting = computed(() => (shape.value.kind === 'writing' ? shape.value.call : null))
 /** The newest step is thinking that still streams. */
 const thinkingLive = computed(() => props.group.live && newest.value.type === 'thinking')
 
@@ -64,14 +64,6 @@ function endedAt(index: number): string | null {
   return next && next.type !== 'pending_call' ? next.createdAt : props.group.endedAt
 }
 
-const loneElapsed = useElapsedTime(
-  () => (lone.value ? Date.parse(lone.value.createdAt) : Date.now()),
-  () => thinkingLive.value,
-  () => {
-    const end = endedAt(0)
-    return end ? Date.parse(end) : null
-  },
-)
 const loneText = computed(() => lone.value?.text.trim() ?? '')
 /** The run is open while it runs: its row stands as a stack and says what runs, and for how long. */
 const stackRunning = computed(() => shape.value.kind === 'stack')
@@ -84,65 +76,40 @@ const runElapsed = useElapsedTime(
   () => stackRunning.value,
 )
 
-function stepTitle(step: Exclude<WorkStep, NoticeStep>): string {
-  switch (step.type) {
-    case 'thinking':
-      return 'Thinking'
-    case 'tool_call':
-      return toolCallTitle(step)
-    case 'pending_call':
-      return step.call.description
-  }
-}
-
 interface Face {
   icon: Component
   iconKey: string
+  /** What the row says while it stands as the run: its stack and what runs or ran. */
   label: string
-  /** The newest step is a notice or a receipt: the face says it as its own row does. */
-  notice: NoticeStep | null
-  /** The newest step is a `shell` call: the face wears its row's tag. */
-  command: ToolCallStep | null
+  /** The step whose own face the row shows: the lone thinking, or the newest step of a folded running run. */
+  step: WorkStep | null
   rollKey: string
 }
-type ToolCallStep = Extract<WorkStep, { type: 'tool_call' }>
 
 const face = computed<Face>(() => {
   const shown = shape.value
   if (lone.value) {
     return {
-      icon: Brain,
+      icon: stepIcon(lone.value).icon,
       iconKey: 'thinking',
-      label: thinkingFaceLabel(thinkingLive.value, loneElapsed.value),
-      notice: null,
-      command: null,
+      label: '',
+      step: lone.value,
       rollKey: thinkingLive.value ? `${lone.value.id}:live` : `${lone.value.id}:done`,
     }
   }
   // Open, the steps show under the row, so it stands still as the stack of
-  // what runs; folded again, it shows the newest step. Opening and folding
-  // change what the row shows, not how far the work got, so the face cuts
-  // over at once rather than rolling.
+  // what runs; folded again, it shows the newest step by the step's own
+  // face. Opening and folding change what the row shows, not how far the
+  // work got, so the face cuts over at once rather than rolling.
   if (shown.kind !== 'step') {
     return shown.kind === 'stack'
-      ? { icon: Layers, iconKey: 'stack', label: workRunning(props.group.steps, runElapsed.value), notice: null, command: null, rollKey: 'running' }
-      : { icon: Layers, iconKey: 'stack', label: workSummary(props.group.steps), notice: null, command: null, rollKey: 'done' }
+      ? { icon: Layers, iconKey: 'stack', label: workRunning(props.group.steps, runElapsed.value), step: null, rollKey: 'running' }
+      : { icon: Layers, iconKey: 'stack', label: workSummary(props.group.steps), step: null, rollKey: 'done' }
   }
-  const step = shown.step
-  const { icon, key } = stepIcon(step)
-  if (isNoticeStep(step)) {
-    return { icon, iconKey: key, label: '', notice: step, command: null, rollKey: stepKey(step) }
-  }
-  return {
-    icon,
-    iconKey: key,
-    label: stepTitle(step),
-    notice: null,
-    command: shown.command,
-    // A call being written and its block are one step by its tool-use id:
-    // the block keeps the face the call showed, so it does not roll again.
-    rollKey: stepKey(step),
-  }
+  const { icon, key } = stepIcon(shown.step)
+  // A call being written and its block are one step by its tool-use id:
+  // the block keeps the face the call showed, so it does not roll again.
+  return { icon, iconKey: key, label: '', step: shown.step, rollKey: stepKey(shown.step) }
 })
 const calls = computed(() => props.group.steps.filter((step) => step.type === 'tool_call'))
 const select = useEditSelection()
@@ -200,6 +167,7 @@ function pick(path: string): void {
   <BlockScope v-if="loneCall" :block="loneCall">
     <ToolCallBlock v-model:open="isOpen" :block="loneCall" :working="group.live" />
   </BlockScope>
+  <PendingCallBlock v-else-if="loneWriting" :step="loneWriting" />
   <div v-else-if="loneNotice" class="[--agent-pad-x:0px]">
     <CommandReportBlock v-if="loneNotice.type === 'wakeup'" :reports="loneNotice.reports" :working="group.live" />
     <AgentReceiptBlock v-else :message="loneNotice.message" :working="group.live" />
@@ -219,12 +187,16 @@ function pick(path: string): void {
       <template #icon>
         <component :is="face.icon" :size="ICON_PX.in28" />
       </template>
-      <NoticeStepFace v-if="face.notice" :step="face.notice" />
+      <StepFace
+        v-if="face.step"
+        :step="face.step"
+        :streaming="thinkingLive"
+        :ended-at="group.endedAt"
+      />
       <template v-else>
         <span class="min-w-0 truncate">{{ face.label }}</span>
-        <ShellRowTag v-if="face.command" :block="face.command" />
         <!-- An ended run wears the time of a command still running in it, until it ends. -->
-        <CommandTimeTag v-else-if="shape.kind === 'done' && shape.running.length > 0" :calls="shape.running" />
+        <CommandTimeTag v-if="shape.kind === 'done' && shape.running.length > 0" :calls="shape.running" />
       </template>
       <!-- A thinking with no text has nothing to open: no body, so no chevron. -->
       <template v-if="!lone || loneText !== ''" #body>
@@ -250,7 +222,7 @@ function pick(path: string): void {
             <BlockScope v-else-if="step.type === 'tool_call'" :block="step">
               <ToolCallBlock :block="step" />
             </BlockScope>
-            <PendingCallBlock v-else-if="step.type === 'pending_call'" :call="step.call" />
+            <PendingCallBlock v-else-if="step.type === 'pending_call'" :step="step" />
             <CommandReportBlock v-else-if="step.type === 'wakeup'" :reports="step.reports" />
             <AgentReceiptBlock v-else :message="step.message" />
           </div>
