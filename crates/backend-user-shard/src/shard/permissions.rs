@@ -4,14 +4,16 @@
 //! decisions a restart cut off.
 
 use std::rc::Rc;
+use std::sync::Arc;
 
 use demi_agent_tools::ToolsetSource;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
+use demi_backend_database::credentials::CredentialSeal;
 use demi_backend_database::permissions::{AskingAgent, Undelivered};
 use demi_backend_host_access::root_of;
 use demi_backend_page_sync::UserMarks;
-use demi_backend_permissions::{PermissionShard, Revisions, deliver};
+use demi_backend_permissions::{PermissionShard, Revisions, Waits, deliver};
 use demi_command_declarations::{Category, Node};
 use demi_shared_types::{AgentMessage, NodeId};
 use demi_web_api_protocol::ids::ConversationId;
@@ -100,6 +102,18 @@ impl PermissionShard for Shard {
 
     fn this(&self) -> Rc<dyn PermissionShard> {
         Shard::this(self)
+    }
+
+    fn waits(&self) -> &Waits {
+        &self.credential_waits
+    }
+
+    fn credential_seal(&self) -> Arc<dyn CredentialSeal> {
+        self.vault_seal()
+    }
+
+    fn credentials_changed(&self) {
+        self.mark_credentials();
     }
 }
 

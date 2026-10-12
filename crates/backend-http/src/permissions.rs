@@ -45,14 +45,24 @@ pub(super) async fn decide(
     body: Result<JsonBody<DecidePermission>, ApiError>,
 ) -> Result<StatusCode, ApiError> {
     let record = owned(&state.services, &user.id, &id).await?;
-    let JsonBody(DecidePermission { decision }) = body?;
+    let JsonBody(DecidePermission {
+        decision,
+        credential,
+    }) = body?;
     let request = PermissionRequestId::try_from(request).map_err(|_| refused(PermissionError::NotFound))?;
     let conversation = record.id;
     state
         .shards
         .of(&user.id)
         .call(move |shard, _| async move {
-            decide_request(shard.permission_shard(), &conversation, request, decision).await
+            decide_request(
+                shard.permission_shard(),
+                &conversation,
+                request,
+                decision,
+                credential,
+            )
+            .await
         })
         .await?
         .map_err(refused)?;
@@ -70,6 +80,21 @@ fn refused(error: PermissionError) -> ApiError {
         PermissionError::NotFound => ApiError::new(
             StatusCode::NOT_FOUND,
             ErrorCode::PermissionRequestNotFound,
+            message,
+        ),
+        PermissionError::InvalidAnswer(_) => ApiError::new(
+            StatusCode::BAD_REQUEST,
+            ErrorCode::InvalidAnswer,
+            message,
+        ),
+        PermissionError::FieldsDiffer(_) => ApiError::new(
+            StatusCode::CONFLICT,
+            ErrorCode::CredentialFieldsDiffer,
+            message,
+        ),
+        PermissionError::Removed => ApiError::new(
+            StatusCode::CONFLICT,
+            ErrorCode::CredentialRemoved,
             message,
         ),
         PermissionError::Storage(error) => error.into(),
