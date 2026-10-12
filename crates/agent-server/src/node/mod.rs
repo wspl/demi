@@ -12,7 +12,8 @@ use std::{
 
 use demi_agent_session::{
     AgentSession, CommandLook, Continuation, NewContext, RestoreError, RunningWork, SeenContext,
-    SessionConfig, SessionDeps, SessionInit, SessionRuntime, StepOutcomes, ToolInvocation,
+    SessionConfig, SessionDeps, SessionInit, SessionRuntime, StepOutcomes, SystemPrompt,
+    ToolInvocation,
 };
 use demi_agent_store::{
     AgentTreeStore, Checkpoint, NodeRecord, RunningCommand, StoreError, StoredCommand, StoredOutput,
@@ -26,7 +27,7 @@ use demi_agent_tools::{
 };
 use demi_agent_transcript::IdSource;
 use demi_host_interface::{
-    CommandSet, CommandState, CommandStatus, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
+    CapabilityIndex, CommandSet, CommandState, CommandStatus, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
     ShellEnvironment, ShellError, WholeOutput,
 };
 use demi_provider_common::{ProviderRuntime, RequestLimits, ToolDefinition};
@@ -302,7 +303,7 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     /// The product's harness guide.
     guide: Rc<str>,
     /// The capability index of its commands, rendered once.
-    index: String,
+    index: CapabilityIndex,
     /// A child's identity, the text before each of its user turns.
     preamble: Option<String>,
     /// The product's context sources, in their order.
@@ -483,7 +484,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     fn system_prompt<'a>(
         &'a self,
         model: &'a ModelSelection,
-    ) -> LocalBoxFuture<'a, Result<String, String>> {
+    ) -> LocalBoxFuture<'a, Result<SystemPrompt, String>> {
         Box::pin(async move {
             let family = self
                 .providers

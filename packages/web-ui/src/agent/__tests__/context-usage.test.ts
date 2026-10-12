@@ -4,7 +4,7 @@ import { compactionRefusal, contextPercent, contextRatio } from '../context-usag
 const WINDOW = 100_000
 
 function usage(tokens: number) {
-  return { tokens, window: WINDOW, compactFrom: WINDOW / 2 }
+  return { tokens, window: WINDOW, compactFrom: WINDOW / 2, rows: [] }
 }
 
 test('Compact is refused below half the window, with the share it is at, as the backend refuses it', () => {
@@ -15,9 +15,9 @@ test('Compact is refused below half the window, with the share it is at, as the 
 })
 
 test('a model without a window, or a usage not reported yet, leaves Compact to the backend', () => {
-  expect(compactionRefusal({ tokens: 12_000, window: null, compactFrom: null })).toBeNull()
+  expect(compactionRefusal({ tokens: 12_000, window: null, compactFrom: null, rows: [] })).toBeNull()
   expect(compactionRefusal(null)).toBeNull()
-  expect(contextPercent({ tokens: 12_000, window: null, compactFrom: null })).toBeNull()
+  expect(contextPercent({ tokens: 12_000, window: null, compactFrom: null, rows: [] })).toBeNull()
 })
 
 test('the meter shows the estimate in whole percent of the window, rounded down, full at most', () => {

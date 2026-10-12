@@ -6,7 +6,8 @@
 use std::{collections::HashMap, rc::Rc};
 
 use demi_command_declarations::{
-    Category, Group, Leaf, LeafKind, NativeOperation, Node, check_input_subset, render_index,
+    CapabilityIndex, Category, Group, Leaf, LeafKind, NativeOperation, Node, check_input_subset,
+    render_index,
 };
 
 use crate::{RpcError, RpcHandler, RpcInvocation, RpcPort, reserved::is_reserved};
@@ -210,7 +211,7 @@ impl CommandSet {
 
     /// The model's capability index of the set's top-level groups
     /// (`system-prompt.md` § Capability index); nothing when it has none.
-    pub fn render_index(&self) -> String {
+    pub fn render_index(&self) -> CapabilityIndex {
         let groups = self
             .roots
             .iter()

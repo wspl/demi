@@ -43,9 +43,45 @@ export function formatDay(timestamp: string): string {
   return dayjs(timestamp).format('MMMM D, YYYY')
 }
 
-/** A timestamp against now, in words: "in 2 days", "3 hours ago". A label for one render, not a ticking one. */
-export function formatRelativeTime(timestamp: string): string {
-  return dayjs(timestamp).fromNow()
+const MINUTE_MS = 60_000
+const HOUR_MINUTES = 60
+const DAY_MINUTES = 24 * HOUR_MINUTES
+const WEEK_MINUTES = 7 * DAY_MINUTES
+
+/**
+ * When a usage window resets, as specifically as the user would say it,
+ * counted from `now` in the user's time zone (`usage-and-quota.md` § What a
+ * snapshot says): "Resets in 12 min" within the hour, "Resets in 3 hr
+ * 38 min" within a day, the minutes left out on the hour, "Resets Sat
+ * 4:00 PM" within a week, then "Resets Oct 15 at 4:00 PM", with the year
+ * when it is not this year's, each moment its nearest minute. Minutes
+ * count up, so the last one reads "in 1 min", as does a reset the clock
+ * has just passed.
+ */
+export function formatReset(timestamp: string, now: Date): string {
+  const minutes = Math.max(1, Math.ceil(dayjs(timestamp).diff(now) / MINUTE_MS))
+  // A vendor states a reset to the second or less, as 3:59:59.6 PM for
+  // 4:00 PM: a moment is named by its nearest minute.
+  const moment = dayjs(timestamp).add(30, 'second').startOf('minute')
+  if (minutes < HOUR_MINUTES) {
+    return `Resets in ${minutes} min`
+  }
+  if (minutes < DAY_MINUTES) {
+    const hours = Math.floor(minutes / HOUR_MINUTES)
+    const rest = minutes % HOUR_MINUTES
+    return rest ? `Resets in ${hours} hr ${rest} min` : `Resets in ${hours} hr`
+  }
+  if (minutes < WEEK_MINUTES) {
+    return `Resets ${moment.format('ddd h:mm A')}`
+  }
+  const thisYear = moment.year() === dayjs(now).year()
+  return `Resets ${moment.format(thisYear ? 'MMM D [at] h:mm A' : 'MMM D, YYYY [at] h:mm A')}`
+}
+
+/** When a usage window resets ([`formatReset`]), against the shared clock, which ticks each second. */
+export function useResetTime(timestamp: MaybeRefOrGetter<string>) {
+  const now = useClock()
+  return computed(() => formatReset(toValue(timestamp), now.value))
 }
 
 /**

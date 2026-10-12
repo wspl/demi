@@ -25,7 +25,7 @@ use demi_plugin_interface::{
     CommandPlugin, Manifest, Method, Page, Plugin, PluginError, PluginId, PluginPort, PortFailure,
     PortRefusal, Reply, Request, Scope,
 };
-use demi_shared_types::{Clock, SystemClock, TurnId};
+use demi_shared_types::{Clock, SKILLS_SOURCE, SystemClock, TurnId};
 use futures_util::future::{LocalBoxFuture, join_all};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -66,7 +66,7 @@ impl Skills {
     /// `clock` telling when a fetch ended: a test's repositories and time.
     pub fn resolving(resolve: Arc<Resolve>, clock: Arc<dyn Clock>) -> Self {
         let mut manifest = Manifest::new(
-            PluginId::try_from("skills").expect("a valid plugin id"),
+            PluginId::try_from(SKILLS_SOURCE).expect("a valid plugin id"),
             "Skills",
             "Teaches the agent workflows with skills from Git repositories you add with demi skills, and from your repository.",
         );

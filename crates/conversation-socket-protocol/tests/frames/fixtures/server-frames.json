@@ -201,7 +201,56 @@
     "usage": {
       "tokens": 23000,
       "window": 100000,
-      "compactFrom": 50000
+      "compactFrom": 50000,
+      "rows": [
+        {
+          "kind": "messages",
+          "tokens": 17200,
+          "estimated": true,
+          "parts": []
+        },
+        {
+          "kind": "systemPrompt",
+          "tokens": 3600,
+          "estimated": true,
+          "parts": [
+            { "kind": "prompt", "layer": "identity", "tokens": 600 },
+            { "kind": "prompt", "layer": "harnessGuide", "tokens": 800 },
+            { "kind": "prompt", "layer": "toolRules", "tokens": 600 },
+            { "kind": "prompt", "layer": "modelIdentity", "tokens": 30 },
+            { "kind": "tool", "name": "shell", "tokens": 1570 }
+          ]
+        },
+        {
+          "kind": "commands",
+          "tokens": 1400,
+          "estimated": true,
+          "parts": [{ "kind": "commandGroup", "group": "demi file", "tokens": 160 }]
+        },
+        {
+          "kind": "instructions",
+          "tokens": 500,
+          "estimated": true,
+          "parts": [
+            { "kind": "instruction", "entry": { "kind": "personal" }, "tokens": 40 },
+            { "kind": "instruction", "entry": { "kind": "file", "path": "/workspace/AGENTS.md" }, "tokens": 440 }
+          ]
+        },
+        {
+          "kind": "skills",
+          "tokens": 150,
+          "estimated": true,
+          "parts": [{ "kind": "skill", "name": "release", "tokens": 120 }]
+        },
+        {
+          "kind": "otherContext",
+          "tokens": 150,
+          "estimated": true,
+          "parts": [{ "kind": "source", "source": "execution", "tokens": 150 }]
+        },
+        { "kind": "compactionBuffer", "tokens": 33000, "estimated": false, "parts": [] },
+        { "kind": "freeSpace", "tokens": 44000, "estimated": false, "parts": [] }
+      ]
     }
   },
   {

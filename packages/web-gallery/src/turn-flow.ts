@@ -972,7 +972,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
           compactedTokens: state.contextUsage?.tokens ?? 0,
         },
       ]
-      state.contextUsage = usageAt(0.06)
+      state.contextUsage = usageAt(0.06, { summary: 2_400 })
       // Steers that came during the pass are read once it ends.
       if (writeSteers()) {
         thinkThenReply(run, WAIT_MS, THINK_2)

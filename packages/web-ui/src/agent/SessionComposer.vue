@@ -22,6 +22,7 @@ import MessageEditor from './message-editor/MessageEditor.vue'
 import { showToast } from '../infra/toast'
 import ComposerShell from './ComposerShell.vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
+import type { UsageLimits } from './context-usage'
 import ModelSelector from './ModelSelector.vue'
 import { composerModel, type ModelSettings, type ModelSettingsChange } from './model-selection'
 import type { ContextLimitChange } from './context-limit'
@@ -95,6 +96,8 @@ const props = withDefaults(
     usage?: ContextUsage | null
     /** What the newest instructions block holds, which the context card lists. */
     instructions?: readonly InstructionEntry[]
+    /** The usage limits of the account the model runs on, which the context card shows; none on an API key. */
+    limits?: UsageLimits | null
     /** When no model can send, show Configure Models. Hide the action if the user cannot open that page. */
     canConfigure?: boolean
     /** Replaces the input with the archive bar. */
@@ -141,6 +144,8 @@ const emit = defineEmits<{
   compact: []
   /** Opens where an instructions entry of the context card is written. */
   openInstruction: [entry: InstructionEntry]
+  /** The context card showed the usage limits: the host asks the vendor for them again. */
+  refreshLimits: []
   /** Files to attach; their capsules land where they were dropped, pasted or picked. */
   addFiles: [files: File[]]
   /** Open the host's file browser; the caller attaches what it returns, and its capsule lands at the cursor. */
@@ -627,8 +632,10 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :is-compacting="compacting"
             :unavailable-reason="compactUnavailable"
             :instructions="instructions"
+            :limits="limits"
             @compact="emit('compact')"
             @open-instruction="emit('openInstruction', $event)"
+            @refresh-limits="emit('refreshLimits')"
           />
           <Tooltip v-if="shownEdit" content="Cancel edit">
             <IconButton

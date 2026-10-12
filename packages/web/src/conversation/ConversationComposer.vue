@@ -27,6 +27,8 @@ import { claimStoredFile, uploadAttachment } from '../api/uploads'
 import type { Conversation } from '../state/types'
 import { cliPackageOf } from '../state/catalog'
 import { useSettingsAddress } from '../settings/address'
+import { useProviderSettings } from '../settings/providers'
+import type { UsageLimits } from '@demicodes/web-ui/agent/context-usage'
 
 const props = defineProps<{
   conversation: Conversation
@@ -93,6 +95,32 @@ function openInstruction(entry: InstructionEntry): void {
     void settings.open('instructions')
   } else {
     props.openFile?.({ path: entry.path, line: null })
+  }
+}
+
+/** The subscription account the conversation's model runs on: its entry's active account; none on an API key. */
+const account = computed(() => {
+  const provider = resources.providers.find((entry) => entry.id === props.conversation.model.providerId)
+  const active = provider?.kind === 'subscription' ? provider.accounts.find((entry) => entry.active) : undefined
+  return provider && active ? { provider, account: active } : null
+})
+/** What the context card shows of that account's usage limits (`usage-and-quota.md`). */
+const limits = computed<UsageLimits | null>(() => {
+  const current = account.value
+  return current
+    ? {
+        plan: current.account.plan,
+        windows: current.account.quota,
+        autoRefresh: current.provider.autoRefreshUsage ?? false,
+      }
+    : null
+})
+const providerSettings = useProviderSettings()
+/** The card showed the limits: a free probe, at most once a minute per account, as Settings asks. */
+function refreshLimits(): void {
+  const current = account.value
+  if (current) {
+    void providerSettings.refreshUsage(current.provider, current.account.id, true)
   }
 }
 
@@ -208,6 +236,8 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :model-settings="conversation.model"
       :usage="conversation.contextUsage"
       :instructions="instructions"
+      :limits="limits"
+      @refresh-limits="refreshLimits"
       :remote-files="remoteHosts.length > 0"
       :archived="conversation.archived"
       :hold="hold"
