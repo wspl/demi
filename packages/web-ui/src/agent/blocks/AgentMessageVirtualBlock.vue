@@ -192,7 +192,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         v-else-if="block.type === 'pending_call'"
         class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
       >
-        <PendingCallBlock :call="block.call" />
+        <PendingCallBlock :step="block" />
       </div>
       <div
         v-else-if="block.type === 'work_group'"

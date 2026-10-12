@@ -1,13 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, useId, useSlots, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { CircleX } from '@lucide/vue'
 import ChromeRoll from '@demicodes/web-ui/ui/ChromeRoll.vue'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
 import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Shimmer from '@demicodes/web-ui/ui/Shimmer.vue'
-import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { textWidth } from '@demicodes/web-ui/ui/text-width'
 import { useFollowEnd } from '../../composables/useFollowEnd'
@@ -17,13 +15,9 @@ import { fitRowPictures, rowPictureBox } from '../row-pictures'
 import type { ToolPicture } from '../tool-media'
 
 const props = defineProps<{
-  label?: string
-  detail?: string
   loading?: boolean
-  /** The failure text, shown under the body once the user opens the block; a failure never opens it. Pair with `tone="danger"`. */
+  /** The failure text, shown under the body once the user opens the block; a failure never opens it. The face marks the failure. */
   errorText?: string
-  /** A failed call: the row keeps its colors, with a red Failed after its title. */
-  tone?: 'danger'
   /** Keep the scrolling part at its latest line while content streams in (live thinking, a running command's output), until the reader scrolls up from it. */
   stickBottom?: boolean
   /** Draw the body as a box, as a shell call's command and output. */
@@ -49,7 +43,7 @@ const isOpen = defineModel<boolean>('open', { default: false })
 const hasBodySlot = () => !!slots['body']
 const hasPinnedSlot = () => !!slots['pinned']
 // Read at render time: a conditional icon slot changes between renders, and slots are not reactive.
-const showIcon = () => !!slots['icon'] || props.tone === 'danger'
+const showIcon = () => !!slots['icon']
 // A row whose block the page holds light opens to read it whole, before its body is there.
 const whole = useWholeBlock()
 const isExpandable = computed(() => props.expandable || whole.light.value || hasPinnedSlot() || hasBodySlot() || !!props.errorText)
@@ -141,21 +135,12 @@ const shownPictures = computed(() => (props.pictures ?? []).slice(0, picturesFit
             class="functional-block-icon flex shrink-0 items-center justify-center"
             :style="{ width: `${ICON_PX.in28}px`, height: `${ICON_PX.in28}px` }"
           >
-            <slot name="icon">
-              <CircleX :size="ICON_PX.in28" />
-            </slot>
+            <slot name="icon" />
           </div>
         </template>
         <!-- A row still working shimmers as one, whatever parts its face holds. -->
         <Shimmer :active="isLoading" class="h-7 items-center gap-2 overflow-hidden">
-          <span v-if="label" class="shrink-0">{{ label }}</span>
-          <slot v-if="slots['default']" />
-          <span
-            v-else-if="detail"
-            class="min-w-0 truncate font-mono text-fg-muted group-hover:text-fg-body"
-          >{{ detail }}</span>
-          <!-- A failed call reads as its row does, marked after its title, as a failed command is. -->
-          <Tag v-if="tone === 'danger'" tone="danger" class="shrink-0">Failed</Tag>
+          <slot />
           <!-- The chevron is part of the face: it follows the label's end, so it rolls with it rather than jumping to the new label's width. -->
           <span v-if="isExpandable" class="-ml-1 shrink-0 text-xs">
             <FoldChevron
