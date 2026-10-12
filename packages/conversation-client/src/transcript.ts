@@ -1,11 +1,28 @@
 import type { Block, TranscriptPatch } from '@demicodes/protocol'
 
+/** A text or thinking block's text up to `end` reached the page at `at`, its `performance.now()`. */
+export interface TextArrival {
+  end: number
+  at: number
+}
+
 /**
  * A block as the page holds it: whole, as the stream and a whole read send
  * it, or `light`, as a page of the transcript sends it, without what only
- * its open row shows (`web-api.md` § Light form).
+ * its open row shows (`web-api.md` § Light form). A text or thinking block
+ * the stream brings keeps when each piece of its text arrived, `arrivals`,
+ * so a row that shows it fades each piece from then, even a row that mounts
+ * later; a block read whole has none, and a replaced block loses them.
  */
-export type HeldBlock = Block & { light?: true }
+export type HeldBlock = Block & { light?: true; arrivals?: readonly TextArrival[] }
+
+/** `block` with its text, as it is now, marked as arrived at `at`. */
+function arrived(block: HeldBlock, at: number): HeldBlock {
+  if ((block.type !== 'text' && block.type !== 'thinking') || block.text === '') {
+    return block
+  }
+  return { ...block, arrivals: [...(block.arrivals ?? []), { end: block.text.length, at }] }
+}
 
 /** Consecutive blocks of a transcript the page holds, from the index `start`. */
 export interface TranscriptWindow {
@@ -184,9 +201,14 @@ function truncated(windows: readonly TranscriptWindow[], length: number): Transc
  * page holds; one at a block it does not hold changes nothing it shows,
  * and an `add` or a `truncate` moves the indices after it either way
  * (`runtime.md` § Where a reset starts). A block a patch touches is
- * replaced, never changed in place, so snapshots can share blocks.
+ * replaced, never changed in place, so snapshots can share blocks. Text an
+ * `add` or an `append_text` brings is marked as arrived at `receivedAt`.
  */
-export function applyTranscriptPatches(held: HeldTranscript, patches: readonly TranscriptPatch[]): HeldTranscript {
+export function applyTranscriptPatches(
+  held: HeldTranscript,
+  patches: readonly TranscriptPatch[],
+  receivedAt: number = performance.now(),
+): HeldTranscript {
   let length = held.length
   let windows = [...held.windows]
   for (const patch of patches) {
@@ -212,7 +234,7 @@ export function applyTranscriptPatches(held: HeldTranscript, patches: readonly T
             return window
           }
           const blocks = [...window.blocks]
-          blocks.splice(patch.index - window.start, 0, patch.value)
+          blocks.splice(patch.index - window.start, 0, arrived(patch.value, receivedAt))
           return { start: window.start, blocks }
         })
         // A block added in a gap that the page does not hold joins no window.
@@ -228,7 +250,7 @@ export function applyTranscriptPatches(held: HeldTranscript, patches: readonly T
           const next = patch.op === 'replace_block'
             ? patch.value
             : (block.type === 'text' || block.type === 'thinking')
-              ? { ...block, text: block.text + patch.delta }
+              ? arrived({ ...block, text: block.text + patch.delta }, receivedAt)
               : block
           const blocks = [...window.blocks]
           blocks[offset] = next

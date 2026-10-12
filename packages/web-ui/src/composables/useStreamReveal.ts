@@ -1,12 +1,6 @@
-import { onBeforeUnmount, ref, shallowRef, toValue, watch, type MaybeRefOrGetter } from 'vue'
-import { alignShown, nextStepEnd, STREAM_PACE, stepInterval } from '../ui/stream-reveal'
-
-/** A part of the text the reader was shown at once, `start` to `end` in the source, at `at` (performance.now()). */
-export interface RevealStep {
-  start: number
-  end: number
-  at: number
-}
+import { onScopeDispose, ref, shallowRef, toValue, watch, type MaybeRefOrGetter } from 'vue'
+import type { TextArrival } from '@demicodes/conversation-client'
+import { alignShown, arrivedSteps, nextStepEnd, STREAM_PACE, stepInterval, type RevealStep } from '../ui/stream-reveal'
 
 /**
  * The part of a streaming text the reader sees, a step at a time
@@ -15,15 +9,22 @@ export interface RevealStep {
  * steps never pass it. When the stream ends, whatever remains shows at once,
  * as its own step. A text that streams in while the tab is hidden shows whole
  * when the tab comes back, since no one watched it arrive.
+ *
+ * A text already there when the view mounts shows at once, each piece that
+ * arrived less than a fade ago (`arrivals`) fading from its arrival: a new
+ * reply's first piece fades as every other does, and a view that mounts
+ * again mid-stream goes on with each fade where it is, never starting one over.
  */
 export function useStreamReveal(
   content: MaybeRefOrGetter<string>,
   streaming: MaybeRefOrGetter<boolean>,
   safe: (text: string) => string,
+  arrivals: MaybeRefOrGetter<readonly TextArrival[] | undefined> = undefined,
 ) {
-  // A text already there when the view mounts, as a remount mid-stream, shows at once.
   const shown = ref(toValue(content))
-  const steps = shallowRef<RevealStep[]>([])
+  const steps = shallowRef<RevealStep[]>(
+    toValue(streaming) ? arrivedSteps(toValue(arrivals) ?? [], shown.value.length, performance.now()) : [],
+  )
   let timer: ReturnType<typeof setTimeout> | undefined
 
   /** Shows `text` up to `end`, the part not shown before as a step when `fade`. */
@@ -85,7 +86,7 @@ export function useStreamReveal(
 
   watch([() => toValue(content), () => toValue(streaming)], arrive)
   document.addEventListener('visibilitychange', onVisibility)
-  onBeforeUnmount(() => {
+  onScopeDispose(() => {
     clearTimeout(timer)
     document.removeEventListener('visibilitychange', onVisibility)
   })

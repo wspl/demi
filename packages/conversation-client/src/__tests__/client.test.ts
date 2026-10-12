@@ -255,7 +255,7 @@ test('a patch at or before the client revision is ignored, and a gap asks for a 
     version: { epoch: 'e', revision: 4 },
   })
   h.receive({ type: 'transcript_patch', patches: [{ op: 'append_text', index: 2, delta: ' more' }], revision: 5 })
-  expect(h.blocks().at(-1)).toEqual(text('c', 'three more'))
+  expect(h.blocks().at(-1)).toMatchObject(text('c', 'three more'))
   expect(h.client.transcriptVersion()).toEqual({ epoch: 'e', revision: 5 })
 })
 
