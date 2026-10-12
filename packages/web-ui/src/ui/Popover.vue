@@ -49,8 +49,9 @@ const props = withDefaults(defineProps<{
   instant?: boolean
   /**
    * A menu or a choice, which a phone opens as a bottom sheet (`Sheet.vue`)
-   * rather than beside its anchor; a hover card or a field's suggestions
-   * stay by what they belong to.
+   * rather than beside its anchor; a field's suggestions and a hover card
+   * stay by what they belong to, but a card too large for that
+   * (HoverCard's `sheet`).
    */
   sheet?: boolean
 }>(), {

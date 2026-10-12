@@ -15,7 +15,7 @@ import type {
 import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import { commitOf } from './plugins'
 import { createSubagentState } from './subagent-profiles'
-import { ago, ahead } from './time'
+import { DAY, HOUR, MINUTE, ago, ahead } from './time'
 
 /**
  * A coding agent's whole settings surface, mocked in every awkward state at once:
@@ -295,9 +295,9 @@ export function mockProviders(): MockProvider[] {
           active: true,
           // As the usage probe names them: by period and scope, a limit on one model too.
           quota: [
-            { id: 'five_hour', label: '5h session', used: 62, max: 100, resets: 'in 2 h 10 min' },
-            { id: 'seven_day', label: '7d all models', used: 31, max: 100, resets: 'Monday' },
-            { id: 'limit:weekly_scoped:Fable', label: '7d Fable', used: 74, max: 100, resets: 'Tuesday' },
+            { id: 'five_hour', label: '5h session', used: 62, max: 100, resetsAt: ahead(130 * MINUTE) },
+            { id: 'seven_day', label: '7d all models', used: 31, max: 100, resetsAt: ahead(3 * DAY + 4 * HOUR) },
+            { id: 'limit:weekly_scoped:Fable', label: '7d Fable', used: 74, max: 100, resetsAt: ahead(4 * DAY) },
           ],
         },
         {
@@ -306,8 +306,8 @@ export function mockProviders(): MockProvider[] {
           plan: 'Pro',
           active: false,
           quota: [
-            { id: 'five_hour', label: '5h session', used: 100, max: 100, resets: 'in 4 h' },
-            { id: 'seven_day', label: '7d all models', used: 88, max: 100, resets: 'Thursday' },
+            { id: 'five_hour', label: '5h session', used: 100, max: 100, resetsAt: ahead(4 * HOUR) },
+            { id: 'seven_day', label: '7d all models', used: 88, max: 100, resetsAt: ahead(5 * DAY) },
           ]
         },
         // The vendor names no plan, so the row shows none.
@@ -320,9 +320,9 @@ export function mockProviders(): MockProvider[] {
           // usage comes as used ÷ limit × 100 in floating point, which reads in whole percent,
           // rounded down, so a window shows full only once it is.
           quota: [
-            { id: 'requests', label: 'Requests (short window)', used: 7.000000000000001, max: 100, resets: 'in 40 s' },
-            { id: 'tokens', label: 'Tokens (short window)', used: 0.4, max: 100, resets: 'in 40 s' },
-            { id: 'daily', label: 'Daily', used: 98.6, max: 100, resets: 'tomorrow' },
+            { id: 'requests', label: 'Requests (short window)', used: 7.000000000000001, max: 100, resetsAt: ahead(40_000) },
+            { id: 'tokens', label: 'Tokens (short window)', used: 0.4, max: 100, resetsAt: ahead(40_000) },
+            { id: 'daily', label: 'Daily', used: 98.6, max: 100, resetsAt: ahead(20 * HOUR) },
           ],
         },
         // Long text everywhere: the tags move under the name, which is cut only where the line
@@ -339,9 +339,9 @@ export function mockProviders(): MockProvider[] {
               label: 'Weekly (all models, including Opus)',
               used: 100,
               max: 100,
-              resets: 'on Thursday, October 9 at 2:00 PM',
+              resetsAt: ahead(12 * DAY),
             },
-            { id: 'week-sonnet', label: 'Weekly (Sonnet only)', used: 47, max: 100, resets: 'in 6 days 23 h' },
+            { id: 'week-sonnet', label: 'Weekly (Sonnet only)', used: 47, max: 100, resetsAt: ahead(6 * DAY + 23 * HOUR) },
           ],
         },
       ],

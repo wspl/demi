@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, useSlots } from 'vue'
 import Popover from './Popover.vue'
+import { usePhone } from './phone'
 import { useLayerElevation } from '../overlay/layerElevation'
 import { appOverlayStore } from '../overlay/appOverlay'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -27,6 +28,13 @@ const props = withDefaults(defineProps<{
   overlayStore?: OverlayStore
   /** Shown whatever the pointer does, as a gallery specimen pins it inside an overlay well. */
   pinned?: boolean
+  /**
+   * A card too large to sit by its trigger on a phone, which opens there as a
+   * bottom sheet (`Sheet.vue`) when its trigger is tapped, as a phone's own
+   * apps show such details, and closes as a sheet does: a phone has no
+   * pointer to leave it, and the sheet takes the focus.
+   */
+  sheet?: boolean
 }>(), {
   side: 'top',
   openDelayMs: 120,
@@ -40,6 +48,9 @@ const elevation = useLayerElevation()
 /** Opened by the pointer or the focus. */
 const shown = ref(false)
 const isOpen = computed(() => props.pinned || shown.value)
+const phone = usePhone()
+/** The card is a sheet now: a tap on the trigger opens it, the pointer and the focus neither. */
+const asSheet = computed(() => props.sheet === true && phone.value)
 let openTimer: ReturnType<typeof setTimeout> | null = null
 let closeTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -71,6 +82,9 @@ function close(): void {
 }
 
 function scheduleOpen(): void {
+  if (asSheet.value) {
+    return
+  }
   clearTimers()
   openTimer = setTimeout(() => {
     openTimer = null
@@ -79,12 +93,25 @@ function scheduleOpen(): void {
 }
 
 function scheduleClose(): void {
+  if (asSheet.value) {
+    return
+  }
   clearTimers()
   closeTimer = setTimeout(close, props.closeDelayMs)
 }
 
+/** A tap on the trigger opens a card that is a sheet; elsewhere a click on it does nothing by itself. */
+function onTriggerClick(): void {
+  if (asSheet.value) {
+    open()
+  }
+}
+
 /** Focus that moves between the trigger and the card keeps it open. */
 function onFocusOut(event: FocusEvent): void {
+  if (asSheet.value) {
+    return
+  }
   const next = event.relatedTarget
   if (next instanceof Node && (triggerRef.value?.contains(next) || cardRef.value?.contains(next))) {
     return
@@ -103,6 +130,7 @@ onBeforeUnmount(clearTimers)
     @mouseleave="scheduleClose"
     @focusin="scheduleOpen"
     @focusout="onFocusOut"
+    @click="onTriggerClick"
   >
     <slot />
   </span>
@@ -112,12 +140,13 @@ onBeforeUnmount(clearTimers)
     :anchor-el="triggerRef"
     :side="side"
     :offset="8"
+    :sheet="sheet"
     :ignore-els="triggerRef ? [triggerRef] : []"
     @close="close"
   >
     <div
       ref="cardRef"
-      class="overlay-shell rounded-md text-xs text-fg"
+      class="hover-card-shell overlay-shell rounded-md text-xs text-fg"
       :style="{ '--elevation': elevation }"
       @mouseenter="clearTimers"
       @mouseleave="scheduleClose"
