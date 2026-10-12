@@ -47,7 +47,7 @@ const modelRoom = computed(() => (props.plain ? '' : 'hidden @min-[24rem]:inline
   <div :class="plain ? '' : '@container min-w-0'">
     <div class="flex min-w-0 items-center gap-3 whitespace-nowrap">
       <span class="flex shrink-0 items-center gap-1.5">
-        <StatusDot v-if="tone" :tone="tone" :pulse="run.phase === 'running'" />
+        <StatusDot v-if="tone" :tone="tone" :breathing="run.phase === 'running'" />
         <span>{{ agentPhaseWords(run.phase) }}</span>
         <span class="text-fg-faint" aria-hidden="true">·</span>
         <span class="tabular-nums">{{ time }}</span>
