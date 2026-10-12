@@ -44,38 +44,47 @@ export function formatDay(timestamp: string): string {
 }
 
 const MINUTE_MS = 60_000
-const HOUR_MINUTES = 60
-const DAY_MINUTES = 24 * HOUR_MINUTES
-const WEEK_MINUTES = 7 * DAY_MINUTES
+const HOUR_MS = 60 * MINUTE_MS
+const DAY_MS = 24 * HOUR_MS
+const WEEK_MS = 7 * DAY_MS
 
 /**
  * When a usage window resets, as specifically as the user would say it,
  * counted from `now` in the user's time zone (`usage-and-quota.md` § What a
- * snapshot says): "Resets in 12 min" within the hour, "Resets in 3 hr
- * 38 min" within a day, the minutes left out on the hour, "Resets Sat
- * 4:00 PM" within a week, then "Resets Oct 15 at 4:00 PM", with the year
- * when it is not this year's, each moment its nearest minute. Minutes
- * count up, so the last one reads "in 1 min", as does a reset the clock
- * has just passed.
+ * snapshot says): "Resets now" once the clock has passed it, "Resets in <1m"
+ * within a minute, "Resets in 42m" within the hour, "Resets in 3h 42m"
+ * within a day, the minutes left out on the hour, "Resets Sat 4:00 PM" from
+ * 24 hours to under 7 days, then the day alone, "Resets Oct 24", with the
+ * year when it is not this year's: "Resets Jan 3, 2027". The row is chosen
+ * by the exact time left and the countdown counts it down like a timer, so
+ * 59m 59s left reads "in 59m"; a moment named on the clock is its nearest
+ * minute.
  */
 export function formatReset(timestamp: string, now: Date): string {
-  const minutes = Math.max(1, Math.ceil(dayjs(timestamp).diff(now) / MINUTE_MS))
+  const left = dayjs(timestamp).diff(now)
+  if (left <= 0) {
+    return 'Resets now'
+  }
+  if (left < MINUTE_MS) {
+    return 'Resets in <1m'
+  }
+  if (left < HOUR_MS) {
+    return `Resets in ${Math.floor(left / MINUTE_MS)}m`
+  }
+  if (left < DAY_MS) {
+    const hours = Math.floor(left / HOUR_MS)
+    const minutes = Math.floor((left % HOUR_MS) / MINUTE_MS)
+    return minutes ? `Resets in ${hours}h ${minutes}m` : `Resets in ${hours}h`
+  }
   // A vendor states a reset to the second or less, as 3:59:59.6 PM for
   // 4:00 PM: a moment is named by its nearest minute.
   const moment = dayjs(timestamp).add(30, 'second').startOf('minute')
-  if (minutes < HOUR_MINUTES) {
-    return `Resets in ${minutes} min`
-  }
-  if (minutes < DAY_MINUTES) {
-    const hours = Math.floor(minutes / HOUR_MINUTES)
-    const rest = minutes % HOUR_MINUTES
-    return rest ? `Resets in ${hours} hr ${rest} min` : `Resets in ${hours} hr`
-  }
-  if (minutes < WEEK_MINUTES) {
+  if (left < WEEK_MS) {
+    // 7 days ahead would name today's weekday, so the weekday stops at 6.
     return `Resets ${moment.format('ddd h:mm A')}`
   }
   const thisYear = moment.year() === dayjs(now).year()
-  return `Resets ${moment.format(thisYear ? 'MMM D [at] h:mm A' : 'MMM D, YYYY [at] h:mm A')}`
+  return `Resets ${moment.format(thisYear ? 'MMM D' : 'MMM D, YYYY')}`
 }
 
 /** When a usage window resets ([`formatReset`]), against the shared clock, which ticks each second. */
