@@ -1381,7 +1381,8 @@ html[data-theme="light"] .file-pill {
 }
 
 /* A message's code block: its pre, and its Copy at the top-right corner, which
-   stays there as the code scrolls sideways. Copy keeps the distance to the
+   stays there as the code scrolls sideways, shown while the block is pointed
+   at (below). Copy keeps the distance to the
    top and the right edge that centering puts it at in a one-line block,
    (one line of code + its padding - the control) / 2, as CopyCode's does: a
    longer block grows downward and leaves it where it was. */
@@ -1421,16 +1422,47 @@ html[data-theme="light"] .file-pill {
 }
 
 .code-block-copy {
+  --code-block-copy-inset: calc((var(--code-block-line) + 2 * var(--code-block-pad-y) - var(--spacing-hit-sm)) / 2);
+  --code-block-copy-well: color-mix(in srgb, var(--surface-current), var(--well-mix));
   position: absolute;
-  top: calc((var(--code-block-line) + 2 * var(--code-block-pad-y) - var(--spacing-hit-sm)) / 2);
-  right: calc((var(--code-block-line) + 2 * var(--code-block-pad-y) - var(--spacing-hit-sm)) / 2);
+  top: var(--code-block-copy-inset);
+  right: var(--code-block-copy-inset);
   display: flex;
   line-height: 0;
   border-radius: 6px;
-  /* Over the code it covers, on the block's own well. Always shown, as a
-     block's language is: a reader finds it without pointing at the block. */
+  /* Over the code it covers, on the block's own well, which masks the text
+     beneath it: its own fill, and a strip that runs on to the block's edge
+     and fades in from the left, so no sliver of a letter shows beside it. */
   z-index: 1;
-  background: color-mix(in srgb, var(--surface-current), var(--well-mix));
+  background: var(--code-block-copy-well);
+  /* Hidden at rest, so no line is ever covered while a reader reads, as on
+     GitHub; shown while the pointer is on the block or focus is in it. A
+     block that names its language has Copy always, since it stands in that
+     row, over no code, as does a phone, whose layout shows at rest what a hover
+     reveals (`ui/phone.ts`). */
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.code-block-copy::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  inset-inline: -0.75rem calc(-1 * var(--code-block-copy-inset));
+  z-index: -1;
+  background: linear-gradient(to right, transparent, var(--code-block-copy-well) 0.75rem);
+}
+
+.code-block:hover > .code-block-copy,
+.code-block:focus-within > .code-block-copy,
+.code-block:has(> .code-block-lang) > .code-block-copy {
+  opacity: 1;
+}
+
+@media (max-width: 767px) {
+  .code-block-copy {
+    opacity: 1;
+  }
 }
 
 .markdown-body ul,

@@ -52,8 +52,8 @@ const paneHeight = ref(96)
 const spinning = ref(false)
 
 /** A clipboard that refuses, which the failure specimen of CopyButton copies to. */
-function refusedCopy(): ClipboardItem {
-  return new ClipboardItem({ 'text/plain': Promise.reject(new Error('This page may not write to the clipboard.')) })
+function refusedCopy(): never {
+  throw new Error('This page may not write to the clipboard.')
 }
 
 const dotTones: readonly StatusDotTone[] = ['accent', 'success', 'warning', 'danger', 'attention', 'muted']
