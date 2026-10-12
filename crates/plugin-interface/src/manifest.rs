@@ -9,6 +9,7 @@ use demi_shared_types::INSTRUCTIONS_SOURCE;
 use schemars::{JsonSchema, generate::SchemaSettings};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use url::Url;
 
 /// The root the plugins of this repository place their groups under.
 pub use demi_host_interface::DEMI_ROOT;
@@ -100,6 +101,10 @@ pub struct Manifest {
     /// Its part of the web app's data and calls (`plugins.md` § The page).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub page: Option<Page>,
+    /// The sign-in of its vendor, which the plugin host runs (`plugins.md`
+    /// § OAuth sign-in).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth: Option<OAuth>,
 }
 
 impl Manifest {
@@ -113,8 +118,27 @@ impl Manifest {
             context: false,
             streams: Vec::new(),
             page: None,
+            oauth: None,
         }
     }
+}
+
+/// A vendor that signs its users in with OAuth 2.1 (`plugins.md` § OAuth
+/// sign-in): the plugin host registers Demi with its authorization server,
+/// runs the sign-in and keeps the tokens.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct OAuth {
+    /// The vendor's name as the user knows it, such as `Exa`, which the
+    /// page the sign-in ends on names.
+    pub vendor: String,
+    /// The authorization server's issuer, an `https` URL, whose metadata
+    /// (RFC 8414) names its endpoints.
+    pub issuer: Url,
+    /// The resource the tokens are for (RFC 8707), such as
+    /// `https://mcp.exa.ai/mcp`.
+    pub resource: String,
+    pub scopes: Vec<String>,
 }
 
 /// A user stream: a page connects to `operation` on the conversation's primary

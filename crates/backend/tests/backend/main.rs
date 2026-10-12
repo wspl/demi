@@ -55,6 +55,7 @@ mod real_cloud;
 mod runners;
 mod search;
 mod settings;
+mod sign_in;
 mod skills;
 mod startup;
 mod streams;

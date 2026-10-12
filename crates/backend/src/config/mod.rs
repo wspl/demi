@@ -363,6 +363,10 @@ pub struct BackendConfig {
     /// what the backend reads and writes there.
     #[cfg(feature = "testing")]
     pub object_counts: Option<demi_backend_blobs::counting::ObjectCounts>,
+    /// The authorities the plugins' outbound requests trust besides the
+    /// system's, for a test's HTTPS servers.
+    #[cfg(feature = "testing")]
+    pub web_roots: Vec<reqwest::Certificate>,
 }
 
 impl BackendConfig {
@@ -410,6 +414,8 @@ impl BackendConfig {
             stun: Vec::new(),
             #[cfg(feature = "testing")]
             object_counts: None,
+            #[cfg(feature = "testing")]
+            web_roots: Vec::new(),
         }
     }
 }

@@ -1,11 +1,13 @@
 //! Sealed credentials (`storage.md` § Passwords and credentials at rest): a
 //! typed JSON document encrypted with AES-256-GCM under a key derived from
 //! the instance secret, bound to the row it belongs to, and stored as one
-//! BLOB of a random 12-byte nonce, the ciphertext and the 16-byte tag.
+//! BLOB of a random 12-byte nonce, the ciphertext and the 16-byte tag. The
+//! plugins' secrets are sealed here too (`plugins.md` § Secrets), through
+//! the product's side of the plugin host's port.
 
 use aes_gcm::aead::{Aead, KeyInit, Payload};
 use aes_gcm::{Aes256Gcm, Nonce};
-use demi_web_api_protocol::ids::{CredentialId, ProviderId};
+use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
 
 const NONCE_BYTES: usize = 12;
 
@@ -21,6 +23,13 @@ pub enum Row<'a> {
     Config(&'a ProviderId),
     /// A subscription account's secret document.
     Secret(&'a ProviderId, &'a CredentialId),
+    /// A plugin's secret for a user, by the plugin's id and the secret's
+    /// name.
+    PluginSecret {
+        plugin: &'a str,
+        user: &'a UserId,
+        name: &'a str,
+    },
 }
 
 impl Row<'_> {
@@ -33,6 +42,9 @@ impl Row<'_> {
                 b"demi account secret",
                 vec![provider.as_str(), credential.as_str()],
             ),
+            Self::PluginSecret { plugin, user, name } => {
+                (b"demi plugin secret", vec![*plugin, user.as_str(), *name])
+            }
         };
         let mut name = label.to_vec();
         for id in ids {
