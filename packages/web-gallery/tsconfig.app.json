@@ -12,6 +12,7 @@
       "@demicodes/plugin-changes/*": ["../plugin-changes/src/*"],
       "@demicodes/plugin-file-browser/*": ["../plugin-file-browser/src/*"],
       "@demicodes/plugin-skills/*": ["../plugin-skills/src/*"],
+      "@demicodes/plugin-web/*": ["../plugin-web/src/*"],
       "@demicodes/*": ["../*/src/index.ts"]
     }
   },

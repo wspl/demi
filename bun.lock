@@ -105,6 +105,20 @@
         "typescript": "^6.0.3",
       },
     },
+    "packages/plugin-web": {
+      "name": "@demicodes/plugin-web",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demicodes/plugin-sdk": "workspace:^",
+        "@lucide/vue": "^1.40.0",
+        "vue": "^3.5.38",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@vue/tsconfig": "^0.9.1",
+        "typescript": "^6.0.3",
+      },
+    },
     "packages/protocol": {
       "name": "@demicodes/protocol",
       "version": "0.24.0",
@@ -125,6 +139,7 @@
         "@demicodes/plugin-file-browser": "workspace:^",
         "@demicodes/plugin-sdk": "workspace:^",
         "@demicodes/plugin-skills": "workspace:^",
+        "@demicodes/plugin-web": "workspace:^",
         "@demicodes/protocol": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "@demicodes/web-ui": "workspace:^",
@@ -155,6 +170,7 @@
         "@demicodes/plugin-file-browser": "workspace:^",
         "@demicodes/plugin-sdk": "workspace:^",
         "@demicodes/plugin-skills": "workspace:^",
+        "@demicodes/plugin-web": "workspace:^",
         "@demicodes/protocol": "workspace:^",
         "@demicodes/utils": "workspace:^",
         "@demicodes/web-ui": "workspace:^",
@@ -386,6 +402,8 @@
     "@demicodes/plugin-sdk": ["@demicodes/plugin-sdk@workspace:packages/plugin-sdk"],
 
     "@demicodes/plugin-skills": ["@demicodes/plugin-skills@workspace:packages/plugin-skills"],
+
+    "@demicodes/plugin-web": ["@demicodes/plugin-web@workspace:packages/plugin-web"],
 
     "@demicodes/protocol": ["@demicodes/protocol@workspace:packages/protocol"],
 

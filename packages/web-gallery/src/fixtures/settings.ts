@@ -13,6 +13,7 @@ import type {
   SettingsVendor
 } from '@demicodes/web-ui/settings/types'
 import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
+import type { WebState } from '@demicodes/plugin-web'
 import { commitOf } from './plugins'
 import { createSubagentState } from './subagent-profiles'
 import { DAY, HOUR, MINUTE, SECOND, ago, ahead } from './time'
@@ -693,6 +694,12 @@ export function createSettingsState() {
         enabled: true,
       },
       {
+        id: 'web',
+        name: 'Web',
+        description: 'Searches the web with Exa and reads pages from the conversation’s Host with demi web.',
+        enabled: true,
+      },
+      {
         id: 'changes',
         name: 'Changes',
         description: 'Shows the uncommitted changes in the conversation’s working directory, and what each of the agent’s commands changed, as diffs in the work panel.',
@@ -763,6 +770,7 @@ export function createSettingsState() {
         },
       ],
     } as SkillsState,
+    web: { account: null, key: null, inUse: 'anonymous' } as WebState,
     archived: [
       {
         id: 'oauth',
