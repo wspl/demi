@@ -396,7 +396,7 @@ tokens:
 ```text
 Context window                      285.1k / 1M (29%)
 [███████████████▌▌▌········································]
-■ Messages                          ~242.3k   24.2%   ›
+■ Messages                          ~242.3k   24.2%
 ■ System prompt                       ~3.6k    0.4%   ›
 ■ Commands                            ~1.4k    0.1%   ›
 ■ Instructions                        ~6.3k    0.6%   ›
@@ -415,7 +415,7 @@ Context window                      285.1k / 1M (29%)
 | Skills | The context block of the skills plugin, the source the catalog comes from; opens into its skills | Its block estimate, split per skill entry of the catalog |
 | Other context | Every other context block replayed, such as the execution context | Block estimates |
 | Summary | The replayed `compaction_boundary`, while there is one | Its block estimate |
-| Messages | Everything else the request carries; opens into the user's messages, the agent's text, thinking, tool calls by command group (the first group a call's script names, or `shell`), images, and reports and agent messages | The rest: the estimate less every row above, never below zero; its parts are block estimates, and the gap between them and the rest is *Unattributed*; when the parts add up to more than the rest, they are scaled down to it, so a row's parts never add up to more than the row |
+| Messages | Everything else the request carries: the user's messages, the agent's text and thinking, tool calls and their results, images, reports | The rest: the estimate less every row above, never below zero. It does not open: its share is the provider's count less estimates, so parts of it would be estimates of a number that is not one |
 | Compaction buffer | The room the threshold keeps for the answer and the summary request ([When compaction runs](#when-compaction-runs)) | Window less threshold: exact |
 | Free space | What is left | Window less the estimate and the buffer, never below zero |
 
