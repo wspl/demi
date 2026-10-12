@@ -2044,6 +2044,44 @@ test('read acknowledgements use the observed revision and wait for history', asy
   }
 })
 
+test('a request that waits is read with the conversation: the mark settles while the request waits, and a later request lights it again', async () => {
+  const original = globalThis.document
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: { visibilityState: 'visible' } })
+  try {
+    const store = useConversations()
+    const item = () => store.items.find((candidate) => candidate.id === SECOND)!
+    const server = records.find((candidate) => candidate.id === SECOND)!
+    item().load = 'ready'
+
+    // The request is raised: the row shows the needs-you mark until it is read.
+    Object.assign(server, { permissionRequests: 1, unreadPermissionRequests: 1 })
+    await changed(SECOND)
+    expect(item().needsYou).toBe(true)
+
+    // Reading acknowledges it at once, though nothing else of the conversation is unread.
+    await store.markRead(SECOND)
+    expect(requests.at(-1)?.path).toEndWith(`/conversations/${SECOND}/read`)
+    expect(item().needsYou).toBe(false)
+
+    // The backend's summary settles too, and the request still waits; the mark stays settled.
+    Object.assign(server, { unreadPermissionRequests: 0 })
+    await changed(SECOND)
+    expect(item().needsYou).toBe(false)
+
+    // A request raised after the reading lights the mark again; nothing to read when none waits.
+    Object.assign(server, { permissionRequests: 2, unreadPermissionRequests: 1 })
+    await changed(SECOND)
+    expect(item().needsYou).toBe(true)
+    const sent = requests.length
+    Object.assign(server, { permissionRequests: 0, unreadPermissionRequests: 0 })
+    await changed(SECOND)
+    await store.markRead(SECOND)
+    expect(requests.length).toBe(sent)
+  } finally {
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: original })
+  }
+})
+
 test('Fork preserves the source draft and opens an independent empty composer with inherited model settings', async () => {
   const store = useConversations()
   const source = store.items.find((item) => item.id === FIRST)!

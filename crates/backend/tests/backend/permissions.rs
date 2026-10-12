@@ -304,6 +304,45 @@ async fn a_newer_command_replaces_the_request_and_a_deny_remembers_nothing() {
     backend.close().await;
 }
 
+// Several seconds: a real device runs the shell jobs of two turns.
+#[tokio::test]
+async fn a_request_is_unread_until_the_user_reads_the_conversation_and_a_later_request_is_unread_again() {
+    let scripts = Arc::new(Scripts::default());
+    let World {
+        backend,
+        master,
+        mut socket,
+        _device,
+        ..
+    } = opened(&scripts).await;
+
+    scripts.root(FIRST, vec![shell("t1", "demi skills add acme/tools"), say("asked")]);
+    socket.chat("m1", "Install acme/tools").await;
+    let asked = summary(&backend, &master, FIRST).await;
+    assert_eq!((asked.permission_requests, asked.unread_permission_requests), (1, 1));
+
+    // Reading the conversation settles the mark; the request still waits.
+    let read = backend
+        .post(
+            &format!("/api/conversations/{FIRST}/read"),
+            Some(&master),
+            json!({ "revision": asked.revision }),
+        )
+        .await;
+    assert_eq!(read.status, StatusCode::NO_CONTENT);
+    let read = summary(&backend, &master, FIRST).await;
+    assert_eq!((read.permission_requests, read.unread_permission_requests), (1, 0));
+    assert_eq!(permissions(&backend, &master, FIRST).await.requests.len(), 1);
+
+    // A request raised after the reading is new: the same command again
+    // replaces the request, and the replacement is unread.
+    scripts.root(FIRST, vec![shell("t2", "demi skills add acme/tools"), say("asked again")]);
+    socket.chat("m2", "Try again").await;
+    let again = summary(&backend, &master, FIRST).await;
+    assert_eq!((again.permission_requests, again.unread_permission_requests), (1, 1));
+    backend.close().await;
+}
+
 // Several seconds: two subagents and their parent run shell jobs on a real
 // device.
 #[tokio::test]

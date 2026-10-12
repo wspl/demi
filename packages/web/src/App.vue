@@ -172,6 +172,7 @@ watch(
   [
     activeId,
     () => conversations.items.find((item) => item.id === activeId.value)?.unread,
+    () => conversations.items.find((item) => item.id === activeId.value)?.needsYou,
     () => conversations.items.find((item) => item.id === activeId.value)?.load,
   ],
   () => {
