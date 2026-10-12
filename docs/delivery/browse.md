@@ -131,8 +131,11 @@ conversation no longer runs, its subagents and background jobs included.
   permission such as the clipboard or local network access.
 - **The gallery.** `demi.gallery('/session?view=blocks')` opens a specimen
   page of the slot's gallery.
-- **The product's other parts.** `demi.message(text)` replaces any draft,
-  sends the text in the open conversation and waits for its turn to end, not
+- **The product's other parts.** `demi.message(text)` replaces a draft of
+  text, `demi.message(text, { files })` attaches the files through the
+  composer and waits until each shows as its capsule, and a draft that holds
+  files makes it fail before it writes, naming them, since writing over the
+  draft would delete them; it sends the text in the open conversation and waits for its turn to end, not
   for the subagents and background jobs it started (`demi.turn()` after it
   waits for those too); it fails at once, with the page's words, when the
   page marks the message not delivered or the turn ends with an error. `demi.runner()` starts the slot's built runner with its
