@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { ChevronDown, RefreshCw, Plus, Search, Send, Settings2, Trash2 } from '@lucide/vue'
 import CopyCode from '@demicodes/web-ui/ui/CopyCode.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -83,21 +83,55 @@ const compactIdle = ref(false)
 const compactWarn = ref(false)
 const compactDanger = ref(false)
 const compactPinned = ref(false)
-/** The windows of the account the cards' conversations run on; each time a card shows them, a probe reads each window a little further used. */
-const cardWindows = ref<UsageLimits['windows']>([
-  { id: 'five_hour', label: '5h session', used: 18, max: 100, resetsAt: ahead(3 * HOUR + 38 * MINUTE) },
-  { id: 'seven_day', label: '7d all models', used: 34, max: 100, resetsAt: ahead(5 * DAY + 2 * HOUR) },
-  { id: 'limit:weekly_scoped:Fable', label: '7d Fable', used: 81, max: 100, resetsAt: ahead(12 * DAY) },
-])
-/** The usage limits a card shows for an account of the given label: a short one, a long one that truncates, none. */
-const cardLimits = (accountLabel: string): UsageLimits => ({
-  accountLabel,
-  autoRefresh: true,
-  windows: cardWindows.value,
-})
-function refreshCardLimits(): void {
-  cardWindows.value = cardWindows.value.map((window) => ({ ...window, used: Math.min(window.max, window.used + 1) }))
+/**
+ * What one card specimen keeps of its account's usage limits, as the product's
+ * store does: the windows, whether a manual refresh runs and the vendor's
+ * words for one that failed. A probe takes a moment and reads each window a
+ * little further used; the automatic one, run when the card shows, is silent.
+ */
+function useCardLimits(accountLabel: string, failure: string | null = null) {
+  const windows = ref<UsageLimits['windows']>([
+    { id: 'five_hour', label: '5h session', used: 18, max: 100, resetsAt: ahead(3 * HOUR + 38 * MINUTE) },
+    { id: 'seven_day', label: '7d all models', used: 34, max: 100, resetsAt: ahead(5 * DAY + 2 * HOUR) },
+    { id: 'limit:weekly_scoped:Fable', label: '7d Fable', used: 81, max: 100, resetsAt: ahead(12 * DAY) },
+  ])
+  const refreshing = ref(false)
+  const error = ref<string | null>(null)
+  const limits = computed<UsageLimits>(() => ({
+    accountLabel,
+    autoRefresh: true,
+    windows: windows.value,
+    refreshing: refreshing.value,
+    error: error.value,
+  }))
+  function answer(): void {
+    windows.value = windows.value.map((window) => ({ ...window, used: Math.min(window.max, window.used + 1) }))
+    error.value = null
+  }
+  function refresh(automatic: boolean): void {
+    if (automatic) {
+      answer()
+      return
+    }
+    if (refreshing.value) {
+      return
+    }
+    refreshing.value = true
+    window.setTimeout(() => {
+      refreshing.value = false
+      if (failure) {
+        error.value = failure
+      } else {
+        answer()
+      }
+    }, 1200)
+  }
+  return { limits, refresh }
 }
+const cardLong = useCardLimits('zan@example.com')
+const cardTruncated = useCardLimits('a-very-long-account-name.with.many.parts@subdomain.example.com')
+const cardUnlabeled = useCardLimits('')
+const cardFailing = useCardLimits('zan@example.com', 'Anthropic’s usage service is unavailable.')
 const buttonPressed = ref(true)
 const buttonGhostPressed = ref(true)
 const buttonPrimaryPressed = ref(true)
@@ -723,7 +757,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
 
       <GallerySection
         title="ContextUsageIndicator"
-        note="The ring is the backend’s estimate. Click it for the card, on a phone tap it for a sheet; a click outside, another click on the ring or Escape closes it, and resting the pointer on it shows only its tip, Context window. Compact closes the card, as a menu’s action does. The header opens and closes the list of what fills the context, closed at first and then as the user left it, kept in the browser; the bar shows either way, the rows largest first, each one figure with its share of the window. Under them, the room before compaction, with Compact, from half the window. Then the usage limits of a subscription account, each window’s name, reset and use on one line over its bar (a model on an API key has none), and last the instruction files, each of which opens where it is written."
+        note="The ring is the backend’s estimate. Click it for the card, on a phone tap it for a sheet; a click outside, another click on the ring or Escape closes it, and resting the pointer on it shows only its tip, Context window. Compact closes the card, as a menu’s action does. The header opens and closes the list of what fills the context, closed at first and then as the user left it, kept in the browser; the bar shows either way, the rows largest first, each one figure with its share of the window. Under them, the room before compaction, with Compact, from half the window. Then the usage limits of a subscription account, under a line that ends in a Refresh usage button (its icon turns while the request runs, the windows stay until the answer replaces them, a failure shows the vendor’s words under the line until the next answer, and a click keeps the card open), each window’s name, reset and use on one line over its bar (a model on an API key has none), and last the instruction files, each of which opens where it is written."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="below half · 34%">
@@ -776,10 +810,10 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
                   :usage="usageAt(0.62)"
                   :is-compacting="compactPinned"
                   :instructions="demoInstructions"
-                  :limits="cardLimits('zan@example.com')"
+                  :limits="cardLong.limits.value"
                   @compact="pulseCompact('pinned')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
-                  @refresh-limits="refreshCardLimits"
+                  @refresh-limits="cardLong.refresh"
                 />
               </div>
             </GallerySpecimen>
@@ -791,9 +825,9 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
                   pinned
                   :usage="usageAt(0.06, { summary: 2_400 })"
                   :instructions="demoInstructions"
-                  :limits="cardLimits('a-very-long-account-name.with.many.parts@subdomain.example.com')"
+                  :limits="cardTruncated.limits.value"
                   @open-instruction="demoOpenInstruction($event, productWould)"
-                  @refresh-limits="refreshCardLimits"
+                  @refresh-limits="cardTruncated.refresh"
                 />
               </div>
             </GallerySpecimen>
@@ -805,10 +839,25 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
                   pinned
                   :usage="usageAt(0.42)"
                   :instructions="demoInstructions"
-                  :limits="cardLimits('')"
+                  :limits="cardUnlabeled.limits.value"
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
-                  @refresh-limits="refreshCardLimits"
+                  @refresh-limits="cardUnlabeled.refresh"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell>
+            <GallerySpecimen variant="card · Refresh usage fails, the vendor’s words show under the header">
+              <div class="px-44 pt-[36rem]">
+                <ContextUsageIndicator
+                  pinned
+                  :usage="usageAt(0.42)"
+                  :instructions="demoInstructions"
+                  :limits="cardFailing.limits.value"
+                  @compact="productWould('Compact the Conversation')"
+                  @open-instruction="demoOpenInstruction($event, productWould)"
+                  @refresh-limits="cardFailing.refresh"
                 />
               </div>
             </GallerySpecimen>

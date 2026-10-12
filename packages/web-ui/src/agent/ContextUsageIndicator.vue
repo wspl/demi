@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { ChevronRight, FileText, UserRound } from '@lucide/vue'
+import { ChevronRight, FileText, RefreshCw, UserRound } from '@lucide/vue'
 import type { ContextRowKind, ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import ProviderQuota from '../settings/ProviderQuota.vue'
 import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
+import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
+import SectionRow from '../ui/SectionRow.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { useLayerElevation } from '../overlay/layerElevation'
@@ -56,8 +58,11 @@ const emit = defineEmits<{
   compact: []
   /** Opens where an entry is written: the settings for the personal instructions, the file for a project file. */
   openInstruction: [entry: InstructionEntry]
-  /** The usage limits showed: the host asks the vendor for them again, as Settings does. */
-  refreshLimits: []
+  /**
+   * The host asks the vendor for the usage limits again, as Settings does:
+   * automatic when the limits showed, otherwise the Refresh usage button.
+   */
+  refreshLimits: [automatic: boolean]
 }>()
 
 const rows = computed<ContextCardRow[]>(() => (props.usage ? contextCardRows(props.usage) : []))
@@ -240,19 +245,36 @@ const ringColor = computed(() => {
                     Compact
                   </Button>
                 </div>
-                <div v-if="limits" class="border-t border-line px-3 pt-2 pb-3">
-                  <div class="mb-2 flex min-w-0 gap-1 text-[11px] font-medium text-fg-subtle">
+                <div v-if="limits" class="border-t border-line pb-3">
+                  <SectionRow class="text-[11px] font-medium text-fg-subtle">
                     <span class="shrink-0">Usage limits</span>
                     <template v-if="limits.accountLabel">
-                      <span class="shrink-0">·</span>
+                      <span class="shrink-0 px-1">·</span>
                       <span class="min-w-0 truncate" :title="limits.accountLabel">{{ limits.accountLabel }}</span>
                     </template>
+                    <template #end>
+                      <!-- The click keeps the card open: it only asks, and the answer replaces the windows. -->
+                      <Tooltip content="Refresh usage">
+                        <IconButton
+                          size="xs"
+                          variant="ghost"
+                          :icon="RefreshCw"
+                          aria-label="Refresh usage"
+                          :spinning="limits.refreshing === true"
+                          :disabled="limits.refreshing === true"
+                          @click="emit('refreshLimits', false)"
+                        />
+                      </Tooltip>
+                    </template>
+                  </SectionRow>
+                  <div class="px-3 pt-0.5">
+                    <p v-if="limits.error" class="mb-2 text-[12px] leading-4 break-words text-fg-muted">{{ limits.error }}</p>
+                    <ProviderQuota
+                      :windows="limits.windows"
+                      :auto-refresh="limits.autoRefresh"
+                      @refresh="emit('refreshLimits', true)"
+                    />
                   </div>
-                  <ProviderQuota
-                    :windows="limits.windows"
-                    :auto-refresh="limits.autoRefresh"
-                    @refresh="emit('refreshLimits')"
-                  />
                 </div>
                 <div v-if="instructionList.length" class="border-t border-line pb-1">
                   <div class="px-3 pt-2 pb-1 text-[11px] font-medium text-fg-subtle">Instructions</div>
