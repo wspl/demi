@@ -6,9 +6,13 @@ import { createStore } from '../store/createStore'
  * too, and replaces a menu or popover as an exclusive one does, but keeps the
  * dialog it stands on, and goes when that closes. A dialog a menu row opens,
  * such as Add Device… or a move's question, therefore stays once the menu
- * closes. Hints never cover either.
+ * closes. A nested layer is a menu or popover opened inside another layer (a
+ * dropdown in a dialog, a flyout of a menu): it replaces nothing, stands above
+ * the layer that holds it, which stays open, and goes when that closes. Escape
+ * addresses it first, as macOS closes the innermost open thing first. Hints
+ * never cover any of them.
  */
-export type OverlayLayer = 'exclusive' | 'stacked' | 'hint'
+export type OverlayLayer = 'exclusive' | 'stacked' | 'nested' | 'hint'
 
 /** What a layer is: a dialog, which a stacked layer may stand on, or a menu or popover, which it replaces. */
 export type OverlaySurface = 'dialog' | 'popover'
@@ -18,7 +22,7 @@ export interface OverlayEntry {
   layer: OverlayLayer
   surface: OverlaySurface
   close: () => void
-  /** The dialog a stacked entry stands on. */
+  /** The layer a stacked or nested entry stands on: for a stacked one the dialog beneath it. */
   parent?: string
 }
 
@@ -31,7 +35,8 @@ export interface OverlayStore {
   /** Whether this entry is the one Escape and the scrim address. */
   isTop(id: string): boolean
   closeTop(): void
-  push(id: string, close: () => void, layer?: OverlayLayer, surface?: OverlaySurface): () => void
+  /** `parent` is the id of the layer a nested one is inside; one that is not in the store holds nothing. */
+  push(id: string, close: () => void, layer?: OverlayLayer, surface?: OverlaySurface, parent?: string): () => void
   remove(id: string): void
   subscribe(listener: () => void): () => void
 }
@@ -89,7 +94,7 @@ export function createOverlayStore(): OverlayStore {
         return
       top.close()
     },
-    push(id, close, layer = 'exclusive', surface = 'popover') {
+    push(id, close, layer = 'exclusive', surface = 'popover', holder) {
       if (layer === 'hint' && exclusives().length > 0) {
         return () => {}
       }
@@ -102,7 +107,9 @@ export function createOverlayStore(): OverlayStore {
           : []
       const parent = layer === 'stacked'
         ? exclusives().findLast((entry) => entry.surface === 'dialog')?.id
-        : undefined
+        : layer === 'nested' && exclusives().some((entry) => entry.id === holder)
+          ? holder
+          : undefined
 
       store.update((state) => {
         state.entries.push({ id, layer, surface, close, parent })

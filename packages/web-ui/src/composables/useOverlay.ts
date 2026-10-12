@@ -7,6 +7,7 @@ export function useOverlay(
   close: () => void,
   layer: OverlayLayer = 'exclusive',
   surface: OverlaySurface = 'popover',
+  parent?: string,
 ): string {
   const id = crypto.randomUUID()
   let remove = () => {}
@@ -15,7 +16,7 @@ export function useOverlay(
     remove()
     if (!open)
       return
-    remove = store.push(id, close, layer, surface)
+    remove = store.push(id, close, layer, surface, parent)
   }, { immediate: true })
 
   onBeforeUnmount(() => {
