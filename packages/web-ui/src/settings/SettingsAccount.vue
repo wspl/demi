@@ -86,10 +86,7 @@ function checkName(value: string): string | null {
           >{{ initial }}</span
         >
       </SettingsRow>
-      <SettingsRow
-        label="Display name"
-        description="Shown on your messages and in the sidebar."
-      >
+      <SettingsRow label="Display name">
         <template v-if="nameProblem" #detail>
           <InlineError :message="nameProblem" />
         </template>

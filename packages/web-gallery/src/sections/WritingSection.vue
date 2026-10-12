@@ -292,6 +292,13 @@ const brevityRules: readonly TextRule[] = [
     source: 'Apple HIG: Writing, Keep settings labels clear and simple',
   },
   {
+    title: 'A row’s description only when needed',
+    rule: 'A settings row’s description says only what its label and its control cannot: a consequence the reader would not expect, a constraint, a unit or a range, or what an empty value means. It never says the label again in other words; a row whose label and control say it all has none.',
+    right: ['Message text size — no description', 'Sign out — Ends this browser’s session. Conversations stay on the server.'],
+    wrong: ['Message text size — Sizes the conversation’s messages and steps.'],
+    source: 'Apple HIG: Writing, Keep settings labels clear and simple; macOS 26 System Settings',
+  },
+  {
     title: 'A problem says what to do',
     rule: 'Show it next to what it is about, without blame, and say what the reader can do to fix it.',
     right: ['Start Demi on the device, then try again.'],

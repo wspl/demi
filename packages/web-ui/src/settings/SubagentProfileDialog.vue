@@ -176,7 +176,7 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               aria-label="Description"
             />
           </SettingsRow>
-          <SettingsRow label="Model" description="The model its children infer with: the parent’s, or one of any provider.">
+          <SettingsRow label="Model">
             <Dropdown
               :overlay-store="overlayStore"
               variant="field"

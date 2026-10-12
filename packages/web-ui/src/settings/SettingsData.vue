@@ -29,7 +29,7 @@ const emit = defineEmits<{
     <SettingsGroup title="Danger Zone">
       <SettingsRow
         label="Delete all conversations"
-        description="From your account. Projects and settings stay."
+        description="Projects and settings stay."
       >
         <Button
           size="sm"
