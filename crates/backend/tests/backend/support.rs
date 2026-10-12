@@ -1056,6 +1056,21 @@ pub fn device_utilities() -> String {
 /// fails as hung.
 pub const PATIENCE: Duration = Duration::from_secs(20);
 
+/// Lets `duration` pass at once for the timers on this test's runtime, such
+/// as the lifetime of a pairing code, which the backend's handler of a
+/// waiting runner holds there, and then lets the clock run on in real time
+/// (`concurrency.md` § Tests and time): an expiry is reached when the test
+/// says, not when a loaded machine happens to get there. The clock is
+/// paused only while it moves, when nothing outside the runtime is awaited,
+/// so no other wait sees the jump; a timer already running on the runtime,
+/// such as a hang guard, does, and is started after it. Needs the
+/// current-thread runtime, which alone can pause its clock.
+pub async fn elapse(duration: Duration) {
+    tokio::time::pause();
+    tokio::time::advance(duration).await;
+    tokio::time::resume();
+}
+
 /// Waits until `check` holds, asking every 20 ms for at most [`PATIENCE`].
 pub async fn eventually<F, Fut>(what: &str, mut check: F)
 where
