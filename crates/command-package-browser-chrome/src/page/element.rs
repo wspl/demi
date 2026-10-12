@@ -436,6 +436,31 @@ pub(crate) struct Ready {
     pub named: ResolvedElement,
 }
 
+/// The pauses between a wait's checks of its condition (`browser.md`
+/// § Waiting): after the first check, 20, 50, 100 and 100 ms, then 500 ms
+/// each, so that a long wait costs the page almost nothing.
+#[derive(Default)]
+pub(crate) struct CheckPauses {
+    taken: usize,
+}
+
+impl CheckPauses {
+    const FIRST: [Duration; 4] = [
+        Duration::from_millis(20),
+        Duration::from_millis(50),
+        Duration::from_millis(100),
+        Duration::from_millis(100),
+    ];
+    const THEN: Duration = Duration::from_millis(500);
+
+    /// Waits out the pause before the next check.
+    pub(crate) async fn wait(&mut self) {
+        let pause = Self::FIRST.get(self.taken).copied().unwrap_or(Self::THEN);
+        self.taken += 1;
+        tokio::time::sleep(pause).await;
+    }
+}
+
 /// Resolve afresh while waiting; ambiguity is never an implicit first match.
 pub(crate) async fn ready(
     tab: &BrowserTab,
@@ -456,6 +481,7 @@ pub(crate) async fn ready_with_failure(
     operation: &Operation<'_>,
     last_failure: &mut Option<BrowserError>,
 ) -> Result<Ready> {
+    let mut pauses = CheckPauses::default();
     loop {
         let attempt = async {
             let observation = operation
@@ -505,7 +531,7 @@ pub(crate) async fn ready_with_failure(
             }
             operation
                 .run(async {
-                    tokio::time::sleep(Duration::from_millis(50)).await;
+                    pauses.wait().await;
                     Ok(())
                 })
                 .await?;
@@ -522,5 +548,27 @@ pub(crate) async fn ready_with_failure(
             }
             Err(error) => return Err(error),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A wait checks its condition at once, then after 20, 50, 100 and 100
+    /// ms, then every 500 ms (`browser.md` § Waiting): a quiet minute's wait
+    /// checks the page 124 times. Before, it checked every 50 ms, 1,200
+    /// times, which kept the browser busy for as long as it waited.
+    #[tokio::test(start_paused = true)]
+    async fn a_wait_checks_quickly_at_first_and_then_every_half_second() {
+        let start = tokio::time::Instant::now();
+        let mut pauses = CheckPauses::default();
+        let mut checks = Vec::new();
+        while start.elapsed() < Duration::from_secs(60) {
+            checks.push(start.elapsed().as_millis());
+            pauses.wait().await;
+        }
+        assert_eq!(checks[..7], [0, 20, 70, 170, 270, 770, 1270]);
+        assert_eq!(checks.len(), 124);
     }
 }
