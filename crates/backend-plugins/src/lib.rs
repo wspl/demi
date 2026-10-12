@@ -5,10 +5,17 @@
 //! operations the host answers.
 
 mod commands;
+mod oauth;
 mod registry;
+mod secrets;
 mod user;
+mod web;
 
+pub use oauth::{Callback, CallbackError};
+pub use web::client as web_client;
 pub use registry::{Registry, RegistryError};
+#[cfg(feature = "testing")]
+pub mod testing;
 pub use user::{
     ContextAsk, PageCall, PageCallError, PanelError, PluginToolset, ProductPort, SwitchError,
     UserPlugins,

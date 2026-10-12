@@ -263,6 +263,8 @@ impl Backend {
             plugins: config.plugins,
             cloud: CloudServices::new(machines, config.cloud),
             lifecycle: config.lifecycle,
+            #[cfg(feature = "testing")]
+            web_roots: config.web_roots,
         };
         let services = Services::start(storage.clone(), keys, providers, settings);
         let services = Arc::new(services.await?);
