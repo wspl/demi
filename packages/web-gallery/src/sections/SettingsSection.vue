@@ -107,7 +107,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Web Search',
-    'A plugin’s section, under Agent with a sidebar entry while the Web plugin is on: the user’s Exa account, signed in or not, the API key, typed and checked or saved and shown by its last four characters, and which of them searches use. The specimens below pin each state and run the calls.'
+    'A plugin’s section, under Agent in the settings dialog only, while the Web plugin is on; the app’s sidebar has no entry for it, as for Providers. It holds the user’s Exa account, signed in or not, the API key, typed and checked or saved and shown by its last four characters, and which of them searches use. The specimens below pin each state and run the calls.'
   ],
   [
     'Data',
