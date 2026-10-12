@@ -2,7 +2,7 @@
 //! (`plugins.md` § The contract). Each request names its user, since a
 //! plugin process would serve every user.
 
-use demi_host_interface::{PortError, RpcError, RpcInvocation};
+use demi_host_interface::{HostPaths, PortError, RpcError, RpcInvocation};
 use demi_shared_types::{NodeId, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::panel::PanelTab;
@@ -29,12 +29,14 @@ pub enum Request {
     /// A node is about to send a provider request, and the plugin, a
     /// context source, may add a context block (`plugins.md` § Prompt text
     /// and context): `seen` holds the text of its own blocks the model
-    /// receives, oldest first, and `cwd` is the node's working directory.
+    /// receives, oldest first, `cwd` is the node's working directory and
+    /// `paths` how its Host writes paths (`runner.md` § Windows paths).
     Context {
         user: UserId,
         conversation: ConversationId,
         node: NodeId,
         cwd: String,
+        paths: HostPaths,
         turn: TurnId,
         seen: Vec<String>,
     },

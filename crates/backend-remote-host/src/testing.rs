@@ -179,8 +179,16 @@ impl TestDevice {
                 gid: 20,
                 hostname: "test".into(),
                 home_dir: "/work".into(),
+                paths: demi_host_interface::HostPaths::Posix,
             },
         }
+    }
+
+    /// The device with the account its runner reports as `identity`, such
+    /// as a Windows Host's.
+    pub fn with_identity(mut self, identity: HostIdentity) -> Self {
+        self.identity = identity;
+        self
     }
 
     pub fn pipes(&self) -> &Pipes {

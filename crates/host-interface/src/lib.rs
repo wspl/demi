@@ -25,6 +25,7 @@ mod environment;
 mod host;
 mod media;
 mod output;
+mod paths;
 mod record;
 mod reserved;
 mod rpc;
@@ -47,6 +48,7 @@ pub use host::{
     SpawnErrorKind, SpawnRequest, WhenExists, WriteOptions,
 };
 pub use media::CommandMedium;
+pub use paths::HostPaths;
 pub use output::{
     Backward, Forward, Missing, OutputRecord, OutputText, Piece, Seen, Streams, WholeOutput,
     binary_line,

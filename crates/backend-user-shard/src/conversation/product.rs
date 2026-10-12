@@ -277,10 +277,16 @@ impl ContextSource for PluginContext {
             let Some(shard) = self.shard.upgrade() else {
                 return Ok(None);
             };
+            let conversation = conversation_of(node.root);
+            let paths = shard
+                .host_paths(&conversation)
+                .await
+                .map_err(|error| format!("the plugin {} was not asked: {error}", self.plugin))?;
             let asked = ContextAsk {
-                conversation: conversation_of(node.root),
+                conversation,
                 node: node.node.clone(),
                 cwd: node.cwd.to_owned(),
+                paths,
                 turn: turn.clone(),
                 seen: seen.iter().map(|text| (*text).to_owned()).collect(),
             };
