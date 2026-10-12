@@ -1334,6 +1334,19 @@ that changed reach every page of the user on the synchronization channel. An
 unknown plugin answers 404 `unknown_plugin`. What each change does, and when, is
 [A user's plugins](../architecture/plugins.md#a-users-plugins)'s.
 
+`GET /api/plugins/:plugin/oauth/callback?code&state`, or `?error&state`, is
+where a vendor sends the browser back after a plugin's [OAuth
+sign-in](../architecture/plugins.md#oauth-sign-in). It is a session route: the
+browser's own navigation carries the cookie. It answers an HTML page:
+
+| Status | When | The page says |
+| --- | --- | --- |
+| 200 | Signed in | *Signed in to Exa. You can close this tab.* |
+| 400 | A state the caller did not start, older than 10 minutes or used already, or the vendor sent an error | *This sign-in expired or was declined. Sign in again in Demi.* |
+| 401 | No session | The session gate's answer |
+| 404 | A plugin that signs nobody in, or that the user has off | *Nothing signs in here.* |
+| 502 | The code exchange failed | *Exa did not complete the sign-in. Try again in Demi.* |
+
 `POST /api/conversations/:id/reload`, without a body, closes the
 conversation's tree and opens it again with the user's current plugins, and
 answers 204. A conversation socket that was attached to the tree receives
