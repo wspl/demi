@@ -217,23 +217,40 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
     assert!(frames.contains(r#""value":"zan""#), "the visible value reaches the page: {frames}");
     assert!(!frames.contains(SECRET), "{frames}");
 
-    // A request for the saved name, whatever its case, asks for new values:
-    // the card says it renews.
+    // A credential of the waiting request's name, whatever its case, saved
+    // in Settings meanwhile: the conversation's requests change, and the
+    // card now asks to renew it.
     scripts.root(
         FIRST,
         vec![
             shell(
                 "t3",
-                "demi credentials request 'DEPLOY KEY' --field key:secret:'API key' --field user:visible:User; echo exit=$?",
+                "demi credentials request 'Staging key' --field key:secret:'API key'; echo exit=$?",
             ),
             say("declined"),
         ],
     );
-    socket.send(&send("m3", "Rotate the deploy key")).await;
-    eventually("the renewal is listed", || async {
+    socket.send(&send("m3", "Deploy to staging")).await;
+    eventually("the request is listed", || async {
         !permissions(&backend, &master, FIRST).await.requests.is_empty()
     })
     .await;
+    let request = permissions(&backend, &master, FIRST).await.requests.remove(0);
+    let PermissionRequest::Credential { renewal, .. } = &request else {
+        panic!("not a credential request: {request:?}");
+    };
+    assert!(!renewal, "{request:?}");
+    let before = summary(&backend, &master, FIRST).await.permissions_revision;
+    saved(
+        &backend,
+        &master,
+        json!({
+            "name": "staging KEY", "keep": "1h",
+            "fields": [{ "name": "key", "label": "API key", "kind": "secret", "value": "stg_123" }]
+        }),
+    )
+    .await;
+    assert!(summary(&backend, &master, FIRST).await.permissions_revision > before);
     let request = permissions(&backend, &master, FIRST).await.requests.remove(0);
     let PermissionRequest::Credential { id, renewal, .. } = &request else {
         panic!("not a credential request: {request:?}");
