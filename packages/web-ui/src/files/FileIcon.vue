@@ -7,7 +7,8 @@ import { fileIconGlyph, fileIconName } from './file-icons'
 /**
  * A file or folder glyph from the Material Icon Theme, chosen by name: `src`
  * gets the source folder, `package.json` the Node badge, `App.vue` the Vue mark.
- * Until the theme has loaded, and for a name it does not know, a plain outline.
+ * Until the theme has loaded, and for a name it does not know, a plain outline
+ * that takes the same room.
  */
 const props = withDefaults(
   defineProps<{
@@ -56,10 +57,12 @@ watch(
     alt=""
     draggable="false"
   />
-  <component
-    :is="isDirectory ? Folder : File"
+  <!-- The outline stands in the glyph's footprint, so a row's width does not change when the theme loads. -->
+  <span
     v-else
-    :size="size - 2"
-    class="shrink-0"
-  />
+    class="inline-flex shrink-0 items-center justify-center"
+    :style="{ width: `${size}px`, height: `${size}px` }"
+  >
+    <component :is="isDirectory ? Folder : File" :size="size - 2" />
+  </span>
 </template>

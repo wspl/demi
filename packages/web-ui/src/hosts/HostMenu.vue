@@ -110,7 +110,7 @@ function connect() {
             class="max-w-36 truncate"
             :class="hostCompact ? COMPACT_LABEL_CLASS : ''"
           >{{ primaryHost.name }}</span>
-          <span v-if="attachedHosts.length" class="text-[11px] text-fg-subtle">
+          <span v-if="attachedHosts.length" class="text-[11px] text-fg-faint">
             +{{ attachedHosts.length }}
           </span>
         </Button>
