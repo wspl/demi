@@ -308,6 +308,12 @@ The web app decides when to ask:
   An automatic request runs silently, including when it fails, and it is not
   repeated while the region stays visible.
 - A manual **Refresh usage** action ignores the minute and reports a failure.
+  Settings offers it on each account, and the context card at the end of its
+  *Usage limits* line, as an icon button with the tip *Refresh usage*: the
+  icon turns while the request runs, the windows stay as they were until the
+  answer replaces them, and a failure shows in one line under the header in
+  the card's secondary color, with the vendor's words, until the next
+  answer.
   If an automatic request for the account is running, the manual action joins
   it and receives its outcome.
 - Concurrent requests for one provider and account share one request;
