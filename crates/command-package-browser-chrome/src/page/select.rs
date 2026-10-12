@@ -51,6 +51,7 @@ pub(crate) async fn select_options(
         .map(|candidate| candidate.unwrap_or(Value::Null))
         .collect();
     let mut last_failure = None;
+    let mut pauses = element::CheckPauses::default();
     let result: Result<(ResolvedElement, Vec<SelectedOption>)> = async {
         loop {
             let element::Ready { element, named, .. } = crate::page::element::ready_with_failure(
@@ -103,7 +104,7 @@ pub(crate) async fn select_options(
             });
             operation
                 .run(async {
-                    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+                    pauses.wait().await;
                     Ok(())
                 })
                 .await?;
