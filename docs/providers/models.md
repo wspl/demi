@@ -210,8 +210,8 @@ Google entry" in a conversation:
 | --- | --- |
 | `list` | Each entry, by the name Settings gives it, its kind (subscription or API key) and its state (*Ready*, or what it still needs), then each of its enabled models with id, name, context window, efforts (the default marked, and `off` when thinking can be turned off), tiers and whether it reads images; the model the calling agent runs on is marked. `--all` adds the hidden models and entries |
 | `show <entry>` | Every setting of one entry: name, vendor or family and wire, endpoint, whether a key is saved (never the key), accounts by label, and each model with every field |
-| `add` | A new entry: `--vendor <id>`, a vendor of `GET /api/providers/catalog`, or `--family <family>` with `--wire` and `--base-url`; `--name` names it. It takes no key: the entry joins the list incomplete, and the command's answer says to add the key in Settings › Providers |
-| `edit <entry>` | Changes the name or the endpoint |
+| `add` | A new entry: `--vendor <id>`, a vendor of `GET /api/providers/catalog`, or `--family <family>` with `--wire` and `--base-url`; `--name` names it; `--api-key-stdin` reads its key from standard input. Without a key it joins the list incomplete |
+| `edit <entry>` | Changes the name, the endpoint, or the key with `--api-key-stdin` |
 | `remove <entry>` | Removes the entry, as Settings does |
 | `models search <query>` | The same search as Add Model, each match on one line with its `<vendor>/<model id>`, name, context window, output limit, efforts and files |
 | `models add <entry> [<vendor>/<model id>]` | Adds a model to the entry's configured list, filled from that match; options `--id`, `--name`, `--context`, `--output`, `--efforts`, `--extensions` and `--fast-tier` set or override fields, and without a match they are the whole model |
@@ -223,16 +223,18 @@ its provider, so the `models` leaves that change a list refuse it with *Claude
 Code lists its own models; its list cannot be edited.* The checks and their
 words are the settings page's.
 
-No command takes or prints a key or a token: a key typed into a conversation
-would sit in its transcript and reach the model's vendor. The user adds keys
-in Settings, where the incomplete entry waits for it.
+No command prints a key or a token, and none takes one as an argument: a key
+typed into a conversation would sit in its transcript and reach the model's
+vendor. `add` and `edit` take a key only on standard input, `--api-key-stdin`,
+from a [credential](../agent/credentials.md) the agent piped there, so the
+agent never reads it; otherwise the entry waits, incomplete, for the user to
+add the key in Settings.
 
 **Permission.** `add`, `edit`, `remove` and the `models` leaves that change a
 list change settings every conversation of the user reads, so they need the
 user's permission in each conversation, the category `providers.manage`,
 *Manage Providers*: "Add, change and remove your provider entries and their
-models, which every conversation of yours can use. Keys are added in
-Settings, never by the agent." `list`, `show` and `models search` are reads and
+models, which every conversation of yours can use." `list`, `show` and `models search` are reads and
 need none. `--json` returns `{ providers }`, `{ provider }`, `{ results }` or
 `{ model }` with every field the text prints.
 
