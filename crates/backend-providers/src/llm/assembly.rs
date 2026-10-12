@@ -14,7 +14,7 @@ use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
 use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
 use demi_shared_types::Clock;
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
-use demi_web_api_protocol::providers::{SETUP_MESSAGE, SetupPart};
+use demi_web_api_protocol::providers::SETUP_MESSAGE;
 
 use super::catalog_cache::ModelCatalogCache;
 use super::families::{
@@ -39,8 +39,8 @@ pub enum AssemblyError {
     /// no runtime over a placement.
     #[error("the provider family {0} cannot run its process")]
     NoProcessRuntime(String),
-    /// An API-key entry without its key, or a custom endpoint without its
-    /// address: nothing is sent until the user adds them.
+    /// An API-key entry without its key: nothing is sent until the user
+    /// adds it.
     #[error("{SETUP_MESSAGE}")]
     Incomplete,
 }
@@ -279,11 +279,7 @@ impl ProviderAssembly {
     ) -> Result<FamilyArgs, AssemblyError> {
         let credential = match &entry.credential {
             EntryCredential::ApiKey(config) => {
-                let missing = entry.missing();
-                let api_key = match &config.api_key {
-                    Some(key) if !missing.contains(&SetupPart::BaseUrl) => key.clone(),
-                    _ => return Err(AssemblyError::Incomplete),
-                };
+                let api_key = config.api_key.clone().ok_or(AssemblyError::Incomplete)?;
                 FamilyCredential::ApiKey(ApiKeyArgs {
                     api_key,
                     base_url: config

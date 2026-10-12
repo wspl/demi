@@ -60,7 +60,7 @@ const MODELS_SUMMARY: &str = "The models of an entry's own list: search models.d
 
 const SEARCH_SUMMARY: &str = "Search models.dev for models whose name or id holds each word, newest first, at most 20: each match's <vendor>/<model id>, name, context window, output limit, efforts and the files it reads. `demi providers models add` takes the <vendor>/<model id>. A read.";
 
-const MODEL_ADD_SUMMARY: &str = "Add a model to an entry's list, filled from a search match; the options set or override fields, and without a match they are the whole model. An entry without a list of its own starts one with this model. Needs the user's permission.";
+const MODEL_ADD_SUMMARY: &str = "Add a model to an entry's list, filled from a search match; the options set or override fields, and without a match they are the whole model. An entry that follows its vendor's list starts a list of its own from the vendor's models and this one, and no longer follows models.dev. Needs the user's permission.";
 
 const MODEL_EDIT_SUMMARY: &str = "Change the fields of a model of an entry's list that the options name. Needs the user's permission.";
 
@@ -596,9 +596,14 @@ async fn add_model(
 ) -> Result<u8, RpcError> {
     let args = call.args;
     let user = user(&shard).await?;
-    let entries = entries(&shard).await.map_err(failed)?;
-    let entry = named(&entries, &args.entry).map_err(failed)?;
-    let mut models = list_of(entry)?.unwrap_or_default();
+    let scope = shard.scope().await.map_err(failed)?;
+    let entry = named(&scope.entries, &args.entry).map_err(failed)?;
+    // An entry that follows its vendor's list starts its own from the
+    // models the vendor offers now, so adding one removes none.
+    let (mut models, started) = match list_of(entry)? {
+        Some(models) => (models, false),
+        None => (vendor_list(&scope, entry)?, true),
+    };
     let found = match &args.model {
         Some(reference) => Some(
             shard
@@ -615,9 +620,59 @@ async fn add_model(
         None => None,
     };
     let model = new_model(found.as_ref(), args.fields)?;
+    if started {
+        // The vendor's own copy of the model gives way to the one added.
+        models.retain(|listed| listed.id != model.id);
+    }
     models.push(model.clone());
+    let count = models.len();
     write_list(&shard, &user, entry, models).await?;
-    model_answer(&port, call.invocation.json, model, &format!("Added to {}", entry.label)).await
+    let mut done = format!("Added to {}", entry.label);
+    if started {
+        done = format!(
+            "{} now keeps its own list of {count} models; it no longer follows models.dev.\n{done}",
+            entry.label
+        );
+    }
+    model_answer(&port, call.invocation.json, model, &done).await
+}
+
+/// The models the entry's vendor offers now, as a configured list holds
+/// them. A model whose context window the vendor does not state cannot be
+/// held, and the list is not started rather than lose it.
+fn vendor_list(scope: &Scope, entry: &ProviderEntry) -> Result<Vec<ConfiguredModel>, RpcError> {
+    let catalog = scope.catalog_of(entry).map(|catalog| &catalog.models[..]).unwrap_or_default();
+    let unstated: Vec<&str> = catalog
+        .iter()
+        .filter(|model| model.model.context_window.is_none())
+        .map(|model| model.model.id.as_str())
+        .collect();
+    if !unstated.is_empty() {
+        return Err(failed(format!(
+            "{} follows its vendor's list, and adding a model starts a list of its own from it; models.dev does not state the context window of {}, so the list cannot hold it: add those models first with --context",
+            entry.label,
+            unstated.join(", ")
+        )));
+    }
+    Ok(catalog
+        .iter()
+        .filter_map(|model| {
+            let model = &model.model;
+            Some(ConfiguredModel {
+                id: Trimmed::from(model.id.clone()),
+                display_name: Trimmed::from(model.display_name.clone()),
+                context_window: model.context_window?,
+                output_limit: model.output_limit,
+                thinking_efforts: model.efforts(),
+                accepted_extensions: model.accepted_extensions.clone(),
+                fast_tier: model
+                    .service_tiers
+                    .iter()
+                    .find(|tier| tier.fast)
+                    .map(|tier| tier.id.clone()),
+            })
+        })
+        .collect())
 }
 
 async fn edit_model(
@@ -1054,7 +1109,6 @@ fn state(availability: &Availability) -> String {
                 .iter()
                 .map(|part| match part {
                     SetupPart::ApiKey => "an API key",
-                    SetupPart::BaseUrl => "the API's address",
                     SetupPart::Models => "a model",
                     SetupPart::Account => "a signed-in account",
                 })

@@ -66,7 +66,7 @@ impl ProviderAssembly {
         let (auth, runtime) = self.health(entry, &provider).await;
         let provider = match provider {
             Ok(provider) => provider,
-            // An entry without its key or address has no provider to ask,
+            // An entry without its key has no provider to ask,
             // nor accounts or quota yet.
             Err(AssemblyError::Incomplete) => {
                 return Ok(ProviderDetails {

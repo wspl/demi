@@ -32,6 +32,7 @@ beforeEach(async () => {
         wireApi: 'responses',
         vendorId: null,
         baseUrl: null,
+        hasApiKey: true,
         models: null,
         createdAt: '2026-09-10T00:00:00.000Z',
         details: { type: 'failed', message: 'Not read in this test' },

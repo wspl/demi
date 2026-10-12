@@ -197,7 +197,7 @@ async fn titling(script: &Arc<Script>) -> (Harness, TestBackend, Session, String
     harness.conversations.titles = true;
     let (backend, master) = harness.start_set_up().await;
     let entry = json!({
-        "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "titling", "label": "T", "apiKey": "k", "models": [configured(8_000)]
+        "source": "custom", "providerType": "titling", "label": "T", "apiKey": "k", "models": [configured(8_000)]
     });
     let created = backend.post("/api/providers", Some(&master), entry).await;
     assert_eq!(created.status, StatusCode::CREATED);
