@@ -175,7 +175,8 @@ mod service {
         if core.config.mode == Mode::Recover {
             return Ok(());
         }
-        core.network.prepare().await?;
+        // The recovery above fenced every recorded sandbox, so none runs.
+        core.network.prepare(&[]).await?;
         let base = base::import(&core.tools, &core.config.image, &core.store.bases()).await?;
         base::retain(&core.config.images(), &core.config.working(), &base).await?;
         namespace.pin().await?;

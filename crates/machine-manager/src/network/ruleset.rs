@@ -72,12 +72,17 @@ pub struct Policy<'a> {
 
 /// The whole table, replacing any table of that name in one transaction:
 /// adding it first makes the deletion succeed whether or not it existed.
-pub fn table(policy: &Policy<'_>) -> Nftables<'static> {
+/// The new set holds the pair of each slot in `running`, whose sandbox keeps
+/// running across the replacement.
+pub fn table(policy: &Policy<'_>, running: &[Slot]) -> Nftables<'static> {
     let mut batch = Batch::new();
     batch.add(NfListObject::Table(table_object()));
     batch.delete(NfListObject::Table(table_object()));
     batch.add(NfListObject::Table(table_object()));
     batch.add(set());
+    for slot in running {
+        batch.add(NfListObject::Element(element(slot)));
+    }
     let chains = [
         base_chain("input", NfChainType::Filter, NfHook::Input, FILTER_PRIORITY),
         base_chain(
@@ -352,4 +357,55 @@ fn differs(left: Expression<'static>, right: Expression<'static>) -> Statement<'
         right,
         op: Operator::NEQ,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::network::slots::SlotPool;
+
+    /// The commands of `ruleset` as JSON, one per command, in order.
+    fn commands(ruleset: &Nftables<'_>) -> Vec<serde_json::Value> {
+        ruleset
+            .objects
+            .iter()
+            .map(|object| serde_json::to_value(object).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn the_whole_table_admits_the_running_slots_after_its_new_set() {
+        let pool = "172.30.0.0/16".parse().unwrap();
+        let policy = Policy {
+            pool,
+            dns: &[Ipv4Addr::new(1, 1, 1, 1)],
+        };
+        let slot = SlotPool::new(pool, 8).slot(3);
+        let installed = commands(&table(&policy, std::slice::from_ref(&slot)));
+        let set = installed
+            .iter()
+            .position(|command| command["add"].get("set").is_some())
+            .expect("the table adds its set");
+        let elements: Vec<_> = installed
+            .iter()
+            .enumerate()
+            .filter_map(|(at, command)| Some((at, command["add"].get("element")?)))
+            .collect();
+        assert_eq!(elements.len(), 1, "{installed:#?}");
+        let (at, element) = elements[0];
+        assert!(at > set, "the pair is added after the set it joins");
+        assert_eq!(
+            element["elem"],
+            serde_json::json!([{ "concat": ["demih3", "172.30.0.14"] }]),
+            "{element:#?}"
+        );
+
+        let empty = commands(&table(&policy, &[]));
+        assert!(
+            empty
+                .iter()
+                .all(|command| command["add"].get("element").is_none()),
+            "{empty:#?}"
+        );
+    }
 }
