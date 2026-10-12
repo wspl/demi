@@ -5,9 +5,8 @@ import type { SidebarConversation, SidebarProject } from '../types'
 const projects: SidebarProject[] = ['a', 'b'].map((id) => ({
   id,
   name: id,
-  host: 'mac',
   hostKind: 'device',
-  state: 'online',
+  device: { kind: 'paired', name: 'mac', state: 'online' },
   path: `/${id}`,
 }))
 const conversations: SidebarConversation[] = [
