@@ -298,9 +298,9 @@ the call is folded or open, and a click opens it in the
   call returned, the end report
   carries them instead. The generic tool card shows its result's media the
   same way.
-- **Where.** In the row's own line, 8 pixels after the last part of its
-  face, the chevron or a tag, side by side 4 pixels apart in the order of
-  the result. Each is 20 pixels tall, as wide as its proportions make it
+- **Where.** In the row's own line, at its end, right-aligned, side by side
+  4 pixels apart in the order of the result, at least 8 pixels after the
+  last part of its face, the chevron or a tag. Each is 20 pixels tall, as wide as its proportions make it
   within 16 and 48 pixels, cropped as below, with 4-pixel
   corners. They never wrap and the row stays one line: as many show as fit
   in the width the title leaves, and the title gives way, truncating, only
