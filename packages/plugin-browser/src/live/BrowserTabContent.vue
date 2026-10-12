@@ -5,7 +5,7 @@ import { AddressBar } from '@demicodes/plugin-sdk'
 import { IconButton } from '@demicodes/plugin-sdk'
 import { Menu } from '@demicodes/plugin-sdk'
 import { MenuItem } from '@demicodes/plugin-sdk'
-import { Popover } from '@demicodes/plugin-sdk'
+import { Dropdown } from '@demicodes/plugin-sdk'
 import { ProgressLine } from '@demicodes/plugin-sdk'
 import { RegionStatus } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
@@ -45,8 +45,6 @@ const emit = defineEmits<{ update: [data: BrowserTabData] }>()
 
 /** A tab the user just made has nowhere to be yet: its address takes the focus. */
 const fresh = props.data.tab === undefined && props.data.url === NEW_TAB_URL
-const menu = ref(false)
-const anchor = ref<HTMLElement | null>(null)
 const addressBar = ref<InstanceType<typeof AddressBar> | null>(null)
 /** The address the bar shows: a new tab's is empty, waiting for where to go, as in a browser. */
 const address = computed(() => (props.data.url === NEW_TAB_URL ? '' : props.data.url))
@@ -241,7 +239,6 @@ function openLink(url: string): void {
 /** The downloads the user started in this tab, the newest first, as a browser's bubble lists them. */
 const downloads = computed(() => [...props.session.downloadsOf(bound.value)].reverse())
 const bubble = ref(false)
-const bubbleAnchor = ref<HTMLElement | null>(null)
 // A download that starts opens the bubble, as a browser shows a download it starts.
 watch(
   () => downloads.value[0]?.id,
@@ -340,32 +337,88 @@ watch(
     >
       <template v-if="viewport || downloads.length > 0" #trailing>
         <!-- The downloads, once the user started one here, as a browser's toolbar shows them. -->
-        <Tooltip v-if="downloads.length > 0" content="Downloads" class="shrink-0">
-          <span ref="bubbleAnchor" class="flex">
-            <IconButton
-              :icon="ArrowDownToLine"
-              variant="ghost"
-              aria-label="Downloads"
-              aria-haspopup="menu"
-              :pressed="bubble"
-              @click="bubble = !bubble"
-            />
-          </span>
-        </Tooltip>
+        <Dropdown v-if="downloads.length > 0" v-model:open="bubble" :overlay-store="overlays" class="shrink-0">
+          <template #trigger="{ isOpen }">
+            <Tooltip content="Downloads" :disabled="isOpen">
+              <IconButton
+                :icon="ArrowDownToLine"
+                variant="ghost"
+                aria-label="Downloads"
+                aria-haspopup="menu"
+                :pressed="isOpen"
+              />
+            </Tooltip>
+          </template>
+          <template #content>
+            <Menu aria-label="Downloads">
+              <MenuItem
+                v-for="download in downloads"
+                :key="download.id"
+                :icon="File"
+                :label="download.name"
+                :value="downloadDetail(download)"
+                @select="download.state === 'complete' && showInFiles(download)"
+              >
+                <template #actions>
+                  <Tooltip content="Save" class="inline-flex">
+                    <IconButton
+                      :icon="Download"
+                      variant="ghost"
+                      size="xs"
+                      aria-label="Save"
+                      :disabled="download.state !== 'complete'"
+                      @click.stop="save(download)"
+                    />
+                  </Tooltip>
+                  <Tooltip content="Show in Files" class="inline-flex">
+                    <IconButton
+                      :icon="FolderSearch"
+                      variant="ghost"
+                      size="xs"
+                      aria-label="Show in Files"
+                      :disabled="download.state !== 'complete'"
+                      @click.stop="showInFiles(download)"
+                    />
+                  </Tooltip>
+                </template>
+              </MenuItem>
+            </Menu>
+          </template>
+        </Dropdown>
         <!-- The mode alone, as its icon, on a button like the bar's others: the size is the panel's and
              says nothing the picture does not. -->
-        <Tooltip v-if="viewport" content="Viewport" class="shrink-0">
-          <span ref="anchor" class="flex">
-            <IconButton
-              :icon="MODE_ICONS[viewport.mode]"
-              variant="ghost"
-              aria-label="Viewport"
-              aria-haspopup="menu"
-              :pressed="menu"
-              @click="menu = !menu"
-            />
-          </span>
-        </Tooltip>
+        <Dropdown v-if="viewport" :overlay-store="overlays" class="shrink-0">
+          <template #trigger="{ isOpen }">
+            <Tooltip content="Viewport" :disabled="isOpen">
+              <IconButton
+                :icon="MODE_ICONS[viewport.mode]"
+                variant="ghost"
+                aria-label="Viewport"
+                aria-haspopup="menu"
+                :pressed="isOpen"
+              />
+            </Tooltip>
+          </template>
+          <template #content="{ close }">
+            <Menu>
+              <MenuItem
+                v-for="choice in choices"
+                :key="choice.mode"
+                :label="choice.label"
+                :icon="MODE_ICONS[choice.mode]"
+                choice
+                :is-selected="choice.mode === viewport.mode"
+                :disabled="!choice.selectable && choice.mode !== viewport.mode"
+                @select="() => {
+                  close()
+                  if (live && view && choice.selectable) {
+                    view.mode(live.id, choice.mode as 'web' | 'mobile')
+                  }
+                }"
+              />
+            </Menu>
+          </template>
+        </Dropdown>
       </template>
     </AddressBar>
     <div ref="area" class="relative flex min-h-0 flex-1 flex-col border-t border-line">
@@ -412,71 +465,5 @@ watch(
         :class="BLANK_PAGE"
       />
     </div>
-    <Popover
-      :overlay-store="overlays"
-      :is-open="bubble && downloads.length > 0"
-      :anchor-el="bubbleAnchor"
-      sheet
-      @close="bubble = false"
-    >
-      <Menu aria-label="Downloads">
-        <MenuItem
-          v-for="download in downloads"
-          :key="download.id"
-          :icon="File"
-          :label="download.name"
-          :value="downloadDetail(download)"
-          @select="download.state === 'complete' && showInFiles(download)"
-        >
-          <template #actions>
-            <Tooltip content="Save" class="inline-flex">
-              <IconButton
-                :icon="Download"
-                variant="ghost"
-                size="xs"
-                aria-label="Save"
-                :disabled="download.state !== 'complete'"
-                @click.stop="save(download)"
-              />
-            </Tooltip>
-            <Tooltip content="Show in Files" class="inline-flex">
-              <IconButton
-                :icon="FolderSearch"
-                variant="ghost"
-                size="xs"
-                aria-label="Show in Files"
-                :disabled="download.state !== 'complete'"
-                @click.stop="showInFiles(download)"
-              />
-            </Tooltip>
-          </template>
-        </MenuItem>
-      </Menu>
-    </Popover>
-    <Popover
-      :overlay-store="overlays"
-      :is-open="menu"
-      :anchor-el="anchor"
-      sheet
-      @close="menu = false"
-    >
-      <Menu>
-        <MenuItem
-          v-for="choice in choices"
-          :key="choice.mode"
-          :label="choice.label"
-          :icon="MODE_ICONS[choice.mode]"
-          choice
-          :is-selected="choice.mode === viewport?.mode"
-          :disabled="!choice.selectable && choice.mode !== viewport?.mode"
-          @select="() => {
-            menu = false
-            if (live && view && choice.selectable) {
-              view.mode(live.id, choice.mode as 'web' | 'mobile')
-            }
-          }"
-        />
-      </Menu>
-    </Popover>
   </div>
 </template>

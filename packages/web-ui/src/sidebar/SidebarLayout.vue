@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, provide, ref, watch } from 'vue'
-import { onKeyStroke, useElementSize, useEventListener } from '@vueuse/core'
+import { useElementSize, useEventListener } from '@vueuse/core'
+import { useEscapeClose } from '../composables/useEscapeClose'
 import { PanelLeft } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
@@ -91,10 +92,7 @@ useBackClose(() => open.value, () => {
 }, () => phone.value)
 
 // Escape closes the drawer once no menu or dialog over it takes the key first.
-onKeyStroke('Escape', (event) => {
-  if (!open.value || !phone.value || event.defaultPrevented || appOverlayStore.hasExclusive())
-    return
-  event.preventDefault()
+useEscapeClose(() => open.value && phone.value && !appOverlayStore.hasExclusive(), () => {
   open.value = false
 })
 

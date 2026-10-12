@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue'
-import { onKeyStroke, useEventListener } from '@vueuse/core'
+import { useEventListener } from '@vueuse/core'
+import { useEscapeClose } from '../composables/useEscapeClose'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { useOverlay } from '../composables/useOverlay'
 import { useFocusReturn } from '../overlay/focusReturn'
@@ -58,12 +59,7 @@ useBackClose(() => props.open, close)
 if (props.overlayStore) {
   const store = props.overlayStore
   const id = useOverlay(store, () => props.open, close)
-  onKeyStroke('Escape', (event) => {
-    if (!props.open || event.defaultPrevented || !store.isTop(id))
-      return
-    event.preventDefault()
-    close()
-  })
+  useEscapeClose(() => props.open && store.isTop(id), close)
 }
 
 /** How far the sheet is pulled below its resting place, in px; null while it rests there. */

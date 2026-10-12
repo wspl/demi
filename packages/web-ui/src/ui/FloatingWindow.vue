@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
-import { onKeyStroke, useWindowSize } from '@vueuse/core'
+import { useWindowSize } from '@vueuse/core'
+import { useEscapeClose } from '../composables/useEscapeClose'
 import IconButton from './IconButton.vue'
 import { startPointerDrag } from './pointer-drag'
 import {
   clampWindowRect,
-  escapeClosesWindow,
   moveWindowRect,
   resizeWindowRect,
   WINDOW_TITLE_BAR_PX,
@@ -39,7 +39,7 @@ import type { OverlayStore } from '../overlay/overlayStore'
  * session's windows do: while it is the newest, a press outside every window
  * closes it, and so does Escape, unless the focus is in a field the user
  * types in, or a menu or a dialog of `overlayStore` is open and takes the
- * key (`escapeClosesWindow`). The window is not one of the store's layers: a
+ * key (`useEscapeClose`). The window is not one of the store's layers: a
  * menu opened beside it does not close it, and it does not close a menu.
  *
  * The title bar holds the `title`, then what the `trailing` slot gives, such
@@ -166,17 +166,13 @@ watch(() => props.open, (open) => {
     focusReturn.close()
 })
 
-onKeyStroke('Escape', (event) => {
-  // Escape during a drag never gets here: the drag takes it to put the window back.
-  // A newer window in front takes it first.
-  if (!props.open || !stacked.isNewest())
-    return
-  const target = event.target instanceof Element ? event.target : null
-  if (!escapeClosesWindow({ defaultPrevented: event.defaultPrevented, isComposing: event.isComposing, target }, props.overlayStore.hasExclusive()))
-    return
-  event.preventDefault()
-  emit('close')
-})
+// Escape during a drag never gets here: the drag takes it to put the window back. A newer window
+// in front takes it first, and so does a menu or a dialog over the page.
+useEscapeClose(
+  () => props.open && stacked.isNewest() && !props.overlayStore.hasExclusive(),
+  () => emit('close'),
+  { ignoreFields: true },
+)
 
 onBeforeUnmount(() => {
   stopDrag?.()

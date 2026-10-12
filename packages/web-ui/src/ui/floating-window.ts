@@ -1,6 +1,5 @@
 import { clamp } from '@demicodes/utils'
 import type { PixelSize } from '../files/thumbnail'
-import { FIELD } from '../overlay/dialogFocus'
 
 /** A window's box on the page, in CSS px from the page's top-left corner. */
 export interface WindowRect {
@@ -122,25 +121,4 @@ export function windowRectAround(size: PageSize, centre: PagePoint, page: PageSi
 /** The point at the middle of `rect`. */
 export function windowCentre(rect: WindowRect): PagePoint {
   return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
-}
-
-/** What a floating window needs to know of an Escape. */
-export interface EscapeKey {
-  defaultPrevented: boolean
-  isComposing: boolean
-  /** The element the key went to, the one with the focus; none for the page itself. */
-  target: { closest(selectors: string): unknown } | null
-}
-
-/**
- * Whether an Escape closes a floating window. It does not when something
- * used it first (it called preventDefault, as a field reverting its edit
- * does), when an input method composes, when the focus is in a field the
- * user types in, or while another layer that takes Escape is open, a menu or
- * a dialog (`otherLayerOpen`), whichever of them the key reached first.
- */
-export function escapeClosesWindow(key: EscapeKey, otherLayerOpen: boolean): boolean {
-  if (key.defaultPrevented || key.isComposing || otherLayerOpen)
-    return false
-  return key.target?.closest(FIELD) == null
 }

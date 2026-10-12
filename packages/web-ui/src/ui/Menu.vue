@@ -3,6 +3,7 @@ import { computed, inject, onBeforeUnmount, provide, ref, shallowRef, watch } fr
 import { useVirtualizer } from '@tanstack/vue-virtual'
 import { keepComposition } from '@demicodes/utils'
 import { Search, CircleX } from '@lucide/vue'
+import { revealRow, stepHighlight } from '../composables/list-highlight'
 import { useTypeSelect } from '../composables/useTypeSelect'
 import HighlightText from './HighlightText.vue'
 import MenuItem from './MenuItem.vue'
@@ -144,7 +145,7 @@ function focusRow(index: number): void {
   if (isVirtual.value)
     virtualizer.value.scrollToIndex(index, { align: 'auto' })
   else
-    scrollRef.value?.querySelectorAll('[data-menu-item]')[index]?.scrollIntoView({ block: 'nearest' })
+    revealRow(scrollRef.value, '[data-menu-item]', index)
 }
 
 const typeSelect = useTypeSelect({
@@ -243,10 +244,10 @@ function slotRowKeydown(event: KeyboardEvent): void {
   const at = row ? rows.indexOf(row) : -1
   if (event.key === 'ArrowDown' && rows.length) {
     event.preventDefault()
-    focusRow(at < rows.length - 1 ? at + 1 : 0)
+    focusRow(stepHighlight(at, 1, rows.length))
   } else if (event.key === 'ArrowUp' && rows.length) {
     event.preventDefault()
-    focusRow(at > 0 ? at - 1 : rows.length - 1)
+    focusRow(stepHighlight(at, -1, rows.length))
   } else if (event.key === 'ArrowRight' && row?.enter()) {
     event.preventDefault()
   } else if (event.key === 'Enter' && row) {
@@ -280,13 +281,13 @@ function handleKeydown(event: KeyboardEvent) {
 
   if (event.key === 'ArrowDown') {
     event.preventDefault()
-    focusRow(focusedIndex.value < count - 1 ? focusedIndex.value + 1 : 0)
+    focusRow(stepHighlight(focusedIndex.value, 1, count))
     return
   }
 
   if (event.key === 'ArrowUp') {
     event.preventDefault()
-    focusRow(focusedIndex.value > 0 ? focusedIndex.value - 1 : count - 1)
+    focusRow(stepHighlight(focusedIndex.value, -1, count))
     return
   }
 

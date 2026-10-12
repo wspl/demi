@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, useId, watch } from 'vue'
+import { computed, ref, useId, watch } from 'vue'
 import { Search, SearchX } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
+import { revealRow, stepHighlight } from '../composables/list-highlight'
 import Dialog from '../ui/Dialog.vue'
 import HighlightText from '../ui/HighlightText.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
@@ -65,16 +66,12 @@ watch(
 /** The selected row, never past the end of a list that shrank. */
 const current = computed(() => Math.min(selected.value, Math.max(0, rows.value.length - 1)))
 
-function move(step: number): void {
+function move(step: 1 | -1): void {
   if (!rows.value.length) {
     return
   }
-  selected.value = (current.value + step + rows.value.length) % rows.value.length
-  void nextTick(() => {
-    list.value
-      ?.querySelector(`[data-row="${selected.value}"]`)
-      ?.scrollIntoView({ block: 'nearest' })
-  })
+  selected.value = stepHighlight(current.value, step, rows.value.length)
+  revealRow(list.value, '[role=option]', selected.value)
 }
 
 function openRow(row: SearchRow | undefined): void {
@@ -168,7 +165,6 @@ const emptyLabel = computed(() =>
             :key="row.conversationId"
             role="option"
             :aria-selected="index === current"
-            :data-row="index"
             class="flex cursor-default select-none flex-col gap-0.5 rounded-md px-2.5 py-2"
             :class="index === current ? 'bg-active' : ''"
             @mousemove="selected = index"
