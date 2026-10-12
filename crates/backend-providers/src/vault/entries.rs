@@ -17,7 +17,7 @@ use demi_provider_common::credentials::{
 use demi_shared_types::{Timestamp, WireApi};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
-use demi_web_api_protocol::providers::{ConfiguredModels, CredentialKind, ProviderDto};
+use demi_web_api_protocol::providers::{ConfiguredModels, CredentialKind, ProviderDto, SetupPart};
 use demi_web_api_protocol::settings::InstanceMode;
 use demi_web_api_protocol::text::EndpointUrl;
 use garde::Validate;
@@ -79,8 +79,14 @@ pub enum EntryCredential {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ApiKeyConfig {
+    /// None until the user saves one: the entry is incomplete meanwhile.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
     #[garde(skip)]
-    pub api_key: Secret,
+    pub api_key: Option<Secret>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -117,6 +123,34 @@ impl ProviderEntry {
         match self.credential {
             EntryCredential::ApiKey(_) => CredentialKind::ApiKey,
             EntryCredential::Subscription { .. } => CredentialKind::Subscription,
+        }
+    }
+
+    /// What the entry lacks to infer, in the order the page lists it
+    /// (`models.md` § A provider is in the list from the start): an API-key
+    /// entry's key, a custom endpoint's address, a model when its configured
+    /// list is empty, and a subscription's account. Empty for a complete
+    /// entry.
+    pub fn missing(&self) -> Vec<SetupPart> {
+        match &self.credential {
+            EntryCredential::ApiKey(config) => [
+                (config.api_key.is_none(), SetupPart::ApiKey),
+                (
+                    config.vendor_id.is_none() && config.base_url.is_none(),
+                    SetupPart::BaseUrl,
+                ),
+                (
+                    config.models.as_ref().is_some_and(|models| models.0.is_empty()),
+                    SetupPart::Models,
+                ),
+            ]
+            .into_iter()
+            .filter_map(|(lacks, part)| lacks.then_some(part))
+            .collect(),
+            EntryCredential::Subscription { active } => match active {
+                Some(_) => Vec::new(),
+                None => vec![SetupPart::Account],
+            },
         }
     }
 

@@ -18,6 +18,7 @@ mod host;
 mod host_tests;
 pub mod page_socket;
 mod permissions;
+pub(crate) mod provider_commands;
 
 pub use self::adoption::KeptJobs;
 pub use self::permissions::deliver_decisions;

@@ -11,36 +11,28 @@ use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_providers::llm::assembly::AssemblyError;
-use demi_backend_providers::llm::families::ProviderFamily;
-use demi_backend_providers::vault::entries::{ApiKeyConfig, EntryCredential, ProviderEntry};
+use demi_backend_providers::vault::entries::ProviderEntry;
 use demi_backend_providers::vault::operations::OperationGuard;
+use demi_provider_common::Provider;
 use demi_provider_common::quota::QuotaError;
-use demi_provider_common::{Provider, Secret};
-use demi_shared_types::WireApi;
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::{CredentialId, ProviderId};
+use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::providers::{
-    CreateProvider, CredentialKind, ProviderAnswer, ProviderDetails, ProviderPatch, Providers,
-    QuotaAnswer, QuotaRequest, SubscriptionFamily, TestRequest, TestResult, VendorCatalog,
+    CreateProvider, ProviderAnswer, ProviderDetails, ProviderPatch, Providers, QuotaAnswer,
+    QuotaRequest, SubscriptionFamily, TestRequest, TestResult, VendorCatalog,
 };
-use demi_web_api_protocol::text::EndpointUrl;
 
 use super::body::{JsonBody, OptionalJsonBody};
 use super::error::ApiError;
 use super::gate::AuthUser;
+use demi_backend_user_shard::provider_settings::ProviderRefusal;
 use demi_backend_user_shard::services::Services;
 use demi_backend_user_shard::shard::Shards;
 
 /// Refuses a user who does not configure the scope's entries.
 pub(super) fn configures(services: &Services, user: &UserDto) -> Result<(), ApiError> {
-    if services.vault.configures(user) {
-        Ok(())
-    } else {
-        Err(ApiError::forbidden(
-            "Providers are configured by the instance owner",
-        ))
-    }
+    services.may_configure(user).map_err(refused)
 }
 
 /// The entry the path names, when it is one of the caller's scope; any
@@ -50,12 +42,7 @@ pub(super) async fn scoped(
     user: &UserDto,
     id: &str,
 ) -> Result<ProviderEntry, ApiError> {
-    let id = ProviderId::try_from(id).map_err(|_| ApiError::provider_not_found())?;
-    services
-        .vault
-        .visible(&user.id, &id)
-        .await?
-        .ok_or_else(ApiError::provider_not_found)
+    services.scoped_entry(&user.id, id).await.map_err(refused)
 }
 
 /// Holds the entry for one change.
@@ -63,10 +50,32 @@ pub(super) fn reserve(
     services: &Services,
     entry: &ProviderEntry,
 ) -> Result<OperationGuard, ApiError> {
-    services
-        .operations
-        .reserve(&entry.id)
-        .ok_or_else(ApiError::provider_busy)
+    services.hold_entry(entry).map_err(refused)
+}
+
+/// A refused change or search as the page receives it.
+pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
+    let message = refusal.to_string();
+    let (status, code) = match refusal {
+        ProviderRefusal::Storage(error) => return error.into(),
+        ProviderRefusal::NotConfiguring => return ApiError::forbidden(message),
+        ProviderRefusal::NotFound => return ApiError::provider_not_found(),
+        ProviderRefusal::Busy => return ApiError::provider_busy(),
+        ProviderRefusal::Wire { .. } | ProviderRefusal::Key(_) => {
+            return ApiError::invalid_body(message);
+        }
+        ProviderRefusal::UnknownFamily(_) => {
+            (StatusCode::BAD_REQUEST, ErrorCode::UnknownProviderType)
+        }
+        ProviderRefusal::UnknownVendor(_) => (StatusCode::BAD_REQUEST, ErrorCode::UnknownVendor),
+        ProviderRefusal::LoginFamily(_)
+        | ProviderRefusal::SubscriptionOnly
+        | ProviderRefusal::OwnModels(_) => (StatusCode::BAD_REQUEST, ErrorCode::SubscriptionOnly),
+        ProviderRefusal::CatalogUnavailable(_) => {
+            (StatusCode::SERVICE_UNAVAILABLE, ErrorCode::CatalogUnavailable)
+        }
+    };
+    ApiError::new(status, code, message)
 }
 
 pub(super) async fn list(
@@ -116,120 +125,17 @@ fn catalog_unavailable(error: impl ToString) -> ApiError {
     )
 }
 
-fn unknown_family(family: &str) -> ApiError {
-    ApiError::new(
-        StatusCode::BAD_REQUEST,
-        ErrorCode::UnknownProviderType,
-        format!("Unknown provider type \"{family}\""),
-    )
-}
-
-/// The key a body carries, as a credential: one line of text.
-fn api_key(text: String) -> Result<Secret, ApiError> {
-    Secret::try_from(text).map_err(|error| ApiError::invalid_body(format!("apiKey: {error}")))
-}
-
-/// The API-key family `name`, which must speak `wire_api` when the entry
-/// names one.
-fn api_key_family<'a>(
-    services: &'a Services,
-    name: &str,
-    wire_api: Option<WireApi>,
-) -> Result<&'a Arc<dyn ProviderFamily>, ApiError> {
-    let family = services
-        .assembly
-        .families()
-        .get(name)
-        .ok_or_else(|| unknown_family(name))?;
-    if family.credential() == CredentialKind::Subscription {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            ErrorCode::SubscriptionOnly,
-            format!("Provider type \"{name}\" is configured by its login"),
-        ));
-    }
-    if let Some(wire) = wire_api.filter(|wire| !family.wires().contains(wire)) {
-        return Err(ApiError::invalid_body(format!(
-            "wireApi: the {name} family does not speak {wire}"
-        )));
-    }
-    Ok(family)
-}
-
-/// Creates an API-key entry, from the vendor list or for a custom endpoint.
+/// Creates an API-key entry, from the vendor list or for a custom endpoint;
+/// what the body leaves out leaves it incomplete.
 pub(super) async fn create(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
     JsonBody(body): JsonBody<CreateProvider>,
 ) -> Result<(StatusCode, Json<ProviderAnswer>), ApiError> {
-    configures(&services, &user)?;
-    let (family, label, config) = match body {
-        CreateProvider::Vendor {
-            vendor_id,
-            label,
-            api_key: key,
-            base_url,
-            models,
-        } => {
-            let vendor = services
-                .assembly
-                .vendors()
-                .vendor(&vendor_id)
-                .await
-                .map_err(catalog_unavailable)?
-                .ok_or_else(|| {
-                    ApiError::new(
-                        StatusCode::BAD_REQUEST,
-                        ErrorCode::UnknownVendor,
-                        format!("Unknown vendor \"{vendor_id}\""),
-                    )
-                })?;
-            api_key_family(&services, &vendor.provider_type, vendor.wire_api)?;
-            let base_url = match base_url {
-                Some(endpoint) => Some(endpoint),
-                None => vendor
-                    .base_url
-                    .map(EndpointUrl::try_from)
-                    .transpose()
-                    .map_err(|_| {
-                        catalog_unavailable(format!(
-                            "models.dev names no usable endpoint for {vendor_id}"
-                        ))
-                    })?,
-            };
-            let config = ApiKeyConfig {
-                api_key: api_key(key)?,
-                base_url,
-                wire_api: vendor.wire_api,
-                vendor_id: Some(vendor.id),
-                models,
-            };
-            (vendor.provider_type, label, config)
-        }
-        CreateProvider::Custom {
-            provider_type,
-            wire_api,
-            label,
-            api_key: key,
-            base_url,
-            models,
-        } => {
-            api_key_family(&services, &provider_type, wire_api)?;
-            let config = ApiKeyConfig {
-                api_key: api_key(key)?,
-                base_url,
-                wire_api,
-                vendor_id: None,
-                models,
-            };
-            (provider_type, label, config)
-        }
-    };
-    let owner = services.vault.owner_for(&user.id).await?;
     let entry = services
-        .vault
-        .create_api_key(owner, family, label.into_string(), config)
-        .await?;
+        .create_provider(&user, body)
+        .await
+        .map_err(refused)?;
     Ok((
         StatusCode::CREATED,
         Json(ProviderAnswer {
@@ -239,50 +145,17 @@ pub(super) async fn create(
 }
 
 /// Edits an entry: the label of any, and the key, endpoint and model list of
-/// an API-key entry. A configuration edit starts the entry's provider and
-/// catalog afresh.
+/// an API-key entry.
 pub(super) async fn update(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     JsonBody(patch): JsonBody<ProviderPatch>,
 ) -> Result<Json<ProviderAnswer>, ApiError> {
-    configures(&services, &user)?;
-    let entry = scoped(&services, &user, &id).await?;
-    let _held = reserve(&services, &entry)?;
-    let reconfigures =
-        patch.api_key.is_some() || patch.base_url.is_some() || patch.models.is_some();
-    let config = if reconfigures {
-        let EntryCredential::ApiKey(config) = &entry.credential else {
-            return Err(ApiError::new(
-                StatusCode::BAD_REQUEST,
-                ErrorCode::SubscriptionOnly,
-                "A subscription entry takes only a new label",
-            ));
-        };
-        let mut config = config.clone();
-        if let Some(key) = patch.api_key {
-            config.api_key = api_key(key)?;
-        }
-        if let Some(base_url) = patch.base_url {
-            config.base_url = base_url;
-        }
-        if let Some(models) = patch.models {
-            config.models = models;
-        }
-        Some(config)
-    } else {
-        None
-    };
-    let label = patch.label.map(|label| label.into_string());
     let updated = services
-        .vault
-        .update(entry.id.clone(), label, config)
-        .await?
-        .ok_or_else(ApiError::provider_not_found)?;
-    if reconfigures {
-        services.assembly.invalidate(&entry.id).await?;
-    }
+        .update_provider(&user, &id, patch)
+        .await
+        .map_err(refused)?;
     Ok(Json(ProviderAnswer {
         provider: updated.dto(),
     }))
@@ -294,12 +167,10 @@ pub(super) async fn delete(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    configures(&services, &user)?;
-    let entry = scoped(&services, &user, &id).await?;
-    let _held = reserve(&services, &entry)?;
-    services.vault.delete(&entry).await?;
-    services.assembly.forget(&entry.id).await?;
-    services.cli_installs.forget(&entry.id);
+    services
+        .delete_provider(&user, &id)
+        .await
+        .map_err(refused)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

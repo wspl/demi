@@ -11,7 +11,7 @@ use axum::extract::{FromRequest, Request};
 use axum::http::StatusCode;
 use axum::http::header::CONTENT_LENGTH;
 use demi_web_api_protocol::MAX_PAGE_MESSAGE_BYTES;
-use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::error::{ErrorCode, problems};
 use garde::Validate;
 use serde::de::DeserializeOwned;
 
@@ -118,12 +118,8 @@ async fn read<S: Send + Sync>(request: Request, state: &S) -> Result<Bytes, ApiE
 fn decode<T: DeserializeOwned + Validate<Context = ()>>(bytes: &[u8]) -> Result<T, ApiError> {
     let Json(value) = Json::<T>::from_bytes(bytes)
         .map_err(|rejection| ApiError::invalid_body(rejection.body_text()))?;
-    value.validate().map_err(|report| {
-        let problems: Vec<String> = report
-            .iter()
-            .map(|(path, error)| format!("{path}: {error}"))
-            .collect();
-        ApiError::invalid_body(problems.join("; "))
-    })?;
+    value
+        .validate()
+        .map_err(|report| ApiError::invalid_body(problems(&report)))?;
     Ok(value)
 }

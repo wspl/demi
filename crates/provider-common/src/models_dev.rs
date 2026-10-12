@@ -99,25 +99,32 @@ impl ModelsDevClient {
     /// is conditional, and a 304 answer confirms the copy without moving its
     /// fetch time.
     pub async fn refreshed(&self) -> Result<ModelsDevSnapshot, ModelsDevError> {
-        self.read(false).await
+        self.read(Reuse::Never).await
     }
 
     /// The document for a reader that may use a recent copy, such as the
     /// vendor list: a copy downloaded or confirmed less than a day ago
     /// serves without a request.
     pub async fn current(&self) -> Result<ModelsDevSnapshot, ModelsDevError> {
-        self.read(true).await
+        self.read(Reuse::Recent).await
     }
 
-    async fn read(&self, reuse_recent: bool) -> Result<ModelsDevSnapshot, ModelsDevError> {
+    /// The document for a reader that asks as the user types, such as the
+    /// model search: any copy serves, and only a backend without one asks
+    /// models.dev.
+    pub async fn kept(&self) -> Result<ModelsDevSnapshot, ModelsDevError> {
+        self.read(Reuse::Any).await
+    }
+
+    async fn read(&self, reuse: Reuse) -> Result<ModelsDevSnapshot, ModelsDevError> {
         let flight = {
             let mut state = self.inner.lock();
-            if reuse_recent
-                && let Some(copy) = state
-                    .copy
-                    .as_ref()
-                    .filter(|copy| copy.confirmed_at.elapsed() < FRESH_FOR)
-            {
+            let reused = state.copy.as_ref().filter(|copy| match reuse {
+                Reuse::Never => false,
+                Reuse::Recent => copy.confirmed_at.elapsed() < FRESH_FOR,
+                Reuse::Any => true,
+            });
+            if let Some(copy) = reused {
                 return Ok(copy.snapshot());
             }
             match state.flight.as_ref().and_then(WeakShared::upgrade) {
@@ -142,6 +149,15 @@ impl ModelsDevClient {
             }
         }
     }
+}
+
+/// Which kept copy a read takes without asking models.dev.
+#[derive(Clone, Copy)]
+enum Reuse {
+    Never,
+    /// One downloaded or confirmed less than [`FRESH_FOR`] ago.
+    Recent,
+    Any,
 }
 
 impl Inner {
@@ -248,6 +264,60 @@ impl ModelsDevSnapshot {
         self.document.0.get(id)
     }
 
+    /// The models whose name or id holds each word of `query`, in any case
+    /// and order, newest release first, at most `limit` (`models.md`
+    /// § Adding a model from models.dev). A model several vendors list is
+    /// one match: the listing of `vendor` when it lists the model, else
+    /// the publisher's ([`Listing::publisher`]). Two listings are the same
+    /// model when they name the same model without a vendor's prefix: the
+    /// part after the maker in `canonical_model_id`, where the document
+    /// gives one, else the last part of the listing's own id, both without
+    /// regard to case. A query without a word matches nothing.
+    pub fn search(&self, query: &str, vendor: Option<&str>, limit: usize) -> Vec<ModelsDevMatch> {
+        let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+        if words.is_empty() {
+            return Vec::new();
+        }
+        let mut models: IndexMap<String, Vec<Listing<'_>>> = IndexMap::new();
+        for (vendor_id, listed) in &self.document.0 {
+            for (id, model) in &listed.models {
+                let listing = Listing {
+                    vendor: vendor_id,
+                    id,
+                    model,
+                };
+                models.entry(listing.identity()).or_default().push(listing);
+            }
+        }
+        let mut found: Vec<&Listing<'_>> = models
+            .values()
+            .filter_map(|listings| {
+                vendor
+                    .and_then(|vendor| listings.iter().find(|listing| listing.vendor == vendor))
+                    .or_else(|| Listing::publisher(listings))
+            })
+            .filter(|listing| listing.matches(&words))
+            .collect();
+        // Dates are `YYYY-MM-DD`, which order as text. A stable sort keeps
+        // the document's order among equal dates, and `None` orders before
+        // any date, so a model without one comes last.
+        found.sort_by(|left, right| {
+            right
+                .model
+                .release_date
+                .as_deref()
+                .cmp(&left.model.release_date.as_deref())
+        });
+        found.into_iter().take(limit).map(Listing::found).collect()
+    }
+
+    /// The model `id` as vendor `vendor_id` lists it.
+    pub fn listing(&self, vendor_id: &str, id: &str) -> Option<ModelsDevMatch> {
+        let (vendor, listed) = self.document.0.get_key_value(vendor_id)?;
+        let (id, model) = listed.models.get_key_value(id)?;
+        Some(Listing { vendor, id, model }.found())
+    }
+
     /// The whole model list of vendor `vendor_id` as a catalog, with this
     /// read's time, staleness and warnings; `None` for a vendor the document
     /// does not list.
@@ -260,6 +330,79 @@ impl ModelsDevSnapshot {
             source_fetched_at: self.fetched_at,
             stale: self.stale,
         })
+    }
+}
+
+/// A model the search found, as the vendor it is filled from lists it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModelsDevMatch {
+    /// The vendor's id in the document, such as `google`.
+    pub vendor: String,
+    /// The model's id as `vendor` names it.
+    pub id: String,
+    pub model: ProviderModel,
+    /// The release date as the document states it, such as `2026-06-17`.
+    pub release_date: Option<String>,
+}
+
+/// One vendor's listing of a model.
+struct Listing<'a> {
+    vendor: &'a String,
+    id: &'a String,
+    model: &'a ModelsDevModel,
+}
+
+impl Listing<'_> {
+    fn found(&self) -> ModelsDevMatch {
+        ModelsDevMatch {
+            vendor: self.vendor.clone(),
+            id: self.id.clone(),
+            model: self.model.catalog(self.id),
+            release_date: self.model.release_date.clone(),
+        }
+    }
+
+    /// The vendor that makes the model, as the listing names it: the first
+    /// part of `canonical_model_id`, else of an id such as an aggregator's
+    /// `google/gemini-3.8-flash`; none for a bare id without a canonical
+    /// one.
+    fn maker(&self) -> Option<&str> {
+        match &self.model.canonical_model_id {
+            Some(canonical) => canonical.split_once('/').map(|(maker, _)| maker),
+            None => self.id.split_once('/').map(|(maker, _)| maker),
+        }
+    }
+
+    /// The model without a vendor's prefix, which every listing of the same
+    /// model shares.
+    fn identity(&self) -> String {
+        let named = match &self.model.canonical_model_id {
+            Some(canonical) => canonical.split_once('/').map_or(canonical.as_str(), |(_, model)| model),
+            None => self.id.rsplit_once('/').map_or(self.id.as_str(), |(_, model)| model),
+        };
+        named.to_lowercase()
+    }
+
+    /// The listing of the vendor that publishes the model: the one whose
+    /// vendor is the maker its listings name, such as Google for Gemini;
+    /// when the maker lists it nowhere, the first that names it by a bare
+    /// id of its own; else the first.
+    fn publisher<'l, 'a>(listings: &'l [Listing<'a>]) -> Option<&'l Listing<'a>> {
+        let maker = listings.iter().find_map(Listing::maker);
+        maker
+            .and_then(|maker| listings.iter().find(|listing| listing.vendor == maker))
+            .or_else(|| listings.iter().find(|listing| listing.maker().is_none()))
+            .or_else(|| listings.first())
+    }
+
+    /// Whether the listing's name or id holds each of `words`, which are
+    /// lowercase.
+    fn matches(&self, words: &[String]) -> bool {
+        let name = self.model.name.as_deref().unwrap_or_default().to_lowercase();
+        let id = self.id.to_lowercase();
+        words
+            .iter()
+            .all(|word| name.contains(word.as_str()) || id.contains(word.as_str()))
     }
 }
 
@@ -325,6 +468,13 @@ struct ModelsDevModel {
     limit: Option<Limit>,
     #[serde(default)]
     cost: Option<Cost>,
+    /// When the model came out, such as `2026-06-17`.
+    #[serde(default)]
+    release_date: Option<String>,
+    /// The model as its maker names it, such as `google/gemini-2.5-flash`,
+    /// the same in every vendor's listing of it.
+    #[serde(default)]
+    canonical_model_id: Option<String>,
 }
 
 /// What a model takes in and gives out, kind by kind.

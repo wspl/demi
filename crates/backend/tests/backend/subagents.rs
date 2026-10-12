@@ -17,7 +17,7 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use demi_backend_providers::llm::families::{
-    FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
+    FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
 };
 use demi_conversation_socket_protocol::{
     JobModel, JobPhase, ServerFrame, SubagentEvent, SubagentJob,
@@ -262,11 +262,27 @@ pub(crate) async fn tree_on(
     String,
     String,
 ) {
+    tree_among(scripts, harness, demi_backend::families::builtin()).await
+}
+
+/// [`tree_on`], with the tree's families beside the families of `base`.
+pub(crate) async fn tree_among(
+    scripts: &Arc<Scripts>,
+    harness: Harness,
+    base: FamilyRegistry,
+) -> (
+    Harness,
+    TestBackend,
+    Session,
+    crate::support::Paired,
+    String,
+    String,
+) {
     let tree = |process| Tree {
         scripts: scripts.clone(),
         process,
     };
-    let families = demi_backend::families::builtin()
+    let families = base
         .with("tree", tree(false))
         .with("tree-process", tree(true));
     let harness = harness.with_families(families);
@@ -276,7 +292,7 @@ pub(crate) async fn tree_on(
             "/api/providers",
             Some(&master),
             json!({
-                "source": "custom", "providerType": "tree", "label": "Tree", "apiKey": "k",
+                "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "tree", "label": "Tree", "apiKey": "k",
                 "models": [
                     {
                         "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": null,
@@ -613,7 +629,7 @@ async fn a_childs_job_says_what_its_round_runs_on_in_the_menus_names() {
             "/api/providers",
             Some(&master),
             json!({
-                "source": "custom", "providerType": "tree", "label": "Quick", "apiKey": "k",
+                "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "tree", "label": "Quick", "apiKey": "k",
                 "models": [{
                     "id": "n", "displayName": "N", "contextWindow": 100000, "outputLimit": null,
                     "thinkingEfforts": ["low", "high"], "acceptedExtensions": null,
@@ -734,7 +750,7 @@ async fn a_reset_holds_a_conversation_whose_subagent_infers_with_a_provider_on_t
             "/api/providers",
             Some(&master),
             json!({
-                "source": "custom", "providerType": "tree-process", "label": "On the Cloud",
+                "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "tree-process", "label": "On the Cloud",
                 "apiKey": "k",
                 "models": [{
                     "id": "c", "displayName": "C", "contextWindow": 100000, "outputLimit": null,

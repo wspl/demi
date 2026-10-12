@@ -18,6 +18,7 @@ use demi_provider_common::testing::{MockResponse, MockVendor, RecordedRequest, s
 use demi_shared_types::WireApi;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::ids::ProviderId;
 use demi_web_api_protocol::providers::{
     Availability, CredentialKind, ModelCatalog, ProviderAnswer, ProviderDto, Providers, TestResult,
     VendorCatalog,
@@ -177,14 +178,14 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
         );
     }
 
-    // An edit replaces the key and returns to the family's endpoint and the
-    // live catalog; the answer never shows the key.
+    // An edit replaces the key and the endpoint and returns to the live
+    // catalog; the answer never shows the key.
     let path = format!("/api/providers/{}", created.id);
     let edited = backend
         .patch(
             &path,
             &master,
-            json!({ "label": "Personal", "apiKey": "sk-ant-secret-2", "baseUrl": null, "models": null }),
+            json!({ "label": "Personal", "apiKey": "sk-ant-secret-2", "baseUrl": "https://other.example/v1", "models": null }),
         )
         .await;
     assert_eq!(edited.status, StatusCode::OK);
@@ -193,10 +194,10 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
     assert_eq!(
         (
             edited.label.as_str(),
-            edited.base_url.clone(),
+            edited.base_url.as_ref().map(|url| url.url().as_str()),
             edited.models.clone()
         ),
-        ("Personal", None, None)
+        ("Personal", Some("https://other.example/v1"), None)
     );
     let live = catalog_of(&backend, &master, "").await;
     assert_eq!(
@@ -205,7 +206,7 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
     );
 
     // API-key entries of one family repeat.
-    let body = json!({ "source": "custom", "providerType": "anthropic", "label": "Second", "apiKey": "k" });
+    let body = json!({ "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "anthropic", "label": "Second", "apiKey": "k" });
     let (second, third) = (
         create(&backend, &master, body.clone()).await,
         create(&backend, &master, body).await,
@@ -281,7 +282,7 @@ async fn on_a_shared_instance_only_the_master_configures_and_everyone_infers_wit
     harness.add_user("bob@example.test", "bob-pass-1", Role::User);
     let admin = backend.login("admin@example.test", "admin-pass-1").await;
     let bob = backend.login("bob@example.test", "bob-pass-1").await;
-    let body = json!({ "source": "custom", "providerType": "scripted", "label": "Instance", "apiKey": "k", "models": [configured("m")] });
+    let body = json!({ "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "scripted", "label": "Instance", "apiKey": "k", "models": [configured("m")] });
     for user in [&admin, &bob] {
         let refused = backend
             .post("/api/providers", Some(user), body.clone())
@@ -404,7 +405,7 @@ fn models_dev_document() -> Value {
     })
 }
 
-fn served(document: &Value) -> MockResponse {
+pub(crate) fn served(document: &Value) -> MockResponse {
     MockResponse::status(200)
         .header("etag", "\"fixture\"")
         .chunk(document.to_string())
@@ -550,7 +551,7 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
     let entry = create(
         &backend,
         &master,
-        json!({ "source": "custom", "providerType": "scripted", "label": "Scripted", "apiKey": "k" }),
+        json!({ "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "scripted", "label": "Scripted", "apiKey": "k" }),
     )
     .await;
     let ids = |catalog: &ModelCatalog| -> Vec<String> {
@@ -857,7 +858,7 @@ async fn an_entry_whose_provider_cannot_be_built_answers_its_status_with_the_rea
         &backend,
         &master,
         json!({
-            "source": "custom", "providerType": "refusing", "label": "Broken", "apiKey": "key",
+            "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "refusing", "label": "Broken", "apiKey": "key",
             "models": [configured("m")]
         }),
     )
@@ -946,5 +947,248 @@ async fn an_anthropic_compatible_vendor_receives_an_effort_as_a_token_budget() {
     assert_eq!(sent[0].get("output_config"), None);
     assert_eq!(sent[1]["thinking"]["type"], "adaptive");
     assert_eq!(sent[1]["output_config"], json!({ "effort": "high" }));
+    backend.close().await;
+}
+
+/// The models.dev answer that confirms the kept copy.
+fn unchanged() -> MockResponse {
+    MockResponse::status(304)
+}
+
+/// The availability `GET /api/models` gives the entry `id`.
+async fn availability_of(backend: &TestBackend, session: &Session, id: &ProviderId) -> Value {
+    let catalog = catalog_of(backend, session, "").await;
+    let entry = catalog
+        .providers
+        .iter()
+        .find(|provider| &provider.provider_id == id)
+        .expect("the entry is in the catalog");
+    serde_json::to_value(&entry.availability).unwrap()
+}
+
+fn setup(missing: &[&str]) -> Value {
+    json!({
+        "type": "unavailable", "reason": "setup",
+        "message": "Finish setting up this provider in Settings", "missing": missing
+    })
+}
+
+#[tokio::test]
+async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_saved() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_models_dev(vendor.url("/api.json"));
+    let (backend, master) = harness.start_set_up().await;
+    vendor.respond(served(&json!({
+        "google": {
+            "id": "google", "name": "Google", "npm": "@ai-sdk/google",
+            "models": { "gemini-3.8-flash": { "name": "Gemini 3.8 Flash", "limit": { "context": 1_048_576 } } }
+        }
+    })));
+    for _ in 0..4 {
+        vendor.respond(unchanged());
+    }
+
+    // A vendor alone: named after the vendor, its models listed, and the
+    // key the one part it lacks.
+    let google = create(
+        &backend,
+        &master,
+        json!({ "source": "vendor", "vendorId": "google" }),
+    )
+    .await;
+    assert_eq!(google.label, "Google");
+    assert_eq!(
+        availability_of(&backend, &master, &google.id).await,
+        setup(&["apiKey"])
+    );
+    let catalog = catalog_of(&backend, &master, "").await;
+    assert_eq!(catalog.providers[0].models.len(), 1, "{catalog:?}");
+    let status = backend
+        .get(&format!("/api/providers/{}/status", google.id), Some(&master))
+        .await;
+    assert_eq!(status.status, StatusCode::OK);
+
+    // A custom endpoint with an empty list lacks all three, in order.
+    let custom = create(
+        &backend,
+        &master,
+        json!({ "source": "custom", "providerType": "openai", "models": [] }),
+    )
+    .await;
+    assert_eq!(custom.label, "OpenAI");
+    assert_eq!(
+        availability_of(&backend, &master, &custom.id).await,
+        setup(&["apiKey", "baseUrl", "models"])
+    );
+
+    // Each part saved takes its place off the list, and the last one makes
+    // the entry available.
+    let patched = backend
+        .patch(
+            &format!("/api/providers/{}", google.id),
+            &master,
+            json!({ "apiKey": "sk-google" }),
+        )
+        .await;
+    assert_eq!(patched.status, StatusCode::OK);
+    assert_eq!(
+        availability_of(&backend, &master, &google.id).await,
+        json!({ "type": "available" })
+    );
+    let path = format!("/api/providers/{}", custom.id);
+    let patched = backend
+        .patch(
+            &path,
+            &master,
+            json!({ "apiKey": "sk-custom", "baseUrl": "https://gateway.example.test/v1" }),
+        )
+        .await;
+    assert_eq!(patched.status, StatusCode::OK);
+    assert_eq!(
+        availability_of(&backend, &master, &custom.id).await,
+        setup(&["models"])
+    );
+    let patched = backend
+        .patch(&path, &master, json!({ "models": [configured("m")] }))
+        .await;
+    assert_eq!(patched.status, StatusCode::OK);
+    assert_eq!(
+        availability_of(&backend, &master, &custom.id).await,
+        json!({ "type": "available" })
+    );
+    backend.close().await;
+}
+
+/// A models.dev document where Google publishes Gemini, an aggregator and a
+/// reseller list one of its models again, and a vendor lists 22 models
+/// with "flash" in their names.
+fn searched_document() -> Value {
+    let gemini = |name: &str, date: &str, output: u32| {
+        json!({
+            "name": name, "release_date": date, "reasoning": true,
+            "reasoning_options": [{ "type": "effort", "values": ["low", "medium", "high"] }],
+            "modalities": { "input": ["text", "image", "pdf"] },
+            "limit": { "context": 1_048_576, "output": output }
+        })
+    };
+    let mut flagged = gemini("Gemini 3.8 Flash", "2026-09-01", 65_536);
+    flagged["canonical_model_id"] = json!("google/gemini-3.8-flash");
+    let mut routed = gemini("Google: Gemini 3.8 Flash", "2026-09-01", 32_768);
+    routed["canonical_model_id"] = json!("google/gemini-3.8-flash");
+    let many: serde_json::Map<String, Value> = (1..=22)
+        .map(|day| {
+            (
+                format!("spark-flash-{day}"),
+                json!({ "name": format!("Spark Flash {day}"), "release_date": format!("2025-01-{day:02}") }),
+            )
+        })
+        .collect();
+    json!({
+        "acme": {
+            "id": "acme", "name": "Acme", "npm": "@ai-sdk/openai-compatible", "api": "https://acme.example.test/v1",
+            "models": { "gemini-3.8-flash": gemini("Gemini 3.8 Flash (Acme)", "2026-09-01", 8_192) }
+        },
+        "google": {
+            "id": "google", "name": "Google", "npm": "@ai-sdk/google",
+            "models": {
+                "gemini-3.5-flash": gemini("Gemini 3.5 Flash", "2026-03-01", 65_536),
+                "gemini-3.8-flash": flagged,
+                "gemini-3.8-flash-lite": gemini("Gemini 3.8 Flash Lite", "2026-09-15", 65_536),
+                "gemini-3.8-pro": gemini("Gemini 3.8 Pro", "2026-09-20", 65_536)
+            }
+        },
+        "openrouter": {
+            "id": "openrouter", "name": "OpenRouter", "npm": "@ai-sdk/openai-compatible",
+            "api": "https://openrouter.example.test/api/v1",
+            "models": { "google/gemini-3.8-flash": routed }
+        },
+        "sparks": { "id": "sparks", "name": "Sparks", "npm": "@ai-sdk/openai-compatible", "models": many }
+    })
+}
+
+async fn searched(backend: &TestBackend, session: &Session, query: &str) -> Vec<Value> {
+    let answer = backend
+        .get(&format!("/api/models/search?{query}"), Some(session))
+        .await;
+    assert_eq!(
+        answer.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&answer.body)
+    );
+    answer.json::<Value>()["results"]
+        .as_array()
+        .expect("results are a list")
+        .clone()
+}
+
+#[tokio::test]
+async fn the_model_search_matches_every_word_lists_a_model_once_newest_first_and_fills_from_the_entrys_vendor()
+ {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_models_dev(vendor.url("/api.json"));
+    let (backend, master) = harness.start_set_up().await;
+    vendor.respond(served(&searched_document()));
+
+    // Every word, in any case and order; the model three vendors list is
+    // one match, filled from its publisher.
+    let found = searched(&backend, &master, "q=FLASH%20gemini").await;
+    let refs: Vec<&str> = found
+        .iter()
+        .map(|result| result["ref"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        refs,
+        [
+            "google/gemini-3.8-flash-lite",
+            "google/gemini-3.8-flash",
+            "google/gemini-3.5-flash"
+        ]
+    );
+    assert_eq!(
+        found[1],
+        json!({
+            "ref": "google/gemini-3.8-flash", "displayName": "Gemini 3.8 Flash", "id": "gemini-3.8-flash",
+            "vendor": "google", "contextWindow": 1_048_576, "outputLimit": 65_536,
+            "thinkingEfforts": ["low", "medium", "high"],
+            "acceptedExtensions": ["png", "jpg", "jpeg", "gif", "webp", "pdf"], "releaseDate": "2026-09-01"
+        })
+    );
+
+    // From an entry whose vendor lists the model, the vendor's own listing.
+    let routed = create(
+        &backend,
+        &master,
+        json!({ "source": "vendor", "vendorId": "openrouter" }),
+    )
+    .await;
+    let found = searched(
+        &backend,
+        &master,
+        &format!("q=gemini%203.8%20flash&entry={}", routed.id),
+    )
+    .await;
+    let filled: Vec<(&str, u64)> = found
+        .iter()
+        .map(|result| {
+            (
+                result["ref"].as_str().unwrap(),
+                result["outputLimit"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        filled,
+        [
+            ("google/gemini-3.8-flash-lite", 65_536),
+            ("openrouter/google/gemini-3.8-flash", 32_768)
+        ]
+    );
+
+    // At most twenty, and a query without a word finds nothing.
+    assert_eq!(searched(&backend, &master, "q=flash").await.len(), 20);
+    assert_eq!(searched(&backend, &master, "q=%20").await, Vec::<Value>::new());
+    // Every search read the copy the first one fetched.
+    assert_eq!(vendor.requests().len(), 1);
     backend.close().await;
 }
