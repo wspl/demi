@@ -33,6 +33,8 @@ pub enum Part {
     Subagents,
     /// The personal instructions.
     Instructions,
+    /// The user's credentials, without their values.
+    Credentials,
     /// The plugin list: whether the user has each plugin on.
     Plugins,
     /// A plugin's state, by the plugin's id.

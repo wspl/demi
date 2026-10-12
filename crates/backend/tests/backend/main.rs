@@ -26,6 +26,7 @@ mod claude;
 mod claude_code;
 mod cloud;
 mod conversations;
+mod credentials;
 mod deletion;
 mod direct;
 mod drafts;

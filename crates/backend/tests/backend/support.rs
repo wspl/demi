@@ -22,6 +22,7 @@ use demi_host_interface::SpawnEnv;
 use demi_backend_remote_host::testing::{
     NativeFixture, RunnerProcess, RunnerProcessOptions, native_fixture_binary,
 };
+use demi_backend_user_shard::shard::ShardPlacement;
 use demi_backend_user_shard::tuning::{
     ConversationTuning, LifecycleTuning, PageTuning, RunnerTuning,
 };
@@ -313,6 +314,10 @@ pub struct Harness {
     /// the authority its HTTPS certificate is of, which the plugins'
     /// outbound requests trust.
     sign_in_fixture: Option<(url::Url, reqwest::Certificate)>,
+    /// Where the backends run their shards; without it, the backend's
+    /// default threads. [`ShardPlacement::Inline`] runs them on the test's
+    /// own runtime, a `local` one, so its paused clock reaches their timers.
+    pub shards: Option<ShardPlacement>,
 }
 
 impl Harness {
@@ -365,6 +370,7 @@ impl Harness {
             skill_repos: None,
             panel_fixture: false,
             sign_in_fixture: None,
+            shards: None,
         }
     }
 
@@ -625,6 +631,9 @@ impl Harness {
         config.cloud = self.cloud;
         config.logins = self.logins;
         config.clock = self.clock.clone();
+        if let Some(shards) = self.shards {
+            config.shards = shards;
+        }
         config.web_directory = self.web_directory.clone();
         config.families = self.families.clone();
         config.runners = self.runners;

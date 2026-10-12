@@ -12,6 +12,7 @@ pub mod columns;
 pub mod command_outputs;
 pub mod conversation_attachments;
 pub mod control;
+pub mod credentials;
 pub mod conversation_index;
 pub mod conversations;
 pub mod deletions;
