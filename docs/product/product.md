@@ -679,7 +679,7 @@ few milliseconds reads as the list twitching.
 - **One size for the reading.** The agent's text, the user's messages and
   the transcript's rows, a step, a notice, a receipt, and what an opened row
   shows, a thinking's text or a receipt's message, read at one size, the size
-  the user picks in Settings › Appearance, 14 pixels unless they pick
+  the user picks in Settings › Appearance, 15 pixels unless they pick
   another; the rows stand apart by their color, not their size. Labels under a
   message, its time or a steer's line, stay small.
 - **The message being sent** is drawn as the message it will become, at its

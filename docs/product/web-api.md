@@ -700,14 +700,22 @@ not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale?, contextLimits?, sendWhileRunning? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale?, contextLimits?, sendWhileRunning?, hiddenProviders?, hiddenModels? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
 `settings`). A null shortcut removes that override. `sendWhileRunning` is
 `"steer"` or `"queue"`: what Enter does with a message while the agent works
 ([Steer or queue](product.md#steer-or-queue)); absent means `"steer"`, and a
-patch sets it. `lastModel` stores the explicit new-conversation
+patch sets it. `hiddenProviders`, provider entry ids, and `hiddenModels`,
+`{ providerId, modelId }` pairs, are the switches of Settings › Providers that
+take an entry or a model out of the model menu without deleting it; a patch
+replaces the list it names. They are the user's, not a browser's: every
+device's menu, the profile editor's menu and `demi agent models` leave out
+the same entries and models
+([Managing profiles](../agent/subagents.md#managing-profiles)). A conversation
+or a profile already on a hidden model keeps it; the menus no longer offer
+it, and a profile change through `demi agent profiles` refuses it. `lastModel` stores the explicit new-conversation
 default as model settings, `{ providerId, modelId, thinkingEffort, serviceTierId }`
 ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
 Every explicit choice of a model, an effort or a tier saves it, in an unsent
