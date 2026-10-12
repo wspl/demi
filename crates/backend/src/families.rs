@@ -3,14 +3,14 @@
 //! beside which a test registers scripted families.
 
 use std::rc::Rc;
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 
 use demi_backend_providers::llm::families::{
     AccountBinding, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
 };
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
 use demi_provider_claude_code::{AccountMachine, ClaudeCodeConfig, ClaudeCodeProvider, Placement};
-use demi_provider_codex::{CodexConfig, CodexProvider};
+use demi_provider_codex::{CodexConfig, CodexProvider, CodexReleases};
 use demi_provider_common::credentials::SubscriptionAccounts;
 use demi_provider_common::quota::{MemorySnapshots, QuotaSnapshotStore};
 use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
@@ -25,7 +25,7 @@ pub fn builtin() -> FamilyRegistry {
     FamilyRegistry::default()
         .with("anthropic", AnthropicFamily)
         .with("claude-code", ClaudeCodeFamily::default())
-        .with("codex", CodexFamily)
+        .with("codex", CodexFamily::default())
         .with("google", GoogleFamily)
         .with("grok-build", GrokBuildFamily)
         .with("openai", OpenAiFamily)
@@ -102,7 +102,31 @@ impl ProviderFamily for GoogleFamily {
 
 /// The `codex` family: ChatGPT accounts on the Codex backend, signed in by
 /// Codex's device login.
-struct CodexFamily;
+pub struct CodexFamily {
+    /// The npm registry's record of the newest Codex CLI release.
+    releases_url: url::Url,
+    /// That release, one for the whole backend, made with the client and
+    /// clock of the first provider's arguments: the backend's shared
+    /// services', the same for every provider.
+    releases: OnceLock<CodexReleases>,
+}
+
+impl CodexFamily {
+    /// The family reading the newest release from `releases_url`, the
+    /// product's unless a test serves its own.
+    pub fn new(releases_url: url::Url) -> Self {
+        Self {
+            releases_url,
+            releases: OnceLock::new(),
+        }
+    }
+}
+
+impl Default for CodexFamily {
+    fn default() -> Self {
+        Self::new(CodexReleases::URL.parse().expect("the registry URL parses"))
+    }
+}
 
 impl ProviderFamily for CodexFamily {
     fn credential(&self) -> CredentialKind {
@@ -114,7 +138,10 @@ impl ProviderFamily for CodexFamily {
             return Err(FamilyError::WrongCredential);
         };
         let (account, quota) = bound(subscription.account);
-        let config = CodexConfig::new(account);
+        let releases = self.releases.get_or_init(|| {
+            CodexReleases::new(self.releases_url.clone(), args.http.clone(), args.clock.clone())
+        });
+        let config = CodexConfig::new(account, releases.clone());
         let provider = CodexProvider::new(config, subscription.pool, quota, args.http, args.clock);
         Ok(Arc::new(provider))
     }

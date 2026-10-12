@@ -111,12 +111,14 @@ impl ProviderAssembly {
             }
             EntryCredential::Subscription { .. } => None,
         };
+        let mut revision = None;
         let fetch: Box<dyn FnOnce() -> CatalogFetch + Send> = match (vendor, provider) {
             (Some(vendor), _) => {
                 let vendors = self.vendors().clone();
                 Box::new(move || Box::pin(async move { vendors.models(&vendor).await }))
             }
             (None, Ok(provider)) => {
+                revision = provider.catalog_revision();
                 let provider = provider.clone();
                 Box::new(move || {
                     Box::pin(async move {
@@ -133,7 +135,7 @@ impl ProviderAssembly {
         };
         match self
             .catalogs()
-            .read(&entry.id, catalog_key(entry), fetch, refresh)
+            .read(&entry.id, catalog_key(entry), revision, fetch, refresh)
             .await
         {
             Ok(catalog) => catalog,

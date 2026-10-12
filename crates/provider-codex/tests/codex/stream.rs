@@ -158,7 +158,7 @@ async fn response_headers_that_do_not_arrive_in_time_fail_the_run_as_overloaded(
     let vendor = MockVendor::start().await;
     vendor.respond_at(RESPONSES, MockResponse::silent());
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
-    let mut config = CodexConfig::new(Some(crate::ACCOUNT.into()));
+    let mut config = CodexConfig::new(Some(crate::ACCOUNT.into()), crate::releases(&vendor));
     config.backend_url = vendor.url("/backend-api").parse().unwrap();
     config.auth_url = vendor.url("").parse().unwrap();
     config.transport = TransportMode::Sse;
