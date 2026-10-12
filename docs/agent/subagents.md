@@ -1167,28 +1167,35 @@ it names this way ([System prompt](system-prompt.md)).
 
 ### What an agent runs on
 
-Wherever the page names a child it can say what the child runs on and for
-how long, in one line built from the job:
+Wherever the page names a child it says, in two groups, what the child is
+doing and what it runs on:
 
 ```text
-research · Claude Sonnet 5.5 · Medium · Running for 4m12s
-No profile · Claude Opus 5.5 · High · Finished after 8m3s · Round 2
-frontend · Claude Sonnet 5.5 · High · Fast · Forked from agent 7
+● Running · 16m 48s · Forked from agent 7        [research] Sonnet 5.5 · Medium
+● Finished · 8m 3s                                          Opus 5.5 · High · Fast
 ```
 
-The profile's name, or *No profile* for the inherit profile, which the model
-after it then explains; the model's name; the effort, or *Thinking off*;
-*Fast* when it is on; the time, *Running for* while the round runs and,
-once it closed, *Finished after*, *Stopped after* or *Failed after*, counted
-from the round's start; *Round N* from the second round; *Forked from agent
-N* for a fork. The time follows the clock while it shows.
+- **State**, on the left: the child's state dot, the one its tab wears; the
+  state, *Running*, *Finished*, *Stopped* or *Failed*; the time counted from
+  the round's start, in the duration words of the reset times (*42s*,
+  *16m 48s*, *1h 5m*), following the clock while it runs; and *Forked from
+  agent N* for a fork, a link to that agent ([Linking an
+  agent](#linking-an-agent)). The round is not shown.
+- **What it runs on**, on the right: the profile as a tag, none for the
+  inherit profile; the model's short name, which the model menu shows, its
+  tip naming the provider and the full name, and for the inherit profile
+  *Inherited from this conversation*; the effort, or *Thinking off*; *Fast*
+  when it is on.
 
-- **The Agents window** shows the line under the tabs for the tab it shows,
-  in the secondary text color, one line, its end giving way first.
+Where the room runs out, *Forked from agent N* gives way first, then the
+model's name; the state and time always stay.
+
+- **The Agents window** shows it as a status bar along the window's bottom
+  edge, for the tab it shows.
 - **An agent link and a receipt's name**, pointed at, show *Subagent 4 ·
-  Finished*, the description, then the line.
-- **The Completed menu** shows each child's profile after its description,
-  as a tag, *No profile* left out.
+  Finished*, the description, then the two groups on one line.
+- **The Completed menu** shows each child's profile tag after its
+  description, and its time.
 
 Nested tool use renders from the same blocks on `subagent_transcript_*`, keyed
 by `subagentId` under the matching `subagent` `started` job, with
