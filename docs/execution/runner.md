@@ -36,7 +36,11 @@ routes. The runner opens an outbound WebSocket and sends its
 `hello` first; the backend closes a connection that has sent nothing within 30
 seconds of opening. Besides its token, version and platform, the hello names
 the Host's operating system with its release, such as `Ubuntu 26.04` or
-`macOS 26.5`, and its architecture, such as `x86_64`. The backend keeps them
+`macOS 26.5`, its architecture, such as `x86_64`, and, read once at the
+runner's start without a shell, its kernel's name and release (`uname -s`,
+`uname -r`) and the `SHELL` of its environment, which the Claude Code
+provider's session snapshot takes ([The session a process
+resumes](../providers/claude-code.md#the-session-a-process-resumes)). The backend keeps them
 and the runner's version on the device record, which Settings shows, and the
 agent reads the system and architecture in its context block
 ([Switch the primary target](sessions-and-targets.md#switch-the-primary-target)). The backend looks a hello's token up while it watches the
