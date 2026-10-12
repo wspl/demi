@@ -16,7 +16,8 @@ use demi_agent_session::{
     ToolInvocation,
 };
 use demi_agent_store::{
-    AgentTreeStore, Checkpoint, NodeRecord, RunningCommand, StoreError, StoredCommand, StoredOutput,
+    AgentTreeStore, Checkpoint, CheckpointUpdate, NodeRecord, RunningCommand, StoreError,
+    StoredCommand, StoredOutput,
     media::store_result,
 };
 use demi_agent_tools::{
@@ -788,8 +789,8 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
     }
 }
 
-/// Where a node comes from: created now, or restored from what the tree
-/// store holds of it.
+/// Where a node comes from: created now, empty or from a Fork's seed, or
+/// restored from what the tree store holds of it.
 pub(crate) enum Origin {
     New {
         record: NodeRecord,
@@ -798,6 +799,13 @@ pub(crate) enum Origin {
         /// Its first message, queued in its create commit, so that a node
         /// the process loses before its first save still has it.
         first_message: Option<QueuedMessage>,
+    },
+    /// A forked child (`subagents.md` § Fork): its first checkpoint is the
+    /// seed of its source's history, with its first message queued, created
+    /// in one commit and then restored as a stored node is.
+    Forked {
+        record: NodeRecord,
+        checkpoint: Checkpoint,
     },
     Stored {
         record: NodeRecord,
@@ -825,7 +833,9 @@ impl Origin {
 
     pub(crate) fn record(&self) -> &NodeRecord {
         match self {
-            Self::New { record, .. } | Self::Stored { record, .. } => record,
+            Self::New { record, .. } | Self::Forked { record, .. } | Self::Stored { record, .. } => {
+                record
+            }
         }
     }
 
@@ -834,7 +844,7 @@ impl Origin {
     pub(crate) fn model(&self) -> &ModelSelection {
         match self {
             Self::New { model, .. } => model,
-            Self::Stored { checkpoint, .. } => &checkpoint.state.model,
+            Self::Forked { checkpoint, .. } | Self::Stored { checkpoint, .. } => &checkpoint.state.model,
         }
     }
 }
@@ -934,7 +944,7 @@ pub(crate) async fn assemble<H: HostResolver>(
     let session_store = store.session_store(&record.id);
     let cwd = match &origin {
         Origin::New { cwd, .. } => cwd.clone(),
-        Origin::Stored { checkpoint, .. } => checkpoint.state.cwd.clone(),
+        Origin::Forked { checkpoint, .. } | Origin::Stored { checkpoint, .. } => checkpoint.state.cwd.clone(),
     };
     let index = commands.render_index();
     let node_runtime = Rc::new(NodeRuntime {
@@ -988,6 +998,18 @@ pub(crate) async fn assemble<H: HostResolver>(
             }
             let (session, continuation) =
                 AgentSession::restore(checkpoint, record.id.clone(), runtime, deps, &running)?;
+            (session, Some(continuation))
+        }
+        Origin::Forked { checkpoint: seed, .. } => {
+            let initial = CheckpointUpdate {
+                state: seed.state.clone(),
+                changed_blocks: seed.transcript.iter().cloned().enumerate().collect(),
+                block_count: seed.transcript.len(),
+            };
+            store.create_node(record.clone(), initial).await?;
+            // A new node has no commands of its own yet.
+            let (session, continuation) =
+                AgentSession::restore(seed, record.id.clone(), runtime, deps, &[])?;
             (session, Some(continuation))
         }
         Origin::New {
