@@ -175,7 +175,9 @@ user would say it, counted from now in the user's time zone:
 The wording follows the clock while it shows. Settings show every account's
 windows, and the context indicator's card shows, under the context's rows,
 the windows of the account the conversation's model runs on, under a line
-naming the plan, *Usage limits · Max*; a model on an API key has no such
+naming the plan, *Usage limits · Max*: the plan the snapshot reports, or,
+where the vendor's usage answer names none, as Claude's does not, the plan
+the account's sign-in recorded in its detail; a model on an API key has no such
 part.
 
 ### Probe and observation
