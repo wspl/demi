@@ -394,24 +394,30 @@ Code's `/context` does. For example, a conversation at 285,100 of 1,000,000
 tokens:
 
 ```text
-Context window                      285.1k / 1M (29%)
+Context window                      285.1k / 1M (29%)  ⌄
 [███████████████▌▌▌········································]
 ■ Messages                          ~242.3k   24.2%
 ■ System prompt                       ~3.6k    0.4%
 ■ Commands                            ~1.4k    0.1%
-■ Instructions                        ~6.3k    0.6%   ›
+■ Instructions                        ~6.3k    0.6%
 ■ Skills                              ~6.0k    0.6%
 ■ Other context                       ~0.5k    0.1%
 ■ Summary                            ~25.0k    2.5%
 □ Compaction buffer                    33k     3.3%
 □ Free space                        681.9k    68.2%
+676K until compaction                            [Compact]
 ```
+
+Closed, as the card first shows, the list of rows is left out and the header
+ends in `›`: the header, the bar and the line with Compact remain. A click on
+the header opens or closes the list, and the card keeps that choice in the
+browser for the next time it opens, as a disclosure in Finder does.
 
 | Row | What it covers | How it is counted |
 | --- | --- | --- |
 | System prompt | The product's system prompt but its capability index, a profile's added instructions, and the definition of the `shell` tool, the one tool the model calls ([System prompt](system-prompt.md)) | The text estimate of each, the tool's as its JSON, added up |
 | Commands | The capability index: the command groups the agent can run, as the system prompt lists them | Its text estimate |
-| Instructions | The `instructions` context blocks replayed; opens into the list of its files, as the card listed them before, each a link that opens the file, with no figure of its own | Block estimates |
+| Instructions | The `instructions` context blocks replayed; the card names their files in a section of its own ([What the card lists](instructions.md#what-the-card-lists)) | Block estimates |
 | Skills | The context block of the skills plugin, the source the catalog comes from | Its block estimate |
 | Other context | Every other context block replayed, such as the execution context | Block estimates |
 | Summary | The replayed `compaction_boundary`, while there is one | Its block estimate |
@@ -435,9 +441,11 @@ Context window                      285.1k / 1M (29%)
 - **The rows stand largest first**, the rows of what the request carries by
   their tokens, then Compaction buffer, then Free space last, so the eye
   meets what fills the context first.
-- **Only Instructions opens**, into its files; every other row is one
-  figure, since a finer split is an estimate of an estimate and tells the
-  user nothing to act on.
+- **The list opens, a row does not.** Every row is one figure: a finer split
+  is an estimate of an estimate and tells the user nothing to act on.
+- **The line under the list says the room before compaction**: the threshold
+  less the estimate, *676K until compaction*, never below zero, with the
+  Compact button at its end.
 - **A row with no tokens is left out**, and so are Summary before the first
   compaction and Skills while no skill is on.
 

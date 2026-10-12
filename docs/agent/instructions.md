@@ -103,20 +103,21 @@ directory, a subagent too, a profile's included.
 ## What the card lists
 
 The composer's context card lists what the newest instructions block of the
-root node holds, as the parts its Instructions row opens into
-([What fills the context](compaction.md#what-fills-the-context)). Each entry
-is one link in the block's order, with no figure of its own:
+root node holds, in a section of its own under the heading Instructions,
+below the context window's part and above the usage limits, whether the list
+of rows is open or closed. Each entry is one row in the block's order:
 
 | Entry | Shows | A click |
 | --- | --- | --- |
 | Personal instructions | `Personal instructions` | Opens Settings › Instructions |
 | A project file | Its path from the directory of the block's outermost file, as `AGENTS.md` and `web/CLAUDE.md`; its full path as a tip | Shows the file in the work panel, through the `file` intent ([Files named in messages](../product/file-previews.md#files-named-in-messages)) |
 
-The card shows no token count for an entry: the row above them carries the
-estimate. A click closes the card. Before the root's
-first request, and when the newest block says there is nothing, the card has
-no Instructions part at all: it is as it was before instructions existed,
-rather than a line about what is missing.
+The card shows no token count for an entry: the Instructions row of the
+context window carries their estimate
+([What fills the context](compaction.md#what-fills-the-context)). A click
+closes the card. Before the root's first request, and when the newest block
+says there is nothing, the card has no Instructions section at all: it is as
+it was before instructions existed, rather than a line about what is missing.
 
 The card reads what the page already holds: the instructions block
 carries, beside its text, the list of its entries (`instructions`, each
