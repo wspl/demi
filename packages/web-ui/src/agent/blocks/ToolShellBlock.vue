@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import CodeText from '@demicodes/web-ui/ui/CodeText.vue'
 import AnsiText from './AnsiText.vue'
@@ -10,7 +9,8 @@ import GoneMediaLines from './GoneMediaLines.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText, shellTerminalOutputChunks, storedShellView } from '../block-helpers'
 import { commandStatusLine } from '../command-end'
-import ShellRowTag from './ShellRowTag.vue'
+import ToolCallFace from './ToolCallFace.vue'
+import { toolRowIcon } from './tool-row-icon'
 import { useShellRow } from '../shell-row'
 import { shellTitle } from '../tool-rendering'
 import { splitMedia, toolMedia } from '../tool-media'
@@ -40,7 +40,7 @@ const media = computed(() => splitMedia(toolMedia(props.block.output, title.valu
 // so only a call that ran nothing, such as one the input check or the repeat
 // guard refused, shows its result's text as the failure.
 const errorText = computed(() => (storedShellView(props.block) ? undefined : getToolErrorText(props.block)))
-const { started, end, endMark, elapsedMs, running } = useShellRow(() => props.block)
+const { started, end, elapsedMs, running } = useShellRow(() => props.block)
 /** Above the output: how long it has run, or how it ended and after how long. */
 const statusLine = computed(() => commandStatusLine(end.value, elapsedMs.value))
 /** While the call runs, its command's output as it comes (`runtime.md` § Rendering boundary). */
@@ -93,19 +93,17 @@ function toggleCommand(): void {
   <FunctionalBlock
     v-model:open="isOpen"
     :loading="running || working"
-    :tone="block.status === 'error' && !endMark ? 'danger' : undefined"
     :error-text="errorText"
     :stick-bottom="block.status === 'executing'"
     :pictures="media.pictures"
     framed
   >
     <template #icon>
-      <SquareTerminal :size="ICON_PX.in28" />
+      <component :is="toolRowIcon(block.toolName)" :size="ICON_PX.in28" />
     </template>
 
     <template #default>
-      <span class="min-w-0 truncate">{{ title }}</span>
-      <ShellRowTag :block="block" />
+      <ToolCallFace :block="block" />
     </template>
 
     <template #pinned>
