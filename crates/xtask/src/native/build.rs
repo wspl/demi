@@ -111,24 +111,35 @@ pub fn run(options: Options) -> Result<(), Error> {
         version: options.version.as_deref(),
     };
     for target in targets {
-        let built: Vec<Executable> = executables
-            .iter()
-            .copied()
-            .filter(|executable| executable.targets().contains(&target))
-            .collect();
         println!("Native build: {target}");
-        let packages = Packages::Executables(&built);
-        let mut command = match &options.container {
-            Some(image) => build.in_container(image, target, packages)?,
-            None => build.here(target, packages),
-        };
-        let status = command.status()?;
-        if !status.success() {
-            return Err(Error::Build { target, status });
-        }
-        if linux(target) {
-            for executable in &built {
-                split(&super::built(&artifacts, *executable, target))?;
+        // Cargo unifies the features of the packages one build selects, so
+        // the Host programs, which turn on shared-cli's `host-allocator`,
+        // build apart from the server's, which must not get it
+        // (`builds-and-releases.md` § Memory allocator).
+        for on_host in [true, false] {
+            let built: Vec<Executable> = executables
+                .iter()
+                .copied()
+                .filter(|executable| {
+                    executable.runs_on_host() == on_host && executable.targets().contains(&target)
+                })
+                .collect();
+            if built.is_empty() {
+                continue;
+            }
+            let packages = Packages::Executables(&built);
+            let mut command = match &options.container {
+                Some(image) => build.in_container(image, target, packages)?,
+                None => build.here(target, packages),
+            };
+            let status = command.status()?;
+            if !status.success() {
+                return Err(Error::Build { target, status });
+            }
+            if linux(target) {
+                for executable in &built {
+                    split(&super::built(&artifacts, *executable, target))?;
+                }
             }
         }
     }
