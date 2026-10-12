@@ -4,7 +4,7 @@ import { Archive, FolderPlus, Search, Settings, SquarePen } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import Popover from '@demicodes/web-ui/ui/Popover.vue'
+import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
@@ -647,45 +647,19 @@ function selectProjectConversations(project: SidebarProject): void {
       </Tooltip>
     </div>
 
-    <Popover
-      :key="rowMenu.menuKey.value"
-      :overlay-store="appOverlayStore"
-      :is-open="rowMenu.isOpen.value"
-      :anchor-x="rowMenu.anchorX.value"
-      :anchor-y="rowMenu.anchorY.value"
-      :anchor-context-el="rowMenu.anchorContextEl.value"
-      :offset="0"
-      sheet
-      @close="rowMenu.close()"
-    >
-      <SidebarSelectionMenu
-        :targets="menuTargets"
-        @open="(id) => {
-          rowMenu.close()
-          emit('select', id)
-        }"
-        @rename="(id) => {
-          rowMenu.close()
-          renamingId = id
-        }"
-        @copy-id="(id) => {
-          rowMenu.close()
-          void copyConversationId(id)
-        }"
-        @pin="(ids, pinned) => {
-          rowMenu.close()
-          emit('pin', ids, pinned)
-        }"
-        @archive="(ids) => {
-          rowMenu.close()
-          emit('archive', ids)
-        }"
-        @delete="(ids) => {
-          rowMenu.close()
-          askDelete(ids)
-        }"
-      />
-    </Popover>
+    <ContextMenu :overlay-store="appOverlayStore" :owner="rowMenu">
+      <template #menu>
+        <SidebarSelectionMenu
+          :targets="menuTargets"
+          @open="(id) => emit('select', id)"
+          @rename="(id) => (renamingId = id)"
+          @copy-id="(id) => void copyConversationId(id)"
+          @pin="(ids, pinned) => emit('pin', ids, pinned)"
+          @archive="(ids) => emit('archive', ids)"
+          @delete="(ids) => askDelete(ids)"
+        />
+      </template>
+    </ContextMenu>
     <ConversationDeleteDialog
       :is-open="deleteOpen"
       :overlay-store="appOverlayStore"
@@ -693,40 +667,20 @@ function selectProjectConversations(project: SidebarProject): void {
       @close="deleteOpen = false"
       @delete="confirmDelete"
     />
-    <Popover
-      :key="projectMenu.menuKey.value"
-      :overlay-store="appOverlayStore"
-      :is-open="projectMenu.isOpen.value && menuProject !== null"
-      :anchor-x="projectMenu.anchorX.value"
-      :anchor-y="projectMenu.anchorY.value"
-      :anchor-context-el="projectMenu.anchorContextEl.value"
-      :offset="0"
-      sheet
-      @close="projectMenu.close()"
-    >
-      <SidebarProjectMenu
-        v-if="menuProject"
-        :project="menuProject"
-        :folded="isFolded(menuProject.id)"
-        :count="groups.find((group) => group.project.id === menuProject?.id)?.items.length ?? 0"
-        @create="
-          projectMenu.close();
-          emit('create', menuProject.id)
-        "
-        @toggle-fold="
-          projectMenu.close();
-          setFolded(menuProject.id, !isFolded(menuProject.id))
-        "
-        @select-all="
-          projectMenu.close();
-          selectProjectConversations(menuProject)
-        "
-        @remove="
-          projectMenu.close();
-          emit('removeProject', menuProject.id)
-        "
-      />
-    </Popover>
+    <ContextMenu :overlay-store="appOverlayStore" :owner="projectMenu">
+      <template #menu>
+        <SidebarProjectMenu
+          v-if="menuProject"
+          :project="menuProject"
+          :folded="isFolded(menuProject.id)"
+          :count="groups.find((group) => group.project.id === menuProject?.id)?.items.length ?? 0"
+          @create="emit('create', menuProject.id)"
+          @toggle-fold="setFolded(menuProject.id, !isFolded(menuProject.id))"
+          @select-all="selectProjectConversations(menuProject)"
+          @remove="emit('removeProject', menuProject.id)"
+        />
+      </template>
+    </ContextMenu>
   </aside>
 </template>
 
