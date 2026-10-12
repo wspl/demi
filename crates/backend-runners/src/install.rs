@@ -503,6 +503,62 @@ function Read-DemiLog([string]$Path, [long]$From) {
     $stream.Dispose()
   }
 }
+# Starts the runner out of the job this installer's session shares, which
+# OpenSSH ends, with every process in it, when the session ends: a runner
+# installed over SSH stopped as the installer returned. A job that allows
+# no breakaway refuses that start, and the runner then starts in it, as in
+# a PowerShell window, whose job nothing closes. Start-Process takes no
+# creation flags, so the installer calls CreateProcess itself.
+function Start-DemiRunner([string]$CommandLine, [string]$Directory) {
+  if (-not ('DemiRunnerStart' -as [type])) {
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+public static class DemiRunnerStart {
+  [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+  struct StartupInfo {
+    public int cb;
+    public IntPtr reserved, desktop, title;
+    public int x, y, width, height, columns, rows, fill, flags;
+    public short show, reserved2;
+    public IntPtr reserved3, input, output, error;
+  }
+  [StructLayout(LayoutKind.Sequential)]
+  struct ProcessInformation {
+    public IntPtr process, thread;
+    public int id, threadId;
+  }
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+  static extern bool CreateProcessW(string application, StringBuilder commandLine, IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles, uint flags, IntPtr environment, string directory, ref StartupInfo startup, out ProcessInformation information);
+  [DllImport("kernel32.dll")]
+  static extern bool CloseHandle(IntPtr handle);
+  // A hidden console of its own, no part in this window's Ctrl+C.
+  const uint Hidden = 0x08000000 | 0x00000200;
+  const uint Breakaway = 0x01000000;
+  const int AccessDenied = 5;
+  public static int Start(string commandLine, string directory) {
+    ProcessInformation information;
+    if (!Create(commandLine, directory, Hidden | Breakaway, out information)) {
+      if (Marshal.GetLastWin32Error() != AccessDenied || !Create(commandLine, directory, Hidden, out information)) {
+        throw new Win32Exception();
+      }
+    }
+    CloseHandle(information.thread);
+    CloseHandle(information.process);
+    return information.id;
+  }
+  static bool Create(string commandLine, string directory, uint flags, out ProcessInformation information) {
+    StartupInfo startup = new StartupInfo();
+    startup.cb = Marshal.SizeOf(startup);
+    return CreateProcessW(null, new StringBuilder(commandLine), IntPtr.Zero, IntPtr.Zero, false, flags, IntPtr.Zero, directory, ref startup, out information);
+  }
+}
+'@
+  }
+  [Diagnostics.Process]::GetProcessById([DemiRunnerStart]::Start($CommandLine, $Directory))
+}
 function Invoke-DemiControl([string]$Action) {
   $control = [Diagnostics.ProcessStartInfo]::new()
   $control.FileName = $demiExe
@@ -591,7 +647,7 @@ exit $demiExit
       Write-Output 'Starting runner...'
       $demiSeen = Get-DemiSize $demiLog
       # The runner writes its log itself.
-      $demiProcess = Start-Process -FilePath $demiExe -ArgumentList @('run', '--backend', $demiBackend, '--log') -WorkingDirectory $demiHome -WindowStyle Hidden -PassThru
+      $demiProcess = Start-DemiRunner ('"' + $demiExe + '" run --backend "' + $demiBackend + '" --log') $demiHome
       Write-Output "Runner installed for $demiBackend"
     }
   } catch {
