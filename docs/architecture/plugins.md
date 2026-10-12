@@ -76,7 +76,7 @@ user, conversation or time arrives through requests.
 | [Host directories](#host-directories) | Nothing | The plugin sets them through its port when its user's needs change |
 | [Host files](#reading-a-conversations-files) | Nothing | The plugin reads them through its port when it needs them |
 | [Package calls and user streams](#calling-its-command-package) | Each user stream's name, the operation it binds, the schemas of its messages both ways and the constants its two ends share | A call: when the plugin makes it. A stream: when a page opens it |
-| [Its page](#the-page) | Its page package; for each scope, user and conversation, the schema of its state, the [topics](#topics) it follows and the operations a read of it calls; each method with its scope, its parameter and result schemas and the operations it calls | When a page reads a state; when a topic fires; when a page calls a method |
+| [Its page](#the-page) | Its page package; for each scope, user and conversation, the schema of its state and the operations a read of it calls; each method with its scope, its parameter and result schemas and the operations it calls | When a page reads a state; when a page calls a method |
 
 A plugin declares only what it uses: `plugin-file` declares its package and
 its commands and nothing else, `plugin-skills` binds no package, and
@@ -299,35 +299,28 @@ Together with [Host directories](#host-directories) and
 every way a plugin reaches a Host. All of them go through the conversation's
 host access. A plugin never writes a Host's files and never starts a job.
 
-### Topics
+### Messages from its command package
 
-A topic is a product change a plugin's page state can follow. Its manifest
-names the topics each scope of its state follows, and when one fires, the
-plugin host marks that scope changed, so every page that shows it reads the
-state again ([Data a page shows](plugin-pages.md#data-a-page-shows)):
+A plugin whose commands bind a command package hears from that package
+when the state it keeps on a Host changes: the package says so the moment it
+changes, and the plugin never asks whether it did
+([Messages to the plugin](../execution/native-runtime.md#messages-to-the-plugin)).
+For example, a page in the conversation browser opens a pop-up. The browser
+package writes `{"tabs":"changed"}` for the conversation, and
+`plugin-browser` receives it as a `package_message` request: it marks its
+conversation state, the tab list, changed, so every page that shows the
+conversation reads it again, and adds the new tab to the work panel
+([A browser tab in the panel](../browser/live-view.md#a-browser-tab-in-the-panel)).
+The agent's `rg`, a build or a `demi file edit` changes no tab, and the
+plugin hears nothing.
 
-| Topic | Scope | Fires when |
-| --- | --- | --- |
-| `calls` | Conversation | A call of one of the plugin's own commands in the conversation ends, however it ends; it fires for that plugin alone |
-
-For example, `plugin-browser`'s conversation state, the conversation
-browser's tab list, follows `calls`: when the agent's `demi browser open`
-ends, every page that shows the conversation reads the list again. The
-agent's `rg`, a build, or a `demi file edit` calls no `demi browser`
-command, so it fires nothing for the browser. Only the plugin's own commands
-can change what it shows: an agent that searches a repository every few
-seconds would otherwise have the tab list read from its Host after every
-search. A tab a page opens by itself reaches the panel through the live view
-instead ([A browser tab in the panel](../browser/live-view.md#a-browser-tab-in-the-panel)). A topic
-belongs to the product service whose change it is: `calls` to the plugin
-host, which forwards the calls. A topic joins when a plugin's state needs it,
-as a slot of the page does.
-
-A manifest can also name the topics the plugin itself is told about: when one
-fires, the plugin host sends the plugin a `topic` request for its scope, after
-it marked the state changed. `plugin-browser` is told about `calls`, since a
-`demi browser` command of the agent may have opened or closed tabs that the
-work panel shows ([Panel kinds](#panel-kinds)).
+What a message says is the package's and its plugin's to agree; the runner
+and the backend only carry it, and a plugin hears only the package its
+commands bind. When the package's state for a conversation ends without the
+package saying so, because its service crashed, its runner started anew or
+its Cloud stopped, the plugin receives `package_lost` for the conversation
+from whoever saw the state end. Nothing else makes a plugin read a Host
+again: not a job's end, not a reconnect, not a timer.
 
 ### Panel kinds
 
@@ -385,7 +378,8 @@ Each request names its user, since a plugin process would serve every user:
 | `page_state` | The scope: the user, or one of the user's conversations | The plugin's state of that scope, valid against the scope's declared schema |
 | `page_call` | The method, its parameters, already valid against the method's schema, and the conversation when the page called for one | The result, valid against the method's result schema |
 | `panel_tab` | The conversation, `created` or `removed`, and the tab, of one of the plugin's [panel kinds](#panel-kinds) | Nothing |
-| `topic` | The topic that fired, and the conversation for a conversation's topic | Nothing |
+| `package_message` | The conversation, and the message its command package sent ([Messages from its command package](#messages-from-its-command-package)) | Nothing |
+| `package_lost` | The conversation whose state its command package kept on a Host ended without the package saying so | Nothing |
 
 The port is the plugin's side of a request, and every operation is one
 request and one reply, as for an rpc handler
@@ -393,7 +387,7 @@ request and one reply, as for an rpc handler
 operations are grouped by the service that answers them. A
 conversation's operations need a request about a conversation: a `command`, a
 `context`, a `page_state` or `page_call` of the conversation scope, a
-`panel_tab`, or a `topic` of a conversation.
+`panel_tab`, a `package_message` or a `package_lost`.
 
 | Service | Operations | Requests | Meaning |
 | --- | --- | --- | --- |
@@ -410,8 +404,8 @@ conversation's operations need a request about a conversation: a `command`, a
 | | OAuth: start, token, sign out | Every request | The user's sign-in to a vendor the manifest names ([OAuth sign-in](#oauth-sign-in)) |
 | Request | Cancellation | Every request | Whether, and when, the request was cancelled |
 
-A product service a plugin may use is one service of the port: its
-operations, and the [topics](#topics) its changes fire. Hosts is such a
+A product service a plugin may use is one service of the port and its
+operations. Hosts is such a
 service; one joins when a plugin needs it, and never as an operation shaped
 for one plugin among the others.
 
@@ -570,9 +564,10 @@ The plugin host, in `backend-plugins`, runs every plugin of the backend:
   context sources, which are asked while their plugin is on.
 - **User streams.** The host holds every plugin's stream declarations, which
   the user stream route opens by name while the plugin is on.
-- **Topics.** When a [topic](#topics) fires, for a user or for one of the
-  user's conversations, the host marks the state scope of each plugin whose
-  manifest follows it as changed.
+- **Package messages.** The host gives each `package_message` and
+  `package_lost` a device sends to the plugin whose commands bind the
+  package, while the user has it on, in the order they arrive
+  ([Messages from its command package](#messages-from-its-command-package)).
 - **The port.** The host answers every port operation against the user's
   storage, blobs and channels. The conversation's host access
   installs the directories the host records, reads the Host files a plugin
@@ -659,7 +654,7 @@ Besides the plugins, the components that carry them are:
 | Component | Holds |
 | --- | --- |
 | `plugin-interface` | The contract: factory and instance traits, manifest, requests and replies, the port, the JSON loopback transport for tests |
-| `backend-plugins` | The plugin host: registration and its checks, the command set and context sources for the agent server, instances, the port's services, topics, page state of both scopes with the conversation revisions, and page calls |
+| `backend-plugins` | The plugin host: registration and its checks, the command set and context sources for the agent server, instances, the port's services, package messages, page state of both scopes with the conversation revisions, and page calls |
 | `backend-user-shard`, `backend-host-access`, `backend-http`, `backend` | The product's side: the agent server's dependencies, the execution context source and the product's instructions; the installation of Host directories, the reads of Host files and the package calls; the page call routes, the conversation state route, the plugin switch route and the user stream route; the plugins linked into the backend |
 | `agent-tools`, `agent-server`, `agent-session` | The runtime's side: the rules for its tools in the system prompt, the Host resolver, context sources with their sources and turns |
 | `plugin-sdk`, `web-ui`, `web`, `web-gallery` | The page API: `definePage`, `usePage`, intents, the conversation files service and the plugin kit ([Plugin pages](plugin-pages.md)); the shell and the primitives; the page context over HTTP, the sync channel and the user stream route, and the generated registry; the page context over each specimen's fixtures |
@@ -674,8 +669,7 @@ context, intents, the plugin kit, registration and versions. This section
 owns what the backend gives a page.
 
 A plugin's page state has two scopes, each declared with its schema in the
-manifest, and each marked changed on its own, through the port or by a
-[topic](#topics) it follows:
+manifest, and each marked changed on its own, through the port:
 
 | Scope | Holds, for example | Reaches the pages |
 | --- | --- | --- |

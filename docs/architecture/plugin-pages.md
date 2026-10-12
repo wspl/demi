@@ -250,9 +250,10 @@ it changed; no page polls, and no page guesses when to read again.
   when the revision is higher than the one it holds
   ([Conversation state of plugins](../product/web-api.md#conversation-state-of-plugins)).
 - **When a plugin's state changes.** A plugin marks a scope of its state
-  changed through its port, after a call of its own changed it, or when a
-  topic it follows fires: a conversation's jobs ending for the browser's tabs, which the agent's
-  commands open and close ([Topics](plugins.md#topics)).
+  changed through its port, after a call of its own changed it, or when its
+  command package tells it the state on a Host changed: the browser's tabs,
+  which the agent's commands and the pages themselves open and close
+  ([Messages from its command package](plugins.md#messages-from-its-command-package)).
 - **Product services keep themselves fresh.** While a component shows the
   conversation's files, the conversation's files service follows the Host's
   reports of what changed and reads again what they name

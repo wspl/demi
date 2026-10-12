@@ -698,6 +698,59 @@ Service                        Runner                          Backend
   still waiting fails. A lost backend connection stops the runner's services
   in any case ([Command lifetime](runner.md#command-lifetime)).
 
+### Messages to the plugin
+
+A service tells the [plugin](../architecture/plugins.md#messages-from-its-command-package)
+whose commands bind its package what changed in the state it keeps, when it
+changes; nobody asks it. For example, a page of the agent's opens a pop-up
+in the conversation browser. The browser's tab registry changes, so the
+service writes one message for that conversation; the runner forwards it, and
+the backend hands it to `plugin-browser`, which shows the new tab in the work
+panel. While the agent runs `rg` a thousand times, the tabs do not change and
+no message moves.
+
+```text
+Service                         Runner                           Backend
+  |<-- POST /v1/messages ----------|  opened after GET /v1/info      |
+  |--- {c1, {"tabs":"changed"}} -->|--- package_message ------------>|--> plugin of the package
+```
+
+- Once it has checked a new service's catalog, and before it admits a call,
+  the runner opens one `POST /v1/messages` request with the metadata `{}`,
+  beside the numbers stream. It stays open for the service's life. The SDK
+  gives the handler its message sender when the service starts, and a
+  message sent before the stream opens waits for it.
+- The service writes each message as one standard output record, JSON with
+  `conversation`, a conversation name it received in a
+  [command context](#command-context), and `message`, a JSON value of at most
+  64 KiB whose meaning is the package's and its plugin's. The stream carries
+  no answers.
+- The runner sends each record to the backend as `package_message` on its
+  connection, adding the service's package, in the order the service wrote
+  them. It reads the next record only when its connection has room for it,
+  and while it has no connection it reads none, so a service that writes
+  faster than the backend takes waits in its write, and nothing piles up in
+  between. A service that would have said the same thing twice says it once:
+  the browser keeps the conversations whose tabs changed since its last
+  message and writes one message for each, so a page that loads and sets its
+  title and favicon in a burst costs one message, not three.
+- The backend accepts a message only for a conversation of the device's user
+  that reaches the device, as its primary Host or an attached one, as it
+  accepts a numbers request, and gives it to the plugin as a
+  `package_message` request ([The contract](../architecture/plugins.md#the-contract)).
+  It logs and drops any other.
+- When the state a service kept for a conversation ends without the service
+  saying so, whoever sees it end says it in the service's place, and the
+  plugin receives a `package_lost` request for the conversation:
+  - **The service ends** without releasing its conversations, as a crash
+    does: the runner sends `package_lost` with the package for each
+    conversation it routed an invocation of the service for.
+  - **The runner starts anew**, its hello naming another instance than the
+    device's last, or **a Cloud stops**: the backend sends `package_lost`
+    to each plugin with [panel tabs](../architecture/plugins.md#panel-kinds)
+    in a conversation that reaches the device, for that conversation, since
+    whatever its package kept there went with the runner.
+
 ### User streams
 
 An operation can also serve the conversation's user directly, for as long as
