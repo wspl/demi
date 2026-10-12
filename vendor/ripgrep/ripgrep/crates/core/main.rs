@@ -97,10 +97,12 @@ fn run(result: crate::flags::ParseResult<HiArgs>) -> anyhow::Result<ExitCode> {
 fn search(args: &HiArgs, mode: SearchMode) -> anyhow::Result<bool> {
     let started_at = std::time::Instant::now();
     let haystack_builder = args.haystack_builder()?;
-    let unsorted = args
-        .walk_builder()?
-        .build()
-        .filter_map(|result| haystack_builder.build_from_result(result));
+    let unsorted = args.walk_builder()?.build().filter_map(|result| {
+        // A search that finds nothing still stops at its next entry once the
+        // invocation is cancelled.
+        uucore::context::check_cancelled();
+        haystack_builder.build_from_result(result)
+    });
     let haystacks = args.sort(unsorted);
 
     let mut matched = false;
@@ -177,6 +179,9 @@ fn search_parallel(args: &HiArgs, mode: SearchMode) -> anyhow::Result<bool> {
         Box::new(move |result| {
             uucore::context::with(invocation.clone(), || {
                 messages::with(message_state.clone(), || {
+                    // A search that finds nothing still stops at its next
+                    // entry once the invocation is cancelled.
+                    uucore::context::check_cancelled();
                     let haystack =
                         match haystack_builder.build_from_result(result) {
                             Some(haystack) => haystack,
@@ -241,10 +246,10 @@ fn search_parallel(args: &HiArgs, mode: SearchMode) -> anyhow::Result<bool> {
 /// and prints each path sequentially using a single thread.
 fn files(args: &HiArgs) -> anyhow::Result<bool> {
     let haystack_builder = args.haystack_builder()?;
-    let unsorted = args
-        .walk_builder()?
-        .build()
-        .filter_map(|result| haystack_builder.build_from_result(result));
+    let unsorted = args.walk_builder()?.build().filter_map(|result| {
+        uucore::context::check_cancelled();
+        haystack_builder.build_from_result(result)
+    });
     let haystacks = args.sort(unsorted);
 
     let mut matched = false;
@@ -276,12 +281,9 @@ fn files(args: &HiArgs) -> anyhow::Result<bool> {
 /// Requesting a sorted output from ripgrep (such as with `--sort path`) will
 /// automatically disable parallelism and hence sorting is not handled here.
 fn files_parallel(args: &HiArgs) -> anyhow::Result<bool> {
-    use std::{
-        sync::{
-            atomic::{AtomicBool, Ordering},
-            mpsc,
-        },
-        thread,
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc,
     };
 
     let haystack_builder = args.haystack_builder()?;
@@ -293,7 +295,8 @@ fn files_parallel(args: &HiArgs) -> anyhow::Result<bool> {
     // We use a channel here under the presumption that it's probably faster
     // than using a mutex in the worker threads below, but this has never been
     // seriously litigated.
-    let print_thread = thread::spawn(move || -> std::io::Result<()> {
+    // The printer writes the invocation's stdout, so it runs in its context.
+    let print_thread = uucore::context::thread::spawn(move || -> std::io::Result<()> {
         for haystack in rx.iter() {
             path_printer.write(haystack.path())?;
         }
@@ -311,6 +314,7 @@ fn files_parallel(args: &HiArgs) -> anyhow::Result<bool> {
         Box::new(move |result| {
             uucore::context::with(invocation.clone(), || {
                 messages::with(message_state.clone(), || {
+                    uucore::context::check_cancelled();
                     let haystack =
                         match haystack_builder.build_from_result(result) {
                             Some(haystack) => haystack,
@@ -330,7 +334,12 @@ fn files_parallel(args: &HiArgs) -> anyhow::Result<bool> {
         })
     });
     drop(tx);
-    if let Err(err) = print_thread.join().unwrap() {
+    // The printer's own end, such as the exit a closed pipe makes, ends the
+    // invocation as it would have on this thread.
+    let printed = print_thread
+        .join()
+        .unwrap_or_else(|payload| std::panic::resume_unwind(payload));
+    if let Err(err) = printed {
         // A broken pipe means graceful termination, so fall through.
         // Otherwise, something bad happened while writing to stdout, so bubble
         // it up.

@@ -52,6 +52,10 @@ pub struct Job {
 /// The most one read of a job's output takes.
 const OUTPUT_CHUNK_BYTES: usize = 64 * 1024;
 
+/// How long a killed job waits for its in-process work before it ends
+/// without it (`runner.md` § Cancellation and completion).
+const KILLED_WORK: std::time::Duration = std::time::Duration::from_secs(1);
+
 /// A job's three pipes: the ends the interpreter uses and the runner's.
 struct Pipes {
     stdin: File,
@@ -187,7 +191,28 @@ impl Job {
             outcome
         });
         let owner = tokio::spawn(async move {
-            let outcome = worker.await;
+            // Work in the runner's process cannot be killed: a thread can sit
+            // in a system call no cancellation reaches, such as an `open()`
+            // the kernel holds while macOS asks the user for access. Once
+            // killed, the job ends a second later without what is left,
+            // which ends by itself at its next check.
+            let killed = async {
+                owner_cancel.cancelled().await;
+                tokio::time::sleep(KILLED_WORK).await;
+            };
+            let outcome = tokio::select! {
+                outcome = worker => Some(outcome),
+                () = killed => None,
+            };
+            let left = outcome.is_none().then(|| {
+                let utilities = owner_scope.work.running_utilities();
+                let what = if utilities.is_empty() {
+                    "its shell work".to_owned()
+                } else {
+                    utilities.join(", ")
+                };
+                format!("{what} had not ended 1 s after KILL and was left to end at its next check")
+            });
             input_cancel.cancel();
             let mut error = match writer.await {
                 Ok(Err(error))
@@ -224,23 +249,25 @@ impl Job {
                 error = Some(failure.to_string());
             }
             let code = match outcome {
-                Ok(Ok(Ok(result))) => Some(i32::from(result.code)),
-                Ok(Ok(Err(failure))) => {
+                Some(Ok(Ok(Ok(result)))) => Some(i32::from(result.code)),
+                Some(Ok(Ok(Err(failure)))) => {
                     error = Some(failure.to_string());
                     None
                 }
-                Ok(Err(_)) => {
+                Some(Ok(Err(_))) => {
                     error = Some("shell worker panicked".into());
                     None
                 }
-                Err(failure) => {
+                Some(Err(failure)) => {
                     error = Some(failure.to_string());
                     None
                 }
+                None => None,
             };
             // A stopped job reports the signal that ended it, `KILL` once it
             // was killed, and no exit code: bash's own is the interruption's
-            // (`runner.md` § Cancellation and completion).
+            // (`runner.md` § Cancellation and completion). What a killed job
+            // left running goes to the Host log beside it.
             let stopped_by = if owner_cancel.is_cancelled() {
                 Some(Signal::Kill)
             } else {
@@ -253,7 +280,7 @@ impl Job {
                 ProcessExit {
                     code: None,
                     signal: Some(signal.to_string()),
-                    error: None,
+                    error: left,
                 }
             } else {
                 ProcessExit {

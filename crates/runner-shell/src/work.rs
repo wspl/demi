@@ -5,7 +5,7 @@
 //! completion).
 
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{BTreeMap, HashMap, VecDeque},
     io,
     sync::{Arc, Mutex, RwLock, RwLockReadGuard},
 };
@@ -107,6 +107,27 @@ pub(crate) struct Work {
     /// once its script has ended; empty while the script runs
     /// (`runtime.md` § Results and previews).
     outliving: watch::Sender<Vec<String>>,
+    /// The job's utilities that run now, by name, with how many of each:
+    /// what a killed job names when it ends without them.
+    utilities: Mutex<BTreeMap<&'static str, usize>>,
+}
+
+/// One of the job's utilities, counted as running until it drops.
+pub(crate) struct RunningUtility {
+    work: Arc<Work>,
+    name: &'static str,
+}
+
+impl Drop for RunningUtility {
+    fn drop(&mut self) {
+        let mut utilities = self.work.utilities.lock().expect("the utility table is intact");
+        if let Some(count) = utilities.get_mut(self.name) {
+            *count -= 1;
+            if *count == 0 {
+                utilities.remove(self.name);
+            }
+        }
+    }
 }
 
 #[derive(Default)]
@@ -148,7 +169,24 @@ impl Work {
             groups: Mutex::default(),
             starting: RwLock::default(),
             outliving: watch::Sender::new(Vec::new()),
+            utilities: Mutex::default(),
         }
+    }
+
+    /// Counts the utility `name` as running until the entry drops.
+    pub(crate) fn utility(self: &Arc<Self>, name: &'static str) -> RunningUtility {
+        let mut utilities = self.utilities.lock().expect("the utility table is intact");
+        *utilities.entry(name).or_default() += 1;
+        RunningUtility {
+            work: self.clone(),
+            name,
+        }
+    }
+
+    /// The names of the job's utilities that run now.
+    pub(crate) fn running_utilities(&self) -> Vec<&'static str> {
+        let utilities = self.utilities.lock().expect("the utility table is intact");
+        utilities.keys().copied().collect()
     }
 
     /// The script has ended, and `tasks`, by their command lines, still run.

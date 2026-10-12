@@ -227,13 +227,20 @@ impl Kept {
     }
 
     /// Stops every job as a stop does and waits for each to end, as a
-    /// runner that replaces itself does (`runner.md` § Runner updates).
+    /// runner that replaces itself does (`runner.md` § Runner updates). A
+    /// killed job ends a second later whatever its in-process work does
+    /// (§ Cancellation and completion), so the update never waits on one.
     pub async fn stop_jobs(&mut self, registered: &Registered) {
         self.jobs.stop_jobs(false);
-        let killed = Instant::now() + wire::STOP_GRACE;
+        // `KILL` goes once: a deadline that has passed would be ready again
+        // at every turn of the loop.
+        let mut kill_at = Some(Instant::now() + wire::STOP_GRACE);
         while !self.jobs.running_jobs().is_empty() {
             tokio::select! {
-                () = tokio::time::sleep_until(killed) => self.jobs.kill_jobs(),
+                () = sleep_until(kill_at) => {
+                    kill_at = None;
+                    self.jobs.kill_jobs();
+                }
                 Some(id) = self.jobs.finished() => {
                     self.handle(Event::Finished(id), None, registered).await;
                 }

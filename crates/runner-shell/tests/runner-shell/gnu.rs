@@ -503,13 +503,17 @@ async fn expect_cases(setup: &str, cases: &[(&str, u8, &str, &str)]) {
 /// output is well over a 64 KiB pipe buffer, so the reader is gone before
 /// the writer ends: `cmp -l` lists each differing byte, so it compares `l1`
 /// with `l0`, which differs in every zero (1.7 MB), not with `l2`, which
-/// differs in one byte a line (30 KB). Runs in about 1 s.
+/// differs in one byte a line (30 KB). `rg 0 .` searches its files in
+/// parallel: before, its workers' end on the closed pipe panicked the walk
+/// (`rg: utility thread panicked`). Runs in about 1.7 s; the `rg` case
+/// added 0.7 s.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_closed_pipe_ends_utilities_quietly_as_sigpipe_does() {
     let setup = "seq -f '%060g' 1 2000 > l1; seq -f '%060g' 2001 4000 > l2; tr 0 1 < l1 > l0; \
                  mkdir t; seq -f 't/%060g' 1 3000 | xargs touch";
     let cases: Vec<(String, u8, &str, &str)> = [
         "diff l1 l2", "diff -u l1 l2", "diff -y l1 l2", "cmp -l l1 l0", "cat l1 l1 l1", "sort l1", "du -a t",
+        "rg 0 .",
     ]
     .into_iter()
     .map(|producer| (format!("{producer} | head -n 1 >/dev/null; echo ${{PIPESTATUS[0]}}"), 0, "141\n", ""))
