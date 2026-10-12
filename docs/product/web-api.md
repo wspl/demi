@@ -1138,8 +1138,11 @@ starts. It waits until the conversation no longer runs because a turn taken
 up again leaves the history, and `lastTurn` names the turn before it, until
 it ends.
 `permissionRequests` counts the conversation's undecided
-[permission requests](#conversation-permissions), which the sidebar shows as
-the needs-you mark, and `permissionsRevision` rises with each change of its
+[permission requests](#conversation-permissions), which the conversation's
+card and the Running window follow, `unreadPermissionRequests` those of them
+not read yet, which the sidebar's needs-you mark follows: the read
+acknowledgement (`POST /conversations/:id/read`) reads them too, and a new or
+replacing request starts unread. `permissionsRevision` rises with each change of its
 requests; a page that shows the conversation reads them when it is newer
 than the revision it holds. `pluginRevisions` and
 `permissionsRevision` are [counted in memory](#revisions-counted-in-memory).
