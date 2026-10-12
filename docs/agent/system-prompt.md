@@ -103,7 +103,10 @@ order:
 - **Parallel work.** A task with several independent parts, each taking more
   than a quick step, such as several sites, pages, libraries or files to look
   into, goes to subagents with `demi agent`, one part each, run at the
-  same time; the model then combines their reports. The prompt, the
+  same time; the model then combines their reports. Before it starts them it
+  runs `demi agent profiles list` and gives each part the profile that fits
+  it, if any; a child without `--profile` inherits the model's own model,
+  prompt and commands. The prompt, the
   capability index's `demi agent` entry and every text the model or the user
   reads call them subagents, as the product does and as Claude Code, Codex
   and Cursor do, never helpers. It does the parts itself
@@ -193,6 +196,13 @@ usage, as [Help](../execution/commands.md#help) renders them. Help is
 deterministic, so the same read replays the same bytes. A model that needs a
 group reads its help once; after a compaction it reads it again when it
 needs it.
+
+The prompt never lists what the user can change, such as the subagent
+profiles, the skills or the models, which a list in the prompt would leave
+stale and which would cost every request its tokens; it names the command
+that answers it at call time. So the harness guide says to run
+`demi agent profiles list` before starting subagents, and the model reads
+the user's current profiles there.
 
 A command whose result is large writes it to a file on the Host and prints
 the path, as `demi browser screenshot --output` does, rather than returning
