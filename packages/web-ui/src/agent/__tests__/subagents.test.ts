@@ -1,11 +1,10 @@
 import { expect, test } from 'bun:test'
 import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
-import { formatDuration } from '../thinking-label'
 import {
-  agentRunLine,
   agentsChipLabel,
   childBrief,
   formatSubagentDuration,
+  runEffortWords,
   finishedSubagents,
   runningSubagents,
   subagentPanelTabs,
@@ -73,11 +72,7 @@ test('status follows the child phase', () => {
   expect(subagentStatus('error')).toBe('error')
 })
 
-test('duration is compact and uses endedAt once the child is finished', () => {
-  expect(formatDuration(12_400)).toBe('12s')
-  expect(formatDuration(60_000)).toBe('1m')
-  expect(formatDuration(134_000)).toBe('2m14s')
-  expect(formatDuration(3_780_000)).toBe('1h3m')
+test('a child\'s time is in the reset times\' duration words and ends with the child', () => {
   const running = agent({
     id: 'r',
     name: 'R',
@@ -86,7 +81,7 @@ test('duration is compact and uses endedAt once the child is finished', () => {
   })
   expect(
     formatSubagentDuration(running, Date.parse('2026-09-09T00:02:14.000Z')),
-  ).toBe('2m14s')
+  ).toBe('2m 14s')
   const done = agent({
     id: 'd',
     name: 'D',
@@ -99,24 +94,13 @@ test('duration is compact and uses endedAt once the child is finished', () => {
   )
 })
 
-test('the line says what a child runs on as the design writes it', () => {
-  const sonnet = { provider: 'Anthropic', model: 'Claude Sonnet 5.5', effort: 'medium', fast: false }
-  const research = agent({ id: 'a', name: 'A', phase: 'running', profile: 'research', model: sonnet })
-  expect(agentRunLine(research, 252_000)).toBe('research · Claude Sonnet 5.5 · Medium · Running for 4m12s')
-  const second = agent({ id: 'b', name: 'B', phase: 'completed', round: 2 })
-  expect(agentRunLine(second, 483_000)).toBe('No profile · Claude Opus 5.5 · High · Finished after 8m3s · Round 2')
-  const fork = agent({
-    id: 'c',
-    name: 'C',
-    phase: 'aborted',
-    profile: 'frontend',
-    model: { ...sonnet, effort: 'off', fast: true },
-    forkedFrom: 7,
-  })
-  expect(agentRunLine(fork, 5_000)).toBe('frontend · Claude Sonnet 5.5 · Thinking off · Fast · Stopped after 5s · Forked from agent 7')
-  // A model without a thinking setting names no effort.
-  const plain = agent({ id: 'd', name: 'D', phase: 'error', model: { ...sonnet, effort: null } })
-  expect(agentRunLine(plain, 60_000)).toBe('No profile · Claude Sonnet 5.5 · Failed after 1m')
+test.each([
+  { scenario: 'a level', effort: 'medium', words: 'Medium' },
+  { scenario: 'thinking turned off', effort: 'off', words: 'Thinking off' },
+  { scenario: 'a model without a thinking setting', effort: null, words: null },
+])('a child on $scenario names its effort as the model menu does', ({ effort, words }) => {
+  const model = { provider: 'Anthropic', model: 'Sonnet 5.5', effort, fast: false }
+  expect(runEffortWords(model)).toBe(words)
 })
 
 test('a running inspect lists every running child; a finished inspect sits beside them', () => {
