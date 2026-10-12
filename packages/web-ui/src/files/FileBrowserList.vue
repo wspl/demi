@@ -14,6 +14,7 @@ import HighlightText from '../ui/HighlightText.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import TextInput from '../ui/TextInput.vue'
+import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import TypeSelectHint from '../ui/TypeSelectHint.vue'
 import FileIcon from './FileIcon.vue'
@@ -334,9 +335,9 @@ defineExpose({
             class="hidden truncate px-1 text-[12px] text-fg-subtle @md:block"
             >{{ formatModified(entry.modifiedAt) }}</span
           >
-          <span
+          <Tooltip
             class="truncate px-1 text-right text-[12px] text-fg-subtle"
-            :title="entryKind(entry.name, entry.isDirectory)"
+            :content="entryKind(entry.name, entry.isDirectory)"
           >
             {{
               entry.isDirectory
@@ -345,7 +346,7 @@ defineExpose({
                   ? formatBytes(entry.size)
                   : ''
             }}
-          </span>
+          </Tooltip>
         </div>
         <div
           v-if="loading && !entries.length"
