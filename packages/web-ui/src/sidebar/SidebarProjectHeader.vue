@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ChevronRight, Cloud, Folder, FolderOpen, SquarePen } from '@lucide/vue'
+import { Cloud, Folder, FolderOpen, SquarePen } from '@lucide/vue'
+import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import StatusDot from '@demicodes/web-ui/ui/StatusDot.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
@@ -49,11 +50,10 @@ const emit = defineEmits<{
       <span class="flex min-w-0 flex-1 items-center gap-1">
         <span class="flex min-w-0 flex-1 items-center gap-1">
           <TruncatedText class="font-medium text-fg-emphasis" :text="project.name" />
-          <ChevronRight
+          <FoldChevron
+            :open="!collapsed"
             :size="ICON_PX.in20"
-            aria-hidden="true"
-            class="shrink-0 text-fg-subtle opacity-0 transition-[opacity,rotate] duration-150 ease-out motion-reduce:transition-none group-hover/project:opacity-100 phone:opacity-100"
-            :class="collapsed ? 'rotate-0' : 'rotate-90'"
+            class="text-fg-subtle opacity-0 group-hover/project:opacity-100 phone:opacity-100"
           />
         </span>
         <TruncatedText
