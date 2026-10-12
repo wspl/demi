@@ -146,14 +146,11 @@ is there.
 
 ## Capability index
 
-Each top-level command's declaration carries its index entry, and
-registration refuses a top-level command without one, since a command the
-index does not name is one the model never finds. A top-level command is a
-group directly under `demi` or a root, or a leaf directly under one, such as
-`demi search` and `demi fetch`, a command that does one thing and needs no
-operations. The index lists every top-level command of the node's command
-set, sorted by path, each with its entry and where its details are: a group
-with the names of its operations, a leaf with its usage line in their place. It opens
+Each top-level command group's declaration carries its index entry, and
+registration refuses a group without one, since a group the index does not
+name is one the model never finds. The index
+lists every group of the node's command set, sorted by group path, each with
+its entry, the names of its operations, and where its details are. It opens
 with the paragraph of conventions every command follows unless its help says
 otherwise, such as how stdin bodies are passed and where output goes
 ([Help](../execution/commands.md#help)). The
