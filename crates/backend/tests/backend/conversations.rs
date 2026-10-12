@@ -1708,7 +1708,7 @@ async fn an_edit_of_the_entry_reaches_the_next_request_and_a_deleted_entry_refus
         .with_families(demi_backend::families::builtin().with("keyed", Keyed(runs.clone())));
     let (backend, master) = harness.start_set_up().await;
     let body = json!({
-        "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "keyed", "label": "Keyed", "apiKey": "old-key",
+        "source": "custom", "providerType": "keyed", "label": "Keyed", "apiKey": "old-key",
         "models": [configured(4_000)]
     });
     let provider = entry(&backend, &master, body).await;

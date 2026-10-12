@@ -178,14 +178,14 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
         );
     }
 
-    // An edit replaces the key and the endpoint and returns to the live
-    // catalog; the answer never shows the key.
+    // An edit replaces the key and returns to the family's endpoint and the
+    // live catalog; the answer never shows the key.
     let path = format!("/api/providers/{}", created.id);
     let edited = backend
         .patch(
             &path,
             &master,
-            json!({ "label": "Personal", "apiKey": "sk-ant-secret-2", "baseUrl": "https://other.example/v1", "models": null }),
+            json!({ "label": "Personal", "apiKey": "sk-ant-secret-2", "baseUrl": null, "models": null }),
         )
         .await;
     assert_eq!(edited.status, StatusCode::OK);
@@ -194,10 +194,10 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
     assert_eq!(
         (
             edited.label.as_str(),
-            edited.base_url.as_ref().map(|url| url.url().as_str()),
+            edited.base_url.clone(),
             edited.models.clone()
         ),
-        ("Personal", Some("https://other.example/v1"), None)
+        ("Personal", None, None)
     );
     let live = catalog_of(&backend, &master, "").await;
     assert_eq!(
@@ -206,7 +206,7 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
     );
 
     // API-key entries of one family repeat.
-    let body = json!({ "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "anthropic", "label": "Second", "apiKey": "k" });
+    let body = json!({ "source": "custom", "providerType": "anthropic", "label": "Second", "apiKey": "k" });
     let (second, third) = (
         create(&backend, &master, body.clone()).await,
         create(&backend, &master, body).await,
@@ -282,7 +282,7 @@ async fn on_a_shared_instance_only_the_master_configures_and_everyone_infers_wit
     harness.add_user("bob@example.test", "bob-pass-1", Role::User);
     let admin = backend.login("admin@example.test", "admin-pass-1").await;
     let bob = backend.login("bob@example.test", "bob-pass-1").await;
-    let body = json!({ "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "scripted", "label": "Instance", "apiKey": "k", "models": [configured("m")] });
+    let body = json!({ "source": "custom", "providerType": "scripted", "label": "Instance", "apiKey": "k", "models": [configured("m")] });
     for user in [&admin, &bob] {
         let refused = backend
             .post("/api/providers", Some(user), body.clone())
@@ -551,7 +551,7 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
     let entry = create(
         &backend,
         &master,
-        json!({ "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "scripted", "label": "Scripted", "apiKey": "k" }),
+        json!({ "source": "custom", "providerType": "scripted", "label": "Scripted", "apiKey": "k" }),
     )
     .await;
     let ids = |catalog: &ModelCatalog| -> Vec<String> {
@@ -858,7 +858,7 @@ async fn an_entry_whose_provider_cannot_be_built_answers_its_status_with_the_rea
         &backend,
         &master,
         json!({
-            "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "refusing", "label": "Broken", "apiKey": "key",
+            "source": "custom", "providerType": "refusing", "label": "Broken", "apiKey": "key",
             "models": [configured("m")]
         }),
     )
@@ -996,7 +996,7 @@ async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_
         json!({ "source": "vendor", "vendorId": "google" }),
     )
     .await;
-    assert_eq!(google.label, "Google");
+    assert_eq!((google.label.as_str(), google.has_api_key), ("Google", false));
     assert_eq!(
         availability_of(&backend, &master, &google.id).await,
         setup(&["apiKey"])
@@ -1008,7 +1008,8 @@ async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_
         .await;
     assert_eq!(status.status, StatusCode::OK);
 
-    // A custom endpoint with an empty list lacks all three, in order.
+    // A custom endpoint with an empty list lacks both, in order; without
+    // an address it uses its family's default, which is never missing.
     let custom = create(
         &backend,
         &master,
@@ -1018,7 +1019,7 @@ async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_
     assert_eq!(custom.label, "OpenAI");
     assert_eq!(
         availability_of(&backend, &master, &custom.id).await,
-        setup(&["apiKey", "baseUrl", "models"])
+        setup(&["apiKey", "models"])
     );
 
     // Each part saved takes its place off the list, and the last one makes
@@ -1031,6 +1032,7 @@ async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_
         )
         .await;
     assert_eq!(patched.status, StatusCode::OK);
+    assert!(patched.json::<ProviderAnswer>().provider.has_api_key);
     assert_eq!(
         availability_of(&backend, &master, &google.id).await,
         json!({ "type": "available" })
@@ -1040,7 +1042,7 @@ async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_
         .patch(
             &path,
             &master,
-            json!({ "apiKey": "sk-custom", "baseUrl": "https://gateway.example.test/v1" }),
+            json!({ "apiKey": "sk-custom" }),
         )
         .await;
     assert_eq!(patched.status, StatusCode::OK);
@@ -1059,18 +1061,26 @@ async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_
     backend.close().await;
 }
 
-/// A models.dev document where Google publishes Gemini, an aggregator and a
-/// reseller list one of its models again, and a vendor lists 22 models
-/// with "flash" in their names.
+/// A models.dev document where Google publishes Gemini, among models no
+/// agent can work with, an aggregator and a reseller list one of its models
+/// again, and a vendor lists 22 models with "flash" in their names.
 fn searched_document() -> Value {
     let gemini = |name: &str, date: &str, output: u32| {
         json!({
-            "name": name, "release_date": date, "reasoning": true,
+            "name": name, "release_date": date, "reasoning": true, "tool_call": true,
             "reasoning_options": [{ "type": "effort", "values": ["low", "medium", "high"] }],
-            "modalities": { "input": ["text", "image", "pdf"] },
+            "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
             "limit": { "context": 1_048_576, "output": output }
         })
     };
+    // Newer than every match, but no agent can work with them: one speaks,
+    // one draws, one calls no tool.
+    let mut speaks = gemini("Gemini 3.8 Flash TTS", "2026-10-01", 8_192);
+    speaks["modalities"]["output"] = json!(["audio"]);
+    let mut draws = gemini("Gemini 3.8 Flash Image", "2026-10-01", 8_192);
+    draws["modalities"]["output"] = json!(["image"]);
+    let mut toolless = gemini("Gemini 3.8 Flash Chat", "2026-10-01", 8_192);
+    toolless["tool_call"] = json!(false);
     let mut flagged = gemini("Gemini 3.8 Flash", "2026-09-01", 65_536);
     flagged["canonical_model_id"] = json!("google/gemini-3.8-flash");
     let mut routed = gemini("Google: Gemini 3.8 Flash", "2026-09-01", 32_768);
@@ -1079,7 +1089,10 @@ fn searched_document() -> Value {
         .map(|day| {
             (
                 format!("spark-flash-{day}"),
-                json!({ "name": format!("Spark Flash {day}"), "release_date": format!("2025-01-{day:02}") }),
+                json!({
+                    "name": format!("Spark Flash {day}"), "release_date": format!("2025-01-{day:02}"),
+                    "tool_call": true, "modalities": { "output": ["text"] }
+                }),
             )
         })
         .collect();
@@ -1094,7 +1107,10 @@ fn searched_document() -> Value {
                 "gemini-3.5-flash": gemini("Gemini 3.5 Flash", "2026-03-01", 65_536),
                 "gemini-3.8-flash": flagged,
                 "gemini-3.8-flash-lite": gemini("Gemini 3.8 Flash Lite", "2026-09-15", 65_536),
-                "gemini-3.8-pro": gemini("Gemini 3.8 Pro", "2026-09-20", 65_536)
+                "gemini-3.8-pro": gemini("Gemini 3.8 Pro", "2026-09-20", 65_536),
+                "gemini-3.8-flash-tts": speaks,
+                "gemini-3.8-flash-image": draws,
+                "gemini-3.8-flash-chat": toolless
             }
         },
         "openrouter": {
@@ -1130,8 +1146,9 @@ async fn the_model_search_matches_every_word_lists_a_model_once_newest_first_and
     let (backend, master) = harness.start_set_up().await;
     vendor.respond(served(&searched_document()));
 
-    // Every word, in any case and order; the model three vendors list is
-    // one match, filled from its publisher.
+    // Every word, in any case and order, of the models that write text and
+    // call tools; the model three vendors list is one match, filled from
+    // its publisher.
     let found = searched(&backend, &master, "q=FLASH%20gemini").await;
     let refs: Vec<&str> = found
         .iter()

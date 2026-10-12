@@ -264,8 +264,9 @@ impl ModelsDevSnapshot {
         self.document.0.get(id)
     }
 
-    /// The models whose name or id holds each word of `query`, in any case
-    /// and order, newest release first, at most `limit` (`models.md`
+    /// The models an agent can work with, whose output includes text and
+    /// that call tools, and whose name or id holds each word of `query`, in
+    /// any case and order, newest release first, at most `limit` (`models.md`
     /// § Adding a model from models.dev). A model several vendors list is
     /// one match: the listing of `vendor` when it lists the model, else
     /// the publisher's ([`Listing::publisher`]). Two listings are the same
@@ -296,7 +297,7 @@ impl ModelsDevSnapshot {
                     .and_then(|vendor| listings.iter().find(|listing| listing.vendor == vendor))
                     .or_else(|| Listing::publisher(listings))
             })
-            .filter(|listing| listing.matches(&words))
+            .filter(|listing| listing.model.agentic() && listing.matches(&words))
             .collect();
         // Dates are `YYYY-MM-DD`, which order as text. A stable sort keeps
         // the document's order among equal dates, and `None` orders before
@@ -482,6 +483,8 @@ struct ModelsDevModel {
 struct Modalities {
     #[serde(default)]
     input: Option<Vec<String>>,
+    #[serde(default)]
+    output: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -513,6 +516,18 @@ struct Cost {
 }
 
 impl ModelsDevModel {
+    /// Whether an agent can work with the model: the document states that
+    /// its output includes text and that it calls tools. A model that writes
+    /// only speech or images, or calls no tool, is not one.
+    fn agentic(&self) -> bool {
+        let writes_text = self
+            .modalities
+            .as_ref()
+            .and_then(|modalities| modalities.output.as_ref())
+            .is_some_and(|output| output.iter().any(|kind| kind == "text"));
+        writes_text && self.tool_call == Some(true)
+    }
+
     /// The model as a catalog model (`models.md` § The models.dev
     /// document): `limit.context` and `limit.output` are its token limits,
     /// the types its input modalities give its accepted types (`models.md`

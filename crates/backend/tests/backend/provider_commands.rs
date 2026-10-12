@@ -1,7 +1,8 @@
 //! The agent's `demi providers` (`models.md` § Managing providers from a
 //! conversation): reads need no permission and the first change asks for
 //! Manage Providers; then the agent adds an entry from the vendor list,
-//! searches models.dev and adds a model filled from a match, and saves a
+//! searches models.dev and adds a model filled from a match, which starts
+//! the entry's own list from its vendor's models, and saves a
 //! key it pipes in from a file without the key reaching its transcript;
 //! a subscription entry's list refuses with the page's words. The model is
 //! the scripted family of the subagent scenarios, models.dev a scripted
@@ -31,9 +32,9 @@ fn document() -> Value {
             "id": "google", "name": "Google", "npm": "@ai-sdk/google",
             "models": {
                 "gemini-3.8-flash": {
-                    "name": "Gemini 3.8 Flash", "release_date": "2026-09-01", "reasoning": true,
+                    "name": "Gemini 3.8 Flash", "release_date": "2026-09-01", "reasoning": true, "tool_call": true,
                     "reasoning_options": [{ "type": "effort", "values": ["low", "medium", "high"] }],
-                    "modalities": { "input": ["text", "image", "pdf"] },
+                    "modalities": { "input": ["text", "image", "pdf"], "output": ["text"] },
                     "limit": { "context": 1_048_576, "output": 65_536 }
                 },
                 "gemini-3.8-pro": { "name": "Gemini 3.8 Pro", "limit": { "context": 1_048_576 } }
@@ -92,8 +93,8 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
     let requested = permissions(&backend, &master, FIRST).await;
     assert_eq!(requested.requests.len(), 1, "{requested:?}");
     let request = &requested.requests[0];
-    assert_eq!(request.command, add);
-    let category = &request.categories[0];
+    assert_eq!(request.command(), add);
+    let category = &crate::permissions::categories(request)[0];
     assert_eq!(
         (category.id.as_str(), category.action.as_deref()),
         ("providers.manage", Some("manage providers"))
@@ -128,14 +129,14 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
             say("added"),
         ],
     );
-    let allowed = decide(&backend, &master, FIRST, request.id.as_str(), "allow").await;
+    let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
     socket.until_idle().await;
     let asked = last_root(&scripts);
     for shown in [
         "state     Needs an API key\n",
         "google/gemini-3.8-flash  Gemini 3.8 Flash  1M  out 65.5K  low* medium high  png jpg jpeg gif webp pdf\n",
-        "Added to Google: gemini-3.8-flash  Gemini 3.8 Flash  1M  out 65.5K  low* medium high  png jpg jpeg gif webp pdf\n",
+        "Google now keeps its own list of 2 models; it no longer follows models.dev.\nAdded to Google: gemini-3.8-flash  Gemini 3.8 Flash  1M  out 65.5K  low* medium high  png jpg jpeg gif webp pdf\n",
         "key       saved\nstate     Ready\n",
         "\"keySaved\":true",
         "demi providers models add: Claude Code lists its own models; its list cannot be edited.",
@@ -145,7 +146,8 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
     }
     assert!(!asked.contains(KEY), "a key reached the transcript: {asked}");
 
-    // The model holds every fact models.dev states, as the page saves one.
+    // The model holds every fact models.dev states, as the page saves one,
+    // and the vendor's other model stays.
     let providers = backend
         .get("/api/providers", Some(&master))
         .await
@@ -157,11 +159,18 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
         .expect("Google was added");
     assert_eq!(
         serde_json::to_value(&google.models).unwrap(),
-        json!([{
-            "id": "gemini-3.8-flash", "displayName": "Gemini 3.8 Flash", "contextWindow": 1_048_576,
-            "outputLimit": 65_536, "thinkingEfforts": ["low", "medium", "high"],
-            "acceptedExtensions": ["png", "jpg", "jpeg", "gif", "webp", "pdf"], "fastTier": null
-        }])
+        json!([
+            {
+                "id": "gemini-3.8-pro", "displayName": "Gemini 3.8 Pro", "contextWindow": 1_048_576,
+                "outputLimit": null, "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
+            },
+            {
+                "id": "gemini-3.8-flash", "displayName": "Gemini 3.8 Flash", "contextWindow": 1_048_576,
+                "outputLimit": 65_536, "thinkingEfforts": ["low", "medium", "high"],
+                "acceptedExtensions": ["png", "jpg", "jpeg", "gif", "webp", "pdf"], "fastTier": null
+            }
+        ])
     );
+    assert!(google.has_api_key);
     backend.close().await;
 }

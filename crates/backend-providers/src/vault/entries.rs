@@ -128,17 +128,13 @@ impl ProviderEntry {
 
     /// What the entry lacks to infer, in the order the page lists it
     /// (`models.md` § A provider is in the list from the start): an API-key
-    /// entry's key, a custom endpoint's address, a model when its configured
-    /// list is empty, and a subscription's account. Empty for a complete
-    /// entry.
+    /// entry's key, a model when its configured list is empty, and a
+    /// subscription's account. An address is never missing: an entry
+    /// without one uses its family's default. Empty for a complete entry.
     pub fn missing(&self) -> Vec<SetupPart> {
         match &self.credential {
             EntryCredential::ApiKey(config) => [
                 (config.api_key.is_none(), SetupPart::ApiKey),
-                (
-                    config.vendor_id.is_none() && config.base_url.is_none(),
-                    SetupPart::BaseUrl,
-                ),
                 (
                     config.models.as_ref().is_some_and(|models| models.0.is_empty()),
                     SetupPart::Models,
@@ -176,6 +172,7 @@ impl ProviderEntry {
             wire_api: config.and_then(|config| config.wire_api),
             vendor_id: config.and_then(|config| config.vendor_id.clone()),
             base_url: config.and_then(|config| config.base_url.clone()),
+            has_api_key: config.is_some_and(|config| config.api_key.is_some()),
             models: config.and_then(|config| config.models.clone()),
             created_at: self.created_at,
         }
