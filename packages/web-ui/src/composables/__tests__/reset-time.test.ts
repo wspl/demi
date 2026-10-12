@@ -18,6 +18,7 @@ test.each([
   { scenario: 'within 24 hours', at: inMinutes(3 * 60 + 38), wording: 'Resets in 3 hr 38 min' },
   { scenario: 'on the hour', at: inMinutes(3 * 60), wording: 'Resets in 3 hr' },
   { scenario: 'within 7 days', at: new Date(2026, 9, 17, 16, 0).toISOString(), wording: 'Resets Sat 4:00 PM' },
+  { scenario: 'a moment just before the minute', at: new Date(2026, 9, 17, 15, 59, 59, 600).toISOString(), wording: 'Resets Sat 4:00 PM' },
   { scenario: 'later this year', at: new Date(2026, 9, 25, 16, 0).toISOString(), wording: 'Resets Oct 25 at 4:00 PM' },
   { scenario: 'another year', at: new Date(2027, 0, 15, 9, 5).toISOString(), wording: 'Resets Jan 15, 2027 at 9:05 AM' },
 ])('a reset $scenario reads "$wording"', ({ at, wording }) => {

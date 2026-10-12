@@ -207,14 +207,7 @@
           "kind": "messages",
           "tokens": 17200,
           "estimated": true,
-          "parts": [
-            { "kind": "commandGroup", "group": "demi browser", "tokens": 9000 },
-            { "kind": "userMessages", "tokens": 1200 },
-            { "kind": "agentText", "tokens": 3000 },
-            { "kind": "thinking", "tokens": 800 },
-            { "kind": "images", "tokens": 1600 },
-            { "kind": "unattributed", "tokens": 1600 }
-          ]
+          "parts": []
         },
         {
           "kind": "systemPrompt",

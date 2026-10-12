@@ -54,12 +54,15 @@ const WEEK_MINUTES = 7 * DAY_MINUTES
  * snapshot says): "Resets in 12 min" within the hour, "Resets in 3 hr
  * 38 min" within a day, the minutes left out on the hour, "Resets Sat
  * 4:00 PM" within a week, then "Resets Oct 15 at 4:00 PM", with the year
- * when it is not this year's. Minutes count up, so the last one reads
- * "in 1 min", as does a reset the clock has just passed.
+ * when it is not this year's, each moment its nearest minute. Minutes
+ * count up, so the last one reads "in 1 min", as does a reset the clock
+ * has just passed.
  */
 export function formatReset(timestamp: string, now: Date): string {
-  const moment = dayjs(timestamp)
-  const minutes = Math.max(1, Math.ceil(moment.diff(now) / MINUTE_MS))
+  const minutes = Math.max(1, Math.ceil(dayjs(timestamp).diff(now) / MINUTE_MS))
+  // A vendor states a reset to the second or less, as 3:59:59.6 PM for
+  // 4:00 PM: a moment is named by its nearest minute.
+  const moment = dayjs(timestamp).add(30, 'second').startOf('minute')
   if (minutes < HOUR_MINUTES) {
     return `Resets in ${minutes} min`
   }

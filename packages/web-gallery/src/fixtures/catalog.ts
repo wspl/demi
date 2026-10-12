@@ -77,7 +77,8 @@ function compactionBuffer(window: number): number {
  * Compact is taken from half. Its rows are those a Demi conversation holds:
  * the system prompt with the shell tool, the commands, the instructions of
  * `demoInstructions`, two skills and the execution context, then Messages,
- * the rest; in a window, the compaction buffer and the free space.
+ * the rest, which does not open; in a window, the compaction buffer and the
+ * free space.
  */
 export function usageOf(tokens: number, window: number | null, shape: UsageShape = {}): ContextUsage {
   const prompt = (layer: PromptLayerKind, tokens: number): ContextPart => ({ kind: 'prompt', layer, tokens })
@@ -138,22 +139,8 @@ export function usageOf(tokens: number, window: number | null, shape: UsageShape
   ]
   const above = fixed.reduce((sum, row) => sum + row.tokens, 0)
   const messages = Math.max(0, tokens - above)
-  // The messages' parts are block estimates; what they miss of the provider's count is Unattributed.
-  const share = (part: number) => Math.round(messages * part)
-  const parts: ContextPart[] = [
-    { kind: 'commandGroup', group: 'demi browser', tokens: share(0.34) },
-    { kind: 'commandGroup', group: 'shell', tokens: share(0.22) },
-    { kind: 'agentText', tokens: share(0.12) },
-    { kind: 'images', tokens: share(0.1) },
-    { kind: 'thinking', tokens: share(0.07) },
-    { kind: 'userMessages', tokens: share(0.05) },
-    { kind: 'commandGroup', group: 'demi file', tokens: share(0.04) },
-    { kind: 'reports', tokens: share(0.02) },
-  ]
-  const attributed = parts.reduce((sum, part) => sum + part.tokens, 0)
-  parts.push({ kind: 'unattributed', tokens: messages - attributed })
   const rows: ContextRow[] = [
-    { kind: 'messages', tokens: messages, estimated: true, parts: parts.filter((part) => part.tokens > 0) },
+    { kind: 'messages', tokens: messages, estimated: true, parts: [] },
     ...fixed,
   ]
   if (window !== null) {
