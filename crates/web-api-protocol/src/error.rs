@@ -276,3 +276,13 @@ pub enum ErrorCode {
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);
+
+/// The words of a value that breaks its rules, as a refused body says
+/// them: each field's path and what is wrong with it, joined by `; `.
+pub fn problems(report: &garde::Report) -> String {
+    let problems: Vec<String> = report
+        .iter()
+        .map(|(path, error)| format!("{path}: {error}"))
+        .collect();
+    problems.join("; ")
+}

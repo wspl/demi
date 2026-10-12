@@ -637,7 +637,7 @@ async fn a_probe_that_would_spend_inference_is_refused_and_an_api_key_entry_has_
         .post(
             "/api/providers",
             Some(&master),
-            json!({ "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "k" }),
+            json!({ "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "anthropic", "label": "Work", "apiKey": "k" }),
         )
         .await
         .json::<ProviderAnswer>()

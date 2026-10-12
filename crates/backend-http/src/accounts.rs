@@ -9,6 +9,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
+use demi_backend_providers::llm::families::family_name;
 use demi_backend_providers::vault::accounts;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{CredentialId, LoginId};
@@ -89,7 +90,7 @@ pub(super) async fn start_login(
     let family = login.provider_type;
     let label = match login.label {
         Some(label) => label.into_string(),
-        None => format!("{family} subscription"),
+        None => family_name(&family).to_owned(),
     };
     let owner = services.vault.owner_for(&user.id).await?;
     let machine = Arc::new(ShardMachine::new(shards, user.id.clone()));

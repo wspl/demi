@@ -1,7 +1,7 @@
 //! An agent's view and changes of the user's subagent profiles
-//! (`subagents.md` § Managing profiles): `demi agent models` lists the
-//! model menu's catalog as the user has it, an entry the user turned off
-//! left out, and marks the model the agent runs on; a profile change asks
+//! (`subagents.md` § Managing profiles): `demi providers list` lists the
+//! models the user has on, an entry or a model the user turned off left
+//! out unless `--all`, and marks the model the agent runs on; a profile change asks
 //! the user's permission first, then goes through the settings page's
 //! checks with their words and reaches the settings page at once; and the
 //! next spawn with a profile just created runs on its model. The model is
@@ -24,7 +24,7 @@ use crate::subagents::{Scripts, WAIT, say, shell, tree_on};
 use crate::support::Harness;
 
 /// What the root of `FIRST` was asked last.
-fn last_root(scripts: &Scripts) -> String {
+pub(crate) fn last_root(scripts: &Scripts) -> String {
     scripts
         .asked(|session| session == FIRST)
         .pop()
@@ -39,7 +39,7 @@ fn shows(asked: &str, text: &str) -> bool {
 }
 
 #[track_caller]
-fn assert_shows(asked: &str, text: &str) {
+pub(crate) fn assert_shows(asked: &str, text: &str) {
     assert!(shows(asked, text), "{text:?} is not in {asked}");
 }
 
@@ -58,7 +58,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
             "/api/providers",
             Some(&master),
             json!({
-                "source": "custom", "providerType": "tree", "label": "Spare", "apiKey": "k",
+                "source": "custom", "baseUrl": "https://api.example.test/v1", "providerType": "tree", "label": "Spare", "apiKey": "k",
                 "models": [{
                     "id": "n", "displayName": "N", "contextWindow": 100000, "outputLimit": null,
                     "thinkingEfforts": ["low", "high"], "acceptedExtensions": null, "fastTier": null
@@ -86,7 +86,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     scripts.root(
         FIRST,
         vec![
-            shell("t1", &format!("demi agent models; {create} <<< 'You only report.'")),
+            shell("t1", &format!("demi providers list; {create} <<< 'You only report.'")),
             say("asked"),
         ],
     );
@@ -94,7 +94,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     let asked = last_root(&scripts);
     assert_shows(
         &asked,
-        "Tree · API key\n* m  M  100K                 -\n  n  N  100K  low* high off  -\n* the model this agent runs on; an effort with * is the model's default\n",
+        "Tree · API key · Ready\n* m  M  100K                 -\n  n  N  100K  low* high off  -\n* the model this agent runs on; an effort with * is the model's default\n",
     );
     assert!(!asked.contains("Spare"), "{asked}");
     assert_shows(
@@ -252,7 +252,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
         vec![
             shell(
                 "t5",
-                "demi agent models; demi agent profiles create e5 --description x --model n </dev/null",
+                "demi providers list; demi providers list --all; demi agent profiles create e5 --description x --model n </dev/null",
             ),
             say("refused"),
         ],
@@ -261,7 +261,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     let asked = last_root(&scripts);
     assert_shows(
         &asked,
-        "Tree · API key\n* m  M  100K  -\n* the model this agent runs on; an effort with * is the model's default\ndemi agent profiles create: the model \"n\" of \"Tree\" is turned off in Settings > Providers",
+        "Tree · API key · Ready\n* m  M  100K  -\n* the model this agent runs on; an effort with * is the model's default\nTree · API key · Ready\n* m  M  100K                 -\n  n  N  100K  low* high off  -  turned off\nSpare · API key · Ready · turned off\n  n  N  100K  low* high off  -\n* the model this agent runs on; an effort with * is the model's default\ndemi agent profiles create: the model \"n\" of \"Tree\" is turned off in Settings > Providers",
     );
     backend.close().await;
 }

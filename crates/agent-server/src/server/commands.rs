@@ -17,9 +17,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{
     AgentServer,
-    profile_commands::{MODELS_SUMMARY, ModelsArgs, PROFILES_CATEGORY, models, profiles_group},
+    profile_commands::{PROFILES_CATEGORY, profiles_group},
     shell_output::shell_group,
-    tree::{ModelListing, ShownAgent, StartInput, Tree, TreeEntry},
+    tree::{ShownAgent, StartInput, Tree, TreeEntry},
 };
 
 /// The one description of a spawn's brief (`subagents.md` § Command help).
@@ -254,12 +254,6 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
                 .positionals(["id"])
                 .json_output::<Shown>()
                 .bind(TypedRpc::new(verb(server.clone(), show))),
-        )
-        .leaf(
-            LeafBuilder::rpc("models", MODELS_SUMMARY)
-                .input::<ModelsArgs>()
-                .json_output::<ModelListing>()
-                .bind(TypedRpc::new(verb(server.clone(), models))),
         )
         .group(profiles_group(server))
 }

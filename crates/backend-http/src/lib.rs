@@ -240,6 +240,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route("/blobs/{sha256}", get(blobs::blob))
         .route("/models", get(models::models))
+        .route("/models/search", get(models::search))
         .route("/providers", get(providers::list).post(providers::create))
         .route("/providers/catalog", get(providers::catalog))
         .route("/providers/subscription-login", post(accounts::start_login))

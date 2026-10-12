@@ -81,13 +81,14 @@ fn within(context_window: u32) -> impl FnOnce(&Option<u32>, &()) -> garde::Resul
     }
 }
 
-/// An entry's complete manual model list: 1 to 1000 models with distinct
-/// ids.
+/// An entry's complete manual model list: at most 1000 models with
+/// distinct ids. An empty list leaves the entry incomplete until a model is
+/// added (`models.md` § A provider is in the list from the start).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(transparent)]
 #[garde(transparent)]
 pub struct ConfiguredModels(
-    #[garde(length(min = 1, max = 1000), dive, custom(distinct_ids))] pub Vec<ConfiguredModel>,
+    #[garde(length(max = 1000), dive, custom(distinct_ids))] pub Vec<ConfiguredModel>,
 );
 
 fn distinct_ids(models: &[ConfiguredModel], (): &()) -> garde::Result {
@@ -103,7 +104,9 @@ fn distinct_ids(models: &[ConfiguredModel], (): &()) -> garde::Result {
 
 /// `POST /providers`: an API-key entry from the vendor list, whose family,
 /// wire and endpoint the vendor supplies, or a custom endpoint that names its
-/// family itself.
+/// family itself. Everything but the kind may come later: the entry is
+/// incomplete until it has what it needs, and its label is the vendor's or
+/// the family's name without one.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(
     tag = "source",
@@ -115,10 +118,14 @@ pub enum CreateProvider {
     Vendor {
         #[garde(length(min = 1))]
         vendor_id: String,
+        #[serde(default, with = "unwrap_or_skip")]
+        #[schemars(with = "Trimmed")]
         #[garde(length(chars, min = 1, max = LABEL_MAX))]
-        label: Trimmed,
+        label: Option<Trimmed>,
+        #[serde(default, with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(min = 1))]
-        api_key: String,
+        api_key: Option<String>,
         /// Replaces the vendor's endpoint.
         #[serde(default, with = "unwrap_or_skip")]
         #[schemars(with = "EndpointUrl")]
@@ -138,10 +145,14 @@ pub enum CreateProvider {
         #[schemars(with = "WireApi")]
         #[garde(skip)]
         wire_api: Option<WireApi>,
+        #[serde(default, with = "unwrap_or_skip")]
+        #[schemars(with = "Trimmed")]
         #[garde(length(chars, min = 1, max = LABEL_MAX))]
-        label: Trimmed,
+        label: Option<Trimmed>,
+        #[serde(default, with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
         #[garde(length(min = 1))]
-        api_key: String,
+        api_key: Option<String>,
         #[serde(default, with = "unwrap_or_skip")]
         #[schemars(with = "EndpointUrl")]
         #[garde(skip)]
@@ -577,7 +588,8 @@ pub struct CatalogModel {
     pub selection: ModelSelection,
 }
 
-/// Whether the entry's models can be used now, from its health.
+/// Whether the entry's models can be used now: not while the entry is
+/// incomplete, nor while its health says it cannot run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Availability {
@@ -585,6 +597,15 @@ pub enum Availability {
     Unavailable {
         reason: UnavailableReason,
         message: String,
+        /// What an incomplete entry lacks, in this order: present for the
+        /// reason `setup` alone, from which the page marks its fields.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[schemars(with = "Vec<SetupPart>")]
+        missing: Option<Vec<SetupPart>>,
     },
 }
 
@@ -592,10 +613,79 @@ pub enum Availability {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum UnavailableReason {
-    /// The credential is missing or refused.
+    /// The entry lacks a part it needs to infer (`models.md` § A provider
+    /// is in the list from the start).
+    Setup,
+    /// The credential is refused, or a subscription's account expired.
     Authentication,
     /// The provider cannot run requests.
     Runtime,
+}
+
+/// A part an incomplete entry lacks.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum SetupPart {
+    /// An API-key entry's key.
+    ApiKey,
+    /// A custom endpoint's address.
+    BaseUrl,
+    /// A model, on an entry whose configured list is empty.
+    Models,
+    /// A subscription entry's account.
+    Account,
+}
+
+/// The reason an incomplete entry's models cannot be chosen.
+pub const SETUP_MESSAGE: &str = "Finish setting up this provider in Settings";
+
+impl Availability {
+    /// An incomplete entry's availability, lacking `missing`.
+    pub fn setup(missing: Vec<SetupPart>) -> Self {
+        Self::Unavailable {
+            reason: UnavailableReason::Setup,
+            message: SETUP_MESSAGE.to_owned(),
+            missing: Some(missing),
+        }
+    }
+}
+
+/// `{ results }`: at most 20 matches, newest release first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ModelSearchResults {
+    pub results: Vec<ModelMatch>,
+}
+
+/// One models.dev model, filled as a configured model would be; a fact
+/// models.dev does not state is null or empty for the user to fill.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ModelMatch {
+    /// `<vendor>/<model id>`, such as `google/gemini-3.8-flash`.
+    #[serde(rename = "ref")]
+    pub reference: String,
+    pub display_name: String,
+    /// The model's id as `vendor` names it.
+    pub id: String,
+    /// The models.dev vendor the model is filled from.
+    pub vendor: String,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u32>")]
+    pub context_window: Option<u32>,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u32>")]
+    pub output_limit: Option<u32>,
+    /// Its effort levels; empty for a model without thinking, or one whose
+    /// efforts models.dev does not state.
+    pub thinking_efforts: Vec<String>,
+    /// The types the model reads natively: `[]` for none, null when unknown.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Vec<FileExtension>>")]
+    pub accepted_extensions: Option<Vec<FileExtension>>,
+    /// The release date as models.dev states it, such as `2026-06-17`.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub release_date: Option<String>,
 }
 
 /// `GET /providers/:id/cli`: the command-line tool of an entry whose
@@ -711,14 +801,15 @@ mod tests {
     }
 
     #[test]
-    fn a_model_list_holds_one_to_a_thousand_models_with_distinct_ids() {
+    fn a_model_list_holds_up_to_a_thousand_models_with_distinct_ids() {
         let list = |models: Vec<serde_json::Value>| {
             serde_json::from_value::<ConfiguredModels>(json!(models))
                 .unwrap()
                 .validate()
         };
         assert!(list(vec![configured()]).is_ok());
-        assert!(list(Vec::new()).is_err());
+        // An empty list is an entry waiting for its first model.
+        assert!(list(Vec::new()).is_ok());
         let twice = list(vec![configured(), configured()])
             .unwrap_err()
             .to_string();
@@ -732,10 +823,18 @@ mod tests {
         }))
         .unwrap();
         assert!(
-            matches!(vendor, CreateProvider::Vendor { ref label, .. } if label.as_str() == "DeepSeek")
+            matches!(vendor, CreateProvider::Vendor { label: Some(ref label), .. } if label.as_str() == "DeepSeek")
         );
+        // Everything but the kind may come later.
+        let bare: CreateProvider =
+            serde_json::from_value(json!({ "source": "vendor", "vendorId": "google" })).unwrap();
+        assert!(matches!(
+            bare,
+            CreateProvider::Vendor { label: None, api_key: None, .. }
+        ));
         for refused in [
             json!({ "vendorId": "deepseek", "label": "x", "apiKey": "k" }),
+            json!({ "source": "vendor", "vendorId": "deepseek", "apiKey": null }),
             json!({ "source": "vendor", "vendorId": "deepseek", "label": "x", "apiKey": "k", "wireApi": "responses" }),
             json!({ "source": "custom", "providerType": "openai", "label": "x", "apiKey": "k", "baseUrl": null }),
             json!({ "source": "custom", "providerType": "openai", "label": "x", "apiKey": "k", "baseUrl": "gw.example" }),
