@@ -703,6 +703,7 @@ mod tests {
             (Executable::Server, &[server.target]),
             (Executable::Runner, &[server.target, device]),
             (Executable::File, &[server.target, device]),
+            (Executable::Fetch, &[server.target, device]),
             (Executable::Browser, &[server.target, device]),
             (Executable::Claude, &[server.target, device]),
         ] {
@@ -766,7 +767,7 @@ mod tests {
             .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
             .collect();
         files.sort();
-        assert_eq!(files.len(), 8, "{files:?}");
+        assert_eq!(files.len(), 10, "{files:?}");
         assert!(files.contains(&"demi-runner-aarch64-apple-darwin.zst".to_owned()), "{files:?}");
         // The command packages carry the deploy's version as the workspace
         // version.

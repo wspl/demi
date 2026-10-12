@@ -1,0 +1,54 @@
+[package]
+name = "demi-fetch"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "demi-fetch"
+path = "src/main.rs"
+test = false
+
+[dependencies]
+bytes.workspace = true
+demi-command-protocol = { path = "../command-protocol" }
+demi-command-sdk = { path = "../command-sdk" }
+demi-command-package-fetch-protocol = { path = "../command-package-fetch-protocol" }
+demi-shared-cli = { path = "../shared-cli" }
+# A body's charset, which the page names in its Content-Type.
+encoding_rs = "0.8"
+# HTML to Markdown on html5ever, the HTML parser of Servo: headings, lists,
+# links, tables and code, with the parsed tree open to remove what a reader
+# never sees before it converts (`web.md` § demi web fetch).
+htmd = "0.5"
+# htmd's tree, whose elements are removed before it converts.
+markup5ever_rcdom = "0.38"
+# The Content-Type's media type and charset.
+mime = "0.3"
+# The extension of a saved file whose URL names none.
+mime_guess = "2"
+percent-encoding = "2"
+# Redirects, the Host's proxies and trust store, and compressed bodies; no
+# cookies, so the fetch sends none.
+reqwest = { workspace = true, features = ["brotli", "deflate", "gzip", "http2", "rustls", "stream", "system-proxy", "zstd"] }
+serde.workspace = true
+serde_json.workspace = true
+shlex = "2"
+thiserror.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[dev-dependencies]
+# The program started and driven as a service (`testing::ServiceProcess`).
+demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
+# The local HTTP servers the tests fetch from.
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
+tempfile = "3"
