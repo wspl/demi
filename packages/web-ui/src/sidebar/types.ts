@@ -32,9 +32,13 @@ export interface SidebarConversation {
   /** Null for a plain conversation that runs in no project. */
   projectId: string | null
   pinned: boolean
-  /** Finished while the user was elsewhere and not opened since. */
+  /** Finished or failed while the user was elsewhere and not opened since. */
   unread: boolean
-  /** A permission request waits for the user's decision (`permissions.md` § What the user sees). */
+  /**
+   * A permission request waits for the user's decision and has not been read: the yellow dot
+   * (`permissions.md` § What the user sees). A request read but not answered still waits in the
+   * conversation, but its row is settled.
+   */
   needsYou?: boolean
   /**
    * The paired device a conversation outside a project runs on, which its row's end shows

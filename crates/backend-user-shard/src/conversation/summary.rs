@@ -110,6 +110,7 @@ impl Shard {
             hosts_revision: record.hosts_revision,
             plugin_revisions,
             permission_requests: record.permission_requests,
+            unread_permission_requests: record.unread_permission_requests,
             permissions_revision,
         })
     }
