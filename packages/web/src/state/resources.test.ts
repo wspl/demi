@@ -59,20 +59,19 @@ test("a device project's row follows its device online, updating, offline and go
 
   product.read = productState({ devices: [device, cloud], workspaces })
   expect(resources.projects).toEqual([
-    { id: 'ledger', name: 'ledger', path: '/ledger', deviceId: 'laptop', host: 'Alexs-MacBook-Pro.local', hostKind: 'device', state: 'online' },
-    { id: 'notes', name: 'notes', path: '/notes', deviceId: 'cloud', host: 'Cloud', hostKind: 'cloud' },
+    { id: 'ledger', name: 'ledger', path: '/ledger', deviceId: 'laptop', hostKind: 'device', device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'online' } },
+    { id: 'notes', name: 'notes', path: '/notes', deviceId: 'cloud', hostKind: 'cloud' },
   ])
 
   product.read = productState({ devices: [{ ...device, state: 'updating' }, cloud], workspaces })
-  expect(resources.projects[0]).toMatchObject({ hostKind: 'device', state: 'updating' })
+  expect(resources.projects[0]).toMatchObject({ hostKind: 'device', device: { kind: 'paired', state: 'updating' } })
 
   product.read = productState({ devices: [{ ...device, state: 'offline' }, cloud], workspaces })
-  expect(resources.projects[0]).toMatchObject({ hostKind: 'device', state: 'offline' })
+  expect(resources.projects[0]).toMatchObject({ hostKind: 'device', device: { kind: 'paired', state: 'offline' } })
 
-  // A device the list no longer holds, as for a moment around its
-  // revocation, shows as unavailable and offline.
+  // A device the list no longer holds shows as removed, with no state.
   product.read = productState({ devices: [cloud], workspaces })
-  expect(resources.projects[0]).toMatchObject({ host: 'Unavailable device', hostKind: 'device', state: 'offline' })
+  expect(resources.projects[0]).toMatchObject({ hostKind: 'device', device: { kind: 'removed' } })
 })
 
 test("a conversation outside a project shows its paired device with its state, or that it was removed; the Cloud and a project show none", () => {
