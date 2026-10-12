@@ -13,7 +13,7 @@ use demi_backend_providers::vault::accounts;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{CredentialId, LoginId};
 use demi_backend_providers::vault::logins::CodeRefusal;
-use demi_backend_user_shard::conversation::claude_cli::ShardMachine;
+use demi_backend_user_shard::conversation::claude_cli::{self, ShardMachine};
 use demi_provider_common::Secret;
 use demi_web_api_protocol::providers::{
     Accounts, ActivateAccount, ActiveAccount, CredentialKind, LoginAnswer, LoginCode,
@@ -43,6 +43,7 @@ pub(super) async fn list(
 /// Selects the account the entry infers with.
 pub(super) async fn activate(
     State(services): State<Arc<Services>>,
+    State(shards): State<Shards>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     JsonBody(activate): JsonBody<ActivateAccount>,
@@ -51,6 +52,9 @@ pub(super) async fn activate(
     let entry = scoped(&services, &user, &id).await?;
     let _held = reserve(&services, &entry)?;
     let active = accounts::activate(&services.assembly, &entry, activate.credential_id).await?;
+    if entry.active() != Some(&active) {
+        claude_cli::active_account_changed(&shards, &user.id, &entry.id).await;
+    }
     Ok(Json(ActiveAccount { active }))
 }
 
@@ -58,6 +62,7 @@ pub(super) async fn activate(
 /// entry now infers with.
 pub(super) async fn remove(
     State(services): State<Arc<Services>>,
+    State(shards): State<Shards>,
     AuthUser(user): AuthUser,
     Path((id, account)): Path<(String, String)>,
 ) -> Result<Json<RemovedAccount>, ApiError> {
@@ -66,6 +71,9 @@ pub(super) async fn remove(
     let _held = reserve(&services, &entry)?;
     let account = CredentialId::try_from(account).map_err(|_| ApiError::account_not_found())?;
     let active = accounts::remove(&services.assembly, &entry, account).await?;
+    if entry.active() != active.as_ref() {
+        claude_cli::active_account_changed(&shards, &user.id, &entry.id).await;
+    }
     Ok(Json(RemovedAccount { active }))
 }
 

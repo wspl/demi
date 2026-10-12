@@ -7,14 +7,15 @@
 use std::rc::{Rc, Weak};
 
 use demi_agent_transcript::{resume_point, rewind, unwind};
+use demi_provider_common::Ahead;
 use demi_shared_types::{Block, ErrorDevice, HOST_OFFLINE, TurnId};
 use tokio::sync::Notify;
 
 use super::{
-    ActionEnd, ErrorReport, SessionEvent, SessionShared, Settle, TurnError,
+    ActionEnd, ErrorReport, SessionEvent, SessionShared, Settle, TurnError, ahead,
     cancel::{CancelReason, TurnCancel},
     compaction,
-    core::{ActionKind, StartedAction},
+    core::{ActionKind, SessionCore, StartedAction},
     editing::{self, EditError},
     input::Take,
     persist, turn,
@@ -46,8 +47,16 @@ pub(crate) async fn run(session: Weak<SessionShared>, work: Rc<Notify>) {
         let Some(s) = session.upgrade() else {
             return;
         };
-        while let Some(started) = s.update(|core| core.take_started()) {
-            run_action(&s, started).await;
+        loop {
+            while let Some(started) = s.update(|core| core.take_started()) {
+                run_action(&s, started).await;
+            }
+            // Idle now: what was asked to ready ahead is readied, unless an
+            // action starts first.
+            let Some(ahead) = s.update(SessionCore::take_ahead) else {
+                break;
+            };
+            ahead::prepare(&s, ahead).await;
         }
         if s.read(|core| core.settle()) == Settle::Closed {
             return;
@@ -155,7 +164,12 @@ async fn run_action(s: &Rc<SessionShared>, started: StartedAction) {
         let _ = reply.send(result);
     }
     drop(lease);
-    s.update(|core| core.start_next());
+    s.update(|core| {
+        // The action may have changed the history, and the token of a kept
+        // process may be about to expire.
+        core.ask_ahead(Ahead::Ended);
+        core.start_next();
+    });
 }
 
 async fn execute(

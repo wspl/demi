@@ -12,7 +12,7 @@ use std::rc::Rc;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::usage::UsageRow;
 use demi_provider_common::{
-    ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime,
+    Ahead, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun, ProviderRuntime,
     RequestLimits,
 };
 use demi_shared_types::{Model, TokenUsage};
@@ -116,6 +116,11 @@ impl ProviderRuntime for MeteredRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         self.inner.close()
+    }
+
+    /// Readying ahead is no request: it is neither limited nor recorded.
+    fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {
+        self.inner.prepare(request, ahead)
     }
 
     fn request_limits(&self, model: &Model) -> RequestLimits {

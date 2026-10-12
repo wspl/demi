@@ -29,7 +29,7 @@ pub mod wire;
 
 pub use body::{encode_body, json_body};
 pub use contract::{
-    Capabilities, CatalogError, EntriesOf, InferenceItem, InferenceRequest, MediaBytes, Medium, PromptCache,
+    Ahead, Capabilities, CatalogError, EntriesOf, InferenceItem, InferenceRequest, MediaBytes, Medium, PromptCache,
     Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestBlock, RequestLimits, ResultPart, RuntimeEnv,
     RuntimeError, ToolCall, ToolDefinition, ToolResultKinds, UserPart, offers,
 };

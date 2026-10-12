@@ -15,7 +15,7 @@ use demi_host_interface::{
 };
 use demi_provider_claude_code::{
     ClaudeCodeConfig, ClaudeCodeProvider, CliSite, CliStart, CliSystem, ConfigDir, Placed,
-    Placement, StartError, StartSteps,
+    Placement, PreparedProcesses, StartError, StartSteps,
 };
 use demi_provider_common::credentials::{
     AccountMeta, CredentialPool, MemoryCredentialPool, credential_id_for,
@@ -218,6 +218,9 @@ pub struct ScriptedPlacement {
     /// The failure of the next start.
     failure: Rc<RefCell<Option<StartError>>>,
     starts: Rc<Cell<usize>>,
+    /// The processes prepared ahead on the one machine every clone stands
+    /// for.
+    prepared: Rc<PreparedProcesses>,
 }
 
 impl ScriptedPlacement {
@@ -227,6 +230,7 @@ impl ScriptedPlacement {
             started,
             failure: Rc::default(),
             starts: Rc::default(),
+            prepared: Rc::default(),
         };
         (placement, Starts(starts))
     }
@@ -239,6 +243,11 @@ impl ScriptedPlacement {
     /// How many processes were started.
     pub fn starts(&self) -> usize {
         self.starts.get()
+    }
+
+    /// How many processes prepared ahead the machine holds unused.
+    pub fn prepared_count(&self) -> usize {
+        self.prepared.len()
     }
 }
 
@@ -279,6 +288,10 @@ impl Placement for ScriptedPlacement {
                 steps: StartSteps::default(),
             })
         })
+    }
+
+    fn prepared(&self) -> Rc<PreparedProcesses> {
+        self.prepared.clone()
     }
 }
 
@@ -527,6 +540,15 @@ impl Cli {
     /// How the process ended, once it did.
     pub fn end(&self) -> Option<ProcessEnd> {
         self.state.end.borrow().clone()
+    }
+
+    /// How the process ended, once it does.
+    pub async fn ended(&self) -> ProcessEnd {
+        let mut end = self.state.end.subscribe();
+        let ended = guarded("the process's end", end.wait_for(Option::is_some))
+            .await
+            .expect("the state lives");
+        ended.clone().expect("the end is set")
     }
 
     /// The process's configuration directory.
