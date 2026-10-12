@@ -120,7 +120,9 @@ pub(crate) const CONTROL: Schema = Schema {
 
 /// From the control schema whose subagent limits keep their numbers to the
 /// one with the plugins' secrets and OAuth clients (`plugins.md` § Secrets,
-/// § OAuth sign-in): two new tables, empty.
+/// § OAuth sign-in): two new tables, empty; and a request's read state
+/// (`product.md` § Conversations and projects), which a request that waits
+/// has not yet.
 const CONTROL_FROM_KEPT_LIMITS: &str = "
 CREATE TABLE plugin_secrets (
   user_id  TEXT NOT NULL REFERENCES users (id),
@@ -137,6 +139,7 @@ CREATE TABLE plugin_oauth_clients (
   client_id    TEXT NOT NULL,
   PRIMARY KEY (plugin, issuer)
 ) STRICT, WITHOUT ROWID;
+ALTER TABLE permission_requests ADD COLUMN read INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1));
 ";
 
 /// Each conversation's database's. Its history holds the schema of each
@@ -1371,9 +1374,11 @@ CREATE TABLE conversation_drafts (
 -- Conversation permissions (permissions.md): each command an agent ran
 -- without the grants of its categories, a JSON array of their ids sorted so
 -- that the same categories compare equal, undecided until the user decides and
--- then kept until the decision's message is in the agent's checkpoint; and
--- each category the user allowed for a conversation. The agent is the root
--- when its number and description are null.
+-- then kept until the decision's message is in the agent's checkpoint, and
+-- read once the user has opened the conversation with the request waiting
+-- (the sidebar's yellow mark settles then); and each category the user
+-- allowed for a conversation. The agent is the root when its number and
+-- description are null.
 CREATE TABLE permission_requests (
   id                TEXT PRIMARY KEY,
   conversation_id   TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
@@ -1385,6 +1390,7 @@ CREATE TABLE permission_requests (
   created_at        INTEGER NOT NULL,
   decision          TEXT CHECK (decision IN ('allowed', 'denied')),
   decided_at        INTEGER,
+  read              INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1)),
   CHECK ((agent_number IS NULL) = (agent_description IS NULL)),
   CHECK ((decision IS NULL) = (decided_at IS NULL))
 ) STRICT;

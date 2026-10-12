@@ -48,6 +48,9 @@ pub struct ConversationRecord {
     pub hosts_revision: u64,
     /// How many of the conversation's permission requests are undecided.
     pub permission_requests: u64,
+    /// How many of those the user has not read yet: none has been
+    /// acknowledged since it was raised (`mark_conversation_read`).
+    pub unread_permission_requests: u64,
 }
 
 /// A change a user asks of a conversation, which `Shard::transition`
@@ -210,7 +213,8 @@ const CONVERSATION_COLUMNS: &str = "id, user_id, title, archived, pinned, read_r
      target_path, target_workspace_id, context_version, model, created_at, updated_at, hosts_revision,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
      COALESCE((SELECT revision FROM conversation_panels WHERE conversation_id = conversations.id), 0) AS panel_revision,
-     (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL) AS permission_requests";
+     (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL) AS permission_requests,
+     (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL AND NOT read) AS unread_permission_requests";
 
 /// A target as its typed columns: the kind and what the kind names.
 pub struct TargetColumns {
@@ -384,8 +388,10 @@ impl ControlService {
         .await
     }
 
-    /// Acknowledges the output up to `revision`; an acknowledgement never
-    /// moves the read revision back.
+    /// Acknowledges the output up to `revision`, and the permission requests
+    /// that wait; an acknowledgement never moves the read revision back. A
+    /// request raised later is unread (`product.md` § Conversations and
+    /// projects).
     pub async fn mark_conversation_read(
         &self,
         id: ConversationId,
@@ -393,10 +399,16 @@ impl ControlService {
     ) -> Result<(), StorageError> {
         let revision = revision_column(revision);
         self.call(move |connection, _| {
-            connection.execute(
+            let transaction = connection.transaction()?;
+            transaction.execute(
                 "UPDATE conversations SET read_revision = MAX(read_revision, ?2) WHERE id = ?1",
                 params![id.as_str(), revision],
             )?;
+            transaction.execute(
+                "UPDATE permission_requests SET read = 1 WHERE conversation_id = ?1 AND decision IS NULL",
+                [id.as_str()],
+            )?;
+            transaction.commit()?;
             Ok(())
         })
         .await
@@ -697,6 +709,11 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
             "permission_requests",
             "id",
             u64::try_from(row.get::<_, i64>("permission_requests")?),
+        )?,
+        unread_permission_requests: decode(
+            "permission_requests",
+            "read",
+            u64::try_from(row.get::<_, i64>("unread_permission_requests")?),
         )?,
     })
 }

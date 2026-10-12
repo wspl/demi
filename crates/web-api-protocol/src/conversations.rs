@@ -197,6 +197,12 @@ pub struct ConversationSummary {
     /// § Conversation permissions).
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub permission_requests: u64,
+    /// How many of those the user has not read: the sidebar's needs-you mark
+    /// shows while this is above zero, and settles once the user reads the
+    /// conversation, as it does for an answer (`product.md` § Conversations
+    /// and projects). The read acknowledgement reads them with the output.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub unread_permission_requests: u64,
     /// Rises with each change of the conversation's permission requests in
     /// this run of the backend: a page reads them only when this is newer
     /// than the revision it holds (`web-api.md` § Revisions counted in
