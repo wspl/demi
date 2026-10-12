@@ -71,11 +71,22 @@ on the Cloud and on a device alike. One that runs on a paired device shows
 that device at its row's very end, after the pin of a pinned row, so the
 devices line up down the list, a computer with a dot for the device's state,
 as a project's row shows its device, so a row without the mark runs on the
-Cloud. For a device since removed, the mark has no dot. Like the project
-row's mark, it gives its place to the row's buttons on hover, so it has no
-tooltip; its accessible label names the device and its state, *MacBook Pro ·
-Online*, or says *Removed device*. A row in a project
+Cloud. For a device since removed, the mark has no dot. A row in a project
 shows no mark: its project's row already shows where it runs.
+
+A project's row ends in the same mark, the computer with its state dot, one
+component for both rows, so the devices line up down both groups. The mark
+stays when the pointer is over the row: the row's buttons, such as a
+project's New Conversation and a conversation's Archive, appear to its left,
+and the mark's tip names the device and its state, *MacBook Pro · Online*, or
+*Removed device*, which its accessible label says too. A project's row names
+its device in words only where the mark alone cannot tell two projects apart:
+when another project of the same name runs on another device, both rows show
+their device's name before the mark, cut at its end when the row is narrow,
+and the name gives its place to the buttons while the pointer is over the
+row. For example, *demi* on the MacBook and *demi* on the Mac mini read
+*demi  MacBook Pro 🖥* and *demi  Mac mini 🖥*, while *chromium*, on the
+MacBook alone, reads *chromium 🖥*.
 
 A row's status dot says what the conversation's work is doing, in the colors
 an agent's tab and link wear, so one state has one look everywhere:
