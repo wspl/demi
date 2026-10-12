@@ -1,14 +1,12 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { useClipboard } from '@vueuse/core'
-import { Check, CircleX, Copy } from '@lucide/vue'
+import { CircleX } from '@lucide/vue'
 import Button from './Button.vue'
 import Fold from './Fold.vue'
 import FoldChevron from './FoldChevron.vue'
-import IconButton from './IconButton.vue'
+import CopyButton from './CopyButton.vue'
 import ScrollArea from './ScrollArea.vue'
 import { ICON_PX } from './icon-metrics'
-import Tooltip from './Tooltip.vue'
 import type { SentenceText, TitleText } from './ui-text'
 
 /**
@@ -20,7 +18,7 @@ import type { SentenceText, TitleText } from './ui-text'
  * most one action beside a copy control for the support thread. It is a record in the transcript, not a
  * fixture of the dock, so it scrolls with what it describes.
  */
-const props = withDefaults(
+withDefaults(
   defineProps<{
     label: SentenceText
     /** The upstream message or reason, in the caller's words. */
@@ -42,7 +40,6 @@ const props = withDefaults(
   },
 )
 defineEmits<{ action: [] }>()
-const { copy, copied } = useClipboard({ copiedDuring: 1500 })
 const rawOpen = ref(false)
 </script>
 
@@ -99,18 +96,7 @@ const rawOpen = ref(false)
       class="on-fill flex shrink-0 items-center gap-1"
       :class="facts.length > 0 ? '-mt-0.5 self-start' : ''"
     >
-      <Tooltip
-        v-if="copyText"
-        :content="copied ? 'Copied' : 'Copy'"
-      >
-        <IconButton
-          :icon="copied ? Check : Copy"
-          size="sm"
-          variant="ghost"
-          aria-label="Copy"
-          @click="copy(props.copyText ?? '')"
-        />
-      </Tooltip>
+      <CopyButton v-if="copyText" :source="copyText" />
       <Button v-if="action" size="sm" @click="$emit('action')">{{
         action
       }}</Button>

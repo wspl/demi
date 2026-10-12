@@ -1,7 +1,6 @@
 <script setup lang="ts">
-import { useClipboard } from '@vueuse/core'
-import { Check, Code, Copy, Download, Eye } from '@lucide/vue'
-import { showToast } from '../infra/toast'
+import { Code, Download, Eye } from '@lucide/vue'
+import CopyButton from '../ui/CopyButton.vue'
 import IconButton from '../ui/IconButton.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
@@ -31,22 +30,6 @@ const modeOptions: readonly SegmentedOption<'preview' | 'source'>[] = [
   { value: 'source', label: 'Source', icon: Code },
 ]
 
-const { copy, copied } = useClipboard({ copiedDuring: 1500 })
-
-async function copyText(): Promise<void> {
-  if (props.bar.copy === null)
-    return
-  try {
-    await copy(props.bar.copy)
-  } catch (error) {
-    showToast({
-      title: 'Could Not Copy',
-      message: error instanceof Error ? error.message : String(error),
-      tone: 'danger',
-    })
-  }
-}
-
 /** The bar's height less a control's, halved: each control at the end keeps that distance to every edge. */
 const END_INSET = (36 - 24) / 2
 </script>
@@ -66,15 +49,7 @@ const END_INSET = (36 - 24) / 2
         :disabled="tooLargeToRender"
         disabled-reason="Too large to render; showing its source"
       />
-      <Tooltip v-if="bar.copy !== null" :content="copied ? 'Copied' : 'Copy'">
-        <IconButton
-          :icon="copied ? Check : Copy"
-          variant="ghost"
-          size="sm"
-          :aria-label="copied ? 'Copied' : 'Copy'"
-          @click="copyText"
-        />
-      </Tooltip>
+      <CopyButton v-if="bar.copy !== null" :source="bar.copy" />
       <Tooltip v-if="bar.download" content="Download">
         <IconButton :icon="Download" variant="ghost" size="sm" aria-label="Download" @click="emit('download')" />
       </Tooltip>
