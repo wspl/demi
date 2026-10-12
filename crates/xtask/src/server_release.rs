@@ -331,7 +331,7 @@ mod tests {
         // The root holds the records; the programs are the release's files.
         assert_eq!(
             names(&output.join("commands")),
-            ["demi-browser", "demi-claude-code", "demi-file"]
+            ["demi-browser", "demi-claude-code", "demi-fetch", "demi-file"]
         );
         assert_eq!(names(&output.join("commands/demi-file")), [DESCRIPTOR]);
         let runners = output.join("runners");
@@ -342,6 +342,7 @@ mod tests {
             [
                 "demi-browser-aarch64-pc-windows-msvc.exe.zst",
                 "demi-claude-code-aarch64-pc-windows-msvc.exe.zst",
+                "demi-fetch-aarch64-pc-windows-msvc.exe.zst",
                 "demi-file-aarch64-pc-windows-msvc.exe.zst",
                 "demi-runner-aarch64-pc-windows-msvc.exe.zst",
             ]
@@ -372,7 +373,7 @@ mod tests {
         let downloads = "https://github.com/wspl/demi/releases/download/v0.1.3/";
         assemble(&options(&published, Some(downloads)), &cancel).await.unwrap();
         assert_eq!(record(&published).files, downloads);
-        assert_eq!(names(&files).len(), 4);
+        assert_eq!(names(&files).len(), 5);
         // A rebuilt program is another build's, whose files these are not.
         build(&artifacts, &[Executable::File], &[windows]);
         std::fs::write(
