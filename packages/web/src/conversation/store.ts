@@ -31,6 +31,7 @@ import {
   type ModelSettingsChange,
 } from '@demicodes/web-ui/agent/model-selection'
 import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
+import { subagentJobFields } from '@demicodes/web-ui/agent/subagents'
 import { agentWorks, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import {
   composerAttachmentFromFile,
@@ -1193,16 +1194,11 @@ export const useConversations = defineStore('conversations', () => {
     reconcileSubmission(conversation)
     conversation.terminals = []
     conversation.subagents = listed.subagents.map((subagent) => ({
+      ...subagentJobFields(subagent),
       pendingCalls: [],
       waitingSince: null,
       // A live child's `phase` frame comes with the opening handshake.
       sessionPhase: 'idle',
-      id: subagent.subagentId,
-      number: subagent.number,
-      name: subagent.description,
-      phase: subagent.phase,
-      startedAt: subagent.startedAt,
-      endedAt: subagent.endedAt ?? undefined,
       history: EMPTY_TRANSCRIPT,
       failures: {},
     }))

@@ -27,6 +27,8 @@ import { TestSocket } from '@demicodes/web-ui/transport/__tests__/test-socket'
 
 /** The latest page of an empty transcript, as the backend answers it. */
 const EMPTY_PAGE = { start: 0, length: 0, blocks: [], instructions: [], summaries: [] }
+// What a child without a profile runs on, in the jobs below.
+const RUNS_ON = { provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false }
 
 const realFetch = globalThis.fetch
 const FIRST = '00000000-0000-4000-8000-000000000001'
@@ -394,7 +396,7 @@ test('sidebar stays active until the last running child closes after its parent 
     number: 1,
     parentSessionId: conversation.id,
     description: 'First child',
-    profile: null,
+    profile: null, model: RUNS_ON, round: 1, forkedFrom: null,
     phase: 'running' as const,
     startedAt: '2026-09-13T00:00:00.000Z',
     endedAt: null,
@@ -424,6 +426,27 @@ test('sidebar stays active until the last running child closes after its parent 
   expect(conversation.status).toBe('active')
 })
 
+// A resumed child's line counts its new round (`subagents.md` § What an
+// agent runs on): the `started` job of round 2 replaces the closed round's
+// start and end.
+test('a resumed child\'s record takes its new round\'s start, end and model', () => {
+  const conversation = useConversations().items[0]!
+  const job = {
+    subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Look',
+    profile: 'research', model: RUNS_ON, round: 1, forkedFrom: null,
+    phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
+  }
+  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
+  applyConversationEvent(conversation, {
+    type: 'subagent', event: 'closed', job: { ...job, phase: 'completed', endedAt: '2026-09-13T00:01:00.000Z' },
+  })
+  const second = { ...job, round: 2, startedAt: '2026-09-13T00:05:00.000Z', model: { ...RUNS_ON, fast: true } }
+  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job: second })
+  expect(conversation.subagents.find((agent) => agent.id === 'child')).toMatchObject({
+    phase: 'running', round: 2, startedAt: '2026-09-13T00:05:00.000Z', endedAt: undefined, model: second.model,
+  })
+})
+
 // A child's tail row reads its own phase (`runtime.md` § Frame protocol): a
 // child idle beside a command it left running shows no Requesting row, and
 // its phase never becomes the root's.
@@ -435,7 +458,7 @@ test('a live child\'s phase frames set its own phase, not the root\'s', () => {
     event: 'started',
     job: {
       subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Serve',
-      profile: null, phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
+      profile: null, model: RUNS_ON, round: 1, forkedFrom: null, phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
     },
   })
   const child = () => conversation.subagents.find((agent) => agent.id === 'child')!
@@ -485,7 +508,7 @@ test('a command\'s live frames build what the page shows of it, until its end', 
 
   // A subagent's command takes its call from the child's transcript; a call without a description is titled by its script.
   const job = {
-    subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Child', profile: null,
+    subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Child', profile: null, model: RUNS_ON, round: 1, forkedFrom: null,
     phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
   }
   applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
@@ -546,7 +569,7 @@ test('a child keeps the failure facts of its transcript, which resets and patche
     number: 1,
     parentSessionId: conversation.id,
     description: 'Child',
-    profile: null,
+    profile: null, model: RUNS_ON, round: 1, forkedFrom: null,
     phase: 'running' as const,
     startedAt: '2026-09-13T00:00:00.000Z',
     endedAt: null,
@@ -570,6 +593,10 @@ test('restored running children keep an idle parent active in the sidebar', () =
     id: 'restored-child',
     number: 1,
     name: 'Restored child',
+    profile: null,
+    model: RUNS_ON,
+    round: 1,
+    forkedFrom: null,
     phase: 'running',
     sessionPhase: 'idle',
     waitingSince: null,

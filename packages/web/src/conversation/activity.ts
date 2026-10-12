@@ -10,6 +10,7 @@ import type { Conversation } from '../state/types'
 import { findShellCall } from './terminals'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
 import { followFrame } from '@demicodes/web-ui/agent/terminals'
+import { subagentJobFields } from '@demicodes/web-ui/agent/subagents'
 
 /** Map agent events to the product's child and terminal presentation records. */
 export function updateLiveStatus(conversation: Conversation): void {
@@ -33,25 +34,19 @@ export function applyConversationEvent(
   event: ClientSessionEvent,
 ): void {
   if (event.type === 'subagent') {
-    const job = event.job
+    const fields = subagentJobFields(event.job)
     const existing = conversation.subagents.find(
-      (agent) => agent.id === job.subagentId,
+      (agent) => agent.id === fields.id,
     )
     if (existing) {
-      existing.phase = job.phase
-      if (event.event === 'closed') {
-        existing.endedAt = job.endedAt ?? undefined
-      }
+      // A resume's `started` job is a new round: its start, its end and
+      // what it runs on replace the closed round's.
+      Object.assign(existing, fields)
     } else {
       conversation.subagents.push({
-        id: job.subagentId,
-        number: job.number,
-        name: job.description,
-        phase: job.phase,
+        ...fields,
         // Its `phase` frame follows the `started` one.
         sessionPhase: 'idle',
-        startedAt: job.startedAt,
-        endedAt: job.endedAt ?? undefined,
         history: EMPTY_TRANSCRIPT,
         pendingCalls: [],
         waitingSince: null,

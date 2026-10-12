@@ -1,16 +1,34 @@
-import type { PendingCall, ProviderFailureFacts, SessionPhase } from '@demicodes/protocol'
+import type { JobModel, PendingCall, ProviderFailureFacts, SessionPhase, SubagentJob } from '@demicodes/protocol'
 import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { ConversationStatus } from './conversation-status'
 import type { MessageEditContent } from './message-editing'
+import { effortWord } from './reasoning'
+import { formatDuration } from './thinking-label'
 
 export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'
 
-export interface SubagentRecord {
+/**
+ * What a child's round runs on and how far it got, as its job says
+ * (`subagents.md` § What an agent runs on).
+ */
+export interface AgentRun {
+  /** The profile's name; null for the inherit profile. */
+  profile: string | null
+  model: JobModel
+  /** 1 for the spawn's round, one more at each resume. */
+  round: number
+  /** The number of the agent it was forked from; null for one not forked. */
+  forkedFrom: number | null
+  phase: SubagentPhase
+  startedAt: string
+  endedAt?: string
+}
+
+export interface SubagentRecord extends AgentRun {
   id: string
   /** The number the model knows it by, which a message links it with as `agent:<number>`. */
   number: number
   name: string
-  phase: SubagentPhase
   /**
    * What its session does while it is live, as its `phase` frames say: a
    * child idle beside a command it left running shows no Requesting row
@@ -30,6 +48,63 @@ export interface SubagentRecord {
   waitingSince: number | null
   /** The failure facts of this agent's error blocks, by block id. */
   failures: Record<string, ProviderFailureFacts>
+}
+
+/** What a child's job sets on its record: who it is, and its round as the job says it now. */
+export type SubagentJobFields = Pick<SubagentRecord, 'id' | 'number' | 'name'> & AgentRun
+
+/**
+ * A child's record fields from its job, a `subagent` frame's or the
+ * subagents route's: a `started` job of a later round replaces the closed
+ * round's start, end, phase and model.
+ */
+export function subagentJobFields(job: SubagentJob): SubagentJobFields {
+  return {
+    id: job.subagentId,
+    number: job.number,
+    name: job.description,
+    profile: job.profile,
+    model: job.model,
+    round: job.round,
+    forkedFrom: job.forkedFrom,
+    phase: job.phase,
+    startedAt: job.startedAt,
+    endedAt: job.endedAt ?? undefined,
+  }
+}
+
+const TIME_WORDS: Record<SubagentPhase, string> = {
+  running: 'Running for',
+  completed: 'Finished after',
+  aborted: 'Stopped after',
+  error: 'Failed after',
+}
+
+/**
+ * The line that says what a child runs on (`subagents.md` § What an agent
+ * runs on), its round `elapsedMs` old: *research · Claude Sonnet 5.5 ·
+ * Medium · Running for 4m12s*. The profile, or *No profile*; the model;
+ * the effort, or *Thinking off*, none for a model without a thinking
+ * setting; *Fast*; the time; *Round N* from the second round; *Forked from
+ * agent N*.
+ */
+export function agentRunLine(run: AgentRun, elapsedMs: number): string {
+  const parts = [run.profile ?? 'No profile', run.model.model]
+  const effort = run.model.effort
+  if (effort !== null) {
+    parts.push(effort === 'off' ? 'Thinking off' : effortWord(effort))
+  }
+  if (run.model.fast) {
+    parts.push('Fast')
+  }
+  parts.push(`${TIME_WORDS[run.phase]} ${formatDuration(elapsedMs)}`)
+  if (run.round >= 2) {
+    parts.push(`Round ${run.round}`)
+  }
+  if (run.forkedFrom !== null) {
+    parts.push(`Forked from agent ${run.forkedFrom}`)
+  }
+  return parts.join(' · ')
 }
 
 export function isSubagentRunning(phase: SubagentPhase): boolean {
@@ -73,22 +148,6 @@ export function subagentStatus(phase: SubagentPhase): ConversationStatus {
     return 'aborted'
   }
   return 'done'
-}
-
-/** Compact elapsed time for roster rows: `12s`, `2m`, `2m14s`, `1h3m`. */
-export function formatDuration(ms: number): string {
-  const totalSeconds = Math.max(0, Math.round(ms / 1000))
-  if (totalSeconds < 60) {
-    return `${totalSeconds}s`
-  }
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  if (minutes < 60) {
-    return seconds > 0 ? `${minutes}m${seconds}s` : `${minutes}m`
-  }
-  const hours = Math.floor(minutes / 60)
-  const remMinutes = minutes % 60
-  return remMinutes > 0 ? `${hours}h${remMinutes}m` : `${hours}h`
 }
 
 export function subagentDurationMs(agent: SubagentRecord, nowMs: number): number {

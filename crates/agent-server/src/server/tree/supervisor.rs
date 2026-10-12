@@ -18,7 +18,8 @@ use demi_agent_store::{Checkpoint, ClosePhase, NodeClose, NodeRecord};
 use demi_agent_transcript::{CutError, ForkEnd, last_answer, last_failure};
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
-    JobPhase, ServerFrame, SubagentEvent, TranscriptPatch, index_u32, latest_page_start,
+    JobModel, JobPhase, ServerFrame, SubagentEvent, SubagentJob, TranscriptPatch, index_u32,
+    latest_page_start,
 };
 use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
@@ -53,6 +54,8 @@ const OWNER_CLOSING: &str = "owner session is closing";
 /// A live child: its node, and what its supervision keeps about it.
 pub(crate) struct Child<H: HostResolver> {
     node: Rc<Node<H>>,
+    /// What its round runs on, resolved when the round started.
+    runs_on: JobModel,
     /// Set in the one step that decides the child closes; a message sent to
     /// it after that step is refused.
     closing: Cell<bool>,
@@ -88,6 +91,13 @@ impl<H: HostResolver> Child<H> {
     /// Its place among its siblings: spawn order, its number's.
     fn rank(&self) -> u64 {
         self.node.record().number
+    }
+
+    /// Its job, as `record`, its record now or as it closed, describes it.
+    fn job(&self, record: &NodeRecord) -> SubagentJob {
+        record
+            .job(self.runs_on.clone())
+            .expect("a child has a job")
     }
 
     pub(super) fn stop_supervision(&self) {
@@ -360,6 +370,7 @@ impl<H: HostResolver> Tree<H> {
             can_spawn_subagents: setup.can_spawn,
             closed: None,
             delivered: false,
+            forked_from: None,
         };
         let origin = Origin::New {
             record,
@@ -448,6 +459,7 @@ impl<H: HostResolver> Tree<H> {
             can_spawn_subagents: setup.can_spawn,
             closed: None,
             delivered: false,
+            forked_from: Some(source.number),
         };
         seed.state.queue.push(self.text_message(message));
         let origin = Origin::Forked {
@@ -594,6 +606,10 @@ impl<H: HostResolver> Tree<H> {
         slot: Option<LiveSlot<H>>,
     ) -> Result<NodeId, String> {
         let deps = &server.deps;
+        // A fork's round runs on the model it switches to at its first
+        // request.
+        let model = switch.as_ref().map_or(origin.model(), |switch| &switch.model);
+        let runs_on = deps.subagents.runs_on(model).await;
         let activity = self.admission.enter(Purpose::Demand).await;
         let record = origin.record();
         // A profile's child has the product's prompt with what its profile
@@ -643,7 +659,7 @@ impl<H: HostResolver> Tree<H> {
             // assembled is not closing; its runtime is closed all the same.
             refused.discard().await;
         }
-        let child = self.attach_child(assembled.node);
+        let child = self.attach_child(assembled.node, runs_on);
         drop(slot);
         let id = child.id().clone();
         if let Some(continuation) = assembled.continuation
@@ -661,7 +677,7 @@ impl<H: HostResolver> Tree<H> {
 
     /// Registers a new live child, sends its `started` frame and its
     /// transcript, and forwards its session's changes from then on.
-    fn attach_child(&self, node: Node<H>) -> Rc<Child<H>> {
+    fn attach_child(&self, node: Node<H>, runs_on: JobModel) -> Rc<Child<H>> {
         let node = Rc::new(node);
         let now = self.clock.now().as_millisecond();
         let child = Rc::new_cyclic(|child: &Weak<Child<H>>| {
@@ -717,6 +733,7 @@ impl<H: HostResolver> Tree<H> {
             });
             Child {
                 node: node.clone(),
+                runs_on,
                 closing: Cell::new(false),
                 failure: RefCell::new(None),
                 wake: Rc::new(Notify::new()),
@@ -791,7 +808,8 @@ impl<H: HostResolver> Tree<H> {
                     // store for the next restore.
                     Err(RuntimeError::OwnerClosing) => return,
                     Err(RuntimeError::Unbuilt(reason)) => {
-                        self.close_unbuilt(owner, record, reason).await;
+                        let runs_on = server.deps.subagents.runs_on(origin.model()).await;
+                        self.close_unbuilt(owner, record, runs_on, reason).await;
                         continue;
                     }
                 };
@@ -837,12 +855,18 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    /// Closes the stored live child `record` of `owner`, which no provider
-    /// runtime can be built for, as an error with `reason`: its live
-    /// descendants close as aborted first, as an abort closes them, and
-    /// `owner` receives the failed completion (`subagents.md`
-    /// § Persistence).
-    async fn close_unbuilt(&self, owner: &Node<H>, record: NodeRecord, reason: String) {
+    /// Closes the stored live child `record` of `owner`, whose round runs
+    /// on `runs_on` and which no provider runtime can be built for, as an
+    /// error with `reason`: its live descendants close as aborted first, as
+    /// an abort closes them, and `owner` receives the failed completion
+    /// (`subagents.md` § Persistence).
+    async fn close_unbuilt(
+        &self,
+        owner: &Node<H>,
+        record: NodeRecord,
+        runs_on: JobModel,
+        reason: String,
+    ) {
         self.abort_stored_children(&record.id).await;
         let close = NodeClose {
             phase: ClosePhase::Error { failure: reason },
@@ -858,7 +882,7 @@ impl<H: HostResolver> Tree<H> {
         };
         self.sink.emit(ServerFrame::Subagent {
             event: SubagentEvent::Closed,
-            job: closed.job().expect("a child has a job"),
+            job: closed.job(runs_on).expect("a child has a job"),
         });
         let origin = self.stored_origin(&closed.id, &close.phase).await;
         self.deliver(owner, &closed, &close, origin).await;
@@ -1046,7 +1070,7 @@ impl<H: HostResolver> Tree<H> {
                 };
                 self.sink.emit(ServerFrame::Subagent {
                     event: SubagentEvent::Closed,
-                    job: closed.job().expect("a child has a job"),
+                    job: child.job(&closed),
                 });
                 if let Some(owner) = &owner {
                     self.deliver(owner, &record, &close, origin).await;
@@ -1516,7 +1540,7 @@ fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 5] {
     [
         ServerFrame::Subagent {
             event: SubagentEvent::Started,
-            job: child.node.record().job().expect("a child has a job"),
+            job: child.job(child.node.record()),
         },
         {
             // The page holds none of a child's blocks until it shows it

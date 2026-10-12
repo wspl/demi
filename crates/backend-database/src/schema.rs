@@ -145,7 +145,8 @@ CREATE TABLE plugin_oauth_clients (
 /// development build on a server); 0.1.22-dev.20261011T123543Z shipped the
 /// last of those. The schemas of transcript block formats 4 and 5 after it
 /// no server keeps, but development databases do, and the server's migrate
-/// through them.
+/// through them, as they do through the one before a node said which agent
+/// it was forked from.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -177,8 +178,18 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.block-format-5.sql"),
             migration: Migration::Sql(CONVERSATION_FROM_BLOCK_FORMAT_5),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.added-instructions.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_ADDED_INSTRUCTIONS),
+        },
     ],
 };
+
+/// From the conversation schema in which a node's instructions are the
+/// ones its profile adds, before a node said which agent it was forked
+/// from (`subagents.md` § Fork): no node of it was forked.
+const CONVERSATION_FROM_ADDED_INSTRUCTIONS: &str =
+    "ALTER TABLE nodes ADD COLUMN forked_from INTEGER CHECK (forked_from >= 1);";
 
 /// From the conversation schema of transcript block format 5 before a
 /// node's instructions were the ones its profile adds (`subagents.md`
@@ -1512,6 +1523,9 @@ CREATE TABLE nodes (
   state            TEXT NOT NULL,
   block_count      INTEGER NOT NULL CHECK (block_count >= 0),
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
+  -- The number of the agent the node was forked from; null for one that
+  -- was not forked.
+  forked_from      INTEGER CHECK (forked_from >= 1),
   CHECK ((closed_phase IS NULL) = (closed_at IS NULL)),
   CHECK (result IS NULL OR closed_phase = 'completed'),
   CHECK (failure IS NULL OR closed_phase = 'error')
