@@ -280,8 +280,11 @@ changes nothing, and the page shows the outcome it receives.
 **The needs-you mark.** While a conversation holds an undecided request, its
 row in the sidebar, and its status mark wherever the conversation shows one,
 shows a yellow dot: the conversation needs the user. It takes precedence over
-every other mark, the running one included, and shows whether the
-conversation is open, read or not. It is distinct from the red mark of a
+every other mark, the running one included, until the user reads the
+conversation, as every mark of something new does: the sidebar then shows the
+settled ring while the request still waits in the conversation and in the
+Running window, and a new request lights the dot again
+([Conversations and projects](../product/product.md#conversations-and-projects)). It is distinct from the red mark of a
 conversation that failed ([Conversations and projects](../product/product.md#conversations-and-projects)).
 
 **The decision in the transcript.** The message an agent receives shows as a
