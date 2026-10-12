@@ -168,6 +168,9 @@ impl<'a> Searcher<'a> {
             .into_iter();
 
         while let Some(entry) = walker.next() {
+            // A search that finds nothing still stops at its next entry once
+            // the invocation is cancelled.
+            uucore::context::check_cancelled();
             let Ok(entry) = entry else {
                 continue;
             };

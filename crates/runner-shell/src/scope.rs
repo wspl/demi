@@ -29,12 +29,14 @@ pub struct Cancelled;
 
 /// What a test sees of a job's work, so that it can cancel the job at a
 /// known point: how many of the job's units wait inside an interruptible
-/// read, write or sleep, and how often the job has checked for cancellation,
-/// which a loop does at every step.
+/// read, write or sleep, how many are inside the opening of a file, past
+/// their last check, which no cancellation reaches, and how often the job
+/// has checked for cancellation, which a loop does at every step.
 #[cfg(feature = "testing")]
 #[derive(Default)]
 pub struct Activity {
     waiting: std::sync::atomic::AtomicUsize,
+    opening: std::sync::atomic::AtomicUsize,
     checks: std::sync::atomic::AtomicUsize,
 }
 
@@ -44,27 +46,36 @@ impl Activity {
         self.waiting.load(std::sync::atomic::Ordering::SeqCst)
     }
 
+    pub fn opening(&self) -> usize {
+        self.opening.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
     pub fn checks(&self) -> usize {
         self.checks.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// Counts a unit as waiting until the guard drops.
-    fn wait(&self) -> Waiting<'_> {
-        self.waiting
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        Waiting(self)
+    fn wait(&self) -> Counted<'_> {
+        Counted::new(&self.waiting)
+    }
+}
+
+/// Counts a unit in `counter` until it drops.
+#[cfg(feature = "testing")]
+struct Counted<'a>(&'a std::sync::atomic::AtomicUsize);
+
+#[cfg(feature = "testing")]
+impl<'a> Counted<'a> {
+    fn new(counter: &'a std::sync::atomic::AtomicUsize) -> Self {
+        counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        Self(counter)
     }
 }
 
 #[cfg(feature = "testing")]
-struct Waiting<'a>(&'a Activity);
-
-#[cfg(feature = "testing")]
-impl Drop for Waiting<'_> {
+impl Drop for Counted<'_> {
     fn drop(&mut self) {
-        self.0
-            .waiting
-            .fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        self.0.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -289,7 +300,13 @@ impl Scope {
         writing: bool,
     ) -> io::Result<File> {
         self.check()?;
-        let open = || self.descriptors(|| options.open(path));
+        let open = || {
+            self.descriptors(|| {
+                #[cfg(feature = "testing")]
+                let _opening = Counted::new(&self.activity.opening);
+                options.open(path)
+            })
+        };
         let file = match (&self.edits, writing) {
             (Some(edits), true) => edits.record(path, open)?,
             _ => open()?,
@@ -788,11 +805,12 @@ impl uucore::context::Control for UtilityControl {
             return crate::timeout::start(self, context, args);
         }
         let cancellation = self.scope.cancellation.child_token();
+        let running = self.scope.work.utility(context.name);
         context.control = Some(Arc::new(UtilityControl {
             scope: self.scope.with_cancellation(cancellation.clone()),
             attributes: self.attributes.clone(),
         }));
-        crate::utilities::start(&self.scope.tasks, cancellation, context, args)
+        crate::utilities::start(&self.scope.tasks, cancellation, running, context, args)
     }
 }
 

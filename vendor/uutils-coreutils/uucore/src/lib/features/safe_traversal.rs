@@ -121,6 +121,8 @@ fn read_dir_entries(fd: &OwnedFd) -> io::Result<Vec<OsString>> {
     let dup_fd = nix::unistd::dup(fd).map_err(|e| io::Error::from_raw_os_error(e as i32))?;
     let mut dir = Dir::from_fd(dup_fd).map_err(|e| io::Error::from_raw_os_error(e as i32))?;
     for entry_result in dir.iter() {
+        // A quiet walk, such as `du -s` or `rm -r`, stops at its next entry.
+        crate::context::check_cancelled();
         let entry = entry_result.map_err(|e| io::Error::from_raw_os_error(e as i32))?;
         let name = entry.file_name();
         let name_os = OsStr::from_bytes(name.to_bytes());

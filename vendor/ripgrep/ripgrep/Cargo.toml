@@ -177,4 +177,6 @@ patches = [
     "Output belongs to one invocation (src/invocation.rs, added): parallel searches buffer into the invocation's stdout instead of the process's",
     "Paths, the configuration file and standard input are the shell job's, through uucore::context",
     "Child programs take uucore::context::process::Stdio for their streams",
+    "Each entry of a walk checks the invocation's cancellation, so a search that finds nothing stops at its next entry; the --files printer runs in the invocation's context, and its end, such as a closed pipe's exit, ends the invocation instead of a panic of its own",
+    "A parallel search's output lock that another worker poisoned, when its write ended the invocation, is an output that has ended (BrokenPipe), which a worker quits on, where upstream panicked on it",
 ]
