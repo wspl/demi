@@ -109,7 +109,7 @@ const limits = computed<UsageLimits | null>(() => {
   const current = account.value
   return current
     ? {
-        plan: current.account.plan,
+        accountLabel: current.account.label,
         windows: current.account.quota,
         autoRefresh: current.provider.autoRefreshUsage ?? false,
       }
