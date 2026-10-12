@@ -29,7 +29,7 @@ watch(computed(() => visible.value && props.autoRefresh), (shown) => {
 
 <template>
   <div ref="region" class="text-[12px] leading-4 text-fg-subtle tabular-nums">
-    <p v-if="error" class="mb-2 break-words text-fg-muted">{{ error }}</p>
+    <p v-if="error" class="mb-2 break-words text-fg-subtle">{{ error }}</p>
     <!-- Empty snapshots still have a visible region, so the first display can fetch them. -->
     <span v-if="!windows.length">Usage not available yet</span>
     <div v-else class="flex flex-col gap-2.5">
