@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import CommandEndTag from './CommandEndTag.vue'
 import CommandTimeTag from './CommandTimeTag.vue'
+import RunEndTag from './RunEndTag.vue'
 import type { ToolCallBlock } from '../block-types'
 import { useShellRow } from '../shell-row'
 
@@ -19,6 +19,6 @@ const { endMark } = useShellRow(() => props.block)
 
 <template>
   <CommandEndTag v-if="endMark" :mark="endMark" />
-  <Tag v-else-if="block.status === 'error'" tone="danger" class="shrink-0">Failed</Tag>
+  <RunEndTag v-else-if="block.status === 'error'" kind="failed" />
   <CommandTimeTag v-else :calls="[block]" />
 </template>

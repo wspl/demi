@@ -82,6 +82,7 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import AgentStatusBar from '@demicodes/web-ui/agent/AgentStatusBar.vue'
+import RunEndTag from '@demicodes/web-ui/agent/blocks/RunEndTag.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { firstRunningSubagentId } from '@demicodes/web-ui/agent/subagents'
@@ -1829,7 +1830,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="SessionDockChip"
-        note="28px capsule with status dots. The Agents chip counts the live children, its dot breathing gently, and shows only while one runs, as Running shows only while a command runs; a finished child opens from its receipt's name or a link to it. Running and Agents open their windows; a second click closes them (Agents Chip in Windows)."
+        note="28px capsule with status dots. The Agents chip counts the live children and Running the commands, each dot breathing gently as every running thing does (StatusDot), and shows only while one runs, as Running shows only while a command runs; a finished child opens from its receipt's name or a link to it. Running and Agents open their windows; a second click closes them (Agents Chip in Windows)."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="resume">
@@ -2001,6 +2002,19 @@ onBeforeUnmount(() => {
               />
             </div>
           </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="RunEndTag"
+        note="How a row’s work went wrong, after its title: red Failed for a command that exited with an error, a tool call that failed or an agent that failed; grey Stopped, Stopping… while a stop waits for the runner, and Lost. A command’s Failed says its exit code in a tooltip, its Lost says why. The tag never shrinks, so a long title gives up its end to it."
+      >
+        <div class="specimen-row">
+          <GallerySpecimen variant="failed"><RunEndTag kind="failed" /></GallerySpecimen>
+          <GallerySpecimen variant="failed · exit code"><RunEndTag kind="failed" hint="Exit code 2" /></GallerySpecimen>
+          <GallerySpecimen variant="stopped"><RunEndTag kind="stopped" /></GallerySpecimen>
+          <GallerySpecimen variant="stopping"><RunEndTag kind="stopping" /></GallerySpecimen>
+          <GallerySpecimen variant="lost · why"><RunEndTag kind="lost" hint="The runner went away" /></GallerySpecimen>
         </div>
       </GallerySection>
 
