@@ -20,6 +20,7 @@ import { vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import type { SidebarConversationDevice } from '@demicodes/web-ui/sidebar/types'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
+import { hostKindOf, hostLabel } from './hosts'
 import { emptyLocalState, readLocalState, writeLocalState } from './local'
 import type { Device, Project } from './types'
 
@@ -150,12 +151,13 @@ export const useResources = defineStore('resources', () => {
         deviceId: workspace.deviceId,
         path: workspace.path,
       }
-      if (device?.kind === 'managed') {
-        return { ...checkout, host: 'Cloud', hostKind: 'cloud' }
+      const hostKind = hostKindOf(device)
+      if (hostKind === 'cloud') {
+        return { ...checkout, host: hostLabel(hostKind, device), hostKind }
       }
       return {
         ...checkout,
-        host: device?.name ?? 'Unavailable device',
+        host: hostLabel(hostKind, device),
         hostKind: 'device',
         state: device?.state ?? 'offline',
       }

@@ -4,6 +4,7 @@ import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import type { HostChoice, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import type { Conversation } from '../state/types'
 import { useResources } from '../state/resources'
+import { hostKindOf } from '../state/hosts'
 import { executionFor, hostDeviceOptions, primaryHostOf } from './execution'
 import { useConversations } from '../conversation/store'
 
@@ -30,7 +31,7 @@ const attachedHosts = computed<HostMenuHost[]>(() =>
     return {
       id: host.deviceId,
       name: host.name,
-      kind: device?.kind === 'managed' ? 'cloud' : 'device',
+      kind: hostKindOf(device),
       state: device?.state ?? 'offline',
     }
   }),
