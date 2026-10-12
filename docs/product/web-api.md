@@ -662,11 +662,19 @@ reads and changes:
 | `PATCH /api/credentials/:id` | Any of `name`, `note`, `fields` (the whole list, a field's `value` left out to keep it), `keep` | Changes it |
 | `DELETE /api/credentials/:id` | None | Removes it and its allowances |
 
-A name has 1 to 80 characters after trimming, a field name 1 to 32 of
+A name has 1 to 80 characters after trimming, unique among the user's
+credentials whatever its case (*GitHub token* and *github token* are one
+name), a field name 1 to 32 of
 lowercase letters, digits, `_` and `-`, a label 1 to 80, a value up to 64 KiB,
 and a credential one to ten fields. A change reaches the user's other pages
 through the synchronization channel's `credentials` part, which carries no
-value.
+value. Errors: 400 `invalid_body` for a malformed body, a new field without a
+value included; 400 `invalid_answer` for a credential request's answer whose
+values do not match its fields; 404 `credential_not_found`; 409
+`credential_name_taken`; 409 `credential_fields_differ` for an answer that
+would renew a saved credential with other fields; 409 `credential_removed`
+for an allowance of a credential removed since, which the request lists with
+`removed: true` and which only a deny decides.
 
 ## Device log
 
@@ -1265,6 +1273,7 @@ later one is the current value of one part of it that changed:
 | `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |
 | `cloud` | `cloud` | The Cloud's lifecycle or its reset moves |
 | `plugins` | `plugins`, the plugin list below | The user turns a plugin on or off |
+| `credentials` | `credentials`, as `GET /api/credentials` lists them, never a value | A credential of the user is saved, changed, removed or expires |
 | `subagents` | `subagents`, the user's [Subagent switch and profiles](#subagents) | The switch is turned on or off; a profile is created, changed, enabled, disabled or deleted |
 | `instructions` | `instructions`, the user's [personal instructions](#instructions) | The user saves them |
 | `plugin` | `plugin`, the plugin's id, and `state`, its user state | The plugin marks its user state changed ([The page](../architecture/plugins.md#the-page)) |
