@@ -458,7 +458,8 @@ host runs the flow, one for every such plugin:
 2. **Start.** A page method of the plugin asks the port to start; the host
    makes a PKCE verifier (S256) and a `state`, keeps both with the user for 10
    minutes in the user's shard, and answers the authorization URL, which the
-   page opens in a new tab. A sign-in pending when the backend restarts ends
+   page opens in a new tab through its page context's `links`
+   ([The page context](plugin-pages.md#the-page-context)). A sign-in pending when the backend restarts ends
    there: its callback answers that it expired.
 3. **Callback.** The vendor sends the browser to the callback, which is a
    session route: the browser's own navigation carries the session cookie, so
