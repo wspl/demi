@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
-import { Play } from '@lucide/vue'
+import { Layers, Play } from '@lucide/vue'
 import ThinkingBlock from '@demicodes/web-ui/agent/blocks/ThinkingBlock.vue'
 import AgentReceiptBlock from '@demicodes/web-ui/agent/blocks/AgentReceiptBlock.vue'
 import { callBeingWrittenBlocks, commandLookBlocks, editedFile, viewedMediaBlocks, movedReceiptMessage, organizeReceiptMessages, permissionReceiptMessages } from '../fixtures/blocks'
@@ -106,6 +106,8 @@ import { applyModelChange, type ModelSettings, type ModelSettingsChange } from '
 import { composerAttachment, encodeRemoteReference } from '@demicodes/web-ui/agent/message-input/attachments'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import FunctionalBlock from '@demicodes/web-ui/agent/blocks/FunctionalBlock.vue'
+import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import {
@@ -127,6 +129,7 @@ import {
   screenshotsTool,
   fourScreenshotsTool,
   twelveScreenshotsTool,
+  rowPictureSamples,
   screenshotRunBlocks,
   shellTool,
   returnedShellTool,
@@ -1084,6 +1087,15 @@ const functionalShellScript = ref(true)
 const functionalShellBash = ref(true)
 const functionalShellLongLine = ref(true)
 /** Calls whose results carry media, as the transcript shows them. */
+/** How many pictures a row holds, with and without a tag after its title, at the widths the Tool Media lab shows. */
+const rowPictureLab = [1, 5, 20].flatMap((count) => [false, true].map((tagged) => ({
+  variant: `${count} ${count === 1 ? 'picture' : 'pictures'}${tagged ? ' · with a tag' : ''}`,
+  pictures: rowPictureSamples(count),
+  tagged,
+})))
+/** Rolls the lab's faces to another icon, as a run's face does when it ends: the row's line holds the same after it. */
+const rowPictureRolled = ref(false)
+const rowPictureWidths = [{ name: 'wide', width: 900 }, { name: 'narrow', width: 320 }]
 const toolMediaSpecimens = [
   { variant: 'shell · one screenshot', block: screenshotTool },
   { variant: 'shell · four screenshots', block: fourScreenshotsTool },
@@ -2248,7 +2260,7 @@ onBeforeUnmount(() => {
 
       <GallerySection
         title="Tool Media"
-        note="The images and videos a call’s result carries stand small in the call’s own line, 8px after its face’s last part, the chevron or a tag, 4px apart, folded or open, in the order of the result: each 20px tall and 16 to 48px wide by its proportions, cropped as a thumbnail is (the tall page keeps its top, the wide timeline its middle), never enlarged, with 4px corners. The line never wraps: as many show as fit in the width the title leaves, the title truncating only down to half the row, and the rest are counted after the last one shown, +5, in the row’s faint text, which is not a control; the narrow specimen shows the title giving way to half the row, then the pictures. A command’s notice and a folded run show theirs the same way (Work Groups). Each reference carries its pixel size, so a box is final before its bytes arrive and nothing moves when they load; a video of unknown size is 16:9. A video shows its first frame with a play mark; it never plays in place. Resting the pointer on a picture for 300 ms shows it large in a card above it, with the call’s title and its pixel size under it; moving to the next picture shows that one’s at once, and leaving closes it. A click opens the medium in the viewer and closes the card. A medium that is gone shows one line under the row: that it was not stored, with the store’s reason. A medium the page cannot show is a small box that says so when pointed at."
+        note="The images and videos a call’s result carries stand small in the call’s own line, 8px after its face’s last part, the chevron or a tag, 4px apart, folded or open, in the order of the result: each 20px tall and 16 to 48px wide by its proportions, cropped as a thumbnail is (the tall page keeps its top, the wide timeline its middle), never enlarged, with 4px corners. The line never wraps: as many show as fit in the width the title leaves, the title truncating only down to half the row, and the rest are counted after the last one shown, +5, in the row’s faint text, which is not a control; the narrow specimen shows the title giving way to half the row, then the pictures. A command’s notice and a folded run show theirs the same way (Work Groups). Each reference carries its pixel size, so a box is final before its bytes arrive and nothing moves when they load; a video of unknown size is 16:9. A video shows its first frame with a play mark; it never plays in place. Resting the pointer on a picture for 300 ms shows it large in a card above it, with the call’s title and its pixel size under it; moving to the next picture shows that one’s at once, and leaving closes it. A click opens the medium in the viewer and closes the card. A medium that is gone shows one line under the row: that it was not stored, with the store’s reason. A medium the page cannot show is a small box that says so when pointed at. The rows with 1, 5 and 20 pictures, with and without a tag, at a wide and a narrow width, show the line holding the same after the face rolls, as a run’s face does when it ends: Roll the Faces changes their icons, and the title still truncates before a tag or the chevron is cut."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -2262,6 +2274,23 @@ onBeforeUnmount(() => {
                 :block="specimen.block"
               />
             </GallerySpecimen>
+            <GallerySpecimen
+              v-for="specimen in rowPictureLab"
+              :key="specimen.variant"
+              :variant="`row · ${specimen.variant}`"
+              wide
+            >
+              <div v-for="size in rowPictureWidths" :key="size.name" :style="{ width: `${size.width}px`, maxWidth: '100%' }">
+                <FunctionalBlock :expandable="true" :pictures="specimen.pictures" :icon-key="rowPictureRolled ? 'rolled' : 'stack'">
+                  <template #icon>
+                    <Layers :size="ICON_PX.in28" />
+                  </template>
+                  <span class="min-w-0 truncate">Ran 79 commands</span>
+                  <Tag v-if="specimen.tagged" class="shrink-0 tabular-nums">1m31s</Tag>
+                </FunctionalBlock>
+              </div>
+            </GallerySpecimen>
+            <Button size="sm" variant="ghost" @click="rowPictureRolled = !rowPictureRolled">Roll the Faces</Button>
             <GallerySpecimen variant="shell · twelve screenshots · narrow" wide>
               <div class="w-[420px]">
                 <ToolCallBlock :block="twelveScreenshotsTool" />
