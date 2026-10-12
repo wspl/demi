@@ -14,6 +14,7 @@ import { onClickOutside } from '@vueuse/core'
 import { escapeCloses, escapeKey, useEscapeClose } from '../composables/useEscapeClose'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { useOverlayTarget } from '../overlay/overlayContainer'
+import { usePinnedOpen } from '../overlay/pinnedOpen'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
 import { useFocusReturn } from '../overlay/focusReturn'
 import { useOverlay } from '../composables/useOverlay'
@@ -169,9 +170,11 @@ const placement = computed<Placement>(() => (
   props.placement ?? `${props.side}-${props.anchorEl ? alignment.value : 'start'}`
 ))
 
-// A panel confined to a host container never owns the page, so it is not exclusive, and the
-// container stands in for the viewport: the panel stays inside it the way it stays on screen.
+// A panel confined to a host container stands in for the viewport: it stays inside the
+// container the way it stays on screen. While pinned open there it owns no layer, so it is
+// not exclusive; one the user opens is a layer of the page, as in the product (`usePinnedOpen`).
 const { container, to: teleportTarget, ready } = useOverlayTarget()
+const pinned = usePinnedOpen(() => props.isOpen, container)
 // Above the dialog or menu it opens from, a dialog stacked over another included.
 const z = stackAbove()
 const boundary = computed(() => container?.value ?? undefined)
@@ -281,7 +284,7 @@ onClickOutside(floatingRef, () => {
 })
 
 const overlayId = useOverlay(props.overlayStore, () => (
-  nested || container ? false : props.isOpen
+  nested || pinned.value ? false : props.isOpen
 ), () => emit('close'))
 
 /**
@@ -298,7 +301,7 @@ function closeOnEscape(event: KeyboardEvent): void {
   emit('close')
 }
 
-useEscapeClose(() => props.isOpen && !nested && !container && props.overlayStore.isTop(overlayId), () => emit('close'))
+useEscapeClose(() => props.isOpen && !nested && !pinned.value && props.overlayStore.isTop(overlayId), () => emit('close'))
 
 const overlayMotion = {
   enterActiveClass: 'transition-[opacity,scale] duration-150 ease-out',

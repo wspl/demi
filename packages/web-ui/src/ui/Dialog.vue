@@ -29,7 +29,7 @@ import type { HeadlineText } from './ui-text'
  * own size, with no scrim and no centering.
  * Focus: a dialog over the page takes the focus when it opens, keeps Tab inside
  * while it is the top layer, and gives the focus back when it closes
- * (`useDialogFocus`). A dialog pinned open in a catalog host (open when it mounts)
+ * (`useDialogFocus`). A dialog pinned open in a catalog host (open as the host first renders it)
  * is no layer, takes no focus and hears no Escape; once closed and opened again there,
  * it behaves as the product's: the top layer, with the focus, and Escape closes it.
  * Nesting: a dialog opened from inside another stacks on it; the one beneath stays,
@@ -110,7 +110,7 @@ provideLayerElevation()
 // A shell or a viewer is a page of its own: on a narrow screen it takes the whole window.
 const fillsWhenNarrow = computed(() => props.size === 'xl' || props.size === 'full')
 
-const pinned = usePinnedOpen(() => props.isOpen, container !== null)
+const pinned = usePinnedOpen(() => props.isOpen, container)
 const id = useOverlay(
   props.overlayStore,
   () => (pinned.value ? false : props.isOpen),
