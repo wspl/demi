@@ -105,16 +105,15 @@ directory, a subagent too, a profile's included.
 The composer's context card lists what the newest instructions block of the
 root node holds, as the parts its Instructions row opens into
 ([What fills the context](compaction.md#what-fills-the-context)). Each entry
-is one part in the block's order, with its estimate:
+is one link in the block's order, with no figure of its own:
 
 | Entry | Shows | A click |
 | --- | --- | --- |
 | Personal instructions | `Personal instructions` | Opens Settings › Instructions |
 | A project file | Its path from the directory of the block's outermost file, as `AGENTS.md` and `web/CLAUDE.md`; its full path as a tip | Shows the file in the work panel, through the `file` intent ([Files named in messages](../product/file-previews.md#files-named-in-messages)) |
 
-An entry's tokens are an estimate, marked `~` as every estimated row is: Demi
-has no tokenizer of the model, and an estimate can be off by a large part
-for Chinese text or code. A click closes the card. Before the root's
+The card shows no token count for an entry: the row above them carries the
+estimate. A click closes the card. Before the root's
 first request, and when the newest block says there is nothing, the card has
 no Instructions part at all: it is as it was before instructions existed,
 rather than a line about what is missing.
