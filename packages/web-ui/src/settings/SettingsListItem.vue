@@ -15,7 +15,7 @@ defineProps<{
   label: string
   selected?: boolean
   /** A dot on the mark's corner. Omit it when there is nothing to say. */
-  badge?: 'success' | 'warning' | 'danger'
+  badge?: 'success' | 'warning' | 'danger' | 'attention'
   /** What the dot means, said when the pointer is over the mark. */
   badgeLabel?: SentenceText
   muted?: boolean
@@ -59,6 +59,7 @@ const emit = defineEmits<{
           'bg-on-success': badge === 'success',
           'bg-on-warning': badge === 'warning',
           'bg-on-danger': badge === 'danger',
+          'bg-on-attention': badge === 'attention',
         }"
       />
     </Tooltip>

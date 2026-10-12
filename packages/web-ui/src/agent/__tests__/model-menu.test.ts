@@ -53,3 +53,22 @@ test('with Parent’s Model chosen, the profile menu marks it and no model', () 
   expect(rows.model.value).toBe('')
   expect(rows.model.groups.flatMap((group) => group.models).some((item) => item.selected)).toBe(false)
 })
+
+test('an incomplete entry\'s models are listed but cannot be chosen, with the backend\'s sentence as the reason', () => {
+  const reason = 'Finish setting up this provider in Settings'
+  const incomplete: ProviderInfo[] = [
+    ...providers,
+    { id: 'google', label: 'Google', isAvailable: false, setupReason: reason },
+    // Unavailable for another reason (its key refused): its models stay out of the menu, as before.
+    { id: 'broken', label: 'Broken', isAvailable: false },
+  ]
+  const rows = modelMenuRows(incomplete, { ...models, google: [{ ...gpt, id: 'gemini-flash', name: 'Gemini Flash' }], broken: [gpt] }, null, false)
+  expect(rows.model.groups.map((group) => [group.provider.label, group.unchoosable])).toEqual([
+    ['Anthropic', null],
+    ['OpenAI', null],
+    ['Google', reason],
+  ])
+  // An incomplete entry without a model has nothing to show dimmed.
+  const empty = modelMenuRows(incomplete, { ...models, google: [] }, null, false)
+  expect(empty.model.groups.map((group) => group.provider.label)).toEqual(['Anthropic', 'OpenAI'])
+})
