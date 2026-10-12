@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Archive, ArrowRight, Copy, Pin, PinOff, TextCursorInput, Trash2 } from '@lucide/vue'
-import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import type { SidebarConversation } from './types'
@@ -45,44 +44,42 @@ const many = computed(
 </script>
 
 <template>
-  <Menu>
-    <template v-if="single">
-      <MenuItem
-        v-if="!shown"
-        :icon="ArrowRight"
-        label="Open"
-        shortcut="↵"
-        @select="emit('open', single.id)"
-      />
-      <MenuItem
-        :icon="TextCursorInput"
-        label="Rename"
-        shortcut="F2"
-        @select="emit('rename', single.id)"
-      />
-      <MenuItem
-        :icon="Copy"
-        label="Copy Conversation ID"
-        @select="emit('copyId', single.id)"
-      />
-    </template>
+  <template v-if="single">
     <MenuItem
-      :icon="allPinned ? PinOff : Pin"
-      :label="`${allPinned ? 'Unpin' : 'Pin'}${many}`"
-      shortcut="⌘⇧P"
-      @select="emit('pin', ids, !allPinned)"
+      v-if="!shown"
+      :icon="ArrowRight"
+      label="Open"
+      shortcut="↵"
+      @select="emit('open', single.id)"
     />
     <MenuItem
-      :icon="Archive"
-      :label="`Archive${many}`"
-      @select="emit('archive', ids)"
+      :icon="TextCursorInput"
+      label="Rename"
+      shortcut="F2"
+      @select="emit('rename', single.id)"
     />
-    <MenuDivider />
     <MenuItem
-      :icon="Trash2"
-      :label="`Delete${many}…`"
-      is-danger
-      @select="emit('delete', ids)"
+      :icon="Copy"
+      label="Copy Conversation ID"
+      @select="emit('copyId', single.id)"
     />
-  </Menu>
+  </template>
+  <MenuItem
+    :icon="allPinned ? PinOff : Pin"
+    :label="`${allPinned ? 'Unpin' : 'Pin'}${many}`"
+    shortcut="⌘⇧P"
+    @select="emit('pin', ids, !allPinned)"
+  />
+  <MenuItem
+    :icon="Archive"
+    :label="`Archive${many}`"
+    @select="emit('archive', ids)"
+  />
+  <MenuDivider />
+  <MenuItem
+    :icon="Trash2"
+    :label="`Delete${many}…`"
+    is-danger
+    @select="emit('delete', ids)"
+  />
 </template>

@@ -5,10 +5,9 @@ import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
-import Menu from '../ui/Menu.vue'
 import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
-import Popover from '../ui/Popover.vue'
+import ContextMenu from '../ui/ContextMenu.vue'
 import { useContextMenuOwner } from '../composables/useContextMenuOwner'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { usePhone } from '../ui/phone'
@@ -113,7 +112,6 @@ function closeScope(scope: TabCloseScope): void {
   if (menuId.value) {
     emit('closeTabs', tabsToClose(props.panel.tabs, menuId.value, scope))
   }
-  menu.close()
 }
 
 /** The tab the menu is open on, with its kind. */
@@ -124,11 +122,6 @@ const menuCommands = computed(() => {
   return item?.kind?.commands?.(item.data, item.tab.id) ?? []
 })
 
-function runCommand(run: () => void): void {
-  run()
-  menu.close()
-}
-
 /** A copy of the menu's tab right after it, selected, as a web browser's Duplicate. */
 function duplicate(): void {
   const item = menuTab.value
@@ -136,7 +129,6 @@ function duplicate(): void {
     const at = props.panel.tabs.findIndex((tab) => tab.id === item.tab.id)
     emit('addTab', item.kind.kind, item.kind.duplicate(item.data), at + 1)
   }
-  menu.close()
 }
 
 /** A tab dragged along the strip, by its place in it. */
@@ -268,17 +260,8 @@ function reorder(from: number, to: number): void {
       </template>
       </slot>
     </div>
-    <Popover
-      :overlay-store="appOverlayStore"
-      :is-open="menu.isOpen.value"
-      :anchor-x="menu.anchorX.value"
-      :anchor-y="menu.anchorY.value"
-      :anchor-context-el="menu.anchorContextEl.value"
-      :offset="0"
-      sheet
-      @close="menu.close"
-    >
-      <Menu>
+    <ContextMenu :overlay-store="appOverlayStore" :owner="menu">
+      <template #menu>
         <template v-if="menuCommands.length > 0 || menuTab?.kind?.duplicate">
           <MenuItem
             v-for="command in menuCommands"
@@ -286,7 +269,7 @@ function reorder(from: number, to: number): void {
             :icon="command.icon"
             :label="command.label"
             :disabled="command.disabled"
-            @select="runCommand(command.run)"
+            @select="command.run()"
           />
           <MenuItem v-if="menuTab?.kind?.duplicate" :icon="Copy" label="Duplicate" @select="duplicate" />
           <MenuDivider />
@@ -299,7 +282,7 @@ function reorder(from: number, to: number): void {
           :disabled="!menuId || tabsToClose(panel.tabs, menuId, item.scope).length === 0"
           @select="closeScope(item.scope)"
         />
-      </Menu>
-    </Popover>
+      </template>
+    </ContextMenu>
   </aside>
 </template>
