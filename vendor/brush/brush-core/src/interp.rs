@@ -399,7 +399,7 @@ impl Execute for ast::Pipeline {
         let stopwatch = self
             .timed
             .is_some()
-            .then(timing::start_timing)
+            .then(|| timing::start_timing(shell.execution_host()))
             .transpose()?;
 
         let mut params = params.clone();
@@ -464,6 +464,9 @@ impl Execute for ast::Pipeline {
                     timing::format_duration_non_posixly(&timing.user),
                     timing::format_duration_non_posixly(&timing.system),
                 )?;
+            }
+            if let Some(uncounted) = timing.uncounted {
+                std::writeln!(stderr, "{uncounted}")?;
             }
         }
 

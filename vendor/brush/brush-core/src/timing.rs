@@ -1,64 +1,80 @@
 //! Command timing
 
-use crate::error;
+use std::sync::Arc;
 
-struct StopwatchTime {
-    now: std::time::SystemTime,
-    self_user: std::time::Duration,
-    self_system: std::time::Duration,
-    children_user: std::time::Duration,
-    children_system: std::time::Duration,
-}
+use crate::{
+    error,
+    execution_host::{ExecutionHost, ProcessorTime, Timing},
+};
 
-impl StopwatchTime {
-    #[allow(clippy::unchecked_time_subtraction)]
-    fn minus(&self, other: &Self) -> Result<StopwatchTiming, error::Error> {
-        let user = (self.self_user - other.self_user) + (self.children_user - other.children_user);
-        let system =
-            (self.self_system - other.self_system) + (self.children_system - other.children_system);
-
-        Ok(StopwatchTiming {
-            wall: self.now.duration_since(other.now)?,
-            user,
-            system,
-        })
-    }
+/// What a stopwatch measures processor time with.
+enum Measure {
+    /// The host's measure of the pipeline.
+    Host(Box<dyn Timing>),
+    /// The shell process's own processor time and its reaped children's, as
+    /// they stood when the stopwatch started.
+    Process(ProcessorTime),
 }
 
 pub(crate) struct Stopwatch {
-    start: StopwatchTime,
+    started: std::time::SystemTime,
+    measure: Measure,
 }
 
 impl Stopwatch {
     pub fn stop(&self) -> Result<StopwatchTiming, error::Error> {
-        let end = get_current_stopwatch_time()?;
-        end.minus(&self.start)
+        let wall = std::time::SystemTime::now().duration_since(self.started)?;
+        let (time, uncounted) = match &self.measure {
+            Measure::Host(timing) => (timing.processor_time(), timing.uncounted()),
+            Measure::Process(start) => {
+                let end = process_time()?;
+                (
+                    ProcessorTime {
+                        user: end.user.saturating_sub(start.user),
+                        system: end.system.saturating_sub(start.system),
+                    },
+                    None,
+                )
+            }
+        };
+        Ok(StopwatchTiming {
+            wall,
+            user: time.user,
+            system: time.system,
+            uncounted,
+        })
     }
 }
 pub(crate) struct StopwatchTiming {
     pub wall: std::time::Duration,
     pub user: std::time::Duration,
     pub system: std::time::Duration,
+    /// The line that says what `user` and `system` leave out, if anything.
+    pub uncounted: Option<&'static str>,
 }
 
-pub(crate) fn start_timing() -> Result<Stopwatch, error::Error> {
+/// Starts timing a pipeline, with the measure of `host` when it has one.
+pub(crate) fn start_timing(
+    host: Option<&Arc<dyn ExecutionHost>>,
+) -> Result<Stopwatch, error::Error> {
+    let measure = match host.and_then(|host| host.time()) {
+        Some(timing) => Measure::Host(timing),
+        None => Measure::Process(process_time()?),
+    };
     Ok(Stopwatch {
-        start: get_current_stopwatch_time()?,
+        started: std::time::SystemTime::now(),
+        measure,
     })
 }
 
-fn get_current_stopwatch_time() -> Result<StopwatchTime, error::Error> {
-    let now = std::time::SystemTime::now();
+/// The shell process's own processor time and that of the children it reaped.
+fn process_time() -> Result<ProcessorTime, error::Error> {
     let (self_user, self_system) = crate::sys::resource::get_self_user_and_system_time()?;
     let (children_user, children_system) =
         crate::sys::resource::get_children_user_and_system_time()?;
-
-    Ok(StopwatchTime {
-        now,
-        self_user,
-        self_system,
-        children_user,
-        children_system,
+    Ok(ProcessorTime {
+        user: self_user + children_user,
+        system: self_system + children_system,
     })
 }
 
