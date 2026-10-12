@@ -115,7 +115,11 @@ version with a prerelease suffix is ignored. The backend reads it as it reads
 the Claude Code pointer ([Which version](claude-code.md#which-version)): kept
 six hours, read again in the background, never waited for once a version is
 known, the last one read kept when a read fails, and the version built into
-the provider used only until the first read succeeds. Reading the catalog
+the provider used only until the first read succeeds. One version serves the
+whole backend, whatever the number of Codex entries and accounts. A read that
+brings a version other than the one an entry's kept catalog was read with
+makes that catalog stale, so the next catalog read asks again at once rather
+than keeping a list read with the built-in version for its fifteen minutes. Reading the catalog
 never runs the CLI or an inference.
 
 - The response is validated. Models are sorted by ascending `priority`, and

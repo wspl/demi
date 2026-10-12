@@ -458,6 +458,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 #### `provider-common`
 
 - **Owns:**
+  - a value read from a remote source and kept a while, read again in the
+    background when stale and never waited for once known (`kept`), which the
+    Claude Code release pointer and the Codex client version both use;
   - the provider contract: `Provider`, one entry shared by every user and
     request (identity, capabilities, authentication status, models, failure
     reading, quota, accounts and `runtime`), and `ProviderRuntime`, one
