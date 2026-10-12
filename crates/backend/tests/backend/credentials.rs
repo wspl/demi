@@ -119,6 +119,7 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
         reason,
         fields,
         keep,
+        renewal,
         command,
         agent,
         ..
@@ -129,6 +130,7 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
     assert_eq!(name, "Deploy key");
     assert_eq!(reason, "To deploy the site");
     assert_eq!(*keep, Keep::Hour);
+    assert!(!renewal, "no credential of the name is saved yet");
     assert_eq!(*agent, None);
     assert!(command.starts_with("demi credentials request 'Deploy key'"), "{command}");
     let listed: Vec<(&str, &str, &str)> = fields
@@ -150,6 +152,9 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
     )
     .await;
     assert_eq!(short.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidAnswer));
+    // The card shows the refusal as it is: a sentence naming the field by
+    // its label.
+    assert_eq!(short.error().message, "Enter a value for \u{201c}User\u{201d}.");
 
     // The user's answer saves it, and the command returns and reads it.
     let answered = decide(
@@ -209,7 +214,34 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
         .await;
     let frames = serde_json::to_string(&frames).unwrap();
     assert!(frames.contains("Deploy key"), "{frames}");
+    assert!(frames.contains(r#""value":"zan""#), "the visible value reaches the page: {frames}");
     assert!(!frames.contains(SECRET), "{frames}");
+
+    // A request for the saved name, whatever its case, asks for new values:
+    // the card says it renews.
+    scripts.root(
+        FIRST,
+        vec![
+            shell(
+                "t3",
+                "demi credentials request 'DEPLOY KEY' --field key:secret:'API key' --field user:visible:User; echo exit=$?",
+            ),
+            say("declined"),
+        ],
+    );
+    socket.send(&send("m3", "Rotate the deploy key")).await;
+    eventually("the renewal is listed", || async {
+        !permissions(&backend, &master, FIRST).await.requests.is_empty()
+    })
+    .await;
+    let request = permissions(&backend, &master, FIRST).await.requests.remove(0);
+    let PermissionRequest::Credential { id, renewal, .. } = &request else {
+        panic!("not a credential request: {request:?}");
+    };
+    assert!(*renewal, "{request:?}");
+    let declined = decide(&backend, &master, id.as_str(), json!({ "decision": "deny" })).await;
+    assert_eq!(declined.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&declined.body));
+    socket.until_idle().await;
     backend.close().await;
     let log = std::fs::read_to_string(&log_path).unwrap();
     assert!(!log.is_empty(), "the log captured the backend");
@@ -345,6 +377,27 @@ async fn a_renamed_credential_keeps_its_values() {
         }),
     )
     .await;
+    // The list carries a visible field's value and never a secret one's.
+    let listed = credentials(&backend, &master).await.credentials;
+    let values: Vec<(&str, Option<&str>)> = listed[0]
+        .fields
+        .iter()
+        .map(|field| (field.name.as_str(), field.value.as_deref()))
+        .collect();
+    assert_eq!(values, [("key", None), ("team", Some("ENG"))]);
+    // A broken rule is refused in a sentence the editor shows as it is.
+    let long = backend
+        .post(
+            "/api/credentials",
+            Some(&master),
+            json!({
+                "name": "Long", "keep": "always",
+                "fields": [{ "name": "key", "label": "L".repeat(81), "kind": "secret", "value": "x" }]
+            }),
+        )
+        .await;
+    assert_eq!(long.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody));
+    assert_eq!(long.error().message, "Enter a label of up to 80 characters for each field.");
     saved(
         &backend,
         &master,

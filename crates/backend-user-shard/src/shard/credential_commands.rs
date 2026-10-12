@@ -408,7 +408,7 @@ async fn request(shard: Rc<Shard>, call: Call<RequestArgs>, port: RpcPort) -> Re
         .map(|text| parse_field(text))
         .collect::<Result<Vec<_>, _>>()?;
     distinct(fields.iter().map(|field| field.name.as_str()))
-        .map_err(|error| failed(format!("--field {error}")))?;
+        .map_err(|error| failed(format!("--field: {error}")))?;
     let ask = CredentialAsk {
         reason: reason.map(|reason| Trimmed::from(reason).into_string()).unwrap_or_default(),
         fields,

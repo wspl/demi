@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 
 use demi_shared_types::Timestamp;
-use demi_web_api_protocol::credentials::{CredentialDto, CredentialField, Keep};
+use demi_web_api_protocol::credentials::{CredentialDto, CredentialField, FieldKind, Keep, ListedField};
 use demi_web_api_protocol::ids::{ConversationId, UserCredentialId, UserId};
 use garde::Validate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -62,12 +62,26 @@ pub struct StoredCredential {
 }
 
 impl StoredCredential {
-    pub fn dto(&self) -> CredentialDto {
+    /// The credential as Settings lists it, its visible fields with their
+    /// values among `values` and its secret ones without.
+    pub fn dto(&self, values: &BTreeMap<String, String>) -> CredentialDto {
         CredentialDto {
             id: self.id.clone(),
             name: self.name.clone(),
             note: self.note.clone(),
-            fields: self.fields.clone(),
+            fields: self
+                .fields
+                .iter()
+                .map(|field| ListedField {
+                    name: field.name.clone(),
+                    label: field.label.as_str().to_owned(),
+                    kind: field.kind,
+                    value: match field.kind {
+                        FieldKind::Visible => values.get(&field.name).cloned(),
+                        FieldKind::Secret => None,
+                    },
+                })
+                .collect(),
             keep_until: self.keep_until,
             last_used_at: self.last_used_at,
             created_at: self.created_at,
@@ -110,14 +124,17 @@ pub struct CredentialChange {
     pub keep_until: Option<Option<Timestamp>>,
 }
 
-/// Why a credential was not saved or changed.
+/// Why a credential was not saved or changed, in words for the user, who
+/// reads them as they are (`web-api.md` § Credentials).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CredentialRefusal {
-    #[error("The user has no credential of that id")]
+    #[error("This credential no longer exists.")]
     NotFound,
-    #[error("Another credential is named \u{201c}{0}\u{201d}")]
+    /// The name of the other credential, as it is saved.
+    #[error("Another credential is named \u{201c}{0}\u{201d}; choose another name.")]
     NameTaken(String),
-    #[error("The new field \u{201c}{0}\u{201d} needs a value")]
+    /// A new field, by its label, sent without a value.
+    #[error("Enter a value for the new field \u{201c}{0}\u{201d}.")]
     MissingValue(String),
 }
 
@@ -133,6 +150,29 @@ pub struct Expired {
 }
 
 impl ControlService {
+    /// The user's credentials as Settings lists them, in name order: each
+    /// visible field with its value, opened through `seal`.
+    pub async fn user_credential_list(
+        &self,
+        user: UserId,
+        seal: Arc<dyn CredentialSeal>,
+    ) -> Result<Vec<CredentialDto>, StorageError> {
+        self.call(move |connection, _| {
+            let stored = connection
+                .prepare_cached(&format!(
+                    "SELECT {COLUMNS} FROM user_credentials WHERE user_id = ?1 ORDER BY name, id"
+                ))?
+                .query_map([user.as_str()], |row| Ok(credential_row(row)))?
+                .map(|row| row?)
+                .collect::<Result<Vec<_>, StorageError>>()?;
+            stored
+                .iter()
+                .map(|credential| Ok(credential.dto(&values_of(connection, credential, &*seal)?)))
+                .collect()
+        })
+        .await
+    }
+
     /// The user's credentials, in name order.
     pub async fn user_credentials(&self, user: UserId) -> Result<Vec<StoredCredential>, StorageError> {
         self.call(move |connection, _| {
@@ -194,35 +234,36 @@ impl ControlService {
         .await
     }
 
-    /// Saves a new credential, unless the user has one of its name.
+    /// Saves a new credential, unless the user has one of its name, and
+    /// answers it as Settings lists it.
     pub async fn create_user_credential(
         &self,
         user: UserId,
         new: NewCredential,
         seal: Arc<dyn CredentialSeal>,
-    ) -> Result<Result<StoredCredential, CredentialRefusal>, StorageError> {
+    ) -> Result<Result<CredentialDto, CredentialRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            if named(&transaction, &user, &new.name)?.is_some() {
-                return Ok(Err(CredentialRefusal::NameTaken(new.name)));
+            if let Some(other) = named(&transaction, &user, &new.name)? {
+                return Ok(Err(CredentialRefusal::NameTaken(other.name)));
             }
-            let id = insert(&transaction, &user, new, now, &*seal)?;
+            let id = insert(&transaction, &user, &new, now, &*seal)?;
             let stored = by_id(&transaction, &user, &id)?.expect("the credential was just written");
             transaction.commit()?;
-            Ok(Ok(stored))
+            Ok(Ok(stored.dto(&new.values)))
         })
         .await
     }
 
     /// Changes the user's credential `id`, sealing its values again under
-    /// its name, in one transaction.
+    /// its name, in one transaction, and answers it as Settings lists it.
     pub async fn change_user_credential(
         &self,
         user: UserId,
         id: UserCredentialId,
         change: CredentialChange,
         seal: Arc<dyn CredentialSeal>,
-    ) -> Result<Result<StoredCredential, CredentialRefusal>, StorageError> {
+    ) -> Result<Result<CredentialDto, CredentialRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let Some(stored) = by_id(&transaction, &user, &id)? else {
@@ -230,8 +271,8 @@ impl ControlService {
             };
             let name = change.name.unwrap_or_else(|| stored.name.clone());
             // A change of the name's case alone keeps it this credential's.
-            if named(&transaction, &user, &name)?.is_some_and(|other| other.id != id) {
-                return Ok(Err(CredentialRefusal::NameTaken(name)));
+            if let Some(other) = named(&transaction, &user, &name)?.filter(|other| other.id != id) {
+                return Ok(Err(CredentialRefusal::NameTaken(other.name)));
             }
             let old = values_of(&transaction, &stored, &*seal)?;
             let (fields, values) = match change.fields {
@@ -242,7 +283,11 @@ impl ControlService {
                     for (field, value) in fields {
                         let value = match value.or_else(|| old.get(&field.name).cloned()) {
                             Some(value) => value,
-                            None => return Ok(Err(CredentialRefusal::MissingValue(field.name))),
+                            None => {
+                                return Ok(Err(CredentialRefusal::MissingValue(
+                                    field.label.into_string(),
+                                )));
+                            }
                         };
                         values.insert(field.name.clone(), value);
                         kept.push(field);
@@ -270,7 +315,7 @@ impl ControlService {
             )?;
             let changed = by_id(&transaction, &user, &id)?.expect("the credential was just written");
             transaction.commit()?;
-            Ok(Ok(changed))
+            Ok(Ok(changed.dto(&values)))
         })
         .await
     }
@@ -389,7 +434,7 @@ fn requesting(
 pub(crate) fn insert(
     connection: &Connection,
     user: &UserId,
-    new: NewCredential,
+    new: &NewCredential,
     now: Timestamp,
     seal: &dyn CredentialSeal,
 ) -> Result<UserCredentialId, StorageError> {
