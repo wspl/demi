@@ -11,13 +11,16 @@ import type { OverlayStore } from '../overlay/overlayStore'
  * and act in: the pointer crosses into it and it stays, a click on the
  * trigger does nothing by itself, and its controls may carry their own tips.
  * It closes when the pointer and the focus have left both, on Escape and on
- * a click outside. Like a tip, it does not open over another menu, popover
- * or dialog.
+ * a click outside. Once the user clicks inside it, it stays like a popover
+ * until Escape, a click outside or the focus leaving: a click may resize it,
+ * as a disclosure in it does, and move its edge past a pointer that never
+ * moved. Like a tip, it does not open over another menu, popover or dialog.
  *
  * The card is one row: what it says, and an optional `action` at its end,
  * one `sm` Button, which keeps the same inset from the card's top, end and
- * bottom. Optional `details` follow below a divider, such as a list whose
- * entries act; they get `close`, for an entry whose action leaves the card.
+ * bottom. Optional `details` follow below a divider, or `joined` to the row
+ * as one section with it, such as a list whose entries act; they get
+ * `close`, for an entry whose action leaves the card.
  */
 const props = withDefaults(defineProps<{
   /** Whether the card opens above the trigger or below it; it grows toward the inside of the trigger's region (Popover). */
@@ -35,6 +38,8 @@ const props = withDefaults(defineProps<{
    * pointer to leave it, and the sheet takes the focus.
    */
   sheet?: boolean
+  /** The details continue the row's section, with no divider between them, as a header's own content does. */
+  joined?: boolean
 }>(), {
   side: 'top',
   openDelayMs: 120,
@@ -47,6 +52,8 @@ const cardRef = ref<HTMLElement | null>(null)
 const elevation = useLayerElevation()
 /** Opened by the pointer or the focus. */
 const shown = ref(false)
+/** Clicked inside since it opened: the pointer leaving no longer closes it. */
+const engaged = ref(false)
 const isOpen = computed(() => props.pinned || shown.value)
 const phone = usePhone()
 /** The card is a sheet now: a tap on the trigger opens it, the pointer and the focus neither. */
@@ -79,6 +86,7 @@ function open(): void {
 function close(): void {
   clearTimers()
   shown.value = false
+  engaged.value = false
 }
 
 function scheduleOpen(): void {
@@ -97,7 +105,9 @@ function scheduleClose(): void {
     return
   }
   clearTimers()
-  closeTimer = setTimeout(close, props.closeDelayMs)
+  if (!engaged.value) {
+    closeTimer = setTimeout(close, props.closeDelayMs)
+  }
 }
 
 /** A tap on the trigger opens a card that is a sheet; elsewhere a click on it does nothing by itself. */
@@ -107,7 +117,7 @@ function onTriggerClick(): void {
   }
 }
 
-/** Focus that moves between the trigger and the card keeps it open. */
+/** Focus that moves between the trigger and the card keeps it open; focus that leaves both closes it, an engaged card too. */
 function onFocusOut(event: FocusEvent): void {
   if (asSheet.value) {
     return
@@ -115,6 +125,9 @@ function onFocusOut(event: FocusEvent): void {
   const next = event.relatedTarget
   if (next instanceof Node && (triggerRef.value?.contains(next) || cardRef.value?.contains(next))) {
     return
+  }
+  if (next instanceof Node) {
+    engaged.value = false
   }
   scheduleClose()
 }
@@ -150,6 +163,7 @@ onBeforeUnmount(clearTimers)
       :style="{ '--elevation': elevation }"
       @mouseenter="clearTimers"
       @mouseleave="scheduleClose"
+      @pointerdown="engaged = true"
       @focusout="onFocusOut"
     >
       <div class="hover-card">
@@ -160,7 +174,7 @@ onBeforeUnmount(clearTimers)
           <slot name="action" />
         </div>
       </div>
-      <div v-if="slots.details" class="border-t border-line">
+      <div v-if="slots.details" :class="joined ? '' : 'border-t border-line'">
         <slot name="details" :close="close" />
       </div>
     </div>
