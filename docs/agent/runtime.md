@@ -1747,7 +1747,7 @@ commands*, and a click opens it to every step.
   call does. From its second step on, opened, the row stands still as a
   stack and what runs, *Running 4 commands*, with the steps under it, and
   once the run has lasted more than 3 seconds, for how long, *Running 4
-  commands for 1m32s*, counting up as *Thinking for 9s* does; an ended
+  commands for 1m 32s*, counting up as *Thinking for 9s* does; an ended
   run's title names no time;
   opening and folding change the row at once rather than rolling it. The
   run's first step rolls into the tail row first, as any block does.
