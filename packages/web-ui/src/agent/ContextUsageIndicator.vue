@@ -211,8 +211,12 @@ const ringColor = computed(() => {
             </Button>
           </div>
           <div v-if="limits" class="border-t border-line px-3 pt-2 pb-3">
-            <div class="mb-2 text-[11px] font-medium text-fg-subtle">
-              Usage limits<template v-if="limits.plan"> · {{ limits.plan }}</template>
+            <div class="mb-2 flex min-w-0 gap-1 text-[11px] font-medium text-fg-subtle">
+              <span class="shrink-0">Usage limits</span>
+              <template v-if="limits.accountLabel">
+                <span class="shrink-0">·</span>
+                <span class="min-w-0 truncate" :title="limits.accountLabel">{{ limits.accountLabel }}</span>
+              </template>
             </div>
             <ProviderQuota
               :windows="limits.windows"
