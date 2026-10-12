@@ -303,14 +303,16 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// Readies ahead the next request of every conversation a page has open
-    /// whose model is of the provider entry `provider_id`, as when the
-    /// entry's active account changed (`claude-code.md` § Preparing a
-    /// process ahead).
-    pub fn prepare_open_of(&self, provider_id: &str) {
+    /// whose model is of the provider entry `provider_id`, or of every one
+    /// with none, as when the entry's active account changed
+    /// (`claude-code.md` § Preparing a process ahead).
+    pub fn prepare_open(&self, provider_id: Option<&str>) {
         let trees: Vec<Rc<Tree<H>>> = self.trees.borrow().values().cloned().collect();
         for tree in trees {
             let session = tree.root().session();
-            if tree.sink().attached() && session.latest_model().provider_id == provider_id {
+            let of_entry = provider_id
+                .is_none_or(|provider_id| session.latest_model().provider_id == provider_id);
+            if tree.sink().attached() && of_entry {
                 session.prepare_ahead(Ahead::Chosen);
             }
         }

@@ -40,6 +40,7 @@ use demi_web_api_protocol::providers::{CliInstall, CliMachine};
 use futures_util::{FutureExt as _, StreamExt as _};
 use futures_util::future::{BoxFuture, LocalBoxFuture, Shared};
 use serde::de::DeserializeOwned;
+use tokio::sync::broadcast::error::RecvError;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
@@ -501,14 +502,47 @@ impl Shard {
         });
     }
 
-    /// The active account of the provider entry `entry` changed in Settings
-    /// (`claude-code.md` § Preparing a process ahead): the processes
-    /// prepared on the user's Cloud with the previous account's token are
-    /// closed, and the conversations on the entry that a page has open
-    /// prepare again.
-    pub(crate) fn account_changed(&self, entry: &ProviderId) {
-        self.claude_cli().prepared.close_entry(entry.as_str());
-        self.agent().prepare_open_of(entry.as_str());
+    /// Resolves once `count` processes began to be prepared on the user's
+    /// Cloud.
+    #[cfg(feature = "testing")]
+    pub async fn until_prepared(&self, count: u64) {
+        self.claude_cli().prepared.until_begun(count).await;
+    }
+
+    /// Follows the vault's announcements of active-account changes until
+    /// the shard closes (`claude-code.md` § Preparing a process ahead): for
+    /// each, the processes prepared on the user's Cloud with the previous
+    /// account's token close, and the conversations on the entry that a page
+    /// has open prepare again. `changes` was subscribed when the shard was
+    /// made, so no change since is missed; a follower that fell behind
+    /// treats every entry as changed.
+    pub(crate) async fn follow_account_changes(
+        self: Rc<Self>,
+        mut changes: tokio::sync::broadcast::Receiver<ProviderId>,
+    ) {
+        loop {
+            let changed = tokio::select! {
+                changed = changes.recv() => changed,
+                () = self.closed() => return,
+            };
+            match changed {
+                Ok(entry) => {
+                    self.claude_cli().prepared.close_entry(entry.as_str());
+                    self.agent().prepare_open(Some(entry.as_str()));
+                }
+                Err(RecvError::Lagged(missed)) => {
+                    tracing::warn!(
+                        user = %self.user(),
+                        missed,
+                        "account changes were missed; every prepared process is closed"
+                    );
+                    self.claude_cli().prepared.close_all();
+                    self.agent().prepare_open(None);
+                }
+                // The vault lives as long as the backend.
+                Err(RecvError::Closed) => return,
+            }
+        }
     }
 
     /// Installs the CLI on the user's Cloud for account work of `entry`, as
@@ -745,22 +779,6 @@ impl CliInstalls {
     /// Forgets the installs of a deleted entry.
     pub fn forget(&self, entry: &ProviderId) {
         self.lock().retain(|(_, installed), _| installed != entry);
-    }
-}
-
-/// Tells `user`'s shard that the active account of `entry` changed, so its
-/// Cloud's processes prepared with the previous account's token close and
-/// the conversations a page has open on the entry prepare again. A shard
-/// that cannot be reached prepares nothing: each next request starts its
-/// process as it would have.
-pub async fn active_account_changed(shards: &Shards, user: &UserId, entry: &ProviderId) {
-    let entry = entry.clone();
-    let told = shards
-        .of(user)
-        .call(move |shard, _| async move { shard.account_changed(&entry) })
-        .await;
-    if let Err(error) = told {
-        tracing::debug!(%user, "the account's change prepared nothing ahead: {error}");
     }
 }
 
