@@ -39,6 +39,11 @@ const UTILITIES: &str = "Standard utilities (sed, grep, cp, ls, find, …) are G
 /// Where a Mac keeps its own, BSD utilities, which a block for a Mac adds.
 const MACOS_UTILITIES: &str = "macOS's own are in /usr/bin";
 
+/// What a block for Windows adds: what the shell is, since a model
+/// otherwise guesses Git Bash or MSYS and writes `/c/…` paths
+/// (`sessions-and-targets.md` § Execution context).
+const WINDOWS_SHELLS: &str = "Shells are bash (Demi's own, not Git Bash or WSL); Windows programs such as cmd, powershell and git run by name. Write paths as C:/Users/…, not /c/Users/…; quote a path with backslashes.";
+
 /// The line of a block after the conversation's attached hosts changed.
 const ATTACHED_CHANGED: &str = "[Attached hosts changed]";
 
@@ -162,12 +167,14 @@ impl Shard {
     /// The primary Host as the model reads it: its name, its operating
     /// system with its architecture as its runner last reported them, the
     /// directory its shells start in, and that its standard utilities are
-    /// GNU's, with where a Mac's own are. A Host whose runner never
-    /// connected, such as a Cloud not made yet, is named without its system.
+    /// GNU's, with where a Mac's own are and what a Windows Host's shell
+    /// is. A Host whose runner never connected, such as a Cloud not made
+    /// yet, is named without its system.
     async fn primary_host_line(&self, target: &ExecutionTarget) -> Result<String, StorageError> {
         let (device, name) = self.primary_host(target).await?;
         let utilities = match device.as_ref().map(|record| &record.platform) {
             Some(RunnerPlatform::Darwin) => format!("{UTILITIES}; {MACOS_UTILITIES}."),
+            Some(RunnerPlatform::Win32) => format!("{UTILITIES}. {WINDOWS_SHELLS}"),
             _ => format!("{UTILITIES}."),
         };
         let host = match device.and_then(|record| record.os) {
@@ -292,4 +299,75 @@ fn switch_lines(
         ));
     }
     lines
+}
+
+#[cfg(test)]
+mod tests {
+    use demi_backend_database::accounts::TokenHash;
+    use demi_backend_database::control::testing;
+    use demi_backend_database::conversation_index::{ConversationStart, Creation};
+    use demi_runner_protocol::wire::{OperatingSystem, RunnerPlatform};
+    use demi_web_api_protocol::ids::ConversationId;
+
+    use crate::services::Services;
+    use crate::shard::{ShardPlacement, ShardPool};
+
+    const ID: &str = "4f0c2a8e-1d3b-4e6f-9a7c-2b5d8e1f3a60";
+
+    /// A model on Windows that is not told what the shell is guesses Git
+    /// Bash and writes `/c/…` paths, which the runner's utilities refuse.
+    #[tokio::test(flavor = "local")]
+    async fn a_windows_hosts_block_says_its_shell_is_demis_bash_and_how_to_write_paths() {
+        let data = tempfile::tempdir().unwrap();
+        let services = Services::start_for_tests(data.path()).await;
+        let control = services.control.clone();
+        let owner = testing::master(&control).await.id;
+        let id = ConversationId::try_from(ID).unwrap();
+        assert!(matches!(
+            control
+                .create_conversation(owner.clone(), id.clone(), ConversationStart::default())
+                .await
+                .unwrap(),
+            Creation::Created(_)
+        ));
+        let desktop = control
+            .create_device(
+                owner.clone(),
+                "ALEX-PC".into(),
+                RunnerPlatform::Win32,
+                TokenHash::of("desktop"),
+            )
+            .await
+            .unwrap()
+            .id;
+        let os = OperatingSystem {
+            name: "Windows 11 Pro (build 26100)".into(),
+            arch: "x86_64".into(),
+        };
+        control
+            .set_device_runner(desktop.clone(), os, "0".into(), 1, false)
+            .await
+            .unwrap();
+        testing::execute(
+            &control,
+            r"UPDATE conversations SET target_kind = 'device', target_device_id = ?2, target_path = 'C:\Users\ana'
+             WHERE id = ?1",
+            vec![ID.to_owned(), desktop.to_string()],
+        )
+        .await;
+        let pool = ShardPlacement::Inline;
+        let pool = ShardPool::start(pool, services).await.unwrap();
+        let block = pool
+            .shards()
+            .of(&owner)
+            .call(move |shard, _| async move { shard.execution_context(&id, &[]).await })
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            block.lines().nth(1).unwrap(),
+            r"Primary host: ALEX-PC, Windows 11 Pro (build 26100) (x86_64). Shells start in C:\Users\ana. Standard utilities (sed, grep, cp, ls, find, …) are GNU's on every host. Shells are bash (Demi's own, not Git Bash or WSL); Windows programs such as cmd, powershell and git run by name. Write paths as C:/Users/…, not /c/Users/…; quote a path with backslashes."
+        );
+    }
 }
