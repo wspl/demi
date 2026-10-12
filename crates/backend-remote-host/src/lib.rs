@@ -38,7 +38,7 @@ pub use file_watch::{HostEvent, HostSubscriber};
 pub use link::{
     DirectAdmission, DirectAnswer, PeerEvent, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
     LinkPolicy, SocketEnd,
-    OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
+    END_GRACE, OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
 };
 pub use manifest::{ArtifactResolver, CommandCatalog, CommandSelection};
 pub use output_records::{decode_output, encode_output};
