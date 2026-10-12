@@ -1,6 +1,6 @@
 import { DEMO_BUN_TEST, DEMO_GIT_DIFF, DEMO_RG } from './terminal-output'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import { BASH_SCRIPT, RUNNING_RUN_CALL, RUNNING_SHELL_DESCRIPTION, RUNNING_SHELL_SCRIPT, returnedShellTool, runningShellTool } from './blocks'
+import { BASH_SCRIPT, LEFT_RUNNING_CALL, RUNNING_RUN_CALL, RUNNING_SHELL_DESCRIPTION, RUNNING_SHELL_SCRIPT, returnedShellTool, runningShellTool } from './blocks'
 import { ago } from './time'
 
 /**
@@ -20,6 +20,19 @@ export function runningRunCommand(): TerminalRecord {
     startedAt: ago(92_000),
     output: 'Merge made by the \'ort\' strategy.\nbun test v1.3.14\n',
     toolUseId: `${RUNNING_RUN_CALL}-use`,
+  }
+}
+
+/** The command the ended turn left running, started 2m16s ago (`leftRunningBlocks`). */
+export function leftRunningCommand(): TerminalRecord {
+  return {
+    id: 'term-e2e',
+    title: 'Run the end-to-end suite',
+    script: 'bun run e2e',
+    phase: 'running',
+    startedAt: ago(136_000),
+    output: 'Running 140 specs\n',
+    toolUseId: `${LEFT_RUNNING_CALL}-use`,
   }
 }
 
