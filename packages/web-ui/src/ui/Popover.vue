@@ -10,7 +10,8 @@ import {
   autoUpdate
 } from '@floating-ui/vue'
 import type { Alignment, Placement } from '@floating-ui/vue'
-import { onClickOutside, onKeyStroke } from '@vueuse/core'
+import { onClickOutside } from '@vueuse/core'
+import { escapeCloses, escapeKey, useEscapeClose } from '../composables/useEscapeClose'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { useOverlayTarget } from '../overlay/overlayContainer'
 import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
@@ -291,16 +292,13 @@ const overlayId = useOverlay(props.overlayStore, () => (
  * nothing, and one this panel takes reaches no dialog behind it.
  */
 function closeOnEscape(event: KeyboardEvent): void {
-  if (!props.isOpen || event.key !== 'Escape' || event.defaultPrevented)
+  if (!props.isOpen || event.key !== 'Escape' || !escapeCloses(escapeKey(event)))
     return
   event.preventDefault()
   emit('close')
 }
 
-onKeyStroke('Escape', (event) => {
-  if (!nested && !container && props.overlayStore.isTop(overlayId))
-    closeOnEscape(event)
-})
+useEscapeClose(() => props.isOpen && !nested && !container && props.overlayStore.isTop(overlayId), () => emit('close'))
 
 const overlayMotion = {
   enterActiveClass: 'transition-[opacity,scale] duration-150 ease-out',

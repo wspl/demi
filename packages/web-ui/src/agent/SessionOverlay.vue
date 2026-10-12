@@ -4,6 +4,7 @@ import { Ellipsis, X } from '@lucide/vue'
 import { useStackedWindow } from '../ui/window-stack'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { useContextMenuOwner } from '../composables/useContextMenuOwner'
+import { useEscapeClose } from '../composables/useEscapeClose'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
@@ -79,12 +80,12 @@ const stacked = useStackedWindow({
 const phone = usePhone()
 useBackClose(() => props.open, () => emit('close'), () => phone.value)
 
-function closeOnEscape(event: KeyboardEvent): void {
-  if (event.key !== 'Escape' || event.defaultPrevented || event.isComposing || appOverlayStore.hasExclusive() || !stacked.isNewest())
-    return
-  event.preventDefault()
-  emit('close')
-}
+// As the page's other windows: an Escape typed in a field (a terminal, the composer) is the field's.
+useEscapeClose(
+  () => props.open && !appOverlayStore.hasExclusive() && stacked.isNewest(),
+  () => emit('close'),
+  { ignoreFields: true },
+)
 
 function openTabMenu(event: MouseEvent, id: string): void {
   if (!slots.tabMenu) {
@@ -120,7 +121,6 @@ function openStripMenu(event: MouseEvent): void {
       tabindex="-1"
       class="pointer-events-auto flex min-h-0 flex-col overflow-hidden bg-surface outline-none"
       :class="phone ? 'fixed inset-0 z-40 pb-[var(--safe-bottom)]' : 'overlay-window absolute inset-0 z-10 origin-bottom rounded-xl'"
-      @keydown="closeOnEscape"
     >
       <div
         class="flex shrink-0 items-center gap-1 bg-surface-base px-1.5"
