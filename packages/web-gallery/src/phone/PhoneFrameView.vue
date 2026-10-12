@@ -165,7 +165,10 @@ onMounted(async () => {
       pressWhenShown('[aria-label="Show file tree"]')
       break
     case 'browser':
-      void work.agentOpens('https://example.test/orders', true)
+      // Pages enough to outgrow the strip, which scrolls to show the last, the one shown.
+      for (const url of ['https://docs.example.test/shipping', 'https://shop.example.test/cart', 'https://status.example.test/'])
+        await work.agentOpens(url, false)
+      await work.agentOpens('https://example.test/orders', true)
       break
     case 'agents':
       pressChip(/Agents?$/)
