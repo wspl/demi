@@ -33,6 +33,10 @@ export const galleryBlobs = {
   chart: fixture('3d'.repeat(32), '/fixtures/preview/photo-before.png', { width: 480, height: 300 }),
   /** A 48 × 48 icon, smaller than a preview card. */
   icon: fixture('4e'.repeat(32), '/fixtures/preview/icon-small.png', { width: 48, height: 48 }),
+  /** A 2880 × 1800 screenshot taken on a display of two device pixels per page pixel. */
+  retina: fixture('2a'.repeat(32), '/fixtures/preview/screen-retina.png', { width: 2880, height: 1800 }),
+  /** A 40 × 40 icon, smaller than the viewer's smallest window. */
+  tinyIcon: fixture('1c'.repeat(32), '/fixtures/preview/icon-tiny.png', { width: 40, height: 40 }),
   /** A 171 × 40 frame of a progress strip. */
   frame: fixture('5e'.repeat(32), '/fixtures/preview/frame-strip.png', { width: 171, height: 40 }),
   /** A 1600 × 300 timeline, wider than a message. */
