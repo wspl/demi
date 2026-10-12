@@ -433,7 +433,10 @@ Context window                      285.1k / 1M (29%)
   Exact counts from a vendor's token-counting endpoint are left out: only one
   vendor family has one.
 - **A row with no tokens is left out**, and so are Summary before the first
-  compaction and Skills while no skill is on.
+  compaction and Skills while no skill is on, except Instructions: it always
+  shows, as the place that says what the agent follows, and with no
+  instructions it reads *None* and opens to nothing, so the user sees that
+  none apply rather than wondering where they went.
 
 ### Request size
 
