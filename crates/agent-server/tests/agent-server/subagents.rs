@@ -9,6 +9,7 @@ use demi_agent_server::{
     testing::{ScriptedProviders, TestClient},
 };
 use demi_agent_store::{
+    RunningCommand,
     AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord,
     testing::{MemoryTreeStore, test_model, text},
 };
@@ -21,9 +22,10 @@ use demi_provider_common::{
 };
 use demi_agent_tools::{Profile, ProfileModel, SubagentSettings};
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, Block, BlockId, CompletionId, CompletionOutcome, NodeId,
+    AgentMessage, AgentMessageEvent, Block, BlockId, CommandId, CompletionId, CompletionOutcome, NodeId,
     QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
 };
+use demi_host_interface::Seen;
 use serde_json::{Value, json};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -743,6 +745,11 @@ fn is_child_command(child: &NodeId, stopping: bool) -> impl Fn(&ServerFrame) -> 
     }
 }
 
+/// Whether `frame` is the subagent `child`'s phase `phase`.
+fn is_child_phase(child: &NodeId, phase: SessionPhase) -> impl Fn(&ServerFrame) -> bool + '_ {
+    move |frame| matches!(frame, ServerFrame::Phase { subagent_id: Some(id), phase: shown } if id == child && *shown == phase)
+}
+
 /// Polls `show`'s view of agent 1 for the root until its execution is
 /// `execution`; the time between two looks passes on the paused clock.
 async fn wait_for_execution(server: &Rc<demi_agent_server::AgentServer<crate::support::LiveHosts>>, execution: &str) {
@@ -793,6 +800,17 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     let child = named_node(&store, &spawned);
     wait_for_execution(&server, "waiting").await;
 
+    // The pages see the child idle beside its command, and a page that
+    // opens now is told so in its handshake (`runtime.md` § Frame protocol).
+    let frames = page.received();
+    assert!(frames.iter().any(is_child_phase(&child, SessionPhase::Running)), "{frames:?}");
+    assert!(frames.iter().any(is_child_phase(&child, SessionPhase::Idle)), "{frames:?}");
+    let mut opening = TestClient::connect(&server, &conversation(), "/workspace");
+    opening.send(open()).await;
+    let handshake = opening.received();
+    assert!(handshake.iter().any(is_child_phase(&child, SessionPhase::Idle)), "{handshake:?}");
+    drop(opening);
+
     // A message to the idle child, whose command still runs, opens its turn.
     let sent = agent(&server, &root(), "send", json!({ "id": "1", "message": "Is it serving?" })).await;
     assert_eq!(sent.stdout, "sent to 1\n", "{sent:?}");
@@ -819,6 +837,27 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     let status = shell_command(&server, &root(), "status", json!({ "id": ["1"] })).await;
     assert!(status.stdout.contains("status: running"), "{status:?}");
 
+    // The page's terminal input and End Command reach it where it stays.
+    let command = CommandId::try_from("1").unwrap();
+    page.send(ClientFrame::ShellWrite {
+        command_id: command.clone(),
+        stdin: "q\n".into(),
+    })
+    .await;
+    page.send(ClientFrame::ShellAbort {
+        command_id: command.clone(),
+    })
+    .await;
+    let answers = page.received();
+    assert!(
+        answers.contains(&ServerFrame::ShellWriteResult { command_id: command }),
+        "{answers:?}"
+    );
+    assert!(
+        !answers.iter().any(|frame| matches!(frame, ServerFrame::Error { .. })),
+        "{answers:?}"
+    );
+
     // A page that opens now finds it stopping in its handshake.
     let mut second = TestClient::connect(&server, &conversation(), "/workspace");
     second.send(open()).await;
@@ -826,9 +865,73 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     assert!(handshake.iter().any(is_child_command(&child, true)), "{handshake:?}");
 
     // Its runner reports its end, which reaches the pages.
-    shells.0.borrow().clone().expect("the child's call made it").end();
+    shells.last().end();
     page.next_until(is_child_command(&child, false)).await;
     second.next_until(is_child_command(&child, false)).await;
+}
+
+// The backend restarted while an aborted child's command, and its aborted
+// child's, still stopped: restore skips the closed children but takes up
+// their commands, which show as stopping again under their child, are asked
+// to stop again, and end as their runners report (`subagents.md` § Abort).
+// About 0.02 s.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn restore_takes_up_the_commands_closed_children_left_stopping() {
+    let store = MemoryTreeStore::new();
+    store
+        .create_node(NodeRecord::root(root(), Timestamp::UNIX_EPOCH), checkpoint(Vec::new(), Vec::new()))
+        .await
+        .unwrap();
+    let aborted = NodeClose {
+        phase: ClosePhase::Aborted,
+        at: Timestamp::UNIX_EPOCH,
+    };
+    for (id, number, parent, command) in [("stopped", 1, "conversation", "4"), ("nested", 2, "stopped", "5")] {
+        let record = child_record(id, number, parent, None);
+        let id = record.id.clone();
+        store.create_node(record, checkpoint(Vec::new(), Vec::new())).await.unwrap();
+        store.close_node(&id, aborted.clone()).await.unwrap();
+        store.mark_delivered(&id, 1).await.unwrap();
+        store.record_running(
+            id,
+            RunningCommand {
+                command: CommandId::try_from(command).unwrap(),
+                job: format!("job-{command}"),
+                tool_use_id: format!("call-{command}"),
+                title: "Read the pipe".into(),
+                started: Timestamp::UNIX_EPOCH,
+                place: Seen::default(),
+            },
+        );
+    }
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide_runtime("stub", Model::default());
+    let shells = Rc::new(ScriptedShells::default());
+    let server = scripted_host_server(providers, shells.clone(), store.clone());
+    let mut page = TestClient::connect(&server, &conversation(), "/workspace");
+    page.send(open()).await;
+    let stopped = NodeId::try_from("stopped").unwrap();
+    let nested = NodeId::try_from("nested").unwrap();
+    let mut frames = page.received();
+    frames.extend(page.next_until(is_child_command(&nested, true)).await);
+    assert!(frames.iter().any(is_child_command(&stopped, true)), "{frames:?}");
+    let status = shell_command(&server, &root(), "status", json!({ "id": ["4"] })).await;
+    assert!(status.stdout.contains("status: running"), "{status:?}");
+
+    // Each runner reports its end, which reaches the page, and a page that
+    // opens then finds nothing stopping.
+    for shell in shells.0.borrow().iter() {
+        shell.end();
+    }
+    page.next_until(is_child_command(&stopped, false)).await;
+    page.next_until(is_child_command(&nested, false)).await;
+    let mut later = TestClient::connect(&server, &conversation(), "/workspace");
+    later.send(open()).await;
+    let handshake = later.received();
+    assert!(
+        !handshake.iter().any(|frame| matches!(frame, ServerFrame::ShellOutput { .. })),
+        "{handshake:?}"
+    );
 }
 
 pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> CheckpointUpdate {

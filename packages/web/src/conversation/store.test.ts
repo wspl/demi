@@ -424,6 +424,28 @@ test('sidebar stays active until the last running child closes after its parent 
   expect(conversation.status).toBe('active')
 })
 
+// A child's tail row reads its own phase (`runtime.md` § Frame protocol): a
+// child idle beside a command it left running shows no Requesting row, and
+// its phase never becomes the root's.
+test('a live child\'s phase frames set its own phase, not the root\'s', () => {
+  const conversation = useConversations().items[0]!
+  conversation.phase = 'idle'
+  applyConversationEvent(conversation, {
+    type: 'subagent',
+    event: 'started',
+    job: {
+      subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Serve',
+      profile: null, phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
+    },
+  })
+  const child = () => conversation.subagents.find((agent) => agent.id === 'child')!
+  applyConversationEvent(conversation, { type: 'phase', subagentId: 'child', phase: 'running' })
+  expect(child().sessionPhase).toBe('running')
+  applyConversationEvent(conversation, { type: 'phase', subagentId: 'child', phase: 'idle' })
+  expect(child().sessionPhase).toBe('idle')
+  expect(conversation.phase).toBe('idle')
+})
+
 /** A `shell` call of `script`, as a transcript holds it while it runs or once it returned. */
 function execCall(toolUseId: string, script: string, status: 'executing' | 'completed', description?: string) {
   return {
@@ -549,6 +571,7 @@ test('restored running children keep an idle parent active in the sidebar', () =
     number: 1,
     name: 'Restored child',
     phase: 'running',
+    sessionPhase: 'idle',
     waitingSince: null,
     startedAt: '2026-09-13T00:00:00.000Z',
     pendingCalls: [],

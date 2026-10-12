@@ -1,4 +1,4 @@
-import type { PendingCall, ProviderFailureFacts } from '@demicodes/protocol'
+import type { PendingCall, ProviderFailureFacts, SessionPhase } from '@demicodes/protocol'
 import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { ConversationStatus } from './conversation-status'
 import type { MessageEditContent } from './message-editing'
@@ -11,6 +11,12 @@ export interface SubagentRecord {
   number: number
   name: string
   phase: SubagentPhase
+  /**
+   * What its session does while it is live, as its `phase` frames say: a
+   * child idle beside a command it left running shows no Requesting row
+   * (`runtime.md` § Frame protocol).
+   */
+  sessionPhase: SessionPhase
   startedAt: string
   endedAt?: string
   /** The parts of this agent's transcript the page holds, from its pages and its stream. */

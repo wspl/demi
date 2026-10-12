@@ -79,6 +79,7 @@ pub(crate) fn idle(frame: &ServerFrame) -> bool {
     matches!(
         frame,
         ServerFrame::Phase {
+            subagent_id: None,
             phase: SessionPhase::Idle
         }
     )
