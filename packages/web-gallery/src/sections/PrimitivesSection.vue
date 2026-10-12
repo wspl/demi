@@ -724,7 +724,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
 
       <GallerySection
         title="ContextUsageIndicator"
-        note="The ring is the backend’s estimate. Point at it for the card, on a phone tap it for a sheet: a click on the ring does nothing, Compact compacts, from half the window. The bar and the rows say what fills the context, each row with its estimate and share of the window; a row with a chevron opens into its parts, and an instructions file opens where it is written. Under them, the usage limits of a subscription account; a model on an API key has none."
+        note="The ring is the backend’s estimate. Point at it for the card, on a phone tap it for a sheet: a click on the ring does nothing. The header opens and closes the list of what fills the context, closed at first and then as the user left it, kept in the browser; the bar shows either way, the rows largest first, each one figure with its share of the window. Under them, the room before compaction, with Compact, from half the window. Then the usage limits of a subscription account, each window’s name, reset and use on one line over its bar (a model on an API key has none), and last the instruction files, each of which opens where it is written."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="below half · 34%">

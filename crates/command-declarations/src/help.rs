@@ -16,8 +16,7 @@ pub const INDEX_OPENER: &str = "Demi's own capabilities are `demi` commands you 
 
 /// The model's capability index (`system-prompt.md` § Capability index):
 /// the defaults and the opener, then each group's section, sorted by the
-/// group's path. The context card weighs each group's section apart
-/// (`compaction.md` § What fills the context).
+/// group's path.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CapabilityIndex {
     /// The groups, sorted by their paths.
