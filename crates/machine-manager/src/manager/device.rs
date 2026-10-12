@@ -6,9 +6,7 @@
 use std::{num::NonZeroU64, path::Path, rc::Rc};
 
 use demi_machine_manager_protocol::image::PROGRAMS_PATH;
-use demi_machine_manager_protocol::{
-    BaseVersion, DeviceId, MachineImageState, RuntimeState, Volume,
-};
+use demi_machine_manager_protocol::{BaseVersion, DeviceId, MachineImageState, Volume};
 use demi_runner_protocol::boot::ManagedBoot;
 use tokio::sync::{mpsc, oneshot};
 
@@ -18,6 +16,7 @@ use super::{
 };
 use crate::{
     blocking, fault,
+    network::slots::Slot,
     sandbox::Sandbox,
     server::chain,
     storage::{
@@ -36,8 +35,9 @@ pub enum DeviceCommand {
         op: DeviceOp,
         reply: oneshot::Sender<Result<(), OpError>>,
     },
-    RuntimeState {
-        reply: oneshot::Sender<RuntimeState>,
+    /// The slot of the device's running sandbox; none when it is stopped.
+    Running {
+        reply: oneshot::Sender<Option<Slot>>,
     },
 }
 
@@ -134,14 +134,10 @@ impl DeviceWorker {
                     // The requester may have gone; the operation completed anyway.
                     let _ = reply.send(outcome);
                 }
-                DeviceCommand::RuntimeState { reply } => {
-                    let state = if self.runtime.is_some() {
-                        RuntimeState::Running
-                    } else {
-                        RuntimeState::Stopped
-                    };
+                DeviceCommand::Running { reply } => {
+                    let slot = self.runtime.as_ref().map(|sandbox| sandbox.slot().clone());
                     // As above: no one may be waiting any more.
-                    let _ = reply.send(state);
+                    let _ = reply.send(slot);
                 }
             }
         }

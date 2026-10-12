@@ -119,6 +119,11 @@ impl Sandbox {
         &self.record.id
     }
 
+    /// The network slot the sandbox runs on.
+    pub fn slot(&self) -> &Slot {
+        &self.slot
+    }
+
     /// Starts the boot on the working pair with the base at `base` and
     /// Demi's programs from `programs`, the configured base's, whose runner
     /// is of `runner_release`. On an error the caller closes the sandbox,
