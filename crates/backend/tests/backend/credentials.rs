@@ -14,7 +14,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use demi_backend_user_shard::shard::ShardPlacement;
-use demi_web_api_protocol::credentials::{CredentialAnswer, CredentialValues, Credentials, Keep};
+use demi_web_api_protocol::credentials::{CredentialAnswer, CredentialList, CredentialValues, Keep};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::permissions::PermissionRequest;
 use demi_web_api_protocol::state::SyncEvent;
@@ -37,7 +37,7 @@ fn last_asked(scripts: &Scripts, id: &str) -> String {
         .expect("the root was asked")
 }
 
-async fn credentials(backend: &TestBackend, session: &Session) -> Credentials {
+async fn credentials(backend: &TestBackend, session: &Session) -> CredentialList {
     let read = backend.get("/api/credentials", Some(session)).await;
     assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
     read.json()

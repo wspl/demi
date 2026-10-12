@@ -20,6 +20,8 @@ let answers: Array<() => Response>
 const reads = shallowRef(0)
 /** The backend's answer to a decision. */
 let decide: () => Response
+/** The bodies the decisions sent, in order. */
+let decided: unknown[]
 
 beforeEach(() => {
   pinia = createPinia()
@@ -28,8 +30,10 @@ beforeEach(() => {
   answers = []
   reads.value = 0
   decide = () => new Response(null, { status: 204 })
-  globalThis.fetch = (async (input) => {
+  decided = []
+  globalThis.fetch = (async (input, init) => {
     if (String(input).startsWith(`${PATH}/requests/`)) {
+      decided.push(JSON.parse(String(init?.body)))
       return decide()
     }
     if (String(input) !== PATH) {
@@ -137,4 +141,72 @@ test('a page that opens a conversation while its summary arrives reads the reque
   await until(() => permissions.stateFor(CONVERSATION).requests.length).toBe(1)
   await new Promise((resolve) => setTimeout(resolve, 0))
   expect(reads.value).toBe(1)
+})
+
+/** A read's answer holding a credential request for Google's key, an allowance of a stored credential and one that was removed. */
+function credentialRequests(): () => Response {
+  const asked = { command: 'demi credentials …', agent: null, createdAt: '2026-10-05T00:00:00.000Z' }
+  return () =>
+    Response.json({
+      revision: 5,
+      requests: [
+        {
+          kind: 'credential',
+          id: 'cr-1',
+          name: 'Google API key',
+          reason: 'To add Google as a provider',
+          fields: [{ name: 'key', label: 'API key', kind: 'secret' }],
+          keep: '1h',
+          ...asked,
+        },
+        { kind: 'allowance', id: 'al-1', name: 'GitHub token', removed: false, ...asked },
+        { kind: 'allowance', id: 'al-2', name: 'Old token', removed: true, ...asked },
+      ],
+    })
+}
+
+test('a credential request asks to update a saved credential of its name, whatever the case, and an allowance says when its credential is gone', async () => {
+  const product = useProduct()
+  product.start()
+  const saved = { fields: [], note: '', keepUntil: null, lastUsedAt: null, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z' }
+  channels.last().connect({ ...at('run-1', 5, 3), credentials: [{ id: 'c1', name: 'google api KEY', ...saved }] })
+  const permissions = usePermissions()
+  answers.push(credentialRequests())
+  permissions.follow(CONVERSATION)
+  const state = permissions.stateFor(CONVERSATION)
+  await until(() => state.requests.length).toBe(3)
+
+  expect(state.requests.map((request) => request.kind)).toEqual(['credential', 'allowance', 'allowance'])
+  expect(state.requests[0]).toMatchObject({ name: 'Google API key', renewal: true, keep: '1h' })
+  expect(state.requests[2]).toMatchObject({ name: 'Old token', removed: true })
+})
+
+test('the values of a credential go with the answer, the card stays until they are accepted, and a refusal is said in the card with the request kept', async () => {
+  const product = useProduct()
+  product.start()
+  channels.last().connect(at('run-1', 5, 3))
+  const permissions = usePermissions()
+  answers.push(credentialRequests())
+  permissions.follow(CONVERSATION)
+  const state = permissions.stateFor(CONVERSATION)
+  await until(() => state.requests.length).toBe(3)
+
+  decide = () => Response.json({ code: 'invalid_answer', message: 'values.key: a value is required' }, { status: 400 })
+  await permissions.decide(CONVERSATION, 'cr-1', 'allow', { values: { key: 'AIza' }, keep: '1d' })
+  expect(state.requests.map((request) => request.id)).toEqual(['cr-1', 'al-1', 'al-2'])
+  expect(state.error).toBe('values.key: a value is required')
+  expect(state.deciding).toBe(false)
+
+  decide = () => new Response(null, { status: 204 })
+  await permissions.decide(CONVERSATION, 'cr-1', 'allow', { values: { key: 'AIza' }, keep: '1d' })
+  expect(state.requests.map((request) => request.id)).toEqual(['al-1', 'al-2'])
+  expect(state.error).toBeNull()
+  expect(decided).toEqual([
+    { decision: 'allow', credential: { values: { key: 'AIza' }, keep: '1d' } },
+    { decision: 'allow', credential: { values: { key: 'AIza' }, keep: '1d' } },
+  ])
+
+  await permissions.decide(CONVERSATION, 'al-2', 'deny')
+  expect(state.requests.map((request) => request.id)).toEqual(['al-1'])
+  expect(decided.at(-1)).toEqual({ decision: 'deny' })
 })
