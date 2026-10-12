@@ -55,3 +55,6 @@ export function useContextMenuOwner(onClose?: () => void) {
 
   return { isOpen, anchorX, anchorY, anchorContextEl, menuKey, open, close }
 }
+
+/** One context menu's state: where it opened and whether it is open; a `ContextMenu` shows it. */
+export type ContextMenuOwner = ReturnType<typeof useContextMenuOwner>

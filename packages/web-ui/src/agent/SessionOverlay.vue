@@ -7,7 +7,7 @@ import { useContextMenuOwner } from '../composables/useContextMenuOwner'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
-import Popover from '../ui/Popover.vue'
+import ContextMenu from '../ui/ContextMenu.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TabStrip from './TabStrip.vue'
 import { usePhone } from '../ui/phone'
@@ -163,36 +163,16 @@ function openStripMenu(event: MouseEvent): void {
       <div class="min-h-0 flex-1 overflow-hidden bg-surface">
         <slot />
       </div>
-      <Popover
-        :key="tabMenu.menuKey.value"
-        :overlay-store="appOverlayStore"
-        :is-open="tabMenu.isOpen.value && menuTabId !== null"
-        :anchor-x="tabMenu.anchorX.value"
-        :anchor-y="tabMenu.anchorY.value"
-        :anchor-context-el="tabMenu.anchorContextEl.value"
-        :offset="0"
-        sheet
-        @close="tabMenu.close()"
-      >
-        <Menu v-if="menuTabId !== null" @click="tabMenu.close()">
-          <slot name="tabMenu" :id="menuTabId" />
-        </Menu>
-      </Popover>
-      <Popover
-        :key="stripMenu.menuKey.value"
-        :overlay-store="appOverlayStore"
-        :is-open="stripMenu.isOpen.value"
-        :anchor-x="stripMenu.anchorX.value"
-        :anchor-y="stripMenu.anchorY.value"
-        :anchor-context-el="stripMenu.anchorContextEl.value"
-        :offset="0"
-        sheet
-        @close="stripMenu.close()"
-      >
-        <Menu @click="stripMenu.close()">
+      <ContextMenu :overlay-store="appOverlayStore" :owner="tabMenu">
+        <template #menu>
+          <slot v-if="menuTabId !== null" name="tabMenu" :id="menuTabId" />
+        </template>
+      </ContextMenu>
+      <ContextMenu :overlay-store="appOverlayStore" :owner="stripMenu">
+        <template #menu>
           <slot name="stripMenu" />
-        </Menu>
-      </Popover>
+        </template>
+      </ContextMenu>
     </div>
   </Transition>
   </Teleport>

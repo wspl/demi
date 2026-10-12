@@ -38,6 +38,7 @@ import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
 import Sheet from '../ui/Sheet.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import RenameDialog from '../ui/RenameDialog.vue'
+import Menu from '../ui/Menu.vue'
 import SidebarSelectionMenu from '../sidebar/SidebarSelectionMenu.vue'
 import ConversationDeleteDialog from '../sidebar/ConversationDeleteDialog.vue'
 import { copyConversationId } from './copy-conversation-id'
@@ -442,16 +443,17 @@ watch(
         <template #header>
           <p class="break-words text-[15px] font-medium text-fg-emphasis">{{ conversation.title }}</p>
         </template>
-        <SidebarSelectionMenu
-          v-if="listed"
+        <Menu v-if="listed">
+          <SidebarSelectionMenu
           :targets="[{ id: conversation.id, pinned: listed.pinned }]"
-          shown
-          @rename="fromTitleSheet(() => (renaming = true))"
-          @copy-id="fromTitleSheet(() => void copyConversationId(conversation.id))"
-          @pin="(_ids, pinned) => fromTitleSheet(() => emit('pin', pinned))"
-          @archive="fromTitleSheet(() => emit('archive'))"
-          @delete="fromTitleSheet(() => (deleteAsked = true))"
-        />
+            shown
+            @rename="fromTitleSheet(() => (renaming = true))"
+            @copy-id="fromTitleSheet(() => void copyConversationId(conversation.id))"
+            @pin="(_ids, pinned) => fromTitleSheet(() => emit('pin', pinned))"
+            @archive="fromTitleSheet(() => emit('archive'))"
+            @delete="fromTitleSheet(() => (deleteAsked = true))"
+          />
+        </Menu>
         <!-- Where the conversation runs, as the desktop's header shows it beside the title. -->
         <div v-if="$slots.workspace" class="px-4 pb-3 pt-1">
           <p class="pb-1 text-[12px] text-fg-subtle">Runs On</p>
