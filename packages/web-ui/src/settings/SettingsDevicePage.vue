@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Cloud } from '@lucide/vue'
 import { upperFirst } from '@demicodes/utils'
 import Button from '../ui/Button.vue'
 import DetailsSheet from '../ui/DetailsSheet.vue'
@@ -32,7 +31,7 @@ import {
 } from '../devices/direct'
 import { RUNNER_STATE_LABEL, runnerState, systemName, type DeviceReport } from '../devices/report'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
-import { DEVICE_ICON } from '../hosts/icons'
+import { hostIcon } from '../hosts/icons'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { SentenceText } from '../ui/ui-text'
 import SettingsGroup from './SettingsGroup.vue'
@@ -211,8 +210,7 @@ function revoke() {
     @back="emit('back')"
   >
     <template #icon>
-      <component :is="DEVICE_ICON" v-if="device" :size="24" aria-hidden="true" />
-      <Cloud v-else :size="24" aria-hidden="true" />
+      <component :is="hostIcon({ kind: device ? 'device' : 'cloud' })" :size="24" aria-hidden="true" />
     </template>
     <template #status>
       {{ status.words }}<span v-if="device?.state === 'offline' && device.seen" class="text-fg-subtle"> · Last seen <RelativeTime :timestamp="device.seen" /></span>

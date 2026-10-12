@@ -63,7 +63,7 @@ const rootName = computed(() => props.rootName ?? (baseName(props.root) || '/'))
     <template #name="{ row, highlight }">
       <!-- The name stays whole; the folder after it gives way first (the gallery's Writing page). -->
       <span class="flex min-w-0 flex-1 items-baseline gap-1.5">
-        <span class="shrink-0" :class="row.file.kind === 'deleted' ? 'line-through text-fg-muted' : ''"><HighlightText :text="row.name" :indexes="highlight" /></span>
+        <span class="shrink-0" :class="row.file.kind === 'deleted' ? 'deleted-name' : ''"><HighlightText :text="row.name" :indexes="highlight" /></span>
         <TruncatedText v-if="row.folder" class="min-w-0 text-[11px] text-fg-subtle" :text="row.folder" />
         <LineCounts v-if="row.file.lines" class="ml-auto pr-1" :added="row.file.lines.added" :removed="row.file.lines.removed" />
       </span>

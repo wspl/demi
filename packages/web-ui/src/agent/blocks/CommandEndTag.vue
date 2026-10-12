@@ -1,33 +1,26 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import { upperFirst } from '@demicodes/utils'
-import Tag from '@demicodes/web-ui/ui/Tag.vue'
-import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import type { CommandEndMark } from '../command-end'
+import RunEndTag from './RunEndTag.vue'
 
 /**
  * A row's mark of a command that went wrong, after its title: red Failed
  * with the exit code in its tooltip, grey Stopping… while a stop waits for
  * the command's runner to end it, grey Stopped, or grey Lost with why in its
- * tooltip. It never shrinks, so a long title gives up its end to it.
+ * tooltip.
  */
-defineProps<{ mark: CommandEndMark }>()
+const props = defineProps<{ mark: CommandEndMark }>()
+
+const hint = computed(() => {
+  if (props.mark.kind === 'failed')
+    return `Exit code ${props.mark.exitCode}`
+  if (props.mark.kind === 'lost')
+    return upperFirst(props.mark.reason)
+  return undefined
+})
 </script>
 
 <template>
-  <Tooltip
-    v-if="mark.kind === 'failed'"
-    :content="`Exit code ${mark.exitCode}`"
-    class="flex shrink-0 items-center"
-  >
-    <Tag tone="danger">Failed</Tag>
-  </Tooltip>
-  <Tooltip
-    v-else-if="mark.kind === 'lost'"
-    :content="upperFirst(mark.reason)"
-    class="flex shrink-0 items-center"
-  >
-    <Tag>Lost</Tag>
-  </Tooltip>
-  <Tag v-else-if="mark.kind === 'stopping'" class="shrink-0">Stopping…</Tag>
-  <Tag v-else class="shrink-0">Stopped</Tag>
+  <RunEndTag :kind="mark.kind" :hint="hint" />
 </template>

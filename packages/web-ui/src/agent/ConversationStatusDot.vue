@@ -12,5 +12,5 @@ const tone = computed(() => statusTone(props.status))
 </script>
 
 <template>
-  <CornerDot :tone="tone" :pulse="status === 'active'" />
+  <CornerDot :tone="tone" :breathing="status === 'active'" />
 </template>

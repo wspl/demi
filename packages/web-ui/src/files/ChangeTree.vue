@@ -87,7 +87,7 @@ function activate(row: ChangeTreeRow): void {
       </Tooltip>
     </template>
     <template #name="{ row, highlight }">
-      <TruncatedText :class="row.change && gitMark(row.change.status)?.strike ? 'line-through text-fg-muted' : ''" :text="row.name">
+      <TruncatedText :class="row.change && gitMark(row.change.status)?.strike ? 'deleted-name' : ''" :text="row.name">
         <HighlightText :text="row.name" :indexes="highlight" />
       </TruncatedText>
     </template>

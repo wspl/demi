@@ -5,6 +5,7 @@ import { SerialQueue } from '@demicodes/utils'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
+import { cloudDeviceIn } from '../state/hosts'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   cloudResetAnswerSchema,
@@ -39,7 +40,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     if (!status) {
       return null
     }
-    const device = product.snapshot?.devices.find((candidate) => candidate.kind === 'managed')
+    const device = cloudDeviceIn(product.snapshot?.devices)
     return {
       state: status.state,
       operationId: status.operation?.id ?? null,
