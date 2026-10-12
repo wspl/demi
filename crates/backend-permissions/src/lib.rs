@@ -3,7 +3,11 @@
 //! refused call raises; the user's decisions, the grants an allow records,
 //! each kept for the conversation's life, and the message each decision
 //! sends the agent that asked, delivered again at start when a restart cut
-//! it off.
+//! it off. And the conversation's other requests, which share the list, the
+//! mark and the routes (`credentials.md` § Requests and routes): an agent's
+//! request for a credential, which its command waits for, and a read of a
+//! credential the conversation may not use yet, which asks for an allowance
+//! as a refused command asks for a grant.
 //!
 //! Every command source passes through the check, a plugin's, the product's
 //! and the agent runtime's alike, so it belongs to none of them. What it
@@ -11,23 +15,29 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::future::Future;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
+use demi_backend_database::credentials::{CredentialSeal, StoredCredential};
 use demi_backend_database::permissions::{
-    AskingAgent, Checked, PermissionRefusal, StoredRequest,
+    Asked, AskingAgent, Checked, CredentialAsk, CredentialRead, PermissionRefusal, StoredAsk,
+    StoredRequest,
 };
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_command_declarations::Category;
 use demi_host_interface::{RpcError, RpcInvocation};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, PermissionOutcome};
+use demi_web_api_protocol::credentials::{Keep, RequestedValues};
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::permissions::{
     ConversationPermissions, PermissionCategory, PermissionDecision, PermissionRequest,
     PermissionRequestId,
 };
 use futures_util::future::LocalBoxFuture;
+use tokio::sync::oneshot;
 
 /// What the permissions need of their user's shard.
 pub trait PermissionShard {
@@ -70,6 +80,80 @@ pub trait PermissionShard {
 
     /// The shard, for a task that outlives the call that starts it.
     fn this(&self) -> Rc<dyn PermissionShard>;
+
+    /// The commands that wait for the answers to their credential requests.
+    fn waits(&self) -> &Waits;
+
+    /// What seals and opens the values of the user's credentials.
+    fn credential_seal(&self) -> Arc<dyn CredentialSeal>;
+
+    /// The user's credentials changed: every page receives them, and the
+    /// expiry looks at their times again.
+    fn credentials_changed(&self);
+}
+
+/// How a credential request was answered, which its waiting command
+/// returns.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Answer {
+    /// The user saved the credential, kept as `keep` says.
+    Saved {
+        credential: StoredCredential,
+        keep: Keep,
+    },
+    /// The user declined.
+    Declined,
+    /// The request is gone without an answer: its conversation was
+    /// archived.
+    Withdrawn,
+}
+
+/// The commands that wait for the answers to their credential requests, by
+/// request.
+#[derive(Default)]
+pub struct Waits(RefCell<HashMap<PermissionRequestId, Waiting>>);
+
+struct Waiting {
+    conversation: ConversationId,
+    answer: oneshot::Sender<Answer>,
+}
+
+impl Waits {
+    fn answer(&self, request: &PermissionRequestId, answer: Answer) {
+        if let Some(waiting) = self.0.borrow_mut().remove(request) {
+            // A command that stopped waiting withdraws its request itself.
+            let _ = waiting.answer.send(answer);
+        }
+    }
+}
+
+/// A command's wait for the answer to its request: once it ends without
+/// one, whether it was stopped or its handler dropped, the request is
+/// withdrawn, since nobody waits for its answer.
+struct Wait {
+    shard: Rc<dyn PermissionShard>,
+    conversation: ConversationId,
+    request: PermissionRequestId,
+}
+
+impl Drop for Wait {
+    fn drop(&mut self) {
+        let waiting = self.shard.waits().0.borrow_mut().remove(&self.request);
+        if waiting.is_none() {
+            return;
+        }
+        let shard = self.shard.clone();
+        let conversation = self.conversation.clone();
+        let request = self.request.clone();
+        self.shard.spawn(Box::pin(async move {
+            match shard.control().withdraw_credential_request(request.clone()).await {
+                Ok(true) => changed(&*shard, &conversation),
+                Ok(false) => {}
+                // The next start withdraws every credential request left.
+                Err(error) => tracing::warn!(%request, "a credential request was not withdrawn: {error}"),
+            }
+        }));
+    }
 }
 
 /// How many times each conversation's requests changed since the shard
@@ -95,6 +179,12 @@ pub enum PermissionError {
     Archived,
     #[error("The conversation has no undecided permission request of that id")]
     NotFound,
+    #[error("{0}")]
+    InvalidAnswer(String),
+    #[error("{0}")]
+    FieldsDiffer(String),
+    #[error("The credential was removed")]
+    Removed,
     #[error(transparent)]
     Storage(#[from] StorageError),
 }
@@ -104,6 +194,9 @@ impl From<PermissionRefusal> for PermissionError {
         match refusal {
             PermissionRefusal::Archived => Self::Archived,
             PermissionRefusal::NotFound => Self::NotFound,
+            PermissionRefusal::InvalidAnswer(reason) => Self::InvalidAnswer(reason),
+            PermissionRefusal::FieldsDiffer(reason) => Self::FieldsDiffer(reason),
+            PermissionRefusal::Removed => Self::Removed,
         }
     }
 }
@@ -118,17 +211,11 @@ pub async fn check(
     invocation: &RpcInvocation,
     categories: &[&Category],
 ) -> Result<(), RpcError> {
-    let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
-        .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
-    let node = invocation
-        .caller
-        .as_ref()
-        .map(|caller| caller.node.clone())
-        .ok_or_else(|| RpcError::Failed("a command that needs a permission runs for an agent".into()))?;
-    let agent = shard
-        .asking_agent(&conversation, &node)
-        .map_err(RpcError::Failed)?;
-    let command = command_line(invocation)?;
+    let Asking {
+        conversation,
+        agent,
+        command,
+    } = asking(shard, invocation)?;
     let ids = categories.iter().map(|category| category.id.clone()).collect();
     let checked = shard
         .control()
@@ -149,6 +236,163 @@ pub async fn check(
             )))
         }
     }
+}
+
+/// The conversation, the agent and the command line of a call that asks
+/// the user.
+struct Asking {
+    conversation: ConversationId,
+    agent: AskingAgent,
+    command: String,
+}
+
+fn asking(shard: &dyn PermissionShard, invocation: &RpcInvocation) -> Result<Asking, RpcError> {
+    let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
+        .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
+    let node = invocation
+        .caller
+        .as_ref()
+        .map(|caller| caller.node.clone())
+        .ok_or_else(|| RpcError::Failed("a command that asks the user runs for an agent".into()))?;
+    let agent = shard
+        .asking_agent(&conversation, &node)
+        .map_err(RpcError::Failed)?;
+    Ok(Asking {
+        conversation,
+        agent,
+        command: command_line(invocation)?,
+    })
+}
+
+/// Asks the user for the credential `name` (`credentials.md` § Commands)
+/// and waits for the answer, until `cancelled` resolves, which withdraws
+/// the request. A credential of the name saved with other fields refuses
+/// the request before the user sees it.
+pub async fn ask_credential(
+    shard: &dyn PermissionShard,
+    invocation: &RpcInvocation,
+    name: String,
+    ask: CredentialAsk,
+    cancelled: impl Future<Output = ()>,
+) -> Result<Answer, RpcError> {
+    let Asking {
+        conversation,
+        agent,
+        command,
+    } = asking(shard, invocation)?;
+    let request = PermissionRequestId::try_from(uuid::Uuid::new_v4().to_string())
+        .expect("a UUID is not empty");
+    // Waiting before the request is stored, so an answer that comes at
+    // once finds its command.
+    let (answer, answered) = oneshot::channel();
+    shard.waits().0.borrow_mut().insert(
+        request.clone(),
+        Waiting {
+            conversation: conversation.clone(),
+            answer,
+        },
+    );
+    let _wait = Wait {
+        shard: shard.this(),
+        conversation: conversation.clone(),
+        request: request.clone(),
+    };
+    let asked = shard
+        .control()
+        .ask_credential(conversation.clone(), request, name.clone(), ask, command, agent)
+        .await
+        .map_err(|error| RpcError::Failed(error.to_string()))?;
+    if let Asked::FieldsDiffer(fields) = asked {
+        let fields = fields
+            .iter()
+            .map(|field| format!("{}:{}", field.name, field.kind.as_str()))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(RpcError::Failed(format!(
+            "\u{201c}{name}\u{201d} is saved with other fields ({fields}): ask for those fields, or under another name"
+        )));
+    }
+    changed(shard, &conversation);
+    tokio::select! {
+        // The sender goes only with the answer or a withdrawal.
+        answer = answered => Ok(answer.unwrap_or(Answer::Withdrawn)),
+        () = cancelled => Err(RpcError::Failed("the call was cancelled".into())),
+    }
+}
+
+/// Answers the waiting commands of the conversation's credential requests,
+/// which an archive withdrew.
+pub fn withdrawn(shard: &dyn PermissionShard, conversation: &ConversationId) {
+    let requests: Vec<PermissionRequestId> = shard
+        .waits()
+        .0
+        .borrow()
+        .iter()
+        .filter(|(_, waiting)| waiting.conversation == *conversation)
+        .map(|(request, _)| request.clone())
+        .collect();
+    for request in requests {
+        shard.waits().answer(&request, Answer::Withdrawn);
+    }
+}
+
+/// The field `field` of the credential `name`, for the call's agent
+/// (`credentials.md` § Using a credential): its value when the conversation
+/// may use the credential. Otherwise it records the allowance request and
+/// fails the call as a refused permission does.
+pub async fn read_credential(
+    shard: &dyn PermissionShard,
+    invocation: &RpcInvocation,
+    name: String,
+    field: String,
+) -> Result<String, RpcError> {
+    let Asking {
+        conversation,
+        agent,
+        command,
+    } = asking(shard, invocation)?;
+    let read = shard
+        .control()
+        .read_credential(
+            conversation.clone(),
+            name.clone(),
+            field.clone(),
+            command,
+            agent,
+            shard.credential_seal(),
+        )
+        .await
+        .map_err(|error| RpcError::Failed(error.to_string()))?;
+    match read {
+        CredentialRead::Value(value) => {
+            shard.credentials_changed();
+            Ok(value)
+        }
+        CredentialRead::NoCredential => Err(RpcError::Failed(format!(
+            "\u{201c}{name}\u{201d}: the user has no credential of that name; `demi credentials list` lists them"
+        ))),
+        CredentialRead::NoField(fields) => Err(RpcError::Failed(format!(
+            "\u{201c}{name}\u{201d}: no field \u{201c}{field}\u{201d}; its fields are {}",
+            fields
+                .iter()
+                .map(|field| field.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))),
+        CredentialRead::Raised(saved) => {
+            changed(shard, &conversation);
+            Err(RpcError::Failed(format!(
+                "this conversation needs the user's permission to {}; the request was sent to the user, and you will be told when the user decides",
+                use_action(&saved)
+            )))
+        }
+    }
+}
+
+/// What an allowance lets the conversation do, as the card's title, the
+/// refusal and the decision's message say it.
+fn use_action(name: &str) -> String {
+    format!("use the credential \u{201c}{name}\u{201d}")
 }
 
 /// The actions of several categories as one phrase: joined with "and", as
@@ -187,42 +431,105 @@ pub async fn read(
         revision,
         requests: requests
             .into_iter()
-            .map(|request| PermissionRequest {
-                categories: request.categories.iter().map(|id| category(id)).collect(),
-                id: request.id,
-                command: request.command,
-                agent: request.agent.subagent,
-                created_at: request.created_at,
+            .map(|request| {
+                let (id, command, agent, created_at) = (
+                    request.id,
+                    request.command,
+                    request.agent.subagent,
+                    request.created_at,
+                );
+                match request.ask {
+                    StoredAsk::Permission { categories } => PermissionRequest::Permission {
+                        id,
+                        categories: categories.iter().map(|id| category(id)).collect(),
+                        command,
+                        agent,
+                        created_at,
+                    },
+                    StoredAsk::Credential { name, ask } => PermissionRequest::Credential {
+                        id,
+                        name,
+                        reason: ask.reason,
+                        fields: ask.fields,
+                        keep: ask.keep,
+                        command,
+                        agent,
+                        created_at,
+                    },
+                    StoredAsk::Allowance { name, credential } => PermissionRequest::Allowance {
+                        id,
+                        name,
+                        removed: credential.is_none(),
+                        command,
+                        agent,
+                        created_at,
+                    },
+                }
             })
             .collect(),
     })
 }
 
 /// Decides the undecided request `request` (`permissions.md` § Requests):
-/// an allow grants its categories to the conversation and decides each
-/// request whose categories are then all granted, a deny decides this one
-/// alone. Each agent that asked is
-/// sent its message after the answer.
+/// an allow of a permission request grants its categories to the
+/// conversation and decides each request whose categories are then all
+/// granted, an allow of an allowance request allows its credential and
+/// decides each request to use it, a deny decides this one alone. Each
+/// agent that asked is sent its message after the answer. A credential
+/// request is allowed with `credential`, its values and keep, which saves
+/// the credential and allows it in the conversation; its command, which
+/// waits, returns with the answer instead of a message.
 pub async fn decide(
     shard: &dyn PermissionShard,
     conversation: &ConversationId,
     request: PermissionRequestId,
     decision: PermissionDecision,
+    credential: Option<RequestedValues>,
 ) -> Result<(), PermissionError> {
-    let outcome = match decision {
-        PermissionDecision::Allow => PermissionOutcome::Allowed,
-        PermissionDecision::Deny => PermissionOutcome::Denied,
-    };
-    let decided = shard
-        .control()
-        .decide_permission(conversation.clone(), request, outcome)
-        .await??;
-    changed(shard, conversation);
-    for request in decided {
-        let this = shard.this();
-        shard.spawn(Box::pin(async move { deliver(this, request).await }));
+    match (decision, credential) {
+        (PermissionDecision::Allow, Some(RequestedValues { values, keep })) => {
+            let credential = shard
+                .control()
+                .answer_credential(
+                    conversation.clone(),
+                    request.clone(),
+                    values,
+                    keep,
+                    shard.credential_seal(),
+                )
+                .await??;
+            changed(shard, conversation);
+            shard.credentials_changed();
+            shard.waits().answer(
+                &request,
+                Answer::Saved { credential, keep },
+            );
+            Ok(())
+        }
+        (PermissionDecision::Deny, Some(_)) => Err(PermissionError::InvalidAnswer(
+            "credential: a deny carries no credential".into(),
+        )),
+        (decision, None) => {
+            let outcome = match decision {
+                PermissionDecision::Allow => PermissionOutcome::Allowed,
+                PermissionDecision::Deny => PermissionOutcome::Denied,
+            };
+            let decided = shard
+                .control()
+                .decide_permission(conversation.clone(), request, outcome)
+                .await??;
+            changed(shard, conversation);
+            for request in decided {
+                if let StoredAsk::Credential { .. } = request.ask {
+                    shard.waits().answer(&request.id, Answer::Declined);
+                    continue;
+                }
+                let this = shard.this();
+                shard.spawn(Box::pin(async move { deliver(this, request).await }));
+            }
+            Ok(())
+        }
     }
-    Ok(())
 }
 
 /// The conversation's requests changed, as an archive that
@@ -240,13 +547,20 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
     let Some(decision) = request.decision else {
         return;
     };
-    let categories = declared(&*shard).await;
-    let action = joined(request.categories.iter().map(|id| {
-        categories
-            .iter()
-            .find(|category| category.id == *id)
-            .map_or(id.as_str(), |category| category.action.as_str())
-    }));
+    let action = match &request.ask {
+        StoredAsk::Permission { categories: ids } => {
+            let categories = declared(&*shard).await;
+            joined(ids.iter().map(|id| {
+                categories
+                    .iter()
+                    .find(|category| category.id == *id)
+                    .map_or(id.as_str(), |category| category.action.as_str())
+            }))
+        }
+        StoredAsk::Allowance { name, .. } => use_action(name),
+        // A credential request's command returns its answer.
+        StoredAsk::Credential { .. } => return,
+    };
     let message = |recipient: &NodeId| AgentMessage {
         id: BlockId::try_from(format!("permission:{}", request.id))
             .expect("a permission message's id is not empty"),

@@ -153,6 +153,7 @@ async fn the_snapshot_is_the_users_product_state() {
             stun_urls: Vec::new(),
             runner_release: None,
             conversations: Vec::new(),
+            credentials: Vec::new(),
             // A Cloud no work used yet is not made.
             cloud: CloudStatus {
                 device: None,

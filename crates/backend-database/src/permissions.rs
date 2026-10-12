@@ -1,14 +1,22 @@
-//! Conversation permissions (`storage.md` § Control records,
-//! `permissions.md`): the requests refused commands raise, each undecided
-//! until the user decides it and then kept until its message is in the
-//! asking agent's checkpoint, and the grants, one per conversation and
-//! category, each kept for the conversation's life. A request names the
-//! categories its call lacked, sorted, so that the same categories compare
-//! equal (`permissions.md` § Several categories). Each change reads and
-//! writes in one transaction, so a check and a decision never interleave.
+//! A conversation's requests (`storage.md` § Control records,
+//! `permissions.md` § Requests, `credentials.md`): the permission requests
+//! refused commands raise, the credential requests of agents that wait for
+//! the user to save a credential, and the allowance requests of reads of a
+//! credential the conversation may not use yet; each undecided until the
+//! user decides it, and a decided one kept until its message is in the
+//! asking agent's checkpoint. And what the decisions record: the grants,
+//! one per conversation and category, and the allowances, one per
+//! conversation and credential, each kept for the conversation's life. A
+//! permission request names the categories its call lacked, sorted, so that
+//! the same categories compare equal (`permissions.md` § Several
+//! categories). Each change reads and writes in one transaction, so a check
+//! and a decision never interleave.
+
+use std::collections::BTreeMap;
 
 use demi_shared_types::{NodeId, PermissionOutcome, Timestamp};
-use demi_web_api_protocol::ids::{ConversationId, UserId};
+use demi_web_api_protocol::credentials::{CredentialField, Keep, VALUE_MAX_BYTES};
+use demi_web_api_protocol::ids::{ConversationId, UserCredentialId, UserId};
 use demi_web_api_protocol::permissions::{PermissionRequestId, RequestingAgent};
 use garde::Validate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -17,12 +25,14 @@ use serde::{Deserialize, Serialize};
 use super::StorageError;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
+use super::credentials::{
+    self, CredentialSeal, NewCredential, StoredCredential, values_of,
+};
 use super::drafts::archived;
 
 const REQUESTS: &str = "permission_requests";
 
-const REQUEST_COLUMNS: &str =
-    "id, conversation_id, categories, command, node_id, agent_number, agent_description, created_at, decision, decided_at";
+const REQUEST_COLUMNS: &str = "id, conversation_id, kind, categories, credential_name, credential_id, ask, command, node_id, agent_number, agent_description, created_at, decision, decided_at";
 
 /// A request's categories as its column holds them: their ids, one or more,
 /// sorted.
@@ -39,13 +49,41 @@ pub struct AskingAgent {
     pub subagent: Option<RequestingAgent>,
 }
 
+/// What a credential request asks for beside the name, as its `ask` column
+/// holds it: credential request format 1.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CredentialAsk {
+    /// Why the agent asks; empty for no reason.
+    #[garde(skip)]
+    pub reason: String,
+    #[garde(length(min = 1), dive)]
+    pub fields: Vec<CredentialField>,
+    /// The keep the card offers first.
+    #[garde(skip)]
+    pub keep: Keep,
+}
+
+/// What a request asks of the user.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StoredAsk {
+    /// The ids of the categories the call lacked, sorted.
+    Permission { categories: Vec<String> },
+    /// A credential of this name to save.
+    Credential { name: String, ask: CredentialAsk },
+    /// The use of the credential `credential`, none once it was removed.
+    Allowance {
+        name: String,
+        credential: Option<UserCredentialId>,
+    },
+}
+
 /// A request as it is stored.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StoredRequest {
     pub id: PermissionRequestId,
     pub conversation: ConversationId,
-    /// The ids of the categories the call lacked, sorted.
-    pub categories: Vec<String>,
+    pub ask: StoredAsk,
     /// The command line as the agent ran it.
     pub command: String,
     pub agent: AskingAgent,
@@ -82,6 +120,36 @@ pub enum PermissionRefusal {
     Archived,
     /// No undecided request of that id in the conversation.
     NotFound,
+    /// The answer does not fit the request, as the words say.
+    InvalidAnswer(String),
+    /// A credential of the requested name is saved with other fields.
+    FieldsDiffer(String),
+    /// The credential the request asks to use was removed.
+    Removed,
+}
+
+/// What asking for a credential found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Asked {
+    /// The request waits for the user.
+    Waiting,
+    /// A credential of the name is saved with these other fields.
+    FieldsDiffer(Vec<CredentialField>),
+}
+
+/// What a read of a credential's field found.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CredentialRead {
+    /// The field's value; the credential's last use is now.
+    Value(String),
+    /// The user has no credential of that name.
+    NoCredential,
+    /// The credential has no field of that name, but these.
+    NoField(Vec<CredentialField>),
+    /// The conversation may not use the credential of this name, as it is
+    /// saved, yet: a request asks the user, in place of the undecided one of
+    /// the same credential from the same agent.
+    Raised(String),
 }
 
 /// A decided request whose message the backend still holds, with the owner
@@ -121,32 +189,23 @@ impl ControlService {
             let stored = to_json(&lacking);
             transaction.execute(
                 "DELETE FROM permission_requests
-                 WHERE conversation_id = ?1 AND categories = ?2 AND node_id = ?3 AND decision IS NULL",
+                 WHERE conversation_id = ?1 AND kind = 'permission' AND categories = ?2 AND node_id = ?3
+                   AND decision IS NULL",
                 params![conversation.as_str(), stored, agent.node.as_str()],
             )?;
-            let id = PermissionRequestId::try_from(uuid::Uuid::new_v4().to_string())
-                .expect("a UUID is not empty");
-            let (number, description) = match &agent.subagent {
-                Some(subagent) => (
-                    Some(i64::try_from(subagent.number).expect("an agent number fits")),
-                    Some(subagent.description.as_str()),
-                ),
-                None => (None, None),
-            };
-            transaction.execute(
-                "INSERT INTO permission_requests
-                 (id, conversation_id, categories, command, node_id, agent_number, agent_description, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                params![
-                    id.as_str(),
-                    conversation.as_str(),
-                    stored,
-                    command,
-                    agent.node.as_str(),
-                    number,
-                    description,
-                    now.as_millisecond()
-                ],
+            let id = new_request_id();
+            insert_request(
+                &transaction,
+                &id,
+                &conversation,
+                &Columns {
+                    kind: "permission",
+                    categories: Some(stored),
+                    ..Columns::default()
+                },
+                &command,
+                &agent,
+                now,
             )?;
             transaction.commit()?;
             Ok(Checked::Raised { id, lacking })
@@ -173,10 +232,16 @@ impl ControlService {
     }
 
     /// Decides the undecided request `request` (`permissions.md`
-    /// § Requests). An allow records the grant of each of its categories and
-    /// decides every undecided request of the conversation whose categories
-    /// are now all granted; a deny decides this request alone. Answers the requests it decided, whose
-    /// messages the backend delivers next.
+    /// § Requests). An allow of a permission request records the grant of
+    /// each of its categories and decides every undecided permission
+    /// request of the conversation whose categories are now all granted; an
+    /// allow of an allowance request records the allowance and decides
+    /// every undecided request of the conversation to use that credential;
+    /// a deny decides the request alone, and forgets a credential request,
+    /// whose agent waits for the answer rather than a message. A credential
+    /// request is allowed only with its values ([`Self::answer_credential`]).
+    /// Answers the requests it decided, whose messages the backend delivers
+    /// next, and the credential request it denied.
     pub async fn decide_permission(
         &self,
         conversation: ConversationId,
@@ -185,49 +250,66 @@ impl ControlService {
     ) -> Result<Result<Vec<StoredRequest>, PermissionRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            if archived(&transaction, &conversation)? {
-                return Ok(Err(PermissionRefusal::Archived));
-            }
-            let stored: Option<String> = transaction
-                .query_row(
-                    "SELECT categories FROM permission_requests
-                     WHERE id = ?1 AND conversation_id = ?2 AND decision IS NULL",
-                    params![request.as_str(), conversation.as_str()],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            let Some(stored) = stored else {
-                return Ok(Err(PermissionRefusal::NotFound));
-            };
-            let decided: Vec<String> = match outcome {
-                PermissionOutcome::Allowed => {
-                    for category in categories(&stored)? {
+            let decided = match undecided(&transaction, &conversation, &request)? {
+                Err(refusal) => return Ok(Err(refusal)),
+                Ok(stored) => match (&stored.ask, outcome) {
+                    (StoredAsk::Credential { .. }, PermissionOutcome::Allowed) => {
+                        return Ok(Err(PermissionRefusal::InvalidAnswer(
+                            "a credential request is allowed with its values and how long to keep them".into(),
+                        )));
+                    }
+                    (StoredAsk::Credential { .. }, PermissionOutcome::Denied) => {
                         transaction.execute(
-                            "INSERT OR IGNORE INTO permission_grants (conversation_id, category, granted_at)
-                             VALUES (?1, ?2, ?3)",
-                            params![conversation.as_str(), category, now.as_millisecond()],
+                            "DELETE FROM permission_requests WHERE id = ?1",
+                            [request.as_str()],
                         )?;
+                        transaction.commit()?;
+                        return Ok(Ok(vec![stored]));
                     }
-                    let undecided: Vec<(String, String)> = transaction
-                        .prepare_cached(
-                            "SELECT id, categories FROM permission_requests
-                             WHERE conversation_id = ?1 AND decision IS NULL",
-                        )?
-                        .query_map([conversation.as_str()], |row| Ok((row.get(0)?, row.get(1)?)))?
-                        .collect::<Result<_, _>>()?;
-                    let mut complete = Vec::new();
-                    for (id, stored) in undecided {
-                        let mut granted = true;
-                        for category in categories(&stored)? {
-                            granted &= granted_at(&transaction, &conversation, &category)?.is_some();
+                    (StoredAsk::Permission { categories }, PermissionOutcome::Allowed) => {
+                        for category in categories {
+                            transaction.execute(
+                                "INSERT OR IGNORE INTO permission_grants (conversation_id, category, granted_at)
+                                 VALUES (?1, ?2, ?3)",
+                                params![conversation.as_str(), category, now.as_millisecond()],
+                            )?;
                         }
-                        if granted {
-                            complete.push(id);
+                        let undecided: Vec<(String, String)> = transaction
+                            .prepare_cached(
+                                "SELECT id, categories FROM permission_requests
+                                 WHERE conversation_id = ?1 AND kind = 'permission' AND decision IS NULL",
+                            )?
+                            .query_map([conversation.as_str()], |row| Ok((row.get(0)?, row.get(1)?)))?
+                            .collect::<Result<_, _>>()?;
+                        let mut complete = Vec::new();
+                        for (id, stored) in undecided {
+                            let mut granted = true;
+                            for category in self::categories(&stored)? {
+                                granted &= granted_at(&transaction, &conversation, &category)?.is_some();
+                            }
+                            if granted {
+                                complete.push(id);
+                            }
                         }
+                        complete
                     }
-                    complete
-                }
-                PermissionOutcome::Denied => vec![request.as_str().to_owned()],
+                    (StoredAsk::Allowance { credential: None, .. }, PermissionOutcome::Allowed) => {
+                        return Ok(Err(PermissionRefusal::Removed));
+                    }
+                    (StoredAsk::Allowance { credential: Some(credential), .. }, PermissionOutcome::Allowed) => {
+                        allow(&transaction, &conversation, credential, now)?;
+                        transaction
+                            .prepare_cached(
+                                "SELECT id FROM permission_requests
+                                 WHERE conversation_id = ?1 AND credential_id = ?2 AND decision IS NULL",
+                            )?
+                            .query_map(params![conversation.as_str(), credential.as_str()], |row| {
+                                row.get(0)
+                            })?
+                            .collect::<Result<_, _>>()?
+                    }
+                    (_, PermissionOutcome::Denied) => vec![request.as_str().to_owned()],
+                },
             };
             let decision = outcome_text(outcome);
             let mut requests = Vec::with_capacity(decided.len());
@@ -245,6 +327,208 @@ impl ControlService {
             }
             transaction.commit()?;
             Ok(Ok(requests))
+        })
+        .await
+    }
+
+    /// Records a credential request of the agent `agent` (`credentials.md`
+    /// § Commands) as `id`, unless the user has a credential of the name
+    /// with other fields.
+    pub async fn ask_credential(
+        &self,
+        conversation: ConversationId,
+        id: PermissionRequestId,
+        name: String,
+        ask: CredentialAsk,
+        command: String,
+        agent: AskingAgent,
+    ) -> Result<Asked, StorageError> {
+        self.call(move |connection, now| {
+            let transaction = connection.transaction()?;
+            let owner = owner_of(&transaction, &conversation)?;
+            if let Some(saved) = credentials::named(&transaction, &owner, &name)?
+                && !saved.same_fields(&ask.fields)
+            {
+                return Ok(Asked::FieldsDiffer(saved.fields));
+            }
+            insert_request(
+                &transaction,
+                &id,
+                &conversation,
+                &Columns {
+                    kind: "credential",
+                    credential_name: Some(name),
+                    ask: Some(to_json(&ask)),
+                    ..Columns::default()
+                },
+                &command,
+                &agent,
+                now,
+            )?;
+            transaction.commit()?;
+            Ok(Asked::Waiting)
+        })
+        .await
+    }
+
+    /// Answers the credential request `request` with `values`, kept as
+    /// `keep` says (`credentials.md` § Requests and routes), in one
+    /// transaction: it saves a new credential of the request's name, or new
+    /// values of the saved one with the same fields; allows the
+    /// conversation to use it; and forgets the request, whose agent waits
+    /// for the answer.
+    pub async fn answer_credential(
+        &self,
+        conversation: ConversationId,
+        request: PermissionRequestId,
+        values: BTreeMap<String, String>,
+        keep: Keep,
+        seal: std::sync::Arc<dyn CredentialSeal>,
+    ) -> Result<Result<StoredCredential, PermissionRefusal>, StorageError> {
+        self.call(move |connection, now| {
+            let transaction = connection.transaction()?;
+            let stored = match undecided(&transaction, &conversation, &request)? {
+                Ok(stored) => stored,
+                Err(refusal) => return Ok(Err(refusal)),
+            };
+            let StoredAsk::Credential { name, ask } = &stored.ask else {
+                return Ok(Err(PermissionRefusal::InvalidAnswer(
+                    "only a credential request is answered with values".into(),
+                )));
+            };
+            if let Err(reason) = fitting(&ask.fields, &values) {
+                return Ok(Err(PermissionRefusal::InvalidAnswer(reason)));
+            }
+            let owner = owner_of(&transaction, &conversation)?;
+            let keep_until = credentials::keep_until(now, keep)?;
+            let id = match credentials::named(&transaction, &owner, name)? {
+                Some(saved) if !saved.same_fields(&ask.fields) => {
+                    return Ok(Err(PermissionRefusal::FieldsDiffer(format!(
+                        "\u{201c}{name}\u{201d} is saved with other fields since the agent asked: remove it in Settings, or decline and let the agent ask again"
+                    ))));
+                }
+                Some(saved) => {
+                    credentials::renew(&transaction, &saved, &values, keep_until, now, &*seal)?;
+                    saved.id
+                }
+                None => credentials::insert(
+                    &transaction,
+                    &owner,
+                    NewCredential {
+                        name: name.clone(),
+                        note: ask.reason.clone(),
+                        fields: ask.fields.clone(),
+                        values,
+                        keep_until,
+                    },
+                    now,
+                    &*seal,
+                )?,
+            };
+            allow(&transaction, &conversation, &id, now)?;
+            transaction.execute("DELETE FROM permission_requests WHERE id = ?1", [request.as_str()])?;
+            let credential =
+                credentials::by_id(&transaction, &owner, &id)?.expect("the credential was just written");
+            transaction.commit()?;
+            Ok(Ok(credential))
+        })
+        .await
+    }
+
+    /// Forgets the undecided credential request `request`, whose command no
+    /// longer waits for it. Answers whether it was there.
+    pub async fn withdraw_credential_request(
+        &self,
+        request: PermissionRequestId,
+    ) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            let removed = connection.execute(
+                "DELETE FROM permission_requests
+                 WHERE id = ?1 AND kind = 'credential' AND decision IS NULL",
+                [request.as_str()],
+            )?;
+            Ok(removed > 0)
+        })
+        .await
+    }
+
+    /// Forgets every credential request, as the backend starts: the
+    /// commands that waited for them ended with the run before.
+    pub async fn withdraw_credential_requests(&self) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute("DELETE FROM permission_requests WHERE kind = 'credential'", [])?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The field `field` of the user's credential `name`, for the agent
+    /// `agent` of the conversation (`credentials.md` § Using a credential):
+    /// its value when the conversation may use the credential, which is
+    /// then its last use; otherwise the allowance request recorded for
+    /// `command`, in place of the undecided one of the same credential from
+    /// the same agent.
+    pub async fn read_credential(
+        &self,
+        conversation: ConversationId,
+        name: String,
+        field: String,
+        command: String,
+        agent: AskingAgent,
+        seal: std::sync::Arc<dyn CredentialSeal>,
+    ) -> Result<CredentialRead, StorageError> {
+        self.call(move |connection, now| {
+            let transaction = connection.transaction()?;
+            let owner = owner_of(&transaction, &conversation)?;
+            let Some(stored) = credentials::named(&transaction, &owner, &name)? else {
+                return Ok(CredentialRead::NoCredential);
+            };
+            if !stored.fields.iter().any(|known| known.name == field) {
+                return Ok(CredentialRead::NoField(stored.fields));
+            }
+            let allowed: bool = transaction.query_row(
+                "SELECT EXISTS (SELECT 1 FROM credential_allowances
+                                WHERE conversation_id = ?1 AND credential_id = ?2)",
+                params![conversation.as_str(), stored.id.as_str()],
+                |row| row.get(0),
+            )?;
+            if !allowed {
+                transaction.execute(
+                    "DELETE FROM permission_requests
+                     WHERE conversation_id = ?1 AND kind = 'allowance' AND credential_id = ?2
+                       AND node_id = ?3 AND decision IS NULL",
+                    params![conversation.as_str(), stored.id.as_str(), agent.node.as_str()],
+                )?;
+                let id = new_request_id();
+                insert_request(
+                    &transaction,
+                    &id,
+                    &conversation,
+                    &Columns {
+                        kind: "allowance",
+                        credential_name: Some(stored.name.clone()),
+                        credential_id: Some(stored.id.as_str().to_owned()),
+                        ..Columns::default()
+                    },
+                    &command,
+                    &agent,
+                    now,
+                )?;
+                transaction.commit()?;
+                return Ok(CredentialRead::Raised(stored.name));
+            }
+            let mut values = values_of(&transaction, &stored, &*seal)?;
+            let value = values.remove(&field).ok_or_else(|| StorageError::Corrupt {
+                table: credentials::TABLE,
+                column: "sealed",
+                reason: format!("the credential \u{201c}{name}\u{201d} holds no value of its field \u{201c}{field}\u{201d}"),
+            })?;
+            transaction.execute(
+                "UPDATE user_credentials SET last_used_at = ?2 WHERE id = ?1",
+                params![stored.id.as_str(), now.as_millisecond()],
+            )?;
+            transaction.commit()?;
+            Ok(CredentialRead::Value(value))
         })
         .await
     }
@@ -299,6 +583,132 @@ impl ControlService {
     }
 }
 
+/// The columns of a request that differ by its kind.
+#[derive(Default)]
+struct Columns {
+    kind: &'static str,
+    categories: Option<String>,
+    credential_name: Option<String>,
+    credential_id: Option<String>,
+    ask: Option<String>,
+}
+
+fn new_request_id() -> PermissionRequestId {
+    PermissionRequestId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty")
+}
+
+fn insert_request(
+    connection: &Connection,
+    id: &PermissionRequestId,
+    conversation: &ConversationId,
+    columns: &Columns,
+    command: &str,
+    agent: &AskingAgent,
+    now: Timestamp,
+) -> Result<(), StorageError> {
+    let (number, description) = match &agent.subagent {
+        Some(subagent) => (
+            Some(i64::try_from(subagent.number).expect("an agent number fits")),
+            Some(subagent.description.as_str()),
+        ),
+        None => (None, None),
+    };
+    connection.execute(
+        "INSERT INTO permission_requests
+         (id, conversation_id, kind, categories, credential_name, credential_id, ask, command,
+          node_id, agent_number, agent_description, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+        params![
+            id.as_str(),
+            conversation.as_str(),
+            columns.kind,
+            columns.categories,
+            columns.credential_name,
+            columns.credential_id,
+            columns.ask,
+            command,
+            agent.node.as_str(),
+            number,
+            description,
+            now.as_millisecond()
+        ],
+    )?;
+    Ok(())
+}
+
+/// The undecided request `request` of the conversation, or why there is
+/// none to decide.
+fn undecided(
+    connection: &Connection,
+    conversation: &ConversationId,
+    request: &PermissionRequestId,
+) -> Result<Result<StoredRequest, PermissionRefusal>, StorageError> {
+    if archived(connection, conversation)? {
+        return Ok(Err(PermissionRefusal::Archived));
+    }
+    let stored = connection
+        .query_row(
+            &format!(
+                "SELECT {REQUEST_COLUMNS} FROM permission_requests
+                 WHERE id = ?1 AND conversation_id = ?2 AND decision IS NULL"
+            ),
+            params![request.as_str(), conversation.as_str()],
+            |row| Ok(request_row(row)),
+        )
+        .optional()?
+        .transpose()?;
+    Ok(stored.ok_or(PermissionRefusal::NotFound))
+}
+
+/// The user who owns the conversation.
+fn owner_of(connection: &Connection, conversation: &ConversationId) -> Result<UserId, StorageError> {
+    let owner: String = connection.query_row(
+        "SELECT user_id FROM conversations WHERE id = ?1",
+        [conversation.as_str()],
+        |row| row.get(0),
+    )?;
+    decode("conversations", "user_id", UserId::try_from(owner))
+}
+
+/// Allows the conversation to use the credential.
+fn allow(
+    connection: &Connection,
+    conversation: &ConversationId,
+    credential: &UserCredentialId,
+    now: Timestamp,
+) -> Result<(), StorageError> {
+    connection.execute(
+        "INSERT OR IGNORE INTO credential_allowances (conversation_id, credential_id, allowed_at)
+         VALUES (?1, ?2, ?3)",
+        params![conversation.as_str(), credential.as_str(), now.as_millisecond()],
+    )?;
+    Ok(())
+}
+
+/// Whether `values` holds a value of at most 64 KiB for each of `fields`
+/// and nothing else (`web-api.md` § Conversation permissions).
+fn fitting(fields: &[CredentialField], values: &BTreeMap<String, String>) -> Result<(), String> {
+    for field in fields {
+        match values.get(&field.name) {
+            None => return Err(format!("values.{}: a value is required", field.name)),
+            Some(value) if value.len() > VALUE_MAX_BYTES => {
+                return Err(format!(
+                    "values.{}: a value is at most {VALUE_MAX_BYTES} bytes",
+                    field.name
+                ));
+            }
+            Some(_) => {}
+        }
+    }
+    if let Some(other) = values
+        .keys()
+        .find(|name| !fields.iter().any(|field| &field.name == *name))
+    {
+        return Err(format!("values.{other}: the request has no such field"));
+    }
+    Ok(())
+}
+
 /// When the conversation was granted `category`, if it was.
 fn granted_at(
     connection: &Connection,
@@ -324,6 +734,48 @@ fn outcome_text(outcome: PermissionOutcome) -> &'static str {
     match outcome {
         PermissionOutcome::Allowed => "allowed",
         PermissionOutcome::Denied => "denied",
+    }
+}
+
+/// What the stored request asks, by its kind.
+fn ask_row(row: &Row<'_>) -> Result<StoredAsk, StorageError> {
+    let kind: String = row.get("kind")?;
+    let name: Option<String> = row.get("credential_name")?;
+    let shape = |reason: &str| StorageError::Corrupt {
+        table: REQUESTS,
+        column: "kind",
+        reason: format!("a {kind} request {reason}"),
+    };
+    match kind.as_str() {
+        "permission" => {
+            let stored: Option<String> = row.get("categories")?;
+            let stored = stored.ok_or_else(|| shape("without categories"))?;
+            Ok(StoredAsk::Permission {
+                categories: categories(&stored)?,
+            })
+        }
+        "credential" => {
+            let stored: Option<String> = row.get("ask")?;
+            let stored = stored.ok_or_else(|| shape("without its ask"))?;
+            Ok(StoredAsk::Credential {
+                name: name.ok_or_else(|| shape("without a name"))?,
+                ask: json(REQUESTS, "ask", &stored)?,
+            })
+        }
+        "allowance" => {
+            let credential: Option<String> = row.get("credential_id")?;
+            Ok(StoredAsk::Allowance {
+                name: name.ok_or_else(|| shape("without a name"))?,
+                credential: credential
+                    .map(|id| decode(REQUESTS, "credential_id", UserCredentialId::try_from(id)))
+                    .transpose()?,
+            })
+        }
+        other => Err(StorageError::Corrupt {
+            table: REQUESTS,
+            column: "kind",
+            reason: format!("{other:?} is no kind of request"),
+        }),
     }
 }
 
@@ -375,7 +827,7 @@ fn request_row(row: &Row<'_>) -> Result<StoredRequest, StorageError> {
             "conversation_id",
             ConversationId::try_from(row.get::<_, String>("conversation_id")?.as_str()),
         )?,
-        categories: categories(&row.get::<_, String>("categories")?)?,
+        ask: ask_row(row)?,
         command: row.get("command")?,
         agent: AskingAgent {
             node: decode(

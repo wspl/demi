@@ -67,6 +67,7 @@ function answer(revision: number, waiting: number): () => Response {
     Response.json({
       revision,
       requests: Array.from({ length: waiting }, (_, index) => ({
+        kind: 'permission',
         id: `pr-${index}`,
         categories: [{ id: 'skills.manage', action: 'manage skills', description: 'Manage Skills.' }],
         command: 'demi skills add acme/tools',

@@ -104,9 +104,9 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     let requested = permissions(&backend, &master, FIRST).await;
     assert_eq!(requested.requests.len(), 1, "{requested:?}");
     let request = &requested.requests[0];
-    assert_eq!(request.command, create);
-    assert_eq!(request.categories.len(), 1, "{request:?}");
-    let category = &request.categories[0];
+    assert_eq!(request.command(), create);
+    assert_eq!(crate::permissions::categories(request).len(), 1, "{request:?}");
+    let category = &crate::permissions::categories(request)[0];
     assert_eq!(category.id, "agent.profiles");
     assert_eq!(category.action.as_deref(), Some("change subagent profiles"));
     assert_eq!(
@@ -137,7 +137,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
             say("created"),
         ],
     );
-    let allowed = decide(&backend, &master, FIRST, request.id.as_str(), "allow").await;
+    let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
     socket.until_idle().await;
     let asked = last_root(&scripts);

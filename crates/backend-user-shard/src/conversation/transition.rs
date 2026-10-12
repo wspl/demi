@@ -149,11 +149,13 @@ impl Shard {
             ConversationChange::Record(RecordChange::Archived(true)) => {
                 let archived = host.archive(&record).await;
                 // An archived conversation's title request and idle watch
-                // end, and its permission requests are withdrawn.
+                // end, and its requests are withdrawn: a command that
+                // waits for a credential request's answer returns.
                 if archived.is_ok() {
                     self.titles().abort(&record.id);
                     self.stop_idle(&record.id);
                     demi_backend_permissions::changed(self.permission_shard(), &record.id);
+                    demi_backend_permissions::withdrawn(self.permission_shard(), &record.id);
                 }
                 archived.map(|()| None)
             }
