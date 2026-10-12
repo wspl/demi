@@ -419,11 +419,35 @@ pub async fn agent_call<H: HostResolver>(
     json: bool,
     cancel: CancellationToken,
 ) -> Result<CommandRun, RpcError> {
+    demi_call(server, node, ["agent", verb], args, json, cancel).await
+}
+
+/// `demi shell <verb>` run to its end as a job of `node`.
+pub async fn shell_command<H: HostResolver>(
+    server: &Rc<AgentServer<H>>,
+    node: &NodeId,
+    verb: &str,
+    args: Value,
+) -> CommandRun {
+    demi_call(server, node, ["shell", verb], args, false, CancellationToken::new())
+        .await
+        .expect("the call is dispatched")
+}
+
+/// Runs `demi <group> <verb>` as [`agent_call`] does.
+async fn demi_call<H: HostResolver>(
+    server: &Rc<AgentServer<H>>,
+    node: &NodeId,
+    [group, verb]: [&str; 2],
+    args: Value,
+    json: bool,
+    cancel: CancellationToken,
+) -> Result<CommandRun, RpcError> {
     let live = server
         .node(&conversation(), node)
         .expect("the calling node is live");
     let mut invocation: RpcInvocation = serde_json::from_value(json!({
-        "path": ["demi", "agent", verb],
+        "path": ["demi", group, verb],
         "argv": [],
         "args": args,
         "json": json,
@@ -777,11 +801,19 @@ impl HostResolver for LiveHosts {
     }
 }
 
-/// One node's environment: its one command runs until the test ends, and
-/// prints what the test hands it, which it reports to the node's feed.
+/// One node's environment: its one command runs until the test ends it, and
+/// prints what the test hands it, which it reports to the node's feed. Like
+/// a runner that has not answered yet, a stop only marks the command
+/// stopping: it ends when the test says (`runner.md` § Cancellation and
+/// completion).
 pub struct ScriptedShell {
     feed: Rc<dyn PageFeed>,
     command: RefCell<Option<Rc<RefCell<CommandRecord>>>>,
+    /// Changes when the command ends.
+    ends: watch::Sender<()>,
+    /// Set once the environment let go of its command, which then runs on
+    /// without it: it learns of no end.
+    detached: Cell<bool>,
 }
 
 impl ScriptedShell {
@@ -800,8 +832,9 @@ impl ScriptedShell {
         self.feed.changed(&record);
     }
 
-    /// The running command ends.
+    /// The running command ends, as its runner reports a stop's end.
     pub fn end(&self) {
+        assert!(!self.detached.get(), "the environment let go of its command");
         let record = self.command.borrow().clone().expect("the command started");
         record.borrow_mut().settle(
             Ending::Aborted,
@@ -811,6 +844,7 @@ impl ScriptedShell {
             "",
         );
         self.feed.changed(&record);
+        self.ends.send_replace(());
     }
 }
 
@@ -831,14 +865,19 @@ impl ShellEnvironment for ScriptedShell {
         Box::pin(async move { Ok(command) })
     }
 
-    /// The command runs until the test ends; a watch of it ends with its
-    /// window.
+    /// Waits for the end the test gives.
     fn ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<Ending, ShellError>> {
-        let ended = self.record(command).map(|record| record.borrow().ending());
+        let record = self.record(command);
+        let mut ends = self.ends.subscribe();
         Box::pin(async move {
-            match ended? {
-                Some(ending) => Ok(ending),
-                None => std::future::pending().await,
+            let record = record?;
+            loop {
+                if let Some(ending) = record.borrow().ending() {
+                    return Ok(ending);
+                }
+                // The sender lives as long as this environment, which the
+                // caller holds.
+                let _ = ends.changed().await;
             }
         })
     }
@@ -869,11 +908,19 @@ impl ShellEnvironment for ScriptedShell {
         Ok(self.record(command)?.borrow().media().to_vec())
     }
 
+    /// Its Host keeps none of the running command's output.
     fn read_output<'a>(
         &'a self,
         command: &'a CommandId,
     ) -> LocalBoxFuture<'a, Result<WholeOutput, ShellError>> {
-        Box::pin(async move { Err(ShellError::UnknownCommand(command.clone())) })
+        let kept = self.record(command).and_then(|record| {
+            if record.borrow().is_running() {
+                Ok(WholeOutput::default())
+            } else {
+                Err(ShellError::NotRunning(command.clone()))
+            }
+        });
+        Box::pin(std::future::ready(kept))
     }
 
     fn write<'a>(
@@ -884,8 +931,15 @@ impl ShellEnvironment for ScriptedShell {
         Box::pin(async move { Err(ShellError::NotRunning(command.clone())) })
     }
 
+    /// Marks the command stopping, as a stop that its runner has not
+    /// answered yet.
     fn abort<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<(), ShellError>> {
-        Box::pin(async move { Err(ShellError::NotRunning(command.clone())) })
+        let asked = self.record(command).map(|record| {
+            if record.borrow_mut().mark_stopping() {
+                self.feed.changed(&record);
+            }
+        });
+        Box::pin(std::future::ready(asked))
     }
 
     fn page_views(&self) -> Vec<PageView> {
@@ -905,16 +959,62 @@ impl ShellEnvironment for ScriptedShell {
     }
 
     fn detach_all(&self) -> LocalBoxFuture<'_, ()> {
+        self.detached.set(true);
         Box::pin(async {})
     }
 
+    /// Stops the command and waits for its end, as a real environment does.
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
-        Box::pin(async {})
+        Box::pin(async move {
+            let command = self
+                .command
+                .borrow()
+                .as_ref()
+                .map(|record| record.borrow().command_id().clone());
+            if let Some(command) = command {
+                // It holds the command it names.
+                let _ = self.abort(&command).await;
+                let _ = self.ended(&command).await;
+            }
+        })
     }
 
     fn owns_command(&self, command: &CommandId) -> bool {
         self.record(command).is_ok()
     }
+}
+
+/// A server whose nodes' shells run on the scripted Host, each in a
+/// [`ScriptedShell`] that `shells` keeps, with subagents on and Unlimited,
+/// answered by the provider entry `stub` of `providers`.
+pub fn scripted_host_server(
+    providers: Rc<ScriptedProviders>,
+    shells: Rc<ScriptedShells>,
+    store: Rc<MemoryTreeStore>,
+) -> Rc<AgentServer<LiveHosts>> {
+    AgentServer::new(ServerDeps {
+        toolsets: Rc::new(Toolset {
+            commands: Rc::new(CommandSet::new()),
+            revision: Rc::from("none"),
+        }),
+        subagents: Rc::new(SubagentSettings {
+            enabled: true,
+            max_live: None,
+            max_depth: None,
+            profiles: Vec::new(),
+        }),
+        instructions: Rc::from("system prompt"),
+        guide: Rc::from("harness guide"),
+        hosts: Rc::new(LiveHosts),
+        context: Rc::new([]),
+        providers,
+        shells,
+        stores: Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>),
+        clock: Arc::new(FixedClock(start())),
+        ids: Rc::new(SequentialIds::new("id")),
+        config: ServerConfig::default(),
+        status_changed: Rc::new(|_| {}),
+    })
 }
 
 /// Makes each node's environment and keeps the last one made for the test
@@ -931,6 +1031,8 @@ impl ShellEnvironmentFactory<ScriptedHost> for ScriptedShells {
         let shell = Rc::new(ScriptedShell {
             feed: scope.feed.clone(),
             command: RefCell::default(),
+            ends: watch::Sender::new(()),
+            detached: Cell::new(false),
         });
         self.0.replace(Some(shell.clone()));
         Box::pin(async move { Ok(shell as Rc<dyn ShellEnvironment>) })

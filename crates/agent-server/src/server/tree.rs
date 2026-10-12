@@ -22,7 +22,7 @@ use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_output};
 use demi_agent_transcript::IdSource;
 use demi_conversation_socket_protocol::{ServerFrame, index_u32, reset_start};
-use demi_host_interface::RegisterError;
+use demi_host_interface::{PageState, PageView, RegisterError, ShellEnvironment};
 use demi_shared_gates::{ActivityGate, GateState, KeyedSerialGate, Reservation};
 use demi_shared_types::{BlockId, Clock, CommandId, NodeId};
 use futures_util::future::join_all;
@@ -73,6 +73,9 @@ pub struct Tree<H: HostResolver> {
     sink: Rc<FrameSink>,
     /// The commands whose new output waits for the pages.
     live: Rc<LiveOutput>,
+    /// The shells of closed children while a command of theirs still
+    /// stops, by child and round (`subagents.md` § Abort).
+    stopping: RefCell<HashMap<(NodeId, u64), StoppingShells>>,
     /// The root session's events as frames, until the tree is dropped.
     _frames: Subscription,
     /// Disposes the tree once it has stayed detached and quiescent.
@@ -81,6 +84,24 @@ pub struct Tree<H: HostResolver> {
     _working: AbortOnDropHandle<()>,
     /// Sends the commands' new output to the attached connections.
     _live: AbortOnDropHandle<()>,
+}
+
+/// The shells of a child that closed while its commands still ran
+/// (`subagents.md` § Abort): the pages see each command stopping, any agent
+/// can look at it or stop it, and its environment records its end when its
+/// runner reports it.
+pub(crate) struct StoppingShells {
+    environments: Vec<Rc<dyn ShellEnvironment>>,
+    /// Forgets them once each of their commands ended.
+    _ends: AbortOnDropHandle<()>,
+}
+
+/// The pages' view of each command `environment` holds that has not ended.
+fn unended_views(environment: &dyn ShellEnvironment) -> impl Iterator<Item = PageView> + use<> {
+    environment
+        .page_views()
+        .into_iter()
+        .filter(|view| matches!(view.state, PageState::Running | PageState::Stopping))
 }
 
 /// Where a tree's frames go: the outbox of every attached connection. The
@@ -204,6 +225,9 @@ pub(crate) enum OpenError {
 pub(crate) enum CommandPlace<H: HostResolver> {
     /// A node's shells hold it.
     Held(Rc<Node<H>>),
+    /// The shells of a child that closed while it ran hold it until its
+    /// runner reports its end (`subagents.md` § Abort).
+    Stopping(Rc<dyn ShellEnvironment>),
     /// It ended, its end was given, and the store keeps how it ended.
     Stored,
     /// No command of the conversation has the number.
@@ -332,6 +356,7 @@ impl<H: HostResolver> Tree<H> {
                 disposing: Cell::new(false),
                 sink,
                 live,
+                stopping: RefCell::new(HashMap::new()),
                 _frames: frames,
                 _eviction: AbortOnDropHandle::new(eviction),
                 _working: AbortOnDropHandle::new(working),
@@ -434,12 +459,34 @@ impl<H: HostResolver> Tree<H> {
             .map(|child| child.node().clone())
     }
 
+    /// The shells that hold the conversation's command `command`: a live
+    /// node's, or a closed child's while the command stops.
+    pub(crate) fn environment_of(&self, command: &CommandId) -> Option<Rc<dyn ShellEnvironment>> {
+        self.holder(command)
+            .and_then(|node| node.environment_of(command))
+            .or_else(|| self.stopping_shell(command))
+    }
+
+    /// The shells of a closed child that hold `command` while it stops.
+    fn stopping_shell(&self, command: &CommandId) -> Option<Rc<dyn ShellEnvironment>> {
+        self.stopping
+            .borrow()
+            .values()
+            .flat_map(|shells| &shells.environments)
+            .find(|environment| environment.owns_command(command))
+            .cloned()
+    }
+
     /// Where the conversation's command `command` is, whichever agent ran
     /// it: held by a node's shells while it runs and until its end is
-    /// given, then known to the store, which keeps its output.
+    /// given, by a closed child's while it stops, then known to the store,
+    /// which keeps its output.
     pub(crate) async fn command_place(&self, command: &CommandId) -> Result<CommandPlace<H>, String> {
         if let Some(node) = self.holder(command) {
             return Ok(CommandPlace::Held(node));
+        }
+        if let Some(environment) = self.stopping_shell(command) {
+            return Ok(CommandPlace::Stopping(environment));
         }
         match self.store.command_end(command).await {
             Ok(Some(_)) => Ok(CommandPlace::Stored),
@@ -579,7 +626,7 @@ impl<H: HostResolver> Tree<H> {
 
     /// The `shell_output` of each live command (`runtime.md` § Live
     /// output): the root's, then each live child's, depth first in spawn
-    /// order.
+    /// order, then each one a closed child's shells hold while it stops.
     fn live_commands(&self) -> Vec<ServerFrame> {
         let mut frames: Vec<ServerFrame> = self
             .root
@@ -594,6 +641,15 @@ impl<H: HostResolver> Tree<H> {
                     .node()
                     .live_views()
                     .into_iter()
+                    .map(|view| shell_output(Some(id.clone()), view)),
+            );
+        }
+        for ((id, _), shells) in self.stopping.borrow().iter() {
+            frames.extend(
+                shells
+                    .environments
+                    .iter()
+                    .flat_map(|environment| unended_views(environment.as_ref()))
                     .map(|view| shell_output(Some(id.clone()), view)),
             );
         }
@@ -623,6 +679,21 @@ impl<H: HostResolver> Tree<H> {
         }
         self.lifecycle.close();
         self.lifecycle.wait().await;
+        // The commands of closed children still stopping run on, as a
+        // disposed node's do; their shells let them go.
+        let stopping: Vec<StoppingShells> = self
+            .stopping
+            .borrow_mut()
+            .drain()
+            .map(|(_, shells)| shells)
+            .collect();
+        join_all(
+            stopping
+                .iter()
+                .flat_map(|shells| &shells.environments)
+                .map(|environment| environment.detach_all()),
+        )
+        .await;
         let children: Vec<Rc<Child<H>>> = self
             .children
             .borrow_mut()
