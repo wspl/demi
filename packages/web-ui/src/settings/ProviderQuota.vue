@@ -6,11 +6,16 @@ import type { SettingsQuotaWindow } from './types'
 
 /**
  * Displays an account's quota, each window a `QuotaWindowRow`, and requests a
- * free refresh each time it becomes visible.
+ * free refresh each time it becomes visible. A failed manual refresh is a fact
+ * of the account, so its line, the vendor's words in the secondary color,
+ * stands above the windows wherever they show (`usage-and-quota.md`
+ * § Refreshing in the product), until the account's next answer.
  */
 const props = defineProps<{
   windows: SettingsQuotaWindow[]
   autoRefresh: boolean
+  /** The vendor's words for the last manual refresh that failed; none after the next answer. */
+  error?: string | null
 }>()
 const emit = defineEmits<{ refresh: [] }>()
 const region = useTemplateRef<HTMLDivElement>('region')
@@ -24,6 +29,7 @@ watch(computed(() => visible.value && props.autoRefresh), (shown) => {
 
 <template>
   <div ref="region" class="text-[12px] leading-4 text-fg-subtle tabular-nums">
+    <p v-if="error" class="mb-2 break-words text-fg-subtle">{{ error }}</p>
     <!-- Empty snapshots still have a visible region, so the first display can fetch them. -->
     <span v-if="!windows.length">Usage not available yet</span>
     <div v-else class="flex flex-col gap-2.5">
