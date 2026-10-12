@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
-import { useElementSize } from '@vueuse/core'
+import { useDevicePixelRatio, useElementSize } from '@vueuse/core'
 import { dropSource } from './preview'
 import { startPointerDrag } from '../ui/pointer-drag'
 import {
@@ -9,6 +9,7 @@ import {
   isFitted,
   pannedView,
   resizedView,
+  rescaledView,
   toggledView,
   wheelScale,
   zoomAbout,
@@ -20,7 +21,10 @@ import type { PixelSize } from './thumbnail'
 /**
  * A picture as an image viewer shows it (`file-previews.md` § The media
  * viewer, Zoom and move), in the media viewer's window and in the File
- * view: it opens fitted, scaled down and never enlarged; the wheel, and a
+ * view: it opens fitted, scaled down and never enlarged (its actual size is
+ * one of its pixels on one device pixel, so 100% of a 2880-pixel-wide picture
+ * is 1440 page pixels wide on a display of two device pixels per page pixel,
+ * and all the zoom rules below count from that); the wheel, and a
  * trackpad's pinch, zoom it about the pointer from the fitted size up to
  * eight times the actual size; while it is larger than its frame a drag
  * moves it, with the grab hand, and it never leaves an empty band on a side
@@ -53,14 +57,26 @@ const { width: frameWidth, height: frameHeight } = useElementSize(frame)
 const room = computed<PixelSize | null>(() => frameWidth.value > 0 && frameHeight.value > 0
   ? { width: frameWidth.value, height: frameHeight.value }
   : null)
-/** The picture's actual size, once it loaded. */
-const natural = shallowRef<PixelSize | null>(null)
+const { pixelRatio } = useDevicePixelRatio()
+/** The picture's pixel size, once it loaded. */
+const pixels = shallowRef<PixelSize | null>(null)
+/** The picture at its actual size, in page px: one of its pixels on one device pixel. */
+const natural = computed<PixelSize | null>(() => pixels.value
+  ? { width: pixels.value.width / pixelRatio.value, height: pixels.value.height / pixelRatio.value }
+  : null)
 const view = shallowRef<ImageView | null>(null)
 
 watch(() => props.src, () => {
-  natural.value = null
+  pixels.value = null
   view.value = null
 })
+
+// A display with another pixel ratio, such as the window moved to it, changes the zoom the picture
+// reads at, not its size on the page: the picture stays as large as it was.
+watch(pixelRatio, (now, before) => {
+  if (view.value)
+    view.value = rescaledView(view.value, now / before)
+}, { flush: 'sync' })
 
 // The picture opens fitted once both its size and its frame's are known, and follows the frame's size after.
 watch(
@@ -119,8 +135,11 @@ function loaded(): void {
     return
   const { naturalWidth: width, naturalHeight: height } = element
   // An SVG with no size of its own has none to scale from: it takes its frame's, or CSS's default
-  // object size, 300 × 150, while the frame is not measured yet.
-  natural.value = width > 0 && height > 0 ? { width, height } : room.value ?? { width: 300, height: 150 }
+  // object size, 300 × 150, while the frame is not measured yet, in page px.
+  const own = room.value ?? { width: 300, height: 150 }
+  pixels.value = width > 0 && height > 0
+    ? { width, height }
+    : { width: own.width * pixelRatio.value, height: own.height * pixelRatio.value }
   emit('size', width, height)
 }
 
