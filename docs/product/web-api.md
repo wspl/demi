@@ -1360,8 +1360,9 @@ with the current plugins anyway. A tree that works answers 409
 
 A plugin's state for one conversation reaches a page by revision, as a draft
 does. For example, the agent runs `demi browser open https://example.com/` in
-conversation `c_81`. When that command ends, the `browser` plugin's conversation
-state, the tab list, follows the `calls` topic, so its revision rises from 6 to
+conversation `c_81`. The browser package tells the `browser` plugin that the
+conversation's tabs changed, and the plugin marks its conversation state, the
+tab list, changed, so its revision rises from 6 to
 7, and every page of the user receives the conversation's summary with
 `pluginRevisions: [{ "plugin": "browser", "revision": 7 }]`. A page that shows `c_81` and holds
 revision 6 reads the state:
