@@ -201,13 +201,18 @@ fn spawn(directory: &Path, arguments: Vec<String>) -> io::Result<tokio::process:
         // not reach it.
         command.process_group(0);
     }
+    // No handle of this process: Windows passes every inheritable one to
+    // the runner otherwise, and an SSH session whose pipes the runner holds
+    // stays open, so `run start` over SSH never returned. The runner makes
+    // its log its standard output and error as it starts.
     #[cfg(windows)]
     {
-        const DETACHED_PROCESS: u32 = 0x0000_0008;
-        const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
-        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        command.creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW);
+        use std::os::windows::process::CommandExt as _;
+        command.as_std_mut().inherit_handles(false);
     }
+    #[cfg(windows)]
+    return crate::detached::start(|flags| command.creation_flags(flags).spawn());
+    #[cfg(unix)]
     command.spawn()
 }
 
