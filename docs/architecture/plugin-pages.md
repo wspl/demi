@@ -145,6 +145,7 @@ calls.
 | `intents` | Opening an [intent](#intents) for a conversation, as `{ intent, payload }`, and whether any page the user has on opens it | The shell |
 | `panel` | The tabs of the page's own kinds in a conversation's panel, and adding one, selected with the panel opened or not | The shell |
 | `settings` | Opening a section of the settings dialog, such as Devices | The shell |
+| `links` | Opening a web page in a new tab, such as a vendor's sign-in page: `open(url)` takes the URL or a promise of it, so the shell opens the tab on the click and points it at the URL once the promise settles, before a popup blocker would refuse a later open; the gallery shows a toast naming the page instead | The shell |
 | `errors` | Reporting an error the user sees, or a defect of the page, which only the console shows | The shell |
 | `overlays` | The overlay store a dialog or menu opens in | The shell |
 | `files(conversation)` | The conversation's [files service](#the-conversation-files-service) | The file routes |
