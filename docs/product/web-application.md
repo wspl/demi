@@ -261,7 +261,12 @@ conversation; the panel button covers the screen with the work panel, and
   and the File view. Every text field is 16 pixels, so iOS never zooms on
   focus. The bars and the composer stand inside the safe areas, and with
   the keyboard open the composer sits on it and the transcript keeps its
-  end in view.
+  end in view: the user sees the messages above, the composer, then the
+  keyboard's bar, and never types blind. Safari on iOS ignores the
+  viewport's `interactive-widget` and keeps the page its full height under
+  the keyboard, scrolling it to show the field, so the app follows the
+  visual viewport itself: its height is the visual viewport's, it stands at
+  the visual viewport's top, and the page's own scroll stays at 0.
 - **Sized for a finger.** Every row a finger picks, in the sidebar, sheets,
   Settings and the file tree, is at least 44 pixels tall, with 16-pixel
   titles; a group label is 36, the sidebar's footer 52, a tab 36. No tap
