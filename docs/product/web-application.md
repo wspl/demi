@@ -140,6 +140,16 @@ why.
   to another Host. Sending a message has its own states
   ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)).
 
+### Keyboard
+
+Every control is reachable with Tab, in the order it reads, icon buttons
+included: a message's copy and fork, a row's actions, a window's close. The
+control that has the keyboard's focus shows the focus ring, and only a
+keyboard focus does (`:focus-visible`), so a click leaves no ring; Enter and
+Space act on it as a click does. A disabled control is skipped. One web-ui
+primitive per kind of control owns this, so no caller makes a control
+focusable by hand.
+
 ## Work panel
 
 The work panel shows one tab at a time. Its frame belongs to the shell; every
