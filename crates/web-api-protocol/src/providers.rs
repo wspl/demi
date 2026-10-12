@@ -211,6 +211,9 @@ pub struct ProviderDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<EndpointUrl>")]
     pub base_url: Option<EndpointUrl>,
+    /// Whether an API-key entry has its key saved; false for a
+    /// subscription. The key itself is never sent.
+    pub has_api_key: bool,
     /// The configured model list; null for the entry's live catalog.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ConfiguredModels>")]
@@ -628,8 +631,6 @@ pub enum UnavailableReason {
 pub enum SetupPart {
     /// An API-key entry's key.
     ApiKey,
-    /// A custom endpoint's address.
-    BaseUrl,
     /// A model, on an entry whose configured list is empty.
     Models,
     /// A subscription entry's account.
