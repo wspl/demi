@@ -1463,6 +1463,36 @@ export function runningRunBlocks(): Block[] {
   ]
 }
 
+/** The call whose command runs on after its turn ended (`leftRunningBlocks`). */
+export const LEFT_RUNNING_CALL = 'left-running-suite'
+
+/**
+ * A turn that ended while a command it started runs on (`runtime.md`
+ * § Work groups): the agent thought, started the suite, and replied without
+ * waiting. The ended run's row says what it did and wears the time the
+ * command has run until it ends. The gallery's `leftRunningCommand` is it.
+ */
+export function leftRunningBlocks(): Block[] {
+  return [
+    {
+      type: 'user', id: 'left-running-ask', turnId: 'left-running-turn', createdAt: iso(140_000), model: demoModel,
+      content: [{ type: 'text', text: 'Start the end-to-end suite and tell me when it ends.' }], preamble: null,
+    },
+    ...inRun(
+      { type: 'thinking', id: 'left-running-think', createdAt: iso(138_000), model: demoModel, text: 'The suite takes minutes: start it and let it report.', signature: null },
+      toolCall({
+        id: LEFT_RUNNING_CALL,
+        createdAt: iso(136_000),
+        toolName: 'shell',
+        status: 'completed',
+        input: JSON.stringify({ script: 'bun run e2e', description: 'Run the end-to-end suite', intervalMs: 15_000 }),
+        view: shellView({ commandId: '71', status: 'running', runningMs: 15_000, chunks: [{ stream: 'stdout', text: 'Running 140 specs\n' }] }),
+      }),
+    ),
+    { type: 'text', id: 'left-running-reply', createdAt: iso(120_000), model: demoModel, text: 'The suite is running; I will tell you when it ends.' },
+  ]
+}
+
 /**
  * A run that viewed two screenshots, then a report that carried two
  * (`file-previews.md` § Media a tool returned): folded, the run's row shows

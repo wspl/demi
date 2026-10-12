@@ -13,6 +13,7 @@ import CommandReportBlock from './CommandReportBlock.vue'
 import AgentReceiptBlock from './AgentReceiptBlock.vue'
 import NoticeStepFace from './NoticeStepFace.vue'
 import ShellRowTag from './ShellRowTag.vue'
+import CommandTimeTag from './CommandTimeTag.vue'
 import FileChangePills from './FileChangePills.vue'
 import GoneMediaLines from './GoneMediaLines.vue'
 import { stepIcon } from './tool-row-icon'
@@ -222,6 +223,8 @@ function pick(path: string): void {
       <template v-else>
         <span class="min-w-0 truncate">{{ face.label }}</span>
         <ShellRowTag v-if="face.command" :block="face.command" />
+        <!-- An ended run wears the time of a command still running in it, until it ends. -->
+        <CommandTimeTag v-else-if="shape.kind === 'done' && shape.running.length > 0" :calls="shape.running" />
       </template>
       <!-- A thinking with no text has nothing to open: no body, so no chevron. -->
       <template v-if="!lone || loneText !== ''" #body>
