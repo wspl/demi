@@ -1,6 +1,6 @@
 import type { ProviderErrorDiagnostics } from '@demicodes/protocol'
 import { z } from 'zod'
-import { formatMoment } from '../composables/useRelativeTime'
+import { formatMoment } from '../ui/dates'
 import type { SentenceText } from '../ui/ui-text'
 
 /** A first line stays one line: past this the source's text goes in the body. */

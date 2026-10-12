@@ -1,5 +1,5 @@
 import type { MessageListBlock } from './pending-steers'
-import { upperFirst } from '@demicodes/utils'
+import { countOf, upperFirst } from '@demicodes/utils'
 import { parseToolCallInput, storedShellView } from './block-helpers'
 import { reportMark, reportShown } from './command-reports'
 import { runningTime } from './command-end'
@@ -192,7 +192,7 @@ export function workRowId(first: WorkStep): string {
 
 /** A command count as a row says it. */
 function commands(count: number): string {
-  return count === 1 ? '1 command' : `${count} commands`
+  return countOf(count, 'command')
 }
 
 /**
@@ -267,7 +267,7 @@ function describeCalls(steps: readonly WorkStep[], tense: keyof typeof WORDS): s
 
 /** An agent count as a row says it. */
 function agents(count: number): string {
-  return count === 1 ? '1 agent' : `${count} agents`
+  return countOf(count, 'agent')
 }
 
 /**

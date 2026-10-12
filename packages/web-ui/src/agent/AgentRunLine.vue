@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { formatSpan } from '../composables/useRelativeTime'
+import { formatSpan } from '@demicodes/utils'
 import { useElapsedTime } from '../composables/useElapsedTime'
 import StatusDot from '../ui/StatusDot.vue'
 import Tag from '../ui/Tag.vue'

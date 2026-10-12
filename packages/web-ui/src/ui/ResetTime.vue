@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { formatMoment, useResetTime } from '../composables/useRelativeTime'
+import { useResetTime } from '../composables/useRelativeTime'
+import { formatMoment } from './dates'
 
 /** When a usage window resets, worded as every surface words it, following the clock while it shows. */
 const props = defineProps<{ timestamp: string }>()
