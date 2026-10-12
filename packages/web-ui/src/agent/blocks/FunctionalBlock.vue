@@ -195,7 +195,7 @@ const shownPictures = computed(() => (props.pictures ?? []).slice(0, picturesFit
                 <slot v-if="hasBodySlot()" name="body" />
                 <pre
                   v-if="errorText"
-                  class="whitespace-pre-wrap px-3 py-1.5 font-mono text-xs text-on-danger-muted"
+                  class="whitespace-pre-wrap px-3 py-1.5 [overflow-wrap:anywhere] font-mono text-xs text-on-danger-muted"
                 >{{ errorText }}</pre>
               </div>
             </ScrollArea>

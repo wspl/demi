@@ -101,5 +101,5 @@ defineExpose({ element })
 </script>
 
 <template>
-  <code ref="element" class="whitespace-pre-wrap"><template v-for="(piece, index) in pieces" :key="index"><span v-if="piece.word" :class="piece.long ? 'terminal-wrap' : 'whitespace-nowrap'"><template v-for="(segment, part) in piece.segments" :key="part"><span v-if="segment.classes" :class="segment.classes">{{ segment.text }}</span><template v-else>{{ segment.text }}</template></template></span><template v-else>{{ piece.text }}</template></template></code>
+  <code ref="element" class="whitespace-pre-wrap"><template v-for="(piece, index) in pieces" :key="index"><span v-if="piece.word" :class="piece.long ? 'long-word-wrap' : 'whitespace-nowrap'"><template v-for="(segment, part) in piece.segments" :key="part"><span v-if="segment.classes" :class="segment.classes">{{ segment.text }}</span><template v-else>{{ segment.text }}</template></template></span><template v-else>{{ piece.text }}</template></template></code>
 </template>
