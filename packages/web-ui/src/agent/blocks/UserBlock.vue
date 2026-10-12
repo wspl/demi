@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import type { Component } from 'vue'
-import { useClipboardItems, useResizeObserver } from '@vueuse/core'
-import { Check, Copy, Pencil } from '@lucide/vue'
+import { useResizeObserver } from '@vueuse/core'
+import { Pencil } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
+import CopyButton from '@demicodes/web-ui/ui/CopyButton.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
-import { reportError } from '../../infra/errors'
+import type { CopySource } from '../../composables/useCopy'
 import type { MessageEditContent } from '../message-editing'
 import { composerCapsule, composerTransfer, contentMessage, provideTransfers } from '../message-editor/capsules'
 import MessageEditor from '../message-editor/MessageEditor.vue'
@@ -50,7 +51,6 @@ const emit = defineEmits<{
   retry: []
 }>()
 
-const { copy, copied } = useClipboardItems({ copiedDuring: 1500 })
 const editor = ref<InstanceType<typeof MessageEditor>>()
 
 /**
@@ -58,13 +58,8 @@ const editor = ref<InstanceType<typeof MessageEditor>>()
  * (`product.md` § Writing a message); a brief, as its Markdown, as an
  * answer's Copy does.
  */
-function copyMessage(): void {
-  const item = typeof props.brief === 'string'
-    ? new ClipboardItem({ 'text/plain': new Blob([props.brief], { type: 'text/plain' }) })
-    : editor.value?.clipboardItem()
-  if (item) {
-    copy([item]).catch((error: unknown) => reportError('Couldn’t Copy the Message', error))
-  }
+function copySource(): CopySource {
+  return typeof props.brief === 'string' ? props.brief : editor.value?.clipboardItem()
 }
 
 // A message not yet confirmed shows how far each of its files' uploads has
@@ -95,27 +90,12 @@ const message = computed(() => {
   return props.attachments ? { ...held, capsules: props.attachments.map(composerCapsule) } : held
 })
 
-// Sent messages get copy and edit on hover.
+// A sent message gets Copy and, where it can be edited, Edit on hover.
 const actions = computed<BubbleAction[]>(() => {
-  const list: BubbleAction[] = []
-  if (props.pending) {
-    return list
+  if (!props.editable || typeof props.brief === 'string') {
+    return []
   }
-  list.push({
-    key: 'copy',
-    hint: copied.value ? 'Copied' : 'Copy',
-    icon: copied.value ? Check : Copy,
-    emit: copyMessage,
-  })
-  if (props.editable && typeof props.brief !== 'string') {
-    list.push({
-      key: 'edit',
-      hint: 'Edit',
-      icon: Pencil,
-      emit: () => emit('edit'),
-    })
-  }
-  return list
+  return [{ key: 'edit', hint: 'Edit', icon: Pencil, emit: () => emit('edit') }]
 })
 
 const textClass = computed(() => (props.pending ? 'text-fg-subtle' : 'text-fg-body'))
@@ -194,10 +174,11 @@ useResizeObserver(bodyRef, measure)
   >
     <div class="relative max-w-[80%] rounded-xl bg-surface-card px-4 py-2.5">
       <div
-        v-if="actions.length > 0"
+        v-if="!pending"
         class="user-actions absolute bottom-2.5 left-0 flex -translate-x-[calc(100%+6px)] items-center transition-opacity group-hover/user:opacity-100 focus-within:opacity-100 phone:opacity-100"
         :class="actionsPinned ? 'opacity-100' : 'opacity-0'"
       >
+        <CopyButton class="inline-flex" :source="copySource" @click.stop />
         <Tooltip
           v-for="action in actions"
           :key="action.key"
