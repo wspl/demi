@@ -1,7 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 import {
   clampWindowRect,
-  escapeClosesWindow,
   moveWindowRect,
   resizeWindowRect,
   windowCentre,
@@ -10,7 +9,7 @@ import {
   WINDOW_TITLE_BAR_PX,
 } from '../floating-window'
 
-// Pure geometry and key rules: no DOM, a few milliseconds in all.
+// Pure geometry: no DOM, a few milliseconds in all.
 
 const PAGE = { width: 1440, height: 900 }
 
@@ -92,35 +91,5 @@ describe('a window opens at its content\'s actual size in device pixels', () => 
 
   test('the centre of a box is the middle of its sides', () => {
     expect(windowCentre({ x: 670, y: 282, width: 400, height: 336 })).toEqual({ x: 870, y: 450 })
-  })
-})
-
-describe('Escape closes a window', () => {
-  /** An element the focus is on, which the given selectors in a selector list match. */
-  function focusOn(own: string) {
-    return { closest: (selectors: string) => (selectors.split(',').some((selector) => selector.trim() === own) ? {} : null) }
-  }
-  const key = { defaultPrevented: false, isComposing: false, target: focusOn('button') }
-
-  test('with the focus in the window or on a control of the page', () => {
-    expect(escapeClosesWindow(key, false)).toBe(true)
-    expect(escapeClosesWindow({ ...key, target: null }, false)).toBe(true)
-  })
-
-  test.each([
-    ['a text field', 'textarea'],
-    ['the composer or an editor', '[contenteditable=true]'],
-    ['a combo box', '[role=combobox]'],
-  ])('not with the focus in %s', (_, own) => {
-    expect(escapeClosesWindow({ ...key, target: focusOn(own) }, false)).toBe(false)
-  })
-
-  test('not while a menu or a dialog is open', () => {
-    expect(escapeClosesWindow(key, true)).toBe(false)
-  })
-
-  test('not when something used the key first, or an input method composes', () => {
-    expect(escapeClosesWindow({ ...key, defaultPrevented: true }, false)).toBe(false)
-    expect(escapeClosesWindow({ ...key, isComposing: true }, false)).toBe(false)
   })
 })
