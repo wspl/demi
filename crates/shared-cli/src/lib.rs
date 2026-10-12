@@ -5,9 +5,20 @@
 //! (`backend.md` § Configuration): the manager checks the names under its
 //! own prefix, and the backend every other `DEMI_*` name. And the panic
 //! hook every program installs at start (`builds-and-releases.md` § Build
-//! profiles).
+//! profiles). And, on a musl target, the memory allocator of the programs
+//! that run on a Host (`builds-and-releases.md` § Memory allocator).
 
 use std::{ffi::OsString, io::Write as _};
+
+/// musl's own allocator unmaps and maps memory around small allocations and
+/// serializes threads on one lock, which costs most inside gVisor, where
+/// each system call is expensive. The runner and the command programs turn
+/// on `host-allocator`; the server's programs keep musl's allocator, which
+/// holds less memory. A program uses this allocator only if it links this
+/// crate's object, which calling `install_panic_hook` ensures.
+#[cfg(all(target_env = "musl", feature = "host-allocator"))]
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 /// The prefix of the machine manager's own settings, which the backend
 /// leaves to the manager's check.
