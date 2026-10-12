@@ -23,8 +23,8 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::credentials::{CredentialSeal, StoredCredential};
 use demi_backend_database::permissions::{
-    Asked, AskingAgent, Checked, CredentialAsk, CredentialRead, PermissionRefusal, StoredAsk,
-    StoredRequest, Undecided,
+    Answered, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead, PermissionRefusal,
+    StoredAsk, StoredRequest, Undecided,
 };
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_command_declarations::Category;
@@ -491,7 +491,7 @@ pub async fn decide(
 ) -> Result<(), PermissionError> {
     match (decision, credential) {
         (PermissionDecision::Allow, Some(RequestedValues { values, keep })) => {
-            let credential = shard
+            let Answered { credential, others } = shard
                 .control()
                 .answer_credential(
                     conversation.clone(),
@@ -502,6 +502,9 @@ pub async fn decide(
                 )
                 .await??;
             changed(shard, conversation);
+            for other in &others {
+                changed(shard, other);
+            }
             shard.credentials_changed();
             shard.waits().answer(
                 &request,
