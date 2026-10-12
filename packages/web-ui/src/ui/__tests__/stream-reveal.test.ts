@@ -1,7 +1,7 @@
-import { expect, test } from 'bun:test'
+import { afterAll, beforeAll, describe, expect, test } from 'bun:test'
 import { existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { chromium } from 'playwright'
+import { chromium, type Browser, type Page } from 'playwright'
 import {
   alignShown,
   closeOpenInlineMarkdown,
@@ -60,7 +60,24 @@ test('steps come faster as text waits, within their bounds', () => {
 test('a step\'s rendered length leaves out its marks and line breaks, and finds where it starts in the render', () => {
   expect(renderedLength('**bold** and `code`\n- item')).toBe('bold and codeitem'.length)
   expect(renderedLength('```ts\nconst a = 1\n```')).toBe('const a = 1'.length)
+  expect(renderedLength('| a | b |\n|---|:-:|\n| c | d |\n\n---\n\na | b')).toBe('abcda | b'.length)
   expect(startOfLast('ab\ncd', 3)).toBe(1)
+})
+
+test('holdIncompleteMarkdown parks a block\'s opening line until its first text', () => {
+  const held = (text: string) => holdIncompleteMarkdown(text).held
+  expect(held('Intro\n\n- ')).toBe('- ')
+  expect(held('- one\n  - ')).toBe('  - ')
+  expect(held('Intro\n\n1. ')).toBe('1. ')
+  expect(held('Intro\n\n> ')).toBe('> ')
+  expect(held('> - ')).toBe('> - ')
+  expect(held('Intro\n\n```ts')).toBe('```ts')
+  expect(held('Intro\n\n```ts\n')).toBe('```ts\n')
+  expect(held('~~~\n')).toBe('~~~\n')
+  expect(held('- one')).toBe('')
+  expect(held('```ts\nconst')).toBe('')
+  expect(held('Intro\n\n---')).toBe('')
+  expect(held('Version 1.')).toBe('')
 })
 
 test('holdIncompleteMarkdown parks unmatched markers and links', () => {
@@ -74,6 +91,9 @@ test('holdIncompleteMarkdown parks unmatched markers and links', () => {
   expect(holdIncompleteMarkdown('go [docs')).toEqual(
     { visible: 'go ', held: '[docs' }
   )
+  // Its brackets would show until the target arrives and makes it a link.
+  expect(holdIncompleteMarkdown('go [docs]')).toEqual({ visible: 'go ', held: '[docs]' })
+  expect(holdIncompleteMarkdown('go [docs] now').held).toBe('')
   expect(holdIncompleteMarkdown('go [docs](https://ex')).toEqual(
     {
       visible: 'go ',
@@ -95,35 +115,105 @@ test('closeOpenInlineMarkdown closes what the last paragraph left open', () => {
 })
 
 // A step's fade in a real Chromium, since happy-dom computes no animated
-// style: about 1 s, the browser's start. The flash lives in what the engine
-// draws between a step being shown and its fade starting on the timeline.
-test.skipIf(!existsSync(chromium.executablePath()))(
-  'a step\'s new text shows transparent until its fade starts, never solid first',
-  async () => {
+// style: about 1 s for the file, the browser's start, shared by its tests.
+describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
+  let browser: Browser
+  let script: string
+  beforeAll(async () => {
     const build = await Bun.build({
       entrypoints: ['/entry.ts'],
       files: { '/entry.ts': `import { wrapSteps } from ${JSON.stringify(fileURLToPath(new URL('../stream-reveal.ts', import.meta.url)))}\nObject.assign(window, { wrapSteps })` },
       target: 'browser',
     })
-    const browser = await chromium.launch()
-    try {
-      const page = await browser.newPage()
-      await page.addScriptTag({ content: await build.outputs[0]!.text() })
-      const opacity = await page.evaluate(() => new Promise<number>((resolve) => {
-        const wrap: typeof wrapSteps = Reflect.get(window, 'wrapSteps')
-        // A step is shown by the stream's timer, a task after a frame began,
-        // so the timeline still reads that frame's time, before the step's.
-        requestAnimationFrame(() => setTimeout(() => {
-          const message = document.createElement('p')
-          message.textContent = 'Seen before. Just shown.'
-          document.body.append(message)
-          wrap(message, message.textContent, [{ start: 13, end: 24, at: performance.now() }])
-          resolve(Number(getComputedStyle(message.querySelector('.stream-ink')!).opacity))
-        }))
+    script = await build.outputs[0]!.text()
+    browser = await chromium.launch()
+  })
+  afterAll(async () => {
+    await browser?.close()
+  })
+
+  async function page(): Promise<Page> {
+    const opened = await browser.newPage()
+    await opened.addScriptTag({ content: script })
+    return opened
+  }
+
+  // The flash lives in what the engine draws between a step being shown and
+  // its fade starting on the timeline.
+  test('a step\'s new text shows transparent until its fade starts, never solid first', async () => {
+    const opacity = await (await page()).evaluate(() => new Promise<number>((resolve) => {
+      const wrap: typeof wrapSteps = Reflect.get(window, 'wrapSteps')
+      // A step is shown by the stream's timer, a task after a frame began,
+      // so the timeline still reads that frame's time, before the step's.
+      requestAnimationFrame(() => setTimeout(() => {
+        const message = document.createElement('p')
+        message.textContent = 'Seen before. Just shown.'
+        document.body.append(message)
+        wrap(message, message.textContent, [{ start: 13, end: 24, at: performance.now() }])
+        resolve(Number(getComputedStyle(message.querySelector('.stream-ink')!).opacity))
       }))
-      expect(opacity).toBe(0)
-    } finally {
-      await browser.close()
-    }
-  },
-)
+    }))
+    expect(opacity).toBe(0)
+  })
+
+  // Each case: a reply's source, its render (as the message renderer writes
+  // it), the element that paints a box, rule, marker or underline of its own,
+  // and where in the source a step boundary falls inside that element's text.
+  const BOXES = [
+    { name: 'inline code', source: 'It reads `src/auth/cookie.ts` first.', html: '<p>It reads <code>src/auth/cookie.ts</code> first.</p>', box: 'code', cut: 'cookie.ts' },
+    { name: 'a link', source: 'See [the cookie helper](https://example.com) here.', html: '<p>See <a href="https://example.com">the cookie helper</a> here.</p>', box: 'a', cut: 'helper' },
+    { name: 'a list item', source: 'Intro\n\n- one item\n- two', html: '<p>Intro</p>\n<ul>\n<li>one item</li>\n<li>two</li>\n</ul>\n', box: 'li', cut: 'item' },
+    { name: 'a quote', source: 'Intro\n\n> a quote here', html: '<p>Intro</p>\n<blockquote>\n<p>a quote here</p>\n</blockquote>\n', box: 'blockquote', cut: 'here' },
+    {
+      name: 'a code block',
+      source: 'Intro\n\n```ts\nconst a = 1\nconst b = 2\n```',
+      html: '<p>Intro</p>\n<div class="code-block"><div class="code-block-lang">TypeScript</div><pre tabindex="0"><code>const a = 1\nconst b = 2</code></pre></div>',
+      box: '.code-block',
+      cut: 'const b',
+    },
+    {
+      name: 'a table row',
+      source: 'Intro\n\n| a | b |\n|---|---|\n| c | d |',
+      html: '<p>Intro</p>\n<div class="table-scroll"><table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody><tr>\n<td>c</td>\n<td>d</td>\n</tr>\n</tbody></table>\n</div>\n',
+      box: 'tbody tr',
+      cut: 'd |',
+    },
+  ]
+
+  // Cost: one page, a few milliseconds.
+  test('an element\'s own paint fades with the first piece of its text, never ahead of it', async () => {
+    const seen = await (await page()).evaluate((cases) => {
+      const wrap: typeof wrapSteps = Reflect.get(window, 'wrapSteps')
+      const now = performance.now()
+      /** How opaque `node` reaches the screen: its and its ancestors' opacity together. */
+      const opacity = (node: Node) => {
+        let product = 1
+        for (let element = node instanceof Element ? node : node.parentElement; element && element !== document.body; element = element.parentElement)
+          product *= Number(getComputedStyle(element).opacity)
+        return product
+      }
+      const results = cases.map(({ name, source, html, box, cut }) => {
+        const message = document.createElement('div')
+        message.innerHTML = html
+        document.body.append(message)
+        // The older step, half faded, shows the element's first characters; the new one the rest.
+        const boundary = source.lastIndexOf(cut)
+        wrap(message, source, [
+          { start: 0, end: boundary, at: now - 200 },
+          { start: boundary, end: source.length, at: now },
+        ])
+        const element = message.querySelector(box)!
+        const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT)
+        let first = walker.nextNode()
+        while (first && !first.textContent?.trim()) first = walker.nextNode()
+        return { name, box: opacity(element), text: opacity(first!) }
+      })
+      const time = Number(document.timeline.currentTime)
+      return { results, older: (time - (now - 200)) / 400 }
+    }, BOXES)
+    // In hundredths: the element and its first characters, both as far into their step's fade.
+    const percent = (opacity: number) => Math.round(opacity * 100)
+    expect(seen.results.map(({ name, box, text }) => ({ name, box: percent(box), text: percent(text) })))
+      .toEqual(seen.results.map(({ name }) => ({ name, box: percent(seen.older), text: percent(seen.older) })))
+  })
+})
