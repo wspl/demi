@@ -8,6 +8,7 @@ import type { DeviceState } from '../devices/state'
 import type { DirectStatus } from '../devices/direct'
 import type { DeviceReport } from '../devices/report'
 import type { DeviceStart } from '../devices/installation'
+import type { CredentialFieldView, CredentialKeep } from '../permissions/types'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
@@ -343,3 +344,33 @@ export interface SettingsSubagentProfile {
 
 /** What the profile editor saves: a new profile starts enabled. */
 export type SettingsSubagentDraft = Omit<SettingsSubagentProfile, 'id' | 'enabled'>
+
+/** A credential as Settings › Credentials lists it (`credentials.md` § A credential), its values left out. */
+export interface SettingsCredential {
+  id: string
+  name: string
+  /** The reason it was asked for; empty for none. */
+  note: string
+  fields: CredentialFieldView[]
+  /** When it is removed; null while it is kept always. */
+  keepUntil: string | null
+  /** When an agent last read it; null before. */
+  lastUsedAt: string | null
+  /** When it last changed: a value read for an earlier time is read again. */
+  updatedAt: string
+}
+
+/** A field as the editor saves it: a new field carries its value, an existing one its value only when the user typed one. */
+export interface SettingsCredentialDraftField extends CredentialFieldView {
+  /** The new value; null keeps the saved one, which only an existing field may. */
+  value: string | null
+}
+
+/** What the credential editor saves. */
+export interface SettingsCredentialDraft {
+  name: string
+  note: string
+  /** How long to keep it from now; null leaves a saved credential's time as it is. */
+  keep: CredentialKeep | null
+  fields: SettingsCredentialDraftField[]
+}

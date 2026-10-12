@@ -55,8 +55,8 @@ import { EMPTY_TRANSCRIPT, latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
 import { provideBlockReader, type BlockReader } from './whole-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
-import PermissionCard from '../permissions/PermissionCard.vue'
-import type { PermissionDecision, PermissionRequestView } from '../permissions/types'
+import RequestCard from '../permissions/RequestCard.vue'
+import type { CredentialAnswer, PermissionDecision, RequestView } from '../permissions/types'
 
 const props = withDefaults(defineProps<{
   conversation: ChatSessionState
@@ -89,10 +89,12 @@ const props = withDefaults(defineProps<{
    * that Host is an offline device. Absent, Resume waits for nothing.
    */
   primaryHost?: HostMenuHost | null
-  /** The conversation's undecided permission requests, oldest first, which the card above the composer shows. */
-  permissionRequests?: readonly PermissionRequestView[]
-  /** A decision on a permission request is on its way. */
+  /** The conversation's undecided requests of any kind, oldest first, which the card above the composer shows. */
+  permissionRequests?: readonly RequestView[]
+  /** A decision on a request is on its way. */
   decidingPermission?: boolean
+  /** What the backend refused the last credential answer for, shown under the card's form. */
+  requestError?: string | null
   /**
    * A block to bring into view and mark for a moment, as a search result
    * opened at it or a report's title asks: in the list, or in the subagent
@@ -143,7 +145,7 @@ const emit = defineEmits<{
    */
   regenerate: [request: MessageEditRequest]
   saveScroll: [id: string, state: PersistedScrollState | null]
-  decidePermission: [id: string, decision: PermissionDecision]
+  decidePermission: [id: string, decision: PermissionDecision, credential?: CredentialAnswer]
   /** The block `reveal` names is in view. */
   revealed: []
   /**
@@ -593,10 +595,11 @@ watch(
             @scroll-to-bottom="scrollToBottom"
           >
             <template v-if="permissionRequests?.length" #above>
-              <PermissionCard
+              <RequestCard
                 :requests="permissionRequests"
                 :deciding="decidingPermission"
-                @decide="(id, decision) => emit('decidePermission', id, decision)"
+                :error="requestError"
+                @decide="(id, decision, credential) => emit('decidePermission', id, decision, credential)"
               />
             </template>
             <template #chips>

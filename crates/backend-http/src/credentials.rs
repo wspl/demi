@@ -9,7 +9,7 @@ use axum::http::StatusCode;
 use demi_backend_database::credentials::CredentialRefusal;
 use demi_backend_user_shard::shard::credentials::CredentialError;
 use demi_web_api_protocol::credentials::{
-    CredentialAnswer, CredentialPatch, CredentialValues, Credentials, NewCredential,
+    CredentialAnswer, CredentialPatch, CredentialList, CredentialValues, NewCredential,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserCredentialId;
@@ -23,13 +23,13 @@ use super::gate::AuthUser;
 pub(super) async fn list(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-) -> Result<Json<Credentials>, ApiError> {
+) -> Result<Json<CredentialList>, ApiError> {
     let credentials = state
         .shards
         .of(&user.id)
         .call(move |shard, _| async move { shard.credential_list().await })
         .await??;
-    Ok(Json(Credentials { credentials }))
+    Ok(Json(CredentialList { credentials }))
 }
 
 /// `GET /credentials/:id/values`.
