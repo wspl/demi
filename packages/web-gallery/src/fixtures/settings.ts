@@ -15,7 +15,7 @@ import type {
 import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import { commitOf } from './plugins'
 import { createSubagentState } from './subagent-profiles'
-import { DAY, HOUR, MINUTE, ago, ahead } from './time'
+import { DAY, HOUR, MINUTE, SECOND, ago, ahead } from './time'
 
 /**
  * A coding agent's whole settings surface, mocked in every awkward state at once:
@@ -293,11 +293,13 @@ export function mockProviders(): MockProvider[] {
           label: 'zan@example.com',
           plan: 'Max 5×',
           active: true,
-          // As the usage probe names them: by period and scope, a limit on one model too.
+          // As the usage probe names them: by period and scope, a limit on one model too. The
+          // accounts' resets show every wording a reset takes, as the clock counts them down:
+          // in hours and minutes within a day, the weekday within 6 days, the day after that.
           quota: [
-            { id: 'five_hour', label: '5h session', used: 62, max: 100, resetsAt: ahead(130 * MINUTE) },
+            { id: 'five_hour', label: '5h session', used: 62, max: 100, resetsAt: ahead(3 * HOUR + 42 * MINUTE + 30 * SECOND) },
             { id: 'seven_day', label: '7d all models', used: 31, max: 100, resetsAt: ahead(3 * DAY + 4 * HOUR) },
-            { id: 'limit:weekly_scoped:Fable', label: '7d Fable', used: 74, max: 100, resetsAt: ahead(4 * DAY) },
+            { id: 'limit:weekly_scoped:Fable', label: '7d Fable', used: 74, max: 100, resetsAt: ahead(12 * DAY) },
           ],
         },
         {
@@ -305,8 +307,9 @@ export function mockProviders(): MockProvider[] {
           label: 'alex@example.com',
           plan: 'Pro',
           active: false,
+          // The full window's reset has passed and the next snapshot has not come yet.
           quota: [
-            { id: 'five_hour', label: '5h session', used: 100, max: 100, resetsAt: ahead(4 * HOUR) },
+            { id: 'five_hour', label: '5h session', used: 100, max: 100, resetsAt: ahead(-20 * SECOND) },
             { id: 'seven_day', label: '7d all models', used: 88, max: 100, resetsAt: ahead(5 * DAY) },
           ]
         },
@@ -318,11 +321,14 @@ export function mockProviders(): MockProvider[] {
           active: false,
           // A vendor names its windows as it likes; the label column fits the longest. Its
           // usage comes as used ÷ limit × 100 in floating point, which reads in whole percent,
-          // rounded down, so a window shows full only once it is.
+          // rounded down, so a window shows full only once it is. The short windows reset within
+          // the minute and then read "now"; Daily resets on the hour, so its minutes are left
+          // out, and a window whose reset the vendor does not report has no reset line.
           quota: [
-            { id: 'requests', label: 'Requests (short window)', used: 7.000000000000001, max: 100, resetsAt: ahead(40_000) },
-            { id: 'tokens', label: 'Tokens (short window)', used: 0.4, max: 100, resetsAt: ahead(40_000) },
-            { id: 'daily', label: 'Daily', used: 98.6, max: 100, resetsAt: ahead(20 * HOUR) },
+            { id: 'requests', label: 'Requests (short window)', used: 7.000000000000001, max: 100, resetsAt: ahead(40 * SECOND) },
+            { id: 'tokens', label: 'Tokens (short window)', used: 0.4, max: 100, resetsAt: ahead(42 * MINUTE + 30 * SECOND) },
+            { id: 'daily', label: 'Daily', used: 98.6, max: 100, resetsAt: ahead(3 * HOUR + 30 * SECOND) },
+            { id: 'monthly', label: 'Monthly credits', used: 23, max: 100, resetsAt: null },
           ],
         },
         // Long text everywhere: the tags move under the name, which is cut only where the line
@@ -342,6 +348,14 @@ export function mockProviders(): MockProvider[] {
               resetsAt: ahead(12 * DAY),
             },
             { id: 'week-sonnet', label: 'Weekly (Sonnet only)', used: 47, max: 100, resetsAt: ahead(6 * DAY + 23 * HOUR) },
+            // Next year's, which the day names with its year.
+            {
+              id: 'annual',
+              label: 'Annual credits',
+              used: 12,
+              max: 100,
+              resetsAt: new Date(new Date().getFullYear() + 1, 0, 3, 9, 0).toISOString(),
+            },
           ],
         },
       ],
