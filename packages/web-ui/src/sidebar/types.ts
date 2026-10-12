@@ -9,8 +9,6 @@ export type { ListLoad }
 export type SidebarProject = {
   id: string
   name: string
-  /** The machine the checkout lives on; the row shows it beside the name. */
-  host: string
   path: string
 } & SidebarProjectHost
 
@@ -19,8 +17,8 @@ export type SidebarProjectHost =
   | { hostKind: 'cloud' }
   | {
     hostKind: 'device'
-    /** Whether the device's runner serves it now; the row marks it with a dot. */
-    state: DeviceState
+    /** The device the row's end marks, with its state, or as one since removed. */
+    device: SidebarDevice
   }
 
 export interface SidebarConversation {
@@ -44,11 +42,11 @@ export interface SidebarConversation {
    * The paired device a conversation outside a project runs on, which its row's end shows
    * (`product.md` § Conversations and projects); absent on the Cloud and in a project.
    */
-  device?: SidebarConversationDevice
+  device?: SidebarDevice
 }
 
-/** A conversation's device as its row shows it: by name and state, or as one since removed. */
-export type SidebarConversationDevice =
+/** A device as a row's mark shows it: by name and state, or as one since removed. */
+export type SidebarDevice =
   | { kind: 'paired'; name: string; state: DeviceState }
   | { kind: 'removed' }
 
