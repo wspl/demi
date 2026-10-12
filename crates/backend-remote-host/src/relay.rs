@@ -183,9 +183,9 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
         return;
     }
     let relaying = link.clone();
-    link.spawn(async move {
+    let command = call.path.join(" ");
+    link.spawn(command.clone(), async move {
         let call_id = call.call_id.clone();
-        let command = call.path.join(" ");
         let origin = tokio::select! {
             origin = origin_of(&relaying, &call.job_id) => origin,
             () = entry.stopped.cancelled() => Err(entry
@@ -326,7 +326,8 @@ async fn run(
         RpcPort::new(port.clone(), entry.stopped.clone()),
     );
     // A relayed pipe that fails stops the call; the handler is awaited to
-    // its end all the same, since it may be committing.
+    // its end all the same, since it may be committing, until the
+    // connection's end gives up on it after its grace (`link::END_GRACE`).
     let broken = {
         let stdout = stdout.failed();
         let stdin = stdin.as_ref().map(Pipe::failed);

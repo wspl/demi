@@ -54,6 +54,12 @@ const NO_LIVE_WORK: &str = "No matching live job or stream";
 /// The numbers requests a connection answers at a time.
 const NUMBERS_REQUESTS: usize = 32;
 
+/// How long the backend's work for a connection may go on once the
+/// connection ended, such as an rpc handler committing; whatever still runs
+/// then is aborted, so the device goes offline and its next hello is
+/// answered (`runner.md` § Connection and identity).
+pub const END_GRACE: Duration = Duration::from_secs(5);
+
 /// How long a conversation release may take on the runner.
 const RELEASE_TIMEOUT: Duration = Duration::from_secs(360);
 
@@ -233,8 +239,12 @@ pub(crate) struct Inner {
     pipes: Pipes,
     policy: Rc<dyn LinkPolicy>,
     state: RefCell<State>,
-    /// Calls, artifact resolutions and volume growth.
+    /// The backend's work for the connection, such as its calls, artifact
+    /// resolutions and volume growth, which its end waits for.
     tasks: TaskTracker,
+    /// Cancelled once the connection's end gave `tasks` their grace: what
+    /// still runs is aborted.
+    overdue: CancellationToken,
     /// Job starts take turns: a job's manifest and its start travel
     /// together.
     jobs: SerialGate,
@@ -577,6 +587,7 @@ impl Link {
             policy: options.policy,
             state: RefCell::default(),
             tasks: TaskTracker::new(),
+            overdue: CancellationToken::new(),
             jobs: SerialGate::new(),
             closed: CancellationToken::new(),
             end: RefCell::new(None),
@@ -594,7 +605,9 @@ impl Link {
         }
         for (job, lengths) in adoption.resync {
             let reading = link.clone();
-            link.spawn(async move { reading.resync(&job, lengths).await });
+            link.spawn("kept output resync", async move {
+                reading.resync(&job, lengths).await
+            });
         }
         let driver = LinkDriver {
             link: link.clone(),
@@ -613,7 +626,7 @@ impl Link {
             signal: Some(wire::Signal::Terminate),
         });
         let link = self.clone();
-        self.spawn(async move {
+        self.spawn("unknown job's stop", async move {
             tokio::select! {
                 () = link.ended() => {}
                 () = tokio::time::sleep(wire::STOP_GRACE) => link.post(&Inbound::JobKill {
@@ -847,9 +860,28 @@ impl Link {
         &self.0.policy
     }
 
-    /// Runs `task` as the connection's work, which its end waits for.
-    pub(crate) fn spawn(&self, task: impl std::future::Future<Output = ()> + 'static) {
-        self.0.tasks.spawn_local(task);
+    /// Runs `task` as the connection's work, which its end waits for up to
+    /// [`END_GRACE`]; a task still running then is aborted and logged as
+    /// `name`.
+    pub(crate) fn spawn(
+        &self,
+        name: impl Into<String>,
+        task: impl std::future::Future<Output = ()> + 'static,
+    ) {
+        let name = name.into();
+        let device = self.0.device.clone();
+        let overdue = self.0.overdue.clone();
+        self.0.tasks.spawn_local(async move {
+            tokio::select! {
+                biased;
+                () = task => {}
+                () = overdue.cancelled() => tracing::warn!(
+                    device = %device,
+                    "{name} aborted {} seconds after its runner connection ended",
+                    END_GRACE.as_secs()
+                ),
+            }
+        });
     }
 
     pub(crate) fn job_turn(&self) -> &SerialGate {
@@ -898,7 +930,7 @@ impl Link {
         };
         if let Err(mpsc::error::TrySendError::Full(frame)) = self.0.outbound.try_send(frame) {
             let link = self.clone();
-            self.spawn(async move {
+            self.spawn("queued message", async move {
                 // A connection that ends first has nothing left to tell the
                 // runner.
                 let _ = link.send_frame(frame).await;
@@ -1326,7 +1358,7 @@ impl Link {
     fn grow_volume(&self, id: String, volume: VolumeName, bytes: u64) {
         let link = self.clone();
         let growth = self.0.policy.grow_volume(volume, bytes);
-        self.0.tasks.spawn_local(async move {
+        self.spawn("volume growth", async move {
             let error = growth.await.err();
             let answer = Inbound::VolumeGrown {
                 id,
@@ -1347,7 +1379,7 @@ impl Link {
     fn revoke(&self) {
         let revocation = self.0.policy.revoke_device();
         let device = self.0.device.clone();
-        self.0.tasks.spawn_local(async move {
+        self.spawn("revocation", async move {
             if let Err(error) = revocation.await {
                 tracing::warn!(device = %device, "the runner's revocation failed: {error}");
             }
@@ -1373,7 +1405,7 @@ impl Link {
             }
         };
         let link = self.clone();
-        self.0.tasks.spawn_local(async move {
+        self.spawn("artifact resolution", async move {
             if let Some(refusal) = refusal {
                 link.answer_artifact(id, Err(refusal.into())).await;
                 return;
@@ -1471,7 +1503,7 @@ impl Link {
         }
         let admission = self.0.policy.direct_stream(conversation.clone(), name);
         let link = self.clone();
-        self.spawn(async move {
+        self.spawn("direct stream admission", async move {
             let admission = tokio::select! {
                 // A stream that closed meanwhile holds nothing.
                 _ = cancel.cancelled() => return,
@@ -1516,7 +1548,7 @@ impl Link {
         let reserved =
             admitted.then(|| self.0.policy.reserve_numbers(conversation, sequence, count));
         let link = self.clone();
-        self.0.tasks.spawn_local(async move {
+        self.spawn("numbers reservation", async move {
             let first = match reserved {
                 None => Err("Numbers request limit or duplicate id".to_owned()),
                 Some(reserved) => {
@@ -1586,9 +1618,10 @@ impl Link {
     }
 
     /// Ends everything in flight on the connection: replies fail as offline,
-    /// processes end as lost, calls stop, and the device's pipes fail; its
-    /// jobs wait for the device's next connection (`runner.md` § Command
-    /// lifetime). Idempotent.
+    /// processes end as lost, service and direct streams close (a direct
+    /// stream's token is a child of `closed`), calls stop, and the device's
+    /// pipes fail; its jobs wait for the device's next connection
+    /// (`runner.md` § Command lifetime). Idempotent.
     pub(crate) fn teardown(&self, reason: &str) {
         if self.0.end.borrow().is_some() {
             return;
@@ -1715,7 +1748,9 @@ impl LinkDriver {
 
     /// Serves the connection: routes every frame from `incoming`, writes the
     /// frames the Hosts queue to `outgoing`, and pings, until either side
-    /// ends it. Everything in flight then ends with the reason.
+    /// ends it. Everything in flight then ends with the reason, and the
+    /// backend's work for the connection gets [`END_GRACE`] to finish
+    /// before it is aborted.
     pub async fn serve<I, O>(self, incoming: I, outgoing: O) -> LinkEnd
     where
         I: Stream<Item = Result<Vec<u8>, SocketEnd>>,
@@ -1793,7 +1828,11 @@ impl LinkDriver {
             }
         };
         link.teardown(&end.reason());
-        link.0.tasks.wait().await;
+        if tokio::time::timeout(END_GRACE, link.0.tasks.wait()).await.is_err() {
+            link.0.overdue.cancel();
+            // Every task ends at the cancellation, each logging its name.
+            link.0.tasks.wait().await;
+        }
         end
     }
 }
