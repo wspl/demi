@@ -215,8 +215,8 @@ input, which the multi-worker control service also relies on
   [permission requests](../agent/permissions.md#requests): id, conversation,
   categories, a JSON array of category ids sorted so that the same
   categories compare equal, the command line, the agent that ran it (its node, number and
-  description, or the root), when it was raised, and, once decided, the
-  decision. `permission_grants` stores each grant: conversation, category and
+  description, or the root), when it was raised, whether the user has read it,
+  and, once decided, the decision. `permission_grants` stores each grant: conversation, category and
   when it was granted, one row per conversation and category. Allow writes
   the grants and decides the requests they complete in one
   transaction; a new request is written with the removal of the request it
