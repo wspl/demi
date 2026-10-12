@@ -5,10 +5,3 @@
 @source '../../web-ui/src';
 @source '../../plugin-*/src/**/*';
 @source '.';
-
-html,
-body,
-#app {
-  height: 100%;
-  overflow: hidden;
-}
