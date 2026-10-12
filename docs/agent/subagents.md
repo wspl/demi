@@ -698,8 +698,16 @@ Never copied into a child:
 
 `demi agent abort <id>` and an explicit abort of the parent's tree stop the
 named node and its descendants. Siblings are untouched. An abort, like a
-terminal failure, first stops what the child still runs, which records the
-stop in its transcript, and then closes the child's own children. Their
+terminal failure, first asks to stop what the child still runs, which records
+the stop in its transcript, and then closes the child's own children. It
+does not wait for those stops: a command turns stopped only on its runner's
+word ([Cancellation and completion](../execution/runner.md#cancellation-and-completion)),
+and a runner that is away, or a job its runner cannot end, would hold the
+abort as long. The child closes as `aborted` at once, and each command still
+stopping stays in the Running window as *Stopping* until its runner reports
+its end. For example, a child whose `find` sat behind an unanswered macOS
+privacy prompt once stayed live for an hour after its abort, its slot taken
+and every message to it unread. Their
 completions are saved in the child's final checkpoint as waiting input and
 open no turn; the child's next round reads them. A finished creation
 command's cancellation has no authority over its child. Dispose saves the
