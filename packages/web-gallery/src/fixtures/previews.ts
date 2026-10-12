@@ -66,7 +66,10 @@ export const alignedMarkdown = `| Step | Files | Status |
 
 /**
  * A reply whose lines outrun a narrow column: an address, a path, a long line of
- * code beside a short one, a wide table and a wide equation.
+ * code beside a short one, a wide table and a wide equation. Two code blocks
+ * open with a long line, which Copy at the block's corner must never cover:
+ * one with no language, where Copy shows with the pointer, and one whose
+ * language row holds it always.
  */
 export const overlongMarkdown = `Started the dev server on Alexs-MacBook-Pro.local at http://127.0.0.1:64921/c3t25fk3dbh3a67e5xyovsnhle/index.html. It ends with its job (job c3t25fk3dbh3a67e5xyovsnhle).
 
@@ -78,6 +81,17 @@ demi skills list
 
 \`\`\`
 demi: this conversation needs the user's permission to manage skills; the request was sent to the user and this command failed.
+\`\`\`
+
+\`\`\`
+ls: cannot access 'C:/Windows/Web/*.png': The filename, directory name, or volume label syntax is incorrect.
+DESKTOP-B5O1P43  7222bda0-93b5-4d83-b2ee-592137c94eb5  online  C:\\Users\\Plutonist  (primary)
+Unpacking Chrome for Testing 153.0.8010.36
+\`\`\`
+
+\`\`\`powershell
+Get-ChildItem 'C:/Windows/Web' -Filter *.png -Recurse | Select-Object -ExpandProperty FullName | Sort-Object
+Get-Date
 \`\`\`
 
 | Host | Address | Started |
