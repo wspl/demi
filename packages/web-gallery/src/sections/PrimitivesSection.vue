@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ChevronDown, RefreshCw, Plus, Search, Send, Settings2, Trash2 } from '@lucide/vue'
+import CopyButton from '@demicodes/web-ui/ui/CopyButton.vue'
 import CopyCode from '@demicodes/web-ui/ui/CopyCode.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
@@ -49,6 +50,11 @@ const paneWidth = ref(200)
 const paneHeight = ref(96)
 
 const spinning = ref(false)
+
+/** A clipboard that refuses, which the failure specimen of CopyButton copies to. */
+function refusedCopy(): ClipboardItem {
+  return new ClipboardItem({ 'text/plain': Promise.reject(new Error('This page may not write to the clipboard.')) })
+}
 
 const dotTones: readonly StatusDotTone[] = ['accent', 'success', 'warning', 'danger', 'attention', 'muted']
 const dotBreathing = ref(true)
@@ -277,6 +283,28 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
         note="Shared command surface, wrapping and copy feedback."
       >
         <CopyCode code="demi-runner run --backend https://demi.example.com" />
+      </GallerySection>
+      <GallerySection
+        title="CopyButton"
+        note="The one Copy control. Pressed, it puts its text on the clipboard and shows Copied, in its icon, tip and name, for 1.5 seconds; a clipboard that refuses is told in a Could Not Copy toast."
+      >
+        <div class="specimen-row">
+          <GallerySpecimen variant="ghost · sm">
+            <CopyButton source="demi-runner --version" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="default · md · a longer tip">
+            <CopyButton
+              source="https://example.com/sign-in"
+              label="Copy link"
+              hint="Copy the link to sign in from another browser or device"
+              variant="default"
+              size="md"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="the clipboard refuses">
+            <CopyButton :source="refusedCopy" />
+          </GallerySpecimen>
+        </div>
       </GallerySection>
       <GallerySection
         title="IconButton"
