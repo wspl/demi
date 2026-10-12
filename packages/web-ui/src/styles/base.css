@@ -1325,6 +1325,14 @@ html[data-theme="light"] .file-pill {
   outline-offset: 1px;
 }
 
+/* The focus ring of a control the keyboard has focused, and of that alone
+   (`:focus-visible`): a click leaves none. Every control a primitive makes
+   focusable carries it (`docs/product/web-application.md` § Keyboard). */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--line-focus);
+  outline-offset: 1px;
+}
+
 /* The mark and the link's first word, which a line never parts. */
 .agent-link-lead {
   white-space: nowrap;

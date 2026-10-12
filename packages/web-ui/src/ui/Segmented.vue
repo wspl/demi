@@ -1,6 +1,7 @@
 <script setup lang="ts" generic="T extends string">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { Component } from 'vue'
+import { pressOnKey } from './button-events'
 import { disabledTooltip } from './disabled'
 import { ICON_PX } from './icon-metrics'
 import { clickedChoice } from './segmented'
@@ -68,6 +69,25 @@ function revealChosen(): void {
 onMounted(revealChosen)
 watch([selectedIndex, () => props.options], () => nextTick(revealChosen))
 
+/**
+ * A radio group's keys: the arrows move the choice and its focus to the
+ * neighbouring segment, wrapping round, and Return and Space press the
+ * focused one as a click does.
+ */
+const ARROW_STEP: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 }
+
+function onSegmentKey(event: KeyboardEvent, index: number): void {
+  const step = ARROW_STEP[event.key]
+  if (props.disabled || step === undefined || event.type !== 'keydown') {
+    pressOnKey(event)
+    return
+  }
+  event.preventDefault()
+  const next = (index + step + props.options.length) % props.options.length
+  model.value = props.options[next]!.value
+  void nextTick(() => segments.value?.querySelectorAll<HTMLElement>('[role="radio"]')[next]?.focus())
+}
+
 /** `clicked` is the segment's value, or undefined for the frame around and between them. */
 function choose(clicked: T | undefined) {
   if (props.disabled)
@@ -102,7 +122,7 @@ function choose(clicked: T | undefined) {
       }"
       />
       <Tooltip
-        v-for="option in options"
+        v-for="(option, index) in options"
         :key="option.value"
         tag="span"
         :content="option.label"
@@ -111,7 +131,8 @@ function choose(clicked: T | undefined) {
         role="radio"
         :aria-checked="model === option.value"
         :aria-label="iconOnly ? option.label : undefined"
-        class="relative z-10 inline-flex cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-colors duration-200 ease-out"
+        :tabindex="disabled ? undefined : index === selectedIndex ? 0 : -1"
+        class="focus-ring relative z-10 inline-flex cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-colors duration-200 ease-out"
         :class="[
           iconOnly
             ? (size === 'sm' ? 'size-5' : 'size-6')
@@ -119,6 +140,8 @@ function choose(clicked: T | undefined) {
           model === option.value ? 'text-fg-emphasis' : 'text-fg-subtle hover:text-fg',
         ]"
         @click.stop="choose(option.value)"
+        @keydown="onSegmentKey($event, index)"
+        @keyup="onSegmentKey($event, index)"
       >
         <component
           :is="option.icon"

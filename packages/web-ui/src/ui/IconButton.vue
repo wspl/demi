@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, useAttrs } from 'vue'
-import { blockUnavailableButtonEvent } from './button-events'
+import { blockUnavailableButtonEvent, pressOnKey } from './button-events'
 import { useButtonIconSpin } from './button-icon-spin'
 import type { Component } from 'vue'
 import { disabledTooltip } from './disabled'
@@ -104,8 +104,11 @@ const glyphPx = computed(() => {
       @keydown.capture="
         blockUnavailableButtonEvent($event, disabled || loading)
       "
+      @keydown="pressOnKey"
+      @keyup="pressOnKey"
       role="button"
-      class="inline-flex shrink-0 cursor-default items-center justify-center transition-[color,background-color,box-shadow] duration-200 ease-out"
+      :tabindex="disabled || loading ? undefined : 0"
+      class="focus-ring inline-flex shrink-0 cursor-default items-center justify-center transition-[color,background-color,box-shadow] duration-200 ease-out"
       :aria-disabled="disabled || loading || undefined"
       :aria-busy="loading || undefined"
       :data-pressed="!disabled && pressed ? true : undefined"

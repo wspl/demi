@@ -7,6 +7,7 @@ import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue';
 import Menu from '@demicodes/web-ui/ui/Menu.vue';
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue';
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue';
+import { pressOnKey } from '@demicodes/web-ui/ui/button-events';
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics';
 import type { SidebarAccount } from './types';
 
@@ -47,8 +48,11 @@ const initials = computed(() =>
       <div
         role="button"
         aria-label="Account"
-        class="flex h-9 w-full cursor-default select-none items-center gap-2 rounded-md pl-2 pr-1.5 transition-colors duration-200 ease-out phone:h-11 phone:gap-3"
+        tabindex="0"
+        class="focus-ring flex h-9 w-full cursor-default select-none items-center gap-2 rounded-md pl-2 pr-1.5 transition-colors duration-200 ease-out phone:h-11 phone:gap-3"
         :class="isOpen ? 'bg-hover' : 'hover:bg-hover'"
+        @keydown="pressOnKey"
+        @keyup="pressOnKey"
       >
         <span
           class="flex size-6 shrink-0 items-center justify-center rounded-full bg-tint-accent text-[11px] font-medium text-on-accent phone:size-8 phone:text-[13px]"

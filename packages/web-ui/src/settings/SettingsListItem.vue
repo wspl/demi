@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Trash2 } from '@lucide/vue'
+import { pressOnKey } from '@demicodes/web-ui/ui/button-events'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
@@ -34,12 +35,15 @@ const emit = defineEmits<{
   <div
     role="button"
     :aria-pressed="selected"
-    class="group flex h-8 cursor-default select-none items-center gap-2 rounded-md px-1 transition-colors duration-200 ease-out"
+    tabindex="0"
+    class="focus-ring group flex h-8 cursor-default select-none items-center gap-2 rounded-md px-1 transition-colors duration-200 ease-out"
     :class="[
       selected ? 'hover:bg-hover @md:bg-active' : 'hover:bg-hover',
       muted ? 'opacity-60' : '',
     ]"
     @click="emit('select')"
+    @keydown="pressOnKey"
+    @keyup="pressOnKey"
   >
     <Tooltip
       tag="span"
