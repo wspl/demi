@@ -42,7 +42,7 @@ const PANES = [
     </GallerySection>
     <GallerySection
       title="Panels and Windows"
-      note="The work panel opens full screen over the conversation, sliding in from the right, under its own bar: Conversation, which goes back to the conversation where it was, the tabs as a strip that scrolls sideways, 36 px tall, and the strip’s controls; in the File view the tree covers the file’s whole width, its rows 44 px, and slides away when a file is picked. A file a message names opens there the same way. The Agents and Running windows rise as full-screen sheets with their tabs and Close. Back closes each, as it closes a sheet. Settings fills the screen as iOS Settings does, its sections 44 px rows."
+      note="The work panel opens full screen over the conversation, sliding in from the right, under its own bar: Conversation, which goes back to the conversation where it was, the tabs as a strip that scrolls sideways, 36 px tall, each tab, Change and File too, as wide as its title up to 160 px, and the selected one scrolled into view, and the strip’s controls; in the File view the tree covers the file’s whole width, its rows 44 px, and slides away when a file is picked. A file a message names opens there the same way. The Agents and Running windows rise as full-screen sheets with their tabs and Close. Back closes each, as it closes a sheet. Settings fills the screen as iOS Settings does, its sections 44 px rows."
     >
       <div class="flex flex-wrap gap-8">
         <GalleryPhoneFrame
