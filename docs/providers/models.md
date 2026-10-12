@@ -134,6 +134,107 @@ Upstream references:
 [model metadata and presets](https://github.com/openai/codex/blob/3dc1e2a58406dc69db5812539adfee7d89fa9ef7/codex-rs/protocol/src/openai_models.rs),
 and [picker visibility](https://github.com/openai/codex/blob/3dc1e2a58406dc69db5812539adfee7d89fa9ef7/codex-rs/app-server/src/models.rs).
 
+## Adding a provider and its models
+
+### A provider is in the list from the start
+
+Adding a provider asks only what kind it is: a vendor from the list, or a
+custom endpoint of a family. The entry joins the providers list at once,
+selected, named after its vendor or family, and its page shows what it still
+needs, as Mail adds an account that waits for its password. For example, the
+user adds Google: *Google* stands in the list with a yellow dot, and its page
+shows the API key field first, with *Add an API key to use Google.* above it.
+
+An entry that cannot infer yet is **incomplete**, for the first of these:
+
+| What it lacks | The entry says |
+| --- | --- |
+| An API key, on an API-key entry | *Add an API key to use Google.* |
+| The API's address, on a custom endpoint | *Add the API's address.* |
+| A model, on an entry whose catalog is its configured list and the list is empty | *Add a model.* |
+| An account, on a subscription entry | *Sign in to use Claude Code.* |
+
+An incomplete entry wears the yellow dot in the providers list, the same
+needs-you yellow the sidebar uses, and its models show in the model menu
+dimmed, with the entry's sentence as the reason they cannot be chosen
+([What the web app receives](#what-the-web-app-receives)). Its availability is
+`unavailable` for the reason `setup` with that sentence. The dot goes the
+moment the last missing part is saved. Nothing is checked against the vendor
+while the user types: **Test** stays the way to try the entry.
+
+### Adding a model from models.dev
+
+An entry whose catalog is its configured list gets a model in one step:
+
+```text
+ ┌ Add Model ──────────────────────────────────────┐
+ │ Name  [gemini fl|                            ]  │
+ │       ┌──────────────────────────────────────┐  │
+ │       │ Custom                               │  │
+ │       │ Gemini 3.8 Flash      google   1M    │  │
+ │       │ Gemini 3.8 Flash Lite google   1M    │  │
+ │       │ Gemini 3.5 Flash      google   1M    │  │
+ │       └──────────────────────────────────────┘  │
+ └─────────────────────────────────────────────────┘
+```
+
+1. **Add Model** opens a dialog with one field, the model's name as the user
+   will see it in the menu. Typing searches models.dev; the list under the
+   field shows the matches, *Custom* always first.
+2. Choosing a match fills the whole model at once and shows it: its name, its
+   id as the entry's vendor names it, its context window, output limit,
+   thinking efforts and the files it reads. Every field stays editable.
+3. **Add** saves it. Choosing *Custom* shows the same fields empty but the
+   name typed so far.
+
+The search reads the backend's copy of the models.dev document
+([The models.dev document](#the-modelsdev-document)), so it makes no request
+of its own per keystroke. A query matches a model whose name or id holds each
+of its words, in any case and order: *gemini fl* finds *Gemini 3.8 Flash*.
+One model listed by several vendors shows once, filled from the entry's own
+vendor when that vendor lists it, else from the vendor that publishes it,
+such as Google for Gemini; newest release first, at most 20. A result is named
+`<vendor>/<model id>`, `google/gemini-3.8-flash`. It fills a model by the rules
+models.dev models follow everywhere (`limit`, `reasoning` and its efforts,
+`attachment` and `modalities.input` for the files it reads), and a fact
+models.dev does not state is left empty for the user.
+
+## Managing providers from a conversation
+
+The agent manages the user's provider entries and their models with the
+`demi providers` group, so the user can say "add Gemini 3.8 Flash to my
+Google entry" in a conversation:
+
+| Leaf | Does |
+| --- | --- |
+| `list` | Each entry, by the name Settings gives it, its kind (subscription or API key) and its state (*Ready*, or what it still needs), then each of its enabled models with id, name, context window, efforts (the default marked, and `off` when thinking can be turned off), tiers and whether it reads images; the model the calling agent runs on is marked. `--all` adds the hidden models and entries |
+| `show <entry>` | Every setting of one entry: name, vendor or family and wire, endpoint, whether a key is saved (never the key), accounts by label, and each model with every field |
+| `add` | A new entry: `--vendor <id>`, a vendor of `GET /api/providers/catalog`, or `--family <family>` with `--wire` and `--base-url`; `--name` names it. It takes no key: the entry joins the list incomplete, and the command's answer says to add the key in Settings › Providers |
+| `edit <entry>` | Changes the name or the endpoint |
+| `remove <entry>` | Removes the entry, as Settings does |
+| `models search <query>` | The same search as Add Model, each match on one line with its `<vendor>/<model id>`, name, context window, output limit, efforts and files |
+| `models add <entry> [<vendor>/<model id>]` | Adds a model to the entry's configured list, filled from that match; options `--id`, `--name`, `--context`, `--output`, `--efforts`, `--extensions` and `--fast-tier` set or override fields, and without a match they are the whole model |
+| `models edit <entry> <model id>` | Changes the fields its options name |
+| `models remove <entry> <model id>` | Removes the model from the list |
+
+An entry is named by its name or id. A subscription entry's models come from
+its provider, so the `models` leaves that change a list refuse it with *Claude
+Code lists its own models; its list cannot be edited.* The checks and their
+words are the settings page's.
+
+No command takes or prints a key or a token: a key typed into a conversation
+would sit in its transcript and reach the model's vendor. The user adds keys
+in Settings, where the incomplete entry waits for it.
+
+**Permission.** `add`, `edit`, `remove` and the `models` leaves that change a
+list change settings every conversation of the user reads, so they need the
+user's permission in each conversation, the category `providers.manage`,
+*Manage Providers*: "Add, change and remove your provider entries and their
+models, which every conversation of yours can use. Keys are added in
+Settings, never by the agent." `list`, `show` and `models search` are reads and
+need none. `--json` returns `{ providers }`, `{ provider }`, `{ results }` or
+`{ model }` with every field the text prints.
+
 ## Catalog cache
 
 For example, the backend restarts at 09:55 with a stored Codex record that was

@@ -80,7 +80,6 @@ demi agent fork <id> [--profile <name>] [--description <title>] < message.txt
 demi agent send <id|parent> < message.txt
 demi agent show <id>...
 demi agent list
-demi agent models
 demi agent profiles list
 demi agent profiles show <name>
 demi agent profiles create <name> --description <line> [model options] [--no-spawning] [--disabled] [< instructions.txt]
@@ -517,26 +516,9 @@ profiles with the `demi agent` group, so a user can say "make me an explore
 profile on a cheap fast model" in a conversation. It still starts a child only
 through a profile: `spawn` has no model option.
 
-**`demi agent models`** lists what the composer's model menu offers the user
-now, the same catalog: each enabled provider entry, by the name Settings
-gives it and its kind, then each of its enabled models with its id, name,
-context window, efforts (the first one marked as the default, and `off` when
-it can turn thinking off), service tiers such as `fast`, and whether it reads
-images. The model the calling agent runs on is marked. It is a read every
-node's group has.
-
-```text
-$ demi agent models
-Claude Code · subscription
-* claude-opus-5-5     Claude Opus 5.5     1M    low* medium high max off   fast   images
-  claude-sonnet-5     Claude Sonnet 5     1M    low* medium high off       fast   images
-Development · API key
-  deepseek-v4.1-flash DeepSeek V4.1 Flash 128K  low* high                         -
-* the model this agent runs on
-```
-
-`--json` returns `{ providers: [{ id, name, kind, models: [{ id, name,
-window, efforts, defaultEffort, canTurnOff, tiers, images, current }] }] }`.
+The models it can give a profile are those **`demi providers list`**
+lists ([Managing providers from a conversation](../providers/models.md#managing-providers-from-a-conversation)),
+the composer's model menu as the user has it now.
 
 **`demi agent profiles`** is a group:
 
@@ -548,7 +530,7 @@ window, efforts, defaultEffort, canTurnOff, tiers, images, current }] }] }`.
 | `edit <profile>` | Changes the fields its options name and keeps the others; stdin replaces the instructions, `--no-instructions` removes them |
 | `delete <name>` | Removes the profile; a child already running on it goes on |
 
-The model options are `--model <id>`, a model `demi agent models` lists, with
+The model options are `--model <id>`, a model `demi providers list` lists, with
 `--provider <entry>`, the entry's name or id, needed only when more than one
 entry offers that id; `--effort <effort|off>` and `--tier <tier|default>`;
 and, on `edit`, `--model parent`, which makes the profile inherit the
@@ -568,8 +550,8 @@ prints, and `{ name, deleted }` for `delete`.
 that every conversation reads, so they need the user's permission in each
 conversation, the category `agent.profiles`, *Change Subagent Profiles*:
 "Create, edit and delete the subagent profiles every conversation of yours
-can use." ([Categories](permissions.md#categories)). `models`, `profiles
-list` and `profiles show` are reads and need none.
+can use." ([Categories](permissions.md#categories)). `profiles list` and
+`profiles show` are reads and need none.
 
 ### Limits
 
