@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, onScopeDispose, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ProviderLoginDialog, {
   type ProviderLoginPhase,
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
-import { defaultEndpointUrl } from '@demicodes/web-ui/settings/provider-defaults'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import {
   WIRE_API_LABELS,
@@ -17,8 +16,10 @@ import {
   type SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
 import {
+  missingParts,
   mockVendors,
   provider,
+  searchMockModels,
   type MockProvider,
   type SettingsState,
 } from '../fixtures/settings'
@@ -35,8 +36,20 @@ const props = defineProps<{
 const s = computed(() => props.state)
 const testing = ref<string | null>(null)
 
-/** The provider being added: its form shows, and it joins the list once it has a key, as the product saves it then. */
-const draft = ref<MockProvider | null>(null)
+/**
+ * As the product's page shows an entry from what it holds: it is incomplete,
+ * with the yellow dot and its fields red, until the last part is saved.
+ */
+function settle(entry: SettingsProviderEntry): void {
+  const missing = missingParts(entry)
+  if (missing.length) {
+    entry.state = 'setup'
+    entry.missing = missing
+  } else if (entry.state === 'setup') {
+    entry.state = 'ready'
+    delete entry.missing
+  }
+}
 
 function changeProvider(
   entry: SettingsProviderEntry,
@@ -48,11 +61,8 @@ function changeProvider(
     entry.apiKey = ''
     entry.configured = true
     entry.keyConfigured = true
-    if (draft.value === entry) {
-      s.value.providers.push(draft.value)
-      draft.value = null
-    }
   }
+  settle(entry)
 }
 
 function select(id: string) {
@@ -60,19 +70,10 @@ function select(id: string) {
   s.value.providerDetailOpen = true
 }
 
-/** Choosing another provider leaves the form of the one being added. */
-watch(
-  () => s.value.selectedProviderId,
-  (id) => {
-    if (draft.value && draft.value.id !== id) {
-      draft.value = null
-    }
-  },
-)
-
+/** Adding asks only the kind: the entry joins the list at once, selected, and says what it lacks. */
 function addProvider(vendor: SettingsVendor) {
   const id = `p-${Date.now()}`
-  draft.value = provider({
+  join(provider({
     id,
     name: vendor.name,
     kind: 'api_key',
@@ -83,25 +84,27 @@ function addProvider(vendor: SettingsVendor) {
     modelSource: 'catalog',
     catalogFetched: 'just now',
     logo: vendor.logo,
-    state: 'unconfigured',
-  })
-  select(id)
+  }))
 }
 
 function addEndpoint(wireApi: SettingsWireApi) {
   const id = `p-${Date.now()}`
-  draft.value = provider({
+  join(provider({
     id,
     name: `${WIRE_API_LABELS[wireApi]} API`,
     kind: 'api_key',
     family: 'custom',
     vendorId: null,
     wireApi,
-    baseUrl: defaultEndpointUrl(mockVendors, wireApi),
+    baseUrl: '',
     modelSource: 'manual',
-    state: 'unconfigured',
-  })
-  select(id)
+  }))
+}
+
+function join(entry: MockProvider) {
+  settle(entry)
+  s.value.providers.push(entry)
+  select(entry.id)
 }
 
 function removeProvider(id: string) {
@@ -127,7 +130,7 @@ function test(p: SettingsProviderEntry, accountId?: string) {
   window.setTimeout(() => {
     testing.value = null
     accountOperation.value = null
-    if (p.vendorId && !p.apiKey) {
+    if (p.vendorId && !p.apiKey && !p.keyConfigured) {
       p.state = 'error'
       p.detail = '401 · No API key provided'
     } else if (/localhost|127\.0\.0\.1/.test(p.baseUrl)) {
@@ -295,17 +298,30 @@ async function saveModel(
       extensions: draft.extensions,
       fastTier: draft.fastTier,
     })
-  } else if (!mock.models.some((m) => m.id === draft.id)) {
+  } else {
+    if (mock.models.some((m) => m.id === draft.id && mock.modelSource === 'manual')) {
+      throw new Error(`The model ${draft.id} is already in the list.`)
+    }
+    // An entry that follows its vendor's list starts a list of its own from it.
+    mock.modelSource = 'manual'
+    mock.models = mock.models.filter((m) => m.id !== draft.id)
     mock.models.push({
       ...draft,
       tools: true,
       enabled: true,
     })
   }
+  settle(p)
 }
 
 function removeModel(p: SettingsProviderEntry, m: SettingsProviderModel) {
   p.models = p.models.filter((x) => x.id !== m.id)
+  settle(p)
+}
+
+/** The product asks the backend, which fills the match from the entry's vendor; here the fixtures answer. */
+function searchModels(_providerId: string, query: string, signal: AbortSignal) {
+  return searchMockModels(query, signal)
 }
 
 // Sign-in runs in its own dialog; the mock walks each flow to completion.
@@ -436,6 +452,7 @@ function closeLogin() {
       ],
     })
     p.state = 'ready'
+    settle(p)
   }
   loginOpen.value = false
 }
@@ -446,7 +463,6 @@ function closeLogin() {
     v-model:selected-id="s.selectedProviderId"
     v-model:detail-open="s.providerDetailOpen"
     :providers="s.providers"
-    :draft="draft"
     :vendors="mockVendors"
     :overlay-store="appOverlayStore"
     :testing="testing"
@@ -468,6 +484,7 @@ function closeLogin() {
     @activate-account="activateAccount"
     @remove-account="removeAccount"
     :save-model="saveModel"
+    :search-models="searchModels"
     @remove-model="removeModel"
   />
   <ProviderLoginDialog

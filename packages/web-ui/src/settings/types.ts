@@ -138,9 +138,31 @@ export interface SettingsVendor {
   logo: string | null
 }
 
-/** `unconfigured` is a fresh entry that still needs its key or login. */
+/**
+ * `setup` is an entry that is not complete yet (`models.md` § A provider is
+ * in the list from the start): its `missing` names what it lacks.
+ */
 export type SettingsProviderState =
-  'ready' | 'unconfigured' | 'error' | 'unreachable' | 'signed-out' | 'disabled'
+  'ready' | 'setup' | 'error' | 'unreachable' | 'signed-out' | 'disabled'
+
+/** A part an incomplete entry lacks: its API key, its first model, or its sign-in. */
+export type SettingsSetupPart = 'apiKey' | 'models' | 'account'
+
+/** A model models.dev lists, which the Add Model dialog offers to fill a model from. */
+export interface SettingsModelMatch {
+  /** `<vendor>/<model id>`, which names the match. */
+  ref: string
+  /** The models.dev vendor the match is filled from. */
+  vendor: string
+  /** The whole model as the entry's vendor names it; every field stays editable. */
+  model: SettingsModelDraft
+}
+
+/**
+ * Asks for the matches of what the user typed; the host answers from the
+ * backend. A request the dialog no longer needs is aborted through `signal`.
+ */
+export type SettingsModelSearch = (query: string, signal: AbortSignal) => Promise<SettingsModelMatch[]>
 
 /** A model a provider offers, as the page lists and toggles it. */
 export interface SettingsProviderModel extends SettingsModelDraft {
@@ -201,6 +223,11 @@ export interface SettingsProviderEntry {
   modelSource: 'catalog' | 'manual'
   catalogFetched: string | null
   state: SettingsProviderState
+  /**
+   * What an incomplete entry lacks, from which the page marks its fields; only
+   * read while `state` is `setup`, and absent for a subscription that has no entry yet.
+   */
+  missing?: SettingsSetupPart[]
   /**
    * What went wrong, from the last test or request: the provider's own words,
    * passed through in full and never paraphrased. Never a note about a healthy

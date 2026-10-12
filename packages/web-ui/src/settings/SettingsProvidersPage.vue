@@ -23,6 +23,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
+import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import ProviderQuota from './ProviderQuota.vue'
@@ -39,6 +40,7 @@ import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import AddProviderDialog from './AddProviderDialog.vue'
 import ModelDialog from './ModelDialog.vue'
+import { defaultEndpointUrl } from './provider-defaults'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsListItem from './SettingsListItem.vue'
@@ -48,7 +50,9 @@ import SettingsSplit from './SettingsSplit.vue'
 import {
   WIRE_API_LABELS,
   type SettingsModelDraft,
+  type SettingsModelSearch,
   type SettingsQuotaRefresh,
+  type SettingsSetupPart,
   type SettingsModelEditor,
   type SettingsProviderEntry,
   type SettingsProviderOperation,
@@ -62,10 +66,12 @@ import type { TitleText } from '../ui/ui-text'
 /**
  * Providers: a rail of providers beside the selected one. Every supported
  * subscription is always listed and manages its accounts; an API key is added from
- * the rail and edits its endpoint, key and model list on its page. Adding opens the
- * new entry's form, and the entry joins the list once the host saved it. Removing
- * an entry, an account or a model asks first. Field edits land on the entry itself;
- * everything that needs the host is emitted.
+ * the rail and edits its endpoint, key and model list on its page. Adding asks
+ * only the kind: the entry joins the list at once, selected, and its page marks
+ * what it still lacks (`missing`) in red with the words under the field, as a form
+ * marks a field it cannot do without (`models.md` § A provider is in the list
+ * from the start). Removing an entry, an account or a model asks first. Field
+ * edits land on the entry itself; everything that needs the host is emitted.
  */
 const props = defineProps<{
   saveModel: (
@@ -75,11 +81,8 @@ const props = defineProps<{
   ) => Promise<void>
   /** The saved providers, which the list shows. */
   providers: SettingsProviderEntry[]
-  /**
-   * The provider being added, whose form the detail shows while it is
-   * selected; it is not in the list until it is saved.
-   */
-  draft?: SettingsProviderEntry | null
+  /** Searches models.dev for the Add Model dialog of the entry `providerId`, filled from that entry's vendor. */
+  searchModels?: (providerId: string, query: string, signal: AbortSignal) => ReturnType<SettingsModelSearch>
   vendors: SettingsVendor[]
   load?: 'loading' | 'ready' | 'failed'
   vendorLoad?: 'loading' | 'ready' | 'failed'
@@ -137,10 +140,12 @@ const apiKeys = computed(() =>
   props.providers.filter((p) => p.kind === 'api_key'),
 )
 const selected = computed(
-  () =>
-    props.providers.find((p) => p.id === selectedId.value) ??
-    (props.draft?.id === selectedId.value ? props.draft : null),
+  () => props.providers.find((p) => p.id === selectedId.value) ?? null,
 )
+/** Whether the selected entry still lacks `part`: its field is red, with the words under it. */
+function lacks(part: SettingsSetupPart): boolean {
+  return selected.value?.state === 'setup' && selected.value.missing?.includes(part) === true
+}
 const splitOpen = computed({
   get: () => detailOpen.value && selected.value !== null,
   set: (value: boolean) => {
@@ -173,13 +178,14 @@ watch(
 
 /**
  * Rail dots say what needs attention, for every kind of provider alike: none
- * while it works, yellow while it is not set up (no account, no key, signed
- * out), red when it failed or cannot be reached. A working provider is the
- * normal case and carries no mark.
+ * while it works, the sidebar's needs-you yellow while it is not set up (no
+ * account, no key, no model), the warning yellow while it is signed out, red
+ * when it failed or cannot be reached. A working provider is the normal case
+ * and carries no mark.
  */
 const providerBadge = {
   ready: undefined,
-  unconfigured: 'warning',
+  setup: 'attention',
   'signed-out': 'warning',
   error: 'danger',
   unreachable: 'danger',
@@ -188,7 +194,7 @@ const providerBadge = {
 /** What each dot says when the pointer is over the mark it sits on. */
 const providerBadgeLabel = {
   ready: undefined,
-  unconfigured: 'Not set up',
+  setup: 'Not set up',
   'signed-out': 'Signed out',
   error: 'Failed',
   unreachable: 'Cannot be reached',
@@ -279,6 +285,13 @@ const wireOptions = (Object.keys(WIRE_API_LABELS) as SettingsWireApi[]).map(
   }),
 )
 
+/** Where an entry without its own endpoint sends requests: its vendor's, else its protocol's official one. */
+function defaultBaseUrl(provider: SettingsProviderEntry): string {
+  return provider.vendorId
+    ? props.vendors.find((vendor) => vendor.id === provider.vendorId)?.baseUrl ?? ''
+    : defaultEndpointUrl(props.vendors, provider.wireApi)
+}
+
 function select(id: string) {
   selectedId.value = id
   detailOpen.value = true
@@ -353,6 +366,11 @@ function visibleModels(p: SettingsProviderEntry): SettingsProviderModel[] {
 /** The model dialog: create or edit a manual model, or view a catalog one. */
 const modelEditor = defineModel<SettingsModelEditor | null>('modelEditor', {
   default: null,
+})
+const dialogSearch = computed<SettingsModelSearch | undefined>(() => {
+  const search = props.searchModels
+  const editor = modelEditor.value
+  return search && editor ? (query, signal) => search(editor.providerId, query, signal) : undefined
 })
 
 function toDraft(m: SettingsProviderModel): SettingsModelDraft {
@@ -571,12 +589,6 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                       />
                     </div>
                   </div>
-                  <p
-                    v-if="selected.id === draft?.id"
-                    class="mt-0.5 text-[13px] leading-5 text-fg-muted"
-                  >
-                    New. It joins the list once it has its API key{{ selected.modelSource === 'manual' ? ' and a model' : '' }}.
-                  </p>
                 </header>
               </template>
 
@@ -667,8 +679,9 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                 </SettingsRow>
                 <div
                   v-if="!selected.accounts.length"
-                  class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
+                  class="flex select-none flex-col items-center gap-1.5 px-4 py-6 text-center text-[13px] text-fg-subtle"
                 >
+                  <InlineError v-if="lacks('account')" message="Sign in required" />
                   No account yet. Add one to use this provider.
                 </div>
               </template>
@@ -680,6 +693,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     :disabled="fieldsLocked(selected)"
                     :model-value="selected.baseUrl"
                     aria-label="Base URL"
+                    :placeholder="defaultBaseUrl(selected)"
                     literal
                     class="w-72 max-w-full"
                     @commit="emit('change', selected, { baseUrl: $event })"
@@ -714,7 +728,11 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   label="API key"
                   description="Stored encrypted on the server."
                 >
+                  <template v-if="lacks('apiKey')" #detail>
+                    <InlineError message="Required" />
+                  </template>
                   <CommitTextInput
+                    :invalid="lacks('apiKey')"
                     :disabled="fieldsLocked(selected)"
                     :model-value="selected.apiKey"
                     aria-label="API key"
@@ -917,17 +935,15 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                 >
                   <template #prefix><Search :size="ICON_PX.in24" /></template>
                 </TextInput>
-                <Tooltip
-                  v-if="selected.modelSource === 'manual'"
-                  content="Add model"
+                <Tooltip content="Add Model"
                   ><IconButton
                     size="sm"
                     :icon="Plus"
-                    aria-label="Add model"
+                    aria-label="Add Model"
                     :disabled="fieldsLocked(selected)"
                     @click="openModel('create', null)"
                 /></Tooltip>
-                <Tooltip v-else content="Refresh"
+                <Tooltip v-if="selected.modelSource === 'catalog'" content="Refresh"
                   ><IconButton
                     size="sm"
                     :icon="RefreshCw"
@@ -1003,11 +1019,6 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                         :icon="Trash2"
                         variant="danger"
                         aria-label="Remove"
-                        :disabled="
-                          selected.configured !== false &&
-                          selected.models.length === 1
-                        "
-                        disabled-reason="A saved provider keeps at least one model"
                         @click="askRemoveModel(selected, m)"
                     /></Tooltip>
                   </template>
@@ -1029,16 +1040,21 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                 </SettingsRow>
                 <div
                   v-if="!visibleModels(selected).length"
-                  class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
+                  class="flex select-none justify-center px-4 py-6 text-center text-[13px] text-fg-subtle"
                 >
-                  {{
+                  <!-- An empty list the entry cannot do without says so under Add Model, in a form's red. -->
+                  <InlineError
+                    v-if="!modelFilter && lacks('models')"
+                    message="Add at least one model"
+                  />
+                  <template v-else>{{
                     modelFilter
                       ? 'No model matches.'
                       : selected.kind === 'subscription' &&
                           !selected.accounts.length
                         ? 'Sign in to see what this account can use.'
                         : 'No models yet.'
-                  }}
+                  }}</template>
                 </div>
               </AsyncRegion>
             </SettingsGroup>
@@ -1087,6 +1103,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
         modelEditor.status.kind === 'failed' ? modelEditor.status.message : null
       "
       :model="modelEditor.model"
+      :search="dialogSearch"
       @close="modelEditor.open = false"
       @save="saveModel"
     />

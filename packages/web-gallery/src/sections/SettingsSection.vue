@@ -15,7 +15,8 @@ import GalleryWebSearchCalls from '../components/GalleryWebSearchCalls.vue'
 import GalleryWebSearchShowcase from '../components/GalleryWebSearchShowcase.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
-import { createSettingsState } from '../fixtures/settings'
+import GallerySettingsProviders from '../components/GallerySettingsProviders.vue'
+import { createSettingsState, incompleteProviders, mockProviders } from '../fixtures/settings'
 import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
 import { PLUGIN_PAGES } from '../generated/pages'
 import { providePageHost, withPluginSections } from '@demicodes/web-ui/plugins/page'
@@ -91,7 +92,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Providers',
-    'A bare rail of providers beside the selected one, with no surface of its own. Every supported subscription is always listed. A dot means attention, for every kind of provider alike: none while it works, yellow while it is not set up, red when it failed or cannot be reached. An API-key entry edits its endpoint, key and models on the page; a subscription entry manages accounts. Adding a provider, signing in, and adding or editing a model open dialogs.'
+    'A bare rail of providers beside the selected one, with no surface of its own. Every supported subscription is always listed. A dot means attention, for every kind of provider alike: none while it works, yellow while it is not set up, red when it failed or cannot be reached. An API-key entry edits its endpoint, key and models on the page; a subscription entry manages accounts. Adding a provider asks only its kind and the entry joins the list at once, selected; signing in, and adding or editing a model, open dialogs.'
   ],
   [
     'Credentials',
@@ -121,6 +122,16 @@ const anatomy: [string, string][] = [
 
 const account = { name: 'Zan' }
 const full = createSettingsState()
+/** Providers where the only API-key entry is complete: Add, then a vendor, adds an incomplete one. */
+const adding = createSettingsState()
+adding.providers = mockProviders().filter((entry) => ['claude-code', 'anthropic'].includes(entry.id))
+adding.selectedProviderId = 'anthropic'
+adding.providerDetailOpen = true
+/** Providers each lacking a part: a sign-in, a key, a model, a key and a model. */
+const incomplete = createSettingsState()
+incomplete.providers = incompleteProviders()
+incomplete.selectedProviderId = 'google'
+incomplete.providerDetailOpen = true
 /** What the Notifications specimen's stand-in browser answers when asked. */
 const browserAnswers = [
   { value: 'granted', label: 'Browser Allows' },
@@ -245,6 +256,24 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
               @retry="productWould('Load the Devices Again')"
             />
           </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Providers · Adding"
+        note="Add in the API Keys caption asks only the kind, a vendor or a protocol of your own endpoint. The entry joins the list at once, selected, with the yellow dot, and its page marks what it lacks: pick Google, paste any key into the red API key field, and Add Model finds Gemini on models.dev; the dot goes with the last part."
+      >
+        <div class="h-[640px] w-full max-w-4xl @container rounded-xl border border-line bg-surface-dialog p-6">
+          <GallerySettingsProviders :state="adding" />
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Providers · Incomplete"
+        note="An entry that cannot run yet wears the yellow dot, and each part it lacks is marked on its page: a missing key is a red field with Required under it, an empty model list says Add at least one model under Add Model, and a subscription nobody signed in to says Sign in required. Google lacks its key, Lab Server its first model, OpenAI Responses API both, Codex its sign-in. Each mark goes the moment its part is saved."
+      >
+        <div class="h-[640px] w-full max-w-4xl @container rounded-xl border border-line bg-surface-dialog p-6">
+          <GallerySettingsProviders :state="incomplete" />
         </div>
       </GallerySection>
 

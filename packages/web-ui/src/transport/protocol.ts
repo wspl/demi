@@ -6,6 +6,11 @@ export interface ProviderInfo {
   id: string
   label: string
   isAvailable: boolean
+  /**
+   * Why an incomplete entry's models cannot be chosen yet, in the backend's
+   * words: the model menu lists them dimmed with it as the reason.
+   */
+  setupReason?: string
 }
 
 export interface ModelReasoning {

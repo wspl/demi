@@ -9,7 +9,9 @@ import type {
   SettingsKeyBinding,
   SettingsPlugin,
   SettingsProviderEntry,
+  SettingsModelMatch,
   SettingsProviderModel,
+  SettingsSetupPart,
   SettingsVendor
 } from '@demicodes/web-ui/settings/types'
 import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
@@ -642,6 +644,94 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
   ]
+}
+
+/**
+ * Entries that are not complete yet (`models.md` § A provider is in the list
+ * from the start), one lacking each part and one lacking two: a vendor entry
+ * without its key, a bare endpoint with a key and no model, a bare endpoint
+ * with neither, and a subscription nobody has signed in to.
+ */
+export function incompleteProviders(): MockProvider[] {
+  return [
+    provider({
+      id: 'codex-new', name: 'Codex', kind: 'subscription', family: 'codex', state: 'setup', missing: ['account'],
+      autoRefreshUsage: false,
+    }),
+    provider({
+      id: 'google', name: 'Google', kind: 'api_key', family: 'google', vendorId: 'google',
+      wireApi: 'google-generative', state: 'setup', missing: ['apiKey'], modelSource: 'catalog',
+      models: [
+        model({ id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', contextWindow: 1_000_000, outputLimit: 65_536, tools: true }),
+        model({ id: 'gemini-3.8-pro', name: 'Gemini 3.8 Pro', contextWindow: 1_000_000, outputLimit: 65_536, tools: true }),
+      ],
+    }),
+    provider({
+      id: 'lab', name: 'Lab Server', kind: 'api_key', family: 'openai', baseUrl: 'http://lab.example:8000/v1',
+      state: 'setup', missing: ['models'], modelSource: 'manual', configured: true, keyConfigured: true,
+    }),
+    provider({
+      id: 'endpoint', name: 'OpenAI Responses API', kind: 'api_key', family: 'openai', wireApi: 'openai-responses',
+      state: 'setup', missing: ['apiKey', 'models'], modelSource: 'manual',
+    }),
+  ]
+}
+
+/** What an entry still lacks, from what it holds: its key, its first model, its sign-in. */
+export function missingParts(entry: SettingsProviderEntry): SettingsSetupPart[] {
+  if (entry.kind === 'subscription') {
+    return entry.accounts.length ? [] : ['account']
+  }
+  return [
+    ...(entry.keyConfigured ? [] : ['apiKey' as const]),
+    ...(entry.models.length ? [] : ['models' as const]),
+  ]
+}
+
+/** The models.dev models the Add Model specimens search, as the backend's search answers. */
+export const mockModelMatches: SettingsModelMatch[] = [
+  ['google', 'gemini-3.8-flash', 'Gemini 3.8 Flash', 1_000_000, 65_536, ['low', 'medium', 'high']],
+  ['google', 'gemini-3.8-flash-lite', 'Gemini 3.8 Flash Lite', 1_000_000, 65_536, ['low', 'medium']],
+  ['google', 'gemini-3.5-flash', 'Gemini 3.5 Flash', 1_000_000, 65_536, ['low', 'medium', 'high']],
+  ['google', 'gemini-3.8-pro', 'Gemini 3.8 Pro', 1_000_000, 65_536, ['low', 'medium', 'high']],
+  ['openai', 'gpt-5.5', 'GPT-5.5', 400_000, 128_000, ['low', 'medium', 'high']],
+  ['openai', 'gpt-5.5-mini', 'GPT-5.5 Mini', 400_000, 128_000, ['low', 'medium']],
+  ['anthropic', 'claude-opus-4-7', 'Claude Opus 4.7', 1_000_000, 64_000, ['low', 'medium', 'high', 'max']],
+  ['deepseek', 'deepseek-v4-pro', 'DeepSeek V4 Pro', 512_000, 64_000, []],
+].map(([vendor, id, name, contextWindow, outputLimit, efforts]) => ({
+  ref: `${vendor}/${id}`,
+  vendor: vendor as string,
+  model: {
+    id: id as string,
+    name: name as string,
+    contextWindow: contextWindow as number,
+    outputLimit: outputLimit as number,
+    efforts: efforts as string[],
+    extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf'],
+    fastTier: null,
+  },
+}))
+
+/**
+ * The backend's search stand-in: a match holds every word of the query in its
+ * name or id, in any case and order, and the answer takes a beat, as a request
+ * does; an aborted request answers with the abort, as `fetch` does.
+ */
+export function searchMockModels(query: string, signal: AbortSignal): Promise<SettingsModelMatch[]> {
+  const words = query.toLowerCase().split(/\s+/).filter(Boolean)
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      resolve(
+        mockModelMatches
+          .filter((match) => words.every((word) => `${match.model.name} ${match.model.id}`.toLowerCase().includes(word)))
+          .slice(0, 20),
+      )
+    }, 120)
+    signal.addEventListener('abort', () => {
+      window.clearTimeout(timer)
+      reject(new DOMException('Aborted', 'AbortError'))
+    })
+  })
 }
 
 /** The paired devices the devices page lists. */
