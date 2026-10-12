@@ -20,6 +20,7 @@ import {
   type SkillsState,
   type SourceState,
 } from '@demicodes/plugin-skills'
+import { removeKeySchema, saveKeySchema, signInSchema, signOutSchema, type WebState } from '@demicodes/plugin-web'
 import { productWould } from '../product-would'
 import type { GalleryBrowser } from './live-browser'
 import type { GalleryBrowserPlugin } from './panel'
@@ -53,6 +54,8 @@ export interface GalleryShell {
   intents?: IntentService
   /** Whether the specimen's Host is a Cloud that is starting; never, unless the specimen says. */
   hostStarting?(): boolean
+  /** What the specimen says the product would do with a page it opens in a new tab. */
+  openLink?: PageHost['openLink']
 }
 
 /** A page host over `plugins` and the specimen's `shell`; a plugin it lacks refuses as the backend would. */
@@ -101,6 +104,10 @@ export function galleryPageHost(plugins: Record<string, GalleryPlugin>, shell: G
       select: (_conversation, kind) => productWould(`Select the ${kind} Tab in the Work Panel`),
     },
     openSettings: (section) => productWould(`Open ${section} Settings`),
+    openLink: shell.openLink ?? (async (url) => {
+      await url
+      productWould('Open the Page in a New Tab')
+    }),
     overlays: appOverlayStore,
   }
 }
@@ -209,6 +216,74 @@ export function commitOf(seed: string): string {
     hash = Math.imul(hash ^ character.charCodeAt(0), 0x01000193) >>> 0
   }
   return hash.toString(16).padStart(8, '0').repeat(5)
+}
+
+/** The shortest key the gallery's Exa accepts: a shorter one is refused, as Exa refuses a key copied in part. */
+export const GALLERY_EXA_KEY_LENGTH = 16
+
+/**
+ * The web plugin over `state`: Sign In answers Exa's sign-in page, which the
+ * page opens in a new tab, and the user is signed in as zan@example.com a
+ * moment later, as Exa's callback would; Sign Out forgets the sign-in. A key
+ * is checked with one search, a beat long: one shorter than
+ * {@link GALLERY_EXA_KEY_LENGTH} is refused, as Exa refuses a key copied in
+ * part. The key in use follows: the key over the sign-in over neither.
+ */
+export function webPlugin(state: WebState): GalleryPlugin {
+  const inUse = (): void => {
+    state.inUse = state.key ? 'key' : state.account ? 'account' : 'anonymous'
+  }
+  return {
+    // A new object at each change, as the backend sends the state anew.
+    state: () => ({
+      account: state.account ? { ...state.account } : null,
+      key: state.key ? { ...state.key } : null,
+      inUse: state.inUse,
+    }),
+    call: async (method, params) => {
+      switch (method) {
+        case 'sign_in':
+          signInSchema.parse(params)
+          await beat(300)
+          // The tab the page opened comes back signed in.
+          void beat(1500).then(() => {
+            state.account = { email: 'zan@example.com' }
+            inUse()
+          })
+          return { url: 'https://auth.exa.ai/authorize?client_id=demi&state=gallery' }
+        case 'sign_out':
+          signOutSchema.parse(params)
+          await beat(400)
+          state.account = null
+          inUse()
+          return null
+        case 'save_key': {
+          const { key } = saveKeySchema.parse(params)
+          await beat(900)
+          if (key.trim().length < GALLERY_EXA_KEY_LENGTH) {
+            throw new PluginCallError('key_refused', 'Exa refused this key')
+          }
+          state.key = { lastFour: key.trim().slice(-4), unchecked: null }
+          inUse()
+          return null
+        }
+        case 'remove_key':
+          removeKeySchema.parse(params)
+          await beat(300)
+          state.key = null
+          inUse()
+          return null
+        default:
+          return unknownMethod(method)
+      }
+    },
+  }
+}
+
+/** Opens Exa's sign-in as the product would: a toast says so. */
+export async function openExaSignIn(url: string | Promise<string>): Promise<void> {
+  await url
+  productWould('Open Exa’s Sign-In Page in a New Tab')
 }
 
 /**
