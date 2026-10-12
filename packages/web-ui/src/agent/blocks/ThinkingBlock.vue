@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Brain } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import FunctionalBlock from './FunctionalBlock.vue'
+import ThinkingFace from './ThinkingFace.vue'
 import ThinkingText from './ThinkingText.vue'
-import { thinkingFaceLabel } from '../thinking-label'
-import { useElapsedTime } from '../../composables/useElapsedTime'
+import { THINKING_ICON } from './tool-row-icon'
 
 const props = defineProps<{
   thinking: string
@@ -17,13 +16,6 @@ const props = defineProps<{
 
 const hasContent = computed(() => props.thinking.trim().length > 0)
 const isOpen = defineModel<boolean>('open', { default: false })
-
-const elapsedMs = useElapsedTime(
-  () => Date.parse(props.createdAt),
-  () => props.isStreaming,
-  () => props.endedAt ? Date.parse(props.endedAt) : null,
-)
-const label = computed(() => thinkingFaceLabel(props.isStreaming, elapsedMs.value))
 const rollKey = computed(() => (props.isStreaming ? 'live' : 'done'))
 </script>
 
@@ -37,9 +29,9 @@ const rollKey = computed(() => (props.isStreaming ? 'live' : 'done'))
       :loading="isStreaming"
     >
       <template #icon>
-        <Brain :size="ICON_PX.in28" />
+        <component :is="THINKING_ICON" :size="ICON_PX.in28" />
       </template>
-      <span class="min-w-0 truncate">{{ label }}</span>
+      <ThinkingFace :streaming="isStreaming" :created-at="createdAt" :ended-at="endedAt" />
       <template v-if="hasContent" #body>
         <ThinkingText :content="thinking" :streaming="isStreaming" />
       </template>

@@ -138,10 +138,12 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
 
 type ThinkingStep = Extract<WorkStep, { type: 'thinking' }>
 type CallBlockStep = Extract<WorkStep, { type: 'tool_call' }>
+type PendingStep = Extract<WorkStep, { type: 'pending_call' }>
 
 /**
- * What a run's row shows (`runtime.md` § Work groups): a lone call, notice
- * or receipt is that step's own row, and a lone thinking the thinking's; an
+ * What a run's row shows (`runtime.md` § Work groups): a lone call, a lone
+ * call being written, notice or receipt is that step's own row, and a lone
+ * thinking the thinking's; an
  * ended run says what it did, and wears the time of a command still running
  * in it, `running` naming the `shell` calls that returned while their
  * command ran on, whose live frames say whether it still does; open while
@@ -152,6 +154,7 @@ type CallBlockStep = Extract<WorkStep, { type: 'tool_call' }>
  */
 export type RunFace =
   | { kind: 'call'; call: CallBlockStep }
+  | { kind: 'writing'; call: PendingStep }
   | { kind: 'notice'; notice: NoticeStep }
   | { kind: 'thinking'; thinking: ThinkingStep }
   | { kind: 'done'; running: CallBlockStep[] }
@@ -163,6 +166,8 @@ export function runFace(group: WorkGroupBlock, open: boolean): RunFace {
   const only = group.steps.length === 1 ? group.steps[0]! : null
   if (only?.type === 'tool_call')
     return { kind: 'call', call: only }
+  if (only?.type === 'pending_call')
+    return { kind: 'writing', call: only }
   if (only !== null && isNoticeStep(only))
     return { kind: 'notice', notice: only }
   if (only?.type === 'thinking')

@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { CommandReport } from '@demicodes/protocol'
-import { Bell } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import NoticeRow from './NoticeRow.vue'
-import CommandEndTag from './CommandEndTag.vue'
+import CommandReportFace from './CommandReportFace.vue'
+import { NOTICE_ICON } from './tool-row-icon'
 import GoneMediaLines from './GoneMediaLines.vue'
-import { reportMark, reportNotice, reportTitle, useCommandRevealer } from '../command-reports'
+import { reportShown } from '../command-reports'
 import { reportMedia, splitMedia } from '../tool-media'
 import { provideBlockScope } from '../whole-blocks'
 
@@ -27,20 +27,13 @@ const props = defineProps<{
 
 // What a notice shows, the light form keeps: its rows never open to read the block whole.
 provideBlockScope(() => undefined)
-const reveal = useCommandRevealer()
-const rows = computed(() => props.reports.flatMap((report, index) => {
-  const notice = reportNotice(report)
-  return notice === null
-    ? []
-    : [{
-        key: `${report.commandId}:${index}`,
-        notice,
-        title: reportTitle(report),
-        mark: reportMark(report),
-        go: reveal(report.commandId),
-        media: splitMedia(reportMedia(report)),
-      }]
-}))
+const rows = computed(() => props.reports.flatMap((report, index) => reportShown(report)
+  ? [{
+      key: `${report.commandId}:${index}`,
+      report,
+      media: splitMedia(reportMedia(report)),
+    }]
+  : []))
 </script>
 
 <template>
@@ -49,13 +42,11 @@ const rows = computed(() => props.reports.flatMap((report, index) => {
       v-for="(row, index) in rows"
       :key="row.key"
     >
-      <NoticeRow :notice="row.notice" :title="row.title" :go="row.go" :loading="working && index === rows.length - 1" :pictures="row.media.pictures">
+      <NoticeRow :loading="working && index === rows.length - 1" :pictures="row.media.pictures">
         <template #icon>
-          <Bell :size="ICON_PX.in28" />
+          <component :is="NOTICE_ICON" :size="ICON_PX.in28" />
         </template>
-        <template v-if="row.mark" #tag>
-          <CommandEndTag :mark="row.mark" />
-        </template>
+        <CommandReportFace :report="row.report" />
       </NoticeRow>
       <GoneMediaLines :lines="row.media.gone" />
     </template>
