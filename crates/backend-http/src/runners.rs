@@ -28,6 +28,7 @@ use demi_runner_protocol::release::{
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::MAX_MESSAGE_BYTES;
 use demi_web_api_protocol::devices::DeviceKind;
+use futures_util::StreamExt as _;
 
 use super::AppState;
 use super::error::ApiError;
@@ -149,8 +150,9 @@ pub(super) async fn put(
 }
 
 /// `GET /api/pipes/:id`: the pipe's bytes for its sink, or, as a WebSocket
-/// upgrade, a stream pipe's bytes from its source. A sink's answer's head
-/// goes out once the source is there; a pipe that fails first answers 409.
+/// upgrade, a stream pipe's bytes from its source. A sink's answer goes out
+/// at once, its body in the pipe's frames (`runner.md` § Pipes and output),
+/// which say how the pipe ended.
 pub(super) async fn get(
     State(state): State<AppState>,
     ConnectInfo(peer): ConnectInfo<Peer>,
@@ -177,7 +179,7 @@ pub(super) async fn get(
             shard.pipes().claim_sink(&id, device.id.as_str())
         })
         .await;
-    let mut sink = match claimed {
+    let sink = match claimed {
         Ok(Ok(sink)) => sink,
         Ok(Err(refusal)) => return refused(refusal),
         Err(_) => return StatusCode::SERVICE_UNAVAILABLE.into_response(),
@@ -185,15 +187,13 @@ pub(super) async fn get(
     // A write whose reply is overdue closes this connection, which ends the
     // device's read of what it still queues (`runner.md` § File contents).
     sink.closes_with(peer.control.closer());
-    if let Err(failure) = sink.source_arrived().await {
-        return (StatusCode::CONFLICT, failure.reason().to_owned()).into_response();
-    }
+    let frames = sink.into_frames().map(Ok::<_, std::convert::Infallible>);
     (
         [
             (CONTENT_TYPE, "application/octet-stream"),
             (CACHE_CONTROL, "no-store"),
         ],
-        Body::from_stream(sink.into_stream()),
+        Body::from_stream(frames),
     )
         .into_response()
 }
