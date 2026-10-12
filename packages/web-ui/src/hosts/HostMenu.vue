@@ -106,9 +106,10 @@ function connect() {
         >
           <Cloud v-if="primaryHost.kind === 'cloud'" :size="ICON_PX.in28" class="shrink-0" />
           <DeviceIcon v-else :state="primaryHost.state" />
+          <!-- Wide enough for a Windows computer's default name, DESKTOP- and seven characters. -->
           <span
             ref="hostLabel"
-            class="max-w-28 truncate"
+            class="max-w-36 truncate"
             :class="hostCompact ? COMPACT_LABEL_CLASS : ''"
           >{{ primaryHost.name }}</span>
           <span v-if="attachedHosts.length" class="text-[11px] text-fg-subtle">

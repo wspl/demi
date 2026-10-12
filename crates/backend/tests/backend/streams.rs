@@ -81,6 +81,19 @@ pub(crate) async fn socket(
     conversation: &str,
     name: &str,
 ) -> Socket {
+    let (socket, _) = tokio_tungstenite::connect_async(request(backend, session, conversation, name))
+        .await
+        .unwrap();
+    socket
+}
+
+/// The page's request for a socket on the stream `name` of `conversation`.
+fn request(
+    backend: &TestBackend,
+    session: &Session,
+    conversation: &str,
+    name: &str,
+) -> tokio_tungstenite::tungstenite::handshake::client::Request {
     let mut request = backend
         .ws_url(&path(conversation, name))
         .into_client_request()
@@ -88,8 +101,7 @@ pub(crate) async fn socket(
     let headers = request.headers_mut();
     headers.insert("cookie", session.cookie.parse().unwrap());
     headers.insert("origin", backend.url.parse().unwrap());
-    let (socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
-    socket
+    request
 }
 
 /// What the page receives until the backend closes the socket, and the
@@ -472,7 +484,11 @@ async fn a_services_messages_reach_its_plugin_about_its_devices_conversations_an
         "{}",
         String::from_utf8_lossy(&created.body)
     );
-    let _crashing = socket(&backend, &master, CONVERSATION, "crash").await;
+    // The fixture exits as it takes the stream, before or after the backend
+    // answers the upgrade, so the page gets the socket or a 503: what the
+    // plugin hears is the same either way.
+    let _crashing =
+        tokio_tungstenite::connect_async(request(&backend, &master, CONVERSATION, "crash")).await;
     assert_eq!(
         heard(&harness, 2).await[1],
         PackageHeard::Lost {
