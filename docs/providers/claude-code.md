@@ -578,9 +578,9 @@ as to a kept process.
 - **When.** A conversation whose model is a Claude Code model and whose
   runtime holds no process prepares one when a page opens the conversation,
   when the user picks another model or effort in it, when the active account
-  of its provider changes in Settings while a page has it open (the account's
-  change closes every process prepared with the previous account's token
-  first), and when a
+  of its provider changes while a page has it open, whether the user
+  activated it, removed the active one or signed a new one in (the change
+  closes every process prepared with the previous account's token first), and when a
   turn ends and its kept process would be refused by the next request
   because its token expires within 30 minutes: the token is refreshed and
   the replacement prepared then. Nothing else prepares one: a subagent
@@ -589,7 +589,11 @@ as to a kept process.
   history up to its last answered turn, with no input at its end, the spawn,
   and the `initialize` exchange that declares the SDK MCP server. The
   process then waits for its input on standard input, as a kept process
-  does. A conversation whose history ends in input not yet answered, such as
+  does. A preparation reads the blobs of the media its history replays: it
+  runs after the page's open is answered, so the rule that an open reads no
+  blob ([Media](../agent/runtime.md#media)) still holds for the open itself.
+  The CLI cannot resume an empty session, so a conversation with no answered
+  turn yet prepares nothing. A conversation whose history ends in input not yet answered, such as
   a turn that failed, prepares nothing, since its next request answers that
   input.
 - **Used or dropped.** The next request of the conversation takes the
