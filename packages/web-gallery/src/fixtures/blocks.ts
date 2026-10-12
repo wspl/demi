@@ -1431,6 +1431,68 @@ export function commandLookBlocks(): Block[] {
   ]
 }
 
+/** The call whose command the running run's specimen runs (`runningRunBlocks`). */
+export const RUNNING_RUN_CALL = 'running-run-merge'
+
+/**
+ * A turn whose run still goes (`runtime.md` § Work groups): it thought,
+ * checked the branch, and its newest call has merged and run the tests for
+ * a minute and a half. Folded, the run's row is that call and wears the time
+ * its command has run, as the call's own row does; open, it says what runs
+ * and for how long. The gallery's `runningRunCommand` is that command.
+ */
+export function runningRunBlocks(): Block[] {
+  const shell = (id: string, at: number, script: string, description: string, done: boolean): Block => toolCall({
+    id,
+    createdAt: iso(at),
+    toolName: 'shell',
+    status: done ? 'completed' : 'executing',
+    input: JSON.stringify({ script, description }),
+    view: done ? shellView({ commandId: '61', runningMs: 400, chunks: [{ stream: 'stdout', text: 'On branch fix/reset-wording\nnothing to commit, working tree clean\n' }] }) : null,
+  })
+  return [
+    {
+      type: 'user', id: 'running-run-ask', turnId: 'running-run-turn', createdAt: iso(100_000), model: demoModel,
+      content: [{ type: 'text', text: 'Merge the reset wording and run the tests.' }], preamble: null,
+    },
+    ...inRun(
+      { type: 'thinking', id: 'running-run-think', createdAt: iso(98_000), model: demoModel, text: 'Check the branch is clean, then merge and run the suite.', signature: null },
+      shell('running-run-status', 96_000, 'git status', 'Check the branch', true),
+      shell(RUNNING_RUN_CALL, 92_000, 'git merge --no-ff fix/reset-wording && bun run test', 'Review and merge the reset wording', false),
+    ),
+  ]
+}
+
+/** The call whose command runs on after its turn ended (`leftRunningBlocks`). */
+export const LEFT_RUNNING_CALL = 'left-running-suite'
+
+/**
+ * A turn that ended while a command it started runs on (`runtime.md`
+ * § Work groups): the agent thought, started the suite, and replied without
+ * waiting. The ended run's row says what it did and wears the time the
+ * command has run until it ends. The gallery's `leftRunningCommand` is it.
+ */
+export function leftRunningBlocks(): Block[] {
+  return [
+    {
+      type: 'user', id: 'left-running-ask', turnId: 'left-running-turn', createdAt: iso(140_000), model: demoModel,
+      content: [{ type: 'text', text: 'Start the end-to-end suite and tell me when it ends.' }], preamble: null,
+    },
+    ...inRun(
+      { type: 'thinking', id: 'left-running-think', createdAt: iso(138_000), model: demoModel, text: 'The suite takes minutes: start it and let it report.', signature: null },
+      toolCall({
+        id: LEFT_RUNNING_CALL,
+        createdAt: iso(136_000),
+        toolName: 'shell',
+        status: 'completed',
+        input: JSON.stringify({ script: 'bun run e2e', description: 'Run the end-to-end suite', intervalMs: 15_000 }),
+        view: shellView({ commandId: '71', status: 'running', runningMs: 15_000, chunks: [{ stream: 'stdout', text: 'Running 140 specs\n' }] }),
+      }),
+    ),
+    { type: 'text', id: 'left-running-reply', createdAt: iso(120_000), model: demoModel, text: 'The suite is running; I will tell you when it ends.' },
+  ]
+}
+
 /**
  * A run that viewed two screenshots, then a report that carried two
  * (`file-previews.md` § Media a tool returned): folded, the run's row shows
