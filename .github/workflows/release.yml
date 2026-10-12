@@ -90,7 +90,7 @@ jobs:
           - group: runner
             packages: --package demi-runner
           - group: commands
-            packages: --package demi-file --package demi-browser --package demi-claude-code
+            packages: --package demi-file --package demi-fetch --package demi-browser --package demi-claude-code
     defaults:
       run:
         shell: bash
