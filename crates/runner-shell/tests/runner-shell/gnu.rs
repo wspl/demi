@@ -194,6 +194,24 @@ async fn utilities_and_builtins_print_gnu_and_bash_messages() {
     assert!(failures.is_empty(), "\n{}", failures.join("\n"));
 }
 
+/// An error of the operating system that uutils gives no message of its own
+/// is worded as the system words it, as GNU's `ls` does, never as Rust's
+/// debug form: on Windows `ls /c/Users` printed `unknown io error:
+/// '/c/Users', 'Os { code: 123, kind: InvalidFilename, message: "The
+/// filename, directory name, or volume label syntax is incorrect." }'`. A
+/// name longer than any file system allows gives such an error everywhere.
+/// Runs in about 0.01 s.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn ls_words_an_error_without_a_message_of_its_own_as_the_system_does() {
+    let root = fixture();
+    let name = "a".repeat(300);
+    let (code, output, errors) = job(root.path(), &format!("ls {name}")).await;
+    assert_eq!(
+        (code, output.as_str(), errors),
+        (2, "", format!("ls: cannot access '{name}': File name too long\n"))
+    );
+}
+
 /// `find -exec`, `xargs` and `env` run a bare utility name as the job's own
 /// utility, as the shell does, and a path as that program: `--version` is
 /// GNU's option, which the system's BSD `sed` on macOS lacks, and on Linux

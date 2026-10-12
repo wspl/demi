@@ -41,7 +41,6 @@ pub trait Control: Send + Sync {
     fn read(&self, file: &File, bytes: &mut [u8]) -> std::io::Result<usize>;
     fn write(&self, file: &File, bytes: &[u8]) -> std::io::Result<usize>;
     fn sleep(&self, duration: std::time::Duration) -> std::io::Result<()>;
-    fn resolve(&self, path: &Path, cwd: &Path) -> PathBuf;
     fn task_guard(&self) -> Box<dyn Send + Sync>;
     /// Duplicates a descriptor. The embedding owner may wait out a lack of
     /// open files.
@@ -224,10 +223,7 @@ pub fn resolve(path: impl AsRef<Path>) -> PathBuf {
     CURRENT.with(|current| {
         let current = current.borrow();
         let context = current.as_ref().expect("utility execution context");
-        match &context.control {
-            Some(control) => control.resolve(path, &context.cwd),
-            None => context.cwd.join(path),
-        }
+        context.cwd.join(path)
     })
 }
 
