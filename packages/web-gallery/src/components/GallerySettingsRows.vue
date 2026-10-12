@@ -50,7 +50,16 @@ const usage = ref<SettingsQuotaWindow[]>([
   { id: 'five_hour', label: '5h session', used: 62, max: 100, resetsAt: ahead(130 * MINUTE) },
   { id: 'seven_day', label: '7d all models', used: 31, max: 100, resetsAt: ahead(3 * DAY + 4 * HOUR) },
 ])
+/** The vendor's words for a refresh that failed, until the next answer. */
+const usageFailure = ref<string | null>(null)
+/** Every other press fails, so the row shows both outcomes. */
+let presses = 0
 function refreshUsage(): void {
+  if (++presses % 2 === 1) {
+    usageFailure.value = 'Anthropic’s usage service is unavailable.'
+    return
+  }
+  usageFailure.value = null
   usage.value = usage.value.map((window) => ({ ...window, used: Math.min(window.max, window.used + 3) }))
 }
 </script>
@@ -130,7 +139,7 @@ function refreshUsage(): void {
         <IconButton size="sm" :icon="RefreshCw" aria-label="Refresh usage" spin-on-click @click="refreshUsage" />
       </Tooltip>
       <template #below>
-        <ProviderQuota :windows="usage" :auto-refresh="false" @refresh="refreshUsage" />
+        <ProviderQuota :windows="usage" :auto-refresh="false" :error="usageFailure" @refresh="refreshUsage" />
       </template>
     </SettingsRow>
   </SettingsGroup>

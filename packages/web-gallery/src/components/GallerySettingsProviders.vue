@@ -172,6 +172,10 @@ const operations = computed<Record<string, SettingsProviderOperation>>(() =>
     : {},
 )
 const usageTimers = ref<Record<string, Record<string, { timer: number; trigger: SettingsQuotaRefresh }>>>({})
+/** The vendor's words for a manual refresh that failed, by provider and account, until that account's next answer. */
+const usageFailures = ref<Record<string, Record<string, string>>>({})
+/** Every other request a manual press asked for fails, so the page shows both outcomes; an automatic one always answers. */
+let manualRefreshes = 0
 const refreshingUsage = computed(() => Object.fromEntries(
   Object.entries(usageTimers.value).map(([id, accounts]) => [id, Object.fromEntries(
     Object.entries(accounts).map(([accountId, request]) => [accountId, request.trigger]),
@@ -194,10 +198,17 @@ function refreshUsage(p: SettingsProviderEntry, accountId: string, automatic = f
     trigger: automatic ? 'automatic' : 'manual',
     timer: window.setTimeout(() => {
       s.value.quotaRefreshCache.record(p.id, accountId)
+      // A manual press that joined an automatic request shares its outcome, as in the product.
+      const fails = timers[accountId]?.trigger === 'manual' && ++manualRefreshes % 2 === 1
       delete timers[accountId]
       if (!Object.keys(timers).length) {
         delete usageTimers.value[p.id]
       }
+      if (fails) {
+        usageFailures.value[p.id] = { ...usageFailures.value[p.id], [accountId]: 'Anthropic’s usage service is unavailable.' }
+        return
+      }
+      delete usageFailures.value[p.id]?.[accountId]
       for (const window of p.accounts.find((account) => account.id === accountId)?.quota ?? []) {
         window.used = Math.min(window.max, window.used + 1)
       }
@@ -441,6 +452,7 @@ function closeLogin() {
     :testing="testing"
     :refreshing="refreshing"
     :refreshing-usage="refreshingUsage"
+    :usage-failures="usageFailures"
     @change="changeProvider"
     @toggle-model="(_provider, model, enabled) => (model.enabled = enabled)"
     @add="addProvider"
