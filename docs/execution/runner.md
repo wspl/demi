@@ -350,7 +350,34 @@ which the request that names it decides:
   went white again each time the view opened anew.
 
 A pipe the runner reads from the backend is a `GET /api/pipes/:id` whose
-response streams, which such an edge passes as it comes.
+response streams, which such an edge passes as it comes. Such an edge also
+ends a response that sends nothing for about 100 seconds, before its head as
+well as after: `demi shell status 17 --wait 5m` waits silently, and a stop
+waits for a runner that is away, so their output pipes broke with
+`pipe refused (524)` or `error decoding response body`. So the backend
+answers the request at once and frames the body:
+
+| Frame | Bytes | Meaning |
+| --- | --- | --- |
+| Data | `0x01`, a 4-byte big-endian length, then that many bytes, at most 64 KiB | The pipe's next bytes |
+| Idle | `0x02` | Nothing to send: the backend writes it after 30 seconds without a frame |
+| End | `0x03`, a 4-byte big-endian length, then a MessagePack map | The pipe's end: `{ ok: true }`, or `{ ok: false, cause }` with the words the reader reports |
+
+- **Only the end frame ends the pipe.** A body that stops without one is a
+  broken pipe, which the reader reports with its cause, as a failing relayed
+  pipe does ([Handle an rpc call](commands.md#handle-an-rpc-call)), never as
+  an ordinary end of its bytes.
+- **The frames are the pipe's own.** The reader passes only the bytes of data
+  frames on, so a command's output holds exactly what was written to it, and
+  an idle frame never reaches it.
+- **A stream pipe's WebSocket keeps itself alive the same way.** Its writer
+  sends a WebSocket ping after 30 seconds without a message, which such an
+  edge counts as traffic, so a live view of a still page outlives the edge's
+  limit.
+- **The same framing is the pipe's on every path.** Data, idle and end are
+  the parts of a byte stream any transport between the runner and the
+  backend carries, the relay's HTTP as much as a direct channel, so a pipe
+  moves between them without a second definition.
 
 Raw process environment selection follows these rules:
 
