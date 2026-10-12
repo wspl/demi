@@ -97,8 +97,6 @@ pub trait ExecutionHost: Any + Send + Sync {
     fn temporary_file(&self) -> io::Result<File> {
         tempfile::tempfile()
     }
-    /// Resolve shell-specific path conventions against an explicit cwd.
-    fn resolve_path(&self, path: &std::path::Path, cwd: &std::path::Path) -> std::path::PathBuf;
     /// Starts measuring a pipeline `time` runs. With none, `time` reports the
     /// processor time of the shell's process and of the children it reaped.
     fn time(&self) -> Option<Box<dyn Timing>> {

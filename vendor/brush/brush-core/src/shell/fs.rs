@@ -165,9 +165,6 @@ impl<SE: crate::extensions::ShellExtensions> crate::Shell<SE> {
     /// * `path` - The path to get the absolute form of.
     pub fn absolute_path(&self, path: impl AsRef<Path>) -> PathBuf {
         let path = path.as_ref();
-        if let Some(host) = self.execution_host() {
-            return host.resolve_path(path, self.working_dir());
-        }
         if path.as_os_str().is_empty() || path.is_absolute() {
             path.to_owned()
         } else {
