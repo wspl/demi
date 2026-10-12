@@ -121,12 +121,10 @@ One section of the plugin's page, with the sidebar entry Web Search:
 
 Sign Out revokes the token at Exa and forgets it; Remove forgets the key.
 
-### Open: anonymous search through the Host
-
-Every anonymous search leaves from the backend's address, so all of an
-instance's users share the one allowance Exa grants that address. See the
-conversation in which this was raised for the options; until it is decided,
-an anonymous search leaves from the backend.
+An anonymous search leaves from the backend's address, so all of an
+instance's users share the one allowance Exa grants that address; when it is
+used up, the call says so and names the sign-in, rather than routing the
+request through a Host to find another address.
 
 ## `demi web fetch`
 
