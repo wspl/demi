@@ -162,6 +162,14 @@ export interface PageHost {
   }
   /** Opens a section of the settings dialog, such as `devices`. */
   openSettings(section: string): void
+  /**
+   * Opens a web page in a new tab, such as a vendor's sign-in. Called in the
+   * click's handler with the URL or a promise of the URL a call will answer:
+   * the tab opens at once, so no popup blocker stops it, and goes to the URL
+   * when it arrives, or closes when the call fails, whose failure the
+   * returned promise carries.
+   */
+  openLink(url: string | Promise<string>): Promise<void>
   overlays: OverlayStore
 }
 
@@ -210,6 +218,8 @@ export interface PageContext {
   /** The panel tabs of the page's own kinds. */
   readonly panel: PageHost['panel']
   readonly settings: { open(section: string): void }
+  /** Opens a web page in a new tab, as {@link PageHost.openLink} does. */
+  readonly links: { open(url: string | Promise<string>): Promise<void> }
   readonly errors: {
     /** An error the user sees; a call its caller dropped is none. */
     report(message: HeadlineText, error: unknown): void
@@ -533,6 +543,7 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
       },
     },
     settings: { open: (section) => host.openSettings(section) },
+    links: { open: (url) => host.openLink(url) },
     errors,
     overlays: host.overlays,
     files: (conversation) => host.files(conversation),

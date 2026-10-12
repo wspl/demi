@@ -24,7 +24,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { providePageHost, sidebarEntries, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { PLUGIN_PAGES } from '../generated/pages'
 import { createSettingsState } from '../fixtures/settings'
-import { galleryPageHost, skillsPlugin } from '../fixtures/plugins'
+import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
 import { productWould } from '../product-would'
 import { demoAccount, demoConversations, demoProjects, emailOnlyAccount, longEmailAccount } from '../sidebar/sidebar-data'
 
@@ -40,7 +40,12 @@ let nextId = 1
 // The live specimen's settings dialog, over the fixture the Settings view uses: an entry opens it
 // on its section, and its Plugins page turns a plugin off, which takes that plugin's entry away.
 const settings = createSettingsState()
-providePageHost(galleryPageHost({ skills: skillsPlugin(settings.skills) }))
+providePageHost(
+  galleryPageHost(
+    { skills: skillsPlugin(settings.skills), web: webPlugin(settings.web) },
+    { openLink: openExaSignIn },
+  ),
+)
 const pluginOn = (plugin: string) =>
   settings.plugins.some((entry) => entry.id === plugin && entry.enabled)
 /** New's keys as the keyboard settings set them by default. */

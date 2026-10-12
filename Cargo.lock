@@ -2583,10 +2583,20 @@ dependencies = [
 name = "demi-plugin-web"
 version = "0.1.21"
 dependencies = [
+ "base64 0.22.1",
  "demi-command-declarations",
  "demi-command-package-fetch-protocol",
  "demi-host-interface",
  "demi-plugin-interface",
+ "demi-web-api-protocol",
+ "eventsource-stream",
+ "futures-util",
+ "schemars",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
+ "url",
 ]
 
 [[package]]

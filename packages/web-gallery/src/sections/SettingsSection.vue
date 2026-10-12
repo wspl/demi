@@ -11,10 +11,12 @@ import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import GallerySettingsRows from '../components/GallerySettingsRows.vue'
 import GallerySkillsShowcase from '../components/GallerySkillsShowcase.vue'
 import GallerySkillsCalls from '../components/GallerySkillsCalls.vue'
+import GalleryWebSearchCalls from '../components/GalleryWebSearchCalls.vue'
+import GalleryWebSearchShowcase from '../components/GalleryWebSearchShowcase.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import { createSettingsState } from '../fixtures/settings'
-import { galleryPageHost, skillsPlugin } from '../fixtures/plugins'
+import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
 import { PLUGIN_PAGES } from '../generated/pages'
 import { providePageHost, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { useGalleryView } from '../gallery-views'
@@ -104,6 +106,10 @@ const anatomy: [string, string][] = [
     'A plugin’s section: the rail lists it under Agent, and the sidebar has an entry that opens it, both only while the Skills plugin is on. Git sources are packs of SKILL.md files; a source’s state is one status label after its name, and a skill’s labels say why it is off or never offered. The showcase below pins every state at once.'
   ],
   [
+    'Web Search',
+    'A plugin’s section, under Agent with a sidebar entry while the Web plugin is on: the user’s Exa account, signed in or not, the API key, typed and checked or saved and shown by its last four characters, and which of them searches use. The specimens below pin each state and run the calls.'
+  ],
+  [
     'Data',
     'The rail entry is disabled with an In development tooltip because every control on the page is deferred. The Data & Privacy specimen below shows its page.'
   ],
@@ -130,7 +136,12 @@ function answerAs(answer: 'granted' | 'denied'): void {
 const noMail = ref({ name: 'Zan' })
 // The plugins' sections reach the fixture's skills plugin, and show while the
 // fixture's Plugins page has their plugin on, as the product's do.
-providePageHost(galleryPageHost({ skills: skillsPlugin(full.skills) }))
+providePageHost(
+  galleryPageHost(
+    { skills: skillsPlugin(full.skills), web: webPlugin(full.web) },
+    { openLink: openExaSignIn },
+  ),
+)
 const sections = computed(() =>
   withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, (plugin) =>
     full.plugins.some((entry) => entry.id === plugin && entry.enabled),
@@ -394,6 +405,68 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
         <GallerySpecimen variant="Narrow · 360px">
           <div class="w-[360px] max-w-full rounded-xl border border-line bg-surface-dialog p-4">
             <GallerySkillsShowcase />
+          </div>
+        </GallerySpecimen>
+      </GallerySection>
+
+      <GallerySection
+        title="Web Search · Every State"
+        note="Each state, pinned: nothing connected, so searches go anonymously; signed in with an email; signed in where Exa names none, with a key saved, which searches use; a key saved while Exa’s rate limit kept it from being checked, which the next search decides; a key Exa refused, the typed key kept in the field; and a row waiting for its call. Every control acts on its own specimen’s state, and Sign In says what the product would open."
+      >
+        <GallerySpecimen variant="Not Connected" wide>
+          <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
+            <GalleryWebSearchShowcase :state="{ account: null, key: null, inUse: 'anonymous' }" />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="Signed In" wide>
+          <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
+            <GalleryWebSearchShowcase :state="{ account: { email: 'zan@example.com' }, key: null, inUse: 'account' }" />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="Signed In, Key Saved" wide>
+          <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
+            <GalleryWebSearchShowcase :state="{ account: { email: null }, key: { lastFour: '7f3a', unchecked: null }, inUse: 'key' }" />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="Key Not Checked" wide>
+          <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
+            <GalleryWebSearchShowcase
+              :state="{ account: null, key: { lastFour: '7f3a', unchecked: 'Exa’s rate limit was reached' }, inUse: 'key' }"
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="Key Refused" wide>
+          <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
+            <GalleryWebSearchShowcase
+              :state="{ account: null, key: null, inUse: 'anonymous' }"
+              draft="exa_12ab"
+              key-problem="Exa refused this key. Check that it was copied whole."
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="Checking a Key" wide>
+          <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
+            <GalleryWebSearchShowcase
+              :state="{ account: { email: 'zan@example.com' }, key: null, inUse: 'account' }"
+              draft="b81c0f2e-55aa-4c3e-9d21-7f3a"
+              :pending="['key']"
+            />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="Narrow · 360px">
+          <div class="w-[360px] max-w-full rounded-xl border border-line bg-surface-dialog p-4">
+            <GalleryWebSearchShowcase :state="{ account: { email: 'zan@example.com' }, key: { lastFour: '7f3a', unchecked: null }, inUse: 'key' }" />
+          </div>
+        </GallerySpecimen>
+      </GallerySection>
+
+      <GallerySection
+        title="Web Search · Calls"
+        note="The page over a web plugin of its own. Sign In waits for the plugin, says the product would open Exa’s sign-in page in a new tab, and the account is signed in a moment later, as Exa’s callback would. Save checks the key with one search: one shorter than 16 characters is refused under the field, keeping what was typed; a longer one is saved and shown by its last four characters, and In Use follows. Sign Out and Remove each wait for their call."
+      >
+        <GallerySpecimen variant="Wide" wide>
+          <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
+            <GalleryWebSearchCalls />
           </div>
         </GallerySpecimen>
       </GallerySection>
