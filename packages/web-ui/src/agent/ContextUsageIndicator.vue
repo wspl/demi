@@ -5,7 +5,6 @@ import type { ContextRowKind, ContextUsage, InstructionEntry } from '@demicodes/
 import ProviderQuota from '../settings/ProviderQuota.vue'
 import Button from '../ui/Button.vue'
 import HoverCard from '../ui/HoverCard.vue'
-import HoverCardRow from '../ui/HoverCardRow.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import { usePhone } from '../ui/phone'
@@ -119,7 +118,7 @@ const ringColor = computed(() => {
 </script>
 
 <template>
-  <HoverCard :pinned="pinned" sheet>
+  <HoverCard :pinned="pinned" sheet joined>
     <button
       type="button"
       aria-label="Context usage"
@@ -179,7 +178,7 @@ const ringColor = computed(() => {
            page leaves it, as with a long list of instruction files. -->
       <div class="w-[22rem] max-w-full phone:w-full" :class="phone ? '' : 'context-details-bounded'">
         <ScrollArea class="min-h-0 flex-1">
-          <div v-if="rows.length" class="px-3 pt-2.5">
+          <div v-if="rows.length" class="px-3 pt-0.5">
             <div class="flex h-2 gap-px overflow-hidden rounded-full bg-overlay/8" aria-hidden="true">
               <div
                 v-for="row in segments"
@@ -198,19 +197,19 @@ const ringColor = computed(() => {
               </li>
             </ul>
           </div>
-          <HoverCardRow v-if="!isCompacting">
-            <span class="tabular-nums text-fg-muted">{{ room === null ? '' : `${formatTokens(room)} until compaction` }}</span>
-            <template #action>
-              <Button
-                size="sm"
-                :disabled="blockedReason != null"
-                :disabled-reason="blockedReason ?? undefined"
-                @click="emit('compact')"
-              >
-                Compact
-              </Button>
-            </template>
-          </HoverCardRow>
+          <!-- The last line of the context section: its Compact ends where the
+               figures above it end. -->
+          <div v-if="!isCompacting" class="flex items-center gap-3 px-3 pt-2 pb-2.5">
+            <span class="min-w-0 flex-1 truncate tabular-nums text-fg-muted">{{ room === null ? '' : `${formatTokens(room)} until compaction` }}</span>
+            <Button
+              size="sm"
+              :disabled="blockedReason != null"
+              :disabled-reason="blockedReason ?? undefined"
+              @click="emit('compact')"
+            >
+              Compact
+            </Button>
+          </div>
           <div v-if="limits" class="border-t border-line px-3 pt-2 pb-3">
             <div class="mb-2 text-[11px] font-medium text-fg-subtle">
               Usage limits<template v-if="limits.plan"> · {{ limits.plan }}</template>
