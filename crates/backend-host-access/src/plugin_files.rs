@@ -9,7 +9,7 @@ use std::collections::{BTreeSet, HashMap};
 
 use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_remote_host::{DirectoryFile, Link, Look, LookAt, RemoteHost, WeakLink};
-use demi_host_interface::{FileKind, HostError, HostErrorKind};
+use demi_host_interface::{FileKind, Host as _, HostError, HostErrorKind};
 use demi_plugin_interface::{EntryKind, HostDirectory, HostEntry, HostFile, HostRead, PluginId};
 use demi_shared_types::B64Bytes;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
@@ -132,7 +132,8 @@ async fn sync_directories(
     sets: &DirectorySets,
     blobs: &UserBlobs,
 ) -> Result<(), HostError> {
-    let base = |plugin: &PluginId| format!("{home}/.demi/plugins/{plugin}");
+    let paths = host.identity().paths;
+    let base = |plugin: &PluginId| paths.join(home, &format!(".demi/plugins/{plugin}"));
     let listed: Vec<LookAt> = sets
         .iter()
         .map(|(plugin, _)| LookAt {
@@ -168,13 +169,13 @@ async fn sync_directories(
             present
                 .iter()
                 .filter(|name| !names.contains(name.as_str()))
-                .map(|name| format!("{}/{name}", base(plugin))),
+                .map(|name| paths.join(&base(plugin), name)),
         );
         missing.extend(
             wanted
                 .into_iter()
                 .filter(|(name, _)| !present.contains(name))
-                .map(|(name, directory)| (format!("{}/{name}", base(plugin)), directory)),
+                .map(|(name, directory)| (paths.join(&base(plugin), &name), directory)),
         );
     }
     if !removed.is_empty() {

@@ -3,42 +3,23 @@
 //! and each directory above it up to the root of its git repository, the
 //! nearest that holds `.git`; outside a repository, the working directory
 //! alone.
+//!
+//! A Host's paths are walked and joined in its own form ([`HostPaths`]): on
+//! Windows `C:\Users\zan\app` walks up to `C:\`, and its `.git` is
+//! `C:\Users\zan\app\.git`.
+
+use demi_host_interface::HostPaths;
 
 use crate::{HostFile, HostRead};
 
-/// `cwd` and every directory above it, nearest first.
-pub fn ancestors(cwd: &str) -> Vec<String> {
-    let mut directory = cwd.trim_end_matches('/').to_owned();
-    if directory.is_empty() {
-        return vec!["/".to_owned()];
-    }
-    let mut ancestors = vec![directory.clone()];
-    while let Some((parent, _)) = directory.rsplit_once('/') {
-        directory = if parent.is_empty() {
-            "/".to_owned()
-        } else {
-            parent.to_owned()
-        };
-        ancestors.push(directory.clone());
-        if directory == "/" {
-            break;
-        }
-    }
-    ancestors
-}
-
-/// The path of `name` in `directory`.
-pub fn join(directory: &str, name: &str) -> String {
-    format!("{}/{name}", directory.trim_end_matches('/'))
-}
-
-/// The reads that find the repository's root among `ancestors`: `.git` in
-/// each, in their order.
-pub fn root_reads(ancestors: &[String]) -> Vec<HostRead> {
+/// The reads that find the repository's root among `ancestors`, the
+/// directories [`HostPaths::ancestors`] gives: `.git` in each, in their
+/// order.
+pub fn root_reads(paths: HostPaths, ancestors: &[String]) -> Vec<HostRead> {
     ancestors
         .iter()
         .map(|directory| HostRead {
-            path: join(directory, ".git"),
+            path: paths.join(directory, ".git"),
             limit: 0,
         })
         .collect()

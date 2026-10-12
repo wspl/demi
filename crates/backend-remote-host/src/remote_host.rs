@@ -13,7 +13,7 @@ use demi_command_protocol::{
 };
 use demi_host_interface::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
-    HostErrorKind, HostFs, HostIdentity, HostKey, HostProcess, JobCaller, MkdirOptions, Process,
+    HostErrorKind, HostFs, HostIdentity, HostKey, HostPaths, HostProcess, JobCaller, MkdirOptions, Process,
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnRequest,
     WhenExists, WholeOutput, WriteOptions,
 };
@@ -1274,11 +1274,13 @@ impl Host for RemoteHost {
             DeviceLink::Offline {
                 last: Some(identity),
             } => identity.clone(),
+            // A Host that never connected has built no path yet.
             DeviceLink::Offline { last: None } => HostIdentity {
                 uid: 0,
                 gid: 0,
                 hostname: String::new(),
                 home_dir: self.0.default_cwd.clone(),
+                paths: HostPaths::default(),
             },
         }
     }
@@ -1932,12 +1934,23 @@ fn mismatch() -> HostError {
     protocol("the runner answered another operation")
 }
 
-/// The account a runner reported in its hello.
-pub fn host_identity(identity: &wire::HostIdentity) -> HostIdentity {
+/// The account a runner reported in its hello, with the path form of the
+/// system it reported.
+pub fn host_identity(runner: &wire::RunnerInfo) -> HostIdentity {
+    let identity = &runner.identity;
     HostIdentity {
         uid: identity.uid,
         gid: identity.gid,
         hostname: identity.hostname.clone(),
         home_dir: identity.home_dir.clone(),
+        paths: host_paths(runner.platform),
+    }
+}
+
+/// How a Host of `platform` writes its paths (`runner.md` § Windows paths).
+pub fn host_paths(platform: wire::RunnerPlatform) -> HostPaths {
+    match platform {
+        wire::RunnerPlatform::Win32 => HostPaths::Windows,
+        wire::RunnerPlatform::Darwin | wire::RunnerPlatform::Linux => HostPaths::Posix,
     }
 }
