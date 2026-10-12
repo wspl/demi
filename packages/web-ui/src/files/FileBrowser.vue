@@ -338,7 +338,7 @@ onBeforeUnmount(() => pending?.abort())
         >
           <template #trigger>
             <component
-              :is="currentHost ? hostIcon(currentHost) : hostIcon({ id: '' })"
+              :is="currentHost ? hostIcon(currentHost) : hostIcon({ kind: 'device' })"
               :size="ICON_PX.in28"
               class="shrink-0 text-fg-muted"
             />

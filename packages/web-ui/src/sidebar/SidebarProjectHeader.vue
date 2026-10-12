@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Cloud, Folder, FolderOpen, SquarePen } from '@lucide/vue'
+import { Folder, FolderOpen, SquarePen } from '@lucide/vue'
 import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import StatusDot from '@demicodes/web-ui/ui/StatusDot.vue'
@@ -7,6 +7,7 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
+import { hostIcon } from '@demicodes/web-ui/hosts/icons'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '@demicodes/web-ui/devices/state'
 import type { SidebarProject } from './types'
 
@@ -67,7 +68,8 @@ const emit = defineEmits<{
         <span
           class="pointer-events-none col-start-1 row-start-1 flex size-hit-sm items-center justify-center text-fg-subtle transition-opacity phone:size-8 duration-150 motion-reduce:transition-none group-hover/project:opacity-0 group-focus-within/project:opacity-0 phone:opacity-0"
         >
-          <Cloud
+          <component
+            :is="hostIcon({ kind: 'cloud' })"
             v-if="project.hostKind === 'cloud'"
             role="img"
             :aria-label="project.host"

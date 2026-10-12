@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Cloud, Plus, Unlink } from '@lucide/vue'
+import { Plus, Unlink } from '@lucide/vue'
 import Dropdown from '../ui/Dropdown.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
@@ -12,8 +12,7 @@ import { ICON_PX } from '../ui/icon-metrics'
 import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
 import Tooltip from '../ui/Tooltip.vue'
 import { isTextCut } from '../ui/truncation'
-import DeviceIcon from '../devices/DeviceIcon.vue'
-import { DEVICE_GLYPHS } from '../devices/device-glyphs'
+import { hostGlyph } from '../devices/device-glyphs'
 import HostChoices from './HostChoices.vue'
 import { MOVE_LOCKED } from './move-question'
 import type { HostChoice, HostDeviceOption, HostMenuHost } from './types'
@@ -104,8 +103,7 @@ function connect() {
           aria-label="Where this conversation runs"
           :loading="pending"
         >
-          <Cloud v-if="primaryHost.kind === 'cloud'" :size="ICON_PX.in28" class="shrink-0" />
-          <DeviceIcon v-else :state="primaryHost.state" />
+          <component :is="hostGlyph(primaryHost)" :size="ICON_PX.in28" class="shrink-0" />
           <!-- Wide enough for a Windows computer's default name, DESKTOP- and seven characters. -->
           <span
             ref="hostLabel"
@@ -134,7 +132,7 @@ function connect() {
           <MenuItem
             v-for="host in attachedHosts"
             :key="host.id"
-            :icon="host.kind === 'cloud' ? Cloud : DEVICE_GLYPHS[host.state]"
+            :icon="hostGlyph(host)"
             :label="host.name"
             :faded="host.kind === 'device' && host.state !== 'online'"
             :disabled="locked"
