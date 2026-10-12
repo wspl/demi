@@ -389,54 +389,57 @@ impl Error for UIoError {}
 
 impl Display for UIoError {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        use crate::context::io::ErrorKind::*;
-
-        let message;
-        let message = if self.inner.raw_os_error().is_some() {
-            // These are errors that come directly from the OS.
-            // We want to normalize their messages across systems,
-            // and we want to strip the "(os error X)" suffix.
-            match self.inner.kind() {
-                NotFound => "No such file or directory",
-                PermissionDenied => "Permission denied",
-                ConnectionRefused => "Connection refused",
-                ConnectionReset => "Connection reset",
-                ConnectionAborted => "Connection aborted",
-                NotConnected => "Not connected",
-                AddrInUse => "Address in use",
-                AddrNotAvailable => "Address not available",
-                BrokenPipe => "Broken pipe",
-                AlreadyExists => "Already exists",
-                WouldBlock => "Would block",
-                InvalidInput => "Invalid input",
-                InvalidData => "Invalid data",
-                TimedOut => "Timed out",
-                WriteZero => "Write zero",
-                Interrupted => "Interrupted",
-                UnexpectedEof => "Unexpected end of file",
-                IsADirectory => "Is a directory",
-                _ => {
-                    // TODO: When the new error variants
-                    // (https://github.com/rust-lang/rust/issues/86442)
-                    // are stabilized, we should add them to the match statement.
-                    message = strip_errno(&self.inner);
-                    &message
-                }
-            }
-        } else {
-            // These messages don't need as much normalization, and the above
-            // messages wouldn't always be a good substitute.
-            // For example, ErrorKind::NotFound doesn't necessarily mean it was
-            // a file that was not found.
-            // There are also errors with entirely custom messages.
-            message = self.inner.to_string();
-            &message
-        };
+        let message = io_message(&self.inner);
         if let Some(ctx) = &self.context {
             write!(f, "{ctx}: {message}")
         } else {
             write!(f, "{message}")
         }
+    }
+}
+
+/// What a utility prints for `error`: the message GNU's tools print for an
+/// error of the operating system, without its error number, or the error's
+/// own message.
+pub fn io_message(error: &crate::context::io::Error) -> String {
+    use crate::context::io::ErrorKind::*;
+
+    if error.raw_os_error().is_some() {
+        // These are errors that come directly from the OS.
+        // We want to normalize their messages across systems,
+        // and we want to strip the "(os error X)" suffix.
+        match error.kind() {
+            NotFound => "No such file or directory",
+            PermissionDenied => "Permission denied",
+            ConnectionRefused => "Connection refused",
+            ConnectionReset => "Connection reset",
+            ConnectionAborted => "Connection aborted",
+            NotConnected => "Not connected",
+            AddrInUse => "Address in use",
+            AddrNotAvailable => "Address not available",
+            BrokenPipe => "Broken pipe",
+            AlreadyExists => "Already exists",
+            WouldBlock => "Would block",
+            InvalidInput => "Invalid input",
+            InvalidData => "Invalid data",
+            TimedOut => "Timed out",
+            WriteZero => "Write zero",
+            Interrupted => "Interrupted",
+            UnexpectedEof => "Unexpected end of file",
+            IsADirectory => "Is a directory",
+            // TODO: When the new error variants
+            // (https://github.com/rust-lang/rust/issues/86442)
+            // are stabilized, we should add them to the match statement.
+            _ => return strip_errno(error),
+        }
+        .to_owned()
+    } else {
+        // These messages don't need as much normalization, and the above
+        // messages wouldn't always be a good substitute.
+        // For example, ErrorKind::NotFound doesn't necessarily mean it was
+        // a file that was not found.
+        // There are also errors with entirely custom messages.
+        error.to_string()
     }
 }
 
