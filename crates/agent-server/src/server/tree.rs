@@ -17,6 +17,7 @@ use std::{
     time::Duration,
 };
 
+use bytes::Bytes;
 use demi_agent_session::{Continuation, ModelSwitch, SessionEvent, Settle, Status, Subscription};
 use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_output};
@@ -74,8 +75,10 @@ pub struct Tree<H: HostResolver> {
     /// The commands whose new output waits for the pages.
     live: Rc<LiveOutput>,
     /// The shells of closed children while a command of theirs still
-    /// stops, by child and round (`subagents.md` § Abort).
-    stopping: RefCell<HashMap<(NodeId, u64), StoppingShells>>,
+    /// stops (`subagents.md` § Abort), each under the key it was kept with.
+    stopping: RefCell<HashMap<u64, StoppingShells>>,
+    /// The key the next shells kept for a closed child go under.
+    next_stopping: Cell<u64>,
     /// The root session's events as frames, until the tree is dropped.
     _frames: Subscription,
     /// Disposes the tree once it has stayed detached and quiescent.
@@ -91,6 +94,8 @@ pub struct Tree<H: HostResolver> {
 /// can look at it or stop it, and its environment records its end when its
 /// runner reports it.
 pub(crate) struct StoppingShells {
+    /// The closed child whose commands they are.
+    subagent: NodeId,
     environments: Vec<Rc<dyn ShellEnvironment>>,
     /// Forgets them once each of their commands ended.
     _ends: AbortOnDropHandle<()>,
@@ -357,6 +362,7 @@ impl<H: HostResolver> Tree<H> {
                 sink,
                 live,
                 stopping: RefCell::new(HashMap::new()),
+                next_stopping: Cell::new(0),
                 _frames: frames,
                 _eviction: AbortOnDropHandle::new(eviction),
                 _working: AbortOnDropHandle::new(working),
@@ -441,10 +447,39 @@ impl<H: HostResolver> Tree<H> {
         self.sink.attached()
     }
 
-    /// The node whose shells hold `command`: the root or a live child; the
-    /// root when none does, whose shells then refuse the handle.
-    pub(crate) fn shells_of(&self, command: &CommandId) -> Rc<Node<H>> {
-        self.holder(command).unwrap_or_else(|| self.root.clone())
+    /// Writes a page's input to the conversation's command `command`: through
+    /// the shells of the live node that holds it, or of the closed child it
+    /// stays with while it stops (`subagents.md` § Abort); the root's shells
+    /// refuse a command nothing holds.
+    pub(crate) async fn shell_write(&self, command: &CommandId, stdin: String) -> Result<(), String> {
+        match (self.holder(command), self.stopping_shell(command)) {
+            (None, Some(environment)) => environment
+                .write(command, Bytes::from(stdin))
+                .await
+                .map_err(|error| error.to_string()),
+            (holder, _) => holder
+                .unwrap_or_else(|| self.root.clone())
+                .shell_write(command, stdin)
+                .await
+                .map_err(|error| error.to_string()),
+        }
+    }
+
+    /// Stops the conversation's command `command` as a page's stop does,
+    /// through the shells that hold it, as [`shell_write`](Self::shell_write)
+    /// finds them.
+    pub(crate) async fn shell_abort(&self, command: &CommandId) -> Result<(), String> {
+        match (self.holder(command), self.stopping_shell(command)) {
+            (None, Some(environment)) => environment
+                .abort(command)
+                .await
+                .map_err(|error| error.to_string()),
+            (holder, _) => holder
+                .unwrap_or_else(|| self.root.clone())
+                .shell_abort(command)
+                .await
+                .map_err(|error| error.to_string()),
+        }
     }
 
     /// The node whose shells hold `command`, the root or a live child.
@@ -568,6 +603,7 @@ impl<H: HostResolver> Tree<H> {
             ServerFrame::Opened,
             self.root_reset(from, edge),
             ServerFrame::Phase {
+                subagent_id: None,
                 phase: session.phase(),
             },
             ServerFrame::Queue {
@@ -644,13 +680,13 @@ impl<H: HostResolver> Tree<H> {
                     .map(|view| shell_output(Some(id.clone()), view)),
             );
         }
-        for ((id, _), shells) in self.stopping.borrow().iter() {
+        for shells in self.stopping.borrow().values() {
             frames.extend(
                 shells
                     .environments
                     .iter()
                     .flat_map(|environment| unended_views(environment.as_ref()))
-                    .map(|view| shell_output(Some(id.clone()), view)),
+                    .map(|view| shell_output(Some(shells.subagent.clone()), view)),
             );
         }
         frames
@@ -742,7 +778,10 @@ fn frame_of(event: &SessionEvent) -> Option<ServerFrame> {
             revision: *revision,
             failures: None,
         },
-        SessionEvent::PhaseChanged { phase } => ServerFrame::Phase { phase: *phase },
+        SessionEvent::PhaseChanged { phase } => ServerFrame::Phase {
+            subagent_id: None,
+            phase: *phase,
+        },
         SessionEvent::ContextUsageChanged { usage } => ServerFrame::ContextUsage { usage: usage.clone() },
         SessionEvent::QueueChanged { queue } => ServerFrame::Queue {
             queue: queue.clone(),

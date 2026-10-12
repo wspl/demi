@@ -705,7 +705,7 @@ pub fn is_context_usage(frame: &ServerFrame) -> bool {
 }
 
 pub fn is_idle(frame: &ServerFrame) -> bool {
-    matches!(frame, ServerFrame::Phase { phase } if *phase == demi_shared_types::SessionPhase::Idle)
+    matches!(frame, ServerFrame::Phase { subagent_id: None, phase } if *phase == demi_shared_types::SessionPhase::Idle)
 }
 
 /// Each block's type, and a tool call's status beside it.
@@ -923,12 +923,20 @@ impl ShellEnvironment for ScriptedShell {
         Box::pin(std::future::ready(kept))
     }
 
+    /// Takes input while the command runs, and keeps none of it.
     fn write<'a>(
         &'a self,
         command: &'a CommandId,
         _stdin: Bytes,
     ) -> LocalBoxFuture<'a, Result<(), ShellError>> {
-        Box::pin(async move { Err(ShellError::NotRunning(command.clone())) })
+        let taken = self.record(command).and_then(|record| {
+            if record.borrow().is_running() {
+                Ok(())
+            } else {
+                Err(ShellError::NotRunning(command.clone()))
+            }
+        });
+        Box::pin(std::future::ready(taken))
     }
 
     /// Marks the command stopping, as a stop that its runner has not
@@ -954,8 +962,17 @@ impl ShellEnvironment for ScriptedShell {
         Box::pin(async { false })
     }
 
-    fn adopt(&self, _: demi_host_interface::TakenUp) {
-        unreachable!("the scripted shell takes up no command")
+    /// Takes up the command a restore names, as a runner that kept it.
+    fn adopt(&self, taken: demi_host_interface::TakenUp) {
+        let record = Rc::new(RefCell::new(CommandRecord::taken_up(
+            taken.command,
+            taken.caller.tool_use_id,
+            taken.title,
+            taken.running,
+            taken.seen,
+        )));
+        self.command.replace(Some(record.clone()));
+        self.feed.changed(&record);
     }
 
     fn detach_all(&self) -> LocalBoxFuture<'_, ()> {
@@ -1017,10 +1034,17 @@ pub fn scripted_host_server(
     })
 }
 
-/// Makes each node's environment and keeps the last one made for the test
-/// to print through.
+/// Makes each node's environment and keeps each one made, in order, for the
+/// test to print through and end.
 #[derive(Default)]
-pub struct ScriptedShells(pub RefCell<Option<Rc<ScriptedShell>>>);
+pub struct ScriptedShells(pub RefCell<Vec<Rc<ScriptedShell>>>);
+
+impl ScriptedShells {
+    /// The environment made last.
+    pub fn last(&self) -> Rc<ScriptedShell> {
+        self.0.borrow().last().cloned().expect("a call made an environment")
+    }
+}
 
 impl ShellEnvironmentFactory<ScriptedHost> for ScriptedShells {
     fn create<'a>(
@@ -1034,7 +1058,7 @@ impl ShellEnvironmentFactory<ScriptedHost> for ScriptedShells {
             ends: watch::Sender::new(()),
             detached: Cell::new(false),
         });
-        self.0.replace(Some(shell.clone()));
+        self.0.borrow_mut().push(shell.clone());
         Box::pin(async move { Ok(shell as Rc<dyn ShellEnvironment>) })
     }
 }

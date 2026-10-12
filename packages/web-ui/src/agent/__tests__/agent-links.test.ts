@@ -7,7 +7,7 @@ import type { SubagentRecord } from '../subagents'
 // under a millisecond.
 
 function agent(id: string, number: number, phase: SubagentRecord['phase']): SubagentRecord {
-  return { id, number, name: `Agent ${id}`, phase, startedAt: '2026-09-09T00:00:00.000Z', history: EMPTY_TRANSCRIPT, pendingCalls: [], waitingSince: null, failures: {} }
+  return { id, number, name: `Agent ${id}`, phase, sessionPhase: 'idle', startedAt: '2026-09-09T00:00:00.000Z', history: EMPTY_TRANSCRIPT, pendingCalls: [], waitingSince: null, failures: {} }
 }
 
 const agents = [agent('ag-icons', 4, 'running'), agent('ag-cjk', 5, 'completed')]
