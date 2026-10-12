@@ -177,9 +177,16 @@ pub fn remove(directory: &Path) -> io::Result<Removed> {
 #[cfg(windows)]
 pub fn remove(directory: &Path) -> io::Result<Removed> {
     use std::os::windows::process::CommandExt as _;
-    // A process of its own: no console, and no part in this one's Ctrl+C.
-    const DETACHED_PROCESS: u32 = 0x0000_0008;
+    // A process of its own: a hidden console of its own, and no part in this
+    // one's Ctrl+C. Not DETACHED_PROCESS: Windows PowerShell started without
+    // any console ends before it runs its command, and the directory stayed.
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     const CREATE_NEW_PROCESS_GROUP: u32 = 0x0000_0200;
+    // Out of the job the session's processes share, which OpenSSH closes,
+    // ending every process in it, as soon as an `uninstall` run over SSH
+    // returns. A job that allows no breakaway refuses the start; the process
+    // then stays in it, as in a PowerShell window, whose job none closes.
+    const CREATE_BREAKAWAY_FROM_JOB: u32 = 0x0100_0000;
     const SCRIPT: &str = "$paths = $env:DEMI_REMOVED_PATHS -split \"`n\"; \
         for ($i = 0; $i -lt 120; $i++) { \
         $left = @($paths | Where-Object { Test-Path -LiteralPath $_ }); \
@@ -193,15 +200,21 @@ pub fn remove(directory: &Path) -> io::Result<Removed> {
         .map(|path| path.to_string_lossy())
         .collect::<Vec<_>>()
         .join("\n");
-    std::process::Command::new("powershell.exe")
-        .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
-        .env("DEMI_REMOVED_PATHS", joined)
-        // A process's working directory cannot be removed while it runs.
-        .current_dir(std::env::temp_dir())
-        .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP)
-        .spawn()?;
+    let start = |flags: u32| {
+        std::process::Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", SCRIPT])
+            .env("DEMI_REMOVED_PATHS", &joined)
+            // A process's working directory cannot be removed while it runs.
+            .current_dir(std::env::temp_dir())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .creation_flags(CREATE_NO_WINDOW | CREATE_NEW_PROCESS_GROUP | flags)
+            .spawn()
+    };
+    match start(CREATE_BREAKAWAY_FROM_JOB) {
+        Err(error) if error.kind() == io::ErrorKind::PermissionDenied => start(0)?,
+        started => started?,
+    };
     Ok(removed)
 }
