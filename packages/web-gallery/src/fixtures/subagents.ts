@@ -246,8 +246,8 @@ export function gallerySubagents(): SubagentRecord[] {
       failures: {},
       pendingCalls: [],
       // The call's result went back 31 seconds ago and the model has not
-      // answered yet: the view says Requesting from then, however often it
-      // opens (`runtime.md` § Waiting for the model).
+      // answered yet: its run's row shimmers meanwhile, and the server tells
+      // the wait from then (`runtime.md` § Waiting for the model).
       waitingSince: Date.now() - 31_000,
       history: wholeHistory([
         user(
@@ -285,7 +285,10 @@ export function gallerySubagents(): SubagentRecord[] {
       startedAt: ago(12_000),
       failures: {},
       pendingCalls: [],
-      waitingSince: null,
+      // Its turn began 12 seconds ago and the model has not answered yet:
+      // the view says Requesting from then, however often it opens
+      // (`runtime.md` § Waiting for the model).
+      waitingSince: Date.now() - 12_000,
       history: wholeHistory([
         user(
           'ag-snapshot-user',

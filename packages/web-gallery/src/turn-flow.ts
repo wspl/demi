@@ -255,8 +255,9 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
   /**
    * The model is asked, as the server would tell a page when it begins to
-   * wait (`runtime.md` § Waiting for the model); the model's first block or
-   * call being written ends the wait, and so does the turn's end.
+   * wait (`runtime.md` § Waiting for the model): from the turn's start and
+   * the end of each step. The model's first block, or a call being written
+   * once its title is, ends the wait, and so does the turn's end.
    */
   function waitForModel(): void {
     state.waitingSince = Date.now()
@@ -589,13 +590,13 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       const id = nextId('tool')
       let startedAt = ''
       // The model writes the call first: it shows nothing until its
-      // description is written, then its row shows, and becomes the call's
-      // block when whole.
+      // description is written, then its row shows, which ends the wait,
+      // and becomes the call's block when whole.
       at(run, t, () => {
-        state.waitingSince = null
         state.pendingCalls = [{ toolUseId: `${id}-use`, toolName: 'shell', description: null }]
       })
       at(run, t + 400, () => {
+        state.waitingSince = null
         state.pendingCalls = [{ toolUseId: `${id}-use`, toolName: 'shell', description: step.description }]
       })
       t += 900
