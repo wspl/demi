@@ -188,7 +188,7 @@ const ringColor = computed(() => {
         </button>
       </template>
       <template #content="{ close }">
-        <div class="overlay-shell overlay-card rounded-md text-xs text-fg" :style="{ '--elevation': elevation }">
+        <div class="overlay-shell rounded-md text-xs text-fg" :style="{ '--elevation': elevation }">
           <div class="context-card-head">
             <span v-if="isCompacting" class="text-fg-body">Compacting context…</span>
             <!-- The header is the list's disclosure, as a Finder disclosure row is. -->

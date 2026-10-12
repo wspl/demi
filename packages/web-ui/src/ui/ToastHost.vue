@@ -2,6 +2,7 @@
 import { dismissToast, holdToasts, releaseToasts, toasts, type Toast as ShownToast } from '../infra/toast'
 import Toast from './Toast.vue'
 import { APP_BAR_PX } from './app-bar'
+import { provideStacking, TOAST_Z } from '../overlay/stacking'
 
 /**
  * The toasts stand in the top-right corner, below the bar atop the page, as
@@ -12,6 +13,9 @@ const props = withDefaults(defineProps<{
   /** How far down the page's top bars reach, in px: the toasts stand below them. */
   below?: number
 }>(), { below: APP_BAR_PX })
+
+// What opens from a toast, such as a tip on its action, stands above it.
+provideStacking(() => TOAST_Z)
 
 /** Runs the toast's action, which closes it. */
 function act(toast: ShownToast) {
@@ -46,8 +50,8 @@ function pinLeavingToast(el: Element) {
     <TransitionGroup
       v-bind="overlayMotion"
       tag="div"
-      class="pointer-events-none fixed right-3 z-[55] flex flex-col-reverse items-end gap-2"
-      :style="{ top: `calc(${props.below + 8}px + var(--safe-top))` }"
+      class="pointer-events-none fixed right-3 flex flex-col-reverse items-end gap-2"
+      :style="{ top: `calc(${props.below + 8}px + var(--safe-top))`, zIndex: TOAST_Z }"
       @before-leave="pinLeavingToast"
     >
       <div

@@ -58,6 +58,7 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayFamilyKey } from '../overlay/overlayFamily'
 import { useLayerElevation } from '../overlay/layerElevation'
+import { showAbove } from '../overlay/stacking'
 import { useOverlay } from '../composables/useOverlay'
 import type { SentenceText } from './ui-text'
 
@@ -154,6 +155,7 @@ const overlayStore = computed(() => props.overlayStore ?? appOverlayStore)
 // A trigger inside an exclusive panel (a menu row) may still hint; triggers outside yield to it.
 const family = inject(overlayFamilyKey, null)
 const elevation = useLayerElevation()
+const z = showAbove()
 const blockedByExclusive = computed(() => family == null && overlayStore.value.hasExclusive())
 const hasOverlay = computed(() => !!slots.overlay)
 const hasContent = computed(() => !!props.content?.trim() || hasOverlay.value)
@@ -500,7 +502,7 @@ onBeforeUnmount(() => {
       <div
         v-if="visible"
         ref="floatingRef"
-        class="overlay-shell select-none pointer-events-none z-[60] w-max min-w-max text-fg"
+        class="overlay-shell select-none pointer-events-none w-max min-w-max text-fg"
         :class="card
           ? 'rounded-lg'
           : [
@@ -509,7 +511,7 @@ onBeforeUnmount(() => {
                 ? [wide ? 'max-w-2xl' : 'max-w-xs', 'px-3 py-2 text-xs leading-relaxed']
                 : 'line-clamp-2 max-w-sm px-2.5 py-1.5 text-[12px] leading-4',
             ]"
-        :style="{ ...floatingStyles, '--elevation': elevation }"
+        :style="{ ...floatingStyles, '--elevation': elevation, zIndex: z() }"
         role="tooltip"
       >
         <slot v-if="hasOverlay" name="overlay" />
