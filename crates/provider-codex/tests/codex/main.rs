@@ -21,6 +21,7 @@ use demi_provider_common::{
     quota::MemorySnapshots,
     testing::{FixedClock, MockResponse, MockVendor, jwt, sse_body},
 };
+use demi_shared_types::Clock;
 use serde_json::{Value, json};
 
 /// When the scripted vendor answers.
@@ -75,19 +76,35 @@ pub(crate) async fn pool_with(secret: String) -> MemoryCredentialPool {
     pool
 }
 
-/// A provider whose backend and sign-in service are the scripted vendor.
+/// The npm registry's record of the newest Codex CLI release, on the
+/// scripted vendor.
+pub(crate) const NPM_LATEST: &str = "/npm/@openai/codex/latest";
+
+/// A provider whose backend, sign-in service and npm registry are the
+/// scripted vendor.
 pub(crate) fn provider(
     vendor: &MockVendor,
     pool: &MemoryCredentialPool,
     transport: TransportMode,
 ) -> CodexProvider {
+    let clock = Arc::new(FixedClock(NOW.parse().unwrap()));
+    provider_at(vendor, pool, transport, clock)
+}
+
+/// [`provider`], reading the time from `clock`.
+pub(crate) fn provider_at(
+    vendor: &MockVendor,
+    pool: &MemoryCredentialPool,
+    transport: TransportMode,
+    clock: Arc<dyn Clock>,
+) -> CodexProvider {
     let mut config = CodexConfig::new(Some(ACCOUNT.into()));
     config.backend_url = vendor.url("/backend-api").parse().unwrap();
     config.auth_url = vendor.url("").parse().unwrap();
+    config.releases_url = vendor.url(NPM_LATEST).parse().unwrap();
     config.transport = transport;
     config.header_timeout = Duration::from_secs(5);
     config.connect_timeout = Duration::from_secs(5);
-    let clock = Arc::new(FixedClock(NOW.parse().unwrap()));
     CodexProvider::new(
         config,
         Arc::new(pool.clone()),

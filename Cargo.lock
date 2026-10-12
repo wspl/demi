@@ -2656,11 +2656,13 @@ dependencies = [
  "http",
  "jiff",
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
  "tokio",
  "tokio-tungstenite",
  "tokio-util",
+ "tracing",
 ]
 
 [[package]]
