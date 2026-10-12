@@ -6,7 +6,9 @@ import type {
 } from '@demicodes/web-ui/settings/types'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { appliedContextLimit, type AuthState, type RuntimeState } from '@demicodes/protocol'
+import { titleCase } from '@demicodes/utils'
 import type {
+  AccountDto,
   CatalogModel,
   CatalogProvider,
   ProviderState,
@@ -94,6 +96,30 @@ function healthMessage(health: AuthState | RuntimeState): string | undefined {
   return 'message' in health ? health.message : undefined
 }
 
+/**
+ * The families whose account detail is the plan its sign-in recorded, such as
+ * Claude Code's subscription type: their usage answer names no plan. Another
+ * family's detail says how the account signed in (`chatgpt`, `oidc`), which
+ * is not a plan.
+ */
+const PLAN_IN_DETAIL = new Set(['claude-code'])
+
+/**
+ * The plan an account is on (`usage-and-quota.md` § What a snapshot says):
+ * what its quota snapshot reports, else the plan its sign-in recorded, in
+ * title case ("max" reads "Max"); empty when neither says.
+ */
+export function accountPlan(
+  providerType: string,
+  account: Pick<AccountDto, 'detail' | 'quota'>,
+): string {
+  const reported = account.quota?.plan?.label || account.quota?.plan?.id
+  if (reported) {
+    return reported
+  }
+  return PLAN_IN_DETAIL.has(providerType) && account.detail ? titleCase(account.detail) : ''
+}
+
 export function providerView(
   entry: ProviderState,
   catalog: CatalogProvider | undefined,
@@ -141,9 +167,7 @@ export function providerView(
       details?.accounts.map((account) => ({
         id: account.id,
         label: account.label,
-        // The plan the vendor reports with the account's usage. How an account signed
-        // in (`chatgpt`, `oidc`) is not a plan and is not shown.
-        plan: account.quota?.plan?.label || account.quota?.plan?.id || '',
+        plan: accountPlan(entry.providerType, account),
         active: account.id === details.active,
         quota: account.quota?.windows.flatMap((window) => {
           if (window.usedPercent === null) {
