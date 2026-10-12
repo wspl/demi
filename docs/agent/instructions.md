@@ -104,8 +104,8 @@ directory, a subagent too, a profile's included.
 
 The composer's context card lists what the newest instructions block of the
 root node holds, in a section of its own under the heading Instructions,
-below the context window's part and above the usage limits, whether the list
-of rows is open or closed. Each entry is one row in the block's order:
+the card's last, below the context window's part and the usage limits,
+whether the list of rows is open or closed. Each entry is one row in the block's order:
 
 | Entry | Shows | A click |
 | --- | --- | --- |
