@@ -30,6 +30,32 @@ import { conversationStates } from './states'
  * and the shell's own services: the conversations' files, intents and panels,
  * and the settings dialog.
  */
+/**
+ * Opens a tab now, in the click that asked for it, and sends it to `url`
+ * once that arrives; a URL that never comes closes it.
+ */
+async function openLink(url: string | Promise<string>): Promise<void> {
+  // Without `noopener` the tab is returned to point it; its opener is
+  // dropped before it loads anything.
+  const tab = window.open('', '_blank')
+  if (tab) {
+    tab.opener = null
+  }
+  try {
+    const target = await url
+    if (tab) {
+      tab.location.href = target
+    } else {
+      // A browser that refused even the blank tab may still allow a
+      // navigation in a new one.
+      window.open(target, '_blank', 'noopener,noreferrer')
+    }
+  } catch (error) {
+    tab?.close()
+    throw error
+  }
+}
+
 export function productPageHost(): PageHost {
   const product = useProduct()
   const work = useWorkPanel()
@@ -99,6 +125,7 @@ export function productPageHost(): PageHost {
       },
     },
     openSettings: (section) => void settings.open(section),
+    openLink,
     overlays: appOverlayStore,
   }
 }

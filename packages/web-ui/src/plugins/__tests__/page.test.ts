@@ -41,6 +41,7 @@ function host(parts: Partial<PageHost> = {}): PageHost {
     intents: { open: unused, canOpen: unused },
     panel: { tabs: unused, add: unused, select: unused },
     openSettings: unused,
+    openLink: unused,
     overlays: createOverlayStore(),
     ...parts,
   }
