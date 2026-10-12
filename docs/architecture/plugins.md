@@ -169,8 +169,11 @@ product's [instructions](../agent/instructions.md), then each
 plugin that declared itself a context source, in registration order; a source
 that reads a Host does not make the others wait. Each source is given the text of its
 own context blocks that the model receives, the ones from the last
-`compaction_boundary` on, oldest first, with the node's working directory and
-the id of its current input turn, and answers new text or nothing. Each
+`compaction_boundary` on, oldest first, with the node's working directory, how
+its Host writes paths (`HostPaths`: joining, a path's last name, the
+directories up to the root, so `C:\Users\zan\app` walks up to `C:\` on
+Windows; [Windows paths](../execution/runner.md#windows-paths)) and the id of
+its current input turn, and answers new text or nothing. Each
 answer becomes one block, tagged with its source. The blocks are appended
 before the request and saved at once, so a request never carries a context
 the transcript does not hold.
