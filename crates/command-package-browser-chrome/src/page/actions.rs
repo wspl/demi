@@ -1,7 +1,5 @@
 //! One tab admission covers observation, targeting, input and associated waits.
 
-use std::time::Duration;
-
 use chromiumoxide::{
     cdp::browser_protocol::{
         input::{DispatchMouseEventParams, DispatchMouseEventType, MouseButton},
@@ -789,6 +787,7 @@ pub async fn command_admitted(
                 } else if let Some(load) = input.load {
                     crate::tabs::navigation::wait_current_load(tab.page(), load).await?;
                 } else {
+                    let mut pauses = element::CheckPauses::default();
                     loop {
                         let observation = Observation::capture(tab.page(), references).await?;
                         let target = required_target(&target)?;
@@ -802,7 +801,7 @@ pub async fn command_admitted(
                             {
                                 // A locator can find a node inserted after the DOM snapshot.
                                 // Resample it without treating the race as disappearance.
-                                tokio::time::sleep(Duration::from_millis(50)).await;
+                                pauses.wait().await;
                                 continue;
                             }
                             Err(error) => return Err(error),
@@ -830,7 +829,7 @@ pub async fn command_admitted(
                                 .transpose()?;
                             break;
                         }
-                        tokio::time::sleep(Duration::from_millis(50)).await;
+                        pauses.wait().await;
                     }
                 }
                 Ok(TabResult::Wait(result))
