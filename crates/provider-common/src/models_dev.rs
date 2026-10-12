@@ -323,9 +323,32 @@ impl ModelsDevSnapshot {
     /// read's time, staleness and warnings; `None` for a vendor the document
     /// does not list.
     pub fn vendor_models(&self, vendor_id: &str) -> Option<ProviderModelList> {
+        self.listed(vendor_id, |_| true)
+    }
+
+    /// The models of vendor `vendor_id` an agent can work with, as the
+    /// catalog of an entry added from the vendor list (`models.md`
+    /// § Catalog sources): the search's models, so a vendor's speech, image
+    /// and video models stay out; `None` for a vendor the document does not
+    /// list.
+    pub fn agent_models(&self, vendor_id: &str) -> Option<ProviderModelList> {
+        self.listed(vendor_id, ModelsDevModel::agentic)
+    }
+
+    /// The models of vendor `vendor_id` that `kept` keeps, as a catalog.
+    fn listed(
+        &self,
+        vendor_id: &str,
+        kept: impl Fn(&ModelsDevModel) -> bool,
+    ) -> Option<ProviderModelList> {
         let vendor = self.vendor(vendor_id)?;
         Some(ProviderModelList {
-            models: vendor.models().collect(),
+            models: vendor
+                .models
+                .iter()
+                .filter(|(_, model)| kept(model))
+                .map(|(id, model)| model.catalog(id))
+                .collect(),
             default_model_id: None,
             warnings: self.warnings.clone(),
             source_fetched_at: self.fetched_at,
@@ -443,13 +466,6 @@ pub struct ModelsDevVendor {
     models: IndexMap<String, ModelsDevModel>,
 }
 
-impl ModelsDevVendor {
-    /// The vendor's models as catalog models, in the document's order.
-    pub fn models(&self) -> impl Iterator<Item = ProviderModel> + '_ {
-        self.models.iter().map(|(id, model)| model.catalog(id))
-    }
-}
-
 /// One model of a vendor.
 #[derive(Debug, Deserialize)]
 struct ModelsDevModel {
@@ -530,6 +546,8 @@ impl ModelsDevModel {
 
     /// The model as a catalog model (`models.md` § The models.dev
     /// document): `limit.context` and `limit.output` are its token limits,
+    /// an output limit above the window stating none, as some speech and
+    /// video models' do,
     /// the types its input modalities give its accepted types (`models.md`
     /// § Accepted attachment types), `reasoning` its thinking
     /// support, the values of its `effort` reasoning option its efforts,
@@ -537,12 +555,16 @@ impl ModelsDevModel {
     /// does not state is unknown.
     fn catalog(&self, id: &str) -> ProviderModel {
         let limit = self.limit.as_ref();
+        let context_window = limit.and_then(|limit| tokens(limit.context));
+        let output_limit = limit
+            .and_then(|limit| tokens(limit.output))
+            .filter(|output| context_window.is_none_or(|window| *output <= window));
         ProviderModel {
             id: id.to_owned(),
             display_name: self.name.clone().unwrap_or_else(|| id.to_owned()),
             description: self.description.clone(),
-            context_window: limit.and_then(|limit| tokens(limit.context)),
-            output_limit: limit.and_then(|limit| tokens(limit.output)),
+            context_window,
+            output_limit,
             supports_tools: self.tool_call,
             accepted_extensions: self
                 .modalities
