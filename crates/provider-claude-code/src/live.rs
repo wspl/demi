@@ -41,6 +41,7 @@ use crate::output::{ControlRequestLine, Line};
 use crate::placement::{CliSite, ConfigDir, Placed, Placement};
 use crate::session::SessionFile;
 use crate::account::expiring;
+use crate::timing::StartTiming;
 use crate::{FAMILY, Shared, cli};
 
 /// The `tracing` target of the raw stream-json exchange, at trace level.
@@ -198,6 +199,9 @@ pub(crate) struct LiveCli {
     pub(crate) mcp: Option<Mcp>,
     /// Which block each entry the process mirrors belongs to.
     pub(crate) mirror: Mirror,
+    /// How the process's start went, until the first run that takes it
+    /// reports it.
+    pub(crate) started: Option<StartTiming>,
 }
 
 impl LiveCli {
@@ -221,6 +225,7 @@ impl LiveCli {
             .map_err(|failure| failure.failure())?;
         let expires_at = secret.expires_at;
         let token = secret.access_token;
+        let building = tokio::time::Instant::now();
         let file = {
             let session = request.session_id.clone();
             let items = request.items.clone();
@@ -231,6 +236,7 @@ impl LiveCli {
             })
             .await?
         };
+        let session_build = building.elapsed();
         let start = |site: &CliSite| {
             let start = cli::start(site, request, &token, &file);
             // The environment and the descriptors are left out: a
@@ -244,7 +250,11 @@ impl LiveCli {
             );
             start
         };
-        let Placed { process, config } = placement
+        let Placed {
+            process,
+            config,
+            steps,
+        } = placement
             .start(&start)
             .await
             // The machine could not be reached or readied, as when its
@@ -287,6 +297,11 @@ impl LiveCli {
             held: Vec::new(),
             mcp,
             mirror: Mirror::default(),
+            started: Some(StartTiming {
+                steps,
+                session_build,
+                initialize: None,
+            }),
         })
     }
 
@@ -321,7 +336,11 @@ impl LiveCli {
         request: &InferenceRequest,
     ) -> Result<(), ProviderFailure> {
         if self.mcp.is_some() {
+            let initializing = tokio::time::Instant::now();
             self.initialize(&request.system_prompt).await?;
+            if let Some(started) = &mut self.started {
+                started.initialize = Some(initializing.elapsed());
+            }
         }
         self.sent = Sent::of(&request.items);
         Ok(())

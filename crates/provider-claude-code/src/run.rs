@@ -23,6 +23,7 @@ use crate::Shared;
 use crate::live::{LiveCli, Next};
 use crate::output::{ContentBlock, Line, Printed, StreamEvent, TurnEnd};
 use crate::placement::Placement;
+use crate::timing::{self, RunTiming, Took};
 
 /// The HTTP status of a call the vendor refused for its token.
 const UNAUTHORIZED: u16 = 401;
@@ -54,13 +55,9 @@ impl ClaudeCodeRuntime {
 
 impl ProviderRuntime for ClaudeCodeRuntime {
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
-        let span = tracing::info_span!(
-            "claude_code_run",
-            provider = %self.shared.id,
-            session = %request.session_id,
-            request = %request.request_id,
-        );
-        let run = run(self, request);
+        let span = timing::run_span(&self.shared.id, &request.session_id, &request.request_id);
+        let timing = RunTiming::new(span.clone());
+        let run = run(self, request, timing);
         let mut run = Box::pin(run);
         stream::poll_fn(move |context| {
             let _entered = span.enter();
@@ -106,6 +103,7 @@ impl ProviderRuntime for ClaudeCodeRuntime {
 fn run(
     runtime: &mut ClaudeCodeRuntime,
     request: InferenceRequest,
+    mut timing: RunTiming,
 ) -> impl Stream<Item = ProviderEvent> + '_ {
     stream! {
         let cancel = request.cancel.clone();
@@ -116,6 +114,7 @@ fn run(
             let kept = runtime.live.take();
             let mut live = match kept {
                 Some(mut live) if live.serves(&request) => {
+                    timing.took(Took::Kept, None);
                     if let Some(mcp) = &live.mcp {
                         mcp.offer(request.tools.clone());
                     }
@@ -139,6 +138,7 @@ fn run(
                             return;
                         }
                         Some(Ok(entries)) => {
+                            timing.ready();
                             for event in entries {
                                 yield event;
                             }
@@ -178,6 +178,8 @@ fn run(
                             return;
                         }
                         Some(Ok(())) => {
+                            timing.took(Took::New, live.started.take());
+                            timing.ready();
                             // A new process mirrored nothing yet.
                             live.mirror.begin(&request);
                             live
@@ -265,6 +267,7 @@ fn run(
                                     for event in events {
                                         live.mirror.observe(&event);
                                         yielded = true;
+                                        timing.delta();
                                         yield event;
                                     }
                                     live.mirror.printed(id.clone(), raw, wrote);
@@ -323,6 +326,7 @@ fn run(
                             }
                             live.mirror.observe(&event);
                             yielded = true;
+                            timing.delta();
                             yield event;
                         }
                     }

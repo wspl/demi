@@ -12,6 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::{Rc, Weak};
 use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
 use bytes::Bytes;
 use demi_backend_cloud::access::MachineAccess;
@@ -31,7 +32,7 @@ use demi_host_interface::{
 };
 use demi_provider_claude_code::{
     AccountMachine, AccountWork, CliSite, CliStart, CliSystem, ConfigDir, Placed, Placement,
-    StartError,
+    StartError, StartSteps,
 };
 use demi_shared_types::StreamKind;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
@@ -39,6 +40,7 @@ use demi_web_api_protocol::providers::{CliInstall, CliMachine};
 use futures_util::{FutureExt as _, StreamExt as _};
 use futures_util::future::{BoxFuture, LocalBoxFuture, Shared};
 use serde::de::DeserializeOwned;
+use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 
 use crate::services::Services;
@@ -131,15 +133,26 @@ impl Placement for CloudPlacement {
                 .shard
                 .upgrade()
                 .ok_or_else(|| StartError("The backend is shutting down".into()))?;
+            // Each step's time, which the run's span carries
+            // (`claude-code.md` § Preparing a process ahead).
+            let mut steps = StartSteps::default();
+            let mut step = Instant::now();
+            let mut lap = |into: &mut Duration| {
+                let now = Instant::now();
+                *into = now - step;
+                step = now;
+            };
             let access = shard
                 .cloud_shard()
                 .machine_access()
                 .await
                 .map_err(|error| StartError(error.to_string()))?;
+            lap(&mut steps.admit);
             let executable = shard
                 .cli_executable_at(&access, &self.work)
                 .await
                 .map_err(StartError)?;
+            lap(&mut steps.executable);
             let run_dir = run_dir(&access.home);
             access
                 .host
@@ -165,23 +178,32 @@ impl Placement for CloudPlacement {
                     "Claude Code's configuration directory could not be made on the Cloud: {error}"
                 ))
             })?;
+            lap(&mut steps.directories);
             let system = system(&access.host, &run_dir).await.map_err(|error| {
                 StartError(format!(
                     "The Cloud could not be asked what it tells Claude Code of itself: {error}"
                 ))
             })?;
+            lap(&mut steps.system);
             let site = CliSite {
                 executable,
                 run_dir,
                 config_dir: config.path.clone(),
                 system,
             };
+            // The session's bytes are made here, for the machine's system,
+            // and written next: one step.
             let CliStart { spawn, files } = start(&site);
+            steps.file_bytes = files
+                .iter()
+                .map(|(_, bytes)| u64::try_from(bytes.len()).unwrap_or(u64::MAX))
+                .sum();
             config.write(files).await.map_err(|error| {
                 StartError(format!(
                     "Claude Code's session could not be written on the Cloud: {error}"
                 ))
             })?;
+            lap(&mut steps.files);
             let process = access
                 .host
                 .process()
@@ -192,6 +214,7 @@ impl Placement for CloudPlacement {
                         "Claude Code could not be started on the Cloud: {error}"
                     ))
                 })?;
+            lap(&mut steps.spawn);
             let exit = process.exit.shared();
             config.exit = Some(exit.clone());
             Ok(Placed {
@@ -200,6 +223,7 @@ impl Placement for CloudPlacement {
                     ..process
                 },
                 config: Box::new(config),
+                steps,
             })
         })
     }

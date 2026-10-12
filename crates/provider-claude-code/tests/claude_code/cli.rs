@@ -15,7 +15,7 @@ use demi_host_interface::{
 };
 use demi_provider_claude_code::{
     ClaudeCodeConfig, ClaudeCodeProvider, CliSite, CliStart, CliSystem, ConfigDir, Placed,
-    Placement, StartError,
+    Placement, StartError, StartSteps,
 };
 use demi_provider_common::credentials::{
     AccountMeta, CredentialPool, MemoryCredentialPool, credential_id_for,
@@ -273,7 +273,11 @@ impl Placement for ScriptedPlacement {
             let config = Box::new(ScriptedConfig(cli.state.clone()));
             // A test that dropped its end of the placement starts nothing more.
             let _ = self.started.unbounded_send(cli);
-            Ok(Placed { process, config })
+            Ok(Placed {
+                process,
+                config,
+                steps: StartSteps::default(),
+            })
         })
     }
 }

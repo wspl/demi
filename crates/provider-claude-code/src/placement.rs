@@ -7,6 +7,7 @@
 //! machine through an [`AccountMachine`], from any thread.
 
 use std::rc::Rc;
+use std::time::Duration;
 
 use bytes::Bytes;
 use demi_host_interface::{HostError, Process, SpawnRequest};
@@ -75,10 +76,33 @@ pub trait Placement {
     ) -> LocalBoxFuture<'a, Result<Placed, StartError>>;
 }
 
-/// A started CLI process and its configuration directory.
+/// A started CLI process and its configuration directory, with how long
+/// each step of its start took.
 pub struct Placed {
     pub process: Process,
     pub config: Box<dyn ConfigDir>,
+    pub steps: StartSteps,
+}
+
+/// How long each step of a start took on the placement's machine, which a
+/// run's span carries (`claude-code.md` § Preparing a process ahead).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StartSteps {
+    /// Waking or admitting the machine.
+    pub admit: Duration,
+    /// Finding Demi's CLI there, installing it first when the machine has
+    /// none.
+    pub executable: Duration,
+    /// Making the run directory and the process's configuration directory.
+    pub directories: Duration,
+    /// Asking the machine what it tells a process of itself.
+    pub system: Duration,
+    /// Writing the start's files, the session among them, and how many
+    /// bytes they hold.
+    pub files: Duration,
+    pub file_bytes: u64,
+    /// Starting the process on the machine's Host.
+    pub spawn: Duration,
 }
 
 /// A process's configuration directory on its machine.
