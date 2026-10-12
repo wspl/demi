@@ -1736,10 +1736,9 @@ plugin-browser -> plugin-sdk, utils
 plugin-changes -> plugin-sdk
 plugin-file-browser -> plugin-sdk
 plugin-skills -> plugin-sdk
-plugin-web -> plugin-sdk
-web -> plugin-browser, plugin-changes, plugin-file-browser, plugin-sdk, plugin-skills, plugin-web, protocol, utils, web-ui
+web -> plugin-browser, plugin-changes, plugin-file-browser, plugin-sdk, plugin-skills, protocol, utils, web-ui
 browse -> web
-web-gallery -> plugin-browser, plugin-changes, plugin-file-browser, plugin-sdk, plugin-skills, plugin-web, protocol, utils, web-ui
+web-gallery -> plugin-browser, plugin-changes, plugin-file-browser, plugin-sdk, plugin-skills, protocol, utils, web-ui
 ```
 
 ## Module layout
