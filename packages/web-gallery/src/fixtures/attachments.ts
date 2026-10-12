@@ -14,6 +14,8 @@ const attachments: Record<string, { name: string; mediaType: string; blob: strin
   a5: { name: 'timeline.png', mediaType: 'image/png', blob: galleryBlobs.timeline },
   a6: { name: 'chart.png', mediaType: 'image/png', blob: galleryBlobs.chart },
   a7: { name: 'demo.mp4', mediaType: 'video/mp4', blob: galleryBlobs.unsizedRecording },
+  a8: { name: 'settings-light.png', mediaType: 'image/png', blob: galleryBlobs.whiteScreen },
+  a10: { name: 'settings-dark.png', mediaType: 'image/png', blob: galleryBlobs.darkScreen },
 }
 
 /**
@@ -60,6 +62,16 @@ export const loneImageMarkdown = `The sign-in page works again. The form as it s
 ![The fixed sign-in page](attachment:a1)
 
 The button waits for the session before it moves on.
+`
+
+/**
+ * A reply with a screenshot whose background is white and one whose
+ * background is dark, side by side: each keeps a faint edge in both themes.
+ */
+export const edgedImagesMarkdown = `The settings page in the light and the dark appearance:
+
+![The settings list on white](attachment:a8)
+![The settings list on dark](attachment:a10)
 `
 
 /** A reply with a recording and the page it ends on, one per line: two tiles side by side. */

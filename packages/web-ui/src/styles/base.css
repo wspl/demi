@@ -1673,6 +1673,17 @@ html[data-theme="light"] .file-pill {
   object-fit: cover;
 }
 
+/* A message's image has an edge of its own, the theme's faint line over its
+   outermost pixel (an inset outline, as the thumbnails of `RowPicture` have),
+   so a screenshot with a white or a dark background does not melt into the
+   page. The renderer puts every image of a message in one of the blocks
+   above, whatever its size, and an image in code is text, so none needs
+   leaving out; the outline adds nothing to the box. */
+.markdown-body :where(.media-lone, .media-run) img {
+  outline: 1px solid var(--line);
+  outline-offset: -1px;
+}
+
 /* An attachment's video shows its first frame with a play mark, and a click
    plays it in the viewer (`markdown/render.ts`). */
 .markdown-body .message-video {
