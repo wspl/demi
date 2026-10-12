@@ -83,21 +83,20 @@ const compactIdle = ref(false)
 const compactWarn = ref(false)
 const compactDanger = ref(false)
 const compactPinned = ref(false)
-/** The usage limits of the account the card's conversation runs on; each time the card shows them, a probe reads each window a little further used. */
-const cardLimits = ref<UsageLimits>({
-  plan: 'Max 5×',
+/** The windows of the account the cards' conversations run on; each time a card shows them, a probe reads each window a little further used. */
+const cardWindows = ref<UsageLimits['windows']>([
+  { id: 'five_hour', label: '5h session', used: 18, max: 100, resetsAt: ahead(3 * HOUR + 38 * MINUTE) },
+  { id: 'seven_day', label: '7d all models', used: 34, max: 100, resetsAt: ahead(5 * DAY + 2 * HOUR) },
+  { id: 'limit:weekly_scoped:Fable', label: '7d Fable', used: 81, max: 100, resetsAt: ahead(12 * DAY) },
+])
+/** The usage limits a card shows for an account of the given label: a short one, a long one that truncates, none. */
+const cardLimits = (accountLabel: string): UsageLimits => ({
+  accountLabel,
   autoRefresh: true,
-  windows: [
-    { id: 'five_hour', label: '5h session', used: 18, max: 100, resetsAt: ahead(3 * HOUR + 38 * MINUTE) },
-    { id: 'seven_day', label: '7d all models', used: 34, max: 100, resetsAt: ahead(5 * DAY + 2 * HOUR) },
-    { id: 'limit:weekly_scoped:Fable', label: '7d Fable', used: 81, max: 100, resetsAt: ahead(12 * DAY) },
-  ],
+  windows: cardWindows.value,
 })
 function refreshCardLimits(): void {
-  cardLimits.value = {
-    ...cardLimits.value,
-    windows: cardLimits.value.windows.map((window) => ({ ...window, used: Math.min(window.max, window.used + 1) })),
-  }
+  cardWindows.value = cardWindows.value.map((window) => ({ ...window, used: Math.min(window.max, window.used + 1) }))
 }
 const buttonPressed = ref(true)
 const buttonGhostPressed = ref(true)
@@ -777,7 +776,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
                   :usage="usageAt(0.62)"
                   :is-compacting="compactPinned"
                   :instructions="demoInstructions"
-                  :limits="cardLimits"
+                  :limits="cardLimits('zan@example.com')"
                   @compact="pulseCompact('pinned')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @refresh-limits="refreshCardLimits"
@@ -786,13 +785,28 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             </GallerySpecimen>
           </GalleryOverlayWell>
           <GalleryOverlayWell>
-            <GallerySpecimen variant="card · just compacted, Compact disabled">
+            <GallerySpecimen variant="card · just compacted, a long account label truncates">
               <div class="px-44 pt-[36rem]">
                 <ContextUsageIndicator
                   pinned
                   :usage="usageAt(0.06, { summary: 2_400 })"
                   :instructions="demoInstructions"
-                  :limits="cardLimits"
+                  :limits="cardLimits('a-very-long-account-name.with.many.parts@subdomain.example.com')"
+                  @open-instruction="demoOpenInstruction($event, productWould)"
+                  @refresh-limits="refreshCardLimits"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell>
+            <GallerySpecimen variant="card · account without a label">
+              <div class="px-44 pt-[36rem]">
+                <ContextUsageIndicator
+                  pinned
+                  :usage="usageAt(0.42)"
+                  :instructions="demoInstructions"
+                  :limits="cardLimits('')"
+                  @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @refresh-limits="refreshCardLimits"
                 />

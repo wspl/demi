@@ -120,13 +120,14 @@ export function formatShare(tokens: number, window: number): string {
 }
 
 /**
- * The usage limits the context card shows under its rows: the plan and the
- * windows of the account the conversation's model runs on
+ * The usage limits the context card shows under its rows: the label Settings
+ * shows for the account the conversation's model runs on (empty when it has
+ * none) and that account's windows
  * (`usage-and-quota.md` § What a snapshot says), and whether a visible card
  * asks the vendor for them again, as Settings does.
  */
 export interface UsageLimits {
-  plan: string
+  accountLabel: string
   windows: SettingsQuotaWindow[]
   autoRefresh: boolean
 }
