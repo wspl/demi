@@ -142,8 +142,11 @@ Adding a provider asks only what kind it is: a vendor from the list, or a
 custom endpoint of a family. The entry joins the providers list at once,
 selected, named after its vendor or family, and its page shows what it still
 needs, as Mail adds an account that waits for its password. For example, the
-user adds Google: *Google* stands in the list with a yellow dot, and its page
-shows the API key field first, with *Add an API key to use Google.* above it.
+user adds Google: *Google* stands in the list with a yellow dot, and on its
+page the API key field is red, with *Add an API key to use Google.* under it in
+red, as a form marks a field it cannot do without. The field a model is missing
+from is the model list's, whose Add Model button the sentence then stands
+under; a subscription's is its Sign In row.
 
 An entry that cannot infer yet is **incomplete**, for the first of these:
 
