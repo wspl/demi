@@ -333,7 +333,7 @@ export const useConversations = defineStore('conversations', () => {
       | 'unread'
       | 'cwd'
       | 'pluginsChanged'
-      | 'permissionRequests'
+      | 'unreadPermissionRequests'
       | 'createdAt'
       | 'updatedAt'
     >,
@@ -351,7 +351,8 @@ export const useConversations = defineStore('conversations', () => {
       readRevision: record.readRevision,
       unread: record.unread,
       pluginsChanged: record.pluginsChanged,
-      needsYou: record.permissionRequests > 0,
+      // The sidebar's mark settles once the request is read, though it still waits.
+      needsYou: record.unreadPermissionRequests > 0,
       createdAt: record.createdAt,
       updatedAt: record.updatedAt,
     }
@@ -713,6 +714,7 @@ export const useConversations = defineStore('conversations', () => {
           hostsRevision: 0,
           pluginRevisions: [],
           permissionRequests: 0,
+          unreadPermissionRequests: 0,
           permissionsRevision: 0,
           status: 'idle',
           lastTurn: null,
@@ -1568,6 +1570,7 @@ export const useConversations = defineStore('conversations', () => {
       hostsRevision: 0,
       pluginRevisions: [],
       permissionRequests: 0,
+      unreadPermissionRequests: 0,
       permissionsRevision: 0,
       createdAt: now,
       updatedAt: now,
@@ -1721,7 +1724,7 @@ export const useConversations = defineStore('conversations', () => {
     if (
       !conversation ||
       conversation.load !== 'ready' ||
-      !conversation.unread ||
+      !(conversation.unread || conversation.needsYou) ||
       document.visibilityState !== 'visible'
     ) {
       return Promise.resolve()
@@ -1730,7 +1733,7 @@ export const useConversations = defineStore('conversations', () => {
     const change = product.change(`conversation:${id}`, (state) =>
       withConversation(state, id, (record) => {
         const readRevision = Math.max(record.readRevision, revision)
-        return { ...record, readRevision, unread: record.revision > readRevision }
+        return { ...record, readRevision, unread: record.revision > readRevision, unreadPermissionRequests: 0 }
       }))
     const signal = lifetime.signal
     return writes
