@@ -180,3 +180,87 @@ export function closeOpenInlineMarkdown(text: string): string {
   }
   return open.reverse().join('')
 }
+
+/** A part of the text the reader was shown at once, `start` to `end` in the source, at `at` (performance.now()). */
+export interface RevealStep {
+  start: number
+  end: number
+  at: number
+}
+
+/** How a step's text fades in. */
+const FADE_IN: Keyframe[] = [{ opacity: 0 }, { opacity: 1 }]
+
+/**
+ * Gives the text of each step still fading in a span that fades it, from the
+ * render's end backwards. A step's extent is its rendered length, counted
+ * from the end; code keeps its place in the count but no span, as a code
+ * block's text shows at once.
+ *
+ * Each fade is an animation of the document's timeline that starts when its
+ * step was shown (`performance.now()` and the timeline count from the same
+ * origin), so it goes on unbroken through a render, which replaces the spans,
+ * and through a move of the text in the page, which a CSS animation would
+ * start over: setting up a scroller's bars (`ScrollArea`) appends its
+ * content to it again, and the reply's last lines faded in a second time.
+ *
+ * The timeline reads the time its frame began, which can be earlier than the
+ * `performance.now()` a step was shown at, so the first frame that draws a
+ * step may come before its fade starts. Until then the text keeps the fade's
+ * first keyframe (`backwards`); without it, that frame painted the text
+ * solid, the next one nearly transparent, and it faded in from there.
+ */
+export function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly RevealStep[]): void {
+  if (prefersReducedMotion())
+    return
+  const now = performance.now()
+  const marks = shownSteps
+    .filter((step) => now - step.at < STREAM_PACE.fadeMs && step.start < text.length)
+    .toSorted((a, b) => b.start - a.start)
+    .map((step) => ({ fromEnd: renderedLength(text.slice(step.start)), at: step.at }))
+  if (marks.length === 0)
+    return
+  let counted = 0
+  let mark = 0
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  for (
+    let node = walker.lastChild() as Text | null;
+    node && mark < marks.length;
+    node = walker.previousNode() as Text | null
+  ) {
+    const content = node.textContent ?? ''
+    // Whitespace between blocks (the newline marked emits after each paragraph) carries no
+    // ink, and the count leaves out the newlines between blocks.
+    if (!content.trim())
+      continue
+    const code = node.parentElement?.closest('pre') !== null
+    // `end` and `left` walk the node's text from its end; line breaks take no part in the count.
+    let end = content.length
+    let left = content.length - (content.match(/\n/g)?.length ?? 0)
+    while (left > 0 && mark < marks.length) {
+      const { fromEnd, at } = marks[mark]!
+      const take = Math.min(fromEnd - counted, left)
+      const start = startOfLast(content.slice(0, end), take)
+      if (take > 0 && !code) {
+        // A span of inline code shown whole in one step fades with its fill, never as an empty box first.
+        const parent = node.parentElement
+        const inked = start === 0 && end === content.length && parent?.tagName === 'CODE' && parent.childNodes.length === 1
+          ? parent
+          : document.createElement('span')
+        if (inked !== parent) {
+          const piece = node.splitText(start)
+          piece.replaceWith(inked)
+          inked.append(piece)
+        }
+        // The class marks the text still fading in, for whoever looks at the page.
+        inked.classList.add('stream-ink')
+        inked.animate(FADE_IN, { duration: STREAM_PACE.fadeMs, fill: 'backwards' }).startTime = at
+      }
+      end = start
+      left -= take
+      counted += take
+      if (counted >= fromEnd)
+        mark += 1
+    }
+  }
+}
