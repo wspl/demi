@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { upperFirst } from '@demicodes/utils'
+import { countUnlessOne, upperFirst } from '@demicodes/utils'
 import { showToast } from '../infra/toast'
 import {
   Brain,
@@ -234,7 +234,7 @@ function askRemoveProvider(provider: SettingsProviderEntry): void {
     body: [
       provider.models.length === 0
         ? 'Its API key goes with it.'
-        : `Its API key and ${provider.models.length === 1 ? 'its model' : `its ${provider.models.length} models`} go with it.`,
+        : `Its API key and its ${countUnlessOne(provider.models.length, 'model')} go with it.`,
       'Conversations that use one of its models keep their history, and their next message needs another model.',
     ],
     run: () => emit('remove', provider.id),

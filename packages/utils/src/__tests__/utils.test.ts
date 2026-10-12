@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { baseName, clientPlatform, delay, keepComposition, sliceHead, titleCase, truncate } from '../index'
+import { baseName, clientPlatform, countOf, countUnlessOne, delay, formatSpan, keepComposition, pluralize, sliceHead, titleCase, truncate } from '../index'
 
 test('an aborted delay ends at once instead of after its time', async () => {
   const stop = new AbortController()
@@ -60,4 +60,39 @@ test("a Host path's name, on a Mac, Linux or Windows Host", () => {
   expect(baseName('C:/Users/alex/notes.md')).toBe('notes.md')
   expect(baseName('report.pdf')).toBe('report.pdf')
   expect(baseName('/')).toBe('')
+})
+
+// The duration words of the thinking label, the command time tag, the agent
+// status bar and the reset times: each unit floored, the seconds never shown
+// from the hour on.
+test.each([
+  { scenario: 'a moment', ms: 0, wording: '0s' },
+  { scenario: 'under a minute', ms: 42_900, wording: '42s' },
+  { scenario: 'on the minute', ms: 180_000, wording: '3m' },
+  { scenario: 'minutes and seconds', ms: 134_900, wording: '2m 14s' },
+  { scenario: 'an hour and seconds', ms: 3_659_000, wording: '1h' },
+  { scenario: 'hours and minutes', ms: 3_930_000, wording: '1h 5m' },
+  { scenario: 'more than a day', ms: 97_200_000, wording: '27h' },
+  { scenario: 'a clock set back', ms: -5_000, wording: '0s' },
+])('a span of $scenario reads "$wording"', ({ ms, wording }) => {
+  expect(formatSpan(ms)).toBe(wording)
+})
+
+// The caller gives the casing: a title passes `Conversation`, a sentence `file`.
+test.each([
+  { count: 0, pluralized: 'files', counted: '0 files', unlessOne: '0 files' },
+  { count: 1, pluralized: 'file', counted: '1 file', unlessOne: 'file' },
+  { count: 2, pluralized: 'files', counted: '2 files', unlessOne: '2 files' },
+])('$count file(s) read "$counted"', ({ count, pluralized, counted, unlessOne }) => {
+  expect(pluralize(count, 'file')).toBe(pluralized)
+  expect(countOf(count, 'file')).toBe(counted)
+  expect(countUnlessOne(count, 'file')).toBe(unlessOne)
+})
+
+test('a count keeps the casing and the irregular plural its caller gives', () => {
+  expect(countOf(3, 'Conversation')).toBe('3 Conversations')
+  expect(countOf(1, 'Agent')).toBe('1 Agent')
+  expect(countOf(2, 'copy', 'copies')).toBe('2 copies')
+  expect(pluralize(2, 'This project goes', 'These projects go')).toBe('These projects go')
+  expect(pluralize(1, 'This project goes', 'These projects go')).toBe('This project goes')
 })
