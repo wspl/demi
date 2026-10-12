@@ -3,8 +3,10 @@ import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import type { Preferences } from '../api/generated/web-api'
 import { productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
+import { waitFor } from '@demicodes/utils'
 import { usePreferences } from './preferences'
 import { useProduct } from './product'
+import { useResources } from './resources'
 import { setThemeChoice } from '@demicodes/web-ui/theme/appTheme'
 
 const realFetch = globalThis.fetch
@@ -13,12 +15,15 @@ let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>
 let saved: Preferences
 let patches: unknown[]
+/** What `/api/models` answers. */
+let catalog: unknown
 
 beforeEach(() => {
   pinia = createPinia()
   setActivePinia(pinia)
   saved = { appearance: {}, shortcuts: {} }
   patches = []
+  catalog = { providers: [] }
   Object.defineProperty(navigator, 'languages', {
     configurable: true,
     get: () => ['zh-cn', 'en', 'zh-CN'],
@@ -26,7 +31,7 @@ beforeEach(() => {
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
     if (path.startsWith('/api/models')) {
-      return Response.json({ providers: [] })
+      return Response.json(catalog)
     }
     if (path === '/api/settings/preferences' && init?.method === 'PATCH') {
       const body = JSON.parse(String(init.body))
@@ -104,4 +109,50 @@ test('a report the backend stored in its own spelling is not sent again', async 
   await preferences.reportBrowser()
   await preferences.reportBrowser()
   expect(patches).toHaveLength(1)
+})
+
+/** The provider entry `stub`, as the product state lists it. */
+const stub = {
+  id: 'stub', kind: 'api_key' as const, providerType: 'stub', label: 'Stub',
+  wireApi: null, vendorId: null, baseUrl: null, models: null, createdAt: '2026-09-09T00:00:00.000Z',
+  details: { type: 'failed' as const, message: 'Not read in this test' },
+}
+
+/** A catalog model of `stub`. */
+function catalogModel(id: string) {
+  const selection = {
+    providerId: 'stub', thinking: null, serviceTierId: null,
+    model: { id, name: id, contextWindow: 1000, outputLimit: null, thinking: [], acceptedExtensions: [] },
+  }
+  return {
+    id, displayName: id, description: null, contextWindow: 1000, outputLimit: null,
+    supportsTools: null, acceptedExtensions: null, supportsReasoning: null, supportedThinkingEfforts: [],
+    canDisableThinking: null, serviceTiers: [], defaultServiceTierId: null, cost: null, selection,
+  }
+}
+
+test("a model or an entry the user turns off is saved in the user's preferences, and every page's menus leave it out", async () => {
+  catalog = { providers: [{
+    providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
+    warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
+    availability: { type: 'available' }, models: [catalogModel('a'), catalogModel('b')],
+  }] }
+  useProduct().start()
+  channels.last().connect(productState({ preferences: saved, providers: [stub] }))
+  const preferences = usePreferences()
+  const resources = useResources()
+  await waitFor(() => resources.models.stub?.length === 2, () => 'the catalog did not load')
+
+  // Off at once in this page, and written for every other.
+  preferences.showModel('stub', 'b', false)
+  expect(resources.models.stub?.map((model) => model.id)).toEqual(['a'])
+  expect(resources.providers[0]?.models.map((model) => model.enabled)).toEqual([true, false])
+  await waitFor(() => patches.length === 1, () => 'the switch was not saved')
+  expect(patches).toEqual([{ hiddenModels: [{ providerId: 'stub', modelId: 'b' }] }])
+
+  // Another page turned the entry off; this page's menus follow.
+  saved = { ...saved, hiddenProviders: ['stub'] }
+  channels.last().send({ type: 'preferences', preferences: saved })
+  expect(resources.providerInfos[0]?.isAvailable).toBe(false)
+  expect(resources.providers[0]?.enabled).toBe(false)
 })

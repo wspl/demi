@@ -527,7 +527,7 @@ async fn a_spawn_reads_the_users_settings_and_builds_the_childs_model_from_the_c
         vec![
             shell(
                 "t1",
-                "demi agent profiles && demi agent spawn --profile explore <<< 'Find the parser'",
+                "demi agent profiles list && demi agent spawn --profile explore <<< 'Find the parser'",
             ),
             say("dispatched"),
             say("received"),

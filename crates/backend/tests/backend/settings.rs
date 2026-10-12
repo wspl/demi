@@ -215,7 +215,7 @@ fn limit(limit: u32, unlimited: bool) -> SubagentLimit {
 }
 
 /// The subagent settings the next `subagents` message of `page` carries.
-async fn synced(page: &mut crate::support::SyncChannel) -> SubagentSettings {
+pub(crate) async fn synced(page: &mut crate::support::SyncChannel) -> SubagentSettings {
     let events = page
         .until(|event| matches!(event, SyncEvent::Subagents { .. }))
         .await;
