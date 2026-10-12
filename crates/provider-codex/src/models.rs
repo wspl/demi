@@ -1,23 +1,116 @@
 //! The Codex catalog (`models.md` § The Codex catalog): the account's model
-//! list on the ChatGPT backend, read with the version of the Codex CLI
-//! release the provider was last checked against, because the backend picks
-//! the models it lists by that version.
+//! list on the ChatGPT backend, read with the version of the newest Codex
+//! CLI release, because the backend picks the models it lists by that
+//! version. The newest release is the npm registry's `latest` version of
+//! `@openai/codex`, as the CLI's own update check finds it.
 
-use std::num::NonZeroU32;
+use std::{num::NonZeroU32, sync::Arc, time::Duration};
 
 use demi_provider_common::{
     CatalogError,
+    kept::KeptRead,
     wire::{NonEmpty, decode_untagged},
 };
 use demi_shared_types::{Clock, ProviderModel, ProviderModelList, ServiceTier};
 use http::{HeaderValue, StatusCode, header::ACCEPT};
+use jiff::SignedDuration;
 use reqwest::Url;
+use semver::Version;
 use serde::{Deserialize, Deserializer};
+use tokio::runtime::Handle;
 
 use crate::{Shared, request::account_headers};
 
-/// The Codex CLI release the provider was last checked against.
-pub(crate) const CLIENT_VERSION: &str = "0.153.4";
+/// The Codex CLI release built into the provider, which the catalog sends
+/// until the newest one is first read.
+const CLIENT_VERSION: &str = "0.162.1";
+
+/// How long the newest release is believed before the registry is read
+/// again.
+const VERSION_LIFETIME: SignedDuration = SignedDuration::from_hours(6);
+
+/// How long one read of the registry may take.
+const VERSION_READ_TIMEOUT: Duration = Duration::from_secs(15);
+
+/// The version of the newest Codex CLI release, kept six hours and read
+/// again in the background, so that no catalog request waits for it.
+pub(crate) struct ClientVersion(Arc<Registry>);
+
+struct Registry {
+    /// The registry's `latest` record of `@openai/codex`.
+    url: Url,
+    http: reqwest::Client,
+    newest: KeptRead<Version>,
+}
+
+impl ClientVersion {
+    pub(crate) fn new(url: Url, http: reqwest::Client, clock: Arc<dyn Clock>) -> Self {
+        Self(Arc::new(Registry {
+            url,
+            http,
+            newest: KeptRead::new(VERSION_LIFETIME, clock),
+        }))
+    }
+
+    /// The version a catalog request sends, at once: the last one read, or
+    /// the built-in one before a read succeeds. When that is older than six
+    /// hours or missing, the registry is read in the background for a
+    /// later request, on the runtime of the caller.
+    fn current(&self) -> String {
+        let registry = self.0.clone();
+        // The read ends within `VERSION_READ_TIMEOUT`. A failed one keeps the
+        // version read before, and a later request reads again.
+        let read_again = async move {
+            match registry.newest.read(false, || registry.latest()).await {
+                Ok(version) => tracing::debug!("the newest Codex CLI release is {version}"),
+                Err(reason) => {
+                    tracing::warn!("the newest Codex CLI release was not read: {reason}");
+                }
+            }
+        };
+        match self.0.newest.kept(&Handle::current(), read_again) {
+            Some(kept) => kept.value.to_string(),
+            None => CLIENT_VERSION.to_owned(),
+        }
+    }
+}
+
+impl Registry {
+    /// The `latest` version the registry names: a bare `MAJOR.MINOR.PATCH`,
+    /// which is what the CLI sends; a prerelease is no answer.
+    async fn latest(&self) -> Result<Version, String> {
+        let response = self
+            .http
+            .get(self.url.clone())
+            .header(ACCEPT, "application/json")
+            .timeout(VERSION_READ_TIMEOUT)
+            .send()
+            .await
+            .map_err(|error| format!("the registry did not answer ({})", error.without_url()))?;
+        let status = response.status();
+        if !status.is_success() {
+            return Err(format!("the registry answered {status}"));
+        }
+        let text = response
+            .text()
+            .await
+            .map_err(|error| format!("the registry did not answer ({})", error.without_url()))?;
+        let latest: LatestRelease =
+            decode_untagged(&text).map_err(|error| format!("its answer cannot be read: {error}"))?;
+        let version = latest.version;
+        if !version.pre.is_empty() || !version.build.is_empty() {
+            return Err(format!("it names version {version}, which is not a release"));
+        }
+        Ok(version)
+    }
+}
+
+/// The registry's record of a package's `latest` version; only the field
+/// Demi reads.
+#[derive(Deserialize)]
+struct LatestRelease {
+    version: Version,
+}
 
 /// Codex offers its Fast mode as the `priority` service tier.
 const FAST_TIER: &str = "priority";
@@ -25,6 +118,8 @@ const FAST_TIER: &str = "priority";
 /// A fresh read of the account's model list. A request refused with HTTP 401
 /// refreshes the token that was refused, once, and reads again.
 pub(crate) async fn list(shared: &Shared) -> Result<ProviderModelList, CatalogError> {
+    let url = models_url(&shared.models_url, &shared.client_version.current());
+    tracing::debug!("reading the Codex catalog at {url}");
     let mut refused_token = None;
     loop {
         let credentials = shared
@@ -36,7 +131,7 @@ pub(crate) async fn list(shared: &Shared) -> Result<ProviderModelList, CatalogEr
         headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
         let response = shared
             .http
-            .get(shared.models_url.clone())
+            .get(url.clone())
             .headers(headers)
             .send()
             .await
@@ -220,11 +315,10 @@ fn present<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<Option<S
     Option::<String>::deserialize(deserializer).map(Some)
 }
 
-/// The catalog request's URL: the models under the backend, with the client
+/// The catalog request's URL: the backend's `models`, with the client
 /// version the backend picks models by.
-pub(crate) fn models_url(backend: &Url) -> Url {
-    let mut url = crate::codex_url(backend, "/models");
-    url.query_pairs_mut()
-        .append_pair("client_version", CLIENT_VERSION);
+fn models_url(models: &Url, version: &str) -> Url {
+    let mut url = models.clone();
+    url.query_pairs_mut().append_pair("client_version", version);
     url
 }

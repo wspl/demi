@@ -72,6 +72,9 @@ pub struct CodexConfig {
     pub backend_url: Url,
     /// The sign-in service, `https://auth.openai.com` in the product.
     pub auth_url: Url,
+    /// The npm registry's record of the newest Codex CLI release,
+    /// [`Self::RELEASES_URL`] in the product.
+    pub releases_url: Url,
     pub transport: TransportMode,
     /// How long a server-sent events request waits for its response headers.
     pub header_timeout: Duration,
@@ -84,6 +87,7 @@ pub struct CodexConfig {
 impl CodexConfig {
     pub const BACKEND_URL: &str = "https://chatgpt.com/backend-api";
     pub const AUTH_URL: &str = "https://auth.openai.com";
+    pub const RELEASES_URL: &str = "https://registry.npmjs.org/@openai/codex/latest";
 
     /// The product's configuration of an entry's provider for `account`.
     pub fn new(account: Option<String>) -> Self {
@@ -91,6 +95,7 @@ impl CodexConfig {
             account,
             backend_url: Url::parse(Self::BACKEND_URL).expect("the backend URL parses"),
             auth_url: Url::parse(Self::AUTH_URL).expect("the sign-in URL parses"),
+            releases_url: Url::parse(Self::RELEASES_URL).expect("the registry URL parses"),
             transport: TransportMode::Auto,
             header_timeout: Duration::from_secs(20),
             connect_timeout: Duration::from_secs(10),
@@ -109,7 +114,9 @@ pub struct CodexProvider {
 struct Shared {
     responses_url: Url,
     websocket_url: Url,
+    /// The catalog's address, without the client version.
     models_url: Url,
+    client_version: models::ClientVersion,
     transport: TransportMode,
     header_timeout: Duration,
     connect_timeout: Duration,
@@ -168,7 +175,12 @@ impl CodexProvider {
             shared: Arc::new(Shared {
                 websocket_url: websocket_url(&responses_url),
                 responses_url,
-                models_url: models::models_url(&config.backend_url),
+                models_url: codex_url(&config.backend_url, "/models"),
+                client_version: models::ClientVersion::new(
+                    config.releases_url,
+                    http.clone(),
+                    clock.clone(),
+                ),
                 transport: config.transport,
                 header_timeout: config.header_timeout,
                 connect_timeout: config.connect_timeout,
