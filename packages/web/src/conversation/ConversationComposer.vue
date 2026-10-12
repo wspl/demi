@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { Cloud } from '@lucide/vue'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { baseName } from '@demicodes/utils'
@@ -20,6 +19,7 @@ import type { MessageFileTarget } from '@demicodes/web-ui/markdown/types'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
+import { hostKindOf } from '../state/hosts'
 import { usePreferences } from '../state/preferences'
 import { placesFor } from '../devices/files'
 import { conversationHostSource } from './files'
@@ -194,8 +194,8 @@ const remoteHosts = computed(() => {
           )?.cwd
     return {
       ...host,
-      canWake: device?.kind === 'managed',
-      icon: device?.kind === 'managed' ? Cloud : undefined,
+      canWake: hostKindOf(device) === 'cloud',
+      kind: hostKindOf(device),
       source: conversationHostSource(props.conversation.id, host.id, host.id === primary.deviceId),
       places: placesFor(device, resources.projects),
       cwd: cwd ?? undefined,

@@ -6,11 +6,11 @@
  * Paths are POSIX: `/` separates segments and `/` is the root. A source for another
  * convention translates at its boundary.
  */
-import type { Component } from 'vue'
 import type { Showing } from './file-cache'
 import type { ReadAt } from './watch-channel'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 import type { DeviceState } from '../devices/state'
+import type { HostKind } from '../hosts/types'
 
 export type { Showing, ShownEntry } from './file-cache'
 
@@ -169,7 +169,8 @@ export interface FileBrowserHost {
   state: DeviceState
   /** A stopped host can be selected when its source wakes it on access. */
   canWake?: boolean
-  icon?: Component
+  /** Which kind of host it is, for its glyph; a device when omitted. */
+  kind?: HostKind
 }
 
 /** What the file browser is for: the confirm button and what a click on a row does follow from it. */

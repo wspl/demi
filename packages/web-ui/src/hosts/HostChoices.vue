@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { Cloud } from '@lucide/vue'
 import MenuItem from '../ui/MenuItem.vue'
 import type { SentenceText } from '../ui/ui-text'
 import { DEVICE_GLYPHS } from '../devices/device-glyphs'
+import { hostIcon } from './icons'
 import { DEVICE_STATE_LABEL } from '../devices/state'
 import { DEVICE_PATH_LABEL } from '../devices/direct'
 import type { HostChoice, HostDeviceOption, HostMenuHost } from './types'
@@ -55,7 +55,7 @@ function deviceNote(device: HostDeviceOption): string | undefined {
 <template>
   <MenuItem
     v-if="!onlineOnly || primaryHost.kind !== 'cloud'"
-    :icon="Cloud"
+    :icon="hostIcon({ kind: 'cloud' })"
     label="Cloud"
     choice
     :is-selected="primaryHost.kind === 'cloud'"

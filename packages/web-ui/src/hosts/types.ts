@@ -12,9 +12,12 @@ export interface HostDeviceOption {
 /** A Host chosen to run on: the Cloud, or a device by its id. */
 export type HostChoice = { kind: 'cloud' } | { kind: 'device'; id: string }
 
+/** A Host is the Cloud or a device. */
+export type HostKind = 'cloud' | 'device'
+
 export interface HostMenuHost {
   id: string
   name: string
-  kind: 'cloud' | 'device'
+  kind: HostKind
   state: DeviceState
 }
