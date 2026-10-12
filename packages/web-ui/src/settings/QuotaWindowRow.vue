@@ -7,8 +7,10 @@ import type { SettingsQuotaWindow } from './types'
 /**
  * One usage window as every surface shows it (`usage-and-quota.md` § What a
  * snapshot says): one line over its bar, the window's name at the start, its
- * reset and its use at the end, "Resets in 4 hr 42 min · 4% used". Where the
- * line is short the reset truncates; the name and the use never do.
+ * reset and its use at the end, "Resets in 4h 42m · 4% used", the reset
+ * worded by `formatReset` and left out when unknown. Settings and the context
+ * card both show a window only through this row. Where the line is short the
+ * reset truncates; the name and the use never do.
  */
 defineProps<{ window: SettingsQuotaWindow }>()
 </script>

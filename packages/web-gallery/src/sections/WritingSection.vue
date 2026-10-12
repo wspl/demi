@@ -346,9 +346,9 @@ const longTextRules: readonly TextRule[] = [
   },
   {
     title: 'Sentences wrap',
-    rule: 'Only a one-line label in a row, a tab, a button or a pill is cut. A description, a message, an error or a usage line wraps and is read whole.',
-    right: ['100% · resets on Thursday, October ⏎ 9 at 2:00 PM'],
-    wrong: ['100% · resets on Thursday, Oct…'],
+    rule: 'Only a one-line label in a row, a tab, a button or a pill is cut. A description, a message or an error wraps and is read whole.',
+    right: ['The download stopped after ⏎ 120 MB. Try again in a minute.'],
+    wrong: ['The download stopped after 1…'],
     source: 'macOS System Settings',
   },
 ]
