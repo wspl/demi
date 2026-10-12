@@ -338,9 +338,10 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         .map(|boot| boot.backend_url.clone())
         .or(installation.backend);
     // The device environment (`runner.md` § Host operations): the runner's
-    // own without the names that configure it or belong to whatever started
-    // it, which no program it starts is meant to read.
-    let env: BTreeMap<_, _> = std::env::vars()
+    // own, as its jobs' shell reads it, without the names that configure it
+    // or belong to whatever started it, which no program it starts is meant
+    // to read.
+    let env: BTreeMap<_, _> = demi_runner_shell::host_environment()
         .filter(|(name, _)| !name.starts_with("DEMI_"))
         .collect();
     let home = home()?;

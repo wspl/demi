@@ -17,7 +17,7 @@ use std::collections::BTreeMap;
 /// deterministic across runs. If two source variables collide under the same
 /// canonical name (e.g. both `Path` and `PATH` are set to different values),
 /// the conflict is logged and the last-seen value wins.
-pub(crate) fn get_host_env_vars() -> impl Iterator<Item = (String, String)> {
+pub fn get_host_env_vars() -> impl Iterator<Item = (String, String)> {
     collect_host_env_vars(std::env::vars())
 }
 
