@@ -410,7 +410,7 @@ function pick(path: string): void {
           <!-- One path: its folders give way from the left, and its name stays whole (the gallery's Writing page). -->
           <span class="flex min-w-0 items-baseline">
             <span class="min-w-0 truncate text-fg-muted [direction:rtl]"><bdi>{{ heading.folder }}</bdi></span>
-            <span class="shrink-0" :class="heading.deleted ? 'text-fg-muted line-through' : 'text-fg'">{{ heading.name }}</span>
+            <span class="shrink-0" :class="heading.deleted ? 'deleted-name' : 'text-fg'">{{ heading.name }}</span>
           </span>
           <LineCounts v-if="counts" :added="counts.added" :removed="counts.removed" />
         </span>

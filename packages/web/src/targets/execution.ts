@@ -2,6 +2,7 @@ import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/typ
 import type { Conversation, Device } from '../state/types'
 import { useProduct } from '../state/product'
 import { directPath } from '../direct'
+import { cloudDeviceIn, hostKindOf, hostLabel } from '../state/hosts'
 
 /** Resolve display metadata from the canonical target and account snapshot. */
 export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>) {
@@ -15,17 +16,14 @@ export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>)
     target.kind === 'device'
       ? target.deviceId
       : (workspace?.deviceId
-        ?? snapshot?.devices.find((device) => device.kind === 'managed')?.id
+        ?? cloudDeviceIn(snapshot?.devices)?.id
         ?? null)
   const device = snapshot?.devices.find((device) => device.id === deviceId)
-  const kind =
-    target.kind === 'cloud' || device?.kind === 'managed'
-      ? ('cloud' as const)
-      : ('device' as const)
+  const kind = target.kind === 'cloud' ? ('cloud' as const) : hostKindOf(device)
   return {
     deviceId,
     kind,
-    name: kind === 'cloud' ? 'Cloud' : (device?.name ?? 'Unavailable device'),
+    name: hostLabel(kind, device),
     /** Where the work runs: the backend's resolved directory, for every kind of target. */
     path: conversation.cwd,
     /** The directory the reader chose; null while the Cloud runs in its own session directory. */

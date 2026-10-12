@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { fitRowPictures } from '../row-pictures'
 
 // A row's pictures share its line with its face (`file-previews.md` § Media
-// a tool returned): 8 px after the face, 4 px apart, the title giving way
+// a tool returned): at the row's end, at least 8 px after the face, 4 px apart, the title giving way
 // only down to half the row, then the rest counted as +N. Pure arithmetic
 // on widths the row measured; it costs nothing.
 

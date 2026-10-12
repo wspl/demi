@@ -51,6 +51,7 @@ function setMode(mode: 'light' | 'dark') {
           <AxisPicker
             label="Mode"
             :values="['dark', 'light'] as const"
+            :names="{ dark: 'Dark', light: 'Light' }"
             :model-value="galleryState.mode"
             @update:model-value="setMode"
           />
