@@ -25,9 +25,11 @@ class Width extends EventTarget {
 class Viewport extends EventTarget {
   height = 714
   offsetTop = 0
-  move(height: number, offsetTop = 0): void {
+  scale = 1
+  move(height: number, offsetTop = 0, scale = 1): void {
     this.height = height
     this.offsetTop = offsetTop
+    this.scale = scale
     this.dispatchEvent(new Event('resize'))
   }
 }
@@ -68,17 +70,25 @@ test('with the keyboard open the app is the visible part of the page, following 
   expect(frame()).toEqual({ height: '', top: '', keyboard: false })
 })
 
-test('a phone turned upright with the keyboard open takes the frame, though the visual viewport has not moved', () => {
-  // Held sideways the phone is a desktop's width, where the frame is not the page's.
+test('a phone turned sideways, as wide as a desktop, keeps the composer above its keyboard', () => {
   width.turn(false)
   stop = installPhonePage()
-  viewport.move(377)
-  expect(frame().keyboard).toBe(false)
+  viewport.move(200)
+  expect(frame()).toEqual({ height: '200px', top: '0px', keyboard: true })
   width.turn(true)
+  viewport.move(377)
   expect(frame()).toEqual({ height: '377px', top: '0px', keyboard: true })
 })
 
-test('the page scroll Safari makes to show a focused field goes back to 0, until the page lets go', () => {
+test('a page zoomed in by a pinch, as on a desktop, keeps its frame though less of it shows', () => {
+  width.turn(false)
+  stop = installPhonePage()
+  viewport.move(357, 120, 2)
+  expect(frame()).toEqual({ height: '', top: '', keyboard: false })
+})
+
+test('the page scroll Safari makes to show a focused field goes back to 0, at any width, until the page lets go', () => {
+  width.turn(false)
   stop = installPhonePage()
   window.scrollTo(0, 337)
   window.dispatchEvent(new Event('scroll'))

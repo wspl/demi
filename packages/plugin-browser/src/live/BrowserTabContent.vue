@@ -416,6 +416,7 @@ watch(
       :overlay-store="overlays"
       :is-open="bubble && downloads.length > 0"
       :anchor-el="bubbleAnchor"
+      sheet
       @close="bubble = false"
     >
       <Menu aria-label="Downloads">
@@ -456,6 +457,7 @@ watch(
       :overlay-store="overlays"
       :is-open="menu"
       :anchor-el="anchor"
+      sheet
       @close="menu = false"
     >
       <Menu>

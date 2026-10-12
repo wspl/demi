@@ -294,7 +294,7 @@
    so is all of a transcript, whose rows sit between its paragraphs and drew
    heavier than them with the platform's smoothing.
    The page is the app's: it fills the window and never scrolls, only the
-   scrollers inside it do; the phone layout narrows it to what the keyboard
+   scrollers inside it do; the body narrows it to what an on-screen keyboard
    leaves visible (below). This rule is the one place that says so: a
    product's own stylesheet that repeats it after this file undoes that. */
 html,
@@ -319,14 +319,25 @@ body,
   --safe-bottom: 0px;
 }
 
+/* The page is exactly the visible area, the on-screen keyboard's part left
+   out (`phone-page.ts`), at every width: an iPhone turned sideways shows the
+   desktop layout and its keyboard still never hides the composer. The body
+   is that area: it stands where the visual viewport stands, as tall, and is
+   the containing block of every fixed layer (layout containment), so the
+   work panel, the sheets and the dialogs teleported to it end at the
+   keyboard as the app does. Where no keyboard covers the page, as on a
+   desktop, the area is the window and nothing moves. */
+body {
+  position: fixed;
+  inset-inline: 0;
+  top: var(--app-top, 0px);
+  height: var(--app-height, 100dvh);
+  contain: layout;
+}
+
 /* The phone layout: the page is the app's and stays put. It never zooms (a
-   picture zooms itself), never rubber-bands or pulls as a whole, shows no
-   tap highlight, and is exactly the visible area, the on-screen keyboard's
-   part left out (`phone-page.ts`); only the scrollers inside it scroll.
-   The body is that area: it stands where the visual viewport stands, as
-   tall, and is the containing block of every fixed layer (layout
-   containment), so the work panel, the sheets and the dialogs teleported
-   to it end at the keyboard as the app does. */
+   picture zooms itself), never rubber-bands or pulls as a whole and shows
+   no tap highlight; only the scrollers inside it scroll. */
 @media (max-width: 767px) {
   html {
     -webkit-tap-highlight-color: transparent;
@@ -336,14 +347,6 @@ body,
   body {
     overscroll-behavior: none;
     touch-action: pan-x pan-y;
-  }
-
-  body {
-    position: fixed;
-    inset-inline: 0;
-    top: var(--app-top, 0px);
-    height: var(--app-height, 100dvh);
-    contain: layout;
   }
 }
 
