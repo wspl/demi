@@ -4,20 +4,17 @@ import { SquareTerminal } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import CodeText from '@demicodes/web-ui/ui/CodeText.vue'
 import AnsiText from './AnsiText.vue'
-import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import ShellEditPills from './ShellEditPills.vue'
 import FunctionalBlock from './FunctionalBlock.vue'
 import GoneMediaLines from './GoneMediaLines.vue'
 import type { ToolCallBlock } from '../block-types'
 import { getToolErrorText, shellTerminalOutputChunks, storedShellView } from '../block-helpers'
-import { commandEndMark, commandStatusLine, runningTime } from '../command-end'
-import CommandEndTag from './CommandEndTag.vue'
-import { useLiveCalls } from '../live-calls'
-import { shellRowEnd, shellRowRunning, shellRowTime } from '../terminals'
+import { commandStatusLine } from '../command-end'
+import ShellRowTag from './ShellRowTag.vue'
+import { useShellRow } from '../shell-row'
 import { shellTitle } from '../tool-rendering'
 import { splitMedia, toolMedia } from '../tool-media'
 import { codeRuns, codeTextColor, useMarkdownRenderVersion } from '../../markdown/highlight'
-import { useElapsedTime } from '../../composables/useElapsedTime'
 
 const props = defineProps<{
   block: ToolCallBlock
@@ -43,29 +40,13 @@ const media = computed(() => splitMedia(toolMedia(props.block.output, title.valu
 // so only a call that ran nothing, such as one the input check or the repeat
 // guard refused, shows its result's text as the failure.
 const errorText = computed(() => (storedShellView(props.block) ? undefined : getToolErrorText(props.block)))
-const liveCalls = useLiveCalls()
-/** The command the call started, as its live frames show it. */
-const started = computed(() => liveCalls(props.block.toolUseId))
-// How the command ended, also when it ran on after the call returned; none while it runs.
-const end = computed(() => shellRowEnd(props.block, started.value))
-const endMark = computed(() => commandEndMark(end.value))
-// How long the command has run, from the start the server reported, or ran.
-const time = computed(() => shellRowTime(props.block, started.value))
-const runningFor = useElapsedTime(
-  () => (time.value?.kind === 'running' ? time.value.since : Number.NaN),
-  () => time.value?.kind === 'running',
-)
-const elapsedMs = computed(() => (time.value?.kind === 'ran' ? time.value.ms : runningFor.value))
-/** While the command runs, past 3 seconds, the time it has run, where Failed or Stopped stands once it ends. */
-const runningTag = computed(() => (time.value?.kind === 'running' ? runningTime(runningFor.value) : null))
+const { started, end, endMark, elapsedMs, running } = useShellRow(() => props.block)
 /** Above the output: how long it has run, or how it ended and after how long. */
 const statusLine = computed(() => commandStatusLine(end.value, elapsedMs.value))
 /** While the call runs, its command's output as it comes (`runtime.md` § Rendering boundary). */
 const liveOutput = computed(() =>
   props.block.status === 'executing' ? started.value?.output ?? '' : '',
 )
-/** The row shimmers while its call runs and, after, while its command still does. */
-const running = computed(() => shellRowRunning(props.block.status, started.value))
 // Once the call returned, the view its result stored.
 const terminalOutputText = computed(
   () => liveOutput.value
@@ -124,8 +105,7 @@ function toggleCommand(): void {
 
     <template #default>
       <span class="min-w-0 truncate">{{ title }}</span>
-      <CommandEndTag v-if="endMark" :mark="endMark" />
-      <Tag v-else-if="runningTag" class="shrink-0 tabular-nums">{{ runningTag }}</Tag>
+      <ShellRowTag :block="block" />
     </template>
 
     <template #pinned>
