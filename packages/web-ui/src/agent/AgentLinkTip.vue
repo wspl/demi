@@ -3,16 +3,16 @@ import { computed } from 'vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import AgentMark from './AgentMark.vue'
-import AgentTip from './AgentTip.vue'
+import AgentRunLine from './AgentRunLine.vue'
 import { useMessageAgents } from './agent-links'
 
 /**
  * What a message's link to an agent shows beyond its text
  * (`subagents.md` § Linking an agent), for the link `element` a render
  * made: the agent's mark in the place the render left for it, with its live
- * state, and the tip that names it, *Subagent 4 · Finished*, its
- * description and what it runs on; for the main agent, its name; for a
- * number the conversation does not have, the tip that says so.
+ * state, and the tip that shows what it is doing and runs on on one line;
+ * for the main agent, its name; for a number the conversation does not
+ * have, the tip that says so.
  */
 const props = defineProps<{
   element: HTMLElement
@@ -31,7 +31,7 @@ const plain = computed(() => agent.value?.description ?? `No agent ${props.numbe
   </Teleport>
   <Tooltip :trigger="element" :content="agent?.run ? undefined : plain" wide>
     <template v-if="agent?.run" #overlay>
-      <AgentTip :number="agent.number" :description="agent.description" :run="agent.run" />
+      <AgentRunLine :run="agent.run" plain />
     </template>
   </Tooltip>
 </template>
