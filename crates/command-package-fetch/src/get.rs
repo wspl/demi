@@ -137,7 +137,12 @@ async fn print_part(
     let converted = page.html && !args.raw();
     let content = if converted {
         let html = page.text;
-        tokio::task::spawn_blocking(move || markdown(&html))
+        // The final URL came from the response, so it parses; a page kept
+        // in the cache is one the fetch wrote.
+        let url = Url::parse(&page.final_url).map_err(|error| {
+            ServiceError::Failed(format!("the page's URL does not parse: {error}").into())
+        })?;
+        tokio::task::spawn_blocking(move || markdown(&html, &url))
             .await
             .map_err(|error| ServiceError::Failed(error.to_string().into()))?
     } else {
