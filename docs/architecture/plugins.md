@@ -440,7 +440,8 @@ the host and the status, never a header or a body.
 ### OAuth sign-in
 
 A plugin whose vendor signs users in with OAuth 2.1 names it in its manifest:
-the authorization server's issuer, the resource and the scopes. The plugin
+the vendor's name as the user knows it, such as *Exa*, the authorization
+server's issuer, the resource and the scopes. The plugin
 host runs the flow, one for every such plugin:
 
 1. **Registration.** Once per instance and issuer, the host registers a
