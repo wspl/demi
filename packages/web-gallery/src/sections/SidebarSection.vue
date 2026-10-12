@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import { moveBefore } from '@demicodes/utils'
-import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
+import type { SidebarConversation, SidebarProject, SidebarProjectHost, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import type { SidebarGroup } from '@demicodes/web-ui/sidebar/list-model'
 import { RestoreSweep } from '../fixtures/restore-sweep'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
@@ -79,15 +79,15 @@ const anatomy: [string, string][] = [
   ],
   [
     'Conversations',
-    'Plain conversations that run in no checkout. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device shows that device at its row’s end: the device’s icon with a dot for its state, or without a dot once the device is removed, right of the pin when the row is pinned, so devices line up down the list; a row on the Cloud shows none. On hover Archive takes the row’s end, and a pinned row shows Unpin before it, in the pin’s own place on a row with a device and one place left of it on a row without; a row that is not pinned offers Pin in its menu. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
+    'Plain conversations that run in no checkout. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device ends in that device’s mark (Device Marks): the device’s icon with a dot for its state, or without a dot once the device is removed, right of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive appears to the left of the mark, over the pin’s place on a pinned row, and a pinned row shows Unpin before it; a row that is not pinned offers Pin in its menu. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
   ],
   [
     'Projects',
-    'Every checkout the agent works in, in manual order; the whole group folds under its label (Folded Groups), each with the host it lives on: the Cloud icon, or the device’s name and a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. The device’s name takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover New conversation takes the dot’s place. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
+    'Every checkout the agent works in, in manual order; the whole group folds under its label (Folded Groups), each ending in the host it lives on as the same mark a conversation’s row ends in (Device Marks): the Cloud icon, or the device’s icon with a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. A project shows its device’s name in words only beside another project of the same name on another device: the name stands before the mark, takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover the device’s name gives way and New conversation appears to the left of the mark; on a phone, where that button always shows, the name does not show. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
   ],
   [
     'Row',
-    'A title and one quiet dot: yellow while a permission request waits for the user and has not been read, over every other mark; otherwise the tone the conversation wears on its tab, the accent breathing while it runs, green once finished and red once failed until the user reads it, and a faint ring once a finished answer, a failure or a request is read, when stopped or when nothing has run yet (Status Dots). An answer not yet read also shows in a brighter title. A cut title ends in an ellipsis and shows whole in its tooltip. Archive appears on hover, with Unpin before it on a pinned row; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
+    'A title and one quiet dot: yellow while a permission request waits for the user and has not been read, over every other mark; otherwise the tone the conversation wears on its tab, the accent breathing while it runs, green once finished and red once failed until the user reads it, and a faint ring once a finished answer, a failure or a request is read, when stopped or when nothing has run yet (Status Dots). An answer not yet read also shows in a brighter title. A cut title ends in an ellipsis and shows whole in its tooltip. Archive appears on hover, to the left of the device’s mark, with Unpin before it on a pinned row; rename is inline. A row, like every block of the sidebar, keeps 8px from both of its edges, whether the system shows scrollbars or overlays them: the list’s scrollbar floats over that margin and takes no room.'
   ],
   [
     'Selection',
@@ -138,9 +138,8 @@ function addProject(): void {
     {
       id,
       name: `project-${nextId}`,
-      host: 'alex-mbp',
       hostKind: 'device',
-      state: 'online',
+      device: { kind: 'paired', name: 'alex-mbp', state: 'online' },
       path: `/Users/alex/Projects/project-${nextId}`
     }
   ]
@@ -256,6 +255,57 @@ const hoverConversations = ref(hoverRows())
 const hoverActive = ref<string | null>(null)
 
 /**
+ * The device-marks specimens' projects and rows: a project alone of its name, two of one name on
+ * two devices (one name long), one on a device since removed and one on the Cloud, and
+ * conversations on devices in each state.
+ */
+function markProjects(): SidebarProject[] {
+  const mac = { kind: 'paired', name: 'MacBook Pro', state: 'online' } as const
+  const project = (id: string, name: string, host: SidebarProjectHost): SidebarProject => ({
+    id, name, path: `/Users/alex/${name}`, ...host,
+  })
+  return [
+    project('m-chromium', 'chromium', { hostKind: 'device', device: mac }),
+    project('m-demi-mac', 'demi', { hostKind: 'device', device: mac }),
+    project('m-demi-mini', 'demi', { hostKind: 'device', device: { kind: 'paired', name: 'Mac mini', state: 'online' } }),
+    project('m-dotfiles-mac', 'dotfiles-and-machine-setup-scripts', { hostKind: 'device', device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'updating' } }),
+    project('m-dotfiles-build', 'dotfiles-and-machine-setup-scripts', { hostKind: 'device', device: { kind: 'paired', name: 'build-01', state: 'offline' } }),
+    project('m-old', 'old-experiments', { hostKind: 'device', device: { kind: 'removed' } }),
+    project('m-notebooks', 'notebooks', { hostKind: 'cloud' }),
+  ]
+}
+function markRows(): SidebarConversation[] {
+  const row = (id: string, title: string, projectId: string | null, pinned: boolean, device?: SidebarConversation['device']): SidebarConversation => ({
+    id, title, projectId, pinned, device, updatedAt: '2026-10-10T09:00:00Z', status: 'done', unread: false,
+  })
+  return [
+    row('m-online', 'Profile the indexer', null, false, { kind: 'paired', name: 'MacBook Pro', state: 'online' }),
+    row('m-pinned-offline', 'Release checklist', null, true, { kind: 'paired', name: 'build-01', state: 'offline' }),
+    row('m-removed', 'Regex for fenced code lines', null, false, { kind: 'removed' }),
+    row('m-cloud', 'How does limitShift differ from shift?', null, false),
+    row('m-chromium-1', 'Takeover handoff', 'm-chromium', false),
+    row('m-demi-1', 'New file icons look wrong', 'm-demi-mac', false),
+  ]
+}
+const markProjectList = ref(markProjects())
+const markConversations = ref(markRows())
+const markActive = ref<string | null>(null)
+const markFolded = ref<string[]>([])
+
+function resetMarks(): void {
+  markProjectList.value = markProjects()
+  markConversations.value = markRows()
+  markActive.value = null
+}
+
+/** Pins or unpins the rows of the marks specimens; pinned rows lead, as the product's list orders them. */
+function pinMarks(ids: string[], pinned: boolean): void {
+  const changed = markConversations.value.map((conversation) =>
+    ids.includes(conversation.id) ? { ...conversation, pinned } : conversation)
+  markConversations.value = [...changed.filter((c) => c.pinned), ...changed.filter((c) => !c.pinned)]
+}
+
+/**
  * A conversation read: its answer, its failure and its request settle to the ring, as the
  * product's read acknowledgement settles them. A request read still waits for the decision.
  */
@@ -356,6 +406,10 @@ function archiveStatus(ids: string[]): void {
 
 function archiveFold(ids: string[]): void {
   archiveRows(foldConversations, ids)
+}
+
+function archiveMarks(ids: string[]): void {
+  archiveRows(markConversations, ids)
 }
 
 function archiveHover(ids: string[]): void {
@@ -537,7 +591,7 @@ onBeforeUnmount(() => {
 
     <GallerySection
       title="Row Hover"
-      note="Hover a row: Archive takes its end. A pinned row shows Unpin before Archive, in the pin’s own place on a row with a device and one place left of it on a row without; a row that is not pinned offers Pin in its menu, as right-click shows. A device’s mark gives its place to the actions as the pin does. Archive drops the row, and the toast’s Undo brings it back; Reset gives the specimen its rows again."
+      note="Hover a row: Archive appears at its end, to the left of the device’s mark, which stays. A pinned row shows Unpin before Archive, and Archive takes the pin’s place; a row that is not pinned offers Pin in its menu, as right-click shows. Archive drops the row, and the toast’s Undo brings it back; Reset gives the specimen its rows again."
     >
       <div class="specimen-row specimen-row-wide items-start">
         <GallerySpecimen variant="pinned and not · live">
@@ -572,6 +626,51 @@ onBeforeUnmount(() => {
     </GallerySection>
 
     <GallerySection
+      title="Device Marks"
+      note="A conversation’s row and a project’s row end in the same mark, in the same column down both groups: the device’s icon with a dot for its state, green online, amber while its runner updates itself, faint offline, and no dot once the device is removed. Its tip, and its accessible label, name the device and its state, MacBook Pro · Online, or say Removed device. A project’s row names its device in words only beside a project of the same name on another device (demi on MacBook Pro and Mac mini; the two dotfiles projects, whose long names are cut at their ends); chromium alone shows the mark. A project on the Cloud shows the Cloud’s icon in the same place; a conversation on the Cloud shows none. The mark stays on hover: New conversation and Archive appear to its left, and on a project the device’s name, when it shows, disappears while the pointer is over the row, giving New conversation its place; on a phone, where the button always shows, the name does not show at all. Both frames share their rows: Reset gives them back."
+    >
+      <div class="flex flex-col gap-2">
+        <div>
+          <Button variant="ghost" size="sm" @click="resetMarks">Reset</Button>
+        </div>
+        <div class="specimen-row specimen-row-wide items-start">
+          <GallerySpecimen
+            v-for="specimen in [
+              { variant: '256px · live', width: SIDEBAR_WIDTH.default },
+              { variant: '200px · live', width: SIDEBAR_WIDTH.min },
+            ]"
+            :key="specimen.variant"
+            :variant="specimen.variant"
+          >
+            <div class="gallery-frame flex h-[46rem] overflow-hidden" :style="{ '--sidebar-width': `${specimen.width}px` }">
+              <AppSidebar
+                v-model:collapsed-projects="markFolded"
+                :new-shortcut="newShortcut"
+                :search-shortcut="searchShortcut"
+                :account="demoAccount"
+                :projects="markProjectList"
+                :conversations="markConversations"
+                :active-id="markActive"
+                @search="productWould('Open the Search Window')"
+                @create="create"
+                @add-project="productWould('Add a Project')"
+                @remove-project="(id) => (markProjectList = markProjectList.filter((project) => project.id !== id))"
+                @open-settings="wouldOpenSettings"
+                @sign-out="productWould('Sign Out')"
+                @select="(id) => (markActive = id)"
+                @reorder="(request) => productWould(request.kind === 'project' ? 'Move the Project' : 'Move the Conversation')"
+                @rename="(id, title) => (markConversations = markConversations.map((c) => (c.id === id ? { ...c, title } : c)))"
+                @pin="pinMarks"
+                @archive="archiveMarks"
+                @delete="(ids) => (markConversations = without(markConversations, ids))"
+              />
+            </div>
+          </GallerySpecimen>
+        </div>
+      </div>
+    </GallerySection>
+
+    <GallerySection
       title="Status Dots"
       note="A row’s dot says what the conversation’s work is doing, in the tones its tab and an agent’s link wear: the accent breathing while it runs, green once finished and red once failed; yellow while a request waits for the user, the same size as every other dot and with nothing around it, over every other dot. Every color but the running blue says there is something new to see: once the user reads it the row settles into the faint ring, as Mail’s unread mark does, whether it is an answer, a failure or a request; a request read but not answered still waits in its conversation, and only the dot settles. An answer not yet read also shows in a brighter title. Open a row to read it, or use Mark Read to read every row as another device of the user’s would. What happens while the user has a row open is read as it happens, so New Events lights each read row again except the open one. A later event lights the dot again: a turn that fails after the user read the last one turns it red. A Stop is the user’s own decision, and a stopped row, like one that has run nothing yet, keeps the faint ring of a settled row. An agent’s tab and link have no read state and stay green once the agent finished. Reset gives the specimen its rows again."
     >
@@ -583,7 +682,7 @@ onBeforeUnmount(() => {
               <Button variant="ghost" size="sm" :disabled="!statusRelightable" @click="newStatusEvents">New Events</Button>
               <Button variant="ghost" size="sm" @click="statusConversations = statusRows(); statusActive = null">Reset</Button>
             </div>
-            <div class="gallery-frame flex h-[34rem] overflow-hidden">
+            <div class="gallery-frame flex h-[46rem] overflow-hidden">
               <AppSidebar
                 :new-shortcut="newShortcut"
                 :search-shortcut="searchShortcut"

@@ -6,8 +6,8 @@ import type { SidebarConversation, SidebarProject } from '../types'
 // Cost: pure functions, no DOM; milliseconds.
 
 const projects: SidebarProject[] = [
-  { id: 'p-demi', name: 'demi', host: 'Cloud', path: '/demi', hostKind: 'cloud' },
-  { id: 'p-notes', name: 'notes', host: 'Cloud', path: '/notes', hostKind: 'cloud' },
+  { id: 'p-demi', name: 'demi', path: '/demi', hostKind: 'cloud' },
+  { id: 'p-notes', name: 'notes', path: '/notes', hostKind: 'cloud' },
 ]
 
 function row(id: string, projectId: string | null, needsYou = false): SidebarConversation {
