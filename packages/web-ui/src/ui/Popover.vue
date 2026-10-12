@@ -48,10 +48,9 @@ const props = withDefaults(defineProps<{
   /** Skip enter/leave motion, e.g. when one submenu replaces a sibling. */
   instant?: boolean
   /**
-   * A menu or a choice, which a phone opens as a bottom sheet (`Sheet.vue`)
-   * rather than beside its anchor; a field's suggestions and a hover card
-   * stay by what they belong to, but a card too large for that
-   * (HoverCard's `sheet`).
+   * A menu, a choice or a card too large to sit by its anchor, which a phone
+   * opens as a bottom sheet (`Sheet.vue`) rather than beside it; a field's
+   * suggestions stay by what they belong to.
    */
   sheet?: boolean
 }>(), {
@@ -239,8 +238,8 @@ watch(floatingRef, (el, _prev, onCleanup) => {
 /**
  * A panel that held the focus gives it back to its opener when it closes, by
  * a choice, Escape or a click outside on nothing that takes the focus
- * (`useFocusReturn`); a panel that never held it, such as a hover card, gives
- * none back. A submenu gives the keys back to its own menu (MenuItem).
+ * (`useFocusReturn`); a panel that never held it gives none back. A submenu
+ * gives the keys back to its own menu (MenuItem).
  */
 const focusReturn = useFocusReturn(inFamily)
 let heldFocus = false
