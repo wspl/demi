@@ -502,6 +502,9 @@ are full: without the bound, the backend would wait for the phone to read
 before the shard could close. After the second, the page loses the connection
 without the close frame, and connects again as it does after any close
 ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
+A Host cannot hold up shutdown either: a runner connection's end waits at
+most 5 seconds for the work it carries
+([Connection and identity](../execution/runner.md#connection-and-identity)).
 
 ## Configuration
 
