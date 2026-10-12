@@ -150,6 +150,13 @@ impl Release {
                     .map(|&name| name.to_owned())
                     .collect(),
             },
+            Executable::Fetch => Self::Package {
+                id: demi_command_package_fetch_protocol::PACKAGE,
+                operations: demi_command_package_fetch_protocol::OPERATIONS
+                    .iter()
+                    .map(|&name| name.to_owned())
+                    .collect(),
+            },
             Executable::Browser => Self::Package {
                 id: demi_command_package_browser_protocol::PACKAGE,
                 operations: demi_command_package_browser_protocol::Operation::names()

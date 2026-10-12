@@ -103,6 +103,8 @@ pub enum Executable {
     Runner,
     #[value(name = "demi-file")]
     File,
+    #[value(name = "demi-fetch")]
+    Fetch,
     #[value(name = "demi-browser")]
     Browser,
     #[value(name = "demi-claude-code")]
@@ -118,15 +120,22 @@ pub enum Executable {
 impl Executable {
     /// The executables a build makes unless named: the runner and the
     /// command programs.
-    pub const DEFAULT: [Self; 4] = [Self::Runner, Self::File, Self::Browser, Self::Claude];
+    pub const DEFAULT: [Self; 5] = [
+        Self::Runner,
+        Self::File,
+        Self::Fetch,
+        Self::Browser,
+        Self::Claude,
+    ];
     /// The command programs, each the program of a command package.
-    pub const COMMANDS: [Self; 3] = [Self::File, Self::Browser, Self::Claude];
+    pub const COMMANDS: [Self; 4] = [Self::File, Self::Fetch, Self::Browser, Self::Claude];
 
     /// The Cargo package, which is also the executable's name.
     pub fn name(self) -> &'static str {
         match self {
             Self::Runner => demi_runner_protocol::release::RUNNER,
             Self::File => "demi-file",
+            Self::Fetch => "demi-fetch",
             Self::Browser => "demi-browser",
             Self::Claude => "demi-claude-code",
             Self::Backend => "demi-backend",
@@ -138,7 +147,7 @@ impl Executable {
     /// The targets it runs on, in the order of the release matrix.
     fn targets(self) -> &'static [&'static str] {
         match self {
-            Self::Runner | Self::File | Self::Browser | Self::Claude => TARGETS,
+            Self::Runner | Self::File | Self::Fetch | Self::Browser | Self::Claude => TARGETS,
             // Servers run Linux; a developer may also run the backend on a
             // Mac, with the Cloud in a Lima VM.
             Self::Backend => &[
