@@ -51,6 +51,7 @@ impl Shard {
             .subagent_settings(self.user().clone())
             .await?;
         let instructions = services.control.instructions(self.user().clone()).await?;
+        let credentials = self.credential_list().await?;
         let plugins = self.plugins().entries().await?;
         let plugin_states = self.plugins().page_states().await?;
         Ok(ProductState {
@@ -75,6 +76,7 @@ impl Shard {
             cloud,
             subagents,
             instructions,
+            credentials,
             plugins,
             plugin_states,
             web_build: services.web_build.clone(),
@@ -129,6 +131,9 @@ impl Shard {
             },
             Part::Instructions => SyncEvent::Instructions {
                 instructions: control.instructions(self.user().clone()).await?,
+            },
+            Part::Credentials => SyncEvent::Credentials {
+                credentials: self.credential_list().await?,
             },
             Part::Plugins => SyncEvent::Plugins {
                 plugins: self.plugins().entries().await?,

@@ -52,6 +52,7 @@ demi-web-api-protocol = { path = "../web-api-protocol" }
 axum = { version = "0.8", features = ["ws"] }
 bytes.workspace = true
 futures-util.workspace = true
+garde.workspace = true
 object_store.workspace = true
 rand = "0.9"
 reqwest = { workspace = true, features = ["rustls", "stream"] }

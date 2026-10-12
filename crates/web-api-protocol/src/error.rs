@@ -135,6 +135,19 @@ pub enum ErrorCode {
     /// another page decided it, an Allow of its category did, or a newer
     /// request replaced it.
     PermissionRequestNotFound,
+    /// The answer does not fit the request: a credential request is
+    /// answered with a value for each of its fields and how long to keep
+    /// it, and only a credential request is.
+    InvalidAnswer,
+    /// The caller has no credential of that id.
+    CredentialNotFound,
+    /// Another of the caller's credentials has the name.
+    CredentialNameTaken,
+    /// A credential of the requested name is saved with other fields: its
+    /// new values would not fit them.
+    CredentialFieldsDiffer,
+    /// The credential the request asks to use was removed.
+    CredentialRemoved,
     /// The work panel holds as many tabs, or as much of their data, as it
     /// can (`web-api.md` § Work panel state).
     PanelFull,

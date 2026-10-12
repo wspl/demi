@@ -62,12 +62,20 @@ export const usePermissions = defineStore('permissions', () => {
       return
     }
     state.held = taken
-    state.requests = answer.requests.map((request) => ({
-      id: request.id,
-      categories: request.categories.map(category),
-      command: request.command,
-      subagent: request.agent,
-    }))
+    // The card shows permission requests; a credential's requests share the
+    // list and the mark, and their cards come with Settings › Credentials.
+    state.requests = answer.requests.flatMap((request) =>
+      request.kind === 'permission'
+        ? [
+            {
+              id: request.id,
+              categories: request.categories.map(category),
+              command: request.command,
+              subagent: request.agent,
+            },
+          ]
+        : [],
+    )
   }
 
   /** The reads on their way, each with whether a newer revision was heard of meanwhile. */

@@ -1965,7 +1965,9 @@ dependencies = [
  "futures-util",
  "shlex",
  "thiserror",
+ "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -2147,6 +2149,7 @@ dependencies = [
  "demi-shared-types",
  "demi-web-api-protocol",
  "futures-util",
+ "garde",
  "object_store",
  "percent-encoding",
  "rand 0.9.5",
@@ -3087,6 +3090,7 @@ dependencies = [
  "demi-runner-protocol",
  "demi-shared-types",
  "garde",
+ "jiff",
  "regex",
  "schemars",
  "serde",
