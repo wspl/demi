@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test'
 import { deferred, waitFor } from '@demicodes/utils'
 import { waitForBackendWith } from './client'
-import { uploadAttachment } from './uploads'
+import { claimStoredFile, uploadAttachment } from './uploads'
 
 // An upload from the composer (`web-api.md` § Uploads and media): the page
 // names the file's SHA-256 first and sends its bytes only when the backend
@@ -86,6 +86,9 @@ function answerUploads(body: string, sent: Sent[], away: () => 'proxy' | 'none' 
   globalThis.XMLHttpRequest = Uploads as unknown as typeof XMLHttpRequest
 }
 
+/** The backend does not hold the file, which is an answer and no failure: its bytes must go. */
+const missing = () => Response.json({ attachment: null })
+
 const options = () => ({ signal: new AbortController().signal, progress: () => {} })
 
 test('a file the backend holds already is uploaded without its bytes', async () => {
@@ -105,16 +108,22 @@ test('a file the backend holds already is uploaded without its bytes', async () 
 
 test('a file the backend does not hold is sent whole, naming its hash again', async () => {
   const sent: Sent[] = []
-  answerFetch(() => new Response(
-    JSON.stringify({ code: 'blob_missing', message: 'Send its bytes' }),
-    { status: 404 },
-  ), sent)
+  answerFetch(missing, sent)
   answerUploads(answerBody(), sent)
   expect((await uploadAttachment(file, options())).id).toBe('up-1')
   expect(sent).toEqual([
     { method: 'POST', url: `/api/attachments?name=notes.md&sha256=${sha256}`, body: undefined },
     { method: 'POST', url: `/api/attachments?name=notes.md&sha256=${sha256}`, body: file },
   ])
+})
+
+test('a pasted file the user does not hold is not claimed, and no bytes go', async () => {
+  const sent: Sent[] = []
+  answerFetch(missing, sent)
+  answerUploads(answerBody(), sent)
+  const pasted = { name: 'notes.md', mediaType: 'text/markdown', sha256 }
+  expect(await claimStoredFile(pasted, new AbortController().signal)).toBeNull()
+  expect(sent).toHaveLength(1)
 })
 
 // The bytes wait for the backend as every request of the page does
@@ -135,9 +144,6 @@ function waitForBack() {
   })
   return { back, waits, undo }
 }
-
-/** The backend does not hold the file: its bytes must go. */
-const missing = () => new Response(JSON.stringify({ code: 'blob_missing', message: 'Send its bytes' }), { status: 404 })
 
 test('bytes that cannot reach the backend wait for it and go again once it is back', async () => {
   const sent: Sent[] = []

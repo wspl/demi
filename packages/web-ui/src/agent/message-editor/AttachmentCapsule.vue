@@ -35,6 +35,10 @@ const emit = defineEmits<{
   retry: []
 }>()
 
+// The preview card is a second root, so the caller's class, drag handle and
+// click go to the pill's line by hand.
+defineOptions({ inheritAttrs: false })
+
 const RING = 14
 const STROKE = 2
 const radius = (RING - STROKE) / 2
@@ -94,6 +98,7 @@ const preview = computed<
 
 <template>
   <Tooltip
+    v-bind="$attrs"
     tag="span"
     class="message-capsule-line inline-flex max-w-full"
     :disabled="preview.kind === 'image' || preview.kind === 'video'"
