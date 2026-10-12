@@ -264,8 +264,8 @@ impl ModelsDevSnapshot {
         self.document.0.get(id)
     }
 
-    /// The models an agent can work with, whose output includes text and
-    /// that call tools, and whose name or id holds each word of `query`, in
+    /// The models an agent can work with ([`ModelsDevModel::agentic`]),
+    /// whose name or id holds each word of `query`, in
     /// any case and order, newest release first, at most `limit` (`models.md`
     /// § Adding a model from models.dev). A model several vendors list is
     /// one match: the listing of `vendor` when it lists the model, else
@@ -533,15 +533,21 @@ struct Cost {
 
 impl ModelsDevModel {
     /// Whether an agent can work with the model: the document states that
-    /// its output includes text and that it calls tools. A model that writes
-    /// only speech or images, or calls no tool, is not one.
+    /// its output includes text, that it calls tools, and its context
+    /// window, which compaction needs. A model that writes only speech or
+    /// images, calls no tool, or states no window is not one.
     fn agentic(&self) -> bool {
         let writes_text = self
             .modalities
             .as_ref()
             .and_then(|modalities| modalities.output.as_ref())
             .is_some_and(|output| output.iter().any(|kind| kind == "text"));
-        writes_text && self.tool_call == Some(true)
+        let windowed = self
+            .limit
+            .as_ref()
+            .and_then(|limit| tokens(limit.context))
+            .is_some();
+        writes_text && self.tool_call == Some(true) && windowed
     }
 
     /// The model as a catalog model (`models.md` § The models.dev
