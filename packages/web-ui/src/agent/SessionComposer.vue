@@ -144,8 +144,8 @@ const emit = defineEmits<{
   compact: []
   /** Opens where an instructions entry of the context card is written. */
   openInstruction: [entry: InstructionEntry]
-  /** The context card showed the usage limits: the host asks the vendor for them again. */
-  refreshLimits: []
+  /** The host asks the vendor for the usage limits again: automatic when the card showed them, otherwise its Refresh usage button. */
+  refreshLimits: [automatic: boolean]
   /** Files to attach; their capsules land where they were dropped, pasted or picked. */
   addFiles: [files: File[]]
   /** Open the host's file browser; the caller attaches what it returns, and its capsule lands at the cursor. */
@@ -635,7 +635,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :limits="limits"
             @compact="emit('compact')"
             @open-instruction="emit('openInstruction', $event)"
-            @refresh-limits="emit('refreshLimits')"
+            @refresh-limits="emit('refreshLimits', $event)"
           />
           <Tooltip v-if="shownEdit" content="Cancel edit">
             <IconButton
