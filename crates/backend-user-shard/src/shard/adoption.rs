@@ -217,7 +217,7 @@ impl Shard {
         }
         let (link, driver) = Link::new(LinkOptions {
             device: device.to_string(),
-            identity: host_identity(&runner.identity),
+            identity: host_identity(&runner),
             pipes: self.pipes().clone(),
             policy: Rc::new(ShardPolicy::new(self, device.clone())),
             ping: self.services().runners.ping,

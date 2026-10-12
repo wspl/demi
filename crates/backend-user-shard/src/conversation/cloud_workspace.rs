@@ -4,7 +4,7 @@
 //! wakes a stopped Cloud.
 
 use demi_backend_database::workspaces::{WorkspaceRecord, new_workspace_id};
-use demi_host_interface::{HostFs, MkdirOptions};
+use demi_host_interface::{Host as _, HostFs, MkdirOptions};
 
 use crate::shard::Shard;
 use demi_backend_host_access::access::{HostAccessError, Refusal};
@@ -18,7 +18,11 @@ impl Shard {
     ) -> Result<WorkspaceRecord, HostAccessError> {
         let id = new_workspace_id();
         let access = self.cloud_shard().machine_access().await?;
-        let path = format!("{}/projects/{id}", access.home);
+        let path = access
+            .host
+            .identity()
+            .paths
+            .join(&access.home, &format!("projects/{id}"));
         HostFs::mkdir(&access.host, &path, MkdirOptions { recursive: true }).await?;
         self.services()
             .control

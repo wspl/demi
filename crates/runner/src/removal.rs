@@ -199,6 +199,10 @@ pub fn remove(directory: &Path) -> io::Result<Removed> {
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
+            // No handle of this process: an SSH session whose pipes the
+            // remover held stayed open until the removal ended, so an
+            // `uninstall` over SSH returned only then.
+            .inherit_handles(false)
             .creation_flags(flags)
             .spawn()
     };

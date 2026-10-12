@@ -72,28 +72,78 @@ async fn write_attachment(
     file_name: &str,
     bytes: Bytes,
 ) -> Result<String, HostError> {
-    let home = host.identity().home_dir;
-    let directory = format!("{}/{ATTACHMENTS_DIR}/{id}", home.trim_end_matches('/'));
+    let identity = host.identity();
+    let paths = identity.paths;
+    let directory = paths.join(&identity.home_dir, &format!("{ATTACHMENTS_DIR}/{id}"));
     let options = WriteOptions {
         exists: WhenExists::Rename,
     };
     let name = host
         .fs()
         .write_file(
-            &format!("{directory}/{file_name}"),
+            &paths.join(&directory, file_name),
             FileContents::Bytes(bytes),
             options,
         )
         .await?;
-    Ok(format!("{directory}/{name}"))
+    Ok(paths.join(&directory, &name))
 }
 
 #[cfg(test)]
 mod tests {
-    use demi_backend_remote_host::testing::{FixtureOptions, RunnerFixture, answered_requests};
+    use demi_backend_remote_host::Admission;
+    use demi_backend_remote_host::testing::{
+        CommandPolicy, FixtureOptions, RunnerFixture, TEST_DEVICE, TestDevice, answered_requests,
+    };
+    use demi_host_interface::{CommandSet, HostIdentity, HostPaths};
+    use demi_runner_protocol::wire::{FsOk, FsResult, Inbound, Outbound, ReadAt};
     use tokio::sync::mpsc;
 
     use super::*;
+
+    /// A Windows Host's attachment is written, and named to the model, in
+    /// that Host's own form (`runner.md` § Windows paths): before, it was
+    /// `C:\Users\ana/.demi/attachments/<id>/notes.txt`. The test is the
+    /// runner, which answers the one write. Instant.
+    #[tokio::test(flavor = "local")]
+    async fn an_attachment_on_a_windows_host_is_written_and_named_in_its_own_form() {
+        let device = TestDevice::new(CommandPolicy::new(CommandSet::new())).with_identity(
+            HostIdentity {
+                uid: 0,
+                gid: 0,
+                hostname: "ALEX-PC".into(),
+                home_dir: r"C:\Users\ana".into(),
+                paths: HostPaths::Windows,
+            },
+        );
+        let mut link = device.connect(None);
+        let host = device.host(r"C:\Users\ana", Admission::Free);
+        let id = ConversationId::try_from("0193f1e2-7c4d-7e8f-9a0b-1c2d3e4f5a6b").unwrap();
+        let written = tokio::task::spawn_local(async move {
+            write_attachment(&host, &id, "notes.txt", Bytes::from("notes")).await
+        });
+        let Inbound::FsWriteFile { id, path, input, .. } = link.next().await else {
+            panic!("expected a write request")
+        };
+        let directory = r"C:\Users\ana\.demi\attachments\0193f1e2-7c4d-7e8f-9a0b-1c2d3e4f5a6b";
+        assert_eq!(path, format!(r"{directory}\notes.txt"));
+        // The runner takes the bytes, then names the free name it wrote.
+        let sink = device.pipes().claim_sink(&input.id, TEST_DEVICE).unwrap();
+        drop(sink);
+        link.send(Outbound::FsOk(FsOk {
+            id,
+            read_at: ReadAt {
+                epoch: "e".into(),
+                number: 1,
+            },
+            result: FsResult::WriteFile("notes-2.txt".into()),
+        }))
+        .await;
+        assert_eq!(
+            written.await.unwrap().unwrap(),
+            format!(r"{directory}\notes-2.txt")
+        );
+    }
 
     // About a tenth of a second: a real runner process writes the files.
     #[tokio::test(flavor = "local")]

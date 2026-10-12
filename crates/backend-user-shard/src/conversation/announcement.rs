@@ -21,6 +21,8 @@ use demi_backend_database::conversation_index::{
 use demi_agent_session::left_by_offline_host;
 use demi_backend_database::devices::{CLOUD_NAME, DeviceRecord};
 use demi_backend_host_access::root_of;
+use demi_backend_remote_host::host_paths;
+use demi_host_interface::HostPaths;
 use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::ids::ConversationId;
 
@@ -162,6 +164,18 @@ impl Shard {
             (None, None) => CLOUD_NAME.to_owned(),
         };
         Ok((device, name))
+    }
+
+    /// How the primary Host of the conversation `id` writes its paths: in
+    /// the form of the system its runner reported, which the device keeps;
+    /// a Cloud's is Linux's.
+    pub(crate) async fn host_paths(&self, id: &ConversationId) -> Result<HostPaths, StorageError> {
+        let Some(record) = self.services().control.conversation(id.clone()).await? else {
+            return Ok(HostPaths::Posix);
+        };
+        let target = self.host_shard().resolve_target(&record).await?;
+        let (device, _) = self.primary_host(&target).await?;
+        Ok(device.map_or(HostPaths::Posix, |record| host_paths(record.platform)))
     }
 
     /// The primary Host as the model reads it: its name, its operating
