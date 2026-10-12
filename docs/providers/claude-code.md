@@ -577,7 +577,10 @@ as to a kept process.
 
 - **When.** A conversation whose model is a Claude Code model and whose
   runtime holds no process prepares one when a page opens the conversation,
-  when the user picks another model, effort or account in it, and when a
+  when the user picks another model or effort in it, when the active account
+  of its provider changes in Settings while a page has it open (the account's
+  change closes every process prepared with the previous account's token
+  first), and when a
   turn ends and its kept process would be refused by the next request
   because its token expires within 30 minutes: the token is refreshed and
   the replacement prepared then. Nothing else prepares one: a subagent
