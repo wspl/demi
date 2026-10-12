@@ -4,7 +4,7 @@ import { X } from '@lucide/vue'
 import IconButton from './IconButton.vue'
 import ScrollArea from './ScrollArea.vue'
 import { useEscapeClose } from '../composables/useEscapeClose'
-import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
+import { createOverlayFamily, overlayFamilyKey, overlayOwnerKey } from '../overlay/overlayFamily'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayInlineKey, useOverlayTarget } from '../overlay/overlayContainer'
 import { dialogNestingKey } from '../overlay/dialogNesting'
@@ -34,7 +34,8 @@ import type { HeadlineText } from './ui-text'
  * it behaves as the product's: the top layer, with the focus, and Escape closes it.
  * Nesting: a dialog opened from inside another stacks on it; the one beneath stays,
  * Escape and the scrim close only the top, and closing the one beneath takes the
- * stack with it. An Escape a field handled first (it called preventDefault, as a
+ * stack with it. A menu or dropdown open in a dialog is above it: Escape closes it
+ * first and the dialog stays, the next Escape closes the dialog. An Escape a field handled first (it called preventDefault, as a
  * field reverting its edit does) closes nothing.
  * Anchor: centered by default; `top` hangs the panel from a line near the top, for a
  * panel whose height follows its content, such as the search window's list.
@@ -121,6 +122,9 @@ const id = useOverlay(
   nested || props.stack ? 'stacked' : 'exclusive',
   'dialog',
 )
+
+// What opens inside, such as a dropdown, is a layer on this dialog: Escape closes it first.
+provide(overlayOwnerKey, id)
 
 /**
  * How high the dialog stands: a dialog opened later stands above one opened
