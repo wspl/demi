@@ -260,7 +260,7 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     assert!(
         asked[0]
             .system_prompt
-            .contains("Operations: spawn, send, abort, resume, list, show, models, profiles list, profiles show, profiles create, profiles edit, profiles delete\n")
+            .contains("Operations: spawn, send, abort, resume, fork, list, show, models, profiles list, profiles show, profiles create, profiles edit, profiles delete\n")
     );
     let [InferenceItem::UserMessage { content }] = &*asked[0].items else {
         panic!("{:?}", asked[0].items)
@@ -752,7 +752,7 @@ fn is_child_phase(child: &NodeId, phase: SessionPhase) -> impl Fn(&ServerFrame) 
 
 /// Polls `show`'s view of agent 1 for the root until its execution is
 /// `execution`; the time between two looks passes on the paused clock.
-async fn wait_for_execution(server: &Rc<demi_agent_server::AgentServer<crate::support::LiveHosts>>, execution: &str) {
+pub(crate) async fn wait_for_execution(server: &Rc<demi_agent_server::AgentServer<crate::support::LiveHosts>>, execution: &str) {
     let mut shown = String::new();
     for _ in 0..100 {
         shown = agent(server, &root(), "show", json!({ "id": [1] })).await.stdout;

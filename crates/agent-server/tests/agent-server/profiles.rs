@@ -234,7 +234,7 @@ async fn each_spawn_reads_the_settings_as_they_are_and_a_child_keeps_what_it_was
     assert!(
         asked_two
             .system_prompt
-            .contains("Operations: spawn, send, abort, resume, list, show, models, profiles list, profiles show, profiles create, profiles edit, profiles delete\n")
+            .contains("Operations: spawn, send, abort, resume, fork, list, show, models, profiles list, profiles show, profiles create, profiles edit, profiles delete\n")
     );
 
     // Deleted after the spawn, the profile changes nothing in its child:
