@@ -579,15 +579,18 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
     assert!(!std::path::Path::new(&third_config).exists());
 }
 
-// About two seconds, most of it the one login that expires.
+// An expired sign-in stops the CLI as a cancelled one does
+// (`LoginFlows::run`); the expiry itself, counted from the start, is proven
+// on a paused clock by the test in `vault::logins`. Proving it here would
+// take a lifetime short enough to wait for, a window that each sign-in's CLI
+// start and pasted code had to fall into, and a loaded machine misses it.
 #[tokio::test]
-async fn a_sign_in_that_fails_is_cancelled_or_expires_stores_nothing_and_leaves_no_directory() {
+async fn a_sign_in_that_fails_or_is_cancelled_stores_nothing_and_leaves_no_directory() {
     let (distribution, catalog) = vendors().await;
-    let mut harness = Harness::new()
+    let harness = Harness::new()
         .with_claude_package()
         .with_claude_releases(distribution.url("/releases"))
         .with_models_dev(catalog.url("/api.json"));
-    harness.logins.code_lifetime = Duration::from_secs(2);
     let (backend, master) = harness.start_set_up().await;
     let new_entry = json!({ "providerType": "claude-code" });
     // The first sign-in wakes the Cloud, which has no CLI to run.
@@ -611,7 +614,7 @@ async fn a_sign_in_that_fails_is_cancelled_or_expires_stores_nothing_and_leaves_
 
     // A cancelled sign-in has ended, with its directory gone, once the
     // cancel answers.
-    let id = waiting_login(&backend, &master, LOGIN, new_entry.clone()).await;
+    let id = waiting_login(&backend, &master, LOGIN, new_entry).await;
     let cancelled = backend.delete(&format!("{LOGIN}/{id}"), &master).await;
     assert_eq!(cancelled.status, StatusCode::NO_CONTENT);
     assert_eq!(
@@ -622,18 +625,6 @@ async fn a_sign_in_that_fails_is_cancelled_or_expires_stores_nothing_and_leaves_
     );
     let logins = login_directories(&home);
     assert_eq!(logins.len(), 2, "{logins:?}");
-    assert!(!std::path::Path::new(&logins[1].0).exists());
-
-    // A sign-in nobody finishes ends at its expiry.
-    let id = waiting_login(&backend, &master, LOGIN, new_entry).await;
-    assert_eq!(
-        awaited(&backend, &master, &id, ended).await,
-        LoginState::Failed {
-            message: "The login expired".into()
-        }
-    );
-    let logins = login_directories(&home);
-    assert_eq!(logins.len(), 3, "{logins:?}");
     assert!(
         logins
             .iter()
