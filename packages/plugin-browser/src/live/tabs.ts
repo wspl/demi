@@ -194,8 +194,6 @@ export interface BrowserTabsApi {
    * answers the browser tab the panel tab shows now, or null when none.
    */
   bind(panelTab: string): Promise<string | null>
-  /** Asks the plugin to read the browser's tabs and bring the panel's up to date. */
-  sync(): Promise<void>
   /** Selects the panel tab `panelTab` and opens the panel, once the panel has it. */
   select(panelTab: string): void
   /** Starts loading `url`; answers the number of the last tab list before the request started. */
@@ -209,18 +207,6 @@ export interface BrowserTabsApi {
   installed(): readonly HostArtifact[]
   /** Whether the Host is a Cloud that does not run yet, read reactively. */
   hostStarting(): boolean
-}
-
-/** Refusals of a Host that cannot be reached for the moment: an offline device, a stopped Cloud. */
-const UNREACHED: ReadonlySet<PanelReason | null> = new Set<PanelReason>(['device_offline', 'host_stopped'])
-
-/**
- * Whether a request failed because the backend could not reach the Host: it
- * changes no tab, since the browser may still run there, and is no defect of
- * the page (`live-view.md` § A browser tab in the panel).
- */
-function unreached(error: unknown): boolean {
-  return error instanceof BrowserTabsError && UNREACHED.has(error.reason)
 }
 
 /** Answers that will not change by asking again. */
@@ -337,8 +323,6 @@ export class BrowserTabsController {
   private readonly shownContent = shallowRef<{ panelTab: string; tab: string | null } | null>(null)
   /** The browser tab whose content is shown. */
   private readonly shownTab = computed(() => this.shownContent.value?.tab ?? null)
-  /** The shown tab the plugin was asked to look for, until a view lists it again. */
-  private missed: string | null = null
   private closing: ReturnType<typeof setTimeout> | null = null
   private readonly visibility: Readonly<Ref<DocumentVisibilityState>>
   private disposed = false
@@ -666,8 +650,9 @@ export class BrowserTabsController {
       if (this.requests.get(tab) === asked) {
         this.requests.delete(tab)
       }
+      // The browser's own message tells the plugin the tab is gone, and
+      // the panel follows (`live-view.md` § A browser tab in the panel).
       if (error instanceof BrowserTabsError && error.reason === 'tab_not_found') {
-        this.lookFor(tab)
         return
       }
       throw error
@@ -768,9 +753,8 @@ export class BrowserTabsController {
 
   /**
    * The view's tab list. Each tab is kept as reported, and one the browser no
-   * longer has leaves. A list without the shown tab asks the plugin, once
-   * for that tab, to read the browser's tabs: the plugin marks the panel tab
-   * closed if the browser lost it.
+   * longer has leaves. The panel's tabs follow the plugin, which the browser
+   * tells of every change.
    */
   private viewTabs(tabs: readonly LiveTab[], list: number): void {
     this.listed.value = list
@@ -784,26 +768,15 @@ export class BrowserTabsController {
     for (const tab of tabs) {
       this.known.set(tab.id, tab)
     }
-    const shown = this.shownTab.value
-    if (shown === null) {
-      return
-    }
-    // A list with the shown tab answers the last look: a later loss is looked for again.
-    if (tabs.some((tab) => tab.id === shown)) {
-      this.missed = null
-      return
-    }
-    this.lookForShown()
   }
 
   /**
    * A tab a page opened appears in the strip at once, as in any browser
    * (`live-view.md` § A browser tab in the panel): the plugin adds it when
-   * asked to read the browser's tabs. One that the page the user watches
-   * opened right after the user's click or key there is the user's, and is
-   * selected, as a browser selects the tab a click opens; one a page opened
-   * by itself is only added. A read that cannot reach the Host is asked for
-   * again with the next list.
+   * the browser tells it the tabs changed. One that the page the user
+   * watches opened right after the user's click or key there is the user's,
+   * and is selected, as a browser selects the tab a click opens; one a page
+   * opened by itself is only added.
    */
   private pageOpened(tabs: readonly LiveTab[]): void {
     const heard = this.heard
@@ -815,15 +788,6 @@ export class BrowserTabsController {
     if (opened.length === 0) {
       return
     }
-    this.api.sync().catch((error: unknown) => {
-      if (!unreached(error)) {
-        this.errors.defect('The panel could not add the tabs a page opened', error)
-        return
-      }
-      for (const tab of opened) {
-        this.heard?.delete(tab.id)
-      }
-    })
     const shown = this.shownTab.value
     const view = this.session.value
     for (const tab of opened) {
@@ -832,48 +796,6 @@ export class BrowserTabsController {
         this.api.select(addedPanelTab(tab.id))
       }
     }
-  }
-
-  /** Asks the plugin to read the browser's tabs for `tab`, which the browser no longer has. */
-  private lookFor(tab: string): void {
-    if (tab === this.shownTab.value) {
-      // Asked again even when a look for it is under way: that one may have
-      // read the list before the browser lost the tab.
-      this.missed = null
-      this.lookForShown()
-      return
-    }
-    this.api.sync().catch((error: unknown) => {
-      if (!unreached(error)) {
-        this.errors.defect('The panel could not look for a lost tab', error)
-      }
-    })
-  }
-
-  /**
-   * Asks the plugin, once for the shown tab, to read the browser's tabs: the
-   * plugin removes the panel tab if its browser tab was closed, or marks it
-   * lost, which opens it again at once while it is shown. A view that ends
-   * asks too, since a browser that ended or a Cloud that stopped took the
-   * tab with it, and the view may wait long before it reads a list again.
-   * A read that cannot reach the Host changes no tab, and the next list or
-   * end asks again.
-   */
-  private lookForShown(): void {
-    const shown = this.shownTab.value
-    if (shown === null || this.missed === shown) {
-      return
-    }
-    this.missed = shown
-    this.api.sync().catch((error: unknown) => {
-      if (!unreached(error)) {
-        this.errors.defect('The panel could not look for a closed tab', error)
-        return
-      }
-      if (this.missed === shown) {
-        this.missed = null
-      }
-    })
   }
 
   /** The page's one view, opened when there is none. */
@@ -889,7 +811,6 @@ export class BrowserTabsController {
       onClipboard: (text) => viewerClipboard.receive(text),
       onTabs: (tabs, list) => this.viewTabs(tabs, list),
       onNotice: (code) => this.notice(code),
-      onEnded: () => this.lookForShown(),
       onPicture: (tab) => this.pictured.add(tab),
       onDownloads: (tab, downloads) => this.downloads.set(tab, downloads),
       defect: this.errors.defect,

@@ -718,6 +718,7 @@ impl dyn CloudShard {
         };
         let saved = self.cloud_services().machines.call(hibernate).await;
         self.devices().disconnect(device, "Cloud stopped");
+        self.packages_lost(device);
         Ok(saved?)
     }
 

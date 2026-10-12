@@ -11,7 +11,8 @@ use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_backend_host_access::stream::{ServiceBinding, ServiceCall, UserCallError, UserCallKind};
 use demi_backend_page_sync::Part;
-use demi_backend_plugins::ProductPort;
+use demi_backend_host_access::host_commands::reachable;
+use demi_backend_plugins::{Lost, ProductPort};
 use demi_backend_providers::vault::seal::Row;
 use demi_backend_remote_host::ServiceCallError;
 use demi_command_declarations::NativeOperation;
@@ -19,7 +20,7 @@ use demi_host_interface::{HostErrorKind, PortError};
 use demi_plugin_interface::{CallKind, HostFile, HostRead, PortFailure, PortRefusal};
 use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::{ConversationId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
@@ -257,5 +258,41 @@ impl Shard {
             .reload(&demi_backend_host_access::root_of(&record.id))
             .await
             .map_err(|_| ReloadRefusal::Working)
+    }
+}
+
+impl Shard {
+    /// What `lost` names, kept on `device`, ended without its package
+    /// saying so: each plugin of such a package with panel tabs in a
+    /// conversation that reaches the device hears it, for that conversation
+    /// (`native-runtime.md` § Messages to the plugin).
+    pub(crate) async fn package_lost(&self, device: &DeviceId, lost: Lost<'_>) {
+        let panelled = match self
+            .services()
+            .control
+            .panelled_conversations(self.user().clone())
+            .await
+        {
+            Ok(panelled) => panelled,
+            Err(error) => {
+                // The plugins then show what was lost until their packages
+                // next say something about the conversations.
+                tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "the conversations a lost package showed in could not be read");
+                return;
+            }
+        };
+        let mut reaching = Vec::new();
+        for conversation in panelled {
+            match reachable(self.host_shard(), &conversation).await {
+                Ok(hosts) if hosts.iter().any(|host| &host.device == device) => {
+                    reaching.push(conversation);
+                }
+                Ok(_) => {}
+                Err(error) => {
+                    tracing::warn!(%conversation, "the Hosts of a conversation a lost package showed in could not be read: {error}");
+                }
+            }
+        }
+        self.plugins().package_lost(lost, &reaching).await;
     }
 }

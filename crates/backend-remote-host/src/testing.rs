@@ -69,6 +69,8 @@ pub struct CommandPolicy {
     /// The next number of each conversation's sequence.
     sequences: RefCell<HashMap<(String, ServiceSequence), u64>>,
     blobs: Rc<RefCell<HashMap<BlobRef, Bytes>>>,
+    /// The package events the connection handed on, in order.
+    package_events: watch::Sender<Vec<crate::PackageEvent>>,
 }
 
 impl CommandPolicy {
@@ -77,7 +79,13 @@ impl CommandPolicy {
             commands: Rc::new(commands),
             sequences: RefCell::default(),
             blobs: Rc::default(),
+            package_events: watch::Sender::new(Vec::new()),
         })
+    }
+
+    /// The package events the connection hands on, in order, as they come.
+    pub fn package_events(&self) -> watch::Receiver<Vec<crate::PackageEvent>> {
+        self.package_events.subscribe()
     }
 
     /// Holds `bytes` as the blob that names them, as a handler puts a
@@ -141,6 +149,12 @@ impl LinkPolicy for CommandPolicy {
         _: String,
     ) -> LocalBoxFuture<'static, Result<crate::DirectAdmission, String>> {
         Box::pin(async { Err("direct streams are not available".into()) })
+    }
+
+    /// Keeps every event, for the test to read.
+    fn package_event(&self, event: crate::PackageEvent) -> LocalBoxFuture<'static, ()> {
+        self.package_events.send_modify(|events| events.push(event));
+        Box::pin(async {})
     }
 }
 

@@ -1,6 +1,6 @@
 //! One resident service process (`native-runtime.md` § Invoke and retire a
 //! service): the runner starts the executable, speaks HTTP/2 to it over its
-//! standard input and output, relays its numbers stream, drains its standard
+//! standard input and output, relays its numbers and messages streams, drains its standard
 //! error into the Host log, and reaps it. One owner task holds the process
 //! from its start to its end and returns how it ended, with the end of its
 //! standard error.
@@ -10,7 +10,7 @@ use std::{
 };
 
 use demi_command_protocol::{PackageDescriptor, ServiceInfo};
-use demi_command_sdk::{ArtifactsAsk, Client, NumbersAsk, RequestStream, ServiceError};
+use demi_command_sdk::{ArtifactsAsk, Client, MessagesAsk, NumbersAsk, RequestStream, ServiceError};
 use process_wrap::tokio::ChildWrapper;
 use tokio::{
     io::AsyncReadExt,
@@ -28,7 +28,7 @@ use demi_runner_process::{
 use demi_runner_protocol::wire;
 
 use crate::invocations::ServiceArtifacts;
-use crate::{ExitReason, NumberSource, RuntimeError, ServiceExit};
+use crate::{ExitReason, ServiceBackend, RuntimeError, ServiceExit};
 
 /// How long a new service has to finish the handshake and answer its catalog.
 const START_TIMEOUT: Duration = Duration::from_secs(10);
@@ -47,7 +47,7 @@ pub struct ResidentService {
     info: ServiceInfo,
     pid: u32,
     owner: JoinHandle<Ended>,
-    /// Answers the service's numbers and artifacts streams until the
+    /// Answers the service's numbers, artifacts and messages streams until the
     /// service ends them.
     _streams: AbortOnDropHandle<()>,
 }
@@ -62,7 +62,7 @@ pub struct Ended {
 
 impl ResidentService {
     /// Starts `executable`, checks that it serves `descriptor`, and opens
-    /// its numbers stream, whose requests go to `numbers`, and its
+    /// its numbers and messages streams, whose requests go to `backend`, and its
     /// artifacts stream, which `artifacts` answers. Cancelling `stop` asks
     /// the service to shut down, also while it starts.
     pub(crate) async fn start(
@@ -70,7 +70,7 @@ impl ResidentService {
         descriptor: &PackageDescriptor,
         cwd: &Path,
         env: &BTreeMap<String, String>,
-        numbers: Arc<dyn NumberSource>,
+        backend: Arc<dyn ServiceBackend>,
         artifacts: Arc<ServiceArtifacts>,
         stop: CancellationToken,
     ) -> Result<Self, RuntimeError> {
@@ -116,19 +116,26 @@ impl ResidentService {
             // The streams open before any call, and only for a service that
             // serves its descriptor.
             let stream = if descriptor.serves(&info) {
-                Some((client.numbers().await?, client.artifacts().await?))
+                Some((
+                    client.numbers().await?,
+                    client.artifacts().await?,
+                    client.messages().await?,
+                ))
             } else {
                 None
             };
             Ok::<_, ServiceError>(Some((client, info, stream)))
         };
         let started = tokio::time::timeout(START_TIMEOUT, started).await;
-        if let Ok(Ok(Some((client, info, Some((numbers_stream, artifacts_stream)))))) = started {
+        if let Ok(Ok(Some((client, info, Some((numbers_stream, artifacts_stream, messages_stream)))))) =
+            started
+        {
             let service = descriptor.id.clone();
             let streams = async move {
                 tokio::join!(
-                    answer_numbers(&service, numbers_stream, numbers),
+                    answer_numbers(&service, numbers_stream, backend.clone()),
                     answer_artifacts(&service, artifacts_stream, artifacts),
+                    answer_messages(&service, messages_stream, backend),
                 );
             };
             return Ok(Self {
@@ -176,17 +183,55 @@ impl ResidentService {
     }
 }
 
-/// Answers the service's numbers stream from `numbers`, the backend
+/// Answers the service's numbers stream from `backend`
 /// (`native-runtime.md` § Conversation numbers), until the service ends it.
 /// A stream that broke is logged: the service's draws then fail.
-async fn answer_numbers(service: &str, stream: RequestStream, numbers: Arc<dyn NumberSource>) {
+async fn answer_numbers(service: &str, stream: RequestStream, backend: Arc<dyn ServiceBackend>) {
     let answered = stream
         .answer::<NumbersAsk, _>(|request, _reporter| {
-            numbers.reserve(request.conversation, request.sequence, request.count)
+            backend.reserve(request.conversation, request.sequence, request.count)
         })
         .await;
     if let Err(error) = answered {
         tracing::warn!("service {service}'s numbers stream broke: {error}");
+    }
+}
+
+/// Hands the service's messages to `backend` one after another, in the
+/// order the service wrote them (`native-runtime.md` § Messages to the
+/// plugin), and answers each once the connection took it, until the service
+/// ends the stream. A stream that broke is logged: the service's sends then
+/// fail.
+async fn answer_messages(service: &str, stream: RequestStream, backend: Arc<dyn ServiceBackend>) {
+    // The answering end takes each message when it reads it, in order, and
+    // the one forwarder hands them on in that order; at most 32 are
+    // unanswered, which the queue holds.
+    type Taken = tokio::sync::oneshot::Sender<Result<(), String>>;
+    let (queued, mut queue) =
+        tokio::sync::mpsc::unbounded_channel::<(serde_json::Value, String, Taken)>();
+    let forward = async {
+        while let Some((message, conversation, taken)) = queue.recv().await {
+            let told = backend.tell(service.to_owned(), conversation, message).await;
+            // A service that stopped waiting needs no answer.
+            let _left = taken.send(told);
+        }
+    };
+    let answering = stream.answer::<MessagesAsk, _>(|request, _reporter| {
+        let (taken, answer) = tokio::sync::oneshot::channel();
+        // The forwarder outlives the answering end, which holds the sender.
+        let _forwarded = queued.send((request.message, request.conversation, taken));
+        async move {
+            answer
+                .await
+                .unwrap_or_else(|_| Err("the runner stopped forwarding".to_owned()))
+        }
+    });
+    let answered = tokio::select! {
+        answered = answering => answered,
+        () = forward => unreachable!("the forwarder ends only when the answering end does"),
+    };
+    if let Err(error) = answered {
+        tracing::warn!("service {service}'s messages stream broke: {error}");
     }
 }
 

@@ -10,7 +10,6 @@ import {
   type BindTab,
   type NavigateTab,
   type StopTab,
-  type SyncTabs,
   type TabHistory,
 } from './generated/plugin'
 
@@ -82,9 +81,6 @@ export function browserTabsApi(plugin: ConversationPlugin, select: (panelTab: st
     bind: async (panelTab) => {
       const bound = await call('bind', { panelTab } satisfies BindTab, tabBoundSchema, BIND_TIMEOUT_MS)
       return bound.tab
-    },
-    sync: async () => {
-      await call('sync', {} satisfies SyncTabs, z.null())
     },
     select,
     navigate: (tab, url) => move('navigate', { tab, url } satisfies NavigateTab),

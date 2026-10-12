@@ -4,7 +4,7 @@ use bytes::Bytes;
 use demi_command_protocol::{
     ARTIFACTS_PATH, CONVERSATION_PATH, CommandError, Completion, ConversationRequest, INFO_PATH,
     INVOKE_PATH, Invocation, MAX_MEDIUM_BYTES, MAX_METADATA_BYTES, MAX_RECORD_BYTES, MediumFacts, Metadata,
-    NUMBERS_PATH,
+    MESSAGES_PATH, NUMBERS_PATH,
     ProtocolError, Record, SHUTDOWN_PATH, ServiceInfo, StreamOpen, VERSION,
 };
 use futures_util::future::poll_fn;
@@ -22,6 +22,7 @@ use crate::{
     Input, ServiceError,
     artifacts::{Artifacts, ArtifactsAsk},
     asking::{self, Asked, Pending},
+    messages::{Messages, MessagesAsk},
     numbers::{Numbers, NumbersAsk},
     stream::{CONNECTION_WINDOW, HttpInput, send_bytes},
 };
@@ -86,6 +87,14 @@ pub trait Handler: Send + Sync + 'static {
     fn numbers(&self, numbers: Numbers) {
         // A service that names nothing with conversation numbers draws none.
         drop(numbers);
+    }
+
+    /// Takes the connection's message sender before the first call
+    /// (`native-runtime.md` § Messages to the plugin); the runner's messages
+    /// stream takes what it sends.
+    fn messages(&self, messages: Messages) {
+        // A service whose plugin needs to hear nothing sends nothing.
+        drop(messages);
     }
 
     /// Takes the connection's artifacts source before the first call
@@ -267,10 +276,13 @@ where
     handler.numbers(numbers);
     let (artifacts, requests) = Artifacts::channel();
     handler.artifacts(artifacts);
+    let (messages, told) = Messages::channel();
+    handler.messages(messages);
     // The runner opens each stream once. Shutdown finishes them, since they
     // would otherwise hold the draining connection open.
     let mut numbers_relay = Some(relay_of::<NumbersAsk>(draws));
     let mut artifacts_relay = Some(relay_of::<ArtifactsAsk>(requests));
+    let mut messages_relay = Some(relay_of::<MessagesAsk>(told));
     let finish_streams = CancellationToken::new();
     let mut tasks = JoinSet::new();
     let mut draining = false;
@@ -320,13 +332,13 @@ where
                                 cancellation.child_token(), kind,
                             ));
                         }
-                        (&Method::POST, path @ (NUMBERS_PATH | ARTIFACTS_PATH)) if !draining => {
+                        (&Method::POST, path @ (NUMBERS_PATH | ARTIFACTS_PATH | MESSAGES_PATH)) if !draining => {
                             // Only the first opens the stream; a later one is
                             // refused once its metadata is read.
-                            let relay = if path == NUMBERS_PATH {
-                                numbers_relay.take()
-                            } else {
-                                artifacts_relay.take()
+                            let relay = match path {
+                                NUMBERS_PATH => numbers_relay.take(),
+                                ARTIFACTS_PATH => artifacts_relay.take(),
+                                _ => messages_relay.take(),
                             };
                             tasks.spawn(invoke(
                                 request, response, handler.clone(), operations.clone(),

@@ -724,8 +724,9 @@ Service                         Runner                           Backend
 - The service writes each message as one standard output record, JSON with
   `id`, its own number for the message, as on the numbers stream;
   `conversation`, a conversation name it received in a
-  [command context](#command-context); and `message`, a JSON value of at
-  most 64 KiB whose meaning is the package's and its plugin's.
+  [command context](#command-context); and `message`, a JSON value whose
+  meaning is the package's and its plugin's. The record fits one standard
+  output record, 64 KiB, and the SDK refuses a larger one where it is sent.
 - The runner sends each record to the backend as `package_message` on its
   connection, adding the service's package, one after another in the order
   the service wrote them, and answers each `{id}` once its connection took
@@ -742,7 +743,10 @@ Service                         Runner                           Backend
   that reaches the device, as its primary Host or an attached one, as it
   accepts a numbers request, and gives it to the plugin as a
   `package_message` request ([The contract](../architecture/plugins.md#the-contract)).
-  It logs and drops any other.
+  It logs and drops any other. It hands one connection's messages on one
+  after another; a connection that holds more than 1,024 not yet handed on,
+  which only a runner that does not wait for its connection can send, loses
+  the ones beyond, and the backend logs each.
 - When the state a service kept for a conversation ends without the service
   saying so, whoever sees it end says it in the service's place, and the
   plugin receives a `package_lost` request for the conversation:

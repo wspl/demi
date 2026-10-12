@@ -200,7 +200,11 @@ page                         backend (panel, plugin-browser)            Host
   tab it did not open for a panel tab, with the id `browser-<tab>`, after the
   others. A tab id is used once per conversation, so a tab the user closed
   never comes back, and a tab is added once however often the list is read.
-  Adding a tab does not select it; only [showing](#showing-a-tab) does.
+  Adding a tab does not select it; only [showing](#showing-a-tab) does. Each
+  read also brings every bound tab's `url` and `title` to what the list says
+  of its browser tab, so a tab the browser told of while its page still
+  loaded, `about:blank` and untitled, takes the page's address and title
+  once the page has them, whether or not a view shows it.
 - **The address bar.** It reads what the user types as Chrome's omnibox
   does: `localhost`, `*.localhost`, an IP address or `host:port` without a
   scheme opens over `http://`; another text with a dot and no space opens

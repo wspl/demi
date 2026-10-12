@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
 import { addedPanelTab } from '@demicodes/plugin-browser/live/tabs'
 import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
@@ -70,6 +70,9 @@ export function useGalleryWork(
   const enabled = () => true
   const backend = new GalleryPanel()
   const plugin = galleryBrowserPlugin(browser, backend, shown)
+  // The browser tells the plugin of every change of its tabs, as the browser package does
+  // (`native-runtime.md` § Messages to the plugin).
+  watch(browser.listed, () => void plugin.tabsChanged())
   // The browser's tabs stand in the panel in its order, as the product's would: the user's with the tab the
   // user made for each, the agent's with the id the plugin gives them. A panel without the browser's page has none.
   if (shown.some((page) => page.plugin === 'browser')) {
@@ -193,18 +196,20 @@ export function useGalleryWork(
     pinned.value = {}
   }
   /**
-   * The agent shows `tab` with `demi browser show`, and its job ends: the
-   * plugin reads the tab list and carries the count into the panel tab,
-   * which the panel then selects.
+   * The agent shows `tab` with `demi browser show`: the browser tells the
+   * plugin, which carries the count into the panel tab, which the panel then
+   * selects.
    */
   async function agentShows(tab: string) {
     browser.show(tab)
-    await plugin.sync()
+    await nextTick()
+    await plugin.settled()
   }
-  /** The agent opens a page, shown with `--show` or not, and its job ends: the plugin adds the tab. */
+  /** The agent opens a page, shown with `--show` or not: the browser tells the plugin, which adds the tab. */
   async function agentOpens(url: string, show: boolean) {
     browser.agentOpens(url, { show })
-    await plugin.sync()
+    await nextTick()
+    await plugin.settled()
   }
   return {
     panel,

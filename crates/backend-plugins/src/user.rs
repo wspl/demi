@@ -25,7 +25,7 @@ use demi_host_interface::{CommandSet, GroupBuilder, PortError, RpcPort};
 use demi_plugin_interface::{
     CallKind, DirectoryPath, HostDirectory, HostFile, HostRead, PanelTabChange, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
-    PortRefusal, Reply, Request, Scope, StoredValue, Topic,
+    PortRefusal, Reply, Request, Scope, StoredValue,
 };
 use demi_shared_types::{B64Bytes, BlobRef, NodeId, Timestamp, TurnId};
 use demi_web_api_protocol::conversations::PluginRevision;
@@ -389,6 +389,17 @@ impl Shared {
 #[derive(Clone)]
 pub struct UserPlugins(Rc<Shared>);
 
+/// What a package lost on a Host (`native-runtime.md` § Messages to the
+/// plugin).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Lost<'a> {
+    /// The state of one package, whose service ended unsaid.
+    Package(&'a str),
+    /// The state of every package, which a runner that started anew or a
+    /// Cloud that stopped took with it.
+    Every,
+}
+
 impl UserPlugins {
     /// An instance of every plugin of `registry` for `user`, whose port
     /// reaches `product`, the user's values in `control` and the user's
@@ -680,44 +691,86 @@ impl UserPlugins {
             .collect()
     }
 
-    /// `topic` fired, for the user or for `conversation`: the state of
-    /// each plugin that follows it is marked changed, and each plugin told
-    /// about it that the user has on is told (`plugins.md` § Topics).
-    pub fn fire(&self, topic: Topic, conversation: Option<&ConversationId>) {
-        let followers: Vec<usize> = self
-            .0
-            .registry
-            .following(topic)
-            .map(|(index, _)| index)
-            .collect();
-        for plugin in followers {
-            self.0.changed(plugin, conversation);
+    /// The command package `package` said `message` about `conversation`
+    /// from a service on one of its Hosts: each plugin that binds it and
+    /// that the user has on receives it, in the order the messages came
+    /// (`plugins.md` § Messages from its command package).
+    pub async fn package_message(
+        &self,
+        package: &str,
+        conversation: &ConversationId,
+        message: serde_json::Value,
+    ) {
+        for plugin in self.receivers(package).await {
+            let request = Request::PackageMessage {
+                user: self.0.user.clone(),
+                conversation: conversation.clone(),
+                message: message.clone(),
+            };
+            self.0.spawn_request(plugin, request, conversation.clone());
         }
-        let told: Vec<usize> = self.0.registry.told(topic).collect();
-        // Every topic a plugin is told about is a conversation's.
-        let Some(conversation) = conversation.filter(|_| !told.is_empty()).cloned() else {
-            return;
+    }
+
+    /// What `lost` names was kept on a Host of each of `conversations` and
+    /// ended without its package saying so: each plugin that binds such a
+    /// package, that the user has on and that has panel tabs in one of the
+    /// conversations, receives `package_lost` for it (`native-runtime.md`
+    /// § Messages to the plugin). A plugin that shows nothing of a
+    /// conversation has nothing to correct.
+    pub async fn package_lost(&self, lost: Lost<'_>, conversations: &[ConversationId]) {
+        let plugins = match lost {
+            Lost::Package(package) => self.receivers(package).await,
+            Lost::Every => self.receivers_of(|registered| !registered.packages.is_empty()).await,
         };
-        let plugins = self.clone();
-        tokio::task::spawn_local(async move {
-            let enabled = match plugins.enabled().await {
-                Ok(enabled) => enabled,
+        if plugins.is_empty() {
+            return;
+        }
+        for conversation in conversations {
+            let panel = match self.0.control.panel(conversation.clone()).await {
+                Ok(panel) => panel,
                 Err(error) => {
-                    tracing::warn!(%error, "the plugins told about a topic could not be read");
-                    return;
+                    // The plugin then shows the lost state until its
+                    // package next says something about the conversation.
+                    tracing::warn!(%conversation, error = &error as &dyn std::error::Error, "a lost package's panel could not be read");
+                    continue;
                 }
             };
-            for plugin in told.into_iter().filter(|plugin| enabled[*plugin]) {
-                let request = Request::Topic {
-                    user: plugins.0.user.clone(),
-                    topic,
-                    conversation: Some(conversation.clone()),
+            for &plugin in &plugins {
+                let registered = &self.0.registry.plugins[plugin];
+                if !panel.tabs.iter().any(|tab| registered.owns_kind(&tab.kind)) {
+                    continue;
+                }
+                let request = Request::PackageLost {
+                    user: self.0.user.clone(),
+                    conversation: conversation.clone(),
                 };
-                plugins
-                    .0
-                    .spawn_request(plugin, request, conversation.clone());
+                self.0.spawn_request(plugin, request, conversation.clone());
             }
-        });
+        }
+    }
+
+    /// The plugins that bind `package` and that the user has on.
+    async fn receivers(&self, package: &str) -> Vec<usize> {
+        self.receivers_of(|registered| registered.packages.contains(package)).await
+    }
+
+    /// The plugins `bound` takes that the user has on, by their indices.
+    async fn receivers_of(&self, bound: impl Fn(&crate::registry::Registered) -> bool) -> Vec<usize> {
+        let enabled = match self.enabled().await {
+            Ok(enabled) => enabled,
+            Err(error) => {
+                tracing::warn!(%error, "the plugins a package message is for could not be read");
+                return Vec::new();
+            }
+        };
+        self.0
+            .registry
+            .plugins
+            .iter()
+            .enumerate()
+            .filter(|(index, registered)| enabled[*index] && bound(registered))
+            .map(|(index, _)| index)
+            .collect()
     }
 
     /// The conversation's work panel.

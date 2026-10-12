@@ -146,9 +146,11 @@ impl Plugin for CommandPlugin {
                 Request::Command { invocation, .. } => self.command(*invocation, &port).await,
                 Request::PageState { .. }
                 | Request::PageCall { .. }
-                | Request::PanelTab { .. }
-                | Request::Topic { .. } => Err(PluginError::undeclared("page")),
+                | Request::PanelTab { .. } => Err(PluginError::undeclared("page")),
                 Request::Context { .. } => Err(PluginError::undeclared("context source")),
+                Request::PackageMessage { .. } | Request::PackageLost { .. } => {
+                    Err(PluginError::undeclared("package messages"))
+                }
             }
         })
     }
@@ -169,9 +171,9 @@ impl Plugin for NoRequests {
             Request::Command { .. } => "command",
             Request::PageState { .. }
             | Request::PageCall { .. }
-            | Request::PanelTab { .. }
-            | Request::Topic { .. } => "page",
+            | Request::PanelTab { .. } => "page",
             Request::Context { .. } => "context source",
+            Request::PackageMessage { .. } | Request::PackageLost { .. } => "package messages",
         };
         Box::pin(async move { Err(PluginError::undeclared(what)) })
     }

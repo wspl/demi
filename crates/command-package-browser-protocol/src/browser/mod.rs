@@ -793,3 +793,21 @@ pub struct Dialog {
 // Declared after `locator_struct!`, which they use.
 mod failure;
 mod operations;
+
+/// What the browser package tells `plugin-browser` about a conversation
+/// (`browser.md` § One tab registry, `native-runtime.md` § Messages to the
+/// plugin): `{"tabs":"changed"}`, once for a burst of changes of what
+/// `browser.tabs` lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct BrowserMessage {
+    pub tabs: TabsChange,
+}
+
+/// What changed of the conversation's tabs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum TabsChange {
+    /// Something `browser.tabs` lists changed, or the browser ended.
+    Changed,
+}

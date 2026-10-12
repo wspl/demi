@@ -37,7 +37,7 @@ use demi_command_protocol::host_target;
 const PROGRAM: &str = "program";
 
 use crate::{
-    ArtifactResolver, NumberSource, RuntimeError,
+    ArtifactResolver, ServiceBackend, RuntimeError,
     cache::{ArtifactCache, Wanted},
     invocations::{Invocations, Invoking, ServiceArtifacts},
     process::ResidentService,
@@ -165,7 +165,7 @@ enum Request {
     Acquire {
         descriptor: PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
-        numbers: Arc<dyn NumberSource>,
+        backend: Arc<dyn ServiceBackend>,
         reply: oneshot::Sender<Result<Acquired, RuntimeError>>,
     },
     Release {
@@ -227,13 +227,13 @@ impl ServiceHandle {
     }
 
     /// The service of `descriptor`'s artifact for this host, started when
-    /// none runs, with its conversation numbers from `numbers`. Callers asking
+    /// none runs, with its requests to the backend going to `backend`. Callers asking
     /// at once share one start.
     pub async fn acquire(
         &self,
         descriptor: &PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
-        numbers: Arc<dyn NumberSource>,
+        backend: Arc<dyn ServiceBackend>,
         cancel: &CancellationToken,
     ) -> Result<Resident, Arc<RuntimeError>> {
         let (reply, answer) = oneshot::channel();
@@ -241,7 +241,7 @@ impl ServiceHandle {
             .send(Request::Acquire {
                 descriptor: descriptor.clone(),
                 resolver,
-                numbers,
+                backend,
                 reply,
             })
             .await
@@ -470,10 +470,10 @@ impl Owner {
             Request::Acquire {
                 descriptor,
                 resolver,
-                numbers,
+                backend,
                 reply,
             } => {
-                let acquired = self.acquire(descriptor, resolver, numbers);
+                let acquired = self.acquire(descriptor, resolver, backend);
                 // A caller that gave up drops its lease with the answer.
                 let _gave_up = reply.send(acquired);
             }
@@ -500,7 +500,7 @@ impl Owner {
         &mut self,
         descriptor: PackageDescriptor,
         resolver: Arc<dyn ArtifactResolver>,
-        numbers: Arc<dyn NumberSource>,
+        backend: Arc<dyn ServiceBackend>,
     ) -> Result<Acquired, RuntimeError> {
         if self.stop.is_cancelled() {
             return Err(RuntimeError::Cancelled);
@@ -550,7 +550,7 @@ impl Owner {
                 descriptor: &descriptor,
                 invocations,
                 resolver: resolver.as_ref(),
-                numbers,
+                backend,
                 cwd: &cwd,
                 env: &env,
             };
@@ -805,14 +805,14 @@ impl Owner {
 
 /// What a service starts from: its executable and descriptor, where the
 /// executable comes from, the invocations its program's artifacts are
-/// located for, where its conversation numbers come from, and its working
+/// located for, where its requests to the backend go, and its working
 /// directory and environment.
 struct Start<'a> {
     artifact: &'a demi_command_protocol::PackageArtifact,
     descriptor: &'a PackageDescriptor,
     invocations: Invocations,
     resolver: &'a dyn ArtifactResolver,
-    numbers: Arc<dyn NumberSource>,
+    backend: Arc<dyn ServiceBackend>,
     cwd: &'a std::path::Path,
     env: &'a BTreeMap<String, String>,
 }
@@ -850,7 +850,7 @@ async fn live(
             descriptor,
             start.cwd,
             start.env,
-            start.numbers,
+            start.backend.clone(),
             artifacts,
             stop.clone(),
         )
@@ -873,23 +873,23 @@ async fn live(
         info: Arc::new(service.info().clone()),
     });
     let ended = service.ended().await;
-    let error = match ended.reason {
-        None => {
-            tracing::info!("service {} stopped", descriptor.id);
-            RuntimeError::Stopped
-        }
-        Some(reason) => {
-            let exit = crate::ServiceExit {
-                service: descriptor.id.clone(),
-                reason,
-                stderr: ended.stderr,
-            };
-            // Its standard error is in the log already, line by line.
-            tracing::warn!("service {} {}", exit.service, exit.reason);
-            exit.into()
-        }
+    let Some(reason) = ended.reason else {
+        // A service asked to stop released its conversations first.
+        tracing::info!("service {} stopped", descriptor.id);
+        state.send_replace(State::Ended(Arc::new(RuntimeError::Stopped)));
+        return;
     };
-    state.send_replace(State::Ended(Arc::new(error)));
+    let exit = crate::ServiceExit {
+        service: descriptor.id.clone(),
+        reason,
+        stderr: ended.stderr,
+    };
+    // Its standard error is in the log already, line by line.
+    tracing::warn!("service {} {}", exit.service, exit.reason);
+    state.send_replace(State::Ended(Arc::new(exit.into())));
+    // What it kept for its conversations went with it, unsaid
+    // (`native-runtime.md` § Messages to the plugin).
+    start.backend.lost(descriptor.id.clone()).await;
 }
 
 /// Tells a test's view what the registry decided about `digest`'s service.

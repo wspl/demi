@@ -4,9 +4,10 @@
 //! conversation of the Host that started it, and it reaches that job's agent
 //! node's commands. A native service's conversation numbers come only from a
 //! conversation of the user that reaches the device (`native-runtime.md`
-//! § Conversation numbers), and a direct stream counts as the activity of
-//! such a conversation only (`direct-channel.md` § Operations on the
-//! channel).
+//! § Conversation numbers), a direct stream counts as the activity of such
+//! a conversation only (`direct-channel.md` § Operations on the channel),
+//! and a service's message reaches its plugin only about such a
+//! conversation (`native-runtime.md` § Messages to the plugin).
 
 use std::rc::{Rc, Weak};
 
@@ -14,7 +15,8 @@ use bytes::Bytes;
 use demi_backend_database::sequences;
 use demi_backend_host_access::host_commands::{MANAGE_DEVICES, reachable};
 use demi_backend_host_access::root_of;
-use demi_backend_remote_host::{DirectAdmission, JobOrigin, LinkPolicy};
+use demi_backend_plugins::Lost;
+use demi_backend_remote_host::{DirectAdmission, JobOrigin, LinkPolicy, PackageEvent};
 use demi_backend_runners::host_key::conversation_of;
 use demi_command_declarations::Category;
 use demi_command_protocol::ServiceSequence;
@@ -201,14 +203,7 @@ impl LinkPolicy for ShardPolicy {
         let device = self.device.clone();
         Box::pin(async move {
             let shard = shard?;
-            let conversation = ConversationId::try_from(conversation.as_str())
-                .map_err(|_| format!("no conversation {conversation}"))?;
-            let hosts = reachable(shard.host_shard(), &conversation)
-                .await
-                .map_err(|error| error.to_string())?;
-            if !hosts.iter().any(|host| host.device == device) {
-                return Err("the conversation does not reach this device".into());
-            }
+            let conversation = reaching(&shard, &conversation, &device).await?;
             let sequence = match sequence {
                 ServiceSequence::Tab => Sequence::Tab,
             };
@@ -238,14 +233,7 @@ impl LinkPolicy for ShardPolicy {
         let device = self.device.clone();
         Box::pin(async move {
             let shard = shard?;
-            let conversation = ConversationId::try_from(conversation.as_str())
-                .map_err(|_| format!("no conversation {conversation}"))?;
-            let hosts = reachable(shard.host_shard(), &conversation)
-                .await
-                .map_err(|error| error.to_string())?;
-            if !hosts.iter().any(|host| host.device == device) {
-                return Err("the conversation does not reach this device".into());
-            }
+            let conversation = reaching(&shard, &conversation, &device).await?;
             let lease = shard
                 .conversations()
                 .slot(&conversation)
@@ -265,4 +253,47 @@ impl LinkPolicy for ShardPolicy {
             })
         })
     }
+
+    fn package_event(&self, event: PackageEvent) -> LocalBoxFuture<'static, ()> {
+        let shard = self.shard();
+        let device = self.device.clone();
+        Box::pin(async move {
+            // A shard that is gone has no plugin to tell.
+            let Ok(shard) = shard else { return };
+            match event {
+                PackageEvent::Message {
+                    package,
+                    conversation,
+                    message,
+                } => match reaching(&shard, &conversation, &device).await {
+                    Ok(conversation) => {
+                        shard
+                            .plugins()
+                            .package_message(&package, &conversation, message)
+                            .await;
+                    }
+                    Err(error) => {
+                        tracing::warn!(device = %device, %package, "a package message was dropped: {error}");
+                    }
+                },
+                PackageEvent::Lost { package } => {
+                    shard.package_lost(&device, Lost::Package(&package)).await;
+                }
+            }
+        })
+    }
+}
+
+/// `conversation`, a conversation of the user that reaches `device`, as its
+/// primary Host or an attached one; or why it is none.
+async fn reaching(shard: &Shard, conversation: &str, device: &DeviceId) -> Result<ConversationId, String> {
+    let conversation = ConversationId::try_from(conversation)
+        .map_err(|_| format!("no conversation {conversation}"))?;
+    let hosts = reachable(shard.host_shard(), &conversation)
+        .await
+        .map_err(|error| error.to_string())?;
+    if !hosts.iter().any(|host| &host.device == device) {
+        return Err("the conversation does not reach this device".into());
+    }
+    Ok(conversation)
 }

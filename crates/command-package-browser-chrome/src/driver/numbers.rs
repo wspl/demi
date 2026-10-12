@@ -98,6 +98,18 @@ impl TabNumbers {
         self.0.changes.clone()
     }
 
+    /// Counts the end of the conversation's browser as a change of what it
+    /// shows: its tabs are gone with it.
+    pub fn browser_ended(&self) {
+        self.0.changes.send_modify(|revision| *revision += 1);
+    }
+
+    /// Follows the changes to what the conversation's browsers show, which
+    /// the service tells the plugin of (`browser.md` § One tab registry).
+    pub fn watch_changes(&self) -> watch::Receiver<u64> {
+        self.0.changes.subscribe()
+    }
+
     /// The number of the conversation's latest tab list, which a list read
     /// while no browser runs carries.
     pub fn list_number(&self) -> u64 {

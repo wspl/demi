@@ -15,7 +15,7 @@ use demi_command_package_browser_chrome::driver::installation::Chrome;
 use demi_command_package_browser_protocol::{Operation, OperationError, browser as protocol};
 use demi_command_protocol::{Completion, Invocation};
 use demi_command_sdk::{
-    Artifacts, ConversationContext, Handler, InvocationContext, Numbers, ServiceError,
+    Artifacts, ConversationContext, Handler, InvocationContext, Messages, Numbers, ServiceError,
 };
 
 /// The service.
@@ -71,6 +71,12 @@ impl Handler for DemiBrowser {
     /// sequences (`browser.md` § One tab registry).
     fn numbers(&self, numbers: Numbers) {
         self.browsers.attach_numbers(numbers);
+    }
+
+    /// The browsers tell the plugin when a conversation's tabs change
+    /// (`browser.md` § One tab registry).
+    fn messages(&self, messages: Messages) {
+        self.browsers.attach_messages(messages);
     }
 
     fn artifacts(&self, artifacts: Artifacts) {

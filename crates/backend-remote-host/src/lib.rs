@@ -36,7 +36,7 @@ pub mod testing;
 pub use device_jobs::{CLOUD_RESTARTED, DeviceJobs, Hello, NEVER_RECEIVED, RUNNER_RESTARTED, UNREACHED, UPGRADED};
 pub use file_watch::{HostEvent, HostSubscriber};
 pub use link::{
-    DirectAdmission, DirectAnswer, PeerEvent, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
+    DirectAdmission, DirectAnswer, PackageEvent, PeerEvent, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
     LinkPolicy, SocketEnd,
     END_GRACE, OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
 };

@@ -221,10 +221,6 @@ pub struct Page {
     /// takes part in (`plugins.md` § Panel kinds).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub panel_kinds: Vec<String>,
-    /// The topics the plugin itself is told about, with a `topic` request
-    /// (`plugins.md` § Topics).
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub told: Vec<Topic>,
     /// The reasons the page may be told a failure with, one closed set of
     /// snake_case words: its methods' and states' refusals, and what else
     /// reaches the page, so the page's types name each one and the page
@@ -243,7 +239,6 @@ impl Page {
             conversation: None,
             methods: Vec::new(),
             panel_kinds: Vec::new(),
-            told: Vec::new(),
             reasons: None,
         }
     }
@@ -259,12 +254,6 @@ impl Page {
     /// plugin takes part in.
     pub fn panel_kind(mut self, kind: impl Into<String>) -> Self {
         self.panel_kinds.push(kind.into());
-        self
-    }
-
-    /// The plugin is told when `topic` fires.
-    pub fn told(mut self, topic: Topic) -> Self {
-        self.told.push(topic);
         self
     }
 
@@ -297,9 +286,6 @@ impl Page {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct State {
     pub schema: Schema,
-    /// The product changes that mark it changed, each of the state's scope.
-    #[serde(default)]
-    pub topics: Vec<Topic>,
     /// The operations of a command package a read of it calls. A state one
     /// of whose operations the startup catalog does not serve is left out,
     /// as a method is.
@@ -312,37 +298,13 @@ impl State {
     pub fn new<S: JsonSchema>() -> Self {
         Self {
             schema: schema_of::<S>(Direction::Serializes),
-            topics: Vec::new(),
             operations: Vec::new(),
         }
-    }
-
-    /// It is read again when `topic` fires.
-    pub fn follows(mut self, topic: Topic) -> Self {
-        self.topics.push(topic);
-        self
     }
 
     pub fn calls(mut self, operation: NativeOperation) -> Self {
         self.operations.push(operation);
         self
-    }
-}
-
-/// A product change a page state can follow (`plugins.md` § Topics).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Topic {
-    /// A job of the conversation ends.
-    Jobs,
-}
-
-impl Topic {
-    /// The scope of the state it marks.
-    pub fn scope(self) -> Scope {
-        match self {
-            Self::Jobs => Scope::Conversation,
-        }
     }
 }
 

@@ -11,6 +11,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval};
 use demi_backend_host_access::target::cloud_home;
 use demi_backend_page_sync::Part;
+use demi_backend_plugins::Lost;
 use demi_backend_remote_host::{Hello, Link, LinkOptions, host_identity};
 use demi_backend_runners::devices::{DeviceRecorder, Serving, Updating, send};
 use demi_backend_runners::native::system_targets;
@@ -109,6 +110,11 @@ impl Shard {
             device_id: device.id.to_string(),
             device_name: device.name.clone(),
         };
+        // A runner that started anew kept nothing of its packages' state
+        // (`native-runtime.md` § Messages to the plugin).
+        let started_anew = device
+            .runner_instance
+            .is_some_and(|last| last != kept.instance);
         let hello = Hello {
             instance: kept.instance,
             release: runner.version.clone(),
@@ -123,6 +129,13 @@ impl Shard {
             return;
         };
         self.take_up(recorded.into_iter().map(|(_, conversation)| conversation));
+        if started_anew {
+            let shard = self.clone();
+            let device = device.id.clone();
+            self.tasks().spawn_local(async move {
+                shard.package_lost(&device, Lost::Every).await;
+            });
+        }
         // The report is recorded before the welcome: the work the
         // connection queued runs after it, so no answer of that work reaches
         // an agent whose next context block still names what the runner no

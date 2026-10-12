@@ -12,10 +12,11 @@ pub mod reason;
 use std::rc::Rc;
 
 use demi_command_declarations::NativeOperation;
+use demi_command_package_browser_protocol::browser::{BrowserMessage, TabsChange};
 use demi_command_package_browser_protocol::{PACKAGE, live};
 use demi_plugin_interface::{
     CommandPlugin, Manifest, PanelTabChange, Placement, Plugin, PluginError, PluginFactory,
-    PluginId, PluginPort, Reply, Request, Scope, Stream, Topic,
+    PluginId, PluginPort, Reply, Request, Scope, Stream,
 };
 use futures_util::future::LocalBoxFuture;
 
@@ -149,7 +150,7 @@ fn commands() -> CommandPlugin {
 
 /// One user's browser plugin: its commands are all native, so only its
 /// conversation state, the tab list, the tab methods, its kind's tabs and
-/// the ends of jobs reach it.
+/// the browser package's messages reach it.
 struct Instance {
     commands: CommandPlugin,
     work: panel::Work,
@@ -197,15 +198,25 @@ impl Plugin for Instance {
                     port.changed(Scope::Conversation).await?;
                     Ok(Reply::Done)
                 }
-                Request::Topic {
-                    topic: Topic::Jobs,
-                    conversation: Some(conversation),
+                Request::PackageMessage {
+                    conversation,
+                    message,
                     ..
                 } => {
+                    let BrowserMessage {
+                        tabs: TabsChange::Changed,
+                    } = serde_json::from_value(message).map_err(|error| {
+                        PluginError::failed(format!("the browser's message does not decode: {error}"))
+                    })?;
                     self.work.sync(&conversation, &port).await?;
+                    port.changed(Scope::Conversation).await?;
                     Ok(Reply::Done)
                 }
-                Request::Topic { .. } => Err(PluginError::undeclared("topic")),
+                Request::PackageLost { conversation, .. } => {
+                    self.work.lost(&conversation, &port).await?;
+                    port.changed(Scope::Conversation).await?;
+                    Ok(Reply::Done)
+                }
                 Request::PageState {
                     conversation: Some(_),
                     ..

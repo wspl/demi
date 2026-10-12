@@ -1,7 +1,7 @@
 use bytes::Bytes;
 use demi_command_protocol::{
     ARTIFACTS_PATH, CONVERSATION_PATH, ConversationRequest, INFO_PATH, INVOKE_PATH,
-    MAX_METADATA_BYTES, MAX_RECORD_BYTES, Metadata, NUMBERS_PATH, ProtocolError, Record,
+    MAX_METADATA_BYTES, MAX_RECORD_BYTES, MESSAGES_PATH, Metadata, NUMBERS_PATH, ProtocolError, Record,
     RecordDecoder, SHUTDOWN_PATH, ServiceInfo, StreamOpen, encode_input,
 };
 use http::{Method, Request};
@@ -80,6 +80,12 @@ impl Client {
     /// artifacts stream), which the caller answers.
     pub async fn artifacts(&self) -> Result<RequestStream, ServiceError> {
         self.request_stream(ARTIFACTS_PATH).await
+    }
+
+    /// Opens the service's messages stream (`native-runtime.md`
+    /// § Messages to the plugin), which the caller answers.
+    pub async fn messages(&self) -> Result<RequestStream, ServiceError> {
+        self.request_stream(MESSAGES_PATH).await
     }
 
     async fn request_stream(&self, path: &'static str) -> Result<RequestStream, ServiceError> {

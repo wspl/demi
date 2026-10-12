@@ -32,7 +32,8 @@ use demi_command_package_browser_protocol::OperationError;
 use demi_command_protocol::{
     ColorScheme, CommandError, CommandLocale, Completion, ConversationRequest, ConversationStatus,
 };
-use demi_command_sdk::{ConversationContext, InvocationContext, Numbers, ServiceError};
+use demi_command_sdk::{ConversationContext, InvocationContext, Messages, Numbers, ServiceError};
+use demi_command_package_browser_protocol::browser::{BrowserMessage, TabsChange};
 
 use crate::protocol::{
     self, ActionProgress, BrowserErrorCode, BrowserFailure, BrowserOperation, CapabilitiesResult,
@@ -119,9 +120,16 @@ enum Request {
 }
 
 impl ConversationBrowser {
-    /// The browser of a conversation whose tabs take their numbers from
-    /// `numbers`, across every browser it starts.
-    fn start(tasks: &TaskTracker, chrome: Chrome, numbers: TabNumbers) -> Arc<Self> {
+    /// The browser of `conversation`, whose tabs take their numbers from
+    /// `numbers` across every browser it starts, and whose changes `messages`
+    /// tells the plugin of while its owner runs.
+    fn start(
+        tasks: &TaskTracker,
+        chrome: Chrome,
+        conversation: String,
+        numbers: TabNumbers,
+        messages: watch::Receiver<Option<Messages>>,
+    ) -> Arc<Self> {
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let (published, lifecycle) = watch::channel(Lifecycle::Absent);
         let cancellation = CancellationToken::new();
@@ -133,7 +141,17 @@ impl ConversationBrowser {
             released: cancellation.clone(),
             tasks: tasks.clone(),
         };
-        tasks.spawn(owner.run(receiver));
+        let owned = CancellationToken::new();
+        tasks.spawn(announce(
+            conversation,
+            numbers.watch_changes(),
+            messages,
+            owned.clone(),
+        ));
+        tasks.spawn(async move {
+            owner.run(receiver).await;
+            owned.cancel();
+        });
         Arc::new(Self {
             requests,
             lifecycle,
@@ -374,11 +392,15 @@ impl Owner {
             State::Running(running) if running.ready.borrow().is_none() => Lifecycle::Starting,
             State::Running(_) => Lifecycle::Ready,
         };
+        let ended = lifecycle == Lifecycle::Absent && *self.published.borrow() != Lifecycle::Absent;
         self.published.send_if_modified(|published| {
             let changed = *published != lifecycle;
             *published = lifecycle;
             changed
         });
+        if ended {
+            self.numbers.browser_ended();
+        }
     }
 
     async fn handle(&mut self, request: Request) {
@@ -674,6 +696,48 @@ enum Find {
     },
 }
 
+/// Tells `plugin-browser` that what `browser.tabs` lists of `conversation`
+/// changed, once for each burst of changes: changes made while a message is
+/// on its way are told by the next one (`browser.md` § One tab registry).
+/// Ends once the conversation browser's owner ended at `owned`, after it
+/// told the change its end made.
+async fn announce(
+    conversation: String,
+    mut changes: watch::Receiver<u64>,
+    messages: watch::Receiver<Option<Messages>>,
+    owned: CancellationToken,
+) {
+    let message = serde_json::to_value(BrowserMessage {
+        tabs: TabsChange::Changed,
+    })
+    .expect("the browser's message is JSON");
+    loop {
+        let ended = tokio::select! {
+            changed = changes.changed() => changed.is_err(),
+            () = owned.cancelled() => true,
+        };
+        // A change the owner's end made is told before this ends.
+        let unseen = changes.has_changed().unwrap_or(false);
+        if ended && !unseen {
+            return;
+        }
+        changes.borrow_and_update();
+        // The service is given its sender before its first call; one
+        // driven without it, as a test's is, tells nobody.
+        let sender = messages.borrow().clone();
+        if let Some(sender) = sender
+            && let Err(error) = sender.send(&conversation, message.clone()).await
+        {
+            // The plugin then shows the tabs it read last until the next
+            // change reaches it.
+            tracing::info!("the plugin was not told of the tabs' change: {error}");
+        }
+        if ended {
+            return;
+        }
+    }
+}
+
 /// The service's browsers, one per conversation.
 pub(crate) struct Conversations {
     requests: mpsc::Sender<Find>,
@@ -682,6 +746,9 @@ pub(crate) struct Conversations {
     /// Where the conversations' tab numbers come from, once the service has
     /// its numbers source.
     numbers: watch::Sender<Option<Numbers>>,
+    /// Where the service tells the plugin of the conversations' tab changes,
+    /// once it has its message sender.
+    messages: watch::Sender<Option<Messages>>,
     /// The Host's Chrome, which `install` installs for every conversation.
     chrome: Chrome,
 }
@@ -694,6 +761,7 @@ async fn serve(
     tasks: TaskTracker,
     chrome: Chrome,
     numbers: watch::Receiver<Option<Numbers>>,
+    messages: watch::Receiver<Option<Messages>>,
 ) {
     let mut browsers: HashMap<String, Arc<ConversationBrowser>> = HashMap::new();
     // A requester that left needs no answer.
@@ -706,8 +774,9 @@ async fn serve(
                 let browser = browsers
                     .entry(conversation.clone())
                     .or_insert_with(|| {
-                        let tabs = TabNumbers::from_source(numbers.borrow().clone(), conversation);
-                        ConversationBrowser::start(&tasks, chrome.clone(), tabs)
+                        let tabs =
+                            TabNumbers::from_source(numbers.borrow().clone(), conversation.clone());
+                        ConversationBrowser::start(&tasks, chrome.clone(), conversation, tabs, messages.clone())
                     })
                     .clone();
                 let _gone = reply.send(browser);
@@ -753,13 +822,21 @@ impl Conversations {
         let (requests, receiver) = mpsc::channel(REQUESTS);
         let tasks = TaskTracker::new();
         let (numbers, source) = watch::channel(None);
-        tasks.spawn(serve(receiver, tasks.clone(), chrome.clone(), source));
+        let (messages, sender) = watch::channel(None);
+        tasks.spawn(serve(receiver, tasks.clone(), chrome.clone(), source, sender));
         Self {
             requests,
             tasks,
             numbers,
+            messages,
             chrome,
         }
+    }
+
+    /// Takes the service's message sender: the conversations' tab changes
+    /// go to the plugin through it.
+    pub(crate) fn attach_messages(&self, messages: Messages) {
+        self.messages.send_replace(Some(messages));
     }
 
     /// Takes the service's numbers source: browsers made from now on number
