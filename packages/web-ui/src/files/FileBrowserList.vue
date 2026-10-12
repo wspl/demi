@@ -236,7 +236,7 @@ defineExpose({
 <template>
   <div class="@container flex min-h-0 flex-1 flex-col">
     <div
-      class="grid h-7 shrink-0 grid-cols-[minmax(0,1fr)_5.5rem] items-center border-b border-line px-2 text-[12px] text-fg-subtle @md:grid-cols-[minmax(0,1fr)_8.5rem_5.5rem]"
+      class="grid h-7 shrink-0 grid-cols-[minmax(0,1fr)_5.5rem] items-center border-b border-line px-2 text-[12px] text-fg-subtle @md:grid-cols-[minmax(0,1fr)_10rem_5.5rem]"
       role="row"
     >
       <span
@@ -282,7 +282,7 @@ defineExpose({
       >
         <div
           v-if="creating"
-          class="grid h-7 shrink-0 grid-cols-[minmax(0,1fr)_5.5rem] items-center rounded-md bg-hover px-1 @md:grid-cols-[minmax(0,1fr)_8.5rem_5.5rem]"
+          class="grid h-7 shrink-0 grid-cols-[minmax(0,1fr)_5.5rem] items-center rounded-md bg-hover px-1 @md:grid-cols-[minmax(0,1fr)_10rem_5.5rem]"
           role="option"
           aria-selected="true"
         >
@@ -308,7 +308,7 @@ defineExpose({
           :aria-selected="entry.name === selected"
           :aria-disabled="!pickable(entry) || undefined"
           :data-selected="entry.name === selected || undefined"
-          class="grid h-7 shrink-0 select-none grid-cols-[minmax(0,1fr)_5.5rem] items-center rounded-md px-1 text-chrome transition-colors duration-200 ease-out @md:grid-cols-[minmax(0,1fr)_8.5rem_5.5rem]"
+          class="grid h-7 shrink-0 select-none grid-cols-[minmax(0,1fr)_5.5rem] items-center rounded-md px-1 text-chrome transition-colors duration-200 ease-out @md:grid-cols-[minmax(0,1fr)_10rem_5.5rem]"
           :class="
             entry.name === selected
               ? 'bg-active text-fg-emphasis'
