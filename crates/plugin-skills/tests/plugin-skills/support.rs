@@ -131,6 +131,7 @@ impl Plugged {
             conversation: ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap(),
             node: NodeId::try_from("conversation").unwrap(),
             cwd: cwd.to_owned(),
+            paths: demi_host_interface::HostPaths::Posix,
             turn: TurnId::try_from(turn).unwrap(),
             seen: seen.iter().map(|text| (*text).to_owned()).collect(),
         };

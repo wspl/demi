@@ -237,6 +237,7 @@ impl Plugin for Instance {
                 Request::Context {
                     conversation,
                     cwd,
+                    paths,
                     turn,
                     seen,
                     ..
@@ -244,6 +245,7 @@ impl Plugin for Instance {
                     let asked = Asked {
                         conversation: conversation.to_string(),
                         cwd,
+                        paths,
                         turn,
                         seen,
                     };
@@ -278,6 +280,8 @@ impl Plugin for Instance {
 struct Asked {
     conversation: String,
     cwd: String,
+    /// How the Host writes its paths.
+    paths: demi_host_interface::HostPaths,
     turn: TurnId,
     seen: Vec<String>,
 }
@@ -653,7 +657,7 @@ impl State {
         {
             return search.skills.clone();
         }
-        match project::search(port, &asked.cwd).await {
+        match project::search(port, asked.paths, &asked.cwd).await {
             Ok(skills) => {
                 let search = ProjectSearch {
                     turn: asked.turn.clone(),

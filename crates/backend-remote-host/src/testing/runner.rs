@@ -350,7 +350,7 @@ async fn adopt(
                 ))
             } else {
                 Ok((
-                    host_identity(&runner.identity),
+                    host_identity(&runner),
                     Hello {
                         instance: *instance,
                         release: runner.version.clone(),

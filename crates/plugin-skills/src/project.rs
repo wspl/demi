@@ -4,7 +4,8 @@
 //! found through Host reads that never wake the Host. Each round of the
 //! search reads every path it needs in one request.
 
-use demi_plugin_interface::project::{self, join};
+use demi_host_interface::HostPaths;
+use demi_plugin_interface::project;
 use demi_plugin_interface::{EntryKind, HostFile, HostRead, PluginPort, PortFailure};
 
 use crate::skill::{self, SKILL_MD_MAX_BYTES};
@@ -34,9 +35,15 @@ pub(crate) struct ProjectSkill {
 /// The project skills for a node working in `cwd`, one per name: of two of
 /// a name, the one in the nearer directory, and in one directory,
 /// `.agents/skills` over `.claude/skills`. What is not a skill, has
-/// warnings or is shadowed is logged.
-pub(crate) async fn search(port: &PluginPort, cwd: &str) -> Result<Vec<ProjectSkill>, PortFailure> {
-    let searched = searched_directories(port, cwd).await?;
+/// warnings or is shadowed is logged. `paths` is how the Host writes its
+/// paths, which every path the search reads is built in.
+pub(crate) async fn search(
+    port: &PluginPort,
+    paths: HostPaths,
+    cwd: &str,
+) -> Result<Vec<ProjectSkill>, PortFailure> {
+    let join = |directory: &str, name: &str| paths.join(directory, name);
+    let searched = searched_directories(port, paths, cwd).await?;
     let mut frontier: Vec<Node> = Vec::new();
     for (rank, directory) in searched.iter().enumerate() {
         for (place, skills) in SKILLS_DIRECTORIES.iter().enumerate() {
@@ -77,7 +84,7 @@ pub(crate) async fn search(port: &PluginPort, cwd: &str) -> Result<Vec<ProjectSk
             if node.depth > 0
                 && let HostFile::File { bytes, size } = manifest
             {
-                if let Some(skill) = project_skill(&node.path, bytes.as_bytes(), *size) {
+                if let Some(skill) = project_skill(paths, &node.path, bytes.as_bytes(), *size) {
                     found.push((node.rank, skill));
                 }
                 continue;
@@ -126,17 +133,21 @@ struct Node {
 }
 
 /// `cwd` and each directory above it up to the root of its git repository.
-async fn searched_directories(port: &PluginPort, cwd: &str) -> Result<Vec<String>, PortFailure> {
-    let ancestors = project::ancestors(cwd);
-    let found = port.read_host_files(project::root_reads(&ancestors)).await?;
+async fn searched_directories(
+    port: &PluginPort,
+    paths: HostPaths,
+    cwd: &str,
+) -> Result<Vec<String>, PortFailure> {
+    let ancestors = paths.ancestors(cwd);
+    let found = port.read_host_files(project::root_reads(paths, &ancestors)).await?;
     Ok(project::searched(&ancestors, &found).to_vec())
 }
 
 /// The skill in `directory` whose `SKILL.md` is `text`, of `size` bytes;
 /// none, logged, when it is not one.
-fn project_skill(directory: &str, text: &[u8], size: u64) -> Option<ProjectSkill> {
-    let location = join(directory, "SKILL.md");
-    let name = directory.rsplit('/').next().unwrap_or(directory);
+fn project_skill(paths: HostPaths, directory: &str, text: &[u8], size: u64) -> Option<ProjectSkill> {
+    let location = paths.join(directory, "SKILL.md");
+    let name = paths.file_name(directory);
     let too_large = usize::try_from(size).map_or(true, |size| size > SKILL_MD_MAX_BYTES);
     let parsed = if too_large {
         Err("SKILL.md is larger than 256 KiB".to_owned())

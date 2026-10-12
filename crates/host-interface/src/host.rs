@@ -42,6 +42,8 @@ pub struct HostIdentity {
     pub hostname: String,
     /// Where the account's home directory is on the Host.
     pub home_dir: String,
+    /// How the Host writes its paths, from the system its runner reports.
+    pub paths: crate::HostPaths,
 }
 
 /// An execution target. A relative path in any of its operations is
