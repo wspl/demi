@@ -66,7 +66,7 @@ shell
 
 The agent server grafts a `demi agent` group into every node's command set; the
 root and every subagent receive the same group, except that a spawn-restricted
-node's group lacks `spawn`, `abort`, and `resume`. When the command set the
+node's group lacks `spawn`, `fork`, `abort`, and `resume`. When the command set the
 product supplies has a `demi` root, `agent` joins it; the product never
 declares an `agent` group of its own, since the plugin host refuses the name
 ([Commands](../architecture/plugins.md#commands)). Otherwise the server adds a
@@ -76,6 +76,7 @@ declares an `agent` group of its own, since the plugin host refuses the name
 demi agent spawn [--profile <name>] [--description <title>] < task-brief.txt
 demi agent abort <id>...
 demi agent resume <id> < message.txt
+demi agent fork <id> [--profile <name>] [--description <title>] < message.txt
 demi agent send <id|parent> < message.txt
 demi agent show <id>...
 demi agent list
@@ -118,7 +119,7 @@ the parent.
 
 With `--json`, `abort`, `send`, `show`, `list`, and `profiles list` return
 `{ id, aborted }`, `{ id, accepted }`, `{ agent }`, `{ tree }`, and
-`{ profiles }`; `models`, `profiles show` and the profile changes return what
+`{ profiles }`, and `fork` returns `{ subagentId }` as `spawn` does; `models`, `profiles show` and the profile changes return what
 [Managing profiles](#managing-profiles) gives them.
 
 ### Command help
@@ -761,6 +762,55 @@ Never copied into a child:
 - the parent's output style or product-user voice;
 - the parent's system prompt, when a profile builds the child's own.
 
+## Fork
+
+`demi agent fork` starts a new child from what one of the caller's children
+already knows, on a profile the caller names, with the message that tells it
+what to do next. For example, a `research` child traced why the context card
+shows a stale estimate and reported back; the root wants the fix written by
+`frontend` without the reading done again:
+
+```text
+$ demi agent fork 7 --profile frontend <<'EOF'
+Fix it as you described, in slot 3 on branch fix/card-estimate.
+EOF
+subagentId: 9
+```
+
+Child 9 starts at once with child 7's history, runs on `frontend`, and reads
+the message as its next user message. Child 7 is untouched: it stays as it
+was, archived or live, and goes on if it was running.
+
+- **What it takes.** The id of one of the caller's own children, live or
+  archived. The history is the child's transcript up to its newest completed
+  assistant text with no tool call before it still running, the same
+  boundary a [conversation Fork](conversation-fork.md#eligibility) takes; a
+  child that has written no such text yet cannot be forked, with *Agent 7 has
+  no completed message to fork from yet*.
+- **What it runs on.** `--profile` names the profile, as for `spawn`;
+  without it the fork inherits the caller, as `spawn` without `--profile`
+  does, not the source's profile, so a fork never carries a configuration
+  the caller did not ask for. The history replays to the new model as it
+  does after a model switch ([A conversation's model
+  settings](../providers/models.md#a-conversations-model-settings)), and a
+  history too large for the new model's window is compacted before the
+  fork's first request ([Compaction](compaction.md)).
+- **What it is.** A new child of the caller, a sibling of its source, with
+  the next agent number, the description `--description` gives or the
+  source's followed by ` (fork)`, and the source's Host and directory. It
+  copies no children, running commands, pending deliveries or permission
+  state: those stay the source's, as for a conversation Fork
+  ([Execution environment and auxiliary state](conversation-fork.md#execution-environment-and-auxiliary-state)).
+  Its result reaches the caller as any child's does.
+- **What it counts as.** A spawn: the Subagent switch, the live-subagents
+  limit and the depth limit apply, at the source's depth, and a
+  spawn-restricted node's group has no `fork`, as it has no `spawn`.
+
+`resume` has no `--profile`: a child keeps what it was spawned with for all
+its rounds, so a model resuming it cannot change what it runs on by passing
+another name each time. A change of profile is a fork, a new child that
+names its profile once.
+
 ## Abort
 
 `demi agent abort <id>` and an explicit abort of the parent's tree stop the
@@ -1216,7 +1266,7 @@ The tree and its commands:
    gone, or whose effort or tier the model no longer offers, fails the spawn
    with the profile's name and what is missing, creates no child, and is
    listed by `demi agent profiles list` as unavailable.
-8. A profile's spawn restriction removes `spawn`, `abort`, and `resume`,
+8. A profile's spawn restriction removes `spawn`, `fork`, `abort`, and `resume`,
    keeps communication and reads, and survives archive, reopen, and resume;
    the inherit profile's children may spawn.
 9. Descendants inherit the prompt, the model and the commands, and a
