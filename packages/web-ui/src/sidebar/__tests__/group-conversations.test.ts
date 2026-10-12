@@ -6,9 +6,8 @@ test('conversation activity and pinning never reorder projects, including empty 
   const projects: SidebarProject[] = ['first', 'second', 'empty'].map((id) => ({
     id,
     name: id,
-    host: 'device',
     hostKind: 'device',
-    state: 'online',
+    device: { kind: 'paired', name: 'mac', state: 'online' },
     path: `/${id}`,
   }))
   const conversations: SidebarConversation[] = [

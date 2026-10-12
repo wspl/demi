@@ -29,6 +29,7 @@ import SidebarAccountRow from './SidebarAccount.vue'
 import SidebarGroupLabel from './SidebarGroupLabel.vue'
 import SidebarNavItem from './SidebarNavItem.vue'
 import SidebarProjectHeader from './SidebarProjectHeader.vue'
+import { projectsNamingTheirHost } from './project-hosts'
 import SidebarProjectMenu from './SidebarProjectMenu.vue'
 import SidebarRow from './SidebarRow.vue'
 import SidebarSelectionMenu from './SidebarSelectionMenu.vue'
@@ -118,6 +119,8 @@ const byId = computed(
   )
 )
 const projectById = computed(() => new Map(props.projects.map((project) => [project.id, project])))
+/** The projects whose row names its host, since a project of the same name runs on another. */
+const namesakes = computed(() => projectsNamingTheirHost(props.projects))
 /** Each group's label, in list order, with the dot it carries while folded. */
 const groupLabels = computed(() => {
   const label = (group: SidebarGroup, text: string, conversations: readonly SidebarConversation[]) => {
@@ -587,6 +590,7 @@ function selectProjectConversations(project: SidebarProject): void {
               <SidebarProjectHeader
                 v-if="entry.kind === 'project'"
                 :project="projectById.get(entry.id)!"
+                :namesake="namesakes.has(entry.id)"
                 :collapsed="isFolded(entry.id)"
                 :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
                 @toggle="list.onProjectClick(entry.id)"

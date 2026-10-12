@@ -17,10 +17,10 @@ import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-wi
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
 import type { PairingDevice } from '@demicodes/web-ui/devices/pairing'
 import { vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
-import type { SidebarConversationDevice } from '@demicodes/web-ui/sidebar/types'
+import type { SidebarDevice } from '@demicodes/web-ui/sidebar/types'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
-import { hostKindOf, hostLabel } from './hosts'
+import { hostKindOf } from './hosts'
 import { emptyLocalState, readLocalState, writeLocalState } from './local'
 import type { Device, Project } from './types'
 
@@ -128,17 +128,18 @@ export const useResources = defineStore('resources', () => {
     const device = product.snapshot?.devices.find((candidate) => candidate.id === id)
     return device ? productDevice(device) : null
   }
+  /** A device as a row's mark shows it: by name and state, or as one the account no longer lists. */
+  function sidebarDevice(deviceId: string): SidebarDevice {
+    const device = product.snapshot?.devices.find((candidate) => candidate.id === deviceId)
+    return device ? { kind: 'paired', name: device.name, state: device.state } : { kind: 'removed' }
+  }
   /**
    * The device a conversation's sidebar row shows (`product.md` § Conversations and projects):
    * for one outside a project on a paired device, its name and state, or that it was removed;
    * none on the Cloud, in a project, or before the first snapshot names the devices.
    */
-  function conversationDevice(target: ConversationTarget): SidebarConversationDevice | undefined {
-    if (target.kind !== 'device' || !product.snapshot) {
-      return undefined
-    }
-    const device = product.snapshot.devices.find((candidate) => candidate.id === target.deviceId)
-    return device ? { kind: 'paired', name: device.name, state: device.state } : { kind: 'removed' }
+  function conversationDevice(target: ConversationTarget): SidebarDevice | undefined {
+    return target.kind === 'device' && product.snapshot ? sidebarDevice(target.deviceId) : undefined
   }
   const projects = computed<Project[]>(() =>
     (product.snapshot?.workspaces ?? []).map((workspace): Project => {
@@ -151,16 +152,10 @@ export const useResources = defineStore('resources', () => {
         deviceId: workspace.deviceId,
         path: workspace.path,
       }
-      const hostKind = hostKindOf(device)
-      if (hostKind === 'cloud') {
-        return { ...checkout, host: hostLabel(hostKind, device), hostKind }
+      if (hostKindOf(device) === 'cloud') {
+        return { ...checkout, hostKind: 'cloud' }
       }
-      return {
-        ...checkout,
-        host: hostLabel(hostKind, device),
-        hostKind: 'device',
-        state: device?.state ?? 'offline',
-      }
+      return { ...checkout, hostKind: 'device', device: sidebarDevice(workspace.deviceId) }
     }),
   )
   const hidden = { provider: preferences.hidesProvider, model: preferences.hidesModel }
