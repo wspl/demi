@@ -36,7 +36,13 @@ mod linux {
         errors::{OpError, Parts},
     };
     use crate::{
-        blocking, config::Config, network::CloudNetwork, network::slots::SlotPool, recovery,
+        blocking,
+        config::Config,
+        network::{
+            CloudNetwork,
+            slots::{Slot, SlotPool},
+        },
+        recovery,
         sandbox::runsc::Runsc, server::MachineService, storage::store::ImageStore, tools::Tools,
     };
 
@@ -131,29 +137,35 @@ mod linux {
             let _admitted = self.admission.enter().await?;
             let (reply, answer) = oneshot::channel();
             self.worker(device)
-                .send(DeviceCommand::RuntimeState { reply })
+                .send(DeviceCommand::Running { reply })
                 .await
                 .map_err(|_| OpError::WorkerStopped)?;
-            answer.await.map_err(|_| OpError::WorkerStopped)
+            Ok(match answer.await.map_err(|_| OpError::WorkerStopped)? {
+                Some(_) => RuntimeState::Running,
+                None => RuntimeState::Stopped,
+            })
         }
 
         /// Reports the devices whose sandboxes run, which stay running,
         /// recovers what an interrupted operation left of the others, and
-        /// installs the network policy again (`managed-hosts.md` § Control
-        /// and ownership): a backend's restart stops no Cloud.
+        /// installs the network policy again with the running sandboxes'
+        /// slots (`managed-hosts.md` § Control and ownership): a backend's
+        /// restart stops no Cloud and cuts none off.
         pub async fn reconcile(&self) -> Result<Reconciled, OpError> {
             let _whole = self.admission.exclusive().await?;
-            let running = self.running_devices().await;
+            let (running, slots): (Vec<DeviceId>, Vec<Slot>) =
+                self.running_devices().await.into_iter().unzip();
             recovery::fence_and_save(&self.core, &running).await?;
-            self.core.network.prepare().await?;
+            self.core.network.prepare(&slots).await?;
             Ok(Reconciled {
                 running: running.iter().map(|device| device.as_str().to_owned()).collect(),
             })
         }
 
-        /// The devices whose workers run a sandbox; the caller holds the
-        /// whole gate, so no worker is running an operation.
-        async fn running_devices(&self) -> Vec<DeviceId> {
+        /// The devices whose workers run a sandbox, with its slot; the
+        /// caller holds the whole gate, so no worker is running an
+        /// operation.
+        async fn running_devices(&self) -> Vec<(DeviceId, Slot)> {
             let workers: Vec<_> = self
                 .devices
                 .borrow()
@@ -164,14 +176,14 @@ mod linux {
             for (device, worker) in workers {
                 let (reply, answer) = oneshot::channel();
                 // A worker that stopped runs no sandbox.
-                if worker.send(DeviceCommand::RuntimeState { reply }).await.is_err() {
+                if worker.send(DeviceCommand::Running { reply }).await.is_err() {
                     continue;
                 }
-                if answer.await == Ok(RuntimeState::Running) {
-                    running.push(device);
+                if let Ok(Some(slot)) = answer.await {
+                    running.push((device, slot));
                 }
             }
-            running.sort();
+            running.sort_by(|(left, _), (right, _)| left.cmp(right));
             running
         }
 

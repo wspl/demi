@@ -82,13 +82,17 @@ mod linux {
         }
 
         /// Checks that the pool overlaps no host route, enables forwarding,
-        /// and installs the firewall table.
-        pub async fn prepare(&self) -> Result<(), NetworkError> {
+        /// and installs the firewall table with the pairs of `running`, the
+        /// slots of the sandboxes that keep running.
+        pub async fn prepare(&self, running: &[Slot]) -> Result<(), NetworkError> {
             self.check().await?;
-            let table = ruleset::table(&Policy {
-                pool: self.pool,
-                dns: &self.dns,
-            });
+            let table = ruleset::table(
+                &Policy {
+                    pool: self.pool,
+                    dns: &self.dns,
+                },
+                running,
+            );
             let nft = self.nft.clone();
             blocking::run(move |_| -> Result<(), NetworkError> {
                 fs_err::write("/proc/sys/net/ipv4/ip_forward", "1")?;
@@ -220,21 +224,22 @@ mod linux {
                 vec![Ipv4Addr::new(1, 1, 1, 1), Ipv4Addr::new(8, 8, 8, 8)],
                 nft,
             );
-            network.prepare().await.unwrap();
+            network.prepare(&[]).await.unwrap();
             assert_eq!(read("/proc/sys/net/ipv4/ip_forward").trim(), "1");
             let listing = output("nft", &["list", "table", "inet", "demi_cloud"]);
             let expected = include_str!("../../tests/fixtures/nft-ruleset.txt");
             assert_eq!(listing, expected, "the installed table:\n{listing}");
             // Installing it again replaces it.
-            network.prepare().await.unwrap();
+            network.prepare(&[]).await.unwrap();
             assert_eq!(
                 output("nft", &["list", "table", "inet", "demi_cloud"]),
                 expected
             );
 
             let slot = SlotPool::new("172.30.0.0/16".parse().unwrap(), 8).slot(3);
+            let pairs = || output("nft", &["list", "set", "inet", "demi_cloud", "slots"]);
             network.attach(&slot).await.unwrap();
-            let set = output("nft", &["list", "set", "inet", "demi_cloud", "slots"]);
+            let set = pairs();
             assert!(set.contains("\"demih3\" . 172.30.0.14"), "{set}");
             assert!(output("ip", &["-o", "addr", "show", "demih3"]).contains("172.30.0.13/30"));
             let inside = output("ip", &["-n", "demi-3", "-o", "addr", "show", "demip3"]);
@@ -260,8 +265,18 @@ mod linux {
                 assert_eq!(disabled.trim(), "1");
             }
 
+            // A reconcile installs the table again while the sandbox runs:
+            // its pair stays, and only the running slots' pairs are kept.
+            network.prepare(std::slice::from_ref(&slot)).await.unwrap();
+            let set = pairs();
+            assert!(set.contains("\"demih3\" . 172.30.0.14"), "{set}");
+            network.prepare(&[]).await.unwrap();
+            let set = pairs();
+            assert!(!set.contains("demih3"), "{set}");
+            network.prepare(std::slice::from_ref(&slot)).await.unwrap();
+
             network.detach(&slot).await.unwrap();
-            let set = output("nft", &["list", "set", "inet", "demi_cloud", "slots"]);
+            let set = pairs();
             assert!(!set.contains("demih3"), "{set}");
             assert!(!std::path::Path::new("/sys/class/net/demih3").exists());
             assert!(!std::path::Path::new("/run/netns/demi-3").exists());
@@ -292,7 +307,7 @@ mod linux {
                 vec![Ipv4Addr::new(1, 1, 1, 1)],
                 nft,
             );
-            let error = overlapping.prepare().await.unwrap_err();
+            let error = overlapping.prepare(&[]).await.unwrap_err();
             assert_eq!(
                 error.to_string(),
                 "DEMI_MANAGED_SUBNET overlaps host route 172.30.5.0/24"
