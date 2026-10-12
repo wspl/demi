@@ -9,7 +9,7 @@ use demi_web_api_protocol::panel::PanelTab;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{PortFailure, PortRefusal, Topic};
+use crate::{PortFailure, PortRefusal};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(
@@ -65,13 +65,20 @@ pub enum Request {
         change: PanelTabChange,
         tab: PanelTab,
     },
-    /// A topic the plugin is told about fired, for the user or for
-    /// `conversation` (`plugins.md` § Topics).
-    Topic {
+    /// The command package the plugin's commands bind said `message` about
+    /// `conversation`, from a service on one of the conversation's Hosts
+    /// (`plugins.md` § Messages from its command package).
+    PackageMessage {
         user: UserId,
-        topic: Topic,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        conversation: Option<ConversationId>,
+        conversation: ConversationId,
+        message: Value,
+    },
+    /// What the plugin's command package kept for `conversation` on a Host
+    /// ended without the package saying so: its service crashed, its runner
+    /// started anew or its Cloud stopped.
+    PackageLost {
+        user: UserId,
+        conversation: ConversationId,
     },
 }
 

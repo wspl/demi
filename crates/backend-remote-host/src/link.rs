@@ -53,6 +53,10 @@ const ARTIFACT_REQUESTS: usize = 32;
 const NO_LIVE_WORK: &str = "No matching live job or stream";
 /// The numbers requests a connection answers at a time.
 const NUMBERS_REQUESTS: usize = 32;
+/// The package messages a connection holds before it hands them on; one
+/// beyond is dropped and logged. The runner waits for its connection's room
+/// before it sends each, so only a runner that breaks that rule fills it.
+const PACKAGE_EVENTS: usize = 1024;
 
 /// How long the backend's work for a connection may go on once the
 /// connection ended, such as an rpc handler committing; whatever still runs
@@ -122,6 +126,26 @@ pub trait LinkPolicy {
         conversation: String,
         name: String,
     ) -> LocalBoxFuture<'static, Result<DirectAdmission, String>>;
+
+    /// A native service on the device told its plugin something, or its
+    /// state was lost (`native-runtime.md` § Messages to the plugin). The
+    /// connection hands its events on one after another, in the order the
+    /// runner sent them.
+    fn package_event(&self, event: PackageEvent) -> LocalBoxFuture<'static, ()>;
+}
+
+/// What a native service's package says to its plugin, through the runner.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PackageEvent {
+    /// The service of `package` told its plugin `message` about
+    /// `conversation`.
+    Message {
+        package: String,
+        conversation: String,
+        message: serde_json::Value,
+    },
+    /// The service of `package` ended without releasing its conversations.
+    Lost { package: String },
 }
 
 /// What the backend knows an open direct stream with: the lease that holds
@@ -248,6 +272,8 @@ pub(crate) struct Inner {
     /// Job starts take turns: a job's manifest and its start travel
     /// together.
     jobs: SerialGate,
+    /// The package events waiting to be handed to the policy, in order.
+    package_events: mpsc::Sender<PackageEvent>,
     /// Cancelled when the connection ends.
     closed: CancellationToken,
     /// Why it ended, once it has.
@@ -578,6 +604,7 @@ impl Link {
     /// lifetime).
     pub fn new(options: LinkOptions) -> (Link, LinkDriver) {
         let (outbound, frames) = mpsc::channel(OUTBOUND_FRAMES);
+        let (package_events, mut events) = mpsc::channel(PACKAGE_EVENTS);
         let link = Link(Rc::new(Inner {
             device: options.device,
             identity: options.identity,
@@ -589,6 +616,7 @@ impl Link {
             tasks: TaskTracker::new(),
             overdue: CancellationToken::new(),
             jobs: SerialGate::new(),
+            package_events,
             closed: CancellationToken::new(),
             end: RefCell::new(None),
             disconnect: RefCell::new(None),
@@ -609,6 +637,18 @@ impl Link {
                 reading.resync(&job, lengths).await
             });
         }
+        let handing = link.clone();
+        link.spawn("package events", async move {
+            loop {
+                let event = tokio::select! {
+                    () = handing.ended() => return,
+                    event = events.recv() => event,
+                };
+                // The connection holds the sender while it lives.
+                let Some(event) = event else { return };
+                handing.0.policy.package_event(event).await;
+            }
+        });
         let driver = LinkDriver {
             link: link.clone(),
             frames,
@@ -1309,6 +1349,23 @@ impl Link {
                 sequence,
                 count,
             } => self.reserve_numbers(id, conversation_id, sequence, count),
+            Outbound::PackageMessage {
+                package,
+                conversation_id,
+                message,
+            } => self.package_event(PackageEvent::Message {
+                package,
+                conversation: conversation_id,
+                message,
+            }),
+            Outbound::PackageLost { package } => self.package_event(PackageEvent::Lost { package }),
+        }
+    }
+
+    /// Queues `event` for the policy, behind the ones before it.
+    fn package_event(&self, event: PackageEvent) {
+        if let Err(mpsc::error::TrySendError::Full(event)) = self.0.package_events.try_send(event) {
+            tracing::warn!(device = %self.0.device, ?event, "a package event was dropped: the runner sent more than the connection holds");
         }
     }
 

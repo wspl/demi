@@ -11,6 +11,7 @@ mod edits;
 mod invocation;
 mod line_counts;
 mod media;
+mod messages;
 mod numbers;
 mod package;
 #[cfg(feature = "testing")]
@@ -32,6 +33,7 @@ pub use invocation::{
 };
 pub use line_counts::line_counts;
 pub use media::{MAX_MEDIUM_BYTES, MediumFacts, is_binary, sniff_media_type};
+pub use messages::{MessageAnswer, PluginMessage};
 pub use numbers::{MAX_NUMBERS, NumbersAnswer, NumbersRequest, ServiceSequence, StreamOpen};
 pub use package::{
     ArtifactLocation, ArtifactPath, ArtifactUrl, PackageArtifact, PackageDescriptor,
@@ -48,6 +50,7 @@ pub const INVOKE_PATH: &str = "/v1/invoke";
 pub const CONVERSATION_PATH: &str = "/v1/conversation";
 pub const NUMBERS_PATH: &str = "/v1/numbers";
 pub const ARTIFACTS_PATH: &str = "/v1/artifacts";
+pub const MESSAGES_PATH: &str = "/v1/messages";
 pub const SHUTDOWN_PATH: &str = "/v1/shutdown";
 
 /// The metadata that opens an invocation stream: the native protocol's

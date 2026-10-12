@@ -14,7 +14,7 @@ use demi_command_protocol::{
 };
 use demi_command_sdk::testing::pauses;
 use demi_runner_command_packages::{
-    ArtifactResolver, ArtifactSource, RuntimeError, ServiceRegistry, testing::NoNumbers,
+    ArtifactResolver, ArtifactSource, RuntimeError, ServiceRegistry, testing::NoBackend,
 };
 use demi_runner_host::host::HostServer;
 use demi_runner_jobs::testing::Dispatch;
@@ -548,7 +548,7 @@ async fn running_out_of_open_files_waits_instead_of_failing() {
                 .acquire(
                     &descriptor,
                     Arc::new(Local(path)),
-                    Arc::new(NoNumbers),
+                    Arc::new(NoBackend),
                     &CancellationToken::new(),
                 )
                 .await

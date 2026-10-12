@@ -113,9 +113,6 @@ async fn the_tab_methods_run_the_browsers_operations_as_the_user_on_the_conversa
         listed.json::<Value>(),
         json!({ "revision": 0, "state": no_tabs() })
     );
-    let synced = call(&backend, &master, &id, "sync", json!({})).await;
-    assert_eq!(synced.status, StatusCode::OK);
-    assert_eq!(synced.json::<Value>(), Value::Null);
     // A tab the browser does not have is the browser's answer.
     let tab_not_found = (
         StatusCode::CONFLICT,
@@ -230,8 +227,6 @@ async fn a_browser_whose_service_does_not_start_is_unavailable_to_the_list_the_m
         message.contains("the browser service cannot start here"),
         "{message}"
     );
-    let synced = call(&backend, &master, &id, "sync", json!({})).await;
-    assert_eq!(plugin_refusal(&synced), unavailable);
 
     // The work panel's New Tab: the plugin's attempt to open a browser tab
     // for it fails, and the tab keeps why. `bind` runs after that attempt,
@@ -307,17 +302,12 @@ async fn a_tab_call_whose_connection_to_the_host_breaks_partway_says_the_connect
         "{}",
         String::from_utf8_lossy(&broken.body)
     );
-    let synced = call(&backend, &master, &id, "sync", json!({})).await;
-    assert_eq!(
-        synced.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::HostOperationFailed)
-    );
     assert!(backend.online(&master, laptop.id()).await);
     backend.close().await;
 }
 
 #[tokio::test]
-async fn a_stopped_cloud_is_not_woken_to_list_sync_or_move_its_tabs() {
+async fn a_stopped_cloud_is_not_woken_to_list_or_move_its_tabs() {
     let harness = Harness::new().with_browser_package();
     let (backend, master) = harness.start_set_up().await;
     // A new conversation works on the Cloud, which never started.
@@ -330,8 +320,6 @@ async fn a_stopped_cloud_is_not_woken_to_list_sync_or_move_its_tabs() {
         String::from_utf8_lossy(&listed.body)
     );
     assert_eq!(listed.json::<Value>()["state"], no_tabs());
-    let synced = call(&backend, &master, &id, "sync", json!({})).await;
-    assert_eq!(synced.status, StatusCode::OK);
     let navigate = json!({ "tab": ABSENT, "url": "https://example.test/" });
     let stopped = call(&backend, &master, &id, "navigate", navigate).await;
     assert_eq!(
@@ -462,7 +450,7 @@ fn browser_at(revision: u64) -> Vec<PluginRevision> {
 // Several seconds: a real device installs the builtin package, and one turn
 // runs a shell job.
 #[tokio::test]
-async fn a_job_that_ends_and_a_tab_method_raise_the_tab_list_revision_the_summary_carries() {
+async fn a_job_that_touches_no_browser_leaves_the_tab_list_revision_the_summary_carries() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_browser_package();
     let (backend, master) = harness.start_set_up().await;
@@ -474,22 +462,13 @@ async fn a_job_that_ends_and_a_tab_method_raise_the_tab_list_revision_the_summar
     let fresh = summary(&backend, &master, &id).await;
     assert_eq!(revisions(&fresh), browser_at(0));
 
-    // A job may have opened or closed tabs.
+    // The browser tells its plugin of its own changes; a job that runs no
+    // browser command changes nothing the plugin shows, and its end reads
+    // nothing (`plugins.md` § Messages from its command package).
     let mut work = Driven::open(&backend, &master, &vendor, &id, &provider, "/work").await;
     work.turn(vec![shell("t1", "true", 30_000), say("done")])
         .await;
     let ended = summary(&backend, &master, &id).await;
-    assert_eq!(revisions(&ended), browser_at(1));
-    let listed = tabs(&backend, &master, &id).await;
-    assert_eq!(
-        listed.json::<Value>(),
-        json!({ "revision": 1, "state": no_tabs() })
-    );
-
-    // The user's own tab methods change the list too.
-    let synced = call(&backend, &master, &id, "sync", json!({})).await;
-    assert_eq!(synced.status, StatusCode::OK);
-    let operated = summary(&backend, &master, &id).await;
-    assert_eq!(revisions(&operated), browser_at(2));
+    assert_eq!(revisions(&ended), browser_at(0));
     backend.close().await;
 }

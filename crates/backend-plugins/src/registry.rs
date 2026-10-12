@@ -8,7 +8,7 @@ use std::collections::BTreeSet;
 use demi_command_declarations::{LeafKind, NativeOperation, Node};
 use demi_host_interface::RegisterError;
 use demi_plugin_interface::{
-    Commands, DEMI_ROOT, Manifest, Page, Placement, PluginFactory, PluginId, Scope, State, Stream, Topic,
+    Commands, DEMI_ROOT, Manifest, Page, Placement, PluginFactory, PluginId, Scope, State, Stream,
 };
 
 use crate::commands::{TAKEN_GROUPS, compose};
@@ -27,12 +27,6 @@ pub enum RegistryError {
     PagePackage { plugin: PluginId, package: String },
     #[error("plugin \"{plugin}\" declares the panel kind \"{kind}\", which is taken")]
     PanelKind { plugin: PluginId, kind: String },
-    #[error("plugin \"{plugin}\"'s {scope:?} state follows {topic:?}, a topic of another scope")]
-    Topic {
-        plugin: PluginId,
-        scope: Scope,
-        topic: Topic,
-    },
     #[error("plugin \"{plugin}\"'s commands are refused: {error}")]
     Commands {
         plugin: PluginId,
@@ -144,20 +138,6 @@ impl Registry {
                         });
                     }
                 }
-                for scope in [Scope::User, Scope::Conversation] {
-                    let topics = page.state(scope).map(|state| &state.topics[..]);
-                    let foreign = topics
-                        .unwrap_or_default()
-                        .iter()
-                        .find(|topic| topic.scope() != scope);
-                    if let Some(topic) = foreign {
-                        return Err(RegistryError::Topic {
-                            plugin: manifest.id.clone(),
-                            scope,
-                            topic: *topic,
-                        });
-                    }
-                }
             }
             plugins.push(served(factory, &serves));
         }
@@ -207,43 +187,11 @@ impl Registry {
             .flat_map(|registered| &registered.streams)
     }
 
-    /// The plugins whose page state of `topic`'s scope follows it, in
-    /// registration order.
-    pub fn followers(&self, topic: Topic) -> impl Iterator<Item = &PluginId> {
-        self.following(topic).map(|(_, registered)| registered.id())
-    }
-
-    /// The followers of `topic` with their indices.
-    pub(crate) fn following(&self, topic: Topic) -> impl Iterator<Item = (usize, &Registered)> {
-        self.plugins
-            .iter()
-            .enumerate()
-            .filter(move |(_, registered)| {
-                registered
-                    .state(topic.scope())
-                    .is_some_and(|state| state.topics.contains(&topic))
-            })
-    }
-
     /// The plugin that declares the panel kind `kind`, by its index.
     pub(crate) fn kind_owner(&self, kind: &str) -> Option<usize> {
         self.plugins
             .iter()
             .position(|registered| registered.owns_kind(kind))
-    }
-
-    /// The plugins told about `topic`, by their indices.
-    pub(crate) fn told(&self, topic: Topic) -> impl Iterator<Item = usize> + '_ {
-        self.plugins
-            .iter()
-            .enumerate()
-            .filter(move |(_, registered)| {
-                registered
-                    .page
-                    .as_ref()
-                    .is_some_and(|page| page.told.contains(&topic))
-            })
-            .map(|(index, _)| index)
     }
 
     pub(crate) fn plugin(&self, id: &str) -> Option<(usize, &Registered)> {

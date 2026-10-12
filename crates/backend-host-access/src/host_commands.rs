@@ -521,9 +521,8 @@ async fn run_on_host(
                     _ => format!("{} is offline", target.name),
                 });
             }
-            // Dropped once the job ended, or when the call is stopped.
-            let _ended = shard
-                .begin_job(conversation, &target.device, host)
+            shard
+                .install_directories(&target.device, host)
                 .await
                 .map_err(|error| error.message)?;
             let start = JobStart {

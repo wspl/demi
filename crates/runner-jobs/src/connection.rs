@@ -11,7 +11,7 @@
 use std::{collections::HashMap, io, sync::Arc, time::Duration};
 
 use demi_command_protocol::{ArtifactLocation, ServiceSequence, host_target};
-use demi_runner_command_packages::{NumberSource, RuntimeError, ServiceLease};
+use demi_runner_command_packages::{ServiceBackend, RuntimeError, ServiceLease};
 use demi_runner_protocol::wire::{self, Inbound};
 use futures_util::future::BoxFuture;
 use tokio::{
@@ -224,8 +224,9 @@ impl ConnectionHandle {
 pub struct Unreachable;
 
 /// A service's conversation numbers come from the connection it started
-/// under (`native-runtime.md` § Conversation numbers).
-impl NumberSource for ConnectionHandle {
+/// under (`native-runtime.md` § Conversation numbers), and its messages to
+/// its plugin go there (§ Messages to the plugin).
+impl ServiceBackend for ConnectionHandle {
     fn reserve(
         &self,
         conversation: String,
@@ -245,6 +246,46 @@ impl NumberSource for ConnectionHandle {
             .await
             .map_err(|error| error.to_string())?
         })
+    }
+
+    fn tell(
+        &self,
+        package: String,
+        conversation: String,
+        message: serde_json::Value,
+    ) -> BoxFuture<'_, Result<(), String>> {
+        let message = wire::Outbound::PackageMessage {
+            package,
+            conversation_id: conversation,
+            message,
+        };
+        Box::pin(async move { self.send(&message).await })
+    }
+
+    fn lost(&self, package: String) -> BoxFuture<'_, ()> {
+        Box::pin(async move {
+            // A runner that stopped waiting stops its services anyway, and
+            // its next start names another instance, which says the same.
+            if let Err(error) = self.send(&wire::Outbound::PackageLost { package }).await {
+                tracing::info!("a lost service was not reported: {error}");
+            }
+        })
+    }
+}
+
+impl ConnectionHandle {
+    /// Hands `message` to the connection that serves, waiting for room in
+    /// it, and for the next connection while the runner is away or the one
+    /// it waited on ended; an error once the runner stopped waiting, or for
+    /// a message that breaks the wire's rules.
+    async fn send(&self, message: &wire::Outbound) -> Result<(), String> {
+        let frame = wire::encode(message).map_err(|error| error.to_string())?;
+        loop {
+            let live = self.connected().await.map_err(|_| UNREACHABLE.to_owned())?;
+            if live.control.send(frame.clone()).await.is_ok() {
+                return Ok(());
+            }
+        }
     }
 }
 

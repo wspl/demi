@@ -765,6 +765,10 @@ impl LinkPolicy for AdmitsDirectStreams {
             })
         })
     }
+
+    fn package_event(&self, _: demi_backend_remote_host::PackageEvent) -> LocalBoxFuture<'static, ()> {
+        Box::pin(async {})
+    }
 }
 
 /// A direct stream the runner reports is known as a stream the backend
@@ -1833,6 +1837,10 @@ impl LinkPolicy for Refusing {
     ) -> LocalBoxFuture<'static, Result<demi_backend_remote_host::DirectAdmission, String>> {
         Box::pin(async { Err("no".into()) })
     }
+
+    fn package_event(&self, _: demi_backend_remote_host::PackageEvent) -> LocalBoxFuture<'static, ()> {
+        Box::pin(async {})
+    }
 }
 
 #[tokio::test(flavor = "local")]
@@ -2409,5 +2417,45 @@ async fn a_job_the_backend_has_no_command_for_is_stopped_and_released() {
         sent.iter().any(|message| matches!(message,
             Inbound::JobRelease { job_id } if job_id == "stray-running")),
         "{sent:?}"
+    );
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_services_messages_and_its_loss_reach_the_policy_in_the_order_the_runner_sent_them() {
+    let policy = CommandPolicy::new(CommandSet::new());
+    let device = TestDevice::new(policy.clone());
+    let link = device.connect(None);
+    let mut events = policy.package_events();
+    for message in [serde_json::json!({ "tabs": "changed" }), serde_json::json!(2)] {
+        link.send(Outbound::PackageMessage {
+            package: "demi.browser".into(),
+            conversation_id: "c1".into(),
+            message,
+        })
+        .await;
+    }
+    link.send(Outbound::PackageLost {
+        package: "demi.browser".into(),
+    })
+    .await;
+    let handed = events
+        .wait_for(|events| events.len() == 3)
+        .await
+        .unwrap()
+        .clone();
+    let message = |message: Value| demi_backend_remote_host::PackageEvent::Message {
+        package: "demi.browser".into(),
+        conversation: "c1".into(),
+        message,
+    };
+    assert_eq!(
+        handed,
+        vec![
+            message(serde_json::json!({ "tabs": "changed" })),
+            message(serde_json::json!(2)),
+            demi_backend_remote_host::PackageEvent::Lost {
+                package: "demi.browser".into()
+            },
+        ]
     );
 }

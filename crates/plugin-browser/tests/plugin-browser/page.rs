@@ -120,12 +120,11 @@ async fn each_method_runs_its_operation_as_a_package_call_that_never_wakes_the_h
             json!({ "list": 7 }),
         ),
         ("stop", json!({ "tab": "t1" }), json!({ "list": 7 })),
-        ("sync", json!({}), Value::Null),
     ] {
         assert_eq!(call(&plugin, &demi, method, params).await, Ok(answer));
     }
     // Every method changed the tab list the pages show.
-    assert_eq!(demi.changes(), 5);
+    assert_eq!(demi.changes(), 4);
 
     let calls: Vec<(String, CallKind)> = demi
         .called
@@ -141,7 +140,6 @@ async fn each_method_runs_its_operation_as_a_package_call_that_never_wakes_the_h
             ("browser.back".to_owned(), CallKind::Operates),
             ("browser.reload".to_owned(), CallKind::Operates),
             ("browser.stop".to_owned(), CallKind::Operates),
-            ("browser.tabs".to_owned(), CallKind::Looks),
         ]
     );
 }
@@ -160,10 +158,6 @@ async fn a_stopped_host_lists_no_tabs_and_a_tab_the_browser_lacks_is_refused_to_
     assert_eq!(
         tabs(&plugin, &demi).await,
         Ok(json!({ "tabs": [], "browser": { "name": ARTIFACT, "version": pinned.version } }))
-    );
-    assert_eq!(
-        call(&plugin, &demi, "sync", json!({})).await,
-        Ok(Value::Null)
     );
     let moved = call(
         &plugin,
@@ -197,7 +191,6 @@ async fn a_stopped_host_lists_no_tabs_and_a_tab_the_browser_lacks_is_refused_to_
     )
     .await;
     assert_eq!(navigated, Err(PluginError::Port { refusal: stopped() }));
-    // Only the sync did its work: a refused method changed no tab, so the
-    // pages read nothing again.
-    assert_eq!(demi.changes(), 1);
+    // A refused method changed no tab, so the pages read nothing again.
+    assert_eq!(demi.changes(), 0);
 }

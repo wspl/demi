@@ -131,8 +131,13 @@ export interface GalleryBrowserPlugin {
   bind(panelTab: string): Promise<string | null>
   /** Closes the browser tab of a panel tab its user removed. */
   removed(tab: PanelTab): Promise<void>
-  /** Adds the agent's tabs, removes the ones closed on purpose and marks the ones the browser lost. */
-  sync(): Promise<void>
+  /**
+   * The browser told the plugin its tabs changed (`browser.md` § One tab registry): adds the agent's and the
+   * pages' tabs, removes the ones closed on purpose and marks the ones the browser lost.
+   */
+  tabsChanged(): Promise<void>
+  /** Resolves once the plugin did the work it was given so far. */
+  settled(): Promise<void>
 }
 
 /** `pages` are the panel's, whose kinds say which tab opened which. */
@@ -191,7 +196,8 @@ export function galleryBrowserPlugin(
         await browser.close(shown)
       }
     }),
-    sync: () => inTurn(async () => {
+    settled: () => turn,
+    tabsChanged: () => inTurn(async () => {
       const listed = browser.listed.value.tabs
       const bound = panel.all
         .filter((tab) => tab.kind === 'browser')
@@ -222,9 +228,22 @@ export function galleryBrowserPlugin(
           panel.apply({ type: 'remove', id })
         } else if (!present) {
           panel.apply({ type: 'update', id, data: { closed: true } })
-        } else if (present.shows > (data?.shows ?? 0)) {
-          // The agent showed it: each page selects it once (`live-view.md` § Showing a tab).
-          panel.apply({ type: 'update', id, data: { shows: present.shows } })
+        } else {
+          // The tab follows its page's address and title, and the agent's showings, which each page selects
+          // once (`live-view.md` § Showing a tab).
+          const follows: Partial<BrowserTabData> = {}
+          if (present.url !== data?.url) {
+            follows.url = present.url
+          }
+          if (present.title !== data?.title) {
+            follows.title = present.title
+          }
+          if (present.shows > (data?.shows ?? 0)) {
+            follows.shows = present.shows
+          }
+          if (Object.keys(follows).length > 0) {
+            panel.apply({ type: 'update', id, data: follows })
+          }
         }
       }
     }),

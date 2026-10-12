@@ -12,6 +12,7 @@ use demi_backend_cloud::{CloudServices, CloudShard, ConversationHold};
 use demi_backend_database::control::ControlService;
 use demi_backend_idle_watch::Activity;
 use demi_backend_page_sync::UserMarks;
+use demi_backend_plugins::Lost;
 use demi_backend_providers::llm::assembly::ProviderAssembly;
 use demi_backend_providers::vault::entries::Vault;
 use demi_backend_runners::devices::Devices;
@@ -121,6 +122,17 @@ impl CloudShard for Shard {
             _files: files,
         });
         Some(held)
+    }
+
+    fn packages_lost(&self, device: &DeviceId) {
+        let shard = self
+            .this
+            .upgrade()
+            .expect("a shard's method runs while the shard lives");
+        let device = device.clone();
+        self.tasks().spawn_local(async move {
+            shard.package_lost(&device, Lost::Every).await;
+        });
     }
 
     fn hold_for_reset<'a>(

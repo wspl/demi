@@ -3186,7 +3186,7 @@ onBeforeUnmount(() => {
         </GallerySpecimen>
         <div class="flex gap-2">
           <Button size="sm" @click="panelWork.reset">Reset Panel</Button>
-          <!-- What the agent's `demi browser open` does, with `--show` or without, once its job ends. -->
+          <!-- What the agent's `demi browser open` does, with `--show` or without: the browser tells the plugin of the new tab. -->
           <Button size="sm" @click="agentOpens(true)">Open and Show a Page as the Agent</Button>
           <Button size="sm" @click="agentOpens(false)">Open a Page to Check as the Agent</Button>
           <span class="self-center font-mono text-[11px] text-fg-faint">panel {{ Math.round(panelAsideShare * 100) }}% of the width it splits with the session · at least {{ ASIDE_SHARE.minWidth }}px, leaving the session {{ ASIDE_SHARE.mainMinWidth }}px</span>

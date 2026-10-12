@@ -25,13 +25,11 @@ function harness(
 ) {
   const list = shallowRef<BrowserTabList | null>(null)
   const error = shallowRef<BrowserTabsError | null>(null)
-  let syncs = 0
   const scope = effectScope()
   const controller = scope.run(() => new BrowserTabsController(
     {
       tabs: { value: list, error },
       bind: async () => null,
-      sync: async () => void (syncs += 1),
       select: () => {},
       navigate: async () => 0,
       history: async () => 0,
@@ -44,7 +42,7 @@ function harness(
     { report: (title, error) => void reported.push([title, error]), defect: (what, error) => void defects.push([what, error]) },
     { visibility: ref<DocumentVisibilityState>('visible'), ...options },
   ))!
-  return { controller, list, syncs: () => syncs, end: () => { controller.dispose(); scope.stop() } }
+  return { controller, list, end: () => { controller.dispose(); scope.stop() } }
 }
 
 /**
@@ -171,35 +169,6 @@ test('a view waiting to reconnect connects at once when a tab that just got its 
   // The user's new tab got its browser tab: the view does not wait.
   controller.show('p-t2', 't2')
   expect(opened).toHaveLength(2)
-  controller.dispose()
-})
-
-test('a view that finds its watched tab gone asks the plugin to look, once for that tab', async () => {
-  const opened: UserStreamHandlers[] = []
-  const { controller, syncs } = harness(
-    {
-      stream: (handlers) => {
-        opened.push(handlers)
-        return { send: () => {}, close: () => {} }
-      },
-    },
-    { pictures: async () => true },
-  )
-  await until(controller.pictures).toBe('supported')
-  controller.resize(PANEL)
-  controller.show('p-t1', 't1')
-  const state = (tabs: string[]): LiveModuleMessage => ({
-    type: 'state',
-    running: true,
-    list: 1,
-    tabs: tabs.map((id) => ({ id, title: id, url: 'about:blank', createdBy: { kind: 'user' }, viewport: VIEWPORT, loading: false, canGoBack: false, canGoForward: false })),
-    watched: null,
-  })
-  opened[0]!.data(framed(state(['t1'])))
-  expect(syncs()).toBe(0)
-  opened[0]!.data(framed(state([])))
-  opened[0]!.data(framed(state([])))
-  expect(syncs()).toBe(1)
   controller.dispose()
 })
 
@@ -427,26 +396,6 @@ test('a lost tab shown loads from the ask until its data names the tab the plugi
   end()
 })
 
-test('a view that ends asks the plugin whether the browser still has the shown tab', async () => {
-  const opened: UserStreamHandlers[] = []
-  const { controller, syncs, end } = harness(
-    {
-      stream: (handlers) => {
-        opened.push(handlers)
-        return { send: () => {}, close: () => {} }
-      },
-    },
-    { pictures: async () => true },
-  )
-  await until(controller.pictures).toBe('supported')
-  controller.resize(PANEL)
-  controller.show('p-t1', 't1')
-  // The Cloud stopped, or the browser ended: the plugin hears of it now, not after the view's waits.
-  opened[0]!.closed('host_stopped')
-  expect(syncs()).toBe(1)
-  end()
-})
-
 test('a Reload shows the page loading from the click until a list numbered after its answer says it stopped', async () => {
   const { controller, answers, report, end } = await requestHarness()
   const url = 'https://example.test/orders'
@@ -535,11 +484,11 @@ test('a refused Back ends the loading at once and rejects with why, and a replac
 // with it: a Reload sent then is refused with tab_not_found, and the tab
 // opens again on its address instead (`live-view.md` § A browser tab in the
 // panel).
-test('a request on a tab the browser lost says nothing and asks the plugin to read the list', async () => {
+test('a request on a tab the browser lost says nothing: the browser tells the plugin', async () => {
   const answers: Array<{ reject: (error: unknown) => void }> = []
   const reported: Array<[string, unknown]> = []
   const defects: Array<[string, unknown]> = []
-  const { controller, syncs, end } = harness(
+  const { controller, end } = harness(
     { history: () => new Promise<number>((_resolve, reject) => void answers.push({ reject })) },
     { pictures: async () => true },
     reported,
@@ -551,11 +500,6 @@ test('a request on a tab the browser lost says nothing and asks the plugin to re
   const reload = controller.history('t1', 'reload')
   answers[0]!.reject(BrowserTabsError.of('tab_not_found'))
   await reload
-  expect(syncs()).toBe(1)
-  // The tab menu's Reload of a tab not shown.
-  controller.reload({ url: 'https://example.test/b', tab: 't2' })
-  answers[1]!.reject(BrowserTabsError.of('tab_not_found'))
-  await waitFor(() => syncs() === 2, () => `syncs: ${syncs()}`)
   expect(reported).toEqual([])
   expect(defects).toEqual([])
   end()
@@ -617,7 +561,7 @@ test('a Reload the lost browser answered ends on the new browser’s first list,
 test('a tab a page opens joins the strip at once, selected when the user’s click in the watched tab opened it', async () => {
   const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
   const selected: string[] = []
-  const { controller, syncs, end } = harness(
+  const { controller, end } = harness(
     { stream: recordingStream(views), select: (panelTab) => void selected.push(panelTab) },
     { pictures: async () => true },
   )
@@ -632,21 +576,18 @@ test('a tab a page opens joins the strip at once, selected when the user’s cli
     views[0]!.handlers.data(framed({ type: 'state', running: true, list, tabs, watched: 't1' }))
   const watchedTab = tab('t1', { kind: 'agent', number: 1 })
   state(1, [watchedTab])
-  expect(syncs()).toBe(0)
   // A page that opens a tab by itself, as a timer's window.open does: the strip has it at once, not selected.
   state(2, [watchedTab, tab('t2', { kind: 'page', opener: 't1' })])
-  expect(syncs()).toBe(1)
   expect(selected).toEqual([])
   // The user's click on a target=_blank link: the browser selects the tab it opens.
   controller.session.value!.input({
     type: 'pointer', tab: 't1', action: 'down', x: 10, y: 10, button: 'left', buttons: 1, clickCount: 1, modifiers: 0,
   })
   state(3, [watchedTab, tab('t2', { kind: 'page', opener: 't1' }), tab('t3', { kind: 'page', opener: 't1' })])
-  expect(syncs()).toBe(2)
   expect(selected).toEqual(['browser-t3'])
-  // A list that names no new tab asks for nothing.
+  // A list that names no new tab selects nothing more.
   state(4, [watchedTab, tab('t2', { kind: 'page', opener: 't1' }), tab('t3', { kind: 'page', opener: 't1' })])
-  expect(syncs()).toBe(2)
+  expect(selected).toEqual(['browser-t3'])
   end()
 })
 
@@ -757,39 +698,6 @@ test('a tab shown again shows no page until the browser’s list names its tab, 
   // A view that reports the browser without it outweighs a plugin's list that still names it.
   views[0]!.handlers.data(framed({ type: 'state', running: true, list: 1, tabs: [], watched: null }))
   expect(controller.startingPhase('p1', signIn)).toBe('browser')
-  end()
-})
-
-test('a view that finds its tab gone while the device is offline reports nothing; another refusal is a defect', async () => {
-  const opened: UserStreamHandlers[] = []
-  const defects: Array<[string, unknown]> = []
-  let refusal = BrowserTabsError.of('device_offline')
-  const { controller, end } = harness(
-    {
-      sync: async () => {
-        throw refusal
-      },
-      stream: (handlers) => {
-        opened.push(handlers)
-        return { send: () => {}, close: () => {} }
-      },
-    },
-    { pictures: async () => true },
-    [],
-    defects,
-  )
-  await until(controller.pictures).toBe('supported')
-  controller.resize(PANEL)
-  controller.show('p-t1', 't1')
-  opened[0]!.closed('device_offline')
-  await Promise.resolve()
-  expect(defects).toEqual([])
-  refusal = BrowserTabsError.of('conversation_busy')
-  controller.hide('p-t1')
-  controller.show('p-t2', 't2')
-  opened.at(-1)!.closed('browser_lost')
-  await Promise.resolve()
-  expect(defects.map(([what]) => what)).toEqual(['The panel could not look for a closed tab'])
   end()
 })
 
