@@ -168,7 +168,7 @@ defineExpose({ root, naturalWidth })
           inert
         />
         <div class="chrome-roll-face">
-          <div ref="faceRef" class="flex h-7 items-center gap-2">
+          <div ref="faceRef" class="flex h-7 min-w-0 items-center gap-2">
             <div v-if="iconPresent" data-roll-icon class="flex h-7 shrink-0 items-center">
               <slot name="icon" />
             </div>
