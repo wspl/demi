@@ -5,6 +5,7 @@ import { useEscapeClose } from '../composables/useEscapeClose'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { useOverlay } from '../composables/useOverlay'
 import { useFocusReturn } from '../overlay/focusReturn'
+import { createOverlayFamily, overlayFamilyKey, overlayOwnerKey } from '../overlay/overlayFamily'
 import { useBackClose } from '../overlay/back-close'
 import { dragCloses, dragVelocity } from './drag-close'
 import { inSheetKey } from './sheet-context'
@@ -59,6 +60,9 @@ useBackClose(() => props.open, close)
 if (props.overlayStore) {
   const store = props.overlayStore
   const id = useOverlay(store, () => props.open, close)
+  // A menu or dropdown inside the sheet is a layer on it: Escape closes it first, and the sheet stays.
+  provide(overlayFamilyKey, createOverlayFamily())
+  provide(overlayOwnerKey, id)
   useEscapeClose(() => props.open && store.isTop(id), close)
 }
 

@@ -15,7 +15,7 @@ import { escapeCloses, escapeKey, useEscapeClose } from '../composables/useEscap
 import type { OverlayStore } from '../overlay/overlayStore'
 import { useOverlayTarget } from '../overlay/overlayContainer'
 import { usePinnedOpen } from '../overlay/pinnedOpen'
-import { createOverlayFamily, overlayFamilyKey } from '../overlay/overlayFamily'
+import { createOverlayFamily, overlayFamilyKey, overlayOwnerKey } from '../overlay/overlayFamily'
 import { useFocusReturn } from '../overlay/focusReturn'
 import { useOverlay } from '../composables/useOverlay'
 import { stackAbove } from '../overlay/stacking'
@@ -283,9 +283,13 @@ onClickOutside(floatingRef, () => {
   ],
 })
 
+// Opened inside a dialog or another panel, it is a layer on that one: it replaces nothing, Escape
+// closes it before the one it is in, and it goes with that one.
 const overlayId = useOverlay(props.overlayStore, () => (
-  nested || pinned.value ? false : props.isOpen
-), () => emit('close'))
+  pinned.value ? false : props.isOpen
+), () => emit('close'), nested ? 'nested' : 'exclusive', 'popover', inject(overlayOwnerKey, undefined))
+if (!nested)
+  provide(overlayOwnerKey, overlayId)
 
 /**
  * Escape closes the panel, as it closes a menu or popover on macOS: the
@@ -301,7 +305,7 @@ function closeOnEscape(event: KeyboardEvent): void {
   emit('close')
 }
 
-useEscapeClose(() => props.isOpen && !nested && !pinned.value && props.overlayStore.isTop(overlayId), () => emit('close'))
+useEscapeClose(() => props.isOpen && !pinned.value && props.overlayStore.isTop(overlayId), () => emit('close'))
 
 const overlayMotion = {
   enterActiveClass: 'transition-[opacity,scale] duration-150 ease-out',
