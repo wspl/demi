@@ -184,11 +184,11 @@ const preview = computed<
     <template #overlay>
       <pre
         v-if="preview.kind === 'lines'"
-        class="max-h-40 overflow-hidden whitespace-pre-wrap break-all font-mono text-[11px] leading-4"
+        class="max-h-40 overflow-hidden whitespace-pre-wrap font-mono [overflow-wrap:anywhere] text-[11px] leading-4"
       >{{ preview.text }}</pre>
       <span
         v-else
-        class="break-all"
+        class="[overflow-wrap:anywhere]"
       >{{ caption }}</span>
     </template>
   </Tooltip>

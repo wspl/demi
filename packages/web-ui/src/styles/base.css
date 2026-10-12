@@ -514,11 +514,13 @@ html[data-theme="light"] .file-pill {
   --fill-color: var(--surface-dialog);
 }
 
-/* Text that wraps as a terminal wraps it: each line fills to the box's edge and
-   breaks at any character, never earlier at a hyphen or a space, so a command's
-   output reads, and copies, as the shell has it. A command itself wraps at its
-   spaces (CodeText), and only a word longer than a line wraps this way. */
-@utility terminal-wrap {
+/* A word longer than a line, which fills each line to the box's edge and breaks
+   at any character, never earlier at a hyphen. Only a single word takes it: text
+   with spaces in it would break in the middle of its words (`redir` / `ected`)
+   instead of moving them to the next line, so it wraps as a browser's text does
+   (command output: `pre-wrap` and `overflow-wrap: anywhere`; a command: CodeText,
+   which gives this to its words longer than a line only). */
+@utility long-word-wrap {
   white-space: pre-wrap;
   line-break: anywhere;
 }
