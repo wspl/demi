@@ -60,8 +60,10 @@ allow it, as a permission request does
 ([Requests](permissions.md#requests)). An allowance lasts the conversation's
 life, for every agent of its tree.
 
-`demi credentials read <name> <field>` writes a field's value only where the
-model cannot read it: into a pipe, a file or a shell variable. When its
+`demi credentials read <name> <field>` writes a field's value anywhere the
+model cannot read it: a command substitution, `$(…)`, into a variable or
+straight into another command's argument, a pipe, or a file. It refuses only
+one place, the job's own output, which the model reads. When its
 standard output is the job's own output, which the model reads, it writes
 nothing and fails with *demi credentials read: the value would show to the
 agent; pipe it into the command that needs it, or assign it to a variable.*
@@ -71,8 +73,15 @@ secret field; a visible field is printed anywhere.
 ```text
 demi credentials read "Google API key" key | demi providers edit google --api-key-stdin
 GITHUB_TOKEN=$(demi credentials read "GitHub token for zan" token) git push
+curl -H "Authorization: Bearer $(demi credentials read "Linear key" key)" https://api.linear.app/graphql
 demi credentials read "Deploy key" private_key > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
 ```
+
+The command line the model wrote, and the transcript keeps, holds the
+`$(…)` as written, never its value. A value put in an argument is visible to
+the Host's other processes while the program runs, as any argument is, so a
+program that takes a secret on standard input or from its environment is the
+better place for it; that is the Host's own trust, which Demi does not narrow.
 
 As a second guard the runner masks a secret it delivered wherever it later
 shows in the conversation's command output: `echo $GITHUB_TOKEN` prints
