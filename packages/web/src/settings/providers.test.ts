@@ -8,6 +8,7 @@ import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
 import { useProviderSettings } from './providers'
 import { dismissToast, toasts } from '@demicodes/web-ui/infra/toast'
+import { waitFor } from '@demicodes/utils'
 
 const realFetch = globalThis.fetch
 let pinia: ReturnType<typeof createPinia>
@@ -16,6 +17,12 @@ let state: ProductState
 let writes: number
 /** Each read of the model catalog, by its path. */
 let catalogReads: string[]
+/** What the model catalog answers: the providers it lists. */
+let catalogProviders: unknown[]
+/** Each entry the page created, by the body it sent. */
+let created: Record<string, unknown>[]
+/** The id the next created entry gets. */
+let nextId: string
 let write: (body: Record<string, unknown>) => Promise<Response>
 let probe: (body: string, signal: AbortSignal | null | undefined) => Promise<Response>
 
@@ -48,11 +55,43 @@ beforeEach(async () => {
     return Response.json({})
   }
   catalogReads = []
+  catalogProviders = []
+  created = []
+  nextId = 'created'
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
+    if (path.startsWith('/api/models/search')) {
+      return Response.json({
+        results: [{
+          ref: 'google/gemini-3.8-flash', displayName: 'Gemini 3.8 Flash', id: 'gemini-3.8-flash', vendor: 'google',
+          contextWindow: 1_000_000, outputLimit: 65_536, thinkingEfforts: ['low', 'high'],
+          acceptedExtensions: ['png', 'pdf'], releaseDate: '2026-06-17',
+        }],
+      })
+    }
     if (path.startsWith('/api/models')) {
       catalogReads.push(path)
-      return Response.json({ providers: [] })
+      return Response.json({ providers: catalogProviders })
+    }
+    if (path === '/api/providers' && init?.method === 'POST') {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>
+      created.push(body)
+      const entry = {
+        id: nextId,
+        kind: 'api_key' as const,
+        providerType: body.source === 'custom' ? String(body.providerType) : 'google',
+        label: body.source === 'vendor' ? 'Google' : 'OpenAI',
+        wireApi: null,
+        vendorId: body.source === 'vendor' ? String(body.vendorId) : null,
+        baseUrl: null,
+        hasApiKey: false,
+        models: body.source === 'custom' ? [] : null,
+        createdAt: '2026-09-11T00:00:00.000Z',
+      }
+      // The entry joins the product state as the channel brings it.
+      state.providers.push({ ...entry, details: { type: 'failed', message: 'Not read in this test' } })
+      channels.last().send({ type: 'providers', providers: state.providers })
+      return Response.json({ provider: entry })
     }
     if (path === '/api/providers/catalog') {
       return Response.json({
@@ -105,26 +144,66 @@ async function idle(): Promise<void> {
   throw new Error('Provider operation did not finish')
 }
 
-test('the list holds only saved providers; a vendor added joins it only once saved', async () => {
+test('adding a vendor asks only its kind: the entry joins the list at once, selected, with nothing else sent', async () => {
   const settings = useProviderSettings()
   const resources = useResources()
   const listed = () => settings.providers.map((provider) => provider.id)
   // The subscriptions and the saved key; no vendor the user never added.
   expect(listed()).toEqual(['codex', 'configured'])
-  channels.last().send({ type: 'snapshot', state })
-  await nextTick()
-  expect(listed()).toEqual(['codex', 'configured'])
 
-  settings.addProvider(resources.vendors.find((vendor) => vendor.id === 'anthropic')!)
-  expect(settings.draft?.name).toBe('Anthropic')
-  expect(resources.selectedProviderId).toBe(settings.draft!.id)
-  expect(listed()).toEqual(['codex', 'configured'])
+  settings.addProvider({ ...resources.vendors[0]!, id: 'google' })
+  await waitFor(() => listed().includes('created'))
+  expect(created).toEqual([{ source: 'vendor', vendorId: 'google' }])
+  expect(resources.selectedProviderId).toBe('created')
+  expect(resources.providerDetailOpen).toBe(true)
+  expect(listed()).toEqual(['codex', 'configured', 'created'])
+})
 
-  // Choosing another provider leaves the form; nothing of it stays.
-  resources.selectedProviderId = 'configured'
-  await nextTick()
-  expect(settings.draft).toBeNull()
-  expect(listed()).toEqual(['codex', 'configured'])
+test('adding an endpoint of a family names the family and its wire and nothing else', async () => {
+  const settings = useProviderSettings()
+  settings.addEndpoint('openai-chat')
+  await waitFor(() => created.length === 1)
+  expect(created).toEqual([{ source: 'custom', providerType: 'openai', wireApi: 'chat-completions' }])
+  nextId = 'second'
+  settings.addEndpoint('anthropic-messages')
+  await waitFor(() => created.length === 2)
+  expect(created[1]).toEqual({ source: 'custom', providerType: 'anthropic' })
+})
+
+test('an incomplete entry is in the setup state and names what it lacks, from its availability; a complete one is not', async () => {
+  const settings = useProviderSettings()
+  catalogProviders = [{
+    providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
+    warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
+    availability: { type: 'unavailable', reason: 'setup', message: 'Finish setting up this provider in Settings', missing: ['apiKey', 'models'] },
+    models: [],
+  }]
+  await useProduct().loadModels(true)
+  await waitFor(() => settings.providers.find((entry) => entry.id === 'configured')?.state === 'setup')
+  const entry = settings.providers.find((candidate) => candidate.id === 'configured')!
+  expect(entry.missing).toEqual(['apiKey', 'models'])
+  // The model menu lists its models dimmed, with the backend's sentence as the reason.
+  expect(useResources().providerInfos).toEqual([
+    { id: 'configured', label: 'API', isAvailable: false, setupReason: 'Finish setting up this provider in Settings' },
+  ])
+
+  catalogProviders = [{ ...(catalogProviders[0] as object), availability: { type: 'available' } }]
+  await useProduct().loadModels(true)
+  await waitFor(() => settings.providers.find((candidate) => candidate.id === 'configured')?.state !== 'setup')
+  expect(settings.providers.find((candidate) => candidate.id === 'configured')?.missing).toBeUndefined()
+})
+
+test('the Add Model search asks for the entry and fills a draft the way the dialog shows it', async () => {
+  const settings = useProviderSettings()
+  const found = await settings.searchModels('configured', 'gemini fl', new AbortController().signal)
+  expect(found).toEqual([{
+    ref: 'google/gemini-3.8-flash',
+    vendor: 'google',
+    model: {
+      id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', contextWindow: 1_000_000, outputLimit: 65_536,
+      efforts: ['low', 'high'], extensions: ['.png', '.pdf'], fastTier: null,
+    },
+  }])
 })
 
 test('a provider wears its vendor\'s mark: a subscription by its type, a key by its vendor', async () => {
@@ -140,10 +219,7 @@ test('a provider wears its vendor\'s mark: a subscription by its type, a key by 
   await nextTick()
   expect(logo('claude')).toEndWith('/claude.svg')
 
-  const anthropic = resources.vendors.find((vendor) => vendor.id === 'anthropic')!
-  expect(anthropic.logo).toEndWith('/anthropic.svg')
-  settings.addProvider(anthropic)
-  expect(settings.draft?.logo).toEndWith('/anthropic.svg')
+  expect(resources.vendors.find((vendor) => vendor.id === 'anthropic')!.logo).toEndWith('/anthropic.svg')
 })
 
 test('an edit or a model made while a test runs shows at once and is saved when the test ends', async () => {
