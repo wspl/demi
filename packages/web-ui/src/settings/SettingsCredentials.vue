@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { Eye, EyeOff } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
-import type { CredentialFieldView } from '../permissions/types'
 import Button from '../ui/Button.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import IconButton from '../ui/IconButton.vue'
@@ -13,17 +12,16 @@ import CredentialDialog from './CredentialDialog.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import type { SettingsCredential, SettingsCredentialDraft } from './types'
+import type { SettingsCredential, SettingsCredentialDraft, SettingsCredentialField } from './types'
 
 /**
  * The Credentials section (`credentials.md` § A credential): the user's
  * credentials by name, each with its fields, a tag of each field's kind,
  * *Kept until* and *Last used*, and an editor. A visible field shows its value
- * as text, read from the host when the credential first shows and again when
- * it changes. A secret field shows dots and an eye that reads its value from
- * the host and shows it to the user; that value goes again as the pointer or
- * the focus leaves the row, and is not kept anywhere else. The host saves and deletes; the next read of an agent
- * uses a change.
+ * as text, as the list carries it. A secret field shows dots and an eye that
+ * reads its value from the host and shows it to the user; that value goes
+ * again as the pointer or the focus leaves the row, and is not kept anywhere
+ * else. The host saves and deletes; the next read of an agent uses a change.
  */
 const props = defineProps<{
   credentials: SettingsCredential[]
@@ -32,8 +30,8 @@ const props = defineProps<{
   saveCredential: (id: string | null, draft: SettingsCredentialDraft) => Promise<void>
   deleteCredential: (id: string) => Promise<void>
   /**
-   * The values of a credential's fields by name, for the user to see; null
-   * when they could not be read, which the host has told the user.
+   * The values of a credential's fields by name, for the eye of a secret
+   * field; null when they could not be read, which the host has told the user.
    */
   revealCredential: (id: string) => Promise<Record<string, string> | null>
 }>()
@@ -89,42 +87,6 @@ async function remove(): Promise<void> {
   }
 }
 
-/**
- * The visible fields' values, by credential, read for the version of the
- * credential `stamp` names; a secret's value never stays here. A credential
- * that could not be read is left blank until it changes.
- */
-const visible = ref(new Map<string, { stamp: string; values: Record<string, string> }>())
-
-watch(
-  () => props.credentials,
-  (credentials) => {
-    for (const credential of credentials) {
-      if (
-        credential.fields.some((field) => field.kind === 'visible') &&
-        visible.value.get(credential.id)?.stamp !== credential.updatedAt
-      ) {
-        void readVisible(credential)
-      }
-    }
-  },
-  { immediate: true, deep: true },
-)
-
-async function readVisible(credential: SettingsCredential): Promise<void> {
-  const stamp = credential.updatedAt
-  // Marked before the read, so a change of the list meanwhile does not start another.
-  visible.value = new Map(visible.value).set(credential.id, { stamp, values: {} })
-  const values = await props.revealCredential(credential.id)
-  if (!values || visible.value.get(credential.id)?.stamp !== stamp) {
-    return
-  }
-  const shown = Object.fromEntries(
-    credential.fields.flatMap((field) => (field.kind === 'visible' ? [[field.name, values[field.name] ?? '']] : [])),
-  )
-  visible.value = new Map(visible.value).set(credential.id, { stamp, values: shown })
-}
-
 /** What the user has revealed, by credential: its values and the secret fields shown. */
 const revealed = ref(new Map<string, { values: Record<string, string>; shown: Set<string> }>())
 /** The credentials whose values are being read. */
@@ -171,10 +133,10 @@ function leaveRow(event: FocusEvent, id: string): void {
   }
 }
 
-/** What the row shows of a field: a visible field's value once read, a secret's only after its own eye; null while it is hidden. */
-function fieldValue(credential: SettingsCredential, field: CredentialFieldView): string | null {
+/** What the row shows of a field: a visible field's value as listed, a secret's only after its own eye; null while it is hidden. */
+function fieldValue(credential: SettingsCredential, field: SettingsCredentialField): string | null {
   if (field.kind === 'visible') {
-    return visible.value.get(credential.id)?.values[field.name] ?? null
+    return field.value
   }
   const held = revealed.value.get(credential.id)
   if (!held || !held.shown.has(field.name)) {

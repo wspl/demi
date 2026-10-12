@@ -157,6 +157,7 @@ function credentialRequests(): () => Response {
           reason: 'To add Google as a provider',
           fields: [{ name: 'key', label: 'API key', kind: 'secret' }],
           keep: '1h',
+          renewal: true,
           ...asked,
         },
         { kind: 'allowance', id: 'al-1', name: 'GitHub token', removed: false, ...asked },
@@ -165,11 +166,11 @@ function credentialRequests(): () => Response {
     })
 }
 
-test('a credential request asks to update a saved credential of its name, whatever the case, and an allowance says when its credential is gone', async () => {
+test('a credential request asks to update a saved credential when the backend says it renews one, and an allowance says when its credential is gone', async () => {
   const product = useProduct()
   product.start()
-  const saved = { fields: [], note: '', keepUntil: null, lastUsedAt: null, createdAt: '2026-10-01T00:00:00.000Z', updatedAt: '2026-10-01T00:00:00.000Z' }
-  channels.last().connect({ ...at('run-1', 5, 3), credentials: [{ id: 'c1', name: 'google api KEY', ...saved }] })
+  // The page lists no credential of the name: the request's own word decides.
+  channels.last().connect(at('run-1', 5, 3))
   const permissions = usePermissions()
   answers.push(credentialRequests())
   permissions.follow(CONVERSATION)
@@ -191,10 +192,10 @@ test('the values of a credential go with the answer, the card stays until they a
   const state = permissions.stateFor(CONVERSATION)
   await until(() => state.requests.length).toBe(3)
 
-  decide = () => Response.json({ code: 'invalid_answer', message: 'values.key: a value is required' }, { status: 400 })
+  decide = () => Response.json({ code: 'invalid_answer', message: 'The value of “API key” can be at most 64 KiB.' }, { status: 400 })
   await permissions.decide(CONVERSATION, 'cr-1', 'allow', { values: { key: 'AIza' }, keep: '1d' })
   expect(state.requests.map((request) => request.id)).toEqual(['cr-1', 'al-1', 'al-2'])
-  expect(state.error).toBe('values.key: a value is required')
+  expect(state.error).toBe('The value of “API key” can be at most 64 KiB.')
   expect(state.deciding).toBe(false)
 
   decide = () => new Response(null, { status: 204 })

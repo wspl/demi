@@ -24,7 +24,7 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::credentials::{CredentialSeal, StoredCredential};
 use demi_backend_database::permissions::{
     Asked, AskingAgent, Checked, CredentialAsk, CredentialRead, PermissionRefusal, StoredAsk,
-    StoredRequest,
+    StoredRequest, Undecided,
 };
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_command_declarations::Category;
@@ -172,7 +172,9 @@ impl Revisions {
     }
 }
 
-/// Why a page's read or decision failed.
+/// Why a page's read or decision failed. A credential's refusals are in
+/// words for the user, who reads them as they are (`web-api.md`
+/// § Credentials).
 #[derive(Debug, thiserror::Error)]
 pub enum PermissionError {
     #[error("The conversation is archived")]
@@ -183,8 +185,8 @@ pub enum PermissionError {
     InvalidAnswer(String),
     #[error("{0}")]
     FieldsDiffer(String),
-    #[error("The credential was removed")]
-    Removed,
+    #[error("\u{201c}{0}\u{201d} was removed, so this conversation can\u{2019}t use it.")]
+    Removed(String),
     #[error(transparent)]
     Storage(#[from] StorageError),
 }
@@ -196,7 +198,7 @@ impl From<PermissionRefusal> for PermissionError {
             PermissionRefusal::NotFound => Self::NotFound,
             PermissionRefusal::InvalidAnswer(reason) => Self::InvalidAnswer(reason),
             PermissionRefusal::FieldsDiffer(reason) => Self::FieldsDiffer(reason),
-            PermissionRefusal::Removed => Self::Removed,
+            PermissionRefusal::Removed(name) => Self::Removed(name),
         }
     }
 }
@@ -431,7 +433,7 @@ pub async fn read(
         revision,
         requests: requests
             .into_iter()
-            .map(|request| {
+            .map(|Undecided { request, renewal }| {
                 let (id, command, agent, created_at) = (
                     request.id,
                     request.command,
@@ -452,6 +454,7 @@ pub async fn read(
                         reason: ask.reason,
                         fields: ask.fields,
                         keep: ask.keep,
+                        renewal,
                         command,
                         agent,
                         created_at,
@@ -507,7 +510,7 @@ pub async fn decide(
             Ok(())
         }
         (PermissionDecision::Deny, Some(_)) => Err(PermissionError::InvalidAnswer(
-            "credential: a deny carries no credential".into(),
+            "A declined request takes no values.".into(),
         )),
         (decision, None) => {
             let outcome = match decision {

@@ -92,7 +92,7 @@ fn refused(error: PermissionError) -> ApiError {
             ErrorCode::CredentialFieldsDiffer,
             message,
         ),
-        PermissionError::Removed => ApiError::new(
+        PermissionError::Removed(_) => ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::CredentialRemoved,
             message,
