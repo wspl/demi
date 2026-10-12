@@ -1,13 +1,17 @@
 <script setup lang="ts">
+import { Globe } from '@lucide/vue'
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
 import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
 import ExternalLink from '@demicodes/web-ui/ui/ExternalLink.vue'
+import Menu from '@demicodes/web-ui/ui/Menu.vue'
+import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import GalleryTextRules, { type TextRule } from '../components/GalleryTextRules.vue'
+import { productWould } from '../product-would'
 
 /**
  * The rule for UI text: macOS capitalization, as Apple's Human Interface
@@ -500,6 +504,12 @@ const sources: readonly Required<Source>[] = [
             <TruncatedText text="zan@example.com" />
             <TruncatedText text="release-automation@platform-infrastructure.example.com" />
           </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="MenuItem · a cut value shows whole in its tip">
+          <Menu class="w-72" :autofocus="false">
+            <MenuItem :icon="Globe" label="Host" value="release-automation.platform-infrastructure.example.com" @select="productWould('Choose Host')" />
+            <MenuItem :icon="Globe" label="Region" value="eu-central" @select="productWould('Choose Region')" />
+          </Menu>
         </GallerySpecimen>
       </div>
     </GallerySection>

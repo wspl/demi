@@ -439,7 +439,7 @@ onBeforeUnmount(() => pending?.abort())
                   :key="place.path"
                   :icon="placeIcon(place)"
                   :label="place.label ?? (baseName(place.path) || '/')"
-                  :title="place.path"
+                  :hint="place.path"
                   @select="goTo(place.path)"
                 />
               </MenuGroup>
@@ -492,7 +492,7 @@ onBeforeUnmount(() => pending?.abort())
             :icon="placeIcon(place)"
             :label="place.label ?? (baseName(place.path) || '/')"
             :pressed="path === normalizePath(place.path)"
-            :title="place.path"
+            :hint="place.path"
             @click="goTo(place.path)"
           />
         </nav>

@@ -22,10 +22,12 @@ const props = defineProps<{
   disabled?: boolean
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: SentenceText
+  /** What the entry stands for, as a tooltip, such as a place's full path; a disabled entry's reason comes first. */
+  hint?: SentenceText
 }>()
 
 const phone = usePhone()
-const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
+const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason) ?? props.hint)
 
 const emit = defineEmits<{
   click: []
