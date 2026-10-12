@@ -143,6 +143,8 @@ function selectParent() {
               :label="item.model.name"
               choice
               :is-selected="item.selected"
+              :disabled="group.unchoosable !== null"
+              :disabled-reason="group.unchoosable ?? undefined"
               @select="selectModel(group.provider.id, item.model, item.selected)"
             />
           </MenuGroup>

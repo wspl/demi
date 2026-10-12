@@ -12,7 +12,7 @@ import {
 import { useSession } from '../auth/session'
 import { useProduct } from './product'
 import { usePreferences } from './preferences'
-import { modelInfo, providerView, wireApi } from './catalog'
+import { modelInfo, providerView, setupOf, wireApi } from './catalog'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
 import type { PairingDevice } from '@demicodes/web-ui/devices/pairing'
@@ -172,12 +172,17 @@ export const useResources = defineStore('resources', () => {
   // always there to be woken, so no provider depends on the conversation's target.
   const providerInfos = computed(() => {
     const catalog = product.catalog
-    return (product.snapshot?.providers ?? []).map(provider => ({
-      id: provider.id,
-      label: provider.label,
-      isAvailable: !preferences.hidesProvider(provider.id) &&
-        catalog.find(item => item.providerId === provider.id)?.availability.type === 'available',
-    }))
+    return (product.snapshot?.providers ?? []).map(provider => {
+      const setup = setupOf(catalog.find(item => item.providerId === provider.id))
+      return {
+        id: provider.id,
+        label: provider.label,
+        isAvailable: !preferences.hidesProvider(provider.id) &&
+          catalog.find(item => item.providerId === provider.id)?.availability.type === 'available',
+        // An incomplete entry's models show in the model menu dimmed, with the backend's reason.
+        ...(setup && !preferences.hidesProvider(provider.id) ? { setupReason: setup.message } : {}),
+      }
+    })
   })
 
   /**

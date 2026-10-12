@@ -13,14 +13,13 @@ const resources = useResources()
 const preferences = usePreferences()
 const product = useProduct()
 const settings = useProviderSettings()
-const { providers, draft, testing, refreshing, login } = storeToRefs(settings)
+const { providers, testing, refreshing, login } = storeToRefs(settings)
 const {
   report,
   change,
   addProvider,
   addEndpoint,
   removeProvider,
-  discardDraft,
   beginLogin,
   closeLogin,
   test,
@@ -29,6 +28,7 @@ const {
   accountAction,
   saveModel,
   saveModels,
+  searchModels,
   submitCode,
   loadCli,
   checkCli,
@@ -69,10 +69,9 @@ watch(
   },
   { immediate: true },
 )
-// Leaving the page leaves the form of a provider being added, as choosing another does.
+// Leaving the page ends a sign-in under way.
 onUnmounted(() => {
   closeLogin()
-  discardDraft()
 })
 </script>
 
@@ -82,7 +81,6 @@ onUnmounted(() => {
     v-model:selected-id="resources.selectedProviderId"
     v-model:detail-open="resources.providerDetailOpen"
     :providers="providers"
-    :draft="draft"
     :load="product.load !== 'ready' ? product.load : product.vendorLoad"
     :vendor-load="product.vendorLoad"
     :model-load="product.catalogLoad"
@@ -115,6 +113,7 @@ onUnmounted(() => {
     "
     @remove-account="(provider, id) => accountAction(provider, id, 'remove')"
     :save-model="saveModel"
+    :search-models="searchModels"
     @remove-model="
       (provider, model) =>
         saveModels(
