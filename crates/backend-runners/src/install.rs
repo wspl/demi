@@ -242,7 +242,7 @@ esac
 case "$target" in
 @CASES@
   *)
-    echo 'This backend has no runner release for this platform' >&2
+    echo "This server has no Demi runner for $target." >&2
     exit 1
     ;;
 esac
@@ -452,6 +452,9 @@ switch ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture.ToSt
   'X64' { $demiTarget = 'x86_64-pc-windows-msvc' }
   default { throw 'Unsupported runner architecture' }
 }
+# A server's release may lack this platform's runner, as a development
+# build of other targets does; the shell installer refuses in the same words.
+if (-not $demiArtifacts.ContainsKey($demiTarget)) { throw "This server has no Demi runner for $demiTarget." }
 $demiInstance = if ($env:DEMI_INSTALLATION_ID) { $env:DEMI_INSTALLATION_ID } else { $demiRegistration }
 if ($demiInstance -notmatch '^[a-zA-Z0-9_-]+$') { throw 'Invalid installation ID' }
 $demiHome = if ($env:USERPROFILE) { $env:USERPROFILE } else { [Environment]::GetFolderPath('UserProfile') }
