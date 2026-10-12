@@ -20,7 +20,9 @@ use demi_shared_types::{
     Block, BlockId, GoneCause, MediaSource, ModelMediaKind, SessionPhase, ToolMediaSource,
     ToolResultContentBlock, TurnId, UserContentBlock,
 };
-use demi_web_api_protocol::attachments::{ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentDto};
+use demi_web_api_protocol::attachments::{
+    ATTACHMENT_MAX_BYTES, AttachmentAnswer, AttachmentCheckAnswer, AttachmentDto,
+};
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::{Method, StatusCode};
@@ -130,6 +132,11 @@ async fn a_repeated_upload_sends_the_object_store_no_bytes() {
     backend.close().await;
 }
 
+/// A check's status and its body as JSON.
+fn answered(answer: Answer) -> (StatusCode, serde_json::Value) {
+    (answer.status, answer.json())
+}
+
 // Under a second: requests to the backend alone.
 #[tokio::test]
 async fn an_upload_of_a_blob_the_caller_holds_sends_no_bytes_and_sent_bytes_must_have_the_named_hash()
@@ -149,11 +156,10 @@ async fn an_upload_of_a_blob_the_caller_holds_sends_no_bytes_and_sent_bytes_must
         .await
     };
 
-    // Nothing is held yet: the page is told to send the bytes.
-    assert_eq!(
-        ask(&master, "notes.md").await.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::BlobMissing)
-    );
+    // Nothing is held yet: the answer, a success and not a refusal, names
+    // no upload, and the page sends the bytes next.
+    let missing = (StatusCode::OK, json!({ "attachment": null }));
+    assert_eq!(answered(ask(&master, "notes.md").await), missing);
     // Bytes that do not have the named hash are refused and not kept.
     let other = post(
         &backend,
@@ -164,10 +170,7 @@ async fn an_upload_of_a_blob_the_caller_holds_sends_no_bytes_and_sent_bytes_must
     )
     .await;
     assert_eq!(other.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody));
-    assert_eq!(
-        ask(&master, "notes.md").await.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::BlobMissing)
-    );
+    assert_eq!(answered(ask(&master, "notes.md").await), missing);
     let sent = post(
         &backend,
         &master,
@@ -183,7 +186,7 @@ async fn an_upload_of_a_blob_the_caller_holds_sends_no_bytes_and_sent_bytes_must
     // read from the stored bytes as the first was from the sent ones.
     let held = ask(&master, "copy.md").await;
     assert_eq!(held.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&held.body));
-    let again = held.json::<AttachmentAnswer>().attachment;
+    let again = held.json::<AttachmentCheckAnswer>().attachment.unwrap();
     assert_ne!(again.id, first.id);
     assert_eq!(
         (&again.sha256, &again.media_type, again.size_bytes, &again.snippet),
@@ -193,10 +196,7 @@ async fn an_upload_of_a_blob_the_caller_holds_sends_no_bytes_and_sent_bytes_must
 
     // Only the caller's own namespace is asked.
     let other_user = crate::isolation::user(&backend, &master, "bea@example.com").await;
-    assert_eq!(
-        ask(&other_user, "notes.md").await.refusal(),
-        (StatusCode::NOT_FOUND, ErrorCode::BlobMissing)
-    );
+    assert_eq!(answered(ask(&other_user, "notes.md").await), missing);
     backend.close().await;
 }
 
@@ -222,7 +222,7 @@ async fn the_check_of_a_held_blob_reads_only_its_opening() {
     .await;
     let read = counts.tally().since(&before);
     assert_eq!(held.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&held.body));
-    let again = held.json::<AttachmentAnswer>().attachment;
+    let again = held.json::<AttachmentCheckAnswer>().attachment.unwrap();
     assert_eq!(
         (&again.media_type, again.size_bytes, &again.snippet),
         (&first.media_type, first.size_bytes, &first.snippet)
