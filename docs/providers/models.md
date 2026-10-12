@@ -133,10 +133,9 @@ never runs the CLI or an inference.
   turning reasoning off. An advertised `none` effort stays a selectable level.
 - The model's `service_tiers` are its tiers, and `priority` is Fast.
 - A model whose `input_modalities` include `image` accepts attachments.
-- `context_window` is the model's window, and `max_context_window`, when
-  larger, the most the user may raise it to
-  ([Context limit](#context-limit)); Codex sends no field for a window, it
-  only compacts later, so a raised window is Demi's compaction threshold.
+- `context_window` is the model's window. `max_context_window` is not read:
+  Codex sends no field that chooses a window, so a window above the one the
+  service states may not be served, and Demi offers no way past it.
 - An HTTP 401 answer makes the provider refresh the token it was refused with
   ([Token refresh](providers.md#token-refresh)) and read again, once.
 
@@ -528,13 +527,6 @@ The limits a model offers depend on its window:
 | Over 500,000 and under 1,000,000 | The full window, 300K and 200K |
 | 1,000,000 or more | The full window, 500K, 300K and 200K |
 
-- A model whose source states a maximum above its window, as Codex's
-  `max_context_window` does, also offers the window raised: 500K and 1M where
-  they lie between the window and the maximum, and the maximum itself. For
-  example, GPT-5.6 Sol with a window of 272K and a maximum of 872K offers
-  872K, 500K and 272K, its window named as the default. A raised window is
-  stored as a limit is, and it applies only while the maximum still allows
-  it.
 - The full window is the default, and it is the absence of a limit: a model
   the user never limited has no stored limit, and choosing the full window
   removes the stored one. The menu names the full window by its size, such
