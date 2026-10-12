@@ -36,6 +36,7 @@ layout and interaction; these documents do not repeat it.
 - [Conversation fork](agent/conversation-fork.md): forking a conversation from a block, with its seed, publication and subagents.
 - [Instructions](agent/instructions.md): the user's personal instructions and a project's `AGENTS.md` or `CLAUDE.md` files, which files are read, the block the model receives, and what the context card lists.
 - [Skills](agent/skills.md): the Agent Skills format, user skills from git sources, project skills from the repository, the catalog the model sees, and the settings section.
+- [Web search and fetch](agent/web.md): `demi search` through the user's Exa account, a key or anonymously; `demi fetch` from the Host; the sign-in and untrusted content.
 - [Conversation permissions](agent/permissions.md): the categories of operations on Demi itself, the check every command passes before its handler, the requests a refused command raises, the per-conversation grants, the decision's message to the agent, and the card and needs-you mark.
 
 ## Where does work execute, and how do commands run?

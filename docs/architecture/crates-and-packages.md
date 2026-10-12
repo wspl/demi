@@ -804,6 +804,19 @@ or on another plugin.
 - **Must not:** write to a Host, send a credential when it fetches, or block
   the shard thread.
 
+#### `plugin-web`
+
+- **Owns:** [web search and fetch](../agent/web.md): the `demi search` group
+  and its calls to Exa through the port, the REST API with a key or the
+  smallest MCP client of `mcp.exa.ai` signed in or anonymous; the `demi fetch`
+  group's declaration, bound to `demi.fetch`; the OAuth sign-in it names in
+  its manifest; its secrets; and its page state and page methods.
+- **Public boundary:** its factory, whose manifest names its page package,
+  `@demicodes/plugin-web`, which `xtask contracts` generates the page's types
+  into.
+- **Must not:** hold an HTTP client of its own, store a search result, or
+  put a token or a key in page state or a log.
+
 ### Runner libraries
 
 The runner is one executable built from seven crates, so that a change to one
@@ -1352,6 +1365,16 @@ demi-backend (executable: configuration, composition)
   boot as PID 1, since init belongs to the image; link Demi's command
   algorithms.
 
+#### `command-package-fetch` (`demi-fetch`)
+
+- **Owns:** the independently released `demi.fetch` resident program: an
+  HTTP fetch from the Host, HTML to Markdown, the parts it prints, the Host's
+  15-minute cache of fetched pages, and the files it saves
+  ([`demi fetch`](../agent/web.md#demi-fetch)). It holds no conversation state.
+- **Public boundary:** the executable.
+- **Must not:** run JavaScript, send a credential or a cookie, or be linked
+  into the runner.
+
 #### `command-package-file` (`demi-file`)
 
 - **Owns:** the independently released `demi.file` resident program: file
@@ -1585,6 +1608,7 @@ Each plugin page package is **private** and has the same boundary:
 | --- | --- |
 | `@demicodes/plugin-browser` | The `browser` work panel kind and the live view ([Live view](../browser/live-view.md#responsibilities)): frames, input, clipboard and pictures over its page context, with the plugin's page types and the live view's messages generated into `src/generated/` |
 | `@demicodes/plugin-skills` | The Skills settings section with its dialogs and its sidebar entry ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
+| `@demicodes/plugin-web` | The Web Search settings section with its sidebar entry ([Settings › Web Search](../agent/web.md#settings--web-search)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-changes` | The pinned `change` kind, the Change view, over the conversation files service ([Changes](../product/file-previews.md#changes)) |
 | `@demicodes/plugin-file-browser` | The pinned `file` kind, the File view, over the conversation files service ([File previews](../product/file-previews.md)) |
 

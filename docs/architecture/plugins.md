@@ -110,6 +110,8 @@ demi                     the plugin host's root
   file                   plugin-file (native: demi.file)
   browser                plugin-browser (native: demi.browser)
   skills                 plugin-skills (rpc)
+  search                 plugin-web (rpc)
+  fetch                  plugin-web (native: demi.fetch)
   host                   the product's group (backend-host-access)
   agent, shell           the agent runtime's groups, grafted per node
 ```
@@ -398,6 +400,9 @@ conversation's operations need a request about a conversation: a `command`, a
 | | Call a package | A conversation's | One operation of a package the manifest names, waking the Host or not ([Calling its command package](#calling-its-command-package)) |
 | Pages | Changed | Every request | Mark one scope of the plugin's page state, the user's or one conversation's, as changed, so the pages that show it read it again ([The page](#the-page)) |
 | Panel | List, create, update, remove | A conversation's | The conversation's work panel tabs of the plugin's own [panel kinds](#panel-kinds); a change answers the panel's revision |
+| Secrets | Read, conditional write, removal | Every request | The plugin's own [secrets](#secrets) for the user, sealed at rest |
+| Web | Send a request | Every request | One outbound HTTPS request through the backend's shared client, with a deadline and a body limit the plugin names ([Outbound requests](#outbound-requests)) |
+| | OAuth: start, token, sign out | Every request | The user's sign-in to a vendor the manifest names ([OAuth sign-in](#oauth-sign-in)) |
 | Request | Cancellation | Every request | Whether, and when, the request was cancelled |
 
 A product service a plugin may use is one service of the port: its
@@ -409,6 +414,62 @@ Values and directories name the blobs they use, and a blob one of them
 names is never removed
 ([Deleting a conversation](../backend/storage.md#deleting-a-conversation)). A value changes by versioned compare-and-set: a write names the
 revision it read and fails when another write came first.
+
+### Secrets
+
+A secret is a value a plugin keeps for a user that must not be readable from
+the database, such as an API key or an OAuth token. It is a value of its own
+kind beside the plugin's JSON values, with the same versioned compare-and-set,
+sealed as provider credentials are
+([Passwords and credentials at rest](../backend/storage.md#passwords-and-credentials-at-rest)):
+AES-256-GCM under a key derived from the instance secret, with the plugin,
+the user and the secret's name as its additional data, so a sealed value
+copied to another row does not open. Only the plugin that wrote a secret
+reads it, and no page call, page state or log carries one: a page learns
+only what the plugin's state says about it, such as the last four characters
+of a key.
+
+### Outbound requests
+
+A plugin that calls a vendor sends its requests through the port, never a
+client of its own, so every outbound request of the backend's plugins has one
+owner: the shard's shared HTTP client, its proxy settings, a deadline the
+plugin names up to 60 seconds, a response body limit up to 16 MiB, and the
+request's cancellation. Only `https` is sent, and a log line names the plugin,
+the host and the status, never a header or a body.
+
+### OAuth sign-in
+
+A plugin whose vendor signs users in with OAuth 2.1 names it in its manifest:
+the authorization server's issuer, the resource and the scopes. The plugin
+host runs the flow, one for every such plugin:
+
+1. **Registration.** Once per instance and issuer, the host registers a
+   public client by dynamic client registration, with the redirect URI
+   `<public URL>/api/plugins/<plugin>/oauth/callback`, and keeps the client
+   id in the control store. A registration the vendor forgot is made again.
+2. **Start.** A page method of the plugin asks the port to start; the host
+   makes a PKCE verifier (S256) and a `state`, keeps both with the user for 10
+   minutes, and answers the authorization URL, which the page opens in a new
+   tab.
+3. **Callback.** The vendor sends the browser to the callback, which is a
+   session route: the browser's own navigation carries the session cookie, so
+   a `state` another user started is refused. The host exchanges the code,
+   seals the tokens as the plugin's secrets, marks the plugin's user state
+   changed, and answers a page that says *Signed in to Exa. You can close
+   this tab.*
+4. **Token.** The port's token operation answers a live access token,
+   renewing it first when it expires within a minute. A renewal takes the
+   secret's revision and replaces it at that revision, so two workers never
+   spend one refresh token twice, as for provider credentials
+   ([Token refresh](../providers/providers.md#token-refresh)); a refusal
+   forgets the tokens and answers *signed out*.
+5. **Sign out.** Revokes the tokens at the vendor when it offers revocation,
+   and forgets them either way.
+
+A plugin never sees a refresh token or the verifier; it reads the access
+token only to send it in a request it makes through [Outbound
+requests](#outbound-requests).
 
 A plugin never receives a live object: no Host handle, no callback into the
 backend, no reference to a session or a shard. What it needs from Demi is a
@@ -572,6 +633,7 @@ not use.
 | `file` | Demi File Commands | `plugin-file` | The `demi file` group, bound to `demi.file` | None | [File commands](../execution/commands.md#file-commands) |
 | `browser` | Browser | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `jobs`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
 | `skills` | Skills | `plugin-skills` | A context source; the `demi skills` group and the category Manage skills; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
+| `web` | Web | `plugin-web` | The `demi search` group (rpc) and the `demi fetch` group, bound to `demi.fetch`; secrets, outbound requests and an OAuth sign-in to Exa; user state and methods to sign in, sign out, save and remove a key | `@demicodes/plugin-web`: the Web Search settings section with its sidebar entry | [Web search and fetch](../agent/web.md) |
 | `changes` | Changes | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
 | `file-browser` | File Browser | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
 
