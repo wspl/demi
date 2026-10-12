@@ -100,7 +100,10 @@ server. The machine manager, `demi-server` and `xtask` keep it too.
 `shared-cli` declares it, as the global allocator under
 `cfg(target_env = "musl")` and its `host-allocator` feature, which the runner
 and each command program turn on; no program declares an allocator of its
-own. mimalloc is C, which the Linux build's Zig compiles as it does
+own. Cargo merges the features of every package one invocation builds, so
+the Host programs and the server programs are built in separate invocations,
+as `xtask native build` and the release workflow's jobs do; built together,
+the backend would take mimalloc too. mimalloc is C, which the Linux build's Zig compiles as it does
 `aws-lc-sys`'s.
 
 `xtask` itself is not released. It runs on the developer's machine and on the
