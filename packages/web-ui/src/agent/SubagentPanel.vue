@@ -161,7 +161,7 @@ function closeTab(id: string): void {
       :failures="active.failures"
       :pending-steers="[]"
       :queue="[]"
-      :phase="active.phase === 'running' ? 'running' : 'idle'"
+      :phase="active.phase === 'running' ? active.sessionPhase : 'idle'"
       :bottom-offset="16"
       :persisted-scroll-state="undefined"
       read-only

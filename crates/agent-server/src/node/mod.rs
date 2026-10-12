@@ -216,6 +216,51 @@ impl<H: HostResolver> Node<H> {
         self.runtime.environments.end_all().await;
     }
 
+    /// Takes up the commands that the closed node `closed` ran and the
+    /// conversation records running, except those `held` says shells hold
+    /// already, in shells made for it with this node's means and telling the
+    /// pages through `feed`; asks each to stop again and hands the shells
+    /// over (`subagents.md` § Abort). A command whose Host cannot be reached
+    /// now stays recorded running for the next restore.
+    pub(crate) async fn take_up_closed(
+        &self,
+        closed: &NodeRecord,
+        feed: Rc<dyn PageFeed>,
+        held: impl Fn(&CommandId) -> bool,
+    ) -> Vec<Rc<dyn ShellEnvironment>> {
+        let runtime = &self.runtime;
+        let running = match runtime.store.running_commands(&closed.id).await {
+            Ok(running) => running,
+            Err(error) => {
+                tracing::warn!(node = %closed.id, %error, "a closed node's running commands could not be read");
+                return Vec::new();
+            }
+        };
+        let running: Vec<RunningCommand> = running.into_iter().filter(|command| !held(&command.command)).collect();
+        if running.is_empty() {
+            return Vec::new();
+        }
+        let environments = Environments::default();
+        let access = ShellAccess {
+            hosts: runtime.hosts.as_ref(),
+            shells: runtime.shells.as_ref(),
+            environments: &environments,
+            context: NodeContext {
+                node: &closed.id,
+                root: &runtime.root,
+                cwd: &runtime.cwd,
+            },
+            agent: closed.number,
+            commands: &runtime.commands,
+            feed: &feed,
+            numbers: &runtime.numbers,
+            interval_floor_ms: runtime.interval_floor_ms,
+        };
+        // One left recorded running is tried again at the next restore.
+        let _ = adopt_all(access, &running, runtime.clock.now().as_millisecond()).await;
+        environments.stop_all().await
+    }
+
     /// Asks the node's commands on every Host to stop and hands over its
     /// shells, which follow the commands until their runners report their
     /// ends; the node's disposal lets none of them go
@@ -282,6 +327,26 @@ impl<H: HostResolver> Node<H> {
     }
 }
 
+/// Takes up each of `running` in `access`'s shells, counting the time each
+/// has run from its start to `now`, in milliseconds since the epoch; answers
+/// why the last one that failed stays recorded running.
+async fn adopt_all<H: HostResolver>(
+    access: ShellAccess<'_, H>,
+    running: &[RunningCommand],
+    now: i64,
+) -> Option<String> {
+    let mut left = None;
+    for command in running {
+        // A clock that went back counts no time.
+        let ran = u64::try_from(now - command.started.as_millisecond()).unwrap_or(0);
+        if let Err(error) = access.adopt(command, std::time::Duration::from_millis(ran)).await {
+            tracing::warn!(node = %access.context.node, command = %command.command, %error, "a running command was not taken up");
+            left = Some(error.to_string());
+        }
+    }
+    left
+}
+
 /// What the session calls in its node: the tree's admission, the system
 /// prompt, the preamble, the context sources, the tools, the window its
 /// model is used with, and the hold on its children that an edit needs.
@@ -337,23 +402,14 @@ impl<H: HostResolver> NodeRuntime<H> {
             tracing::warn!(node = %self.node, %error, "the node's running commands could not be read");
             error.to_string()
         })?;
-        let mut picked = false;
-        let mut left = None;
-        let now = self.clock.now().as_millisecond();
-        for command in running.iter().filter(|command| which(command)) {
-            picked = true;
-            if self.environments.owning(&command.command).is_some() {
-                continue;
-            }
-            // A clock that went back counts no time.
-            let ran = u64::try_from(now - command.started.as_millisecond()).unwrap_or(0);
-            let ran = std::time::Duration::from_millis(ran);
-            if let Err(error) = self.shell_access().adopt(command, ran).await {
-                tracing::warn!(node = %self.node, command = %command.command, %error, "a running command was not taken up");
-                left = Some(error.to_string());
-            }
-        }
-        left.map_or(Ok(picked), Err)
+        let picked: Vec<RunningCommand> = running.into_iter().filter(|command| which(command)).collect();
+        let unheld: Vec<RunningCommand> = picked
+            .iter()
+            .filter(|command| self.environments.owning(&command.command).is_none())
+            .cloned()
+            .collect();
+        let left = adopt_all(self.shell_access(), &unheld, self.clock.now().as_millisecond()).await;
+        left.map_or(Ok(!picked.is_empty()), Err)
     }
 
     fn node_context(&self) -> NodeContext<'_> {

@@ -558,6 +558,11 @@ export class ConversationClient {
         this.patchTranscript(frame)
         return
       case 'phase': {
+        // A subagent's phase belongs to its record, which the host keeps.
+        if (frame.subagentId !== undefined) {
+          this.emit(frame)
+          return
+        }
         const previous = this.phase
         this.phase = frame.phase
         this.emit(frame)

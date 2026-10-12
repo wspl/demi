@@ -499,6 +499,10 @@ export class ConversationRuntime {
         state.failures = { ...state.failures, ...event.failures }
         break
       case 'phase':
+        // A subagent's phase belongs to its record, which the host keeps.
+        if (event.subagentId !== undefined) {
+          break
+        }
         // A failure the session reported is over once the session starts
         // another action, whichever tab started it; a tab that did not
         // start it would otherwise keep showing it.

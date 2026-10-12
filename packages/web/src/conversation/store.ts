@@ -1195,6 +1195,8 @@ export const useConversations = defineStore('conversations', () => {
     conversation.subagents = listed.subagents.map((subagent) => ({
       pendingCalls: [],
       waitingSince: null,
+      // A live child's `phase` frame comes with the opening handshake.
+      sessionPhase: 'idle',
       id: subagent.subagentId,
       number: subagent.number,
       name: subagent.description,

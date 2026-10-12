@@ -399,17 +399,13 @@ impl<H: HostResolver> Connection<H> {
             // connection as its `shell_output` (`runtime.md` § Live output);
             // only the write's acknowledgement is a reply.
             ClientFrame::ShellWrite { command_id, stdin } => {
-                match tree
-                    .shells_of(&command_id)
-                    .shell_write(&command_id, stdin)
-                    .await
-                {
+                match tree.shell_write(&command_id, stdin).await {
                     Ok(()) => self.send(ServerFrame::ShellWriteResult { command_id }),
                     Err(error) => self.error(error),
                 }
             }
             ClientFrame::ShellAbort { command_id } => {
-                if let Err(error) = tree.shells_of(&command_id).shell_abort(&command_id).await {
+                if let Err(error) = tree.shell_abort(&command_id).await {
                     self.error(error);
                 }
             }
