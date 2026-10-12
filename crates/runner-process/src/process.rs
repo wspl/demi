@@ -575,6 +575,172 @@ impl StartRetry {
     }
 }
 
+/// The processor time a process used, with that of the children it waited
+/// for, as wait4(2) reports it.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ProcessorTime {
+    pub user: Duration,
+    pub system: Duration,
+}
+
+/// Waits for `child` to end and reaps it, with the processor time it used,
+/// which the system keeps only until the reaping (`runner.md` § Builtins
+/// that act on a process). Dropped while it waits, it has reaped nothing.
+/// A time it cannot read counts as none: it only shortens what `time`
+/// reports, while the wait itself goes on.
+pub async fn wait_timed(child: &mut dyn ChildWrapper) -> io::Result<(ExitStatus, ProcessorTime)> {
+    #[cfg(unix)]
+    let time = match child.id() {
+        Some(pid) => ended_wait(pid).await.unwrap_or_else(|error| {
+            tracing::warn!("reading the processor time of process {pid} failed: {error}");
+            ProcessorTime::default()
+        }),
+        // Reaped already, its time went with it.
+        None => ProcessorTime::default(),
+    };
+    // The process stays readable while a handle to it is open, after the
+    // reaping closes the child's own.
+    #[cfg(windows)]
+    let handle = child
+        .process_handle()
+        .and_then(|handle| handle.try_clone_to_owned().ok());
+    let status = child.wait().await?;
+    #[cfg(windows)]
+    let time = handle
+        .and_then(|handle| handle_time(std::os::windows::io::AsHandle::as_handle(&handle)).ok())
+        .unwrap_or_default();
+    Ok((status, time))
+}
+
+/// Waits for the runner's child `pid` to end, without reaping it, and reads
+/// its processor time.
+#[cfg(unix)]
+async fn ended_wait(pid: u32) -> io::Result<ProcessorTime> {
+    use tokio::signal::unix::{SignalKind, signal};
+    // Made before the first look, so that an end between the two still wakes
+    // the wait.
+    let mut ended = signal(SignalKind::child())?;
+    loop {
+        if let Some(time) = ended_time(pid, false)? {
+            return Ok(time);
+        }
+        if ended.recv().await.is_none() {
+            return Err(io::Error::other("the runtime stopped delivering signals"));
+        }
+    }
+}
+
+/// The processor time of the runner's child `pid` once it has ended and
+/// before it is reaped, as [`wait_timed`] reads it; `None` while it runs on.
+/// With `block`, it waits for the end. A child reaped already counts as
+/// having used none.
+#[cfg(unix)]
+pub fn ended_time(pid: u32, block: bool) -> io::Result<Option<ProcessorTime>> {
+    use rustix::process::{Pid, WaitId, WaitIdOptions, waitid};
+    let Some(id) = i32::try_from(pid).ok().and_then(Pid::from_raw) else {
+        return Err(io::Error::from(io::ErrorKind::InvalidInput));
+    };
+    let mut options = WaitIdOptions::EXITED | WaitIdOptions::NOWAIT;
+    if !block {
+        options |= WaitIdOptions::NOHANG;
+    }
+    loop {
+        return match waitid(WaitId::Pid(id), options) {
+            Ok(None) => Ok(None),
+            Ok(Some(_)) => ended_child_time(pid).map(Some),
+            Err(rustix::io::Errno::INTR) => continue,
+            Err(rustix::io::Errno::CHILD) => Ok(Some(ProcessorTime::default())),
+            Err(error) => Err(error.into()),
+        };
+    }
+}
+
+/// An ended, unreaped child's processor time, from its `/proc` entry, which
+/// counts its own and its waited children's in clock ticks.
+#[cfg(target_os = "linux")]
+fn ended_child_time(pid: u32) -> io::Result<ProcessorTime> {
+    let stat = procfs::process::Process::new(pid as i32)
+        .and_then(|process| process.stat())
+        .map_err(io::Error::other)?;
+    let ticks = procfs::ticks_per_second();
+    let duration = |own: u64, children: i64| {
+        let total = own.saturating_add(u64::try_from(children).unwrap_or(0));
+        Duration::from_nanos(total.saturating_mul(1_000_000_000) / ticks)
+    };
+    Ok(ProcessorTime {
+        user: duration(stat.utime, stat.cutime),
+        system: duration(stat.stime, stat.cstime),
+    })
+}
+
+/// An ended, unreaped child's processor time, which the system keeps with its
+/// waited children's until the reaping.
+#[cfg(target_vendor = "apple")]
+fn ended_child_time(pid: u32) -> io::Result<ProcessorTime> {
+    let pid = i32::try_from(pid).map_err(|_| io::Error::from(io::ErrorKind::InvalidInput))?;
+    let mut info = std::mem::MaybeUninit::<libc::rusage_info_v2>::zeroed();
+    // SAFETY: the buffer holds a `rusage_info_v2`, the flavour asked for;
+    // `rusage_info_t` is the C API's untyped buffer pointer.
+    let result = unsafe {
+        libc::proc_pid_rusage(
+            pid,
+            libc::RUSAGE_INFO_V2,
+            info.as_mut_ptr().cast::<libc::rusage_info_t>(),
+        )
+    };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // SAFETY: the call succeeded, so it filled the buffer.
+    let info = unsafe { info.assume_init() };
+    // The times are in Mach time units, which are nanoseconds on Intel and
+    // not on Apple silicon.
+    let mut timebase = mach2::mach_time::mach_timebase_info_data_t::default();
+    // SAFETY: the call fills the structure it is given.
+    let result = unsafe { mach2::mach_time::mach_timebase_info(&mut timebase) };
+    if result != mach2::kern_return::KERN_SUCCESS || timebase.denom == 0 {
+        return Err(io::Error::other("the Mach timebase is unreadable"));
+    }
+    let duration = |own: u64, children: u64| {
+        let ticks = u128::from(own) + u128::from(children);
+        let nanos = ticks * u128::from(timebase.numer) / u128::from(timebase.denom);
+        Duration::from_nanos(u64::try_from(nanos).unwrap_or(u64::MAX))
+    };
+    Ok(ProcessorTime {
+        user: duration(info.ri_user_time, info.ri_child_user_time),
+        system: duration(info.ri_system_time, info.ri_child_system_time),
+    })
+}
+
+/// The processor time of the process `handle` holds.
+#[cfg(windows)]
+pub fn handle_time(handle: std::os::windows::io::BorrowedHandle<'_>) -> io::Result<ProcessorTime> {
+    use std::os::windows::io::AsRawHandle;
+    use windows_sys::Win32::{Foundation::FILETIME, System::Threading::GetProcessTimes};
+    let zero = FILETIME {
+        dwLowDateTime: 0,
+        dwHighDateTime: 0,
+    };
+    let (mut creation, mut exit, mut kernel, mut user) = (zero, zero, zero, zero);
+    // SAFETY: the handle is open for the call, and each time is a FILETIME
+    // the call fills.
+    let result = unsafe {
+        GetProcessTimes(handle.as_raw_handle(), &mut creation, &mut exit, &mut kernel, &mut user)
+    };
+    if result == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    // A FILETIME counts 100-nanosecond intervals.
+    let duration = |time: FILETIME| {
+        let intervals = (u64::from(time.dwHighDateTime) << 32) | u64::from(time.dwLowDateTime);
+        Duration::from_nanos(intervals.saturating_mul(100))
+    };
+    Ok(ProcessorTime {
+        user: duration(user),
+        system: duration(kernel),
+    })
+}
+
 pub fn kill(child: &mut dyn ChildWrapper) -> io::Result<()> {
     match child.start_kill() {
         #[cfg(unix)]

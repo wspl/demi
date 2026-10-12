@@ -135,6 +135,8 @@ pub struct Scope {
     /// mutex: the synchronous hooks of the job's interpreter and utility
     /// threads share it for short sections that never await.
     files: Arc<Mutex<HashMap<FileIdentity, PathBuf>>>,
+    /// The pipelines `time` measures in the scope's part of the job.
+    timings: crate::timing::Timings,
     #[cfg(feature = "testing")]
     activity: Arc<Activity>,
 }
@@ -153,6 +155,7 @@ impl Scope {
             commands,
             edits: None,
             files: Arc::new(Mutex::new(HashMap::new())),
+            timings: crate::timing::Timings::default(),
             #[cfg(unix)]
             interrupt: Arc::new(Mutex::new(None)),
             #[cfg(feature = "testing")]
@@ -208,6 +211,7 @@ impl Scope {
             stop,
             #[cfg(unix)]
             interrupt: Arc::new(Mutex::new(None)),
+            timings: self.timings.part(),
             ..self.clone()
         }
     }
@@ -576,6 +580,14 @@ impl ExecutionHost for Scope {
         resolve_path(path, cwd)
     }
 
+    fn time(&self) -> Option<Box<dyn brush_core::execution_host::Timing>> {
+        Some(Box::new(self.timings.start()))
+    }
+
+    fn builtin_started(&self) {
+        self.timings.builtin_started();
+    }
+
     fn pipe(&self) -> io::Result<(std::io::PipeReader, std::io::PipeWriter)> {
         self.descriptors(std::io::pipe)
     }
@@ -607,19 +619,24 @@ impl ExecutionHost for Scope {
         let group = self.work.add_group(pid, self.stop.clone(), true);
         drop(starting);
         let kill = self.stop.kill.clone();
+        let counted = self.timings.current();
         let (result, receiver) = tokio::sync::oneshot::channel();
         self.tasks.spawn(async move {
             let mut failure = None;
-            let status = tokio::select! {
+            let ended = tokio::select! {
                 biased;
                 _ = kill.cancelled() => {
                     if let Err(error) = process::kill(child.as_mut()) {
                         failure = Some(error);
                     }
-                    child.wait().await
+                    process::wait_timed(child.as_mut()).await
                 }
-                status = child.wait() => status,
+                ended = process::wait_timed(child.as_mut()) => ended,
             };
+            let status = ended.map(|(status, time)| {
+                counted.add(time);
+                status
+            });
             if let Ok(status) = &status {
                 group.ended(shell_status(*status));
             }
@@ -777,13 +794,14 @@ impl uucore::context::Control for UtilityControl {
         })?;
         // The child leads a group of its own, which a signal to the
         // utility's part of the job reaches.
-        #[cfg(unix)]
-        let child = Box::new(Signalled {
+        let child = Box::new(UtilityProcess {
+            #[cfg(unix)]
             _group: self.scope.work.add_group(
                 child.id() as i32,
                 self.scope.stop.clone(),
                 false,
             ),
+            counted: Some(self.scope.timings.current()),
             child,
         });
         #[cfg(unix)]
@@ -847,17 +865,69 @@ fn file_identity(file: &File) -> io::Result<FileIdentity> {
     ))
 }
 
-/// A utility's child program, in its job's table of process groups while it
-/// lives.
-#[cfg(unix)]
-#[derive(Debug)]
-struct Signalled {
+/// A utility's child program: in its job's table of process groups while it
+/// lives, and its processor time counted, once it ends, towards the
+/// pipelines timed when it started.
+struct UtilityProcess {
     child: Box<dyn process_wrap::std::ChildWrapper>,
+    #[cfg(unix)]
     _group: crate::work::GroupEntry,
+    /// Until the time is counted.
+    counted: Option<crate::timing::Counted>,
 }
 
-#[cfg(unix)]
-impl process_wrap::std::ChildWrapper for Signalled {
+impl std::fmt::Debug for UtilityProcess {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("UtilityProcess")
+            .field("child", &self.child)
+            .finish_non_exhaustive()
+    }
+}
+
+impl UtilityProcess {
+    /// Counts the child's processor time once it has ended, before its
+    /// reaping, the last moment the system keeps it; with `block`, waits for
+    /// the end. A time it cannot read counts as none: it only shortens what
+    /// `time` reports.
+    #[cfg(unix)]
+    fn count_ended(&mut self, block: bool) {
+        if self.counted.is_none() {
+            return;
+        }
+        match process::ended_time(self.child.id(), block) {
+            Ok(None) => {}
+            Ok(Some(time)) => {
+                if let Some(counted) = self.counted.take() {
+                    counted.add(time);
+                }
+            }
+            Err(error) => {
+                tracing::warn!("reading a utility child's processor time failed: {error}");
+                self.counted = None;
+            }
+        }
+    }
+
+    /// Counts the child's processor time once it has been reaped: its handle
+    /// still holds it. A time it cannot read counts as none: it only
+    /// shortens what `time` reports.
+    #[cfg(windows)]
+    fn count_ended(&mut self) {
+        let Some(counted) = self.counted.take() else {
+            return;
+        };
+        if let Some(time) = self
+            .child
+            .process_handle()
+            .and_then(|handle| process::handle_time(handle).ok())
+        {
+            counted.add(time);
+        }
+    }
+}
+
+impl process_wrap::std::ChildWrapper for UtilityProcess {
     fn inner(&self) -> &dyn process_wrap::std::ChildWrapper {
         self.child.as_ref()
     }
@@ -866,5 +936,23 @@ impl process_wrap::std::ChildWrapper for Signalled {
     }
     fn into_inner(self: Box<Self>) -> Box<dyn process_wrap::std::ChildWrapper> {
         self.child
+    }
+    fn try_wait(&mut self) -> io::Result<Option<std::process::ExitStatus>> {
+        #[cfg(unix)]
+        self.count_ended(false);
+        let status = self.child.try_wait()?;
+        #[cfg(windows)]
+        if status.is_some() {
+            self.count_ended();
+        }
+        Ok(status)
+    }
+    fn wait(&mut self) -> io::Result<std::process::ExitStatus> {
+        #[cfg(unix)]
+        self.count_ended(true);
+        let status = self.child.wait()?;
+        #[cfg(windows)]
+        self.count_ended();
+        Ok(status)
     }
 }

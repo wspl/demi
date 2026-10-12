@@ -11,6 +11,7 @@ mod process_builtins;
 mod scope;
 #[cfg(unix)]
 mod timeout;
+mod timing;
 #[cfg(feature = "testing")]
 pub mod testing;
 mod utilities;
