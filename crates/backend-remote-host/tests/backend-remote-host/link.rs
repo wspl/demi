@@ -1631,6 +1631,61 @@ async fn a_call_stops_on_its_first_cause_releases_its_live_input_and_exits_after
     }
 }
 
+/// A call's standard output opens at once, before its handler first
+/// writes, so a call that prints nothing for long, as a stop that waits for
+/// its command's end, outlasts a proxy's limit on an unanswered request.
+/// Before, the response's head waited for the first byte, and Cloudflare
+/// ended such a stop after 100 s with `pipe refused (524)`.
+#[tokio::test(flavor = "local")]
+async fn a_quiet_calls_standard_output_opens_before_its_first_byte() {
+    let mut commands = CommandSet::new();
+    let released = Rc::new(tokio::sync::Notify::new());
+    let release = released.clone();
+    let handler = TypedRpc::new(move |_: Call<Map<String, Value>>, port: RpcPort| {
+        let released = released.clone();
+        async move {
+            released.notified().await;
+            port.stdout("late").await?;
+            Ok(0)
+        }
+    });
+    commands
+        .register(
+            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
+                .leaf(LeafBuilder::rpc("live", "Waits, then speaks.").bind(handler)),
+        )
+        .unwrap();
+    let device = TestDevice::new(CommandPolicy::new(commands));
+    let mut link = device.connect(None);
+    let job = device
+        .host("/work", Admission::Free)
+        .start_job(job_start("probe live"))
+        .await
+        .unwrap();
+    drain(&mut link).await;
+    let mut call = rpc_call(job.id(), "call");
+    if let Outbound::RpcCall { stdin, .. } = &mut call {
+        *stdin = false;
+    }
+    link.send(call).await;
+    let Inbound::RpcPipes { stdout, .. } = link.next().await else {
+        panic!("the call is handed its stdout pipe")
+    };
+    let mut sink = device.pipes().claim_sink(&stdout.id, TEST_DEVICE).unwrap();
+    tokio::time::timeout(Duration::from_secs(10), sink.source_arrived())
+        .await
+        .expect("the response opens while the handler waits")
+        .unwrap();
+    release.notify_one();
+    let mut body = sink.into_stream();
+    let mut read = Vec::new();
+    while let Some(chunk) = futures_util::StreamExt::next(&mut body).await {
+        read.extend_from_slice(&chunk.unwrap());
+    }
+    assert_eq!(read, b"late");
+    assert_eq!(call_outcome(&mut link).await, (String::new(), 0));
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_call_exits_after_its_standard_output_drained() {
     let mut commands = CommandSet::new();

@@ -321,6 +321,129 @@ async fn cancellation_reaps_external_programs_started_by_native_utilities() {
     futures_util::future::join_all(scripts).await;
 }
 
+/// A killed job ends 1 s after `KILL` even when one of its utilities sits
+/// in a system call no cancellation reaches, here `cat`'s `open()` of a
+/// FIFO no writer opens, as macOS holds an `open()` while it asks the user
+/// for access to another app's data: it reports `SIGKILL` and names the
+/// utility it left, which ends at its next check once the call returns.
+/// Before, the job waited for `cat` for as long as the call lasted, and a
+/// stop of its command never answered. About 1 s, nearly all of it the
+/// second the job waits after `KILL`. The job runs on a shell
+/// runtime of its own, which the test shuts down without waiting, so a
+/// `cat` that keeps the job running fails the test instead of holding it.
+#[cfg(unix)]
+#[tokio::test]
+async fn kill_ends_a_job_whose_utility_a_system_call_holds() {
+    // Left undropped when the test fails, since dropping waits for `cat`.
+    let shell = std::mem::ManuallyDrop::new(ShellRuntime::build().unwrap());
+    let root = tempfile::tempdir().unwrap();
+    let fifo = root.path().join("fifo");
+    let path = std::ffi::CString::new(fifo.to_str().unwrap()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
+    let scope = Scope::new(CancellationToken::new(), None);
+    let mut job = Job::start(
+        "cat fifo".into(),
+        root.path().into(),
+        crate::home(root.path()),
+        false,
+        scope.clone(),
+        &ShellRuntime::new(&shell),
+    )
+    .await
+    .unwrap();
+    // Past its last check, `cat` is in the `open()` that only a writer ends.
+    tokio::time::timeout(Duration::from_secs(60), async {
+        while scope.activity().opening() == 0 {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("cat opens the FIFO");
+    job.cancel();
+    let exit = tokio::time::timeout(Duration::from_secs(10), job.wait())
+        .await
+        .expect("the killed job ends without cat");
+    assert_eq!(exit.signal.as_deref(), Some("SIGKILL"));
+    assert_eq!(
+        exit.error.as_deref(),
+        Some("cat had not ended 1 s after KILL and was left to end at its next check")
+    );
+    // A writer ends the `open()`, and `cat` then ends at its next check.
+    tokio::task::spawn_blocking(move || std::fs::OpenOptions::new().write(true).open(fifo))
+        .await
+        .unwrap()
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(60), scope.finish())
+        .await
+        .expect("cat ends once its open returns");
+    std::mem::ManuallyDrop::into_inner(shell).shutdown_background();
+}
+
+/// A walk that prints nothing checks the job's cancellation at each entry
+/// it reads, so a stop ends it at its next entry. Before, `find`, `rg`,
+/// `grep -r` and `du` walked on, deaf to their stop, until they had read
+/// the whole tree. Each walk reads a tree of 300 directories, `diff` two,
+/// and checks at least once for each; each runs in a job of its own, and
+/// the jobs, login shells, run together. About 0.5 s.
+#[tokio::test]
+async fn a_quiet_walk_checks_the_jobs_cancellation_at_each_entry() {
+    const ENTRIES: usize = 300;
+    let walks = [
+        "find t -name never",
+        "rg never t",
+        "rg --files t",
+        "grep -r never t",
+        "du -s t > /dev/null",
+        "ls -R t > /dev/null",
+        "cp -r t copy",
+        "rm -r t",
+        "chmod -R u+w t",
+        "diff -r t u",
+    ]
+    .map(|walk| async move {
+        let root = tempfile::tempdir().unwrap();
+        for entry in 0..ENTRIES {
+            std::fs::create_dir_all(root.path().join(format!("t/{entry}"))).unwrap();
+            std::fs::create_dir_all(root.path().join(format!("u/{entry}"))).unwrap();
+        }
+        let scope = Scope::new(CancellationToken::new(), None);
+        let mut job = Job::start(
+            format!("read go; {walk}"),
+            root.path().into(),
+            crate::home(root.path()),
+            true,
+            scope.clone(),
+            &ShellRuntime::current(),
+        )
+        .await
+        .unwrap();
+        tokio::time::timeout(Duration::from_secs(60), async {
+            while scope.activity().waiting() == 0 {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .expect(walk);
+        let before = scope.activity().checks();
+        job.input
+            .send(ProcessInput::Bytes(bytes::Bytes::from_static(b"go\n")))
+            .await
+            .unwrap();
+        let exit = tokio::time::timeout(Duration::from_secs(60), job.wait())
+            .await
+            .expect(walk);
+        assert!(exit.error.is_none(), "{walk}: {:?}", exit.error);
+        let checks = scope.activity().checks() - before;
+        (checks < ENTRIES).then(|| format!("{walk} checked {checks} times for {ENTRIES} entries"))
+    });
+    let failures: Vec<_> = futures_util::future::join_all(walks)
+        .await
+        .into_iter()
+        .flatten()
+        .collect();
+    assert!(failures.is_empty(), "\n{}", failures.join("\n"));
+}
+
 #[tokio::test]
 async fn job_completion_preserves_process_substitution_output() {
     let root = tempfile::tempdir().unwrap();

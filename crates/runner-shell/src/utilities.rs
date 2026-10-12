@@ -148,16 +148,21 @@ pub(crate) fn named(program: &std::ffi::OsStr) -> Option<&'static str> {
 
 /// Starts the utility `context.name`, which a utility started as its child
 /// program, on a thread of the shell's pool; killing the child cancels
-/// `cancellation`, which the context's control ends the run on.
+/// `cancellation`, which the context's control ends the run on. `running`
+/// counts it among the job's utilities until it ends.
 pub(crate) fn start(
     tasks: &tokio_util::task::TaskTracker,
     cancellation: tokio_util::sync::CancellationToken,
+    running: crate::work::RunningUtility,
     context: uucore::context::Context,
     args: Vec<std::ffi::OsString>,
 ) -> std::io::Result<Box<dyn uucore::context::UtilityRun>> {
     let stderr = context.stderr.clone();
     let name = context.name;
-    start_with(tasks, cancellation, name, stderr, move || run(context, args))
+    start_with(tasks, cancellation, name, stderr, move || {
+        let _running = running;
+        run(context, args)
+    })
 }
 
 /// Starts `work`, the run of `name` as a utility's child program, as

@@ -1521,8 +1521,17 @@ impl WalkParallel {
                 .into_iter()
                 .map(|worker| s.spawn(|| worker.run()))
                 .collect();
+            // A worker that unwound, as an embedding ends a run early from
+            // inside a visitor, ends the walk with its own payload once
+            // every worker has ended, so the caller sees why it ended.
+            let mut unwound = None;
             for handle in handles {
-                handle.join().unwrap();
+                if let Err(payload) = handle.join() {
+                    unwound.get_or_insert(payload);
+                }
+            }
+            if let Some(payload) = unwound {
+                std::panic::resume_unwind(payload);
             }
         });
     }
