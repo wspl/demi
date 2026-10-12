@@ -1978,7 +1978,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `opened` | The connection is attached |
 | `transcript_reset` | `start`, the blocks from that index to the end, whole, the transcript's `length`, the version `{ epoch, revision }`, and `failures` ([Where a reset starts](#where-a-reset-starts)) |
 | `transcript_patch` | Patches, the new revision, and `failures` |
-| `phase` | `idle`, `running` or `compacting` |
+| `phase` | `idle`, `running` or `compacting`, and `subagentId` when it is a live subagent's: a page opening the conversation receives one for the root and each live child, and a child's tail row reads its own, so a child idle beside a running command shows no Requesting row |
 | `context_usage` | The estimate of the root's next request in `tokens`, the `window` in use and `compactFrom`, the estimate from which `compact` is taken; both null for a model without a window. Right after the open handshake when the session can tell it without reading a blob ([Context estimate](compaction.md#context-estimate)) |
 | `queue` | The queued messages, each `{ id, content }` |
 | `pending_steers` | The complete list of pending steers |

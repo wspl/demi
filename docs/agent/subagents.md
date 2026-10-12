@@ -706,8 +706,13 @@ and a runner that is away, or a job its runner cannot end, would hold the
 abort as long. The child closes as `aborted` at once, and each command still
 stopping stays in the Running window as *Stopping* until its runner reports
 its end. For example, a child whose `find` sat behind an unanswered macOS
-privacy prompt once stayed live for an hour after its abort, its slot taken
-and every message to it unread. Their
+privacy prompt once stayed live for an hour after its abort, its slot taken.
+Such a command stays the closed child's: the page's End Command and its
+terminal input reach it there, and so do `demi shell status`, `input`,
+`output` and `stop`. When the backend restarts, or the tree is disposed,
+before such a command has ended, restore takes it up although it skips the
+closed child: the command keeps showing as stopping, the stop is sent again,
+and its end is recorded in the child's transcript when the runner reports it. Their
 completions are saved in the child's final checkpoint as waiting input and
 open no turn; the child's next round reads them. A finished creation
 command's cancellation has no authority over its child. Dispose saves the
