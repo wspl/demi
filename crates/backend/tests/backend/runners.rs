@@ -26,7 +26,7 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 
 use crate::conversations::{FIRST, Socket, create};
-use crate::support::{Harness, Session, TestBackend, eventually, stored_token};
+use crate::support::{Harness, Session, TestBackend, elapse, eventually, stored_token};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked() {
@@ -108,15 +108,15 @@ async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked(
     backend.close().await;
 }
 
-// Over a second: a pairing code's lifetime of one second passes in real time.
-#[tokio::test(flavor = "multi_thread")]
+// Under a second: a pairing code's lifetime elapses at once.
+#[tokio::test]
 async fn a_waiting_runners_code_changes_while_it_waits_and_claims_are_limited() {
     let mut harness = Harness::new();
-    harness.runners.claim_lifetime = Duration::from_secs(1);
     harness.runners.claims_per_minute = 3;
     let (backend, master) = harness.start_set_up().await;
     let runner = RunnerProcess::start(&backend.url, RunnerProcessOptions::default());
     let first = runner.pairing_code(0).await;
+    elapse(harness.runners.claim_lifetime).await;
     let second = runner.pairing_code(1).await;
     assert_ne!(first, second);
     let claim =
