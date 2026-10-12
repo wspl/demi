@@ -377,7 +377,9 @@ export const bashScriptShellTool = toolCall({
 /**
  * One long line of words with hyphens inside them and a signed address
  * longer than any line: the command wraps at its spaces, each word whole,
- * and only the address breaks inside, filling its lines to the edge.
+ * and only the address breaks inside, filling its lines to the edge. The
+ * output has the same: a sentence that wraps at its spaces, a table aligned
+ * with tabs, and a hash longer than a line.
  */
 export const longLineShellTool = toolCall({
   id: 'tool-shell-long-line',
@@ -402,6 +404,10 @@ export const longLineShellTool = toolCall({
           'libatk-bridge2.0-0t64 is already the newest version (2.52.0-1build1).',
           'exit=0',
           'demi-runner 0.42.0',
+          'Warning: the download location redirected to another host, so the runner archive was fetched from the new address; run the command again with the redirect option set to follow it to the end, and compare the checksum below.',
+          'name\tstate\tsize',
+          'demi-runner\tready\t14.2 MB',
+          'sha256:3f2c9a1e7b5d4c8806fa12e9d3b7a45c0e8f1d26b9a374c5e0d18f6a2b7c93d4e1f05a68b2c7d93e4f1a0b8c5d62e7f93a1b4c8d05e6f2a7b19c3d8e4f60a5b7c2d1e9f38a40b6c5d7e2f1a9b83c40d6e5f7a2b1c98d3e04f6a5b7c',
           '',
         ].join('\n'),
       },
