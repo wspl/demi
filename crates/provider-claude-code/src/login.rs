@@ -150,7 +150,9 @@ async fn sign_in_at(
         }
     };
     // A start given up removes what it made.
-    let Placed { process, config } = tokio::select! {
+    let Placed {
+        process, config, ..
+    } = tokio::select! {
         placed = placement.start(&cli::login_request) => {
             placed.map_err(|error| LoginError::Failed(error.0))?
         }

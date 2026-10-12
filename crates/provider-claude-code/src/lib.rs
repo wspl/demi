@@ -25,6 +25,7 @@ mod mirror;
 mod quota;
 mod run;
 mod session;
+mod timing;
 
 use std::rc::Rc;
 use std::sync::Arc;
@@ -45,7 +46,7 @@ use reqwest::Url;
 
 pub use placement::{
     AccountMachine, AccountWork, CliSite, CliStart, CliSystem, ConfigDir, Placed, Placement,
-    StartError,
+    StartError, StartSteps,
 };
 
 use crate::account::ClaudeAuth;
