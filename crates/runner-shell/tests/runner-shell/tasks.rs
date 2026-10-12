@@ -132,8 +132,8 @@ async fn kill_dash_nine_ends_a_task_that_ignores_term() {
 /// `timeout` runs a builtin, a standard utility or a program and stops it
 /// when its time runs out, with GNU's options, messages and statuses, from
 /// the job's shell and from a utility that starts it. Before, `timeout` was
-/// the system's program, or none. About 0.6 s: each case that times out
-/// waits a tenth of a second for it.
+/// the system's program, or none. About 0.9 s: each case that times out
+/// waits a tenth of a second for it, the `-k` case two.
 #[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn timeout_stops_its_command_with_gnus_statuses() {
@@ -145,11 +145,11 @@ async fn timeout_stops_its_command_with_gnus_statuses() {
         ("timeout 5 echo hi", "hi\n0", ""),
         ("timeout -s KILL 0.1 /bin/sleep 5", "137", ""),
         ("timeout --preserve-status 0.1 /bin/sleep 5", "143", ""),
-        (
-            "timeout -k 0.1 0.1 /bin/sh -c 'trap \"\" TERM; while :; do :; done'",
-            "137",
-            "",
-        ),
+        // A command that survives the first signal gets KILL after `-k`.
+        // WINCH is one that every process ignores from its start, where a
+        // shell's `trap "" TERM` holds only once the shell has run it: a
+        // TERM that came first, on a loaded machine, ended it with 124.
+        ("timeout -s WINCH -k 0.1 0.1 /bin/sleep 5", "137", ""),
         (
             "timeout -v 0.1 sleep 5",
             "124",
