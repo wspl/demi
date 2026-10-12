@@ -56,7 +56,8 @@ const LOGIN: &str = "/api/providers/subscription-login";
 /// access token `access-account-state`, whose tokens and account it writes
 /// as the CLI writes them. Its other runs read
 /// the access token from descriptor 3, answer the message the session they
-/// resume ends with, answer `initialize`, answer each user message with the
+/// resume ends with, if it ends with one, and otherwise wait for input as a
+/// process prepared ahead does, answer `initialize`, answer each user message with the
 /// executable, the token, how many environment variables hold it, the
 /// directory they run in, their configuration directory and its mode, and
 /// record their start and their end.
@@ -89,8 +90,13 @@ answer() {
     "$0" "$token" "$(env | grep -c "$token")" "$(pwd)" "$CLAUDE_CONFIG_DIR" "$(ls -ld "$CLAUDE_CONFIG_DIR" | cut -c1-10)"
   printf '{"type":"result","usage":{"input_tokens":3,"output_tokens":2}}\n'
 }
-# The session it resumes ends with the message to answer.
-answer
+# A session that ends with input is answered at once; one that ends with an
+# answer waits for its input, as the CLI does.
+session=$(ls "$CLAUDE_CONFIG_DIR"/projects/*/*.jsonl | head -n 1)
+last=$(grep -E '"type":"(user|assistant)"' "$session" | tail -n 1)
+case "$last" in
+  *'"type":"user"'*) answer ;;
+esac
 while IFS= read -r line; do
   case "$line" in
     '{"type":"control_request"'*'"subtype":"initialize"'*)
@@ -577,6 +583,95 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
     assert_eq!(distribution.requests().len(), 2);
     backend.close().await;
     assert!(!std::path::Path::new(&third_config).exists());
+}
+
+/// A sign-in that makes its account the entry's active one is a change of
+/// the active account, like a selection in Settings (`claude-code.md`
+/// § Preparing a process ahead): the open conversation on the entry
+/// prepares its next process with the new account's token, and its next
+/// message takes that process. Removing the active account, the last, closed
+/// the process that held the previous token first.
+// About two seconds: the Cloud boots, and runs two sign-ins and two
+// processes of the scripted CLI.
+#[tokio::test]
+async fn a_sign_in_that_activates_its_account_prepares_the_open_conversation_with_its_token() {
+    let (distribution, catalog) = vendors().await;
+    let harness = Harness::new()
+        .with_claude_package()
+        .with_claude_releases(distribution.url("/releases"))
+        .with_models_dev(catalog.url("/api.json"));
+    let (backend, master) = harness.start_set_up().await;
+    // A first sign-in boots the Cloud, which has no CLI yet.
+    let id = start_login(
+        &backend,
+        &master,
+        LOGIN,
+        json!({ "providerType": "claude-code", "label": "Claude" }),
+    )
+    .await;
+    awaited(&backend, &master, &id, ended).await;
+    let cloud = the_cloud(&harness);
+    let home = harness.manager.home(&cloud);
+    let older = install_by_hand(&harness.manager.artifacts(&cloud), OLDER).await;
+    let id = waiting_login(
+        &backend,
+        &master,
+        LOGIN,
+        json!({ "providerType": "claude-code", "label": "Claude" }),
+    )
+    .await;
+    let LoginState::Completed {
+        provider_id,
+        credential_id: first,
+    } = pasted(&backend, &master, &id, "first#state").await
+    else {
+        panic!("the sign-in did not complete");
+    };
+    let provider = provider_id.as_str().to_owned();
+    create(&backend, &master, CONVERSATION).await;
+    choose(&backend, &master, CONVERSATION, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, CONVERSATION).await;
+    socket.open().await;
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello")
+        .await;
+    let first_config = config_of(&last_text(&saved(&backend, &master).await));
+
+    // The entry's last account goes, and with it the process of its token.
+    let accounts_path = format!("/api/providers/{provider}/accounts");
+    let removed = backend
+        .delete(&format!("{accounts_path}/{first}"), &master)
+        .await;
+    assert_eq!(removed.status, StatusCode::OK);
+
+    // Signing in again makes the new account the active one: the open
+    // conversation prepares its next process with its token.
+    let id = waiting_login(&backend, &master, &format!("{accounts_path}/login"), json!({})).await;
+    let LoginState::Completed { .. } = pasted(&backend, &master, &id, "second#state").await else {
+        panic!("the second sign-in did not complete");
+    };
+    tokio::time::timeout(Duration::from_secs(10), backend.until_prepared(&master, 1))
+        .await
+        .expect("the sign-in's account prepared the open conversation's process");
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a02", "and again")
+        .await;
+    let second_answer = last_text(&saved(&backend, &master).await);
+    let second_config = config_of(&second_answer);
+    assert_eq!(
+        second_answer,
+        answer(&older, &home, "access-second-state", &second_config)
+    );
+    // The first process went with its account, and the second, started
+    // before the message, answered it.
+    let processes = std::fs::read_to_string(format!("{home}/claude-processes.log")).unwrap();
+    let expected = [
+        format!("started access-first-state {first_config}"),
+        "ended access-first-state".to_owned(),
+        format!("started access-second-state {second_config}"),
+    ];
+    assert_eq!(processes.lines().collect::<Vec<_>>(), expected);
+    backend.close().await;
 }
 
 // An expired sign-in stops the CLI as a cancelled one does

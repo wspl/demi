@@ -910,6 +910,12 @@ impl TestBackend {
             .to_owned()
     }
 
+    /// Waits until `count` Claude Code processes began to be prepared ahead
+    /// on `session`'s user's Cloud.
+    pub async fn until_prepared(&self, session: &Session, count: u64) {
+        self.backend.until_prepared(&session.user.id, count).await;
+    }
+
     /// Waits until no collection of `session`'s user's blobs runs or is to
     /// follow.
     pub async fn until_collected(&self, session: &Session) {

@@ -117,6 +117,13 @@ pub trait ProviderRuntime {
     /// waiting.
     fn close(&mut self) -> LocalBoxFuture<'_, ()>;
 
+    /// Whether [`prepare`](Self::prepare) readies anything, so the session
+    /// builds the request it takes, reading the media its history replays,
+    /// only for a runtime that uses it.
+    fn prepares_ahead(&self) -> bool {
+        false
+    }
+
     /// Readies ahead what the session's next request needs, now that the
     /// request is known but for its input: `request` is that request
     /// without it, and `ahead` says what made it known (`claude-code.md`
