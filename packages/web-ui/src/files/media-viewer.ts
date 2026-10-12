@@ -1,6 +1,12 @@
 import { inject, provide, shallowRef, type InjectionKey, type ShallowRef } from 'vue'
 import { paneBox } from '../ui/region'
-import { initialWindowRect, type PageSize, type WindowRect } from '../ui/floating-window'
+import {
+  windowCentre,
+  windowRectAround,
+  windowSizeFor,
+  type PageSize,
+  type WindowRect,
+} from '../ui/floating-window'
 import type { PixelSize } from './thumbnail'
 
 /**
@@ -18,60 +24,69 @@ export interface ShownMedium {
 }
 
 /**
- * Where the viewer's window stands. `fitted` holds while the window still
- * waits to take the size of the first medium it shows, whose size was not
- * known when it opened; a measured size or the user's move ends it.
+ * Where the viewer's window stands. `awaitsSize` holds while the window
+ * shows a medium whose size was not known when it opened: a measured size
+ * resizes the window then, and the user's move or resize ends the wait.
  */
 export interface ViewerGeometry {
   rect: WindowRect
-  fitted: boolean
+  awaitsSize: boolean
 }
 
-/** The page the window opens on, and the pane centred under it the first time. */
+/**
+ * What the window sizes itself against: the page, the display's device
+ * pixels per page pixel, and the pane centred under the window when it opens.
+ */
 export interface ViewerPlace {
   page: PageSize
+  pixelRatio: number
   over: WindowRect
 }
 
 /**
  * One viewer that shows a medium large, for the whole page
  * (`file-previews.md` § The media viewer): the medium it shows now, or none,
- * and where its window stands, which outlives a close so the next medium
- * opens where the user left the last one.
+ * and where its window stands. The window takes its size from the medium
+ * (`windowSizeFor`): the first one opens centred over the conversation,
+ * another shown while it is open resizes it about its centre, and a size the
+ * user dragged lasts while that medium shows.
  */
 export interface MediaViewerState {
   shown: Readonly<ShallowRef<ShownMedium | null>>
+  /** Where the window stands; it outlives a close, so the window can leave. */
   geometry: Readonly<ShallowRef<ViewerGeometry | null>>
-  /** Shows `medium`, in place of the one shown, in the window where it stands. */
+  /** Shows `medium`, in place of the one shown, in the same window. */
   show(medium: ShownMedium): void
   close(): void
   /** The user moved or resized the window. */
   place(rect: WindowRect): void
-  /** The medium shown has loaded at `size`: a first window opened without it takes it now. */
+  /** The medium shown has loaded at `size`: a window that opened without it takes it now. */
   measured(size: PixelSize): void
 }
 
 /**
- * The viewer's state. `where` tells where the window would first open for
- * a medium opened from an element; it is asked only for the first medium,
- * and again when that one's size arrives.
+ * The viewer's state. `where` tells the page, the display's pixel ratio and
+ * the pane a medium opened from an element is centred over.
  */
 export function createMediaViewer(where: (from: Element | null) => ViewerPlace): MediaViewerState {
   const shown = shallowRef<ShownMedium | null>(null)
   const geometry = shallowRef<ViewerGeometry | null>(null)
 
-  function fit(size: PixelSize | null, from: Element | null): WindowRect {
-    const { page, over } = where(from)
-    return initialWindowRect(size, page, over)
+  /** The window for a medium of `size`: about the centre of the open `current`, else centred over its pane. */
+  function sized(size: PixelSize | null, from: Element | null, current: WindowRect | null): WindowRect {
+    const { page, pixelRatio, over } = where(from)
+    return windowRectAround(windowSizeFor(size, pixelRatio, page), windowCentre(current ?? over), page)
   }
 
   return {
     shown,
     geometry,
     show(medium) {
-      if (!geometry.value) {
+      // The same medium again leaves the window as the user left it.
+      if (shown.value?.src !== medium.src || !geometry.value) {
         const size = medium.size ?? null
-        geometry.value = { rect: fit(size, medium.from ?? null), fitted: size === null }
+        const open = shown.value !== null ? geometry.value?.rect ?? null : null
+        geometry.value = { rect: sized(size, medium.from ?? null, open), awaitsSize: size === null }
       }
       shown.value = medium
     },
@@ -79,19 +94,24 @@ export function createMediaViewer(where: (from: Element | null) => ViewerPlace):
       shown.value = null
     },
     place(rect) {
-      geometry.value = { rect, fitted: false }
+      geometry.value = { rect, awaitsSize: false }
     },
     measured(size) {
-      if (!geometry.value?.fitted)
+      const current = geometry.value
+      if (!current?.awaitsSize || size.width <= 0 || size.height <= 0)
         return
-      geometry.value = { rect: fit(size, shown.value?.from ?? null), fitted: false }
+      geometry.value = { rect: sized(size, shown.value?.from ?? null, current.rect), awaitsSize: false }
     },
   }
 }
 
 /** The page's viewport, and the pane around `from`, the conversation for a thumbnail in a window over it. */
 function pagePlace(from: Element | null): ViewerPlace {
-  return { page: { width: window.innerWidth, height: window.innerHeight }, over: paneBox(from) }
+  return {
+    page: { width: window.innerWidth, height: window.innerHeight },
+    pixelRatio: window.devicePixelRatio,
+    over: paneBox(from),
+  }
 }
 
 const mediaViewerKey: InjectionKey<MediaViewerState> = Symbol('media-viewer')

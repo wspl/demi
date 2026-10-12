@@ -2,9 +2,11 @@ import { describe, expect, test } from 'bun:test'
 import {
   clampWindowRect,
   escapeClosesWindow,
-  initialWindowRect,
   moveWindowRect,
   resizeWindowRect,
+  windowCentre,
+  windowRectAround,
+  windowSizeFor,
   WINDOW_TITLE_BAR_PX,
 } from '../floating-window'
 
@@ -15,7 +17,7 @@ const PAGE = { width: 1440, height: 900 }
 describe('a window stays on the page', () => {
   test.each([
     ['a box on the page stays as it is', { x: 100, y: 80, width: 600, height: 400 }, { x: 100, y: 80, width: 600, height: 400 }],
-    ['a box smaller than 240 × 180 grows to it', { x: 100, y: 80, width: 100, height: 50 }, { x: 100, y: 80, width: 240, height: 180 }],
+    ['a box smaller than 320 × 240 grows to it', { x: 100, y: 80, width: 100, height: 50 }, { x: 100, y: 80, width: 320, height: 240 }],
     ['a box larger than the page shrinks to it', { x: 0, y: 0, width: 2000, height: 1200 }, { x: 0, y: 0, width: 1440, height: 900 }],
     ['a box dragged past the left and top stops at them', { x: -300, y: -50, width: 600, height: 400 }, { x: 0, y: 0, width: 600, height: 400 }],
     ['a box dragged past the right stays wholly on the page', { x: 1200, y: 80, width: 600, height: 400 }, { x: 840, y: 80, width: 600, height: 400 }],
@@ -52,8 +54,8 @@ describe('an edge or a corner resizes the window, the opposite edges staying put
     ['the top edge', { top: true }, 99, -60, { x: 400, y: 140, width: 600, height: 460 }],
     ['the top-left corner', { top: true, left: true }, 30, 20, { x: 430, y: 220, width: 570, height: 380 }],
     ['the bottom-right corner', { bottom: true, right: true }, 30, 20, { x: 400, y: 200, width: 630, height: 420 }],
-    ['the left edge stops at the minimum, its right edge in place', { left: true }, 500, 0, { x: 760, y: 200, width: 240, height: 400 }],
-    ['the top edge stops at the minimum, its bottom edge in place', { top: true }, 0, 500, { x: 400, y: 420, width: 600, height: 180 }],
+    ['the left edge stops at the minimum, its right edge in place', { left: true }, 500, 0, { x: 680, y: 200, width: 320, height: 400 }],
+    ['the top edge stops at the minimum, its bottom edge in place', { top: true }, 0, 500, { x: 400, y: 360, width: 600, height: 240 }],
     ['the left edge stops at the page', { left: true }, -900, 0, { x: 0, y: 200, width: 1000, height: 400 }],
     ['the right edge stops at the page', { right: true }, 900, 0, { x: 400, y: 200, width: 1040, height: 400 }],
     ['the bottom edge stops at the page', { bottom: true }, 0, 900, { x: 400, y: 200, width: 600, height: 700 }],
@@ -62,32 +64,34 @@ describe('an edge or a corner resizes the window, the opposite edges staying put
   })
 })
 
-describe('a window first opens at its content\'s actual size, centred over the pane it came from', () => {
-  const pane = { x: 300, y: 0, width: 1140, height: 900 }
-
-  test('content that fits shows at its actual size under the title bar', () => {
-    expect(initialWindowRect({ width: 400, height: 300 }, PAGE, pane))
-      .toEqual({ x: 670, y: 282, width: 400, height: 300 + WINDOW_TITLE_BAR_PX })
+describe('a window opens at its content\'s actual size in device pixels', () => {
+  // The page is 1440 × 900: the window may take 864 of its width and 630 of its height, the title bar included.
+  test.each([
+    ['a screenshot at one device pixel per page pixel', { width: 400, height: 300 }, 1, { width: 400, height: 300 + WINDOW_TITLE_BAR_PX }],
+    ['a retina screenshot, 2880 × 1800 on two, is 1440 × 900 and scales down to the page\'s allowance', { width: 2880, height: 1800 }, 2, { width: 864, height: 540 + WINDOW_TITLE_BAR_PX }],
+    ['the same picture on one device pixel scales down just the same', { width: 2880, height: 1800 }, 1, { width: 864, height: 540 + WINDOW_TITLE_BAR_PX }],
+    ['a retina picture that fits once halved opens at half its pixels', { width: 800, height: 600 }, 2, { width: 400, height: 300 + WINDOW_TITLE_BAR_PX }],
+    ['a wide picture is held by the width, 1280 × 720', { width: 1280, height: 720 }, 1, { width: 864, height: 486 + WINDOW_TITLE_BAR_PX }],
+    ['a tall page is held by the height and keeps the minimum width', { width: 360, height: 2400 }, 1, { width: 320, height: 630 }],
+    ['a tiny icon sits in a window of the minimum size, never enlarged', { width: 40, height: 40 }, 1, { width: 320, height: 240 }],
+    ['a tiny retina icon too', { width: 80, height: 80 }, 2, { width: 320, height: 240 }],
+    ['a picture of unknown size takes the whole allowance', null, 2, { width: 864, height: 630 }],
+  ])('%s', (_, content, pixelRatio, expected) => {
+    expect(windowSizeFor(content, pixelRatio, PAGE)).toEqual(expected)
   })
 
-  test('large content scales down, keeping its proportions, to 60% of the width and 70% of the height', () => {
-    // 1280 × 720 on 1440 × 900: the width allows 864 of 1280 (0.675), the
-    // height 630 − 36 of 720 (0.825); the width wins.
-    expect(initialWindowRect({ width: 1280, height: 720 }, PAGE, pane))
-      .toEqual({ x: 438, y: 189, width: 864, height: 486 + WINDOW_TITLE_BAR_PX })
-    // A tall page's screenshot: the height wins, and the window keeps its minimum width.
-    expect(initialWindowRect({ width: 360, height: 2400 }, PAGE, pane))
-      .toEqual({ x: 750, y: 135, width: 240, height: 630 })
+  test('on a page smaller than the minimum the window is as large as the page', () => {
+    expect(windowSizeFor({ width: 40, height: 40 }, 1, { width: 300, height: 200 })).toEqual({ width: 300, height: 200 })
   })
 
-  test('tiny content opens at the minimum size', () => {
-    const rect = initialWindowRect({ width: 16, height: 16 }, PAGE, pane)
-    expect([rect.width, rect.height]).toEqual([240, 180])
+  test('a window centres on a point and stays on the page', () => {
+    const size = { width: 400, height: 336 }
+    expect(windowRectAround(size, { x: 870, y: 450 }, PAGE)).toEqual({ x: 670, y: 282, width: 400, height: 336 })
+    expect(windowRectAround(size, { x: 1400, y: 20 }, PAGE)).toEqual({ x: 1040, y: 0, width: 400, height: 336 })
   })
 
-  test('content of unknown size takes the whole allowance', () => {
-    const rect = initialWindowRect(null, PAGE, pane)
-    expect([rect.width, rect.height]).toEqual([864, 630])
+  test('the centre of a box is the middle of its sides', () => {
+    expect(windowCentre({ x: 670, y: 282, width: 400, height: 336 })).toEqual({ x: 870, y: 450 })
   })
 })
 

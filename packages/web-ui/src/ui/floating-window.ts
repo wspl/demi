@@ -17,7 +17,7 @@ export interface PageSize {
 }
 
 /** The smallest a window gets, unless the page itself is smaller. */
-export const WINDOW_MIN: PageSize = { width: 240, height: 180 }
+export const WINDOW_MIN: PageSize = { width: 320, height: 240 }
 
 /** The title bar's height, which the window keeps on the page. */
 export const WINDOW_TITLE_BAR_PX = 36
@@ -35,7 +35,7 @@ function minSize(page: PageSize): PageSize {
 }
 
 /**
- * The box a window takes on `page`: at least 240 × 180 and no larger than
+ * The box a window takes on `page`: at least 320 × 240 and no larger than
  * the page, with its title bar wholly on the page; the rest of it may hang
  * below the page's bottom edge. A page that shrinks moves and shrinks the
  * window with it.
@@ -86,26 +86,42 @@ export function resizeWindowRect(
   return clampWindowRect({ x: left, y: top, width: right - left, height: bottom - top }, page)
 }
 
+/** A point of the page, in CSS px. */
+export interface PagePoint {
+  x: number
+  y: number
+}
+
 /**
- * The box a window first opens at to show content of `content` pixels
- * under its title bar: the content at its actual size, scaled down to fit
- * at most 60% of the page's width and 70% of its height, centred over
- * `over` (the pane it was opened from). Content of unknown size takes that
- * whole allowance.
+ * The size a window opens at to show content of `content` device pixels
+ * under its title bar, on a display of `pixelRatio` device pixels per page
+ * pixel: the content at its actual size (one of its pixels on one device
+ * pixel), scaled down, keeping its proportions, to fit at most 60% of the
+ * page's width and 70% of its height; never smaller than the minimum, where
+ * tiny content sits centred and is never enlarged. Content of unknown size
+ * takes the whole allowance.
  */
-export function initialWindowRect(content: PixelSize | null, page: PageSize, over: WindowRect): WindowRect {
+export function windowSizeFor(content: PixelSize | null, pixelRatio: number, page: PageSize): PageSize {
   const room = { width: page.width * 0.6, height: page.height * 0.7 - WINDOW_TITLE_BAR_PX }
-  const known = content && content.width > 0 && content.height > 0 ? content : null
+  const known = content && content.width > 0 && content.height > 0 && pixelRatio > 0
+    ? { width: content.width / pixelRatio, height: content.height / pixelRatio }
+    : null
   const scale = known ? Math.min(1, room.width / known.width, room.height / known.height) : 1
-  const width = known ? known.width * scale : room.width
-  const height = (known ? known.height * scale : room.height) + WINDOW_TITLE_BAR_PX
   const min = minSize(page)
-  const shown = { width: Math.max(width, min.width), height: Math.max(height, min.height) }
-  return clampWindowRect({
-    x: over.x + (over.width - shown.width) / 2,
-    y: over.y + (over.height - shown.height) / 2,
-    ...shown,
-  }, page)
+  return {
+    width: Math.max(known ? known.width * scale : room.width, min.width),
+    height: Math.max((known ? known.height * scale : room.height) + WINDOW_TITLE_BAR_PX, min.height),
+  }
+}
+
+/** The box of `size` centred on `centre`, kept on `page`. */
+export function windowRectAround(size: PageSize, centre: PagePoint, page: PageSize): WindowRect {
+  return clampWindowRect({ x: centre.x - size.width / 2, y: centre.y - size.height / 2, ...size }, page)
+}
+
+/** The point at the middle of `rect`. */
+export function windowCentre(rect: WindowRect): PagePoint {
+  return { x: rect.x + rect.width / 2, y: rect.y + rect.height / 2 }
 }
 
 /** What a floating window needs to know of an Escape. */
