@@ -28,7 +28,7 @@ use demi_agent_tools::{
 use demi_agent_transcript::IdSource;
 use demi_host_interface::{
     CapabilityIndex, CommandSet, CommandState, CommandStatus, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
-    ShellEnvironment, ShellError, WholeOutput,
+    ShellEnvironment,
 };
 use demi_provider_common::{ProviderRuntime, RequestLimits, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
@@ -179,17 +179,6 @@ impl<H: HostResolver> Node<H> {
         self.runtime.environments.owning(command)
     }
 
-    /// What the Host of `command`, which one of the node's environments
-    /// runs, has kept of its output so far.
-    pub(crate) async fn read_output(&self, command: &CommandId) -> Result<WholeOutput, ShellError> {
-        let environment = self
-            .runtime
-            .environments
-            .owning(command)
-            .ok_or_else(|| ShellError::UnknownCommand(command.clone()))?;
-        environment.read_output(command).await
-    }
-
     /// The pages' view of each live command of the node (`runtime.md`
     /// § Live output): each one its shells run, and each one the transcript
     /// last saw running that they still hold, oldest first.
@@ -225,6 +214,14 @@ impl<H: HostResolver> Node<H> {
     /// them; a later tool call makes fresh ones.
     pub(crate) async fn end_shells(&self) {
         self.runtime.environments.end_all().await;
+    }
+
+    /// Asks the node's commands on every Host to stop and hands over its
+    /// shells, which follow the commands until their runners report their
+    /// ends; the node's disposal lets none of them go
+    /// (`subagents.md` § Abort).
+    pub(crate) async fn stop_shells(&self) -> Vec<Rc<dyn ShellEnvironment>> {
+        self.runtime.environments.stop_all().await
     }
 
     /// The product's commands a child of this node inherits: this node's,
