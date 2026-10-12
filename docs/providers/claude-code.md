@@ -346,8 +346,9 @@ thinking setting.
   configuration directory, and an environment with the CLI's
   updater and its automatic compaction turned off (Demi compacts the
   conversation itself), its telemetry off (`DISABLE_TELEMETRY=1`), which in a
-  Cloud sandbox halved the CLI's start, 1.5–2.0 s to 0.8–0.9 s, with no
-  difference natively, an MCP tool-output limit of one million tokens so the
+  Cloud sandbox halved the CLI's start, 1.5–2.0 s to 0.8–0.9 s, and cut its
+  `initialize` from about 640 ms to 185 ms natively, with the stream, the
+  `rate_limit_event` lines, the usage and the session mirror unchanged, an MCP tool-output limit of one million tokens so the
   CLI does not cut a result Demi sends, `CLAUDECODE` unset so the CLI never
   treats itself as running inside another Claude Code session,
   `CLAUDE_CODE_PROJECT_DIR_NAME` naming the session's directory, and
