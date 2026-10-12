@@ -807,7 +807,9 @@ was, archived or live, and goes on if it was running.
   copies no children, running commands, pending deliveries or permission
   state: those stay the source's, as for a conversation Fork
   ([Execution environment and auxiliary state](conversation-fork.md#execution-environment-and-auxiliary-state)).
-  Its result reaches the caller as any child's does.
+  Its node records its source's number, which the job carries as
+  `forkedFrom` after a reload too. Its result reaches the caller as any
+  child's does.
 - **What it counts as.** A spawn: the Subagent switch, the live-subagents
   limit and the depth limit apply, at the source's depth, and a
   spawn-restricted node's group has no `fork`, as it has no `spawn`.
