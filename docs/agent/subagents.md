@@ -712,8 +712,12 @@ $ demi agent profiles list # after the user turns subagents off
 Subagents are turned off in settings; demi agent spawn fails until the user turns them on.
 ```
 
-Neither the list nor the switch is in the system prompt or in a context
-block: the prompt is rendered once per tree and could not follow an edit,
+The prompt names the command rather than the list: the harness guide tells
+the model to run `demi agent profiles list` before it starts subagents, and
+`spawn`'s help says that without `--profile` a child inherits the caller and
+that the list shows the profiles that may fit better
+([Details on demand](system-prompt.md#details-on-demand)). Neither the list
+nor the switch is in the system prompt or in a context block: the prompt is rendered once per tree and could not follow an edit,
 and a block would put every edit into every conversation's transcript
 whether or not it spawns. The `demi agent spawn` help, which is part of the
 prompt, therefore says nothing about the switch; the model learns it from
