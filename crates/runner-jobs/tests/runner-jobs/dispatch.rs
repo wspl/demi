@@ -40,6 +40,11 @@ struct Fixture {
 
 impl Fixture {
     async fn new() -> Self {
+        Self::with_backend("http://127.0.0.1:1").await
+    }
+
+    /// A fixture whose pipes go to the backend at `url`.
+    async fn with_backend(url: &str) -> Self {
         let directory = tempfile::tempdir().unwrap();
         let tree = json!({
             "name": "fixture", "summary": "Test callback.", "kind": "rpc", "runningHint": "Working",
@@ -51,9 +56,10 @@ impl Fixture {
         )
         .unwrap();
         let manifest = serde_json::to_value(manifest).unwrap();
+        let token = "device-token".parse().unwrap();
         let pipes = PipeClient::new(
-            &"http://127.0.0.1:1".parse().unwrap(),
-            watch::Sender::new(None).subscribe(),
+            &url.parse().unwrap(),
+            watch::Sender::new(Some(token)).subscribe(),
         )
         .unwrap();
         let dispatch = Dispatch::new(directory.path(), manifest, pipes).await;
@@ -208,6 +214,99 @@ async fn cancellation_sends_callback_cancel_and_clears_running_hint() {
         assert_eq!(first["type"], "rpc_cancel");
         assert_eq!(second["type"], "job_running_hint");
         assert!(second["hint"].is_null());
+        fixture.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// A backend whose one answer is a pipe's response that opens and breaks
+/// off before its body ends, as a relayed stdout does when the job on
+/// another device that it was handed to goes away.
+async fn breaking_pipe() -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut socket, _) = listener.accept().await.unwrap();
+        let mut request = Vec::new();
+        while !request.ends_with(b"\r\n\r\n") {
+            let mut byte = [0];
+            socket.read_exact(&mut byte).await.unwrap();
+            request.push(byte[0]);
+        }
+        let head = "HTTP/1.1 200 OK\r\ncontent-type: application/octet-stream\r\n\
+                    transfer-encoding: chunked\r\n\r\n";
+        socket.write_all(head.as_bytes()).await.unwrap();
+        // The connection ends before the body's last chunk.
+    });
+    format!("http://{address}/")
+}
+
+/// A relayed stdout that breaks after it opened ends the call with the
+/// backend's exit, 1 and the cause on stderr, which the backend sends once
+/// it sees the pipe fail (`commands.md` § Handle an rpc call). Before, the
+/// call failed at once with the transport's own words, `error decoding
+/// response body`, and the cause never showed.
+#[tokio::test]
+async fn a_relayed_stdout_that_breaks_ends_the_call_with_its_cause() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let backend = breaking_pipe().await;
+        let mut fixture = Fixture::with_backend(&backend).await;
+        let (context, _lease) = fixture.context().await;
+        let request = fixture.request(context.id.clone(), vec![]);
+        let endpoint = fixture.dispatch.server.endpoint().to_owned();
+        let running = tokio::spawn(async move {
+            let (mut stdout, mut stderr) = (Vec::new(), Vec::new());
+            let result = forward(
+                &endpoint,
+                &request,
+                Stdio {
+                    stdin: NeverRead,
+                    stdout: &mut stdout,
+                    stderr: &mut stderr,
+                },
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+            (result.exit_code, stdout, String::from_utf8(stderr).unwrap())
+        });
+        assert_eq!(fixture.message().await["hint"], "Working");
+        let call = fixture.message().await;
+        assert_eq!(call["type"], "rpc_call");
+        assert_eq!(call["stdin"], false);
+        let call_id = call["callId"].as_str().unwrap().to_owned();
+        fixture
+            .dispatch
+            .deliver(Inbound::RpcPipes {
+                call_id: call_id.clone(),
+                stdin: None,
+                stdout: demi_runner_protocol::wire::PipeRef {
+                    id: "out".into(),
+                    url: "/api/pipes/out".into(),
+                },
+            })
+            .await;
+        let done = fixture.message().await;
+        assert_eq!((&done["type"], &done["ok"]), (&json!("pipe_done"), &json!(false)));
+        let cause = "fixture: pipe failed: the job's device went away\n";
+        fixture
+            .dispatch
+            .deliver(Inbound::RpcOutput {
+                call_id: call_id.clone(),
+                bytes: demi_runner_protocol::wire::WireBytes(cause.as_bytes().to_vec()),
+            })
+            .await;
+        fixture
+            .dispatch
+            .deliver(Inbound::RpcExit {
+                call_id,
+                exit_code: 1,
+            })
+            .await;
+        let (code, stdout, stderr) = running.await.unwrap();
+        assert_eq!((code, stdout.as_slice(), stderr.as_str()), (1, &b""[..], cause));
         fixture.close().await;
     })
     .await

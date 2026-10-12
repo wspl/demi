@@ -309,7 +309,11 @@ async fn exchange(
 }
 
 /// Reads the call's stdout pipe `reference` to its end into `output`, and
-/// reports how the pipe ended.
+/// reports how the pipe ended. A failure of the pipe itself, such as a
+/// stdout handed to a job on another device that went away, also ends the
+/// call on the backend, whose exit then ends it with the cause on stderr
+/// (`commands.md` § Handle an rpc call); only a failure to write the output
+/// ends it here.
 async fn download(
     pipes: &PipeClient,
     connection: &mpsc::Sender<wire::Frame>,
@@ -317,16 +321,24 @@ async fn download(
     output: &mut CommandOutput<'_>,
     reference: &PipeRef,
 ) -> Result<(), ServiceError> {
+    let mut unwritten = None;
     let result = async {
         let mut stream = pipes.get(&reference.url, stop.clone()).await?;
         while let Some(chunk) = stream.next().await {
-            output.stdout(chunk?).await.map_err(io::Error::other)?;
+            if let Err(error) = output.stdout(chunk?).await {
+                let reported = io::Error::other(error.to_string());
+                unwritten = Some(error);
+                return Err(reported);
+            }
         }
         Ok::<_, io::Error>(())
     }
     .await;
     report(connection, reference, &result, stop).await?;
-    result.map_err(ServiceError::failed)
+    match unwritten {
+        Some(error) => Err(ServiceError::failed(io::Error::other(error))),
+        None => Ok(()),
+    }
 }
 
 async fn send_input(
