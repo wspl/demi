@@ -305,6 +305,33 @@ test('retry, resume and compact resolve when their action ends, and a busy sessi
   expect(h.sent).toEqual([{ type: 'retry' }, { type: 'resume' }, { type: 'compact' }])
 })
 
+// A child's phase is the child's (`runtime.md` § Frame protocol): it reaches
+// the listeners and leaves the root's own phase, and what waits on it, alone.
+test('a subagent\'s phase frame is passed on and ends no action of the root', async () => {
+  const h = harness()
+  const phases: unknown[] = []
+  h.client.subscribe((event) => {
+    if (event.type === 'phase') {
+      phases.push(event)
+    }
+  })
+  let retried = false
+  const retry = h.client.retry().then(() => {
+    retried = true
+  })
+  h.receive({ type: 'phase', phase: 'running' })
+  h.receive({ type: 'phase', subagentId: 'child', phase: 'idle' })
+  await settle()
+  expect(retried).toBe(false)
+  h.receive({ type: 'phase', phase: 'idle' })
+  await retry
+  expect(phases).toEqual([
+    { type: 'phase', phase: 'running' },
+    { type: 'phase', subagentId: 'child', phase: 'idle' },
+    { type: 'phase', phase: 'idle' },
+  ])
+})
+
 test('a failed turn fails its action with the error frame, and the aborts answer in request order', async () => {
   const h = harness()
   const action = h.client.send([{ type: 'text', text: 'hi' }]).catch((error: unknown) => error)

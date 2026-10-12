@@ -482,6 +482,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
             matches!(
                 frame,
                 ServerFrame::Phase {
+                    subagent_id: None,
                     phase: SessionPhase::Idle
                 }
             )

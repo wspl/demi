@@ -100,6 +100,7 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
     client.send(ClientFrame::Compact {}).await;
     let compaction = client.next_until(is_idle).await;
     assert!(compaction.contains(&ServerFrame::Phase {
+        subagent_id: None,
         phase: SessionPhase::Compacting
     }));
     let blocks = session_of(&fixture).transcript().blocks;

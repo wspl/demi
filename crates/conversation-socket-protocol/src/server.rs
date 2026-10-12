@@ -82,7 +82,18 @@ pub enum ServerFrame {
         #[garde(skip)]
         failures: Option<Failures>,
     },
+    /// A session's phase: the root's, or a live subagent's, which a page
+    /// opening the conversation receives for each live child too.
     Phase {
+        /// The subagent whose phase it is; absent for the root.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[schemars(with = "NodeId")]
+        #[garde(skip)]
+        subagent_id: Option<NodeId>,
         #[garde(skip)]
         phase: SessionPhase,
     },

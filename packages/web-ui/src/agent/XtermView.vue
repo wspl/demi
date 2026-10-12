@@ -63,6 +63,14 @@ function applyColors(): void {
 }
 
 /**
+ * Clears the terminal in the order of its writes. xterm.js's `reset()` acts
+ * at once, while a write is queued and parsed later, so a write still queued
+ * would land after the reset: a prompt written just before the script's
+ * highlighting arrived showed twice. ESC c, a full reset, is parsed in turn.
+ */
+const FULL_RESET = '\x1bc'
+
+/**
  * Takes the prompt line for the script in the live colors. Its colors are
  * written into the terminal, so a new theme or script draws it, and the
  * output after it, anew.
@@ -85,7 +93,7 @@ function applyPrompt(): void {
   if (shown) {
     const { output, chars } = shown
     shown = null
-    term.reset()
+    term.write(FULL_RESET)
     show(output, chars)
   }
 }
@@ -102,11 +110,9 @@ function show(output: string, chars: number | undefined): void {
   }
   const { reset, text } = terminalWrite(shown, output, chars, prompt)
   shown = { output, chars }
-  if (reset) {
-    term.reset()
-  }
-  if (text) {
-    term.write(text)
+  const written = reset ? FULL_RESET + text : text
+  if (written) {
+    term.write(written)
   }
 }
 

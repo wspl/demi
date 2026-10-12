@@ -330,7 +330,7 @@ pub async fn turn(client: &mut TestClient<DeviceHost>, id: &str, text: &str) -> 
 }
 
 pub fn is_idle(frame: &ServerFrame) -> bool {
-    matches!(frame, ServerFrame::Phase { phase } if *phase == SessionPhase::Idle)
+    matches!(frame, ServerFrame::Phase { subagent_id: None, phase } if *phase == SessionPhase::Idle)
 }
 
 /// A `shell` call of `script` that watches it for up to `interval_ms`, and
