@@ -1344,6 +1344,21 @@ html[data-theme="light"] .file-pill {
   outline-offset: 1px;
 }
 
+/* A status bar (`AgentStatusBar`): its segments run close to the window's ends,
+   each end inset by the same distance on every side it touches, and the
+   outermost text stands as far from the window's side as the window's corner
+   (`rounded-xl`, `--radius-xl`) is round. A segment's hover background is
+   concentric with that corner: the radius less the inset it sits in. */
+.status-bar {
+  --status-bar-inset: var(--spacing);
+  padding: var(--status-bar-inset);
+}
+
+.status-bar-segment {
+  padding-inline: calc(var(--radius-xl) - var(--status-bar-inset));
+  border-radius: calc(var(--radius-xl) - var(--status-bar-inset));
+}
+
 /* The focus ring of a control the keyboard has focused, and of that alone
    (`:focus-visible`): a click leaves none. Every control a primitive makes
    focusable carries it (`docs/product/web-application.md` § Keyboard). */
