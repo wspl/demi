@@ -25,7 +25,7 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::conversations::{FIRST, Socket, anthropic, choose, create, tool_result, tool_use};
-use crate::support::{Harness, Session, TestBackend, answer, elapse, eventually};
+use crate::support::{Harness, PATIENCE, Session, TestBackend, answer, elapse, eventually};
 
 fn sha(bytes: &[u8]) -> String {
     hex::encode(Sha256::digest(bytes))
@@ -255,6 +255,104 @@ const CODES: [&str; 2] = [
     "The code expired; enter this one instead: ",
 ];
 
+/// The hang guard of work that shows its progress, such as an installer's
+/// output or a runner's update in its installation: it fires only once the
+/// work has shown none for its window, so slow work that moves, as on a busy
+/// machine, is no hang, and a stuck one fails a window after its last sign.
+struct Silence {
+    window: Duration,
+    last: tokio::time::Instant,
+}
+
+impl Silence {
+    fn new(window: Duration) -> Self {
+        Self {
+            window,
+            last: tokio::time::Instant::now(),
+        }
+    }
+
+    /// The work showed progress: the window starts again.
+    fn heard(&mut self) {
+        self.last = tokio::time::Instant::now();
+    }
+
+    /// Ends once the window has passed without progress.
+    async fn passed(&self) {
+        tokio::time::sleep_until(self.last + self.window).await;
+    }
+}
+
+/// Waits until `check` holds while the runner of the installation in
+/// `state` updates itself, a chain of a backend's restart, the runner's
+/// reconnection, a download of this build's runner (170 MB), its check and
+/// the new runner's start, whose length depends on how busy the machine is.
+/// It fails only once the installation has shown no progress for
+/// [`PATIENCE`] ([`Progress`]).
+async fn while_updating<F, Fut>(what: &str, state: &Path, mut check: F)
+where
+    F: FnMut() -> Fut,
+    Fut: Future<Output = bool>,
+{
+    let mut silence = Silence::new(PATIENCE);
+    let mut progress = Progress::default();
+    progress.moved(state);
+    while !check().await {
+        tokio::select! {
+            () = tokio::time::sleep(Duration::from_millis(20)) => {}
+            () = silence.passed() => {
+                panic!("never came true: {what}; the installation showed no progress for {PATIENCE:?}: {progress:?}")
+            }
+        }
+        if progress.moved(state) {
+            silence.heard();
+        }
+    }
+}
+
+/// What a progress guard has seen of an installation. Progress is what it
+/// has not seen before: a line of the runner's log, a release put in place,
+/// what `release-id` or `active.json` holds, or a staged download larger
+/// than any before. A runner that retries a failing step shows the same
+/// again: its line, its lock and its download's stage come and go.
+#[derive(Debug, Default)]
+struct Progress {
+    seen: std::collections::BTreeSet<String>,
+    downloaded: u64,
+}
+
+impl Progress {
+    /// Looks at the installation in `state`: whether it moved since the
+    /// last look. A file the runner replaces or removes meanwhile is read
+    /// at the next look.
+    fn moved(&mut self, state: &Path) -> bool {
+        let read = |name: &str| std::fs::read_to_string(state.join(name)).unwrap_or_default();
+        let mut found: Vec<String> = read("runner.log").lines().map(|line| format!("log: {line}")).collect();
+        found.push(format!("release-id: {}", read("release-id")));
+        found.push(format!("active.json: {}", read("active.json")));
+        let mut downloaded = 0;
+        let releases = std::fs::read_dir(state.join("releases")).into_iter().flatten().flatten();
+        for release in releases {
+            let name = release.file_name().to_string_lossy().into_owned();
+            // A download's stage, which a release replaces once checked.
+            if !name.starts_with('.') {
+                found.push(format!("release: {name}"));
+                continue;
+            }
+            let files = std::fs::read_dir(release.path()).into_iter().flatten().flatten();
+            for file in files {
+                downloaded = downloaded.max(file.metadata().map_or(0, |metadata| metadata.len()));
+            }
+        }
+        let mut moved = downloaded > self.downloaded;
+        self.downloaded = self.downloaded.max(downloaded);
+        for fact in found {
+            moved |= self.seen.insert(fact);
+        }
+        moved
+    }
+}
+
 /// Runs `installer`, which stays until its runner is paired: it shows each
 /// pairing code as its runner receives one. With an `expiring` lifetime the
 /// first code is let expire, by letting that lifetime elapse, and the next
@@ -279,29 +377,28 @@ async fn paired(
     let mut chunk = [0; 8192];
     let mut stderr_open = true;
     let mut printed = String::new();
-    // A hang guard: an installer that never sees its runner paired would
-    // wait for ever. It fires only once the installer has printed nothing
-    // for a minute on either stream, its download's progress meter included,
-    // so a slow download that moves is no hang; nor is a code's lifetime,
-    // which elapses at once between two lines.
+    // An installer that never sees its runner paired would wait for ever.
+    // Its guard hears each line and each chunk on either stream, its
+    // download's progress meter included, so a slow download that moves is
+    // no hang; nor is a code's lifetime, which elapses at once between two
+    // lines.
+    let mut silence = Silence::new(Duration::from_secs(60));
     let read = loop {
-        let heard = tokio::time::timeout(Duration::from_secs(60), async {
-            tokio::select! {
-                line = lines.next_line() => Some(line.unwrap()),
-                read = stderr.read(&mut chunk), if stderr_open => {
-                    let read = read.unwrap();
-                    stderr_open = read > 0;
-                    errors.extend_from_slice(&chunk[..read]);
-                    None
-                }
+        let heard = tokio::select! {
+            line = lines.next_line() => Some(line.unwrap()),
+            read = stderr.read(&mut chunk), if stderr_open => {
+                let read = read.unwrap();
+                stderr_open = read > 0;
+                errors.extend_from_slice(&chunk[..read]);
+                None
             }
-        })
-        .await;
+            () = silence.passed() => break Err(()),
+        };
+        silence.heard();
         let line = match heard {
-            Err(silent) => break Err(silent),
-            Ok(None) => continue,
-            Ok(Some(None)) => break Ok(()),
-            Ok(Some(Some(line))) => line,
+            None => continue,
+            Some(None) => break Ok(()),
+            Some(Some(line)) => line,
         };
         printed.push_str(&line);
         printed.push('\n');
@@ -310,6 +407,7 @@ async fn paired(
         };
         if let Some(lifetime) = expiring.take() {
             elapse(lifetime).await;
+            silence.heard();
             continue;
         }
         let claimed = backend
@@ -481,7 +579,7 @@ async fn an_installed_runner_follows_its_backend_to_another_release() {
     );
     let backend = harness.start_at(address).await;
     let log = state.join("runner.log");
-    eventually("the runner reports the failed update", || async {
+    while_updating("the runner reports the failed update", &state, || async {
         std::fs::read_to_string(&log)
             .unwrap()
             .contains(&format!("the update to runner release {broken} failed"))
@@ -492,7 +590,7 @@ async fn an_installed_runner_follows_its_backend_to_another_release() {
     // Once the backend's release has a runner, the runner's next attempt
     // replaces it with that one, which connects in its place.
     let upgraded = releases.publish("upgraded");
-    eventually("the runner of the backend's release is active", || async {
+    while_updating("the runner of the backend's release is active", &state, || async {
         active_release(&state) == Some(json!(upgraded))
     })
     .await;
@@ -563,7 +661,7 @@ async fn a_runner_stops_its_jobs_before_it_replaces_itself_and_they_are_lost_to_
     let upgraded = releases.publish("upgraded");
     work.script(vec![say("noted")]);
     let backend = harness.start_at(address).await;
-    eventually("the runner of the backend's release is active", || async {
+    while_updating("the runner of the backend's release is active", &state, || async {
         active_release(&state) == Some(json!(upgraded))
     })
     .await;
