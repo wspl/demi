@@ -1257,11 +1257,22 @@ window that every conversation of the user with that model then uses
 | Path | User input and result |
 |---|---|
 | Subscription | Claude sign-in, or Codex/Grok device login; additional accounts go into the existing family entry |
-| Vendor catalog | Select vendor, label, key, and optional endpoint/model overrides; the family is derived from supported vendor metadata |
-| Custom endpoint | Select family and protocol, then label, endpoint, key, and model configuration |
+| Vendor | Select a vendor, Anthropic, OpenAI, Google or one models.dev lists, then label and key; its endpoint is the vendor's own and is shown but not edited, and its models come from the vendor's catalog |
+| Compatible API | Select the protocol, Anthropic Messages, OpenAI Chat Completions or OpenAI Responses, then label, endpoint and key; its models are the ones the user adds, none until then |
 
-Entries can be renamed, edited, or removed. API entries support a manual model
-list; clearing it returns to catalog discovery. Labels need not be unique.
+A vendor entry and a compatible one differ in who decides the models. A
+vendor's own API serves the vendor's catalog, so its entry lists them at
+once. A compatible API, such as a proxy or a self-hosted server that speaks
+the Anthropic Messages API, serves whatever models it chooses under whatever
+names, so its entry starts empty, *No models yet* with Add Model, and never
+borrows the protocol's vendor's catalog. For example, Alex adds a compatible
+Anthropic Messages entry at `https://proxy.example/v1`: its Models list is
+empty until he adds `claude-sonnet-4-6` with Add Model. An entry stays the
+kind it was added as: a vendor entry's endpoint is never edited, and a
+compatible entry's endpoint and protocol always can be.
+
+Entries can be renamed, edited, or removed. A vendor entry's models can be
+replaced by a manual list; clearing it returns to the vendor's catalog. Labels need not be unique.
 Provider configuration stores explicit endpoint and model overrides. Fetched
 model directories are cached; they are not a fresh network lookup on every
 conversation opening.
