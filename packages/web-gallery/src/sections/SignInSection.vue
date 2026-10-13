@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { requestFailure } from '../fixtures/request-failures'
+import { correction, requestFailure } from '../fixtures/request-failures'
 import { computed, ref, watch } from 'vue'
 import EmailLoginPage, { type EmailLoginPhase } from '@demicodes/web-ui/auth/EmailLoginPage.vue'
 import SetupPage, { type SetupPhase } from '@demicodes/web-ui/auth/SetupPage.vue'
@@ -51,7 +51,7 @@ const states: {
   {
     value: 'error',
     label: 'Wrong Password',
-    phase: { error: requestFailure('Wrong email or password') }
+    phase: { error: correction('Wrong email or password') }
   },
   {
     value: 'locked',

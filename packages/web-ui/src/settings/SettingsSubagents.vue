@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { shownError, type ShownError } from '../infra/errors'
+import { formError, type ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import { TriangleAlert } from '@lucide/vue'
 import type { ContextLimitChange } from '../agent/context-limit'
@@ -121,7 +121,8 @@ function open(profile: SettingsSubagentProfile | null): void {
 }
 
 function failed(error: unknown): Editor['status'] {
-  return { kind: 'failed', ...shownError(error) }
+  // A refused name or field is the user's to correct in the dialog.
+  return { kind: 'failed', ...formError(error, { invalid_body: null, profile_exists: null }) }
 }
 
 async function save(draft: SettingsSubagentDraft): Promise<void> {

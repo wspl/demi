@@ -1,6 +1,6 @@
 import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { formError, reportError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import {
   afterDecision,
   type CredentialAnswer,
@@ -182,7 +182,8 @@ export const usePermissions = defineStore('permissions', () => {
         }
         // The values do not suit the request: said under the form, which keeps what was typed.
         if (error.code === 'invalid_answer' || error.code === 'credential_fields_differ') {
-          state.error = shownError(error)
+          // A value the request refused, which the user corrects in the card.
+          state.error = formError(error, { invalid_answer: null })
           return
         }
       }

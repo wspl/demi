@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { requestFailure } from '../fixtures/request-failures'
+import { correction, requestFailure } from '../fixtures/request-failures'
 import { demoInstallCommands, demoDeviceReport } from '../fixtures/device-installation'
 import { DEMO_RUNNER_RELEASE, galleryDevices, useGalleryDevices } from '../fixtures/devices'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
@@ -205,7 +205,7 @@ function submitEmail(email: string, password: string) {
   if (password === 'wrong') {
     emailPhase.value = {
       ...emailPhase.value,
-      error: requestFailure('That is not your current password.')
+      error: correction('That is not your current password.')
     }
     return
   }
@@ -224,7 +224,7 @@ function verifyEmail(code: string) {
       emailPhase.value = {
         kind: 'verify',
         email,
-        error: requestFailure('That code is not right. Check the newest message.')
+        error: correction('That code is not right. Check the newest message.')
       }
       return
     }
@@ -248,7 +248,7 @@ function submitPassword(current: string) {
     if (current === 'wrong') {
       passwordPhase.value = {
         kind: 'form',
-        error: requestFailure('That is not your current password.')
+        error: correction('That is not your current password.')
       }
       return
     }

@@ -46,7 +46,7 @@ export async function verifyWithPassword(password: string): Promise<HandoffVerif
     return { kind: 'verified' }
   } catch (error) {
     if (error instanceof ApiError && error.code === 'invalid_credentials') {
-      return { kind: 'wrongPassword', message: error.message }
+      return { kind: 'wrongPassword', message: 'That is not your password.' }
     }
     return { kind: 'failed', ...shownError(error) }
   }
@@ -122,7 +122,13 @@ export const useSessions = defineStore('sessions', () => {
     try {
       await apiRequest(`/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
     } catch (error) {
-      reportError('Could Not Sign Out the Browser', error, { userVisible: true })
+      reportError('Could Not Sign Out the Browser', error, {
+        userVisible: true,
+        // The page's words for the code; the backend's message is the log's.
+        message: error instanceof ApiError && error.code === 'session_not_found'
+          ? 'It was already signed out.'
+          : undefined,
+      })
       return
     }
     product.answered(at, (read) => ({

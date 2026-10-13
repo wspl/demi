@@ -35,6 +35,8 @@ export interface FileBrowserEntry {
 export interface FileBrowserFailure {
   kind: 'not-found' | 'permission' | 'offline' | 'binary' | 'too-large' | 'exists' | 'other'
   message?: SentenceText
+  /** The request that failed, which the view shows with the failure. */
+  requestId?: string | null
 }
 
 /** What a refusal that is the Host's answer carries: the file's version, and the Host's number before it read. */

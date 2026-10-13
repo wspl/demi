@@ -26,3 +26,12 @@ export function simulatedRequestId(seed: string): string {
 export function requestFailure(message: string): ShownError {
   return { message, requestId: simulatedRequestId(message) }
 }
+
+/**
+ * A refusal the user corrects in the form they filled, such as a wrong
+ * password: it names no request (`backend.md` § Request IDs and the server
+ * log).
+ */
+export function correction(message: string): ShownError {
+  return { message, requestId: null }
+}

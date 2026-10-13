@@ -195,7 +195,8 @@ test('the values of a credential go with the answer, the card stays until they a
   decide = () => Response.json({ requestId: 'req_test000000000001', code: 'invalid_answer', message: 'The value of “API key” can be at most 64 KiB.' }, { status: 400 })
   await permissions.decide(CONVERSATION, 'cr-1', 'allow', { values: { key: 'AIza' }, keep: '1d' })
   expect(state.requests.map((request) => request.id)).toEqual(['cr-1', 'al-1', 'al-2'])
-  expect(state.error).toEqual({ message: 'The value of “API key” can be at most 64 KiB.', requestId: 'req_test000000000001' })
+  // The user corrects the value in the card: no request to trace.
+  expect(state.error).toEqual({ message: 'The value of “API key” can be at most 64 KiB.', requestId: null })
   expect(state.deciding).toBe(false)
 
   decide = () => new Response(null, { status: 204 })

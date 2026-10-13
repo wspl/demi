@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { shownError, type ShownError } from '../infra/errors'
+import { formError, type ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import { Eye, EyeOff } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -51,7 +51,8 @@ function open(credential: SettingsCredential | null): void {
 }
 
 function failed(error: unknown): Editor['status'] {
-  return { kind: 'failed', ...shownError(error) }
+  // A refused name or field is the user's to correct in the dialog.
+  return { kind: 'failed', ...formError(error, { invalid_body: null, credential_name_taken: null }) }
 }
 
 async function save(draft: SettingsCredentialDraft): Promise<void> {

@@ -122,7 +122,7 @@ type TextState =
   | { phase: 'card'; tooLarge: boolean }
   /** Nothing is at the path. */
   | { phase: 'missing' }
-  | { phase: 'failed'; message: string }
+  | { phase: 'failed'; message: string; requestId: string | null }
 
 const shown = useShowing(
   () => props.source,
@@ -134,7 +134,7 @@ const state = computed<TextState>(() => {
   if (props.path === null || media.value !== null)
     return { phase: 'idle' }
   if (!props.source.showText)
-    return { phase: 'failed', message: 'This source cannot read files.' }
+    return { phase: 'failed', message: 'This source cannot read files.', requestId: null }
   const entry = shown.entry.value
   if (!entry)
     return { phase: 'loading' }
@@ -149,7 +149,7 @@ const state = computed<TextState>(() => {
       return { phase: 'missing' }
     case null:
       return entry.failure
-        ? { phase: 'failed', message: entry.failure.message ?? 'The file could not be read.' }
+        ? { phase: 'failed', message: entry.failure.message ?? 'The file could not be read.', requestId: entry.failure.requestId ?? null }
         : { phase: 'loading' }
   }
 })
@@ -185,12 +185,12 @@ const startNote = computed(() => start.value?.phase === 'ready'
 const placeholder = computed(() => {
   const current = state.value
   if (current.phase === 'missing')
-    return { status: 'failed' as const, icon: MISSING_FILE.icon, label: MISSING_FILE.label, detail: null }
+    return { status: 'failed' as const, icon: MISSING_FILE.icon, label: MISSING_FILE.label, detail: null, requestId: null }
   if (current.phase === 'failed')
-    return { status: 'failed' as const, icon: undefined, label: 'Could not read this file.', detail: current.message }
+    return { status: 'failed' as const, icon: undefined, label: 'Could not read this file.', detail: current.message, requestId: current.requestId }
   if (current.phase === 'idle')
-    return { status: 'note' as const, icon: undefined, label: 'Select a file.', detail: null }
-  return { status: 'loading' as const, icon: undefined, label: 'Reading…', detail: null }
+    return { status: 'note' as const, icon: undefined, label: 'Select a file.', detail: null, requestId: null }
+  return { status: 'loading' as const, icon: undefined, label: 'Reading…', detail: null, requestId: null }
 })
 
 /** What the media preview of a file reports it shows, the image's zoom included. */
@@ -404,6 +404,7 @@ onBeforeUnmount(() => {
             :label="placeholder.label"
             loading-label="Reading…"
             :detail="placeholder.detail"
+            :request-id="placeholder.requestId"
             :on-retry="shown.retry"
           />
         </div>

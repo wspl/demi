@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from 'bun:test'
-import { reportError, reportPageErrorsWith, shownError, type PageErrorReport } from '../errors'
+import { formError, reportError, reportPageErrorsWith, shownError, type PageErrorReport } from '../errors'
 import { dismissToast, toasts } from '../toast'
 
 // An error the page shows names the request it came from, and a failure the
@@ -74,4 +74,24 @@ test('a report the backend refused leaves the toast without an ID, and an expect
   // Without a detail of its own, the report says where by the error's stack.
   expect(reports[0]!.detail).toContain('errors.test.ts')
   expect(toasts.map((toast) => toast.requestId)).toEqual([null])
+})
+
+test('a report keeps an address’s path and drops its query', async () => {
+  const reports = reporter('req_report0000000002')
+  reportError('Could Not Open the File', new Error('GET https://demi.example/api/fs/raw?path=/home/ana/.env&token=abc failed; /api/fs/file?path=secret.txt too'))
+  await settle()
+  expect(reports[0]!.message).toBe('GET https://demi.example/api/fs/raw failed; /api/fs/file too')
+})
+
+test('a refusal the user corrects in the form names no request and says the page’s words; any other failure names its request', () => {
+  const corrections = { invalid_credentials: 'That is not your current password.' }
+  class Coded extends Refused {
+    constructor(readonly code: string, message: string) {
+      super(message, 'req_k3v9x2m7qd4h8w1p')
+    }
+  }
+  expect(formError(new Coded('invalid_credentials', 'Current password is wrong'), corrections))
+    .toEqual({ message: 'That is not your current password.', requestId: null })
+  expect(formError(new Coded('internal_error', 'The store failed'), corrections))
+    .toEqual({ message: 'The store failed', requestId: 'req_k3v9x2m7qd4h8w1p' })
 })
