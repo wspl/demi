@@ -577,6 +577,15 @@ export function createRecordSync(options: {
     }))
   }
 
+  /**
+   * Resolves once the conversation's writes of its record made so far have
+   * ended, as a send of a saved message waits for the save that makes it;
+   * the writes made after it do not wait for the send.
+   */
+  function settled(conversation: Conversation): Promise<void> {
+    return queue.run(conversation.id, async () => {})
+  }
+
   /** The send `turnId` ended with the message gone from the list: its change leaves once a read holds that. */
   function sent(conversation: Conversation, turnId: string): void {
     const change = sends.get(turnId)
@@ -715,6 +724,7 @@ export function createRecordSync(options: {
     remove,
     resave,
     hideSent,
+    settled,
     sent,
     unsend,
     flush,

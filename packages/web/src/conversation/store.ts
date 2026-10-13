@@ -2301,6 +2301,9 @@ export const useConversations = defineStore('conversations', () => {
    * goes too.
    */
   async function deliverSaved(conversation: Conversation, pending: PendingSend, saved: string, way: 'message' | 'steer'): Promise<void> {
+    // A message saved a moment ago is on the backend's list only once its
+    // save, made before the send, is answered.
+    await recordSync.settled(conversation)
     const runtime = await runtimeFor(conversation)
     const delivery = way === 'steer' ? 'steer' : pending.way === 'queue' ? 'queue' : 'message'
     if (await runtime.sendSaved(saved, pending.id, delivery)) {
