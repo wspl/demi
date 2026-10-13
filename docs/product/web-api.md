@@ -76,7 +76,7 @@ Each route authenticates its caller in one of these ways
 
 | Routes | Authentication |
 |---|---|
-| `GET/POST /setup`, `POST /auth/login` | None; a successful `POST` sets the session cookie |
+| `GET/POST /setup`, `POST /auth/login`, `POST /auth/passkey/options`, `POST /auth/passkey` | None; a successful setup, login or passkey sign-in sets the session cookie |
 | `WS /sync` | The session cookie, which the route checks without renewing the session |
 | Every other path under `/api`, unknown paths included, except the runner transport | The session cookie, which the session gate checks |
 | The runner transport, `WS /runner` and the pipes at `/pipes/:id` | A runner's device token; an unpaired runner's socket waits without one until a user claims its code |
@@ -721,6 +721,33 @@ a wrong one answers 401 `invalid_credentials` rather than a validation error.
 User responses expose `id`, `email`, `nickname`, `role` and `createdAt`, never
 the password hash.
 
+Passkeys ([User system](product.md#user-system),
+[Authentication and ownership](../backend/backend.md#authentication-and-ownership)):
+
+- `POST /api/auth/passkey/options` is public and returns `{ challengeId,
+  options }`, WebAuthn's request options as JSON; with 1000 challenges
+  waiting it answers 429 `too_many_attempts`. `POST /api/auth/passkey` takes
+  `{ challengeId, credential }`, the browser's answer as JSON, and signs in
+  as `POST /api/auth/login` does; an expired or used challenge answers 401
+  `passkey_expired`, a passkey no account has 401 `unknown_passkey` with its
+  `credentialId`, and a failed check 401 `invalid_credentials`.
+- `GET /api/auth/passkeys` returns `{ passkeys }`, each `{ id, name, synced,
+  createdAt, lastUsedAt }`. `POST /api/auth/passkeys/options` takes
+  `{ password }`, checks it as `PUT /api/auth/password` checks `current`, and
+  returns `{ challengeId, options }`, the creation options, which exclude the
+  account's passkeys. `POST /api/auth/passkeys` takes `{ challengeId,
+  credential }` and answers 201 `{ passkey }`; its name is the password
+  manager's, from the authenticator's AAGUID in the community list of
+  passkey providers the backend carries, and otherwise the browser and
+  system of the page that added it, such as `Chrome on Windows`.
+  `PATCH /api/auth/passkeys/:id` renames one with `{ name }` (1–80
+  characters after trimming), and `DELETE /api/auth/passkeys/:id` removes
+  it, both 204. The synchronization channel's `passkeys` part carries the
+  list, so Settings on another page follows.
+- The public `GET /api/setup` answer carries `passkeys`, whether this backend
+  offers them: false when the public URL's host is an IP address. The setup
+  page adds the new account's first passkey with the password just entered,
+  through the same routes, after `POST /api/setup` has signed it in.
 - `PATCH /api/auth/me` takes `{ nickname }` (1–80 characters after trimming).
 - `PUT /api/auth/password` takes `{ current, next }` and checks the current password.
 - `POST /api/auth/email` takes `{ email, password }`, checks the current password,
@@ -1283,6 +1310,7 @@ later one is the current value of one part of it that changed:
 | `credentials` | `credentials`, as `GET /api/credentials` lists them, a visible field's value included and never a secret's | A credential of the user is saved, changed, removed or expires |
 | `subagents` | `subagents`, the user's [Subagent switch and profiles](#subagents) | The switch is turned on or off; a profile is created, changed, enabled, disabled or deleted |
 | `instructions` | `instructions`, the user's [personal instructions](#instructions) | The user saves them |
+| `passkeys` | `passkeys`, the user's passkeys as `GET /api/auth/passkeys` lists them | The user adds, renames or removes one, or one signs in |
 | `plugin` | `plugin`, the plugin's id, and `state`, its user state | The plugin marks its user state changed ([The page](../architecture/plugins.md#the-page)) |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
 

@@ -53,6 +53,28 @@ current password, edit their nickname, and change email after verifying a code
 sent to the new address. Setup and account creation do not require email delivery;
 email change does, and reports an unavailable mail service explicitly.
 
+An account can also sign in with a passkey, beside its password, which every
+account keeps. For example, Ana adds a passkey in Settings › Account: she
+enters her password, her browser offers to save the passkey in its password
+manager, such as Google Password Manager in Chrome or iCloud Keychain in
+Safari, and from then on any device that manager syncs to signs her in with
+Touch ID or Face ID. The sign-in page offers her passkeys in the email
+field's autofill and behind Sign In with Passkey, neither of which needs her
+email first; a manager holding passkeys of several accounts lists each by
+its email. An account has any number of passkeys, one per manager or
+security key, and lists them in Settings › Account with the manager's name,
+such as iCloud Keychain, whether it syncs (Synced) or stays on one device
+(This Device Only), and when it was added and last used; the user renames
+or removes one there, and changes the password there. Adding a passkey
+always takes the account's password, so a browser left signed in cannot add
+one; instance setup offers the new master account to add one right after
+its password, which it has just entered. An administrator's password reset
+leaves the account's passkeys as they are.
+
+Passkeys belong to the host name of the backend's public URL, such as
+`demi.example`: a backend reached at another name, or by an IP address,
+for which browsers make no passkeys, offers none.
+
 The web app's HTTP requests, the synchronization channel and conversation
 WebSockets use the same session cookie.
 [Backend authentication](../backend/backend.md#authentication-and-ownership)

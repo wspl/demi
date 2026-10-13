@@ -654,6 +654,10 @@ form that works as stored:
 | A plugin's secret, its OAuth tokens included | Sealed | `plugin_secrets` |
 | A user's credential's field values | Sealed | `user_credentials` |
 
+A passkey's public key is stored as it is, in `passkeys`, since it is no
+secret; its sign-in challenges are kept in `passkey_challenges` until used or
+expired.
+
 A PHC string records the algorithm and its parameters beside the salt and the
 hash, for example `$argon2id$v=19$m=19456,t=2,p=1$<salt>$<hash>`, so a stored
 hash stays verifiable if the parameters change. New hashes use the argon2
