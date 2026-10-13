@@ -114,7 +114,7 @@ test('a report the backend stored in its own spelling is not sent again', async 
 /** The provider entry `stub`, as the product state lists it. */
 const stub = {
   id: 'stub', kind: 'api_key' as const, providerType: 'stub', label: 'Stub',
-  wireApi: null, vendorId: null, baseUrl: null, hasApiKey: true, models: null, createdAt: '2026-09-09T00:00:00.000Z',
+  wireApi: null, vendorId: null, compatible: false, endpoint: null, hasApiKey: true, models: null, createdAt: '2026-09-09T00:00:00.000Z',
   details: { type: 'failed' as const, message: 'Not read in this test' },
 }
 

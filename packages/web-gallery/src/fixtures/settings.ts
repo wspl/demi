@@ -11,7 +11,6 @@ import type {
   SettingsProviderEntry,
   SettingsModelMatch,
   SettingsProviderModel,
-  SettingsSetupPart,
   SettingsVendor
 } from '@demicodes/web-ui/settings/types'
 import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
@@ -193,6 +192,7 @@ export function provider(
 ): MockProvider {
   return {
     vendorId: null,
+    compatible: false,
     baseUrl: '',
     wireApi: 'openai-chat',
     apiKey: '',
@@ -235,7 +235,7 @@ export const mockVendors: MockVendor[] = [
     name: 'Google',
     family: 'google',
     wireApi: 'openai-chat',
-    baseUrl: null,
+    baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
     logo: vendorLogo('google')
   },
   {
@@ -243,7 +243,7 @@ export const mockVendors: MockVendor[] = [
     name: 'Vertex',
     family: 'google',
     wireApi: 'openai-chat',
-    baseUrl: null,
+    baseUrl: 'https://us-central1-aiplatform.googleapis.com',
     logo: vendorLogo('google-vertex')
   },
   {
@@ -634,7 +634,7 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
     provider({
-      id: 'ollama', name: 'Ollama on the lab workstation', kind: 'api_key', family: 'openai', vendorId: null,
+      id: 'ollama', name: 'Ollama on the lab workstation', kind: 'api_key', family: 'openai', vendorId: null, compatible: true,
       baseUrl: 'http://localhost:11434/v1', wireApi: 'openai-chat', apiKey: '',
       modelSource: 'manual', state: 'unreachable', detail: 'connect ECONNREFUSED 127.0.0.1:11434',
       models: [
@@ -677,43 +677,40 @@ export function mockProviders(): MockProvider[] {
 /**
  * Entries that are not complete yet (`models.md` § A provider is in the list
  * from the start), one lacking each part and one lacking two: a vendor entry
- * without its key, a bare endpoint with a key and no model, a bare endpoint
- * with neither, and a subscription nobody has signed in to.
+ * without its key, a compatible API with a key and no model, a compatible API
+ * with neither, and a subscription nobody has signed in to. None of them
+ * has failed, so none is red.
  */
 export function incompleteProviders(): MockProvider[] {
   return [
     provider({
-      id: 'codex-new', name: 'Codex', kind: 'subscription', family: 'codex', state: 'setup', missing: ['account'],
+      id: 'codex-new', name: 'Codex', kind: 'subscription', family: 'codex', state: 'setup',
       autoRefreshUsage: false,
     }),
     provider({
       id: 'google', name: 'Google', kind: 'api_key', family: 'google', vendorId: 'google',
-      wireApi: 'google-generative', state: 'setup', missing: ['apiKey'], modelSource: 'catalog',
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta', wireApi: 'google-generative', state: 'setup', modelSource: 'catalog',
       models: [
         model({ id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', contextWindow: 1_000_000, outputLimit: 65_536, tools: true }),
         model({ id: 'gemini-3.8-pro', name: 'Gemini 3.8 Pro', contextWindow: 1_000_000, outputLimit: 65_536, tools: true }),
       ],
     }),
     provider({
-      id: 'lab', name: 'Lab Server', kind: 'api_key', family: 'openai', baseUrl: 'http://lab.example:8000/v1',
-      state: 'setup', missing: ['models'], modelSource: 'manual', configured: true, keyConfigured: true,
+      id: 'lab', name: 'Lab Server', kind: 'api_key', family: 'openai', compatible: true, baseUrl: 'http://lab.example:8000/v1',
+      state: 'setup', modelSource: 'manual', configured: true, keyConfigured: true,
     }),
     provider({
-      id: 'endpoint', name: 'OpenAI Responses API', kind: 'api_key', family: 'openai', wireApi: 'openai-responses',
-      state: 'setup', missing: ['apiKey', 'models'], modelSource: 'manual',
+      id: 'endpoint', name: 'OpenAI Responses API', kind: 'api_key', family: 'openai', compatible: true,
+      baseUrl: 'https://proxy.example/v1', wireApi: 'openai-responses', state: 'setup', modelSource: 'manual',
     }),
   ]
 }
 
-/** What an entry still lacks, from what it holds: its key, its first model, its sign-in. */
-export function missingParts(entry: SettingsProviderEntry): SettingsSetupPart[] {
-  if (entry.kind === 'subscription') {
-    return entry.accounts.length ? [] : ['account']
-  }
-  return [
-    ...(entry.keyConfigured ? [] : ['apiKey' as const]),
-    ...(entry.models.length ? [] : ['models' as const]),
-  ]
+/** Whether an entry still lacks a part, from what it holds: its key, its first model, its sign-in. */
+export function isIncomplete(entry: SettingsProviderEntry): boolean {
+  return entry.kind === 'subscription'
+    ? !entry.accounts.length
+    : !entry.keyConfigured || !entry.models.length
 }
 
 /** The models.dev models the Add Model specimens search, as the backend's search answers. */
