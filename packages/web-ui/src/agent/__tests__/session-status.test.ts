@@ -5,6 +5,7 @@ import {
   resumeWaitsFor,
   turnRecovery,
   sessionPaneStatus,
+  dockChipsShown,
   sessionStatusCopy,
 } from '../session-status'
 
@@ -12,6 +13,15 @@ test('a restore in flight is never an empty conversation', () => {
   expect(sessionPaneStatus('loading', false)).toBe('loading')
   expect(sessionPaneStatus('loading', true)).toBe('loading')
   expect(sessionPaneStatus('ready', false)).toBe('empty')
+})
+
+test('the dock shows no chip while the pane says the conversation loads', () => {
+  // The opening's reads (the agents, the Resume a transcript calls for) are held while the
+  // handshake is on its way; the dock shows them with the transcript, not before.
+  expect(dockChipsShown('loading')).toBe(false)
+  expect(dockChipsShown('ready')).toBe(true)
+  expect(dockChipsShown('reconnecting')).toBe(true)
+  expect(dockChipsShown('failed')).toBe(true)
 })
 
 test('reconnecting keeps the transcript and is not a pane or an empty conversation', () => {
