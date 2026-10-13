@@ -55,7 +55,6 @@ const conversation = computed<ChatSessionState>(() => ({
 const place = {
   path: `${WORKSPACE_ROOT}/notes/sync-stall.md`,
   root: WORKSPACE_ROOT,
-  imageUrl: (path: string) => path,
 }
 </script>
 

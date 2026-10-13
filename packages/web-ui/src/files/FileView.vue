@@ -240,13 +240,7 @@ const markdown = computed(() => kind.value === 'markdown' &&
   renderable(state.value.text))
 const tooLargeToRender = computed(() => kind.value === 'markdown' &&
   (state.value.phase === 'ready' ? !renderable(state.value.text) : start.value?.phase === 'ready'))
-const place = computed<DocumentPlace | null>(() => props.path === null
-  ? null
-  : {
-      path: props.path,
-      root: props.root,
-      imageUrl: (path) => props.source.contents?.url(path) ?? '',
-    })
+const place = computed<DocumentPlace | null>(() => props.path === null ? null : { path: props.path, root: props.root })
 
 // A directory typed into the crumb row: selected in the tree until another file opens.
 const located = ref<string | null>(null)
@@ -380,6 +374,7 @@ onBeforeUnmount(() => {
           v-else-if="markdown && state.phase === 'ready' && place"
           :text="state.text"
           :place="place"
+          :contents="source.contents"
           :reloads="reloads"
           @open="emit('open', $event)"
         />
