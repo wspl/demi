@@ -149,8 +149,13 @@ keyboard focus does (`:focus-visible`), so a click leaves no ring; Enter and
 Space act on it as a click does. The ring is shown whole wherever the control
 stands: one ring for every focusable element, drawn outside the control, and
 inside it within a box that clips, such as a scroller, a folding section or
-a bubble, so no edge ever cuts it; a selected state that shows the ring draws
-the same one. The browse tool's `demi.focusRings` finds any ring a page cuts
+a bubble, so no edge ever cuts it. The ring shows only where the user moved
+the focus with the keyboard, by Tab or by the arrow keys in a list: never
+after a click, a link's included, and never where the page moved the focus
+itself, as when a closed window or menu gives the focus back to what opened
+it, even when Escape closed it, nor on a field the page focuses on opening.
+A selected item shows its selection by its own selected look, never by the
+focus ring. The browse tool's `demi.focusRings` finds any ring a page cuts
 or covers ([Product checks](../delivery/browse.md)). A disabled control is skipped. One web-ui
 primitive per kind of control owns this, so no caller makes a control
 focusable by hand.
