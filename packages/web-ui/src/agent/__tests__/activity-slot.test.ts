@@ -26,6 +26,12 @@ function kind(
   })
 }
 
+test('a first opening whose socket is not made yet says it connects, as a lost socket does', () => {
+  expect(kind('idle', [userBlock()], undefined, { load: 'connecting' })).toBe('connecting')
+  expect(kind('idle', [userBlock()], undefined, { load: 'connecting', backendAway: true })).toBeNull()
+  expect(kind('idle', [userBlock()], undefined, { load: 'opening' })).toBeNull()
+})
+
 test('a running turn requests while it waits for the first model output', () => {
   expect(kind('running', [])).toBe('requesting')
 })

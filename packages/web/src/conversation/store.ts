@@ -16,7 +16,7 @@ import {
 } from '@demicodes/web-ui/agent/message-editing'
 import { reportError, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
 import { ConversationSocketError } from '@demicodes/web-ui/transport/conversation-socket'
-import { CONVERSATION_UNREADABLE } from '@demicodes/web-ui/agent/session-status'
+import { CONVERSATION_UNREADABLE, transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused, type Refusal } from '@demicodes/web-ui/sidebar/refused-toast'
@@ -988,7 +988,11 @@ export const useConversations = defineStore('conversations', () => {
     // first send opens the record it just created, and the composer the user
     // sent from must stay where it is, with the focus in it.
     if (!cache.get(conversation.id) && conversation.load !== 'ready') {
-      conversation.load = conversation.persistence === 'synced' ? 'loading' : 'ready'
+      if (conversation.persistence === 'synced') {
+        startLoading(conversation)
+      } else {
+        conversation.load = 'ready'
+      }
     }
     try {
       await cache.open(conversation.id, (entry) => loadConversation(conversation, entry))
@@ -1089,15 +1093,7 @@ export const useConversations = defineStore('conversations', () => {
         await draftRestored
         conversation.load = 'ready'
       } else {
-        hostsRead = (await readOpening(conversation, signal, draftRestored)).hosts
-        // The transcript shows with the phase, the pending steers and the
-        // wait, once the handshake is applied, so a reload never draws a
-        // moment without them (`runtime.md` § Connections and the live
-        // tree); one that opens no session, or whose model list has not
-        // answered, shows it now.
-        if (!runnable || product.catalogLoad === 'loading') {
-          conversation.load = 'ready'
-        }
+        hostsRead = (await readOpening(conversation, signal, draftRestored, runnable)).hosts
       }
       // The session starts with a model of the catalog that answers for the
       // providers as they are now: a change of them while the conversation
@@ -1110,7 +1106,7 @@ export const useConversations = defineStore('conversations', () => {
       await startSession(conversation, entry, made)
       // No session started: archived meanwhile, or its model is not one the
       // page can use.
-      if (!entry.runtime && conversation.load === 'loading') {
+      if (!entry.runtime && conversation.load === 'opening') {
         conversation.load = 'ready'
       }
       await hostsRead
@@ -1198,15 +1194,53 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
+   * Shows the conversation loading, as an opening begins: nothing of an
+   * earlier attempt shows meanwhile, neither its transcript and agents nor
+   * its session or its failure (`web-application.md` § Opening a
+   * conversation shows in two steps).
+   */
+  function startLoading(conversation: Conversation): void {
+    conversation.load = 'loading'
+    conversation.history = EMPTY_TRANSCRIPT
+    conversation.shownAt = null
+    conversation.failures = {}
+    conversation.instructions = []
+    conversation.summaries = {}
+    conversation.subagents = []
+    conversation.lastError = null
+    clearSession(conversation)
+  }
+
+  /**
+   * Clears what only the live session knows, which joins at the second
+   * step of the opening; nothing of a session the page held before shows
+   * meanwhile.
+   */
+  function clearSession(conversation: Conversation): void {
+    conversation.phase = 'idle'
+    conversation.queue = []
+    conversation.pendingSteers = []
+    conversation.pendingCalls = []
+    conversation.waitingSince = null
+    conversation.contextUsage = null
+    conversation.terminals = []
+  }
+
+  /**
    * Reads what the page shows of a conversation it opens, all at once: its
-   * transcript, its hosts and its draft. It answers once the transcript is
-   * held, with the hosts' read, which neither the transcript nor the
-   * session's opening waits for.
+   * transcript, its agents, its hosts and its draft, and shows the first
+   * step of its opening, the transcript with its agents, as one change
+   * (`web-application.md` § Opening a conversation shows in two steps):
+   * `runnable`, its session opens next, which the second step shows;
+   * otherwise it stops there. It answers once the transcript is held, with
+   * the hosts' read, which neither the transcript nor the session's opening
+   * waits for.
    */
   async function readOpening(
     conversation: Conversation,
     signal: AbortSignal,
     draftRestored: Promise<void>,
+    runnable: boolean,
   ): Promise<{ hosts: Promise<void> }> {
     const reads = earlyReads.get(conversation.id) ?? openingReads(conversation.id, signal)
     earlyReads.delete(conversation.id)
@@ -1233,11 +1267,12 @@ export const useConversations = defineStore('conversations', () => {
     conversation.instructions = page.instructions
     conversation.summaries = Object.fromEntries(page.summaries.map((summary) => [summary.marker, summary.summaryTokens]))
     reconcileSubmission(conversation)
-    conversation.terminals = []
+    clearSession(conversation)
     // The first copy of the children, which the open's `subagents` frame
-    // replaces whole (`subagents.md` § Protocol); the session that sends it
-    // starts only after this read is applied, so the read never overwrites
-    // a frame.
+    // replaces whole (`subagents.md` § Protocol); while the tree is live the
+    // read is the tree's own list, so the frame takes back none of them.
+    // The session that sends it starts only after this read is applied, so
+    // the read never overwrites a frame.
     conversation.subagents = listed.subagents.map((subagent) => ({
       ...subagentJobFields(subagent),
       pendingCalls: [],
@@ -1249,7 +1284,8 @@ export const useConversations = defineStore('conversations', () => {
       // A live child's usage comes with the opening handshake.
       contextUsage: null,
     }))
-    updateLiveStatus(conversation)
+    // The status stays the summary's until the session tells its phase.
+    conversation.load = runnable ? 'opening' : 'ready'
     return { hosts: hostsRead }
   }
 
@@ -1770,12 +1806,15 @@ export const useConversations = defineStore('conversations', () => {
       })
   }
 
-  /** Marks what the conversation shows as read, at once; the write follows the conversation's earlier ones. */
+  /**
+   * Marks what the conversation shows as read, at once, once it shows its
+   * transcript; the write follows the conversation's earlier ones.
+   */
   function markRead(id: string): Promise<void> {
     const conversation = items.value.find((item) => item.id === id)
     if (
       !conversation ||
-      conversation.load !== 'ready' ||
+      !transcriptShown(conversation.load) ||
       !(conversation.unread || conversation.needsYou) ||
       document.visibilityState !== 'visible'
     ) {
