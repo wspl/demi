@@ -40,6 +40,7 @@ mod sqlite;
 pub mod subagents;
 pub mod tree;
 pub mod usage;
+pub mod web_sessions;
 pub mod workspaces;
 
 /// Why a storage operation failed.

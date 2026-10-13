@@ -164,6 +164,15 @@ pub enum ErrorCode {
     /// The backend offers no passkeys: its public URL's host is an IP
     /// address.
     PasskeysUnavailable,
+    /// Making a handoff code needs the session verified in the last five
+    /// minutes, by password or passkey.
+    VerificationRequired,
+    /// The handoff code is unknown, expired or spent.
+    HandoffExpired,
+    /// The session to sign out is the caller's own, which Sign Out ends.
+    CurrentSession,
+    /// The account has no session of that id.
+    SessionNotFound,
     /// The work panel holds as many tabs, or as much of their data, as it
     /// can (`web-api.md` § Work panel state).
     PanelFull,

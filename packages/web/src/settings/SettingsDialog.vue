@@ -29,6 +29,7 @@ import {
 } from '../api/generated/web-api'
 import { useSession } from '../auth/session'
 import { usePasskeys } from '../auth/passkeys'
+import { useSessions } from '../auth/handoff'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
@@ -49,6 +50,7 @@ const preferences = usePreferences()
 const notifications = useNotifications()
 const session = useSession()
 const passkeys = usePasskeys()
+const sessions = useSessions()
 const conversations = useConversations()
 const pluginSettings = usePluginSettings()
 const router = useRouter()
@@ -407,6 +409,7 @@ function resetShortcuts(): void {
       :email-phase="emailPhase"
       :password-phase="passwordPhase"
       :passkeys="passkeys.offered ? passkeys : undefined"
+      :sessions="sessions"
       @update:name="rename"
       @change-email="openChangeEmail"
       @change-password="openChangePassword"

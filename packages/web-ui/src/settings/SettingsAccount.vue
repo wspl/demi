@@ -19,14 +19,16 @@ import type { SentenceText } from '../ui/ui-text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsPasskeys from './SettingsPasskeys.vue'
-import type { SettingsPasskeyHost } from './types'
+import SettingsSessions from './SettingsSessions.vue'
+import type { SettingsPasskeyHost, SettingsSessionHost } from './types'
 import SettingsRow from './SettingsRow.vue'
 
 /**
  * Who you are here. The credential dialogs open from their rows; the host drives
  * their phases (the server checks the password and sends the code) and the page
  * reports what the user typed. The Passkeys group shows where the host offers
- * passkeys, and adds, renames and removes them through the host's functions.
+ * passkeys, and adds, renames and removes them through the host's functions;
+ * Signed-In Browsers lists the account's sessions and signs others out.
  */
 const props = defineProps<{
   overlayStore: OverlayStore
@@ -46,6 +48,8 @@ const props = defineProps<{
   passwordPhase: ChangePasswordPhase
   /** The account's passkeys; none where this server or browser offers none. */
   passkeys?: SettingsPasskeyHost
+  /** The browsers signed in to the account. */
+  sessions: SettingsSessionHost
 }>()
 
 const emailDraft = defineModel<ChangeEmailDialogDraft>('emailDraft', {
@@ -157,6 +161,7 @@ function checkName(value: string): string | null {
       @submit="(current, next) => emit('submitPassword', current, next)"
     />
     <SettingsPasskeys v-if="passkeys" :host="passkeys" :overlay-store="overlayStore" :email="email" />
+    <SettingsSessions :host="sessions" :overlay-store="overlayStore" />
     <SettingsGroup title="Session">
       <SettingsRow
         label="Sign out"
