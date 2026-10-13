@@ -174,6 +174,48 @@ test('a command shows under its running call, and in the dock once the call retu
   expect(dock.value.map((item) => item.id)).toEqual(['root', 'again'])
 })
 
+// The dock and the rows keep what they found between changes; each change
+// the store makes must reach them, never leave them showing what was.
+test('the dock and the rows follow every change to a child, its transcript and the commands', () => {
+  const first = terminal({ id: 'first', title: 'F', phase: 'running', toolUseId: 'call-1', subagentId: 'agent' })
+  const second = terminal({ id: 'second', title: 'S', phase: 'running', toolUseId: 'call-1', subagentId: 'agent' })
+  const state = reactive({
+    terminals: [first, second],
+    history: held([]),
+    subagents: [{ id: 'agent', history: held([call('call-1', 'executing')]) }],
+  })
+  const commandOf = useCallTerminals(() => state.terminals)
+  const dock = useDockTerminals(() => state)
+  const row = computed(() => commandOf('agent', 'call-1')?.id)
+  expect(dock.value.map((item) => item.id)).toEqual([])
+  expect(row.value).toBe('second')
+  // The child's transcript replaced whole: its call returned.
+  state.subagents[0]!.history = held([call('call-1', 'completed')])
+  expect(dock.value.map((item) => item.id)).toEqual(['first', 'second'])
+  // The child's record replaced by one whose call runs again.
+  state.subagents = [{ id: 'agent', history: held([call('call-1', 'executing')]) }]
+  expect(dock.value.map((item) => item.id)).toEqual([])
+  // The child's record removed: its commands are the dock's.
+  state.subagents = []
+  expect(dock.value.map((item) => item.id)).toEqual(['first', 'second'])
+  state.subagents = [{ id: 'agent', history: held([call('call-1', 'executing')]) }]
+  expect(dock.value.map((item) => item.id)).toEqual([])
+  // A command's call id changed: the row finds the other one, and the
+  // command, no longer under a running call, joins the dock.
+  state.terminals[1]!.toolUseId = 'call-2'
+  expect(row.value).toBe('first')
+  expect(commandOf('agent', 'call-2')?.id).toBe('second')
+  expect(dock.value.map((item) => item.id)).toEqual(['second'])
+  // The latest command of a call removed: the row falls back to the one
+  // before it, and to none once that goes too.
+  state.terminals[1]!.toolUseId = 'call-1'
+  expect(row.value).toBe('second')
+  state.terminals.pop()
+  expect(row.value).toBe('first')
+  state.terminals.pop()
+  expect(row.value).toBeUndefined()
+})
+
 /** `items`, counting each element a reader reads in `reads[label]`, under the store's reactive proxy. */
 function counted<T>(items: T[], reads: Record<string, number>, label: string): T[] {
   reads[label] = 0
