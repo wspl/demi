@@ -18,7 +18,6 @@ use webauthn_rs_proto::{
     RegisterPublicKeyCredential,
 };
 
-use crate::auth::Password;
 use crate::text::Trimmed;
 
 demi_shared_types::id!(
@@ -96,15 +95,6 @@ pub struct PasskeySignIn {
     #[garde(skip)]
     #[schemars(with = "AuthenticationResponseJson")]
     pub credential: PublicKeyCredential,
-}
-
-/// `POST /auth/passkeys/options`: the account's password, which adding a
-/// passkey always takes.
-#[derive(Debug, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct PasskeyPassword {
-    #[garde(length(chars, min = 1))]
-    pub password: Password,
 }
 
 /// `POST /auth/passkeys`: the challenge and the browser's new credential.

@@ -89,7 +89,6 @@ pub fn web() -> Vec<Root> {
         receives::<passkeys::SignInChallenge>(),
         receives::<passkeys::CreationChallenge>(),
         sends::<passkeys::PasskeySignIn>(),
-        sends::<passkeys::PasskeyPassword>(),
         sends::<passkeys::NewPasskey>(),
         sends::<passkeys::PasskeyPatch>(),
         receives::<sessions::SessionList>(),
