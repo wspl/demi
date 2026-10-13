@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { requestFailure } from '../fixtures/request-failures'
+import { correction } from '../fixtures/request-failures'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -151,7 +151,7 @@ function createWorkspace(draft: WorkspaceDraft) {
     ? draft.name
     : baseName(draft.path) || 'Workspace'
   if (workspaceProjects.value.some((project) => project.name === name)) {
-    workspaceMessage.value = requestFailure(`A project called ${name} already exists.`)
+    workspaceMessage.value = correction(`A project called ${name} already exists.`)
     return
   }
   workspaceMessage.value = null

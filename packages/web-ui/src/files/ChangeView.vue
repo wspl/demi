@@ -237,7 +237,7 @@ type State =
   | { phase: 'ready'; sides: ChangeSides }
   | { phase: 'media' }
   | { phase: 'binary' }
-  | { phase: 'failed'; message: string }
+  | { phase: 'failed'; message: string; requestId: string | null }
   | { phase: 'unavailable' }
 
 // A working-tree file's sides, as the change set keeps them: a file shown a
@@ -266,10 +266,10 @@ const workingState = computed<State>(() => {
       // A side that is not text: each version as a card of its own.
       return { phase: 'binary' }
     case 'gone':
-      return { phase: 'failed', message: GONE_MESSAGE }
+      return { phase: 'failed', message: GONE_MESSAGE, requestId: null }
     case null:
       return entry.failure
-        ? { phase: 'failed', message: entry.failure.message ?? 'The change could not be read.' }
+        ? { phase: 'failed', message: entry.failure.message ?? 'The change could not be read.', requestId: entry.failure.requestId ?? null }
         : { phase: 'loading' }
   }
 })
@@ -488,6 +488,7 @@ function pick(path: string): void {
           :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : state.phase === 'unavailable' ? unkeptText : idleText"
           loading-label="Reading…"
           :detail="state.phase === 'failed' ? state.message : null"
+          :request-id="state.phase === 'failed' ? state.requestId : null"
           :on-retry="retry"
         />
       </div>

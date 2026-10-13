@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { requestFailure } from '../fixtures/request-failures'
+import { correction, requestFailure } from '../fixtures/request-failures'
 import { ref } from 'vue'
 import EmailLoginPage from '@demicodes/web-ui/auth/EmailLoginPage.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
@@ -35,20 +35,20 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * what the product would send, and the phase stays, since the point here is
  * the failure.
  */
-const login = { error: requestFailure('The email or password is incorrect.'), reason: 'expired' as const }
+const login = { error: correction('The email or password is incorrect.'), reason: 'expired' as const }
 const email: ChangeEmailPhase = {
   kind: 'form',
   currentEmail: 'preview@example.test',
-  error: requestFailure('This email address is already in use.'),
+  error: correction('This email address is already in use.'),
 }
 const verification: ChangeEmailPhase = {
   kind: 'verify',
   email: 'new@example.test',
-  error: requestFailure('The verification code expired. Request another code.'),
+  error: correction('The verification code expired. Request another code.'),
 }
 const password: ChangePasswordPhase = {
   kind: 'form',
-  error: requestFailure('The current password is incorrect.'),
+  error: correction('The current password is incorrect.'),
 }
 const emailDraft = ref({ email: 'existing@example.test', password: 'preview-only', code: '' })
 const verificationDraft = ref({ email: 'new@example.test', password: '', code: '123456' })
@@ -59,7 +59,7 @@ const providerLogin: ProviderLoginPhase = {
 }
 const pairing: PairingPhase = {
   kind: 'code',
-  error: requestFailure('This code is unavailable. Keep the runner open and paste its latest code.'),
+  error: correction('This code is unavailable. Keep the runner open and paste its latest code.'),
 }
 /** Back and Next move the pairing specimen as the product's do; Open puts the failure back. */
 const pairingShown = ref<PairingPhase>(pairing)
@@ -188,7 +188,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
                 extensions: ['.png'],
                 fastTier: null,
               }"
-              :error="requestFailure('The provider rejected this model ID. Check the ID against the provider’s catalog.')"
+              :error="correction('The provider rejected this model ID. Check the ID against the provider’s catalog.')"
               @close="close"
               @save="(saved) => productWould(`Save ${saved.name || saved.id}`)"
             />

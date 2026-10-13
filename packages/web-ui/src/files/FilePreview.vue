@@ -43,7 +43,7 @@ type State =
   | { phase: 'too-large' }
   /** Nothing is at the path. */
   | { phase: 'missing' }
-  | { phase: 'failed'; message: string }
+  | { phase: 'failed'; message: string; requestId: string | null }
 
 const dimensions = ref<{ width: number; height: number } | null>(null)
 /** An image's zoom, which its preview reports. */
@@ -63,7 +63,7 @@ const state = computed<State>(() => {
   if (entry.answer === 'gone')
     return { phase: 'missing' }
   if (entry.answer !== 'value' || description === undefined)
-    return { phase: 'failed', message: entry.failure?.message ?? 'The file could not be read.' }
+    return { phase: 'failed', message: entry.failure?.message ?? 'The file could not be read.', requestId: entry.failure?.requestId ?? null }
   const failed = undecodable.value
   return failed?.path === props.path && failed.version === description.version
     ? { phase: 'undecodable', description }
@@ -158,6 +158,7 @@ watch(shownFile, (shown) => emit('shown', shown), { immediate: true })
       :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'missing' ? MISSING_FILE.label : 'Could not read this file.'"
       loading-label="Reading…"
       :detail="state.phase === 'failed' ? state.message : null"
+      :request-id="state.phase === 'failed' ? state.requestId : null"
       :on-retry="shown.retry"
     />
   </div>

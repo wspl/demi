@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { requestFailure } from '../fixtures/request-failures'
+import { correction, requestFailure } from '../fixtures/request-failures'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import { ref } from 'vue'
 import { countOf } from '@demicodes/utils'
@@ -221,7 +221,7 @@ const modelEditors: {
     model: matchedModel,
     pending: false,
     search: true,
-    error: requestFailure('The model gemini-3.8-flash is already in Google’s list.'),
+    error: correction('The model gemini-3.8-flash is already in Google’s list.'),
   },
   { variant: 'edit', mode: 'edit', model, pending: false },
   { variant: 'edit · saving', mode: 'edit', model, pending: true },

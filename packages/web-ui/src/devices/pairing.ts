@@ -91,7 +91,8 @@ export function useDevicePairing(
     if (!result.ok) {
       phase.value = {
         kind: 'code',
-        error: { message: pairingErrors[result.code], requestId: result.requestId },
+        // A code the user mistyped is theirs to correct: it names no request.
+        error: { message: pairingErrors[result.code], requestId: result.code === 'invalid_code' ? null : result.requestId },
       }
       return
     }

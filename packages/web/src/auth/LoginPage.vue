@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { shownError } from '@demicodes/web-ui/infra/errors'
+import { formError, shownError } from '@demicodes/web-ui/infra/errors'
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import EmailLoginPage, {
@@ -64,7 +64,7 @@ async function submit(address: string, secret: string): Promise<void> {
     const wait = error instanceof ApiError && error.code === 'too_many_attempts' ? error.retryAfterSeconds : null
     phase.value = {
       reason: phase.value.reason,
-      error: shownError(error),
+      error: formError(error, { invalid_credentials: 'The email or password is incorrect.' }),
       ...(wait === null ? {} : { lockedUntil: Date.now() + wait * 1000 }),
     }
   } finally {

@@ -40,7 +40,7 @@ export async function addPasskey(password: string): Promise<PasskeyAddOutcome> {
     challenge = await readResponse(response, creationChallengeSchema)
   } catch (error) {
     if (error instanceof ApiError && error.code === 'invalid_credentials') {
-      return { kind: 'wrongPassword', message: error.message }
+      return { kind: 'wrongPassword', message: 'That is not your password.' }
     }
     return { kind: 'failed', ...shownError(error) }
   }
