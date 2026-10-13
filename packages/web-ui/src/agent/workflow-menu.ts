@@ -20,10 +20,14 @@ export interface WorkflowOption {
   error: string | null
 }
 
-/** The project's workflows as the page holds them: being read, read, or not readable now. */
+/**
+ * The project's workflows as the page holds them: being read; read; their
+ * directory not usable, as a link, with why; or not readable now.
+ */
 export type WorkflowList =
   | { state: 'reading' }
   | { state: 'read'; workflows: readonly WorkflowOption[] }
+  | { state: 'unavailable'; reason: string }
   | { state: 'failed'; reason: string }
 
 /** One row of the menu. */
@@ -56,6 +60,8 @@ export function workflowShown(choice: WorkflowChoice, list: WorkflowList): Workf
     return { label: 'Default', unavailable: null }
   if (choice.type === 'none')
     return { label: 'No Subagents', unavailable: null }
+  if (list.state === 'unavailable')
+    return { label: choice.id, unavailable: list.reason }
   if (list.state !== 'read')
     return { label: choice.id, unavailable: null }
   const listed = list.workflows.find((workflow) => workflow.id === choice.id)
@@ -84,6 +90,10 @@ export function workflowRows(choice: WorkflowChoice, list: WorkflowList): Workfl
     return [...rows, row('reading', 'Reading Workflows…', null)]
   if (list.state === 'failed')
     return [...rows, row('failed', 'Couldn’t Read Workflows', null, list.reason)]
+  if (list.state === 'unavailable') {
+    const shown = [...rows, row('unavailable', 'Workflows Unavailable', null, list.reason)]
+    return choice.type === 'workflow' ? [...shown, row(`workflow:${choice.id}`, choice.id, choice, list.reason)] : shown
+  }
   for (const workflow of list.workflows) {
     rows.push(row(`workflow:${workflow.id}`, workflow.name ?? workflow.id, { type: 'workflow', id: workflow.id }, workflow.error))
   }

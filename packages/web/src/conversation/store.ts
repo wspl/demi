@@ -414,6 +414,7 @@ export const useConversations = defineStore('conversations', () => {
       pendingCalls: [],
       waitingSince: null,
       model: record.model ? { ...record.model } : initialModelSettings(),
+      workflow: record.workflow,
       lastError: null,
       draft: '',
       savedDraft: null,
@@ -593,6 +594,8 @@ export const useConversations = defineStore('conversations', () => {
       text: unsaved ? conversation.draft : '',
       // A conversation with a record holds its model settings there.
       model: local ? { ...conversation.model } : null,
+      // And its Workflow menu choice; Default goes unwritten.
+      ...(local && conversation.workflow.type !== 'default' ? { workflow: { ...conversation.workflow } } : {}),
       files: files.map((file) =>
         isComposerFile(file)
           ? {
@@ -818,6 +821,9 @@ export const useConversations = defineStore('conversations', () => {
         // record.
         if (draft.model && conversation.persistence !== 'synced') {
           conversation.model = draft.model
+        }
+        if (draft.workflow && conversation.persistence !== 'synced') {
+          conversation.workflow = draft.workflow
         }
         conversation.scroll = draft.scroll
         // The composer's text is here only when the backend does not have
@@ -1711,6 +1717,7 @@ export const useConversations = defineStore('conversations', () => {
       pinned: conversation.pinned,
       target: conversation.target,
       ...(settings ? settingsPatch(settings) : {}),
+      ...(conversation.workflow.type === 'default' ? {} : { workflow: conversation.workflow }),
     }
     const response = await apiRequest('/conversations', {
       method: 'POST',
@@ -1945,6 +1952,14 @@ export const useConversations = defineStore('conversations', () => {
    * write that fails or is refused gives the stored choice back.
    */
   function changeWorkflow(id: string, workflow: WorkflowChoice): void {
+    // A conversation without a record keeps it in its draft, which its
+    // first send gives the record.
+    const conversation = items.value.find((item) => item.id === id)
+    if (conversation && conversation.persistence !== 'synced') {
+      conversation.workflow = workflow
+      saveDrafts()
+      return
+    }
     const change = product.change(`conversation:${id}`, (state) =>
       withConversation(state, id, (record) => ({ ...record, workflow })))
     const signal = lifetime.signal

@@ -702,6 +702,24 @@ test('repeated new reuses the active empty draft and a new snapshot preserves it
   expect(await store.create()).not.toBe(id)
 })
 
+test('a new conversation keeps the workflow it was given, in its saved draft and in the record its first send makes', async () => {
+  const written = spyOn(draftStorage, 'writeDraft').mockResolvedValue(undefined)
+  const store = useConversations()
+  const id = store.create()
+  const conversation = store.items.find((item) => item.id === id)!
+  store.changeWorkflow(id, { type: 'workflow', id: 'review' })
+  // Kept with the draft, and no record is asked to change.
+  expect(conversation.workflow).toEqual({ type: 'workflow', id: 'review' })
+  expect(requests.some((request) => request.path.startsWith('/api/conversations'))).toBe(false)
+  conversation.draft = 'First message'
+  await store.send(conversation)
+  const saved = written.mock.calls.map(([, , draft]) => draft).filter((draft) => draft.local !== null)
+  expect(saved.at(-1)?.workflow).toEqual({ type: 'workflow', id: 'review' })
+  const created = requests.filter((request) => request.path === '/api/conversations')
+  expect(created.map((request) => (request.body as { workflow?: unknown }).workflow)).toEqual([{ type: 'workflow', id: 'review' }])
+  written.mockRestore()
+})
+
 test('first send failure preserves the conversation and retries its UUID and message', async () => {
   const store = useConversations()
   await store.create()

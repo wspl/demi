@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { schemaRefusal } from '@demicodes/protocol'
-import { conversationSummarySchema } from '../api/generated/web-api'
+import { conversationSummarySchema, workflowChoiceSchema } from '../api/generated/web-api'
 import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
 import { modelSettingsSchema } from '@demicodes/web-ui/agent/model-selection'
 import { copiedStoredFileSchema } from '@demicodes/web-ui/agent/message-input/copied-message'
@@ -70,6 +70,11 @@ export const draftSchema = z.object({
   text: z.string(),
   /** The model settings of a conversation without a record; null for one with a record, which holds them. */
   model: modelSettingsSchema.nullable(),
+  /**
+   * The Workflow menu choice of a conversation without a record; absent
+   * for Default, and for one with a record, which holds it.
+   */
+  workflow: workflowChoiceSchema.optional(),
   /** The files of that text, then those of a send not yet accepted. */
   files: z.array(z.union([fileSchema, remoteSchema])),
   scroll: z
