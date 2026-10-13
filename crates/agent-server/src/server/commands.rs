@@ -287,6 +287,9 @@ pub(super) struct Invoked<H: HostResolver, A> {
     pub(super) caller: NodeId,
     /// The node's `shell` call that started the job.
     pub(super) call: String,
+    /// The invoking shell's directory, which a relative path an argument
+    /// names is read against.
+    pub(super) cwd: String,
     /// The command's path, which a failure of one of several values
     /// begins with (`commands.md` § Handle an rpc call).
     pub(super) command: String,
@@ -326,6 +329,7 @@ where
                 tree,
                 caller: job.node,
                 call: job.tool_use_id,
+                cwd: call.invocation.cwd.clone(),
                 command: call.invocation.path.join(" "),
                 json: call.invocation.json,
                 args: call.args,

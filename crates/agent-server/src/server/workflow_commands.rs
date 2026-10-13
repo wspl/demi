@@ -47,7 +47,7 @@ pub(super) fn workflows_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> 
         .leaf(
             LeafBuilder::rpc("check", CHECK_SUMMARY)
                 .input::<CheckArgs>()
-                .describe("file", "The workflow file, such as .demi/workflows/review.yaml; relative to your working directory.")
+                .describe("file", "The workflow file, such as .demi/workflows/review.yaml, absolute or relative to the shell's current directory.")
                 .positionals(["file"])
                 .bind(TypedRpc::new(verb(server, check))),
         )
@@ -66,7 +66,7 @@ async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Res
 
 async fn check<H: HostResolver>(call: Invoked<H, CheckArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let file = &call.args.file;
-    let text = match call.tree.workflow_file(&call.caller, file).await {
+    let text = match call.tree.workflow_file(&call.cwd, file).await {
         Ok(text) => text,
         Err(error) => return fail(&error),
     };
