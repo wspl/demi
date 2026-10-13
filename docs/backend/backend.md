@@ -533,14 +533,21 @@ error the page words from a turn's failure record keeps its own diagnostics
 
 **The server log.** Beside its standard error, which the process supervisor
 keeps, the backend writes the same events, as `DEMI_LOG` selects them, to
-its own log in `log/` under the data directory: one JSON object per line,
-with the time, level, target, message and the span's and event's fields,
-the request, user, conversation and turn IDs among them. The log is bounded:
-eight files of 32 MiB, the oldest removed when the newest fills, which keeps
-about a week of a small server's `info` lines. Writing never holds up the
-work: one writer thread owns the files, as the
-[Host log](../execution/runner.md#host-log)'s does, and a line its queue has
-no room for is dropped and counted. Nothing writes a request's body or query
+its own log, a SQLite database, `log.sqlite`, in the data directory. Each
+event is a row: the time, level, target and message, the request, user,
+conversation and turn IDs as columns of their own, and the event's other
+fields as JSON. The request ID, the conversation with the time, and the time
+are indexed, so one request's lines are found without reading the rest. The
+log keeps seven days and at most 512 MiB: each hour the writer deletes the
+rows older than that, or the oldest until the database is under the cap, and
+returns the freed pages to the disk. Writing never holds up the work: events
+go to a bounded queue, one writer thread owns the database and inserts what
+the queue holds in one transaction at most every 200 milliseconds, and an
+event the queue has no room for is dropped and counted. A database the writer
+cannot open or write, such as one of another schema or a corrupt one, is
+removed and created again, since the log is a record for diagnosis, not
+state ([Schemas and migrations](storage.md#schemas-and-migrations)); standard
+error keeps every line meanwhile. Nothing writes a request's body or query
 string, a credential, a secret's value or a file's contents to the log.
 
 `GET /api/server/log` is an administrator's: `request` keeps the lines of
