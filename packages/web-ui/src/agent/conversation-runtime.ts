@@ -1,5 +1,6 @@
 import { shallowRef, triggerRef } from 'vue'
 import {
+  SavedGoneError,
   SessionError,
   SteerRejectedError,
   applyTranscriptPatches,
@@ -10,7 +11,7 @@ import {
   type ClientSessionEvent,
 } from '@demicodes/conversation-client'
 import { asError, createId, deferred } from '@demicodes/utils'
-import type { ClientContent, EditRequest, TranscriptVersion } from '@demicodes/protocol'
+import type { ClientContent, EditRequest, SavedDelivery, TranscriptVersion } from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
 import { waitToReconnect } from '../transport/liveness'
 import { hasAcceptedSubmission, isWritten } from './submission'
@@ -153,6 +154,31 @@ export class ConversationRuntime {
       }
     }
     await this.submit(content, id)
+  }
+
+  /**
+   * Sends the message saved for later `id` the way the composer chose; the
+   * backend takes it off the list once the session takes it, and keeps it
+   * when the session refuses it. A steer the session refuses, as its turn
+   * ended meanwhile, goes as a message, as the composer's steer would.
+   * Answers false when the list no longer held it, as another page sent or
+   * deleted it first, and nothing was sent.
+   */
+  async sendSaved(id: string, delivery: SavedDelivery): Promise<boolean> {
+    this.options.state.lastError = null
+    const client = await this.ensureOpen()
+    try {
+      await client.sendSaved(id, delivery)
+    } catch (error) {
+      if (error instanceof SavedGoneError) {
+        return false
+      }
+      if (!(error instanceof SteerRejectedError)) {
+        throw error
+      }
+      return this.sendSaved(id, 'message')
+    }
+    return true
   }
 
   /** Whether the session, open again after a lost connection, holds the steer `id`: pending, or in the transcript. */
@@ -543,7 +569,10 @@ export class ConversationRuntime {
         state.lastError = event.message
         break
       case 'rejected':
-        state.lastError = event.reason
+        // A saved message another page sent first is the caller's to tell.
+        if (event.command !== 'send_saved') {
+          state.lastError = event.reason
+        }
         this.settlePendingAction()
         break
       // A view never sends `close`, so a `closed` means another client

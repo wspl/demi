@@ -21,9 +21,9 @@ import { parseUserMarkdown, serializeUserMarkdown } from '../markdown/user-markd
 import MessageEditor from './message-editor/MessageEditor.vue'
 import { showToast } from '../infra/toast'
 import ComposerShell from './ComposerShell.vue'
-import DraftsEntry from './DraftsEntry.vue'
-import DraftsList from './DraftsList.vue'
-import { asksSaveDraft, saveDraftKeys, type DraftRow } from './drafts'
+import SavedEntry from './SavedEntry.vue'
+import SavedList from './SavedList.vue'
+import { asksSaveForLater, saveForLaterKeys, type SavedRow } from './saved'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import { COMPACT_AFTER_TURN, type UsageLimits } from './context-usage'
 import ModelSelector from './ModelSelector.vue'
@@ -132,34 +132,35 @@ const props = withDefaults(
      */
     draftShown?: number
     /**
-     * The conversation's saved drafts, newest first (`product.md` § Drafts):
-     * the entry under the composer counts them and opens their list.
+     * The conversation's messages saved for later, newest first
+     * (`product.md` § Saved for later): the entry under the composer counts
+     * them and opens their list.
      */
-    drafts?: DraftRow[]
+    saved?: SavedRow[]
   }>(),
   {
     attachments: () => [],
-    drafts: () => [],
+    saved: () => [],
     canConfigure: true,
     sendWhileRunning: DEFAULT_SEND_WHILE_RUNNING,
   },
 )
 const draft = defineModel<string>('draft', { default: '' })
-/** The drafts' list stands open under the composer. */
-const draftsOpen = defineModel<boolean>('draftsOpen', { default: false })
+/** The list of messages saved for later stands open under the composer. */
+const savedOpen = defineModel<boolean>('savedOpen', { default: false })
 const emit = defineEmits<{
   retryModels: []
   /** The draft goes: at once while nothing runs, otherwise as a steer or to the queue. */
   submit: [way: SendWay]
   stop: []
-  /** Keep the message, its files included, as a draft, and empty the composer. */
-  saveDraft: []
-  /** Put the draft in the composer, removing it from the list. */
-  editDraft: [id: string]
-  /** Send the draft as the composer would. */
-  sendDraft: [id: string]
-  /** Remove the draft at once; the caller offers the undo. */
-  deleteDraft: [id: string]
+  /** Keep the message, its files included, for later, and empty the composer. */
+  saveForLater: []
+  /** Put a saved message in the composer, removing it from the list. */
+  editSaved: [id: string]
+  /** Send a saved message as the composer would, the way it chooses now. */
+  sendSaved: [id: string, way: SendWay]
+  /** Remove a saved message at once; the caller offers the undo. */
+  deleteSaved: [id: string]
   compact: []
   /** Opens where an instructions entry of the context card is written. */
   openInstruction: [entry: InstructionEntry]
@@ -279,8 +280,8 @@ const hasDraft = computed(
   () => shownEdit.value ? editHasContent(shownEdit.value)
     : !!draft.value.trim() || !!capsules.value.length,
 )
-/** Save as Draft keeps a message that holds something; not an edit of a sent one. */
-const canSaveDraft = computed(() => hasDraft.value && !shownEdit.value && !props.disabled)
+/** Save for Later keeps a message that holds something; not an edit of a sent one. */
+const canSaveForLater = computed(() => hasDraft.value && !shownEdit.value && !props.disabled)
 /**
  * The composer's width under which the entry keeps its mark and count: the
  * model's chip and the context ring need the rest of the row.
@@ -289,26 +290,30 @@ const COMPACT_ENTRY_BELOW_PX = 380
 const composerRoot = ref<HTMLElement | null>(null)
 const { width: composerWidth } = useElementSize(composerRoot)
 const compactEntry = computed(() => composerWidth.value > 0 && composerWidth.value < COMPACT_ENTRY_BELOW_PX)
-/** Edit puts the draft in the composer, so the list gives its room back; Send and Delete keep it open for the next. */
-function editDraft(id: string) {
-  draftsOpen.value = false
-  emit('editDraft', id)
+/** Edit puts the message in the composer, so the list gives its room back; Send and Delete keep it open for the next. */
+function editSaved(id: string) {
+  savedOpen.value = false
+  emit('editSaved', id)
 }
-// The list closes with its last draft, so the next one does not open it unasked.
-watch(() => props.drafts.length, (count) => {
+/** Send goes the way the composer's send button would now: at once, or steering or queueing while the agent works. */
+function sendSaved(id: string) {
+  emit('sendSaved', id, chooseSendWay(working.value, props.sendWhileRunning, false))
+}
+// The list closes with its last message, so the next one does not open it unasked.
+watch(() => props.saved.length, (count) => {
   if (count === 0) {
-    draftsOpen.value = false
+    savedOpen.value = false
   }
 })
 
-/** ⌘S (Ctrl+S) saves the message as a draft, wherever the focus is in the composer, never the page. */
+/** ⌘S (Ctrl+S) saves the message for later, wherever the focus is in the composer, never the page. */
 function saveKey(event: KeyboardEvent) {
-  if (!asksSaveDraft(event)) {
+  if (!asksSaveForLater(event)) {
     return
   }
   event.preventDefault()
-  if (canSaveDraft.value) {
-    emit('saveDraft')
+  if (canSaveForLater.value) {
+    emit('saveForLater')
   }
 }
 
@@ -665,20 +670,20 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             </template>
           </Dropdown>
         </template>
-        <template v-if="drafts.length && !shownEdit" #below-start>
-          <DraftsEntry
-            :count="drafts.length"
-            :open="draftsOpen"
+        <template v-if="saved.length && !shownEdit" #below-start>
+          <SavedEntry
+            :count="saved.length"
+            :open="savedOpen"
             :compact="compactEntry"
-            @toggle="draftsOpen = !draftsOpen"
+            @toggle="savedOpen = !savedOpen"
           />
         </template>
-        <template v-if="draftsOpen && drafts.length && !shownEdit" #list>
-          <DraftsList
-            :rows="drafts"
-            @edit="editDraft"
-            @send="emit('sendDraft', $event)"
-            @delete="emit('deleteDraft', $event)"
+        <template v-if="savedOpen && saved.length && !shownEdit" #list>
+          <SavedList
+            :rows="saved"
+            @edit="editSaved"
+            @send="sendSaved"
+            @delete="emit('deleteSaved', $event)"
           />
         </template>
         <template #below>
@@ -718,14 +723,14 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               @keydown.enter.space.prevent="edit.cancel"
             />
           </Tooltip>
-          <Tooltip v-if="canSaveDraft" :content="`Save as Draft  ${saveDraftKeys()}`">
+          <Tooltip v-if="canSaveForLater" :content="`Save for Later  ${saveForLaterKeys()}`">
             <IconButton
               :icon="NotebookPen"
               variant="ghost"
               circle
-              aria-label="Save as Draft"
+              aria-label="Save for Later"
               @mousedown.prevent
-              @click="emit('saveDraft')"
+              @click="emit('saveForLater')"
             />
           </Tooltip>
           <!-- Stop stays for the whole turn, beside the send button while the message holds text. -->
