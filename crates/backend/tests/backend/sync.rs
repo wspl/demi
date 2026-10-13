@@ -22,6 +22,7 @@ use demi_web_api_protocol::devices::InstallCommands;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{ProviderDetails, ProviderReading, ProviderState};
 use demi_web_api_protocol::settings::{InstanceMode, Preferences, Theme};
+use demi_web_api_protocol::passkeys::PasskeyList;
 use demi_web_api_protocol::state::{ProductState, SyncEvent};
 use demi_web_api_protocol::subagents::{SubagentLimit, SubagentSettings};
 use jiff::SignedDuration;
@@ -163,6 +164,16 @@ async fn the_snapshot_is_the_users_product_state() {
             runner_release: None,
             conversations: Vec::new(),
             credentials: Vec::new(),
+            // A new user has no passkeys; the handle is the bytes of the
+            // user's id.
+            passkeys: PasskeyList {
+                passkeys: Vec::new(),
+                user_handle: data_encoding::BASE64URL_NOPAD
+                    .encode(uuid::Uuid::parse_str(master.user.id.as_str()).unwrap().as_bytes()),
+            },
+            // The backend's own address is an IP address, for which browsers
+            // make no passkeys.
+            passkey_rp_id: None,
             // A Cloud no work used yet is not made.
             cloud: CloudStatus {
                 device: None,

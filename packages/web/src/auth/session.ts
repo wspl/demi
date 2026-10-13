@@ -2,17 +2,26 @@ import { defineStore } from 'pinia'
 import {
   identitySchema,
   setupStatusSchema,
+  signInChallengeSchema,
   type Credentials,
+  type PasskeySignIn,
   type SetupRequest,
+  type SetupStatus,
   type UserDto,
 } from '../api/generated/web-api'
-import { apiRequest, ApiError, jsonBody } from '../api/client'
+import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
+import { signalUnknownPasskey, signWithPasskey } from './webauthn'
 
 type User = UserDto
 type SessionState =
   | { status: 'checking' }
   /** No account exists yet: the visitor creates the master account. */
   | { status: 'setupNeeded' }
+  /**
+   * Setup created the master account and signed it in, and offers it a
+   * passkey before the app opens.
+   */
+  | { status: 'passkeyStep'; user: User }
   | {
       status: 'signedOut'
       reason?: 'expired'
@@ -37,14 +46,22 @@ async function readIdentity(response: Response): Promise<User> {
 }
 
 /**
+ * `GET /setup`: whether the instance still needs its master account, and
+ * the relying party of its passkeys, if it offers them.
+ */
+export async function setupStatus(signal?: AbortSignal): Promise<SetupStatus> {
+  const response = await apiRequest('/setup', { signal })
+  return readResponse(response, setupStatusSchema)
+}
+
+/**
  * Whether the instance still needs its master account. An answer that
  * cannot be read leaves the visitor on the sign-in page, which reports what
  * fails next.
  */
 async function setupNeeded(signal?: AbortSignal): Promise<boolean> {
   try {
-    const response = await apiRequest('/setup', { signal })
-    return setupStatusSchema.parse(await response.json()).needed
+    return (await setupStatus(signal)).needed
   } catch {
     signal?.throwIfAborted()
     return false
@@ -116,14 +133,50 @@ export const useSession = defineStore('session', {
       }
     },
     /**
-     * Creates the master account, which signs in. When another visitor
-     * created it first, the visitor signs in instead.
+     * Signs in with a passkey, which names the account: in the email
+     * field's autofill with `conditional`, otherwise in the browser's own
+     * prompt. Answers whether it signed in; false when the user dismissed
+     * the prompt or `signal` aborted it. A passkey no account has is told to
+     * the password manager before the refusal is thrown.
+     */
+    async signInWithPasskey(conditional: boolean, signal: AbortSignal): Promise<boolean> {
+      const challenge = await readResponse(
+        await apiRequest('/auth/passkey/options', { method: 'POST', ...jsonBody({}), signal }),
+        signInChallengeSchema,
+      )
+      const credential = await signWithPasskey(challenge.options, conditional, signal)
+      if (!credential) {
+        return false
+      }
+      let response: Response
+      try {
+        response = await apiRequest('/auth/passkey', {
+          method: 'POST',
+          ...jsonBody({ challengeId: challenge.challengeId, credential } satisfies PasskeySignIn),
+          signal,
+        })
+      } catch (error) {
+        if (error instanceof ApiError && error.code === 'unknown_passkey' && error.credentialId && challenge.options.rpId) {
+          signalUnknownPasskey(challenge.options.rpId, error.credentialId)
+        }
+        throw error
+      }
+      const user = await readIdentity(response)
+      signal.throwIfAborted()
+      this.current = { status: 'signedIn', user }
+      return true
+    },
+    /**
+     * Creates the master account, which signs in: at once, or, with
+     * `passkeyStep`, once setup's passkey step ends (`finishSetup`). When
+     * another visitor created it first, the visitor signs in instead.
      */
     async setUp(
       nickname: string,
       email: string,
       password: string,
       signal: AbortSignal,
+      passkeyStep = false,
     ): Promise<void> {
       try {
         const response = await apiRequest('/setup', {
@@ -137,15 +190,18 @@ export const useSession = defineStore('session', {
         })
         const user = await readIdentity(response)
         signal.throwIfAborted()
-        this.current = {
-          status: 'signedIn',
-          user,
-        }
+        this.current = passkeyStep ? { status: 'passkeyStep', user } : { status: 'signedIn', user }
       } catch (error) {
         if (error instanceof ApiError && error.code === 'already_set_up') {
           this.current = { status: 'signedOut' }
         }
         throw error
+      }
+    },
+    /** Ends setup's passkey step: the app opens, signed in. */
+    finishSetup(): void {
+      if (this.current.status === 'passkeyStep') {
+        this.current = { status: 'signedIn', user: this.current.user }
       }
     },
     async signOut(): Promise<void> {

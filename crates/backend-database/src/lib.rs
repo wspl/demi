@@ -22,6 +22,7 @@ pub mod forks;
 pub mod instructions;
 pub mod managed;
 pub mod panels;
+pub mod passkeys;
 pub mod permissions;
 pub mod plugin_secrets;
 pub mod plugin_values;

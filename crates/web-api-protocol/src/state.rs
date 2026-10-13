@@ -13,6 +13,7 @@ use crate::conversations::ConversationSummary;
 use crate::credentials::CredentialDto;
 use crate::devices::{DeviceDto, InstallCommands, StunUrl};
 use crate::ids::ConversationId;
+use crate::passkeys::{PasskeyDto, PasskeyList};
 use crate::plugins::PluginEntry;
 use crate::providers::ProviderState;
 use crate::settings::{InstanceMode, Preferences};
@@ -60,6 +61,11 @@ pub struct ProductState {
     pub instructions: String,
     /// The user's credentials in name order, without their values.
     pub credentials: Vec<CredentialDto>,
+    /// The user's passkeys and WebAuthn user handle.
+    pub passkeys: PasskeyList,
+    /// The relying party's id of the backend's passkeys, as `GET /setup`
+    /// gives it.
+    pub passkey_rp_id: Option<String>,
     /// The backend's plugins, in their order of registration.
     pub plugins: Vec<PluginEntry>,
     /// The state of each plugin the user has on that gives one, valid
@@ -149,6 +155,13 @@ pub enum SyncEvent {
     /// credentials, without their values.
     Credentials {
         credentials: Vec<CredentialDto>,
+    },
+    /// A passkey was added, renamed, removed or signed in with: the user's
+    /// passkeys, as `GET /auth/passkeys` lists them.
+    Passkeys {
+        passkeys: Vec<PasskeyDto>,
+        #[serde(rename = "userHandle")]
+        user_handle: String,
     },
     /// Nothing else was sent for 30 seconds.
     Heartbeat,

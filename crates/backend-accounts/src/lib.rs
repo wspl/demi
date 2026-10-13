@@ -8,6 +8,7 @@
 pub mod email_change;
 pub mod instructions;
 pub mod login_limiter;
+pub mod passkeys;
 pub mod passwords;
 pub mod sessions;
 pub mod settings;

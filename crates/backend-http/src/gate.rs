@@ -80,6 +80,16 @@ fn from_another_page(headers: &HeaderMap, public_url: Option<&Url>) -> bool {
         .is_some_and(|origin| !is_product(origin, headers, public_url))
 }
 
+/// The origin of the page that sent the request, when it is the product's
+/// as [`product_pages`] admits it.
+pub(super) fn product_origin(headers: &HeaderMap, public_url: Option<&Url>) -> Option<Url> {
+    let origin = headers.get(ORIGIN)?;
+    if !is_product(origin, headers, public_url) {
+        return None;
+    }
+    Url::parse(origin.to_str().ok()?).ok()
+}
+
 /// Whether `origin` is the product's: the public URL's origin, or the host
 /// and port the request was sent to, as when a development server passes
 /// the page's requests on.

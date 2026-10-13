@@ -69,6 +69,7 @@ pub fn web() -> Vec<Root> {
     use api::{
         attachments, auth, cloud, conversations, credentials, devices, drafts, error, files, hosts, instructions,
         panel,
+        passkeys,
         permissions,
         plugins, providers, search, settings, sidebar, state, subagents, usage, users, workspaces,
     };
@@ -83,6 +84,14 @@ pub fn web() -> Vec<Root> {
         sends::<auth::EmailChangeStart>(),
         receives::<auth::EmailChangeStarted>(),
         sends::<auth::EmailChangeConfirm>(),
+        receives::<passkeys::PasskeyList>(),
+        receives::<passkeys::PasskeyAnswer>(),
+        receives::<passkeys::SignInChallenge>(),
+        receives::<passkeys::CreationChallenge>(),
+        sends::<passkeys::PasskeySignIn>(),
+        sends::<passkeys::PasskeyPassword>(),
+        sends::<passkeys::NewPasskey>(),
+        sends::<passkeys::PasskeyPatch>(),
         receives::<state::ProductState>(),
         receives::<state::SyncEvent>(),
         receives::<settings::Settings>(),

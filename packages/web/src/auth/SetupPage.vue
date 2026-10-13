@@ -3,7 +3,9 @@ import { onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import SetupForm, { type SetupPhase } from '@demicodes/web-ui/auth/SetupPage.vue'
 import { ApiError } from '../api/client'
-import { useSession } from './session'
+import { addPasskey } from './passkeys'
+import { setupStatus, useSession } from './session'
+import { browserHasPasskeys } from './webauthn'
 
 const session = useSession()
 const router = useRouter()
@@ -14,6 +16,24 @@ const confirmation = ref('')
 const phase = ref<SetupPhase>({})
 let request: AbortController | null = null
 
+/** Leaves setup for the app, the password typed forgotten. */
+async function finish(): Promise<void> {
+  password.value = ''
+  confirmation.value = ''
+  session.finishSetup()
+  await router.replace('/chat')
+}
+
+/** Whether this server and this browser offer passkeys; a server that does not say offers none. */
+async function passkeysOffered(signal: AbortSignal): Promise<boolean> {
+  try {
+    return browserHasPasskeys() && (await setupStatus(signal)).passkeyRpId != null
+  } catch {
+    signal.throwIfAborted()
+    return false
+  }
+}
+
 async function submit(nickname: string, address: string, secret: string): Promise<void> {
   if (phase.value.busy) {
     return
@@ -22,10 +42,15 @@ async function submit(nickname: string, address: string, secret: string): Promis
   request = controller
   phase.value = { busy: true }
   try {
-    await session.setUp(nickname, address, secret, controller.signal)
-    password.value = ''
-    confirmation.value = ''
-    await router.replace('/chat')
+    // The new account adds its first passkey with the password it has just
+    // entered, if it wants one.
+    const offered = await passkeysOffered(controller.signal)
+    await session.setUp(nickname, address, secret, controller.signal, offered)
+    if (offered) {
+      phase.value = { passkey: {} }
+      return
+    }
+    await finish()
   } catch (error) {
     if (controller.signal.aborted) {
       return
@@ -46,6 +71,26 @@ async function submit(nickname: string, address: string, secret: string): Promis
   }
 }
 
+async function addFirstPasskey(): Promise<void> {
+  if (phase.value.passkey?.busy) {
+    return
+  }
+  phase.value = { passkey: { busy: true } }
+  const outcome = await addPasskey(password.value)
+  switch (outcome.kind) {
+    case 'added':
+      await finish()
+      return
+    case 'dismissed':
+      phase.value = { passkey: {} }
+      return
+    case 'wrongPassword':
+    case 'failed':
+      phase.value = { passkey: { error: outcome.message } }
+      return
+  }
+}
+
 onUnmounted(() => request?.abort())
 </script>
 
@@ -58,5 +103,7 @@ onUnmounted(() => request?.abort())
     :phase="phase"
     @submit="submit"
     @sign-in="router.replace('/login')"
+    @add-passkey="addFirstPasskey"
+    @skip-passkey="finish"
   />
 </template>
