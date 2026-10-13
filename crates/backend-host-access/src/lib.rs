@@ -31,6 +31,7 @@ use demi_backend_cloud::CloudShard;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::ConversationDb;
 use demi_backend_remote_host::Pipes;
+use demi_backend_runners::claims::PendingClaims;
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::public_url::PublicUrl;
@@ -69,6 +70,8 @@ pub trait HostShard {
     fn native(&self) -> &NativeCatalog;
     /// Where runners fetch the packages' executables from.
     fn public_url(&self) -> &PublicUrl;
+    /// The runners waiting to be paired, which `demi host pair` claims.
+    fn claims(&self) -> &PendingClaims;
     /// Every task the shard spawns, which its close waits for.
     fn tasks(&self) -> &TaskTracker;
     /// The shard as the user's Cloud sees it, whose admission an operation

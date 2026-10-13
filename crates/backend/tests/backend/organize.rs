@@ -1,6 +1,7 @@
 //! What the agent can change of its own conversation
 //! (`sessions-and-targets.md` § What the agent can change, § Switch the
-//! primary target): `demi host attach` attaches a device at once, which the
+//! primary target): `demi host pair` pairs a computer whose installer shows
+//! a code and attaches it, `demi host attach` attaches a device at once, which the
 //! next context block announces; `demi host detach` and `demi conversation
 //! move` wait until the conversation's work ends and are then made in one
 //! transition; a move that fails then leaves the conversation where it was
@@ -15,9 +16,11 @@ use demi_shared_types::{AgentMessageEvent, Block};
 use reqwest::StatusCode;
 use serde_json::json;
 
+use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
+
 use crate::conversations::{FIRST, Socket, transcript};
 use crate::subagents::{Scripts, WAIT, say, shell, tree_on};
-use crate::support::{Harness, Paired, Session, TestBackend, eventually};
+use crate::support::{Harness, Paired, Session, TestBackend, eventually, stored_token};
 
 /// Makes a project of a new directory of `device`'s home, named `name`, and
 /// answers its id.
@@ -156,6 +159,65 @@ async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_e
     })
     .await;
     assert!(!pending(&harness, FIRST));
+    backend.close().await;
+}
+
+// Several seconds: two real runners, one of them paired by the agent.
+#[tokio::test]
+async fn an_agent_pairs_a_computer_from_its_installers_code_and_runs_commands_there() {
+    let scripts = Arc::new(Scripts::default());
+    let (harness, backend, master, _laptop, _, _) = tree_on(&scripts, Harness::new()).await;
+    grant_both(&harness, FIRST);
+    let state = backend.sync(&master).await.snapshot().await;
+    // The computer the agent installed the runner on, which waits to be
+    // paired under the code it shows.
+    let computer = RunnerProcess::start(
+        &backend.url,
+        RunnerProcessOptions {
+            name: "buildbox".into(),
+            ..RunnerProcessOptions::default()
+        },
+    );
+    let code = computer.pairing_code(0).await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t1", "demi host install-command --system linux"),
+            shell("t2", "demi host pair 0000-0000-0000-0000-0000-0000-00"),
+            shell("t3", &format!("demi host pair {code} --name build")),
+            shell("t4", "demi host shell --host build 'echo reached'"),
+            say("done"),
+        ],
+    );
+    socket.chat("m1", "Pair the build computer").await;
+    let asked = scripts.asked(|session| session == FIRST);
+    // The command the agent runs there is the one Add Device shows.
+    assert!(asked[1].contains(&state.install_commands.linux), "{}", asked[1]);
+    // A code no runner waits under says to read the newest one.
+    assert!(
+        asked[2].contains("read the newest one it shows and pass that"),
+        "{}",
+        asked[2]
+    );
+    // The live code pairs the computer and attaches it under the alias.
+    assert!(
+        asked[3].contains("Paired as buildbox; attached as build."),
+        "{}",
+        asked[3]
+    );
+    assert!(asked[4].contains("reached"), "{}", asked[4]);
+    // It is the user's device, its runner holds its token, and the
+    // conversation reaches it.
+    let devices = backend.devices(&master).await;
+    assert!(
+        devices.iter().any(|device| device.name == "buildbox"),
+        "{devices:?}"
+    );
+    assert!(!stored_token(&computer).await.is_empty());
+    assert_eq!(attached(&harness, FIRST), ["build"]);
     backend.close().await;
 }
 

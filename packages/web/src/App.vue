@@ -31,7 +31,7 @@ import { useConversationNavigation } from './conversation/navigation'
 import { useWorkPanel } from './conversation/work'
 import { useResources } from './state/resources'
 import { useSession } from './auth/session'
-import { claimDevice, useDeviceInstallation } from './devices/pairing'
+import { claimDevice, useInstallCommands } from './devices/pairing'
 import { blobUrl } from './api/uploads'
 import { providePageHost } from '@demicodes/web-ui/plugins/page'
 import { productPageHost } from './plugins/host'
@@ -133,7 +133,7 @@ const foldedGroups = computed({
 // Add Device, from the host menu or elsewhere, pairs right here rather than in settings;
 // started beside a device menu, it hands that menu the device it pairs.
 const pairing = useDevicePairing(claimDevice)
-const installation = useDeviceInstallation()
+const installCommands = useInstallCommands()
 watch(
   () => resources.pairingRequest,
   (request) => {
@@ -304,11 +304,11 @@ useAppShortcuts(
           @open="openSearchResult"
         />
         <DevicePairingDialog
-          v-if="installation"
+          v-if="installCommands"
           :is-open="pairing.isOpen.value"
           stack
           :overlay-store="appOverlayStore"
-          :installation="installation"
+          :install-commands="installCommands"
           :phase="pairing.phase.value"
           @close="resources.pairingRequest = null"
           @next="pairing.phase.value = { kind: 'code' }"
