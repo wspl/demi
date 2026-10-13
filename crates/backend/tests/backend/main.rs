@@ -35,6 +35,7 @@ mod editing;
 mod families;
 mod files;
 mod forks;
+mod handoff;
 mod history;
 mod holding_edge;
 mod hosts;

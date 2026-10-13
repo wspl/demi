@@ -16,6 +16,7 @@ use crate::ids::ConversationId;
 use crate::passkeys::{PasskeyDto, PasskeyList};
 use crate::plugins::PluginEntry;
 use crate::providers::ProviderState;
+use crate::sessions::SessionDto;
 use crate::settings::{InstanceMode, Preferences};
 use crate::subagents::SubagentSettings;
 use crate::workspaces::WorkspaceDto;
@@ -66,6 +67,9 @@ pub struct ProductState {
     /// The relying party's id of the backend's passkeys, as `GET /setup`
     /// gives it.
     pub passkey_rp_id: Option<String>,
+    /// The account's signed-in browsers, as `GET /auth/sessions` lists them
+    /// for the channel's session.
+    pub sessions: Vec<SessionDto>,
     /// The backend's plugins, in their order of registration.
     pub plugins: Vec<PluginEntry>,
     /// The state of each plugin the user has on that gives one, valid
@@ -162,6 +166,12 @@ pub enum SyncEvent {
         passkeys: Vec<PasskeyDto>,
         #[serde(rename = "userHandle")]
         user_handle: String,
+    },
+    /// A session of the account started, ended or was signed out, or its
+    /// last activity was written: the account's sessions, as
+    /// `GET /auth/sessions` lists them for the channel's session.
+    Sessions {
+        sessions: Vec<SessionDto>,
     },
     /// Nothing else was sent for 30 seconds.
     Heartbeat,

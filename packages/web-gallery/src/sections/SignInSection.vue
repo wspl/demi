@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import EmailLoginPage, { type EmailLoginPhase } from '@demicodes/web-ui/auth/EmailLoginPage.vue'
 import SetupPage, { type SetupPhase } from '@demicodes/web-ui/auth/SetupPage.vue'
+import HandoffPage, { type HandoffPagePhase } from '@demicodes/web-ui/auth/HandoffPage.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import StartingScreen from '@demicodes/web-ui/ui/StartingScreen.vue'
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
@@ -28,6 +29,10 @@ const anatomy: [string, string][] = [
   [
     'Setup',
     'What the first visitor of a Demi without accounts sees instead of signing in: a name, an email, a password and its confirmation create the master account, which signs in. Where passkeys are offered, an optional Add a Passkey step follows, using the password just entered, with Skip. Once the account exists, the page is gone and every visitor signs in.'
+  ],
+  [
+    'Phone handoff',
+    'What a phone’s camera opens from a code another signed-in browser shows: it signs in while the code is spent, then opens the page the code names. A code that expired or was used says so, with Sign In.'
   ],
   [
     'Starting',
@@ -172,6 +177,14 @@ function showSetupState(value: string) {
   setupConfirmation.value = typed?.confirmation ?? 'correct horse'
 }
 
+const handoffStates: { value: string; label: TitleText; phase: HandoffPagePhase }[] = [
+  { value: 'signingIn', label: 'Signing In', phase: { kind: 'signingIn' } },
+  { value: 'expired', label: 'Expired', phase: { kind: 'expired' } },
+  { value: 'failed', label: 'Failed', phase: { kind: 'failed', message: 'Couldn’t reach Demi. Check the connection and try again.' } },
+]
+const handoffState = ref('expired')
+const handoffPhase = computed(() => handoffStates.find((entry) => entry.value === handoffState.value)!.phase)
+
 function createAccount(name: string, address: string) {
   productWould(`Create the Master Account ${name} (${address})`)
   setupState.value = 'passkey'
@@ -243,6 +256,19 @@ function createAccount(name: string, address: string) {
           @add-passkey="addFirstPasskey"
           @skip-passkey="productWould('Open the Chat')"
         />
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      v-else-if="view === 'handoff'"
+      title="Phone Handoff"
+      note="Switch the state. Signing In shows while the code is spent; the product then opens the page the code names. Sign In opens the sign-in page."
+    >
+      <div class="mb-3">
+        <Segmented v-model="handoffState" :options="handoffStates" />
+      </div>
+      <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
+        <HandoffPage :phase="handoffPhase" @sign-in="productWould('Open the Sign-In Page')" />
       </div>
     </GallerySection>
 

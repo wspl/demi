@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
 use demi_backend_accounts::email_change::{StartOutcome, StartRefusal};
@@ -22,6 +22,7 @@ use super::body::JsonBody;
 use super::cookies::{self, Https, SESSION_COOKIE};
 use super::error::ApiError;
 use super::gate::AuthUser;
+use super::sessions::user_agent;
 use demi_backend_user_shard::services::Services;
 
 pub(super) async fn setup_status(
@@ -42,6 +43,7 @@ pub(super) async fn setup_status(
 /// Creates the master account while the instance has none, and signs it in.
 pub(super) async fn setup(
     State(services): State<Arc<Services>>,
+    headers: HeaderMap,
     jar: CookieJar,
     Https(https): Https,
     JsonBody(request): JsonBody<SetupRequest>,
@@ -58,13 +60,17 @@ pub(super) async fn setup(
             "This instance has its master account",
         ));
     };
-    let session = services.sessions.open(user.id.clone()).await?;
+    let session = services
+        .sessions
+        .open(user.id.clone(), user_agent(&headers))
+        .await?;
     let jar = jar.add(cookies::session(&session.token, session.expires_at, https));
     Ok((StatusCode::CREATED, jar, Json(Identity { user })).into_response())
 }
 
 pub(super) async fn login(
     State(services): State<Arc<Services>>,
+    headers: HeaderMap,
     jar: CookieJar,
     Https(https): Https,
     JsonBody(credentials): JsonBody<Credentials>,
@@ -92,13 +98,17 @@ pub(super) async fn login(
         ));
     };
     services.limiter.succeeded(&email);
-    let session = services.sessions.open(account.user.id.clone()).await?;
+    let session = services
+        .sessions
+        .open(account.user.id.clone(), user_agent(&headers))
+        .await?;
+    services.sync.mark(&account.user.id, Part::Sessions);
     let jar = jar.add(cookies::session(&session.token, session.expires_at, https));
     Ok((jar, Json(Identity { user: account.user })).into_response())
 }
 
 /// Ends the session the cookie names, with the synchronization channels
-/// that opened with it, and clears the cookie.
+/// and conversation sockets that opened with it, and clears the cookie.
 pub(super) async fn logout(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
@@ -110,6 +120,7 @@ pub(super) async fn logout(
         services
             .sync
             .end_session(&user.id, &TokenHash::of(cookie.value()));
+        services.sync.mark(&user.id, Part::Sessions);
     }
     Ok((cookies::remove(jar, https), StatusCode::NO_CONTENT).into_response())
 }
