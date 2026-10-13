@@ -204,6 +204,26 @@ export function pillSelection(
   return null
 }
 
+/**
+ * What the "+N Files" pill opens for the file `path` of the call or run
+ * (`edit-tracking.md` § What the conversation shows): the file of the
+ * request whose list holds it, at All Changes, so it works for a file the
+ * request removed too, which a pill alone is no control for; null for a
+ * file the request does not list.
+ */
+export function requestFileSelection(
+  node: string | null,
+  requests: TranscriptRequests,
+  block: ToolCallBlock,
+  path: string,
+  root: string | null,
+): RequestEditSelection | null {
+  const request = requests.requestOf.get(block.id)
+  return request?.files.some((file) => file.path === path)
+    ? { node, request: request.id, file: path, edit: null, ...(root === null ? {} : { root }) }
+    : null
+}
+
 /** How a selection names `edit`. */
 export function editRef(edit: FileEdit): RequestEditRef {
   return { call: edit.call, path: edit.path, segment: edit.segment }
