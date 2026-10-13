@@ -12,7 +12,7 @@ import { composerRemoteAttachment } from '@demicodes/web-ui/agent/message-input/
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import { savedPreview, type SavedRow } from '@demicodes/web-ui/agent/saved'
 import { turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
-import { executionFor, hostDeviceOptions, moveLocked, primaryHostOf } from '../targets/execution'
+import { executionFor, hostDeviceOptions, moveLock, primaryHostOf } from '../targets/execution'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
 import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 import type { MessageFileTarget } from '@demicodes/web-ui/markdown/types'
@@ -136,7 +136,7 @@ const offlineHost = computed<OfflineHost | null>(() => {
         primaryHost: primaryHostOf(primary),
         devices: hostDeviceOptions(resources.devices),
         chooseDirectory: props.conversation.target.kind === 'workspace',
-        locked: moveLocked(props.conversation, store.pendingChanges),
+        locked: moveLock(props.conversation, store.pendingChanges),
       }
     : null
 })

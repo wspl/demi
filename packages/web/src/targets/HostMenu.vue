@@ -5,6 +5,7 @@ import type { HostChoice, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import type { Conversation } from '../state/types'
 import { useResources } from '../state/resources'
 import { hostKindOf } from '../state/hosts'
+import type { MoveLock } from '@demicodes/web-ui/hosts/move-question'
 import { executionFor, hostDeviceOptions, primaryHostOf } from './execution'
 import { useConversations } from '../conversation/store'
 
@@ -15,7 +16,7 @@ import { useConversations } from '../conversation/store'
  */
 const props = defineProps<{
   conversation: Conversation
-  locked: boolean
+  locked?: MoveLock
 }>()
 const emit = defineEmits<{
   choose: [host: HostChoice]
