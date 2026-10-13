@@ -22,6 +22,7 @@ use demi_web_api_protocol::files::{
     CreateDeviceDirectory, CreatedDirectory, DeviceDirectoryQuery, Directory,
 };
 use demi_web_api_protocol::ids::DeviceId;
+use demi_web_api_protocol::workflows::WorkflowsQuery;
 
 use super::AppState;
 use super::body::JsonBody;
@@ -157,6 +158,31 @@ pub(super) async fn browse(
         .await??;
     let (directory, read_at) = listed;
     Ok(super::files::read_answer(&read_at, Json(directory)))
+}
+
+/// `GET /devices/:id/workflows?directory=`: the Workflow menu's list for a
+/// new conversation that works in `directory` of a paired device, before
+/// its first message gives it a record (`subagents.md` § Workflows of a
+/// project), with the Host's number before the read.
+pub(super) async fn workflows(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    QueryParams(query): QueryParams<WorkflowsQuery>,
+) -> Result<axum::response::Response, ApiError> {
+    let device = owned_device(&state, &user.id, &id, Some(DeviceKind::User)).await?;
+    let (workflows, read_at) = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move {
+            shard
+                .device_workflows(&device.id, &query.directory)
+                .await
+                .ok_or_else(ApiError::device_offline)?
+                .map_err(device_fs_error)
+        })
+        .await??;
+    Ok(super::files::read_answer(&read_at, Json(workflows)))
 }
 
 /// Makes a directory, with its parents, on a paired device.

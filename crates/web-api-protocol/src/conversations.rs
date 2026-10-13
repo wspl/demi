@@ -120,6 +120,16 @@ pub struct CreateConversation {
     #[schemars(with = "ConversationTarget")]
     #[garde(dive)]
     pub target: Option<ConversationTarget>,
+    /// Its Workflow menu choice, which the new conversation was given before
+    /// its first message; Default when absent.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "WorkflowChoice")]
+    #[garde(dive)]
+    pub workflow: Option<WorkflowChoice>,
 }
 
 /// What `POST /conversations` answers: the conversation as the list shows

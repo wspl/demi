@@ -57,6 +57,21 @@ impl HostPaths {
             .into_string()
     }
 
+    /// `path` read against `directory` without taking out `.` and `..`, so
+    /// the Host, which follows links first, decides where it leads: as it
+    /// is when it is absolute, otherwise joined to `directory`.
+    pub fn beside(self, directory: &str, path: &str) -> String {
+        let style = match self {
+            Self::Posix => typed_path::PathType::Unix,
+            Self::Windows => typed_path::PathType::Windows,
+        };
+        if typed_path::Utf8TypedPath::new(path, style).is_absolute() {
+            path.to_owned()
+        } else {
+            self.join(directory, path)
+        }
+    }
+
     /// The last component of `path`: the name of what it names.
     pub fn file_name(self, path: &str) -> &str {
         let path = path.trim_end_matches(|c| self.separates(c));

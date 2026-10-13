@@ -78,7 +78,7 @@ impl dyn HostShard + '_ {
     ) -> Result<(Vec<HostFile>, ReadAt), ReadFilesError> {
         let access = self.admit_stream(id, None, Attention::Looks, cancel).await?;
         let waits = Waits::until_ended(cancel, &access.open.ended);
-        let found = waits.wait(look(&access.host.host, reads)).await?;
+        let found = waits.wait(look_files(&access.host.host, reads)).await?;
         Ok(found.map_err(HostAccessError::Host)?)
     }
 
@@ -223,7 +223,7 @@ async fn install(
 /// (`runner.md` § Host operations): a failure on the Host about a path
 /// answers for the path; any other, such as the connection's end, fails
 /// the read.
-async fn look(host: &RemoteHost, reads: &[HostRead]) -> Result<(Vec<HostFile>, ReadAt), HostError> {
+pub async fn look_files(host: &RemoteHost, reads: &[HostRead]) -> Result<(Vec<HostFile>, ReadAt), HostError> {
     let paths: Vec<LookAt> = reads
         .iter()
         .map(|read| LookAt {
@@ -331,7 +331,7 @@ mod tests {
             read("plain/SKILL.md", 0),
             read("locked", 0),
         ];
-        let (found, _) = look(&fixture.host(), &reads).await.unwrap();
+        let (found, _) = look_files(&fixture.host(), &reads).await.unwrap();
 
         assert_eq!(answered_requests(&mut replies), 1, "one request reads them all");
         assert_eq!(
