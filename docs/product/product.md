@@ -50,6 +50,18 @@ there is no public registration or password-recovery flow.
 A role can act only on lower roles. No role can reset a peer's password through
 the admin endpoint.
 
+A password an administrator chose is the account's only until its owner
+chooses one. An account made by Add User…, and one whose password an
+administrator reset, chooses its own password the next time its owner signs
+in, by that password on a computer or by a sign-in code on a phone: before
+anything else the page asks *Choose Your Password*, a new password and its
+confirmation, without the current one, and nothing else of the product
+opens until it is chosen; every session of the account asks the same,
+and Sign Out is the one other way out. A password chosen there is then
+followed by the passkey offer, *Use Face ID next time?*, on a computer
+as on a phone. An account that already chose its password and signs in by
+a code is offered the passkey alone.
+
 Administrators manage accounts in Settings › Users, which only the master
 and admins see, as macOS's Users & Groups or a GitHub organization's
 People. For example, Ana, an admin, adds Bo for a new colleague: Add User…
@@ -58,12 +70,14 @@ for her and copies, and Bo signs in with it and changes it in Settings ›
 Account. When Bo leaves, she disables his account.
 
 - **The list** has one row per account: its nickname and email, its role,
-  and when it was last active, with *Disabled* on a disabled one; the
+  and when it was last active, with *Disabled* on a disabled one and
+  *Hasn't Chosen a Password* on one still to choose its own; the
   user's own row is marked *You*. A row has a ··· menu with what the user
   may do to that account, and none on the user's own or on one of a role
   not below theirs.
 - **Reset Password…** sets a password the administrator types or has made
-  and copies; the account's sessions and passkeys stay.
+  and copies; the account's sessions and passkeys stay, and its owner
+  chooses a new password at once, as above.
 - **Sign-In Code…** shows a QR code that signs a phone in to that account,
   as a handoff code does: good for ten minutes and once, ending the
   account's earlier sign-in code, and asking the administrator's own
@@ -136,8 +150,9 @@ phone.
   password sign-in on the phone would: signing out on one leaves the other
   signed in. A browser signed in to another account signs that one out and
   takes this one, so it holds one session, never two.
-- **The phone can add a passkey at once.** A sign-in by a code counts as
-  the phone's confirmation, as a password sign-in does, so for five minutes
+- **The phone can add a passkey at once.** An account still to choose its
+  password chooses it first ([Administrators manage accounts](#user-system)).
+  A sign-in by a code counts as the phone's confirmation, as a password sign-in does, so for five minutes
   the phone adds a passkey without asking the password again. The page the
   code opens offers it once on that browser, *Use Face ID next time?* with
   Add Passkey and Not Now, and not again on that browser whichever is

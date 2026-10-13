@@ -774,7 +774,9 @@ characters; a password checked against the account's, at login, as the
 `current` password or to start an email change, only has to be nonempty, so
 a wrong one answers 401 `invalid_credentials` rather than a validation error.
 User responses expose `id`, `email`, `nickname`, `role`, `createdAt`,
-`disabled` and `lastActiveAt`, the latest activity of any of its sessions,
+`disabled`, `choosesPassword`, true until the owner of an account that
+Add User… made or an administrator's reset changed chooses its own
+password, and `lastActiveAt`, the latest activity of any of its sessions,
 never the password hash.
 
 Passkeys ([User system](product.md#user-system),
@@ -842,7 +844,11 @@ Verification, handoff codes and sessions ([Authentication and ownership](../back
   an id the account has no session of 404 `session_not_found`. The
   synchronization channel's `sessions` part carries the list.
 - `PATCH /api/auth/me` takes `{ nickname }` (1–80 characters after trimming).
-- `PUT /api/auth/password` takes `{ current, next }` and checks the current password.
+- `PUT /api/auth/password` takes `{ current, next }` and checks the current password;
+  an account whose `choosesPassword` is true sends `{ next }` alone. While
+  it is true, every route of the account other than `GET /api/auth/me`,
+  this one, `POST /api/auth/logout` and the passkey routes answers 403
+  `password_choice_required`, and no socket of it opens.
 - `POST /api/auth/email` takes `{ email, password }`, checks the current password,
   and sends a six-digit code to the new address. Its 202 response contains
   `{ challenge: { id, email, expiresAt } }`; the code is never returned.
