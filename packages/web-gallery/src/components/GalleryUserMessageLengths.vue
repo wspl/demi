@@ -91,7 +91,7 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
   { variant: 'A table, as typed', content: text(table) },
   {
     variant: 'A path with no spaces',
-    content: text('The failing import: /Users/alex/Projects/demi/packages/web-ui/src/agent/blocks/UserBlock.vue/../../markdown/message-files/../render/../md/../types/../../../../web/src/conversation/changes.ts'),
+    content: text('The failing import: /Users/alex/Projects/shop/packages/web-ui/src/agent/blocks/UserBlock.vue/../../markdown/message-files/../render/../md/../types/../../../../web/src/conversation/changes.ts'),
   },
   {
     variant: 'Chinese',

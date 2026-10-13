@@ -86,7 +86,7 @@ async function signInWithPasskey() {
 }
 
 const state = ref('form')
-const email = ref('zan@example.com')
+const email = ref('alex@example.com')
 const password = ref('password')
 /** When the lock shown ends, a minute after the state was chosen, as the backend's Retry-After says. */
 const lockedUntil = ref(0)
@@ -164,8 +164,8 @@ async function addFirstPasskey() {
 }
 
 const setupState = ref('form')
-const setupName = ref('Zan')
-const setupEmail = ref('zan@example.com')
+const setupName = ref('Alex')
+const setupEmail = ref('alex@example.com')
 const setupPassword = ref('correct horse')
 const setupConfirmation = ref('correct horse')
 const setupPhase = computed(

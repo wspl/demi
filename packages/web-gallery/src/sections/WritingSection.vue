@@ -173,10 +173,10 @@ const rules: readonly ElementRule[] = [
   },
   {
     kind: 'Placeholder',
-    where: 'TextInput placeholder, a menu’s filter',
+    where: 'A single-line TextInput placeholder, a menu’s filter; a multi-line text area has none',
     style: 'placeholder',
-    right: ['Search hosts', 'name@example.com'],
-    wrong: ['Search Hosts.'],
+    right: ['Search hosts', 'name@example.com', 'owner/repository'],
+    wrong: ['Search Hosts.', 'Keep answers brief. Run the tests before you finish.'],
     source: { label: 'Safari: Search or enter website name' },
   },
   {
@@ -318,20 +318,38 @@ const brevityRules: readonly TextRule[] = [
   },
 ]
 
+/** What example text and placeholders may show, so nothing reads as filled in or as ours. */
+const exampleRules: readonly TextRule[] = [
+  {
+    title: 'Examples and placeholders are neutral',
+    rule: 'No name, machine, server, repository or language of the people who build Demi; a placeholder shows a value anyone might type. Example data uses the gallery’s neutral persona: Alex, alex@example.com, alex-mbp, /Users/alex/Projects/shop.',
+    right: ['name@example.com', '/Users/alex/Projects/shop'],
+    wrong: ['a maintainer’s email address', 'a maintainer’s home folder'],
+    source: 'Apple HIG: Writing; example.com is reserved for examples (RFC 2606)',
+  },
+  {
+    title: 'A free-text area has no placeholder',
+    rule: 'A text area (Instructions, a prompt, a description) is left empty: a placeholder there reads as text already filled in. The section’s or the row’s description says what goes in. A single-line input keeps a placeholder only when it shows the format of a value.',
+    right: ['Instructions, empty, under a description that says what goes there', 'Repository: owner/repository', 'Code: 000000'],
+    wrong: ['Instructions: Keep answers brief. Run the tests before you finish.', 'Name: My next idea'],
+    source: 'Apple HIG: Text fields',
+  },
+]
+
 /** What gives way when a line of text does not fit, and how the reader gets it back. */
 const longTextRules: readonly TextRule[] = [
   {
     title: 'The name gives way last',
     rule: 'The text that tells items apart (an account’s email, a file’s name, a model’s or a conversation’s name) keeps its width. What sits beside it gives way first: tags, counts, sizes, times. A second name beside it, such as the device a project is on, takes its own width up to half of the line and is cut at that half; the first name takes the rest and is cut only when the rest is too short.',
-    right: ['alex@example.com  Pro  Limit reached', 'shop-app  Alexs-MacBo…'],
-    wrong: ['alex@example.com…  Pro  Limit reached', 'shop-app  Zande…', 'ledabl…  Alexs-MacBook-Pro.local'],
+    right: ['alex@work.example  Pro  Limit reached', 'photo-album  Alexs-MacBo…'],
+    wrong: ['alex@wor…  Pro  Limit reached', 'photo-album  Alexs-M…', 'photo-a…  Alexs-MacBook-Pro.local'],
     source: 'GitHub issue list, Linear, macOS Finder list view',
   },
   {
     title: 'Tags move under the name',
     rule: 'Tags that do not fit beside the name start a line under it, in their order. They are state the reader needs (Active, Limit reached), so they neither squeeze the name nor go away. Only a name wider than the whole line is cut.',
-    right: ['alex@example.com ⏎ Pro  Limit reached'],
-    wrong: ['alex@example.com…  Pro  Limit reached', 'alex@example.com  Pro  Li…'],
+    right: ['alex@work.example ⏎ Pro  Limit reached'],
+    wrong: ['alex@wor…  Pro  Limit reached', 'alex@work.example  Pro  Li…'],
     source: 'GitHub issue list: labels wrap under the title',
   },
   {
@@ -472,6 +490,13 @@ const sources: readonly Required<Source>[] = [
     </GallerySection>
 
     <GallerySection
+      title="Examples and Placeholders"
+      note="What example data and placeholder text may say. A written convention, like the rest of this page: nothing checks it."
+    >
+      <GalleryTextRules :rules="exampleRules" />
+    </GallerySection>
+
+    <GallerySection
       title="Long Text"
       note="When a line does not fit, which text gives way, where it is cut, and how the reader gets it back. A written convention, like the rest of this page: nothing checks it."
     >
@@ -484,7 +509,7 @@ const sources: readonly Required<Source>[] = [
         >
           <div :style="{ width: `${width}px` }">
             <SettingsGroup>
-              <SettingsRow label="alex@example.com" compact>
+              <SettingsRow label="alex@work.example" compact>
                 <template #tags>
                   <Tag>Pro</Tag>
                   <Tag tone="danger">Limit reached</Tag>
@@ -501,7 +526,7 @@ const sources: readonly Required<Source>[] = [
         </GallerySpecimen>
         <GallerySpecimen variant="TruncatedText · 180px">
           <div class="w-[180px] space-y-1 text-chrome text-fg">
-            <TruncatedText text="zan@example.com" />
+            <TruncatedText text="alex@example.com" />
             <TruncatedText text="release-automation@platform-infrastructure.example.com" />
           </div>
         </GallerySpecimen>

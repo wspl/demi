@@ -1,7 +1,7 @@
 //! How a Host writes its paths (`runner.md` § Windows paths): the backend
 //! builds paths on a Host, such as where an attachment is saved, with the
 //! separator of the system the Host's runner reports, so a Windows Host
-//! shows `C:\Users\zan\.demi\attachments\…`, never `C:\Users\zan/.demi/…`.
+//! shows `C:\Users\alex\.demi\attachments\…`, never `C:\Users\alex/.demi/…`.
 //! Every path the backend joins, splits or walks up on a Host goes through
 //! here.
 
@@ -130,8 +130,8 @@ mod tests {
             (Posix, "/home/alex", ".demi", "/home/alex/.demi"),
             (Posix, "/home/alex/", ".demi/attachments", "/home/alex/.demi/attachments"),
             (Posix, "/", "etc", "/etc"),
-            (Windows, r"C:\Users\zan", ".demi", r"C:\Users\zan\.demi"),
-            (Windows, r"C:\Users\zan\", ".demi/attachments", r"C:\Users\zan\.demi\attachments"),
+            (Windows, r"C:\Users\alex", ".demi", r"C:\Users\alex\.demi"),
+            (Windows, r"C:\Users\alex\", ".demi/attachments", r"C:\Users\alex\.demi\attachments"),
             (Windows, r"C:\", "Users", r"C:\Users"),
         ];
         for (paths, directory, name, joined) in cases {
@@ -143,7 +143,7 @@ mod tests {
     fn a_paths_name_is_its_last_component() {
         assert_eq!(Posix.file_name("/home/alex/skills/review"), "review");
         assert_eq!(Posix.file_name("/home/alex/skills/review/"), "review");
-        assert_eq!(Windows.file_name(r"C:\Users\zan\skills\review"), "review");
+        assert_eq!(Windows.file_name(r"C:\Users\alex\skills\review"), "review");
         assert_eq!(Windows.file_name("C:/Users/alex/skills/review"), "review");
         // A backslash is part of a name on a Posix Host.
         assert_eq!(Posix.file_name(r"/home/alex/a\b"), r"a\b");
@@ -155,8 +155,8 @@ mod tests {
         assert_eq!(Posix.ancestors("/home/alex/app/"), ["/home/alex/app", "/home/alex", "/home", "/"]);
         assert_eq!(Posix.ancestors("/"), ["/"]);
         assert_eq!(
-            Windows.ancestors(r"C:\Users\zan\app"),
-            [r"C:\Users\zan\app", r"C:\Users\zan", r"C:\Users", r"C:\"]
+            Windows.ancestors(r"C:\Users\alex\app"),
+            [r"C:\Users\alex\app", r"C:\Users\alex", r"C:\Users", r"C:\"]
         );
         assert_eq!(Windows.ancestors(r"C:\"), [r"C:\"]);
         assert_eq!(

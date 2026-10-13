@@ -200,7 +200,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :claim="claimStoredFile"
       :paste="paste"
       @submit-edit="store.submitEdit(conversation)"
-      placeholder="Ask Demi…"
+      placeholder="Ask anything…"
       focus-on-show
       :running="conversation.phase === 'running' || startingTurn"
       :compacting="conversation.phase === 'compacting'"

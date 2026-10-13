@@ -112,7 +112,7 @@ const workspaceProjects = ref<WorkspaceProject[]>([
     id: 'demi',
     name: 'demi',
     host: 'alex-mbp',
-    path: '/Users/alex/Projects/demi'
+    path: '/Users/alex/Projects/shop'
   },
   {
     id: 'assets',
@@ -665,7 +665,7 @@ onMounted(() => {
             mode="file"
             title="Open File"
             :source="fileHost.source"
-            :initial-path="fileHostId === 'mac' ? '/Users/alex/Projects/demi' : undefined"
+            :initial-path="fileHostId === 'mac' ? '/Users/alex/Projects/shop' : undefined"
             :places="fileHost.places"
             :hosts="hosts"
             :host-id="fileHostId"

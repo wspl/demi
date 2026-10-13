@@ -154,7 +154,7 @@ const usageLimitPayload = JSON.stringify({
         </GallerySpecimen>
         <GallerySpecimen wide variant="Model catalog failed · beside the chip">
           <GalleryComposer
-            placeholder="Ask Demi…"
+            placeholder="Ask anything…"
             model-load="failed"
           />
         </GallerySpecimen>
