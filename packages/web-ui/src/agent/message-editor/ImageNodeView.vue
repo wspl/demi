@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { NodeViewWrapper, nodeViewProps } from '@tiptap/vue-3'
 import { hostImage } from '../../files/host-image'
 import { transcriptRowOf, useMediaViewer } from '../../files/media-viewer'
@@ -7,7 +7,9 @@ import { useShowing } from '../../files/showing'
 import { loadedSize } from '../../files/thumbnail'
 import { messageImage } from '../../markdown/filePath'
 import { useMessageFiles } from '../../markdown/message-files'
+import PicturePreview from '../../ui/PicturePreview.vue'
 import { useTranscript } from '../edit-selection'
+import { useImageTile } from './image-tile'
 
 /**
  * An image a message names, loaded from the web or the conversation's Host,
@@ -15,6 +17,11 @@ import { useTranscript } from '../edit-selection'
  * when the file does; its alt text when it loads from nowhere, and while its
  * file is read. In the conversation, a click shows it large in the media
  * viewer, stepping through the transcript's pictures.
+ *
+ * In a sent message it is a tile on a line of its own, sized as the agent's
+ * message sizes its images (`markdown/media-run.ts`), with its preview on
+ * hover (`file-previews.md` § Files named in messages). The composer keeps
+ * its image in the line, a few lines tall.
  */
 const props = defineProps(nodeViewProps)
 const files = useMessageFiles()
@@ -34,6 +41,10 @@ const src = computed(() => {
   return host.state === 'shown' ? host.src : null
 })
 const linked = computed(() => props.node.marks.some((mark) => mark.type.name === 'link'))
+const img = ref<HTMLImageElement>()
+// The composer keeps its image in the line.
+const tile = !props.editor.isEditable
+const { picture, fit } = useImageTile(img, tile)
 
 function open(event: MouseEvent): void {
   const shown = image.value
@@ -55,16 +66,28 @@ function open(event: MouseEvent): void {
   <NodeViewWrapper
     as="span"
     style="white-space: inherit"
+    :class="tile ? 'media-lone' : ''"
   >
-    <img
-      v-if="image && src !== null"
-      :src="src"
-      :alt="alt"
-      :title="node.attrs['title'] ?? undefined"
-      class="message-image"
-      :class="!editor.isEditable && !linked ? 'cursor-zoom-in' : ''"
-      @click="open"
-    />
+    <template v-if="image && src !== null">
+      <img
+        ref="img"
+        :src="src"
+        :alt="alt"
+        :title="node.attrs['title'] ?? undefined"
+        class="message-image"
+        :class="tile && linked ? 'cursor-pointer' : ''"
+        @click="open"
+        @load="fit"
+      />
+      <PicturePreview
+        v-if="tile && picture"
+        :trigger="picture.element"
+        kind="image"
+        :src="picture.src"
+        :size="picture.size"
+        :caption="picture.caption"
+      />
+    </template>
     <template v-else>{{ alt }}</template>
   </NodeViewWrapper>
 </template>
