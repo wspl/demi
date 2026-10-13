@@ -5,8 +5,10 @@ use axum::Json;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
+use demi_web_api_protocol::passkeys::PasskeyId;
 
 use demi_backend_accounts::email_change::EmailChangeError;
+use demi_backend_accounts::passkeys::PasskeyError;
 use demi_backend_accounts::passwords::HashError;
 use demi_backend_blobs::ObjectError;
 use demi_backend_cloud::machine::CloudError;
@@ -63,6 +65,7 @@ impl ApiError {
                 code,
                 message: message.into(),
                 reason: None,
+                credential_id: None,
             },
             retry_after: None,
             etag: None,
@@ -86,6 +89,12 @@ impl ApiError {
     /// again, as `Retry-After` says it; rounded up to whole seconds.
     pub(crate) fn with_retry_after(mut self, wait: std::time::Duration) -> Self {
         self.retry_after = Some(wait.as_secs() + u64::from(wait.subsec_nanos() > 0));
+        self
+    }
+
+    /// The error as the answer that names the passkey `id`.
+    pub(crate) fn with_credential_id(mut self, id: PasskeyId) -> Self {
+        self.body.credential_id = Some(id);
         self
     }
 
@@ -283,6 +292,12 @@ impl From<ShardUnavailable> for ApiError {
 
 impl From<StorageError> for ApiError {
     fn from(error: StorageError) -> Self {
+        Self::internal(&error)
+    }
+}
+
+impl From<PasskeyError> for ApiError {
+    fn from(error: PasskeyError) -> Self {
         Self::internal(&error)
     }
 }

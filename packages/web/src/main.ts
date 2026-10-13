@@ -151,7 +151,7 @@ router.beforeEach(async (to) => {
     // The address stays for the retry; the page shows the failure over it.
     return true
   }
-  if (status === 'setupNeeded') {
+  if (status === 'setupNeeded' || status === 'passkeyStep') {
     return to.path === '/setup' ? true : '/setup'
   }
   if (status === 'signedIn') {

@@ -21,6 +21,7 @@ pub mod hosts;
 pub mod ids;
 pub mod instructions;
 pub mod panel;
+pub mod passkeys;
 pub mod permissions;
 pub mod plugins;
 pub mod providers;

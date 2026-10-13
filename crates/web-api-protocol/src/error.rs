@@ -3,6 +3,8 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use crate::passkeys::PasskeyId;
+
 /// A JSON error answer: `{ code, message }`, and a plugin's own `reason`
 /// when a plugin refused the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -15,6 +17,10 @@ pub struct ErrorBody {
     /// such as `tab_not_found`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<String>,
+    /// With `unknown_passkey`, the passkey the browser signed with, which
+    /// the page tells the browser no account has.
+    #[serde(default, rename = "credentialId", skip_serializing_if = "Option::is_none")]
+    pub credential_id: Option<PasskeyId>,
 }
 
 /// Every error code the web app can see. A situation has one code on every
@@ -148,6 +154,16 @@ pub enum ErrorCode {
     CredentialFieldsDiffer,
     /// The credential the request asks to use was removed.
     CredentialRemoved,
+    /// The passkey challenge expired or was used: the page asks for another.
+    PasskeyExpired,
+    /// No account has the passkey the browser signed with; `credentialId`
+    /// names it.
+    UnknownPasskey,
+    /// The caller has no passkey of that id.
+    PasskeyNotFound,
+    /// The backend offers no passkeys: its public URL's host is an IP
+    /// address.
+    PasskeysUnavailable,
     /// The work panel holds as many tabs, or as much of their data, as it
     /// can (`web-api.md` § Work panel state).
     PanelFull,

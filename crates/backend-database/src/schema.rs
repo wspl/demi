@@ -60,11 +60,12 @@ impl ReadBlob for NoBlobs {
 /// The control database's. Its history holds the schema of each published
 /// release before the one that ships the current schema, and of each
 /// development build a server keeps data of (`upgrades.md` § A development
-/// build on a server): 0.1.22-dev.20261011T123543Z's, and the one with the
-/// plugins' secrets before a request had a read state. The schemas with
-/// the subagent limits, without Detect Title, with the kept limits and
-/// with the plugins' secrets and read states no server keeps, but
-/// development databases do, and the server's migrate through them.
+/// build on a server): 0.1.22-dev.20261011T123543Z's, the one with the
+/// plugins' secrets before a request had a read state, and the one with the
+/// users' credentials before passkeys. The schemas with the subagent
+/// limits, without Detect Title, with the kept limits and with the plugins'
+/// secrets and read states no server keeps, but development databases do,
+/// and the server's migrate through them.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -124,8 +125,36 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.plugin-secrets.sql"),
             migration: Migration::Sql(CONTROL_FROM_PLUGIN_SECRETS),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.credentials.sql"),
+            migration: Migration::Sql(CONTROL_FROM_CREDENTIALS),
+        },
     ],
 };
+
+/// From the control schema with the users' credentials to the one with
+/// passkeys (`storage.md` § Passwords and credentials at rest): two new
+/// tables, empty.
+const CONTROL_FROM_CREDENTIALS: &str = "
+CREATE TABLE passkeys (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL REFERENCES users (id),
+  name         TEXT NOT NULL,
+  credential   TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,
+  last_used_at INTEGER
+) STRICT;
+CREATE INDEX passkeys_of_user ON passkeys (user_id, created_at);
+CREATE TABLE passkey_challenges (
+  id         TEXT PRIMARY KEY,
+  kind       TEXT NOT NULL CHECK (kind IN ('sign_in', 'registration')),
+  user_id    TEXT REFERENCES users (id),
+  state      TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  CHECK ((kind = 'registration') = (user_id IS NOT NULL))
+) STRICT;
+CREATE INDEX passkey_challenges_expiry ON passkey_challenges (expires_at);
+";
 
 /// From the control schema with the plugins' secrets to the one with the
 /// users' credentials (`credentials.md` § Storage and expiry): two new
@@ -1209,6 +1238,33 @@ CREATE TABLE email_challenges (
   sent_at       INTEGER NOT NULL,
   attempts      INTEGER NOT NULL
 ) STRICT;
+
+-- Each user's passkeys, by credential id in base64url; a public key is no
+-- secret, so it is stored as it is.
+CREATE TABLE passkeys (
+  id           TEXT PRIMARY KEY,
+  user_id      TEXT NOT NULL REFERENCES users (id),
+  name         TEXT NOT NULL,
+  -- passkeys.credential: webauthn-rs 0.5's Passkey
+  credential   TEXT NOT NULL,
+  created_at   INTEGER NOT NULL,
+  last_used_at INTEGER
+) STRICT;
+CREATE INDEX passkeys_of_user ON passkeys (user_id, created_at);
+
+-- The challenges of passkey sign-ins and additions, until used or expired;
+-- an addition's is the user's.
+CREATE TABLE passkey_challenges (
+  id         TEXT PRIMARY KEY,
+  kind       TEXT NOT NULL CHECK (kind IN ('sign_in', 'registration')),
+  user_id    TEXT REFERENCES users (id),
+  -- passkey_challenges.state: webauthn-rs 0.5's DiscoverableAuthentication
+  -- for a sign-in, PasskeyRegistration for a registration
+  state      TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  CHECK ((kind = 'registration') = (user_id IS NOT NULL))
+) STRICT;
+CREATE INDEX passkey_challenges_expiry ON passkey_challenges (expires_at);
 
 CREATE TABLE user_preferences (
   user_id     TEXT PRIMARY KEY REFERENCES users (id),
@@ -2866,12 +2922,55 @@ mod tests {
         );
     }
 
+    /// A database of the control schema before passkeys keeps its accounts,
+    /// sessions and credentials through the migration, and its accounts can
+    /// have passkeys after it.
+    #[test]
+    fn the_control_schema_before_passkeys_keeps_its_accounts_and_takes_passkeys() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.22-dev.credentials.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('u1', 'a@example.test', 'Ana', 'h', 'master', 3);
+                 INSERT INTO web_sessions (token_hash, user_id, expires_at) VALUES ('t1', 'u1', 9);
+                 INSERT INTO user_credentials
+                   (id, user_id, name, note, fields, sealed, keep_until, last_used_at, created_at, updated_at)
+                   VALUES ('k1', 'u1', 'GitHub', '', '[]', x'00', NULL, NULL, 4, 4);",
+            )
+            .unwrap();
+
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let kept: (String, String, i64, String, String) = connection
+            .query_row(
+                "SELECT u.email, u.nickname, s.expires_at, c.name, c.id
+                 FROM users u JOIN web_sessions s ON s.user_id = u.id
+                   JOIN user_credentials c ON c.user_id = u.id",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            kept,
+            ("a@example.test".to_owned(), "Ana".to_owned(), 9, "GitHub".to_owned(), "k1".to_owned())
+        );
+        connection
+            .execute_batch(
+                "INSERT INTO passkeys (id, user_id, name, credential, created_at, last_used_at)
+                   VALUES ('p1', 'u1', 'iCloud Keychain', '{}', 5, NULL);
+                 INSERT INTO passkey_challenges (id, kind, user_id, state, expires_at)
+                   VALUES ('c1', 'registration', 'u1', '{}', 6);",
+            )
+            .unwrap();
+    }
+
     /// The development builds' schemas are the ones their server's
     /// databases record, the one with `forked_from` included, and formats
     /// 4 and 5's, the subagent limits' and
     /// the one without Detect Title the ones development databases record.
     /// A server records the one with the plugins' secrets before read
-    /// states.
+    /// states, and may record the one with the users' credentials before
+    /// passkeys.
     #[test]
     fn the_development_builds_in_the_history_are_the_ones_their_server_records() {
         for (schema, development, version) in [
@@ -2884,6 +2983,7 @@ mod tests {
             (&CONTROL, include_str!("schema/control-0.1.22-dev.subagent-limits.sql"), 491_070_162),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.no-detect-title.sql"), 1_079_978_983),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.plugin-secrets-unread.sql"), 1_293_042_998),
+            (&CONTROL, include_str!("schema/control-0.1.22-dev.credentials.sql"), 235_949_009),
         ] {
             assert_eq!(version_of(development), version);
             assert!(schema.history.iter().any(|shipped| shipped.sql == development));
