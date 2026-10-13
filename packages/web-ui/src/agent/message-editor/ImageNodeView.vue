@@ -1,32 +1,28 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { NodeViewWrapper, nodeViewProps } from '@tiptap/vue-3'
 import { hostImage } from '../../files/host-image'
 import { transcriptRowOf, useMediaViewer } from '../../files/media-viewer'
 import { useShowing } from '../../files/showing'
-import { loadedSize } from '../../files/thumbnail'
 import { messageImage } from '../../markdown/filePath'
 import { useMessageFiles } from '../../markdown/message-files'
-import PicturePreview from '../../ui/PicturePreview.vue'
 import { useTranscript } from '../edit-selection'
-import { useImageTile } from './image-tile'
+import AttachmentCapsule from './AttachmentCapsule.vue'
+import { useCapsuleOpening } from './capsule-opening'
+import { imageCapsule } from './capsules'
 
 /**
- * An image a message names, loaded from the web or the conversation's Host,
- * a Host image at the version of its file the page keeps, so it changes
- * when the file does; its alt text when it loads from nowhere, and while its
- * file is read. In the conversation, a click shows it large in the media
- * viewer, stepping through the transcript's pictures.
- *
- * In a sent message it is a tile on a line of its own, sized as the agent's
- * message sizes its images (`markdown/media-run.ts`), with its preview on
- * hover (`file-previews.md` § Files named in messages). The composer keeps
- * its image in the line, a few lines tall.
+ * An image a message names, shown in the user's message as an attachment
+ * capsule, never as a picture in its text (`file-previews.md` § Files named in
+ * messages): the capsule of a file the user attached, in the composer and in
+ * the sent message. The Markdown keeps the image. A Host image follows its
+ * file, at the version of it the page keeps, so the capsule's thumbnail
+ * changes when the file does. An image that loads from nowhere, and one whose
+ * file is still being read, shows its alt text. A click does what an attached
+ * image's capsule does; inside a link it follows the link.
  */
 const props = defineProps(nodeViewProps)
 const files = useMessageFiles()
-const viewer = useMediaViewer()
-const transcript = useTranscript()
 const alt = computed(() => String(props.node.attrs['alt'] ?? ''))
 const image = computed(() => messageImage(String(props.node.attrs['src'] ?? ''), files()))
 const path = computed(() => (image.value && 'path' in image.value ? image.value.path : null))
@@ -40,23 +36,21 @@ const src = computed(() => {
   const host = hostImage(file.entry.value, files()?.contents, shown.path)
   return host.state === 'shown' ? host.src : null
 })
+const capsule = computed(() => image.value && src.value !== null ? imageCapsule(image.value, src.value, alt.value) : null)
 const linked = computed(() => props.node.marks.some((mark) => mark.type.name === 'link'))
-const img = ref<HTMLImageElement>()
-// The composer keeps its image in the line.
-const tile = !props.editor.isEditable
-const { picture, fit } = useImageTile(img, tile)
+const { opens, open: openFile } = useCapsuleOpening(() => props.editor.isEditable, () => linked.value ? null : path.value)
+const viewer = useMediaViewer()
+const transcript = useTranscript()
+// A web image has no file to open, so it shows large in the media viewer,
+// stepping through the transcript's pictures.
+const viewable = computed(() => !props.editor.isEditable && !linked.value && image.value !== null && 'url' in image.value && src.value !== null)
 
 function open(event: MouseEvent): void {
-  const shown = image.value
-  const contents = files()?.contents
-  const element = event.currentTarget
-  // Editing, a click places the cursor; an image inside a link follows the link.
-  if (!shown || src.value === null || !(element instanceof HTMLImageElement) || props.editor.isEditable || linked.value) {
-    return
+  if (opens.value) {
+    openFile()
+  } else if (viewable.value && src.value !== null) {
+    viewer.show({ kind: 'image', src: src.value, name: alt.value || 'image', size: null, row: transcriptRowOf(event.currentTarget instanceof Element ? event.currentTarget : null) }, transcript?.pictures)
   }
-  const medium = { kind: 'image' as const, name: alt.value || 'image', size: loadedSize(element), row: transcriptRowOf(element) }
-  // A Host image shows its file, at the version the page keeps, as the message does.
-  viewer.show('path' in shown && contents ? { ...medium, file: { path: shown.path, contents } } : { ...medium, src: src.value }, transcript?.pictures)
 }
 // The wrapper breaks as the line around it does: tiptap's own `white-space:
 // normal` would let the one-line composer wrap after it.
@@ -66,28 +60,15 @@ function open(event: MouseEvent): void {
   <NodeViewWrapper
     as="span"
     style="white-space: inherit"
-    :class="tile ? 'media-lone' : ''"
   >
-    <template v-if="image && src !== null">
-      <img
-        ref="img"
-        :src="src"
-        :alt="alt"
-        :title="node.attrs['title'] ?? undefined"
-        class="message-image"
-        :class="tile && linked ? 'cursor-pointer' : ''"
-        @click="open"
-        @load="fit"
-      />
-      <PicturePreview
-        v-if="tile && picture"
-        :trigger="picture.element"
-        kind="image"
-        :src="picture.src"
-        :size="picture.size"
-        :caption="picture.caption"
-      />
-    </template>
+    <AttachmentCapsule
+      v-if="capsule"
+      :capsule="capsule"
+      :selected="selected"
+      :class="opens || viewable ? 'cursor-pointer' : ''"
+      data-drag-handle
+      @click="open"
+    />
     <template v-else>{{ alt }}</template>
   </NodeViewWrapper>
 </template>
