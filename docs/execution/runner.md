@@ -1057,17 +1057,17 @@ the dev server it started runs on, holding its port.
 ### Windows paths
 
 On Windows a job's shell takes drive paths as Windows writes them,
-`C:/Users/alex/notes.txt` or, quoted, `'C:\Users\zan\notes.txt'`; a bare
+`C:/Users/alex/notes.txt` or, quoted, `'C:\Users\alex\notes.txt'`; a bare
 backslash path does not work, since bash reads each backslash as an escape,
 as it does on every system. The Git Bash and MSYS form `/c/Users/…` is not a
 drive path here: it names `/c` at the root of the current drive, which does
 not exist, and the context block tells the model to write `C:/…` instead.
 Paths the runner prints, such as the directory a shell starts in, use the
-system's own form, `C:\Users\zan\Downloads`, and so do the paths the
+system's own form, `C:\Users\alex\Downloads`, and so do the paths the
 backend builds on a Host, such as where an attachment is saved: the backend
 joins them with the separator of the system the Host's runner reports, in
 one helper every caller uses, so a Windows Host shows
-`C:\Users\zan\.demi\attachments\…`, never `C:\Users\zan/.demi/…`.
+`C:\Users\alex\.demi\attachments\…`, never `C:\Users\alex/.demi/…`.
 
 ### Standard utilities
 

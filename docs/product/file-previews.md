@@ -52,7 +52,7 @@ The File view has two bars, as a browser has an address bar over a page and
 GitHub a file's own bar over its contents:
 
 ```text
- ← →  [ / › Users › zan › Projects › demi › docs › guide.md ]  [tree]   the path bar
+ ← →  [ / › Users › alex › Projects › shop › docs › guide.md ]  [tree]   the path bar
  ┌──────────────────────────────────────────────────┬──────────┐
  │ Markdown · 47 lines · 1.1 KB   [Preview|Source] ⧉ ⤓ │ demi     │   the file's bar
  │                                                  │  docs    │

@@ -551,8 +551,8 @@ turn and the commands it is running.
 A message saved for later is one the user keeps to send later, and nothing
 ever sends it but the user. It is not the conversation's draft, the message
 the composer holds ([Conversations](#conversations)), which it leaves the
-composer to become. For example, while the agent works Ana writes *Check prod's
-DNS next*, which is not for now: she presses Save for Later beside the send
+composer to become. For example, while the agent works Ana writes *Check the
+server's DNS next*, which is not for now: she presses Save for Later beside the send
 button, the composer empties, and *1 Saved* appears at the left of the row
 under the composer. An hour later she opens it and presses Send on the
 message's row.
