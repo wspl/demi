@@ -316,7 +316,9 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
     }));
     assert_eq!(events, [text("hel"), text("lo"), cached]);
     // The process resumes the session written for it, named by a UUID the
-    // session's id gives, and mirrors it.
+    // session's id gives, and mirrors it; safe mode keeps out what the
+    // machine and the account would add, such as the account's claude.ai
+    // connectors.
     let session = cli.session();
     let resumed = session[0]["sessionId"].as_str().unwrap().to_owned();
     assert!(uuid::Uuid::parse_str(&resumed).is_ok(), "{resumed}");
@@ -355,7 +357,7 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
     // The access token is on descriptor 3, never in the environment, which
     // removes a token the machine's own environment holds; the process
     // claims to be no other client, finds its sessions in a directory of
-    // Demi's, sends no telemetry and answers what the session ends with.
+    // Demi's and answers what the session ends with.
     let env = BTreeMap::from([
         ("CLAUDECODE".to_owned(), None),
         ("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), None),
