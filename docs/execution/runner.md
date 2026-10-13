@@ -929,7 +929,8 @@ receives the foreground exit status.
 A job's environment is the device environment
 ([Host operations](#host-operations)) with the job's own variables added:
 the command endpoint and context handle, `DEMI_HOME`, the alias directory on
-`PATH`, `DEMI_JOB_ID` and `DEMI_LIVE_INPUT`
+`PATH`, `DEMI_JOB_ID`, `DEMI_LIVE_INPUT`, and for a conversation's job
+`DEMI_SCRATCH`, its scratch directory ([Scratch directory](#scratch-directory))
 ([Command context](native-runtime.md#command-context),
 [A job's own input](#a-jobs-own-input)). The runner
 sets no temporary directory for a job: `TMPDIR` is the device environment's,
@@ -941,6 +942,30 @@ and keeps it after the job ends. A temporary directory of the job's own
 would break both: macOS limits a socket's path to 104 bytes, which a path
 under the job root exceeds, and a daemon the job started would outlive the
 directory.
+
+### Scratch directory
+
+Each conversation has a scratch directory on each Host it runs on, for the
+files only the agent needs: a screenshot it looks at, a probe script, a log
+it reads back. For example, the agent saves `$DEMI_SCRATCH/page.png`, views
+it and moves on; the file shows in no pill and no Change view, and it is
+still there when the agent looks again an hour later, which `/tmp` does not
+promise, since a system may clear it.
+
+- **Where:** `<DEMI_HOME>/scratch/<conversation id>/`, which the runner
+  creates at the conversation's first job on that Host; on Windows under
+  `%USERPROFILE%\.demi`. Every agent of the conversation shares it.
+- **`DEMI_SCRATCH`** names it in every job of the conversation, on the
+  primary Host and on attached ones, and in the commands' context.
+- **Not a change:** the runner marks paths in it `temporary`, as it marks
+  those in the system's temporary directories
+  ([Temporary files](edit-tracking.md#temporary-files)).
+- **It goes with the conversation:** archiving keeps it. When the runner
+  connects, the hello's answer names the conversations of the user that
+  still exist, and the runner removes every scratch directory of a
+  conversation not among them, so a deleted conversation's scratch leaves a
+  Host offline at the time as soon as it connects, with nothing to remember
+  in between.
 
 The user login profile is the one in the job's home, the directory the job's
 `HOME` names, and the profiles see that directory as `$HOME`. A job's `HOME`
