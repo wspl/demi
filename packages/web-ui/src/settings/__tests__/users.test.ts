@@ -14,11 +14,11 @@ const peer = account('mei', 'admin')
 const user = account('bo', 'user')
 
 test('the master resets, changes the role of, signs out and disables a lower account', () => {
-  expect(userActions(master, admin)).toEqual(['resetPassword', 'changeRole', 'signOutEverywhere', 'disable'])
+  expect(userActions(master, admin)).toEqual(['resetPassword', 'changeRole', 'signInCode', 'signOutEverywhere', 'disable'])
 })
 
-test('an admin changes no role: a user offers reset, sign out and disable', () => {
-  expect(userActions(admin, user)).toEqual(['resetPassword', 'signOutEverywhere', 'disable'])
+test('an admin changes no role: a user offers reset, sign-in code, sign out and disable', () => {
+  expect(userActions(admin, user)).toEqual(['resetPassword', 'signInCode', 'signOutEverywhere', 'disable'])
 })
 
 test('no menu on the user’s own row, on a peer or on a higher role', () => {
@@ -29,7 +29,7 @@ test('no menu on the user’s own row, on a peer or on a higher role', () => {
   expect(userActions(user, user)).toEqual([])
 })
 
-test('a disabled account offers Enable Account in place of sign out and disable', () => {
+test('a disabled account offers Enable Account in place of sign-in code, sign out and disable', () => {
   expect(userActions(admin, account('joe', 'user', true))).toEqual(['resetPassword', 'enable'])
 })
 

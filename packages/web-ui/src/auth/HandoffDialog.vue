@@ -11,7 +11,14 @@ import InlineError from '../ui/InlineError.vue'
 import TextInput from '../ui/TextInput.vue'
 import SettingsRow from '../settings/SettingsRow.vue'
 import { hiddenUsername } from '../ui/field-autofill'
-import { timeLeft, type HandoffCodeView, type HandoffHost, type HandoffVerifyOutcome } from './handoff'
+import {
+  HANDOFF_WORDING,
+  timeLeft,
+  type HandoffCodeView,
+  type HandoffHost,
+  type HandoffVerifyOutcome,
+  type HandoffWording,
+} from './handoff'
 
 /**
  * Hand Off to Your Phone (`product.md` § User system). Opening it asks the
@@ -21,15 +28,20 @@ import { timeLeft, type HandoffCodeView, type HandoffHost, type HandoffVerifyOut
  * Passkey where the host offers one. The code step shows the code's URL as
  * a QR code and the time left; an expired one offers Show New Code, which
  * asks again. Once the host names the browser the code was handed off to,
- * the dialog says so and closes by itself a moment later.
+ * the dialog says so and closes by itself a moment later. `wording` words
+ * it for who shows the code and who scans it; a `code-lead` slot puts
+ * something above the QR code, such as Add User's first password.
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   host: HandoffHost
   /** The account's email, which the password manager files the password under. */
   email: string
-}>()
+  wording?: HandoffWording
+}>(), {
+  wording: () => HANDOFF_WORDING,
+})
 
 const emit = defineEmits<{
   close: []
@@ -197,14 +209,14 @@ watch(handedOffTo, (name) => {
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Hand Off to Your Phone"
+    :label="wording.title"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Hand Off to Your Phone</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">{{ wording.title }}</h3>
         <p v-if="step.kind === 'verify'" class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          Confirm it’s you. Your phone then opens this page, signed in to this account.
+          {{ wording.confirm }}
         </p>
       </header>
       <div v-if="step.kind === 'starting'" class="flex h-40 items-center justify-center" role="status" aria-label="Making a code">
@@ -235,29 +247,32 @@ watch(handedOffTo, (name) => {
         </form>
         <InlineError v-if="verifyError" :message="verifyError.message" :request-id="verifyError.requestId" />
       </template>
-      <div v-else-if="step.kind === 'code'" class="flex flex-col items-center gap-3 pb-1">
-        <!-- The QR library's own SVG of the code: paths only, never the URL's text. -->
-        <div
-          v-if="handedOffTo === null"
-          class="flex size-48 items-center justify-center rounded-xl bg-white p-3 [&>svg]:size-full"
-          :class="{ 'opacity-15': left === null }"
-          role="img"
-          aria-label="QR code"
-          :data-url="step.code.url"
-          v-html="step.svg"
-        />
-        <div v-else class="flex size-48 flex-col items-center justify-center gap-3 text-center" role="status">
-          <CircleCheck :size="40" class="text-on-success" />
-          <p class="text-[13px] leading-5 text-fg">Handed off to {{ handedOffTo }}.</p>
+      <template v-else-if="step.kind === 'code'">
+        <slot name="code-lead" />
+        <div class="flex flex-col items-center gap-3 pb-1">
+          <!-- The QR library's own SVG of the code: paths only, never the URL's text. -->
+          <div
+            v-if="handedOffTo === null"
+            class="flex size-48 items-center justify-center rounded-xl bg-white p-3 [&>svg]:size-full"
+            :class="{ 'opacity-15': left === null }"
+            role="img"
+            aria-label="QR code"
+            :data-url="step.code.url"
+            v-html="step.svg"
+          />
+          <div v-else class="flex size-48 flex-col items-center justify-center gap-3 text-center" role="status">
+            <CircleCheck :size="40" class="text-on-success" />
+            <p class="text-[13px] leading-5 text-fg">{{ wording.done(handedOffTo) }}</p>
+          </div>
+          <template v-if="handedOffTo === null">
+            <p v-if="left !== null" class="select-none text-center text-[13px] leading-5 text-fg-muted">
+              {{ wording.scan }}
+              <span class="block text-[12px] tabular-nums text-fg-subtle">Expires in {{ left }}</span>
+            </p>
+            <p v-else class="select-none text-center text-[13px] leading-5 text-fg-muted">This code has expired.</p>
+          </template>
         </div>
-        <template v-if="handedOffTo === null">
-          <p v-if="left !== null" class="select-none text-center text-[13px] leading-5 text-fg-muted">
-            Scan with your phone’s camera.
-            <span class="block text-[12px] tabular-nums text-fg-subtle">Expires in {{ left }}</span>
-          </p>
-          <p v-else class="select-none text-center text-[13px] leading-5 text-fg-muted">This code has expired.</p>
         </template>
-      </div>
       <InlineError v-else :message="step.message" :request-id="step.requestId" />
     </div>
     <template #footer>
