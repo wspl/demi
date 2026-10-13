@@ -123,8 +123,9 @@ function use(deviceId: string): DeviceDirect {
   states.set(deviceId, state)
   // The first open of the socket starts the first attempt, and each open
   // after one closed is a reason to try again; a peer the backend closed is
-  // made again at once.
-  const signaling = new DeviceSignaling(deviceId, () => direct.tryNow(), () => direct.reintroduce())
+  // made again at once; a socket that dropped took the peer with it, so the
+  // page uses the relay until a new channel is made.
+  const signaling = new DeviceSignaling(deviceId, () => direct.tryNow(), () => direct.reintroduce(), () => direct.failed())
   const direct = new DeviceDirect(
     {
       ready: () => signaling.open,

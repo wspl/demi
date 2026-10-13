@@ -607,6 +607,33 @@ test('the user’s downloads in a tab stay listed while its view opens again', a
   end()
 })
 
+test('a view’s state replaces the downloads the page holds: only those of the tab it watches stay', async () => {
+  const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
+  const { controller, end } = harness({ stream: recordingStream(views) }, { pictures: async () => true })
+  await until(controller.pictures).toBe('supported')
+  controller.resize(PANEL)
+  controller.show('p-t1', 't1')
+  const download = (id: string) => ({ id, name: `${id}.pdf`, state: 'complete', received: 48, total: 48, path: `/tmp/downloads/${id}.pdf` }) as const
+  const tab = (id: string): LiveTab => ({
+    id, title: id, url: `https://example.test/${id}`, createdBy: { kind: 'agent', number: 1 }, viewport: VIEWPORT,
+    loading: false, canGoBack: false, canGoForward: false,
+  })
+  const state = (list: number, tabs: LiveTab[]) =>
+    views[0]!.handlers.data(framed({ type: 'state', running: true, list, tabs, watched: 't1' }))
+  views[0]!.handlers.data(framed({ type: 'downloads', tab: 't1', downloads: [download('g1')] }))
+  views[0]!.handlers.data(framed({ type: 'downloads', tab: 't2', downloads: [download('g2')] }))
+  views[0]!.handlers.data(framed({ type: 'downloads', tab: 't3', downloads: [download('g3')] }))
+  // The state lists t1 and t2 and the page watches t1: t3 is gone, and t2 is not watched.
+  state(1, [tab('t1'), tab('t2')])
+  expect(controller.downloadsOf('t1')).toEqual([download('g1')])
+  expect(controller.downloadsOf('t2')).toEqual([])
+  expect(controller.downloadsOf('t3')).toEqual([])
+  // The watched tab itself went.
+  state(2, [tab('t2')])
+  expect(controller.downloadsOf('t1')).toEqual([])
+  end()
+})
+
 test('before the browser has a tab, the content says what Demi does: connecting, the Cloud, the browser, then the page', async () => {
   const starting = ref(false)
   const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
