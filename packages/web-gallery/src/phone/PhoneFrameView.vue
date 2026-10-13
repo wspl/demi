@@ -32,6 +32,10 @@ import { demoAccount, demoConversations, demoProjects } from '../sidebar/sidebar
 import { useTurnFlow } from '../turn-flow'
 import type { SidebarConversation } from '@demicodes/web-ui/sidebar/types'
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
+import { useAgentContext } from '../agent-context'
+
+/** What a child's context card in the Agents window shows and does beside its usage. */
+const agentContext = useAgentContext()
 
 /**
  * One phone of the Phone page (`GalleryPhoneFrame`): the app frame at a
@@ -241,6 +245,7 @@ onMounted(async () => {
         @send-queued="flow.sendQueued"
         @recall-steer="flow.recallSteer"
         @interrupt-pending-steer="flow.interruptPendingSteer"
+        v-bind="agentContext.session"
       >
         <template #workspace>
           <GalleryHostMenu :devices="devices" :primary-id="primaryId" has-messages />

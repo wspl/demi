@@ -5,7 +5,7 @@ import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { ChevronDown, PanelLeft, PanelRight, Play, TextCursorInput } from '@lucide/vue'
-import type { TranscriptVersion } from '@demicodes/protocol'
+import type { InstructionEntry, TranscriptVersion } from '@demicodes/protocol'
 import {
   beginMessageEdit,
   offeredEditId,
@@ -32,6 +32,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
 import type { HostMenuHost } from '../hosts/types'
 import type { MessageForkHandler } from './message-fork'
+import type { UsageLimits } from './context-usage'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { isTextCut } from '@demicodes/web-ui/ui/truncation'
@@ -110,6 +111,11 @@ const props = withDefaults(defineProps<{
   /** Reads a block whole for a row the page holds light (`web-api.md` § Light form); absent, no row is light. */
   readBlock?: BlockReader
   /**
+   * The usage limits of the account a provider entry runs on, which a
+   * child's context card in the Agents window shows; absent, it shows none.
+   */
+  usageLimits?: (providerId: string) => UsageLimits | null
+  /**
    * The host's connection banner says the backend is away
    * (`web-application.md` § A page of another build): the transcript adds no
    * Connecting row of its own while the conversation's socket waits for it.
@@ -162,6 +168,12 @@ const emit = defineEmits<{
   showLatest: []
   /** Read a page of a subagent's transcript, for its panel. */
   readSubagent: [id: string, at: 'latest' | 'before']
+  /** Compact in a child's context card, in the Agents window: that child's context. */
+  compactSubagent: [id: string]
+  /** A child's context card asks for the usage limits of the account its entry `providerId` runs on again. */
+  refreshLimits: [providerId: string, automatic: boolean]
+  /** An instruction in a child's context card opens where it is written. */
+  openInstruction: [entry: InstructionEntry]
 }>()
 provideEditSelection(() => props.selectEdit)
 provideBlockReader(() => props.readBlock)
@@ -647,6 +659,10 @@ watch(
             :reveal="reveal?.node ? reveal : null"
             @read="(id, at) => emit('readSubagent', id, at)"
             @revealed="emit('revealed')"
+            :usage-limits="usageLimits"
+            @compact-agent="(id) => emit('compactSubagent', id)"
+            @refresh-limits="(providerId, automatic) => emit('refreshLimits', providerId, automatic)"
+            @open-instruction="(entry) => emit('openInstruction', entry)"
           />
           <TerminalPanel
             v-model:active-id="activeTerminalId"

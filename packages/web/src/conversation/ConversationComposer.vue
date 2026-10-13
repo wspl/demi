@@ -7,7 +7,6 @@ import { baseName } from '@demicodes/utils'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { loadedInstructions } from '@demicodes/web-ui/agent/instructions'
 import { latestBlocks } from '@demicodes/web-ui/agent/history'
-import type { InstructionEntry } from '@demicodes/protocol'
 
 import { composerRemoteAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
@@ -27,8 +26,7 @@ import { claimStoredFile, uploadAttachment } from '../api/uploads'
 import type { Conversation } from '../state/types'
 import { cliPackageOf } from '../state/catalog'
 import { useSettingsAddress } from '../settings/address'
-import { useProviderSettings } from '../settings/providers'
-import type { UsageLimits } from '@demicodes/web-ui/agent/context-usage'
+import { useContextCard } from './context-card'
 
 const props = defineProps<{
   conversation: Conversation
@@ -89,42 +87,9 @@ function send(way: SendWay) {
 /** What the model holds of the user's and the project's instructions, which the context card lists. */
 const instructions = computed(() => loadedInstructions(latestBlocks(props.conversation.history), props.conversation.instructions))
 
-/** The personal instructions open their settings; a file shows in the work panel. */
-function openInstruction(entry: InstructionEntry): void {
-  if (entry.kind === 'personal') {
-    void settings.open('instructions')
-  } else {
-    props.openFile?.({ path: entry.path, line: null })
-  }
-}
-
-const providerSettings = useProviderSettings()
-/** The subscription account the conversation's model runs on: its entry's active account; none on an API key. */
-const account = computed(() => {
-  const provider = resources.providers.find((entry) => entry.id === props.conversation.model.providerId)
-  const active = provider?.kind === 'subscription' ? provider.accounts.find((entry) => entry.active) : undefined
-  return provider && active ? { provider, account: active } : null
-})
-/** What the context card shows of that account's usage limits (`usage-and-quota.md`). */
-const limits = computed<UsageLimits | null>(() => {
-  const current = account.value
-  return current
-    ? {
-        accountLabel: current.account.label,
-        windows: current.account.quota,
-        autoRefresh: current.provider.autoRefreshUsage ?? false,
-        refreshing: providerSettings.refreshingUsage[current.provider.id]?.[current.account.id] === 'manual',
-        error: providerSettings.usageFailures[current.provider.id]?.[current.account.id] ?? null,
-      }
-    : null
-})
-/** The card showed the limits (automatic, at most once a minute per account) or its Refresh usage button was pressed: the store's request, as Settings asks. */
-function refreshLimits(automatic: boolean): void {
-  const current = account.value
-  if (current) {
-    void providerSettings.refreshUsage(current.provider, current.account.id, automatic)
-  }
-}
+const card = useContextCard(() => props.openFile)
+/** What the context card shows of the usage limits of the account the conversation's model runs on. */
+const limits = computed(() => card.limitsOf(props.conversation.model.providerId))
 
 const execution = computed(() => executionFor(props.conversation))
 // A reset holds the conversations that cannot work without the Cloud: it is
@@ -239,7 +204,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :usage="conversation.contextUsage"
       :instructions="instructions"
       :limits="limits"
-      @refresh-limits="refreshLimits"
+      @refresh-limits="card.refreshLimits(conversation.model.providerId, $event)"
       :remote-files="remoteHosts.length > 0"
       :archived="conversation.archived"
       :hold="hold"
@@ -263,7 +228,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @change-context-limit="preferences.setContextLimit($event)"
       @stop="store.stop(conversation)"
       @compact="store.compact(conversation)"
-      @open-instruction="openInstruction"
+      @open-instruction="card.openInstruction"
     />
     <RemoteFilePicker
       ref="remotePicker"

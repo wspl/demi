@@ -22,6 +22,9 @@ export function contextPercent(usage: ContextUsage | null): string | null {
   return usage?.window ? formatPercent(usage.tokens, usage.window) : null
 }
 
+/** Why Compact waits while the agent's turn runs, which the session refuses as busy. */
+export const COMPACT_AFTER_TURN = 'Compaction is available once the turn ends.'
+
 /**
  * Why the user may not compact at `usage`, or null when they may: below the
  * estimate the backend takes a `compact` frame from. A model without a

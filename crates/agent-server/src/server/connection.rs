@@ -30,6 +30,8 @@ use super::{
 const NO_SESSION: &str = "No session is open";
 /// What a steer's refusal says then.
 const NO_SESSION_HERE: &str = "No session is open on this connection";
+/// The refusal of a `compact` that names a node the tree no longer runs.
+const AGENT_ENDED: &str = "The agent has ended";
 
 /// A connection's bounded outbox. When it is full, the client lags: the
 /// outbox closes, and the backend closes the socket with a code that says so;
@@ -264,11 +266,12 @@ impl<H: HostResolver> Connection<H> {
             }
         };
         tree.attach(self.id, self.outbox.clone(), from, edge);
-        // The usage follows the handshake, since the window in use is asked
-        // for (`compaction.md` § Context estimate). It is the estimate at
-        // the moment it is sent, so a later change still arrives after it.
-        if let Some(usage) = tree.root().session().held_context_usage().await {
-            self.send(ServerFrame::ContextUsage { usage });
+        // Each node's usage follows the handshake, since the window in use
+        // is asked for (`compaction.md` § Context estimate). It is the
+        // estimate at the moment it is sent, so a later change still
+        // arrives after it.
+        for frame in tree.held_context_usage().await {
+            self.send(frame);
         }
         // The open is answered. The user will likely send next: its request
         // is known but for its input, and readying it may read the media
@@ -387,9 +390,17 @@ impl<H: HostResolver> Connection<H> {
                     tree.abort_child(&subagent_id).await;
                 }
             }
-            ClientFrame::Retry {} | ClientFrame::Resume {} | ClientFrame::Compact {} => {
+            ClientFrame::Retry {} | ClientFrame::Resume {} => {
                 self.recover(session, kind, None).await;
             }
+            // A subagent's context card compacts that child, the root's the root.
+            ClientFrame::Compact { node } => match node {
+                None => self.recover(session, kind, None).await,
+                Some(id) => match tree.node(&id) {
+                    Some(node) => self.recover(node.session(), kind, None).await,
+                    None => self.reject(kind, AGENT_ENDED),
+                },
+            },
             ClientFrame::EditAndSend { request } => {
                 let operation_id = request.operation_id.clone();
                 let outcome = match self.edit(session, request).await {
@@ -423,8 +434,8 @@ impl<H: HostResolver> Connection<H> {
 }
 
 impl<H: HostResolver> Connection<H> {
-    /// Retries, resumes or compacts the root's session, refusing while it
-    /// is busy; a resume carries `reason` to the model.
+    /// Retries or resumes the root's session, or compacts a node's,
+    /// refusing while it is busy; a resume carries `reason` to the model.
     async fn recover(&self, session: &AgentSession, kind: ClientFrameKind, reason: Option<&str>) {
         if let Some(refusal) = busy(session) {
             self.reject(kind, refusal);

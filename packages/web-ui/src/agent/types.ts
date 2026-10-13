@@ -69,8 +69,9 @@ export interface ConversationState {
    */
   failures: Record<string, ProviderFailureFacts>
   /**
-   * How full the next request is, as the backend estimates it
-   * (`compaction.md` § Context estimate); null until the session says.
+   * How full the root's next request is, as the backend estimates it
+   * (`compaction.md` § Context estimate); null until the session says. A
+   * subagent's is its record's.
    */
   contextUsage: ContextUsage | null
 }

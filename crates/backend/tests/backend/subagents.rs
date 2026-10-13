@@ -621,7 +621,7 @@ fn started(frames: &[ServerFrame]) -> Vec<SubagentJob> {
 #[tokio::test]
 async fn a_childs_job_says_what_its_round_runs_on_in_the_menus_names() {
     let scripts = Arc::new(Scripts::default());
-    let (_harness, backend, master, _paired, root, _provider) = tree(&scripts).await;
+    let (_harness, backend, master, _paired, root, provider) = tree(&scripts).await;
     // A second entry whose `n` has a Fast tier, and a profile on it with
     // thinking off and the Fast tier.
     let quick = backend
@@ -680,12 +680,14 @@ async fn a_childs_job_says_what_its_round_runs_on_in_the_menus_names() {
         started(&frames)
     };
     let inherited = JobModel {
+        provider_id: provider,
         provider: "Tree".to_owned(),
         model: "M".to_owned(),
         effort: None,
         fast: false,
     };
     let fast = JobModel {
+        provider_id: quick.to_string(),
         provider: "Quick".to_owned(),
         model: "N".to_owned(),
         effort: Some("off".to_owned()),

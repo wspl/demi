@@ -6,6 +6,10 @@ import { agentLinkWindow, findAgent, provideMessageAgents } from '@demicodes/web
 import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import { productWould } from '../product-would'
+import { useAgentContext } from '../agent-context'
+
+/** What a child's context card in the Agents window shows and does beside its usage. */
+const agentContext = useAgentContext()
 
 /**
  * Receipt specimens over the gallery's children, as a session holds them:
@@ -64,6 +68,7 @@ provideMessageAgents(() => ({
         @revealed="reveal = null"
         @abort="emit('abort')"
         @abort-agent="(id) => emit('abortAgent', id)"
+        v-bind="agentContext.panel"
       />
     </div>
   </div>
