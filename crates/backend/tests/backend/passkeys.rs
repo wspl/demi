@@ -114,11 +114,24 @@ fn harness() -> Harness {
     harness
 }
 
-/// Asks to add a passkey with `password`.
-async fn add_options(backend: &TestBackend, session: &Session, password: &str) -> Answer {
+/// Asks to add a passkey as the session stands, verified or not.
+async fn options_now(backend: &TestBackend, session: &Session) -> Answer {
     backend
-        .post("/api/auth/passkeys/options", Some(session), json!({ "password": password }))
+        .post("/api/auth/passkeys/options", Some(session), json!({}))
         .await
+}
+
+/// Asks to add a passkey as Settings does: the password first, which
+/// verifies the session, then the options. A wrong password answers as
+/// verifying does.
+async fn add_options(backend: &TestBackend, session: &Session, password: &str) -> Answer {
+    let verified = backend
+        .post("/api/auth/verify", Some(session), json!({ "password": password }))
+        .await;
+    if verified.status != StatusCode::NO_CONTENT {
+        return verified;
+    }
+    options_now(backend, session).await
 }
 
 /// Adds a passkey of `manager` to the account, with the password, from a
@@ -174,7 +187,7 @@ async fn a_passkey_added_with_the_password_signs_in_without_an_email() {
     assert_eq!(state.passkey_rp_id.as_deref(), Some("localhost"));
     assert!(state.passkeys.passkeys.is_empty());
 
-    // A wrong password adds nothing and asks the browser for nothing.
+    // A wrong password verifies nothing, adds nothing and asks the browser for nothing.
     let wrong = add_options(&backend, &master, "not the password").await;
     assert_eq!(wrong.refusal(), (StatusCode::UNAUTHORIZED, ErrorCode::InvalidCredentials));
 
@@ -352,8 +365,15 @@ async fn a_development_page_on_another_port_adds_a_passkey() {
             .body(body.to_string())
             .send()
     };
+    let verified = crate::support::answer(
+        from_page(Method::POST, "/api/auth/verify", json!({ "password": MASTER_PASSWORD }))
+            .await
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(verified.status, StatusCode::NO_CONTENT);
     let options = crate::support::answer(
-        from_page(Method::POST, "/api/auth/passkeys/options", json!({ "password": MASTER_PASSWORD }))
+        from_page(Method::POST, "/api/auth/passkeys/options", json!({}))
             .await
             .unwrap(),
     )
@@ -445,4 +465,100 @@ async fn a_session_verifies_only_with_a_passkey_of_its_own_account() {
         .await;
     assert_eq!(made.status, StatusCode::OK, "{}", String::from_utf8_lossy(&made.body));
     backend.close().await;
+}
+
+const IPHONE_SAFARI: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 18.0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1";
+
+/// Spends a handoff code of `laptop`'s from a phone's browser that holds
+/// `held`'s session cookie when given; answers the phone's session, its own
+/// cookie when the code made one.
+async fn phone_spends_code(backend: &TestBackend, laptop: &Session, held: Option<&Session>) -> Session {
+    let made = backend
+        .post("/api/auth/handoff/code", Some(laptop), json!({ "to": "/chat" }))
+        .await;
+    assert_eq!(made.status, StatusCode::OK, "{}", String::from_utf8_lossy(&made.body));
+    let url = url::Url::parse(made.json::<Value>()["url"].as_str().unwrap()).unwrap();
+    let mut request = reqwest::Client::new()
+        .post(format!("{}/api/auth/handoff", backend.url))
+        .header("user-agent", IPHONE_SAFARI)
+        .header("content-type", "application/json")
+        .body(json!({ "code": url.fragment().unwrap() }).to_string());
+    if let Some(held) = held {
+        request = request.header("cookie", &held.cookie);
+    }
+    let spent = crate::support::answer(request.send().await.unwrap()).await;
+    assert_eq!(spent.status, StatusCode::OK, "{}", String::from_utf8_lossy(&spent.body));
+    match (spent.session_cookies().as_slice(), held) {
+        ([cookie], _) => Session {
+            cookie: cookie.split(';').next().unwrap().to_owned(),
+            user: laptop.user.clone(),
+        },
+        ([], Some(held)) => Session {
+            cookie: held.cookie.clone(),
+            user: held.user.clone(),
+        },
+        (cookies, _) => panic!("a code sets a cookie only on a phone without the session: {cookies:?}"),
+    }
+}
+
+/// A code's sign-in is the phone's confirmation (`product.md` § User
+/// system): the phone adds a passkey at once, whether the code made its
+/// session or the phone kept the one it had, and a session that has not
+/// signed in for five minutes is asked to confirm first. The passkey then
+/// signs in by itself and, since the account's passkeys are excluded from
+/// the next addition, a phone whose manager holds it is refused a second.
+#[tokio::test]
+async fn a_phone_signed_in_by_a_code_adds_a_passkey_without_the_password() {
+    let harness = harness();
+    let (backend, laptop) = harness.start_set_up().await;
+    let made = phone_spends_code(&backend, &laptop, None).await;
+    let kept = backend.login(laptop.user.email.as_str(), MASTER_PASSWORD).await;
+
+    harness.clock.advance(SignedDuration::from_mins(5));
+    // A session that signed in long ago, a password sign-in's included, is
+    // asked to confirm first.
+    for old in [&laptop, &made, &kept] {
+        let refused = options_now(&backend, old).await;
+        assert_eq!(refused.refusal(), (StatusCode::FORBIDDEN, ErrorCode::VerificationRequired));
+    }
+
+    // The laptop confirms and makes a code; a phone that keeps its session
+    // is confirmed by spending it.
+    let confirmed = backend
+        .post("/api/auth/verify", Some(&laptop), json!({ "password": MASTER_PASSWORD }))
+        .await;
+    assert_eq!(confirmed.status, StatusCode::NO_CONTENT);
+    let phone = phone_spends_code(&backend, &laptop, Some(&kept)).await;
+    assert_eq!(phone.cookie, kept.cookie);
+    let options = options_now(&backend, &phone).await;
+    assert_eq!(options.status, StatusCode::OK, "{}", String::from_utf8_lossy(&options.body));
+    let options: Value = options.json();
+
+    // A sign-in names no passkey and hides no transport: the browser may offer
+    // "Use a phone or tablet"; the passkey it makes is discoverable.
+    let request = sign_in_options(&backend).await;
+    assert_eq!(request["options"]["allowCredentials"], json!([]));
+    assert!(request["options"]["hints"].is_null(), "{request}");
+    assert!(options["options"]["hints"].is_null(), "{options}");
+    assert_eq!(options["options"]["authenticatorSelection"]["residentKey"], "required");
+
+    let mut manager = Manager::new([0; 16]);
+    let credential = manager.create(&options["options"]).await;
+    let added = backend
+        .post(
+            "/api/auth/passkeys",
+            Some(&phone),
+            json!({ "challengeId": options["challengeId"], "credential": credential }),
+        )
+        .await;
+    assert_eq!(added.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&added.body));
+    let passkey = added.json::<PasskeyAnswer>().passkey;
+    let signed_in = sign_in(&backend, &mut manager).await;
+    assert_eq!(signed_in.status, StatusCode::OK);
+
+    // The manager that holds it is told not to make another.
+    let again: Value = options_now(&backend, &phone).await.json();
+    let excluded = &again["options"]["excludeCredentials"];
+    assert_eq!(excluded.as_array().unwrap().len(), 1, "{again}");
+    assert_eq!(excluded[0]["id"], passkey.id.as_str());
 }
