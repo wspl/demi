@@ -96,6 +96,8 @@
    fixed-positioned panel that would teleport to <body> stays inside and is clipped to it;
    the min-height is the room it takes. Click-to-open overlays do not need a well. */
 .gallery-overlay-well {
+  /* Clips by `contain: paint`: rings inside draw inside (`base.css`, § The focus ring). */
+  --focus-ring-offset: -2px;
   position: relative;
   contain: paint;
   isolation: isolate;

@@ -359,11 +359,15 @@ defineExpose({
 
 <template>
   <!-- The transcript is read as one text: its rows are antialiased as its prose is, so they never draw heavier beside it. -->
-  <div class="relative h-full antialiased">
+  <div
+    class="relative h-full antialiased"
+    :style="{ '--transcript-clearance': `${props.bottomOffset + COMPOSER_CLEARANCE_PX}px` }"
+  >
+    <!-- The scroll padding keeps a control the keyboard focuses out from under the dock, as the padding keeps the last block. -->
     <ScrollArea
       ref="scrollArea"
       class="h-full"
-      :viewport-class="paneStatus ? '[overflow-anchor:none] flex flex-col' : '[overflow-anchor:none]'"
+      :viewport-class="paneStatus ? '[overflow-anchor:none] [scroll-padding-bottom:var(--transcript-clearance)] flex flex-col' : '[overflow-anchor:none] [scroll-padding-bottom:var(--transcript-clearance)]'"
       @scroll="onScroll"
     >
       <SessionStatus
@@ -375,7 +379,7 @@ defineExpose({
       <div
         v-else
         class="w-full px-[var(--session-gutter,0px)] pt-2"
-        :style="{ paddingBottom: `${props.bottomOffset + COMPOSER_CLEARANCE_PX}px` }"
+        :style="{ paddingBottom: 'var(--transcript-clearance)' }"
       >
         <div class="relative w-full" :style="{ height: `${totalSize}px` }">
           <div

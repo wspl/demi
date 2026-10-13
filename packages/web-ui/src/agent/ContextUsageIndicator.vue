@@ -171,7 +171,7 @@ const ringColor = computed(() => {
           aria-haspopup="dialog"
           :aria-expanded="isOpen"
           class="relative flex cursor-default items-center justify-center transition-colors hover:bg-hover"
-          :class="[segment ? 'status-bar-segment focus-ring h-full' : 'size-hit rounded-md', isOpen ? 'bg-hover' : '']"
+          :class="[segment ? 'status-bar-segment h-full' : 'size-hit rounded-md', isOpen ? 'bg-hover' : '']"
           :data-acting="segment || undefined"
         >
           <IndeterminateSpinner v-if="isCompacting" />
@@ -211,7 +211,7 @@ const ringColor = computed(() => {
               v-else-if="usage"
               type="button"
               :aria-expanded="listOpen"
-              class="flex w-full min-w-0 cursor-default items-baseline gap-3 whitespace-nowrap rounded-sm text-left focus-visible:outline-2 focus-visible:outline-line-focus"
+              class="flex w-full min-w-0 cursor-default items-baseline gap-3 whitespace-nowrap rounded-sm text-left"
               @click="listOpen = !listOpen"
             >
               <span class="font-medium text-fg-emphasis">Context window</span>

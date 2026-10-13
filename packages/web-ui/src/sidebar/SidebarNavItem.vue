@@ -47,7 +47,7 @@ const emit = defineEmits<{
       :aria-label="label"
       :aria-disabled="disabled || undefined"
       :tabindex="disabled ? undefined : 0"
-      class="focus-ring flex cursor-default select-none items-center gap-2 rounded-md transition-colors duration-200 ease-out"
+      class="flex cursor-default select-none items-center gap-2 rounded-md transition-colors duration-200 ease-out"
       :class="[
         'pl-2.5 pr-2',
         size === 'lg' ? 'h-10 text-[15px] phone:h-11 phone:text-[17px]' : 'h-7 text-chrome phone:h-11 phone:text-[16px]',

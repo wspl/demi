@@ -49,7 +49,7 @@ const initials = computed(() =>
         role="button"
         aria-label="Account"
         tabindex="0"
-        class="focus-ring flex h-9 w-full cursor-default select-none items-center gap-2 rounded-md pl-2 pr-1.5 transition-colors duration-200 ease-out phone:h-11 phone:gap-3"
+        class="flex h-9 w-full cursor-default select-none items-center gap-2 rounded-md pl-2 pr-1.5 transition-colors duration-200 ease-out phone:h-11 phone:gap-3"
         :class="isOpen ? 'bg-hover' : 'hover:bg-hover'"
         @keydown="pressOnKey"
         @keyup="pressOnKey"

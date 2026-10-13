@@ -1339,9 +1339,50 @@ html[data-theme="light"] .file-pill {
   @apply bg-hover;
 }
 
-.agent-link:focus-visible {
+/* The focus ring: what the keyboard's focus shows on any control, and only
+   that (`:focus-visible`): a click leaves none (`docs/product/web-application.md`
+   § Keyboard). It is the rule for every element, so a control a primitive makes
+   focusable and one built by hand look alike; a control that draws its own
+   state instead says `outline-none`. `.focus-ring-shown` draws the same ring for
+   what a state selects instead of focuses, such as a capsule the editor has
+   selected.
+
+   A ring is 2px wide, 1px off its control, so it reaches 3px past it. A box
+   that clips (overflow other than visible, `contain: paint`) cuts what reaches
+   past its padding box, and a control at its edge, or a scroller leaving a
+   focused control flush with its end, loses part of its ring. So inside such
+   a box the ring is drawn inside its control (`--focus-ring-offset`, which
+   the descendants inherit): every `overflow` utility sets it, and a box that
+   clips by its own CSS carries `.focus-ring-inset`. The gallery's Primitives
+   page shows both; `bun browse` finds the rest (`demi.focusRings`). */
+@layer base {
+  :focus-visible {
+    outline: 2px solid var(--line-focus);
+    outline-offset: var(--focus-ring-offset, 1px);
+  }
+}
+
+.focus-ring-shown {
   outline: 2px solid var(--line-focus);
-  outline-offset: 1px;
+  outline-offset: var(--focus-ring-offset, 1px);
+}
+
+:where(
+    .overflow-hidden,
+    .overflow-x-hidden,
+    .overflow-y-hidden,
+    .overflow-auto,
+    .overflow-x-auto,
+    .overflow-y-auto,
+    .overflow-scroll,
+    .overflow-x-scroll,
+    .overflow-y-scroll,
+    .overflow-clip,
+    .overflow-x-clip,
+    .overflow-y-clip,
+    .focus-ring-inset
+  ) {
+  --focus-ring-offset: -2px;
 }
 
 /* A status bar (`AgentStatusBar`): its segments run close to the window's ends,
@@ -1357,14 +1398,6 @@ html[data-theme="light"] .file-pill {
 .status-bar-segment {
   padding-inline: calc(var(--radius-xl) - var(--status-bar-inset));
   border-radius: calc(var(--radius-xl) - var(--status-bar-inset));
-}
-
-/* The focus ring of a control the keyboard has focused, and of that alone
-   (`:focus-visible`): a click leaves none. Every control a primitive makes
-   focusable carries it (`docs/product/web-application.md` § Keyboard). */
-.focus-ring:focus-visible {
-  outline: 2px solid var(--line-focus);
-  outline-offset: 1px;
 }
 
 /* The mark and the link's first word, which a line never parts. */
@@ -1482,6 +1515,24 @@ html[data-theme="light"] .file-pill {
   inset-inline: -0.75rem calc(-1 * var(--code-block-copy-inset));
   z-index: -1;
   background: linear-gradient(to right, transparent, var(--code-block-copy-well) 0.75rem);
+}
+
+/* The pre scrolls sideways, so the browser makes it focusable, and its ring
+   is the block's: drawn on the block, above Copy and its fade, which would
+   cover the ring's end where they reach the block's edge. */
+.markdown-body .code-block > pre:focus-visible {
+  outline: none;
+}
+
+.markdown-body .code-block:has(> pre:focus-visible)::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 8px;
+  pointer-events: none;
+  outline: 2px solid var(--line-focus);
+  outline-offset: var(--focus-ring-offset, 1px);
 }
 
 .code-block:hover > .code-block-copy,
