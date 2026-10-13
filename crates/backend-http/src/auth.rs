@@ -106,6 +106,8 @@ pub(super) async fn login(
         .open(account.user.id.clone(), user_agent(&headers))
         .await?;
     services.sync.mark(&account.user.id, Part::Sessions);
+    // Its last activity, which the administrators' lists show.
+    services.sync.mark_everyone(&Part::Users);
     let jar = jar.add(cookies::session(&session.token, session.expires_at, https));
     Ok((jar, Json(Identity { user: account.user })).into_response())
 }
@@ -179,6 +181,12 @@ pub(super) async fn change_password(
         .control
         .set_chosen_password(user.id.clone(), password_hash)
         .await?;
+    if user.chooses_password {
+        // Every page of the account waiting on the choice goes on, and the
+        // administrators' lists lose *Hasn't Chosen a Password*.
+        services.sync.mark(&user.id, Part::User);
+        services.sync.mark_everyone(&Part::Users);
+    }
     Ok(StatusCode::NO_CONTENT)
 }
 

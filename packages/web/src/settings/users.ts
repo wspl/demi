@@ -1,6 +1,6 @@
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { defineStore } from 'pinia'
-import { shownError, reportError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { shownError, reportError } from '@demicodes/web-ui/infra/errors'
 import type { HandoffHost } from '@demicodes/web-ui/auth/handoff'
 import type {
   NewPasswordOutcome,
@@ -14,7 +14,6 @@ import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
 import {
   createdUserSchema,
   newFirstPasswordSchema,
-  usersSchema,
   type CreateUser,
   type ListedUser,
   type UserChange,
@@ -39,37 +38,16 @@ function row(user: ListedUser): SettingsUser {
 
 /**
  * The accounts as Settings › Users shows and changes them (`web-api.md` §
- * Account API): the list is read from `GET /users` when the page opens and
- * again from each action's answer, since the synchronization channel does not
- * carry it. A refusal the user corrects is said in the dialog that asked; any
- * other is reported.
+ * Account API): the list is the product state's `users` part, which the
+ * synchronization channel sends to the master and admins and changes with
+ * each add, change, reset, disable, enable, sign-in and password choice, so
+ * no action reads it again. A refusal the user corrects is said in the
+ * dialog that asked; any other is reported.
  */
 export const useUserSettings = defineStore('user-settings', () => {
   const session = useSession()
   const product = useProduct()
-  const listed = ref<ListedUser[]>([])
-  const status = ref<'loading' | 'ready' | 'failed'>('loading')
-  const failure = ref<ShownError | null>(null)
-  const users = computed(() => listed.value.map(row))
-
-  /** Reads the list; the page shows what it had until the answer comes. */
-  async function load(): Promise<void> {
-    if (listed.value.length === 0) {
-      status.value = 'loading'
-    }
-    try {
-      const response = await apiRequest('/users')
-      listed.value = (await readResponse(response, usersSchema)).users
-      status.value = 'ready'
-      failure.value = null
-    } catch (error) {
-      if (listed.value.length === 0) {
-        status.value = 'failed'
-      }
-      failure.value = shownError(error)
-      reportError('Could Not Load the Users', error, { userVisible: listed.value.length > 0 })
-    }
-  }
+  const users = computed(() => (product.snapshot?.users ?? []).map(row))
 
   async function add(user: SettingsNewUser): Promise<UserAddOutcome> {
     try {
@@ -78,7 +56,6 @@ export const useUserSettings = defineStore('user-settings', () => {
         ...jsonBody({ email: user.email, role: user.role } satisfies CreateUser),
       })
       const created = await readResponse(response, createdUserSchema)
-      void load()
       return {
         kind: 'added',
         id: created.user.id,
@@ -100,7 +77,6 @@ export const useUserSettings = defineStore('user-settings', () => {
     try {
       const response = await apiRequest(`/users/${encodeURIComponent(id)}/password`, { method: 'POST' })
       const made = await readResponse(response, newFirstPasswordSchema)
-      void load()
       return { kind: 'made', password: made.password }
     } catch (error) {
       if (error instanceof ApiError && error.code === 'verification_required') {
@@ -111,14 +87,13 @@ export const useUserSettings = defineStore('user-settings', () => {
     }
   }
 
-  /** One change of an account, then the list again, whatever the answer was. */
+  /** One change of an account; the channel brings the list. */
   async function change(id: string, body: UserChange, title: string): Promise<void> {
     try {
       await apiRequest(`/users/${encodeURIComponent(id)}`, { method: 'PATCH', ...jsonBody(body) })
     } catch (error) {
       reportError(title, error, { userVisible: true })
     }
-    await load()
   }
 
   async function setRole(id: string, role: Exclude<UserRole, 'master'>): Promise<void> {
@@ -135,7 +110,6 @@ export const useUserSettings = defineStore('user-settings', () => {
     } catch (error) {
       reportError('Could Not Sign the Account Out', error, { userVisible: true })
     }
-    await load()
   }
 
   /** The dialog's host for the account's sign-in codes; the page learns nothing of the account's browsers, so a code is never marked handed off. */
@@ -170,5 +144,5 @@ export const useUserSettings = defineStore('user-settings', () => {
       : null,
   )
 
-  return { users, status, failure, host, load }
+  return { users, host }
 })

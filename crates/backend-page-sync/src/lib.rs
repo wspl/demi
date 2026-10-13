@@ -39,6 +39,8 @@ pub enum Part {
     Passkeys,
     /// The user's sessions, the signed-in browsers.
     Sessions,
+    /// Every account, which only the channels of the master and admins send.
+    Users,
     /// The plugin list: whether the user has each plugin on.
     Plugins,
     /// A plugin's state, by the plugin's id.

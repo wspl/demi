@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { Lock } from '@lucide/vue'
 import type { ShownError } from '../infra/errors'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { PasskeyOfferOutcome, PasskeyOfferStep, PasswordChoiceOutcome } from '../settings/types'
@@ -119,6 +120,7 @@ async function submit(): Promise<void> {
     <WizardStep
       v-if="step === 'choose'"
       title="Choose Your Password"
+      :icon="Lock"
       message="The password you were given is only a first one. Choose your own to go on."
     >
       <form class="flex flex-col gap-4" @submit.prevent="submit">

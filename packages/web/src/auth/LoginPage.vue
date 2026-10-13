@@ -66,7 +66,7 @@ async function submit(address: string, secret: string): Promise<void> {
       reason: phase.value.reason,
       error: formError(error, {
         invalid_credentials: 'The email or password is incorrect.',
-        account_disabled: 'This account is disabled. Ask your administrator.',
+        account_disabled: 'This account is disabled. Ask your administrator to enable it.',
       }),
       ...(wait === null ? {} : { lockedUntil: Date.now() + wait * 1000 }),
     }

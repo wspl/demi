@@ -150,6 +150,8 @@ async fn the_snapshot_is_the_users_product_state() {
         ProductState {
             user: master.user.clone(),
             sessions: state.sessions.clone(),
+            // The master's channel carries the accounts, itself included.
+            users: state.users.clone(),
             mode: InstanceMode::Shared,
             preferences: Preferences::default(),
             providers: Vec::new(),

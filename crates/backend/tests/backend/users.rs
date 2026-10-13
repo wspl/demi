@@ -12,7 +12,8 @@ use demi_runner_protocol::wire::{self, Inbound};
 use demi_web_api_protocol::auth::Identity;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::sessions::{HandoffCode, SessionList};
-use demi_web_api_protocol::users::Users;
+use demi_web_api_protocol::state::SyncEvent;
+use demi_web_api_protocol::users::{ListedUser, Users};
 
 use crate::runners::{RawRunner, hello};
 use crate::support::{Answer, Harness, Session, TestBackend, answer};
@@ -184,7 +185,6 @@ async fn an_account_made_or_reset_chooses_its_own_password_before_anything_else_
     assert_eq!(backend.get("/api/auth/me", Some(&bo)).await.status, StatusCode::OK);
     assert_eq!(backend.get("/api/settings", Some(&bo)).await.refusal(), blocked);
     assert_eq!(backend.get("/api/auth/sessions", Some(&bo)).await.refusal(), blocked);
-    assert_eq!(backend.get("/api/sync", Some(&bo)).await.refusal(), blocked);
     assert_eq!(backend.get("/api/auth/passkeys", Some(&bo)).await.status, StatusCode::OK);
     let me: Identity = backend.get("/api/auth/me", Some(&bo)).await.json();
     assert!(me.user.chooses_password);
@@ -401,5 +401,146 @@ async fn disabling_an_account_ends_its_runner_connections_and_turns_its_runners_
     let mut back = RawRunner::connect(&backend).await;
     back.send(&hello(wire::VERSION, Some(&token), None)).await;
     assert!(matches!(back.next().await, Some(Inbound::HelloOk { .. })));
+    backend.close().await;
+}
+
+/// The accounts of the first `users` message of `page` that `holds`, skipping
+/// the earlier ones its changes sent.
+async fn users_where(page: &mut crate::support::SyncChannel, holds: impl Fn(&[ListedUser]) -> bool) -> Vec<ListedUser> {
+    let received = page
+        .until(|event| matches!(event, SyncEvent::Users { users } if holds(users)))
+        .await;
+    match received.into_iter().last() {
+        Some(SyncEvent::Users { users }) => users,
+        other => unreachable!("{other:?}"),
+    }
+}
+
+fn account<'a>(users: &'a [ListedUser], email: &str) -> &'a ListedUser {
+    users.iter().find(|listed| listed.user.email.as_str() == email).unwrap()
+}
+
+/// Cost: one backend; a few seconds of password hashing.
+#[tokio::test]
+async fn the_accounts_reach_only_administrators_channels_and_follow_each_change() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let ana = backend.make_user(&master, "ana@example.test", "admin").await;
+    let bo = backend.make_user(&master, "bo@example.test", "user").await;
+    let mut master_page = backend.sync(&master).await;
+    let snapshot = master_page.snapshot().await;
+    assert_eq!(snapshot.users.as_ref().map(Vec::len), Some(3));
+    let mut ana_page = backend.sync(&ana).await;
+    assert_eq!(ana_page.snapshot().await.users.as_ref().map(Vec::len), Some(3));
+    // A user's state has no accounts.
+    let mut bo_page = backend.sync(&bo).await;
+    assert_eq!(bo_page.snapshot().await.users, None);
+
+    // A change reaches every administrator's page at once; the user's own
+    // page hears nothing of it.
+    let bo_id = bo.user.id.to_string();
+    let (_, first) = made(&create(&backend, &master, "cy@example.test", "user").await);
+    for page in [&mut master_page, &mut ana_page] {
+        let users = users_where(page, |users| users.len() == 4).await;
+        assert!(account(&users, "cy@example.test").user.chooses_password);
+    }
+    // Signing in, choosing a password, disabling and enabling each change it.
+    let cy = backend.login("cy@example.test", &first).await;
+    users_where(&mut master_page, |users| account(users, "cy@example.test").last_active_at.is_some()).await;
+    let chosen = backend.put("/api/auth/password", &cy, json!({ "next": "cy chose this 1" })).await;
+    assert_eq!(chosen.status, StatusCode::NO_CONTENT);
+    users_where(&mut master_page, |users| !account(users, "cy@example.test").user.chooses_password).await;
+    assert_eq!(change(&backend, &master, &bo_id, json!({ "disabled": true })).await.status, StatusCode::NO_CONTENT);
+    users_where(&mut ana_page, |users| account(users, "bo@example.test").user.disabled).await;
+    assert_eq!(change(&backend, &master, &bo_id, json!({ "disabled": false })).await.status, StatusCode::NO_CONTENT);
+    users_where(&mut ana_page, |users| !account(users, "bo@example.test").user.disabled).await;
+    backend.close().await;
+}
+
+/// Cost: one backend; a few seconds of password hashing.
+#[tokio::test]
+async fn an_account_made_an_admin_starts_to_receive_the_accounts() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let bo = backend.make_user(&master, "bo@example.test", "user").await;
+    let mut bo_page = backend.sync(&bo).await;
+    assert_eq!(bo_page.snapshot().await.users, None);
+    let promoted = change(&backend, &master, bo.user.id.as_str(), json!({ "role": "admin" })).await;
+    assert_eq!(promoted.status, StatusCode::NO_CONTENT);
+    assert_eq!(users_where(&mut bo_page, |users| users.len() == 2).await.len(), 2);
+    backend.close().await;
+}
+
+/// Cost: one backend; a few seconds of password hashing.
+#[tokio::test]
+async fn an_accounts_last_activity_outlives_its_sessions() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let bo = backend.make_user(&master, "bo@example.test", "user").await;
+    let row = |users: &Users| users.users.iter().find(|listed| listed.user.id == bo.user.id).cloned().unwrap();
+    let active = row(&listed(&backend, &master).await).last_active_at;
+    assert!(active.is_some());
+    harness.clock.advance(SignedDuration::from_hours(2));
+    // The page's next request writes its session's activity, and the account's.
+    assert_eq!(backend.get("/api/auth/me", Some(&bo)).await.status, StatusCode::OK);
+    let later = row(&listed(&backend, &master).await).last_active_at;
+    assert!(later > active, "{later:?} {active:?}");
+    // Disabling ends the sessions; the account still says when it was last used.
+    assert_eq!(change(&backend, &master, bo.user.id.as_str(), json!({ "disabled": true })).await.status, StatusCode::NO_CONTENT);
+    assert_eq!(row(&listed(&backend, &master).await).last_active_at, later);
+    backend.close().await;
+}
+
+/// Cost: one backend; a few seconds of password hashing.
+#[tokio::test]
+async fn the_channel_of_an_account_choosing_its_password_carries_the_account_alone_until_it_is_chosen() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let (_, first) = made(&create(&backend, &master, "bo@example.test", "user").await);
+    let one = backend.login("bo@example.test", &first).await;
+    let two = backend.login("bo@example.test", &first).await;
+    // Both pages' channels open and say only who the account is.
+    let mut waiting = backend.sync(&one).await;
+    let mut choosing = backend.sync(&two).await;
+    for page in [&mut waiting, &mut choosing] {
+        match page.next().await {
+            SyncEvent::User { user } => assert!(user.chooses_password),
+            other => panic!("the account alone first: {other:?}"),
+        }
+    }
+    // Its conversation sockets stay shut.
+    assert_eq!(
+        backend.get("/api/conversations", Some(&one)).await.refusal(),
+        (StatusCode::FORBIDDEN, ErrorCode::PasswordChoiceRequired)
+    );
+
+    // One page chooses; the other learns it from its own channel, which then
+    // sends the whole state.
+    let chosen = backend.put("/api/auth/password", &two, json!({ "next": "bo chose this 1" })).await;
+    assert_eq!(chosen.status, StatusCode::NO_CONTENT);
+    for page in [&mut waiting, &mut choosing] {
+        match page.next().await {
+            SyncEvent::User { user } => assert!(!user.chooses_password),
+            other => panic!("the changed account: {other:?}"),
+        }
+        let state = page.snapshot().await;
+        assert!(!state.user.chooses_password);
+    }
+    assert_eq!(backend.get("/api/settings", Some(&one)).await.status, StatusCode::OK);
+    backend.close().await;
+}
+
+/// Cost: one backend; a few seconds of password hashing.
+#[tokio::test]
+async fn a_disabled_accounts_sign_in_is_refused_without_a_request_id_to_trace() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let bo = backend.make_user(&master, "bo@example.test", "user").await;
+    assert_eq!(
+        change(&backend, &master, bo.user.id.as_str(), json!({ "disabled": true })).await.status,
+        StatusCode::NO_CONTENT
+    );
+    let refused = backend.login_answer("bo@example.test", "bo-pass-1").await;
+    assert_eq!(refused.refusal(), (StatusCode::FORBIDDEN, ErrorCode::AccountDisabled));
     backend.close().await;
 }

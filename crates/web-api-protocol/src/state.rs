@@ -19,6 +19,7 @@ use crate::providers::ProviderState;
 use crate::sessions::SessionDto;
 use crate::settings::{InstanceMode, Preferences};
 use crate::subagents::SubagentSettings;
+use crate::users::ListedUser;
 use crate::workspaces::WorkspaceDto;
 
 /// The product state: the signed-in user, the instance mode, the user's
@@ -70,6 +71,9 @@ pub struct ProductState {
     /// The account's signed-in browsers, as `GET /auth/sessions` lists them
     /// for the channel's session.
     pub sessions: Vec<SessionDto>,
+    /// Every account, as `GET /users` lists them, for the master and
+    /// admins; none for a user, whose channel never carries the part.
+    pub users: Option<Vec<ListedUser>>,
     /// The backend's plugins, in their order of registration.
     pub plugins: Vec<PluginEntry>,
     /// The state of each plugin the user has on that gives one, valid
@@ -119,6 +123,10 @@ pub enum SyncEvent {
     Preferences {
         preferences: Preferences,
     },
+    /// The account changed: its nickname, its email or its role, or its
+    /// owner chose the password. The first message of the channel of an
+    /// account still to choose its password, which carries nothing else until
+    /// it is chosen; the product state follows then.
     User {
         user: UserDto,
     },
@@ -172,6 +180,12 @@ pub enum SyncEvent {
     /// `GET /auth/sessions` lists them for the channel's session.
     Sessions {
         sessions: Vec<SessionDto>,
+    },
+    /// An account was added, changed, reset, disabled or enabled, signed in,
+    /// or chose its password: every account, as `GET /users` lists them. Only
+    /// the channels of the master and admins carry it.
+    Users {
+        users: Vec<ListedUser>,
     },
     /// Nothing else was sent for 30 seconds.
     Heartbeat,
