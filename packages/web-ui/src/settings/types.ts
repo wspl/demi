@@ -10,6 +10,7 @@ import type { DirectStatus } from '../devices/direct'
 import type { DeviceReport } from '../devices/report'
 import type { DeviceStart } from '../devices/installation'
 import type { CredentialFieldView, CredentialKeep } from '../permissions/types'
+import type { HandoffHost } from '../auth/handoff'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
@@ -467,7 +468,8 @@ export interface SettingsNewUser {
  * fields.
  */
 export type UserAddOutcome =
-  | { kind: 'added' }
+  /** `id` is the new account's, which its sign-in code is made for. */
+  | { kind: 'added'; id: string }
   | { kind: 'emailTaken' }
   | ({ kind: 'failed' } & ShownError)
 
@@ -485,4 +487,6 @@ export interface SettingsUsersHost {
   setRole: (id: string, role: Exclude<UserRole, 'master'>) => Promise<void>
   signOutEverywhere: (id: string) => Promise<void>
   setDisabled: (id: string, disabled: boolean) => Promise<void>
+  /** The sign-in codes of the account `id` (`product.md` § User system), made as a handoff code is: good for ten minutes and once, after the administrator confirms it is them. */
+  signInCode: (id: string) => HandoffHost
 }

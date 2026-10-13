@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsUsers from '@demicodes/web-ui/settings/SettingsUsers.vue'
 import type { SettingsUsersHost } from '@demicodes/web-ui/settings/types'
-import { ago } from '../fixtures/time'
+import { galleryHandoff } from '../fixtures/handoff'
 import type { UsersState } from '../fixtures/users'
 import { productWould } from '../product-would'
 
@@ -38,6 +38,8 @@ onBeforeUnmount(() => {
 })
 
 let added = 0
+/** The accounts made here, whose first sign-in code the Add User dialog shows without asking the administrator again. */
+const justAdded = new Set<string>()
 function find(id: string) {
   return props.state.users.find((user) => user.id === id)
 }
@@ -59,7 +61,9 @@ const host = computed<SettingsUsersHost>(() => ({
       disabled: false,
       lastActiveAt: null,
     })
-    return { kind: 'added' }
+    const id = `added-${added}`
+    justAdded.add(id)
+    return { kind: 'added', id }
   },
   resetPassword: async () => {
     await beat()
@@ -74,6 +78,10 @@ const host = computed<SettingsUsersHost>(() => ({
   signOutEverywhere: async (id) => {
     await beat()
     productWould(`Sign ${find(id)?.nickname ?? 'the User'} Out Everywhere`)
+  },
+  signInCode: (id) => {
+    const confirmed = justAdded.delete(id)
+    return galleryHandoff(confirmed ? 'code' : 'verify').host
   },
   setDisabled: async (id, disabled) => {
     await beat()
