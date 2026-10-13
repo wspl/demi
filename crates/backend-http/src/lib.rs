@@ -39,6 +39,7 @@ mod query;
 mod runner_socket;
 mod runners;
 mod search;
+mod sessions;
 mod settings;
 mod sidebar;
 mod streams;
@@ -218,8 +219,8 @@ impl FromRef<AppState> for Shards {
 /// every route the session cookie authenticates, refuse a request that could
 /// act from a page other than the product's before anything else.
 /// Every `/api` path, unknown paths included, passes the session gate,
-/// except those outside `session_api`: the entrances, setup, login and the
-/// passkey sign-in, the
+/// except those outside `session_api`: the entrances, setup, login, the
+/// passkey sign-in and spending a handoff code, the
 /// routes that authenticate with device credentials instead, and the
 /// synchronization channel, which checks the session without renewing it.
 /// The pipes stay outside the 503 of a closing backend, whose shutdown needs
@@ -233,6 +234,15 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/auth/email/confirm", post(auth::confirm_email_change))
         .route("/auth/passkeys", get(passkeys::list).post(passkeys::add))
         .route("/auth/passkeys/options", post(passkeys::add_options))
+        .route("/auth/verify", post(sessions::verify))
+        .route(
+            "/auth/verify/passkey/options",
+            post(sessions::verify_passkey_options),
+        )
+        .route("/auth/verify/passkey", post(sessions::verify_passkey))
+        .route("/auth/handoff/code", post(sessions::make_code))
+        .route("/auth/sessions", get(sessions::list))
+        .route("/auth/sessions/{id}", delete(sessions::sign_out))
         .route(
             "/auth/passkeys/{id}",
             patch(passkeys::rename).delete(passkeys::remove),
@@ -412,6 +422,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/api/auth/login", post(auth::login))
         .route("/api/auth/passkey/options", post(passkeys::sign_in_options))
         .route("/api/auth/passkey", post(passkeys::sign_in))
+        .route("/api/auth/handoff", post(sessions::spend_code))
         .route("/api/sync", get(sync::channel))
         .method_not_allowed_fallback(no_route)
         .nest("/api", session_api)

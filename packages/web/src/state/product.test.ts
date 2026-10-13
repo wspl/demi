@@ -83,6 +83,16 @@ test('the channel\'s snapshot is the page\'s copy, and each later message replac
   const passkey = { id: 'cHVibGlj', name: 'iCloud Keychain', synced: true, createdAt: '2026-10-13T08:00:00.000Z', lastUsedAt: null }
   channel.send({ type: 'passkeys', passkeys: [passkey], userHandle: 'dXNlci0x' })
   expect(product.snapshot?.passkeys).toEqual({ passkeys: [passkey], userHandle: 'dXNlci0x' })
+  const phone = {
+    id: 'session-2',
+    name: 'Safari on iPhone',
+    createdAt: '2026-10-13T08:00:00.000Z',
+    lastActiveAt: '2026-10-13T08:00:00.000Z',
+    current: false,
+    handoffId: 'handoff-1',
+  }
+  channel.send({ type: 'sessions', sessions: [phone] })
+  expect(product.snapshot?.sessions).toEqual([phone])
   channel.send({ type: 'heartbeat' })
   expect(titles()).toEqual(['Renamed', 'Second'])
   // A later snapshot, as after a reconnect, replaces the whole copy.

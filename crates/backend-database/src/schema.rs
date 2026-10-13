@@ -61,8 +61,9 @@ impl ReadBlob for NoBlobs {
 /// release before the one that ships the current schema, and of each
 /// development build a server keeps data of (`upgrades.md` § A development
 /// build on a server): 0.1.22-dev.20261011T123543Z's, the one with the
-/// plugins' secrets before a request had a read state, and the one with the
-/// users' credentials before passkeys. The schemas with the subagent
+/// plugins' secrets before a request had a read state, the one with the
+/// users' credentials before passkeys, and the one with passkeys before
+/// the signed-in browsers. The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
 /// and the server's migrate through them.
@@ -129,8 +130,48 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.credentials.sql"),
             migration: Migration::Sql(CONTROL_FROM_CREDENTIALS),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.passkeys.sql"),
+            migration: Migration::Sql(CONTROL_FROM_PASSKEYS),
+        },
     ],
 };
+
+/// From the control schema with passkeys to the one with the signed-in
+/// browsers and handoff codes (`storage.md` § Control records): each
+/// session gets an id, and the browser it signed in from, which no session
+/// before kept, reads `Web Browser`; when it signed in and was last active,
+/// which none kept either, read its last renewal, 30 days before its
+/// expiry. No session was verified. The handoff codes start empty.
+const CONTROL_FROM_PASSKEYS: &str = "
+CREATE TABLE web_sessions_new (
+  token_hash     TEXT PRIMARY KEY,
+  id             TEXT NOT NULL UNIQUE,
+  user_id        TEXT NOT NULL REFERENCES users (id),
+  expires_at     INTEGER NOT NULL,
+  name           TEXT NOT NULL,
+  created_at     INTEGER NOT NULL,
+  last_active_at INTEGER NOT NULL,
+  verified_at    INTEGER,
+  handoff_id     TEXT
+) STRICT;
+INSERT INTO web_sessions_new (token_hash, id, user_id, expires_at, name, created_at, last_active_at)
+  SELECT token_hash, lower(hex(randomblob(16))), user_id, expires_at, 'Web Browser',
+         expires_at - 2592000000, expires_at - 2592000000
+  FROM web_sessions;
+DROP TABLE web_sessions;
+ALTER TABLE web_sessions_new RENAME TO web_sessions;
+CREATE INDEX web_sessions_expiry ON web_sessions (expires_at);
+CREATE INDEX web_sessions_of_user ON web_sessions (user_id, created_at);
+CREATE TABLE handoff_codes (
+  user_id    TEXT PRIMARY KEY REFERENCES users (id),
+  id         TEXT NOT NULL UNIQUE,
+  code_hash  TEXT NOT NULL UNIQUE,
+  to_path    TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  spent      INTEGER NOT NULL CHECK (spent IN (0, 1))
+) STRICT;
+";
 
 /// From the control schema with the users' credentials to the one with
 /// passkeys (`storage.md` § Passwords and credentials at rest): two new
@@ -1267,12 +1308,34 @@ CREATE TABLE users (
 ) STRICT;
 CREATE UNIQUE INDEX users_one_master ON users (role) WHERE role = 'master';
 
+-- A signed-in browser: the SHA-256 of its cookie's token, and its id in the
+-- account's list. Its last activity is written at most once an hour; it was
+-- verified when its user last proved it was them on it; a handoff code that
+-- made it is named, though the code's row is replaced by the next one.
 CREATE TABLE web_sessions (
-  token_hash TEXT PRIMARY KEY,
-  user_id    TEXT NOT NULL REFERENCES users (id),
-  expires_at INTEGER NOT NULL
+  token_hash     TEXT PRIMARY KEY,
+  id             TEXT NOT NULL UNIQUE,
+  user_id        TEXT NOT NULL REFERENCES users (id),
+  expires_at     INTEGER NOT NULL,
+  name           TEXT NOT NULL,
+  created_at     INTEGER NOT NULL,
+  last_active_at INTEGER NOT NULL,
+  verified_at    INTEGER,
+  handoff_id     TEXT
 ) STRICT;
 CREATE INDEX web_sessions_expiry ON web_sessions (expires_at);
+CREATE INDEX web_sessions_of_user ON web_sessions (user_id, created_at);
+
+-- Each user's one handoff code, by the SHA-256 of the code, with the path it
+-- opens; a spent one stays until the next replaces it.
+CREATE TABLE handoff_codes (
+  user_id    TEXT PRIMARY KEY REFERENCES users (id),
+  id         TEXT NOT NULL UNIQUE,
+  code_hash  TEXT NOT NULL UNIQUE,
+  to_path    TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  spent      INTEGER NOT NULL CHECK (spent IN (0, 1))
+) STRICT;
 
 -- One pending address change per user.
 CREATE TABLE email_challenges (
@@ -3148,13 +3211,74 @@ mod tests {
             .unwrap();
     }
 
+    /// A database of the control schema before the signed-in browsers keeps
+    /// its sessions, each with an id, named `Web Browser`, signed in and
+    /// last active at its last renewal and not verified, and takes handoff
+    /// codes after it.
+    #[test]
+    fn the_control_schema_before_the_signed_in_browsers_keeps_its_sessions() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.22-dev.passkeys.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('u1', 'a@example.test', 'Ana', 'hash', 'master', 1);
+                 INSERT INTO web_sessions (token_hash, user_id, expires_at)
+                   VALUES ('t1', 'u1', 2592000009), ('t2', 'u1', 2592000010);",
+            )
+            .unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let mut kept = connection
+            .prepare(
+                "SELECT token_hash, id, user_id, expires_at, name, created_at, last_active_at, verified_at, handoff_id
+                 FROM web_sessions ORDER BY token_hash",
+            )
+            .unwrap();
+        let kept: Vec<(String, String, String, i64, String, i64, i64, Option<i64>, Option<String>)> = kept
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                    row.get(6)?,
+                    row.get(7)?,
+                    row.get(8)?,
+                ))
+            })
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(kept.len(), 2);
+        assert_ne!(kept[0].1, kept[1].1, "each session has an id of its own");
+        for ((token, id, user, expires_at, name, created_at, last_active_at, verified_at, handoff), expected) in
+            kept.into_iter().zip([("t1", 2_592_000_009), ("t2", 2_592_000_010)])
+        {
+            assert!(!id.is_empty());
+            assert_eq!(
+                (token.as_str(), user.as_str(), expires_at, name.as_str(), verified_at, handoff),
+                (expected.0, "u1", expected.1, "Web Browser", None, None)
+            );
+            assert_eq!((created_at, last_active_at), (expected.1 - 2_592_000_000, expected.1 - 2_592_000_000));
+        }
+        connection
+            .execute(
+                "INSERT INTO handoff_codes (user_id, id, code_hash, to_path, expires_at, spent)
+                   VALUES ('u1', 'h1', 'c1', '/chat', 5, 0)",
+                [],
+            )
+            .unwrap();
+    }
+
     /// The development builds' schemas are the ones their server's
     /// databases record, the one with `forked_from` included, and formats
     /// 4 and 5's, the subagent limits' and
     /// the one without Detect Title the ones development databases record.
     /// A server records the one with the plugins' secrets before read
     /// states, and may record the one with the users' credentials before
-    /// passkeys.
+    /// passkeys and the one with passkeys before the signed-in browsers.
     #[test]
     fn the_development_builds_in_the_history_are_the_ones_their_server_records() {
         for (schema, development, version) in [
@@ -3168,6 +3292,7 @@ mod tests {
             (&CONTROL, include_str!("schema/control-0.1.22-dev.no-detect-title.sql"), 1_079_978_983),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.plugin-secrets-unread.sql"), 1_293_042_998),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.credentials.sql"), 235_949_009),
+            (&CONTROL, include_str!("schema/control-0.1.22-dev.passkeys.sql"), 2_096_003_688),
         ] {
             assert_eq!(version_of(development), version);
             assert!(schema.history.iter().any(|shipped| shipped.sql == development));

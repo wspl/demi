@@ -53,9 +53,9 @@ impl fmt::Debug for PasswordHash {
     }
 }
 
-/// The SHA-256 of a session or device token in lowercase hexadecimal: what
-/// storage keeps instead of the token (`storage.md` § Passwords and
-/// credentials at rest).
+/// The SHA-256 of a session or device token, or of a handoff code, in
+/// lowercase hexadecimal: what storage keeps instead of the token
+/// (`storage.md` § Passwords and credentials at rest).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TokenHash(String);
 
@@ -64,24 +64,36 @@ impl TokenHash {
         Self(hex::encode(Sha256::digest(token.as_bytes())))
     }
 
+    /// A hash as storage kept it; only a row of a table of hashes holds one.
+    pub(crate) fn from_stored(hash: String) -> Self {
+        Self(hash)
+    }
+
     pub fn as_str(&self) -> &str {
         &self.0
     }
 }
 
-/// How long a session lives after its last renewal, and how little of that
-/// must remain for a request to renew it.
+/// How long a session lives after its last renewal, how little of that
+/// must remain for a request to renew it, and how long after its last
+/// activity was written a request writes it again; none for a look that is
+/// no activity.
 #[derive(Debug, Clone, Copy)]
 pub struct SessionPolicy {
     pub lifetime: SignedDuration,
     pub renew_below: SignedDuration,
+    pub activity_every: Option<SignedDuration>,
 }
 
-/// A live session's user and expiry, and whether this request renewed it.
+/// A live session's id, user, expiry and last verification, and whether
+/// this request renewed it and wrote its last activity.
 pub struct ResolvedSession {
+    pub id: demi_web_api_protocol::sessions::SessionId,
     pub user: UserDto,
     pub expires_at: Timestamp,
+    pub verified_at: Option<Timestamp>,
     pub renewed: bool,
+    pub active: bool,
 }
 
 /// How long a code lasts, how soon another may be sent, and how many wrong
