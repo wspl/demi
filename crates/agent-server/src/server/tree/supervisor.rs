@@ -5,6 +5,7 @@
 //! and `show` reads. Every node supervises its own children the same way;
 //! only the root's lifecycle is its client's.
 
+use tracing::Instrument as _;
 use std::{
     cell::{Cell, RefCell},
     rc::{Rc, Weak},
@@ -340,7 +341,8 @@ impl<H: HostResolver> Tree<H> {
                         .await
                 }
             }
-        });
+        }
+        .in_current_span());
         started
             .await
             .map_err(|error| format!("the start of a subagent failed: {error}"))?

@@ -61,7 +61,7 @@ pub use file_types::{
 #[doc(hidden)]
 pub use ids::__private;
 pub use ids::{
-    BlockId, CommandId, EmptyId, NodeId, OperationId, Sequence, TurnId,
+    BlockId, CommandId, EmptyId, NodeId, OperationId, RequestId, Sequence, TurnId,
 };
 pub use media::{
     MODEL_MEDIA_TYPES, ModelMediaKind, ModelMediaType, model_accepts_media_type,

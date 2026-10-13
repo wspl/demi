@@ -7,6 +7,8 @@ use axum::response::{IntoResponse, Response};
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 use demi_web_api_protocol::passkeys::PasskeyId;
 
+use crate::request_id;
+
 use demi_backend_accounts::email_change::EmailChangeError;
 use demi_backend_accounts::passkeys::PasskeyError;
 use demi_backend_accounts::passwords::HashError;
@@ -37,7 +39,12 @@ pub(crate) fn read_at_value(read_at: &ReadAt) -> Option<HeaderValue> {
 #[derive(Debug)]
 pub(crate) struct ApiError {
     status: StatusCode,
-    body: ErrorBody,
+    code: ErrorCode,
+    message: String,
+    /// A plugin's own word for its refusal.
+    reason: Option<String>,
+    /// The passkey a refused sign-in names.
+    credential_id: Option<PasskeyId>,
     /// The `Retry-After` the answer carries, in whole seconds.
     retry_after: Option<u64>,
     /// The ETag of the file a refused read is an answer of, such as one
@@ -49,7 +56,8 @@ pub(crate) struct ApiError {
 }
 
 impl ApiError {
-    /// The backend's own answer, which carries its `{ code, message }`.
+    /// The backend's own answer, which carries its `{ code, message }` and
+    /// the request's ID.
     ///
     /// It is never 502 or 504, even for a vendor or a Host that failed or did
     /// not answer in time: a CDN in front of the backend, such as Cloudflare
@@ -61,12 +69,10 @@ impl ApiError {
     pub(crate) fn new(status: StatusCode, code: ErrorCode, message: impl Into<String>) -> Self {
         Self {
             status,
-            body: ErrorBody {
-                code,
-                message: message.into(),
-                reason: None,
-                credential_id: None,
-            },
+            code,
+            message: message.into(),
+            reason: None,
+            credential_id: None,
             retry_after: None,
             etag: None,
             read_at: None,
@@ -94,13 +100,13 @@ impl ApiError {
 
     /// The error as the answer that names the passkey `id`.
     pub(crate) fn with_credential_id(mut self, id: PasskeyId) -> Self {
-        self.body.credential_id = Some(id);
+        self.credential_id = Some(id);
         self
     }
 
     /// The error with a plugin's own word for its refusal.
     pub(crate) fn with_reason(mut self, reason: String) -> Self {
-        self.body.reason = Some(reason);
+        self.reason = Some(reason);
         self
     }
 
@@ -166,7 +172,7 @@ impl ApiError {
 
     #[cfg(test)]
     pub(crate) fn code(&self) -> ErrorCode {
-        self.body.code
+        self.code
     }
 
     pub(crate) fn device_offline() -> Self {
@@ -266,7 +272,16 @@ impl ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let mut response = (self.status, Json(self.body)).into_response();
+        let body = ErrorBody {
+            code: self.code,
+            message: self.message,
+            reason: self.reason,
+            credential_id: self.credential_id,
+            // Outside the edge's request IDs, as in a unit test that calls a
+            // handler, the answer names an ID no request had.
+            request_id: request_id::current().unwrap_or_else(request_id::generate),
+        };
+        let mut response = (self.status, Json(body)).into_response();
         let headers = response.headers_mut();
         if let Some(seconds) = self.retry_after {
             headers.insert(axum::http::header::RETRY_AFTER, seconds.into());
