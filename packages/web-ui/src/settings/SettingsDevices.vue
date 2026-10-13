@@ -41,7 +41,7 @@ const props = defineProps<{
   /** The most characters a device's name has; null for no limit. */
   nameMaxLength: number | null
   /** The user's projects, each on a device; a revoked device's go with it. */
-  projects?: readonly { deviceId: string; name: string }[]
+  projects?: readonly { deviceId: string; path: string }[]
   overlayStore: OverlayStore
   /** The backend's install commands; null until the host has them. */
   installCommands: DeviceInstallCommands | null
@@ -89,7 +89,7 @@ const page = computed(() => {
 const pageProjects = computed(() =>
   (props.projects ?? [])
     .filter((project) => project.deviceId === props.shown)
-    .map((project) => project.name),
+    .map((project) => project.path),
 )
 </script>
 
