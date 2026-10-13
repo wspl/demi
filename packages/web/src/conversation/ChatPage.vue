@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
-import { conversationPageKind } from '@demicodes/web-ui/agent/session-status'
+import { conversationPageKind, transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import ConversationComposer from './ConversationComposer.vue'
 import { useContextCard } from './context-card'
 import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
@@ -139,13 +139,14 @@ function readHistory(read: Promise<void>): void {
 
 // A search result opens at its message, and a report's title at its
 // command's call: the page reads the window around it once the
-// conversation's latest page is there (`web-application.md` § Transcript
-// windows).
+// conversation's latest page is there, at the first step of its opening
+// (`web-application.md` § Transcript windows, § Opening a conversation shows
+// in two steps).
 watch(
-  () => [store.reveal, conversation.value?.load] as const,
-  ([reveal, load]) => {
+  () => [store.reveal, !!conversation.value && transcriptShown(conversation.value.load)] as const,
+  ([reveal, shown]) => {
     const current = conversation.value
-    if (reveal && current && reveal.conversationId === current.id && load === 'ready') {
+    if (reveal && current && reveal.conversationId === current.id && shown) {
       readHistory(store.history.readAround(current, reveal.node, reveal.blockId))
     }
   },

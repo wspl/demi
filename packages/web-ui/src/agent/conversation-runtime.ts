@@ -90,7 +90,8 @@ const OPEN_TIMEOUT_MS = 30_000
  * `open` or after, or whose tree another client disposed, is never a
  * failure the reader is told about: on a weak network it comes and goes, so
  * the runtime keeps `load` at `reconnecting` (the transcript's tail row says
- * Connecting, the composer stays) and tries again after the page's reconnect
+ * Connecting, the composer stays), or at `connecting` while the session has
+ * never opened, and tries again after the page's reconnect
  * waits (`web-application.md` § Liveness and reconnection) until the socket
  * is back or the view is disposed. An action taken meanwhile waits for the
  * connection, without cutting a wait short.
@@ -111,6 +112,8 @@ export class ConversationRuntime {
   private readonly listedSteers = new WeakSet<ConversationClient>()
   /** Consecutive connections lost or not made since the session last opened. */
   private connectionFailures = 0
+  /** Whether a session of this view has opened: a later opening is a reconnection. */
+  private opened = false
   private disposed = false
 
   constructor(options: ConversationRuntimeOptions) {
@@ -393,7 +396,10 @@ export class ConversationRuntime {
    */
   suspend(): void {
     this.releaseConnection()
-    if (this.options.state.load === 'reconnecting') {
+    // A conversation that opens no session stops at the first step of its
+    // opening (`web-application.md` § Opening a conversation shows in two steps).
+    const load = this.options.state.load
+    if (load === 'reconnecting' || load === 'connecting' || load === 'opening') {
       this.options.state.load = 'ready'
     }
   }
@@ -440,6 +446,14 @@ export class ConversationRuntime {
    * after a lost connection, it waits before its first attempt.
    */
   private startOpening(afterLoss: boolean): Promise<ConversationClient> {
+    // Every first session of the conversation is an opening, which shows the
+    // transcript with its agents until the session opens: a new
+    // conversation's first send, one restored from the archive, a Retry
+    // after a failed opening (`web-application.md` § Opening a conversation
+    // shows in two steps).
+    if (!this.opened) {
+      this.options.state.load = 'opening'
+    }
     const controller = new AbortController()
     this.controller = controller
     const opening = this.openSession(controller, afterLoss)
@@ -451,7 +465,10 @@ export class ConversationRuntime {
   private async openSession(controller: AbortController, afterLoss: boolean): Promise<ConversationClient> {
     for (let wait = afterLoss; ; wait = true) {
       if (wait) {
-        this.options.state.load = 'reconnecting'
+        // A first opening that cannot connect is still an opening: it says
+        // that it connects and shows nothing of a session it never had
+        // (`web-application.md` § Opening a conversation shows in two steps).
+        this.options.state.load = this.opened ? 'reconnecting' : 'connecting'
         this.connectionFailures += 1
         await this.pause(controller.signal)
       }
@@ -489,6 +506,12 @@ export class ConversationRuntime {
     // A deadline or a release while the session opens ends the connection, which ends the wait.
     const disconnect = () => client?.disconnect(asError(attempt.signal.reason))
     attempt.signal.addEventListener('abort', disconnect, { once: true })
+    // The handshake's frames, held until the session has opened, so what
+    // they show joins the conversation in one change with the session open,
+    // and an attempt that fails shows none of them (`web-application.md`
+    // § Opening a conversation shows in two steps, § What a reopened socket
+    // brings back).
+    let handshake: ClientSessionEvent[] | null = []
     try {
       client = await this.options.connect(attempt.signal)
       attempt.signal.throwIfAborted()
@@ -500,10 +523,12 @@ export class ConversationRuntime {
         if (this.controller !== controller) {
           return
         }
-        // Until the session opens, the connection's end is this attempt's:
-        // `open` fails with it, and the opening decides what follows.
-        const ended = event.type === 'closed' || event.type === 'disconnected'
-        if (ended && this.client.value !== client) {
+        if (this.client.value !== opened) {
+          // Until the session opens, the connection's end is this attempt's:
+          // `open` fails with it, and the opening decides what follows.
+          if (event.type !== 'closed' && event.type !== 'disconnected') {
+            handshake?.push(event)
+          }
           return
         }
         this.applyEvent(event)
@@ -513,6 +538,14 @@ export class ConversationRuntime {
       attempt.signal.throwIfAborted()
       this.client.value = client
       this.unsubscribe = unsubscribe
+      // Applied once, then let go: the subscription lives as long as the
+      // connection, and the frames it held must not.
+      const held = handshake
+      handshake = null
+      for (const event of held) {
+        this.applyEvent(event)
+      }
+      this.opened = true
       this.options.state.load = 'ready'
       // A reopened session is healthy; the failure that preceded it is over.
       this.options.state.lastError = null
