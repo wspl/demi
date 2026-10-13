@@ -1712,7 +1712,7 @@ commands*, and a click opens it to every step.
   only on the blocks before it, so `run` never changes. The calls being
   written, which are not blocks, join the run at the transcript's end on the
   page.
-- A step is a `thinking` block, a `tool_call` block, a call being written
+- A step is a `thinking` or `redacted_thinking` block, a `tool_call` block, a call being written
   ([Calls being written](#calls-being-written)), a command's notice (a
   `wakeup` that shows, [Command reports](#command-reports)), or an agent's
   receipt (an `agent_message` from another agent: an update or a child's
@@ -1734,7 +1734,7 @@ commands*, and a click opens it to every step.
 - Thinking that streams stays one row, *Thinking*, folded as any step, and
   the reader opens it to read along; it never opens by itself, since folding
   itself when it ends would shrink the list with nothing the reader did.
-- Thinking without text shows only while it is the newest block of a
+- Thinking without text, empty or redacted, shows only while it is the newest block of a
   running turn, as what the agent does now; once anything follows it or the
   turn ends, it has nothing to show and goes, from the transcript and from
   the steps of an opened row.
