@@ -186,7 +186,14 @@ why.
   Cancel, and a second press of the same action does not send it twice.
   This is one behavior of the controls themselves, written once in
   `web-ui`: a control given an action that returns a promise shows that it
-  works until the promise settles, so no handler can forget it.
+  works until the promise settles, so no handler can forget it. A working
+  control keeps its own look, a danger button its red, with the spinner
+  added. Controls that start one of several exclusive actions, such as a
+  dialog's Use Passkey and Continue, form a group: while one works, it shows
+  the spinner and the others of the group are not pressable. Cancel or
+  closing a dialog while its action works closes it and does not stop the
+  request, whose row goes on showing that it works until the answer, as a
+  sent mail goes on sending after its window closes.
 - **Which wait, and show it in place.** An action waits for the backend's
   answer, showing its progress on the control that started it, when the
   user needs to know it really happened before going on:
