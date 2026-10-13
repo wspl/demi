@@ -215,6 +215,13 @@ input, which the multi-worker control service also relies on
   stays when the draft is emptied, so a revision is never used twice, and it
   is deleted with its conversation; the conversation index reads the revision
   into each conversation's summary.
+  `saved_messages` stores each conversation's
+  [messages saved for later](../product/web-api.md#messages-saved-for-later):
+  id, conversation, when saved, and the text and files as one JSON document,
+  as a draft holds them; `conversation_drafts` gains the revision of the
+  list, which every save, edit, send and removal raises in the transaction
+  that makes it. Its rows are deleted with their conversation, and the
+  uploads they name are held as a draft's are.
   `permission_requests` stores each conversation's
   [permission requests](../agent/permissions.md#requests): id, conversation,
   categories, a JSON array of category ids sorted so that the same
