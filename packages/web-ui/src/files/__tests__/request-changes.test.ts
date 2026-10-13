@@ -11,6 +11,7 @@ import {
   findRequest,
   offersAllChanges,
   pillSelection,
+  requestFileSelection,
   runFiles,
   selectionCopies,
   storedRequests,
@@ -186,6 +187,19 @@ describe('the pills', () => {
     expect(pillSelection(null, requests, s2, 's2', '/w/login.ts', null)).not.toHaveProperty('root')
     expect(pillSelection(null, requests, s1, 's1', '/w/notes.md', null)).toBeNull()
     expect(pillSelection(null, requests, s4, 's4', '/w/old.css', null)).toBeNull()
+  })
+
+  test('the "+N Files" pill opens a file at All Changes, even one the request removed, which a pill alone is no control for', () => {
+    expect(requestFileSelection(null, requests, s4, '/w/old.css', null)).toEqual({ node: null, request: 'u1', file: '/w/old.css', edit: null })
+    expect(requestFileSelection('child', requests, s4, '/w/login.ts', '/slots/2')).toEqual({
+      node: 'child',
+      request: 'u1',
+      file: '/w/login.ts',
+      edit: null,
+      root: '/slots/2',
+    })
+    // A file the request created and removed is in no list: nothing to open.
+    expect(requestFileSelection(null, requests, s4, '/w/notes.md', null)).toBeNull()
   })
 
   test('of a page read in light form are those of the whole transcript', () => {

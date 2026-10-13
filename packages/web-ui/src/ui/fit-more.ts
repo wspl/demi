@@ -82,15 +82,13 @@ export interface FitMoreOptions {
   box: () => HTMLElement | null | undefined
   /** The widths of the items as they stand with all of them shown; null when the box cannot be measured. */
   measure: () => FitMoreMeasure | null
-  /** False while the box shows everything on purpose, such as an expanded list. */
-  enabled?: () => boolean
 }
 
 /**
  * How many of a box's items show. Every item shows first, so `measure` reads
  * them all, then the count settles, again whenever the box resizes, the
- * items change, a web font finishes loading (it changes the widths without
- * changing the box) or `enabled` turns on.
+ * items change or a web font finishes loading (it changes the widths without
+ * changing the box).
  */
 export function useFitMore(options: FitMoreOptions): Ref<number> {
   const shown = ref(options.items().length)
@@ -98,8 +96,6 @@ export function useFitMore(options: FitMoreOptions): Ref<number> {
   let current = 0
 
   async function fit(): Promise<void> {
-    if (options.enabled && !options.enabled())
-      return
     const mine = ++current
     shown.value = options.items().length
     await nextTick()
@@ -118,7 +114,7 @@ export function useFitMore(options: FitMoreOptions): Ref<number> {
   })
   onBeforeUnmount(() => observer?.disconnect())
   useEventListener(document.fonts, 'loadingdone', () => { void fit() })
-  watch([options.items, () => options.enabled?.() ?? true], () => { void fit() })
+  watch(options.items, () => { void fit() })
 
   return shown
 }
