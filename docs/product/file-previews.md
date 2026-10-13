@@ -252,9 +252,8 @@ known before it loads, as an attachment's is, takes its box at once; one
 whose size is not, as a Host path's or a web image's, takes no room until
 it loads and then grows once to its tile, since a box held at the largest
 size would leave a blank band under every smaller picture. Resting the pointer on it shows it
-large ([A picture's preview on hover](#a-pictures-preview-on-hover)). A click shows the image whole: a Host image in the File
-view, a web image in a new tab of the user's browser. An image inside a link
-follows the link.
+large ([A picture's preview on hover](#a-pictures-preview-on-hover)). A click shows the image whole in the media viewer, a
+Host image and a web image alike. An image inside a link follows the link.
 
 Images that follow each other show side by side. For example, the agent
 replies with four screenshots, one per line, and nothing else between them:
@@ -452,7 +451,9 @@ it was, not dimmed, so the user can go on reading and typing beside it.
   returned, in the order they stand, from the oldest to the newest. At the
   first or the last nothing moves. The title bar counts them, *3 of 12*. A
   picture the transcript has not loaded yet, above the part the page holds,
-  is not among them.
+  is not among them. While the focus is on a video, the arrow keys are the
+  player's, which seeks with them. On a phone, where the viewer takes the
+  whole screen, a swipe left or right steps as the keys do.
 - **What it shows.** An image opens fitted to the window, scaled down and
   never enlarged, over a checkerboard where it is transparent; its pixel
   size and the zoom show in the title bar, *1280 × 720 · 50%*, where 100% is
