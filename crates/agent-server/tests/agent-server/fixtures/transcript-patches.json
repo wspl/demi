@@ -71,13 +71,24 @@
                 "thinking": null,
                 "serviceTierId": null
               },
-              "text": "Let me look.",
+              "text": "",
               "signature": null,
               "run": "id-4"
             }
           }
         ],
         "revision": 2
+      },
+      {
+        "type": "transcript_patch",
+        "patches": [
+          {
+            "op": "append_text",
+            "index": 1,
+            "delta": "Let me look."
+          }
+        ],
+        "revision": 3
       },
       {
         "type": "transcript_patch",
@@ -108,7 +119,7 @@
             }
           }
         ],
-        "revision": 3
+        "revision": 4
       },
       {
         "type": "transcript_patch",
@@ -137,7 +148,7 @@
             }
           }
         ],
-        "revision": 4
+        "revision": 5
       },
       {
         "type": "transcript_patch",
@@ -148,7 +159,7 @@
             "delta": "the files."
           }
         ],
-        "revision": 5
+        "revision": 6
       },
       {
         "type": "transcript_patch",
@@ -178,7 +189,7 @@
             }
           }
         ],
-        "revision": 6
+        "revision": 7
       },
       {
         "type": "transcript_patch",
@@ -213,7 +224,7 @@
             }
           }
         ],
-        "revision": 7
+        "revision": 8
       },
       {
         "type": "transcript_patch",
@@ -247,7 +258,7 @@
             }
           }
         ],
-        "revision": 8
+        "revision": 9
       },
       {
         "type": "transcript_patch",
@@ -287,7 +298,7 @@
             }
           }
         ],
-        "revision": 9
+        "revision": 10
       },
       {
         "type": "transcript_patch",
@@ -316,7 +327,7 @@
             }
           }
         ],
-        "revision": 10
+        "revision": 11
       },
       {
         "type": "transcript_patch",
@@ -346,7 +357,7 @@
             }
           }
         ],
-        "revision": 11
+        "revision": 12
       },
       {
         "type": "transcript_patch",
@@ -380,7 +391,7 @@
             }
           }
         ],
-        "revision": 12
+        "revision": 13
       }
     ],
     "transcript": [

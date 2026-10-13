@@ -125,6 +125,7 @@ impl Block {
     pub fn run(&self) -> Option<&BlockId> {
         match self {
             Block::Thinking(block) => block.run.as_ref(),
+            Block::RedactedThinking(block) => block.run.as_ref(),
             Block::ToolCall(block) => block.run.as_ref(),
             Block::Wakeup(block) => block.run.as_ref(),
             Block::AgentMessage(block) => block.run.as_ref(),
@@ -136,6 +137,7 @@ impl Block {
     pub fn set_run(&mut self, run: Option<BlockId>) {
         match self {
             Block::Thinking(block) => block.run = run,
+            Block::RedactedThinking(block) => block.run = run,
             Block::ToolCall(block) => block.run = run,
             Block::Wakeup(block) => block.run = run,
             Block::AgentMessage(block) => block.run = run,
@@ -679,7 +681,8 @@ pub struct ThinkingBlock {
     pub entries: Vec<serde_json::Value>,
 }
 
-/// Opaque reasoning data, replayed whole and never shown.
+/// Opaque reasoning data, replayed whole; a page shows it as thinking
+/// without text while it is the newest block of a running turn.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RedactedThinkingBlock {
@@ -691,6 +694,17 @@ pub struct RedactedThinkingBlock {
     pub model: ModelSelection,
     #[garde(skip)]
     pub data: String,
+    /// The run of steps the block belongs to (`runtime.md` § Work groups):
+    /// the id of the run's first block, which the backend sets as it stores
+    /// the block and never changes.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "BlockId")]
+    #[garde(skip)]
+    pub run: Option<BlockId>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
     /// a process resumes); omitted when there are none. They never leave

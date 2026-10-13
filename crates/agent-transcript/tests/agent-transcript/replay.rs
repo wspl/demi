@@ -68,6 +68,7 @@ fn reasoning_between_the_last_boundary_and_its_marker_is_marked_as_kept_past_a_s
         created_at: Timestamp::UNIX_EPOCH,
         model: model.clone(),
         data: "anthropic:opaque".into(),
+        run: None,
     });
     let boundary = Block::CompactionBoundary(CompactionBoundaryBlock {
         entries: Vec::new(),
