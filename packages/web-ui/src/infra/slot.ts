@@ -1,4 +1,7 @@
-import { computed, shallowRef, type ComputedRef, type ShallowRef } from 'vue'
+import { computed, shallowRef, triggerRef, type ComputedRef, type ShallowRef } from 'vue'
+
+/** A revision for each part of a slot a write changed, by part. */
+export type Revisions = Readonly<Record<string, number>>
 
 /**
  * What a write's answer says of the slot (`web-application.md` § Responding
@@ -6,55 +9,66 @@ import { computed, shallowRef, type ComputedRef, type ShallowRef } from 'vue'
  */
 export interface SlotAnswer<V> {
   /**
-   * The value the answer leaves, made of the value read. None when the
-   * answer does not tell it: the change then waits for the slot's next value.
+   * The value the answer leaves, made of the value read, when the answer
+   * tells the parts its change touches whole, as a product state's part is
+   * told. It is taken only when no read of those parts came since the write
+   * was sent, since that read may be newer.
    */
   value?: (read: V) => V
-  /** The slot's revision once the write is in it, when the backend numbers its values. */
-  revision?: number
+  /**
+   * The revision of each part the write produced. The change leaves once the
+   * page holds a read of each at that revision or a later one, never
+   * earlier: an answer that adds one item to a list is not the list.
+   */
+  revisions?: Revisions
 }
 
-/** How a write ended for the change that stood for it. */
-export type SlotWrite = 'landed' | 'waiting' | 'refused'
+/** Where a change stands: shown and not sent yet, sent, or answered and waiting for a read that holds it. */
+export type SlotChangeStatus = 'unsent' | 'sent' | 'landed'
 
 /**
  * One change of the page's that its write has not landed yet: shown over the
- * slot's value from the moment the user made it.
+ * slot's value from the moment the user made it, in the order made.
  */
-export class SlotChange<V> {
-  /** Where the slot's clock stood when the write went out; null before. */
+export class SlotChange<V, M = undefined> {
+  status: SlotChangeStatus = 'unsent'
+  /** Where the slot's clock stood when the write went out. */
   sentAt: number | null = null
-  /**
-   * Set once the write landed without its answer being applied: the change
-   * stays until a value of the slot that is newer than its write arrives.
-   */
-  waiting: { landedAt: number; until: number | undefined } | null = null
+  /** Where the slot's clock stood when the answer came. */
+  landedAt: number | null = null
+  /** The revisions the answer named, which a read must reach for the change to leave. */
+  until: Revisions | null = null
 
   constructor(
-    private readonly slot: Slot<V>,
-    readonly part: string,
-    readonly apply: (value: V) => V,
+    private readonly slot: Slot<V, M>,
+    private shownAs: (value: V) => V,
+    /** The parts of the value the change touches. */
+    readonly parts: readonly string[],
+    /** What the owner of the slot keeps with the change. */
+    readonly meta: M,
   ) {}
 
-  /** Its write goes out now; a value of the slot read from here may be newer than the write's. */
+  /** How the change shows over the value below it. */
+  get apply(): (value: V) => V {
+    return this.shownAs
+  }
+
+  /** Shows the change as `apply` from now on, as more typing does to a change not sent yet. */
+  revise(apply: (value: V) => V): void {
+    this.shownAs = apply
+    this.slot.touched()
+  }
+
   send(): void {
     this.slot.send([this])
   }
 
-  /**
-   * The write was answered: `answer`, or, without one, the change itself,
-   * applies as the slot's value unless a value of the slot was read since the
-   * write went out, and the change leaves. Otherwise it stays until the
-   * slot's next value. Answers whether it left.
-   */
+  /** The write was answered (`Slot.land`); answers whether the change left. */
   land(answer?: SlotAnswer<V>): boolean {
     return this.slot.land([this], answer)
   }
 
-  /**
-   * The write failed or the backend refused it: the change leaves at once,
-   * and `answer`, what the backend has, applies as in `land`.
-   */
+  /** The write failed or the backend refused it: the change leaves at once (`Slot.drop`). */
   drop(answer?: SlotAnswer<V>): void {
     this.slot.drop([this], answer)
   }
@@ -62,37 +76,38 @@ export class SlotChange<V> {
 
 /**
  * A piece of state the page reads from the backend (`web-application.md`
- * § Responding to the user): the value it last read, the revision that value
- * carries, and the changes the page made and has not seen land. The page
+ * § Responding to the user): the value it last read, the revision of each of
+ * its parts, and the changes the page made and has not seen land. The page
  * shows `shown`, the value read with those changes applied in the order they
  * were made. One mechanism serves every slot:
  *
- * - A change leaves when its answer is applied, or, when a value of the slot
- *   was read between its write and its answer, with the next value read
- *   after the answer (or, when the answer names a revision, with the value
- *   of that revision).
+ * - A change leaves when the page holds a read at or after the revisions its
+ *   answer named; an answer without revisions that tells its parts whole is
+ *   taken as their value when no read came since the write, else the change
+ *   waits for a read of its parts asked for after the answer. An answer
+ *   releases only its own change, never another.
+ * - A change whose effect the value read already holds, such as the removal
+ *   of an item the read no longer has, leaves once answered.
  * - A change whose write failed or was refused leaves at once; the page then
- *   shows what the backend has.
- * - The writes of one thing go one at a time, in the order the user made
- *   them (`write` with a `SerialQueue`), those of different things side by
- *   side.
+ *   shows what the backend has, and the slot's owner keeps what the user
+ *   wrote in it.
  *
- * A slot may be read in parts, as the product state is: a `part` names the
- * piece of the value a read or an answer replaces, and only reads and answers
- * of the same part order against a change.
+ * The writes of one thing go one at a time, in the order the user made them,
+ * which their owner orders, such as with a `SerialQueue`.
  */
-export class Slot<V> {
+export class Slot<V, M = undefined> {
   /** The value as the backend last told it; null before the first read. */
   readonly read: ShallowRef<V | null> = shallowRef(null)
-  /** The changes not landed yet, in the order they were made. */
-  private readonly changes = shallowRef<SlotChange<V>[]>([])
-  private readonly held = shallowRef(-1)
+  /** The changes not left yet, in the order they were made. */
+  private readonly changes = shallowRef<SlotChange<V, M>[]>([])
+  /** The revision of each part as read. */
+  private readonly held = shallowRef<Record<string, number>>({})
   private clock = 0
   /** The clock at each part's last read, and at the last read of the whole. */
   private readonly partAt = new Map<string, number>()
   private wholeAt = 0
-  /** The newest revision a read was started for. */
-  private asked = -1
+  /** The newest revision of each part a read was started for. */
+  private readonly asked = new Map<string, number>()
   /** The value the page shows: the value read, or `empty` before the first read, with its changes on top. */
   readonly shown: ComputedRef<V | null>
 
@@ -104,213 +119,244 @@ export class Slot<V> {
     })
   }
 
-  /** The revision of the value last read; -1 before the first read. */
-  get revision(): number {
-    return this.held.value
+  /** The revision of `part` as last read; -1 before the first. */
+  revision(part = ''): number {
+    return this.held.value[part] ?? -1
   }
 
-  /** The slot's clock, which numbers its reads: a write sent at this point is measured against it. */
+  /** The newest revision of `part` held or asked for: a read of an older one is not worth starting. */
+  requested(part = ''): number {
+    return Math.max(this.revision(part), this.asked.get(part) ?? -1)
+  }
+
+  /**
+   * Whether a read of `part` at `revision` is worth starting: it is newer
+   * than the value held and than any read started before, which it then
+   * counts as.
+   */
+  ask(revision: number, part = ''): boolean {
+    if (revision <= this.requested(part)) {
+      return false
+    }
+    this.asked.set(part, revision)
+    return true
+  }
+
+  /** The slot's clock, which numbers its reads: a write sent or a read asked for at this point is measured against it. */
   now(): number {
     return this.clock
   }
 
-  /**
-   * Takes a read of the whole value, as a snapshot or a request answers. A
-   * read of a revision no newer than the one held leaves the value as it is,
-   * but still counts for the changes that landed before its request went out:
-   * what it holds is at least what their writes made. `since` is where the
-   * clock stood when the request for it went out; a read from the channel
-   * needs none. Answers whether the value was replaced.
-   */
-  replace(value: V, options: { revision?: number; since?: number } = {}): boolean {
-    const { revision } = options
-    const at = ++this.clock
-    const older = revision !== undefined && this.read.value !== null && revision <= this.held.value
-    if (!older) {
-      if (revision !== undefined) {
-        this.held.value = revision
-      }
-      this.wholeAt = at
-      this.read.value = value
-    }
-    this.releaseWaiting(() => true, options.since ?? at)
-    return !older
+  /** The changes not left yet that touch `part`, in order. */
+  pending(part?: string): readonly SlotChange<V, M>[] {
+    return this.changes.value.filter((change) => part === undefined || change.parts.includes(part))
+  }
+
+  /** The value `change` shows over: the value read with the changes made before it. */
+  below(change: SlotChange<V, M>): V | null {
+    const base = this.read.value ?? this.empty
+    const before = this.changes.value.slice(0, Math.max(0, this.changes.value.indexOf(change)))
+    return base === null ? null : before.reduce<V>((value, each) => each.apply(value), base)
   }
 
   /**
-   * Takes a read of one part, as a message of the channel brings it: `update`
-   * makes the value of the one it replaces. Nothing is read before the whole.
+   * Takes a read of the whole value, as a snapshot or a request answers. A
+   * read of no newer revision than the one held changes nothing. `since` is
+   * where the clock stood when the request for it went out; a read from the
+   * channel needs none. Answers whether it was taken.
    */
-  receive(part: string, update: (read: V) => V): boolean {
+  replace(value: V, options: { revisions?: Revisions; since?: number } = {}): boolean {
+    const { revisions } = options
+    if (revisions !== undefined && this.read.value !== null
+      && Object.entries(revisions).every(([part, revision]) => revision <= this.revision(part))) {
+      return false
+    }
+    const at = ++this.clock
+    this.wholeAt = at
+    this.read.value = value
+    if (revisions !== undefined) {
+      this.raise(revisions)
+    }
+    this.release(() => true, options.since ?? at)
+    return true
+  }
+
+  /**
+   * Takes a read of one part, as a message of the channel brings it:
+   * `update` makes the value of the one it replaces. Nothing is read before
+   * the whole, and a read of no newer revision than the one held changes
+   * nothing. Answers whether it was taken.
+   */
+  receive(part: string, update: (read: V) => V, options: { revision?: number; since?: number } = {}): boolean {
     const read = this.read.value
-    if (read === null) {
+    const { revision } = options
+    if (read === null || (revision !== undefined && revision <= this.revision(part))) {
       return false
     }
     const at = ++this.clock
     this.partAt.set(part, at)
     this.read.value = update(read)
-    this.releaseWaiting((change) => change.part === part, at)
+    if (revision !== undefined) {
+      this.raise({ [part]: revision })
+    }
+    this.release((change) => change.parts.includes(part), options.since ?? at)
     return true
   }
 
   /**
-   * Applies what a write's answer says of `part`, as `answer` makes of the
-   * value read, unless the slot was read since the write went out `at`:
-   * that value may be newer, and if it is older, the value the write caused
-   * is still to come. Answers whether it applied.
+   * Applies what a write's answer says of `parts`, for a write no change
+   * stands for, unless one of them was read since the write was sent `at`:
+   * that read may be newer, and if it is older, the value the write caused
+   * is still to come. Releases no change. Answers whether it applied.
    */
-  answered(part: string, at: number, answer: SlotAnswer<V> & { value: (read: V) => V }): boolean {
+  answered(parts: readonly string[], at: number, answer: SlotAnswer<V> & { value: (read: V) => V }): boolean {
     const read = this.read.value
-    if (read === null || Math.max(this.wholeAt, this.partAt.get(part) ?? 0) > at) {
+    if (read === null || this.readSince(parts, at)) {
       return false
     }
     this.read.value = answer.value(read)
-    if (answer.revision !== undefined) {
-      this.held.value = Math.max(this.held.value, answer.revision)
+    if (answer.revisions !== undefined) {
+      this.raise(answer.revisions)
     }
-    // The answer is newer than every write of the part that landed before it.
-    this.releaseWaiting((change) => change.part === part, Infinity)
+    // A raised revision is a read of what the answer holds: only the
+    // changes whose answers named it leave.
+    this.release(() => false, -1)
     return true
   }
 
   /**
-   * Shows `apply`, a change the user made of `part`, over the value at once,
+   * Shows `apply`, a change the user made of `parts`, over the value at once,
    * until its write lands. The caller sends the write, after the writes
    * before it, and says how it ended through the change.
    */
-  change(apply: (value: V) => V, part = ''): SlotChange<V> {
-    const change = new SlotChange(this, part, apply)
+  change(apply: (value: V) => V, options: { parts?: readonly string[]; meta?: M } = {}): SlotChange<V, M> {
+    const change = new SlotChange<V, M>(this, apply, options.parts ?? [''], options.meta as M)
     this.changes.value = [...this.changes.value, change]
     return change
   }
 
-  /**
-   * Makes the write of `changes` and says how it ended: `request` goes out in
-   * its turn, `order` being how the writes of one thing wait for each other,
-   * such as a `SerialQueue`'s `run` of the thing's key, and answers what the
-   * write says of the slot, or nothing. A write that fails is a refusal: the
-   * changes leave and `refused` reports it.
-   */
-  write(
-    changes: SlotChange<V> | readonly SlotChange<V>[],
-    order: <T>(operation: () => Promise<T>) => Promise<T>,
-    request: () => Promise<SlotAnswer<V> | void>,
-    refused: (error: unknown) => void,
-  ): Promise<SlotWrite> {
-    const sent = Array.isArray(changes) ? changes : [changes as SlotChange<V>]
-    return order(async (): Promise<SlotWrite> => {
-      try {
-        this.send(sent)
-        const answer = await request()
-        return this.land(sent, answer ?? undefined) ? 'landed' : 'waiting'
-      } catch (error) {
-        this.drop(sent)
-        refused(error)
-        return 'refused'
-      }
-    })
-  }
-
   /** The writes of `changes` go out now, together. */
-  send(changes: readonly SlotChange<V>[]): void {
+  send(changes: readonly SlotChange<V, M>[]): void {
     for (const change of changes) {
+      change.status = 'sent'
       change.sentAt = this.clock
     }
   }
 
   /**
-   * The write of `changes`, which went out together, was answered
-   * (`SlotChange.land`); without an answer, the changes applied in order are
-   * the value. Answers whether the changes left.
+   * The write of `changes`, which went out together, was answered;
+   * without an answer, the changes applied in order are the value of their
+   * parts. Answers whether the changes left.
    */
-  land(changes: readonly SlotChange<V>[], answer?: SlotAnswer<V>): boolean {
+  land(changes: readonly SlotChange<V, M>[], answer?: SlotAnswer<V>): boolean {
     // A change released since, as by a sign-out, has nothing left to say,
-    // and one that landed waits only for the slot's next value.
-    const live = changes.filter((change) => this.changes.value.includes(change) && change.waiting === null)
-    const first = live[0]
-    if (!first) {
+    // and one that landed waits only for a read.
+    const live = changes.filter((change) => this.changes.value.includes(change) && change.status !== 'landed')
+    if (live.length === 0) {
       return true
     }
     const said = answer ?? { value: (read: V) => live.reduce((value, change) => change.apply(value), read) }
+    const parts = [...new Set(live.flatMap((change) => change.parts))]
     const at = Math.min(...live.map((change) => change.sentAt ?? this.clock))
-    if (said.value !== undefined && this.answered(first.part, at, { ...said, value: said.value })) {
-      this.leave(live)
-      return true
-    }
-    if (said.revision !== undefined && said.revision <= this.held.value) {
-      // The slot holds a value at least as new as the answer's.
-      this.leave(live)
-      return true
-    }
     const landedAt = ++this.clock
     for (const change of live) {
-      change.waiting = { landedAt, until: said.revision }
+      change.status = 'landed'
+      change.landedAt = landedAt
+      change.until = said.revisions === undefined
+        ? null
+        : Object.fromEntries(Object.entries(said.revisions).filter(([part]) => change.parts.includes(part)))
     }
-    return false
+    const read = this.read.value
+    if (said.value !== undefined && read !== null && !this.readSince(parts, at)) {
+      this.read.value = said.value(read)
+      if (said.revisions !== undefined) {
+        this.raise(said.revisions)
+      }
+      // The value is the write's: its own changes leave, and only they.
+      this.leave(live.filter((change) => change.until === null || this.reached(change.until)))
+    }
+    this.release(() => false, -1)
+    return !live.some((change) => this.changes.value.includes(change))
   }
 
-  /** The write of `changes` failed or was refused (`SlotChange.drop`). */
-  drop(changes: readonly SlotChange<V>[], answer?: SlotAnswer<V>): void {
-    const live = changes.filter((change) => this.changes.value.includes(change) && change.waiting === null)
-    const first = live[0]
-    if (!first) {
+  /**
+   * The write of `changes` failed or was refused: they leave, and `answer`,
+   * what the backend has, applies as in `answered`. A change that landed
+   * waits only for a read, and stays.
+   */
+  drop(changes: readonly SlotChange<V, M>[], answer?: SlotAnswer<V>): void {
+    const live = changes.filter((change) => this.changes.value.includes(change) && change.status !== 'landed')
+    if (live.length === 0) {
       return
     }
     if (answer?.value !== undefined) {
       const at = Math.min(...live.map((change) => change.sentAt ?? this.clock))
-      this.answered(first.part, at, { ...answer, value: answer.value })
+      this.answered([...new Set(live.flatMap((change) => change.parts))], at, { ...answer, value: answer.value })
     }
     this.leave(live)
   }
 
-  /** The newest revision held or asked for: a read of an older one is not worth starting. */
-  get requested(): number {
-    return Math.max(this.held.value, this.asked)
+  /** `left` leave without a write, as a change another one took the place of. */
+  leave(left: readonly SlotChange<V, M>[]): void {
+    if (left.some((change) => this.changes.value.includes(change))) {
+      this.changes.value = this.changes.value.filter((change) => !left.includes(change))
+    }
   }
 
-  /**
-   * Whether a read of revision `revision` is worth starting: it is newer than
-   * the value held and than any read started before, which it then counts as.
-   */
-  ask(revision: number): boolean {
-    if (revision <= this.requested) {
-      return false
-    }
-    this.asked = revision
-    return true
+  /** A change was revised: the value shown is made again. */
+  touched(): void {
+    triggerRef(this.changes)
   }
 
   /** Forgets everything, as a page that signed out does. */
   clear(): void {
     this.read.value = null
     this.changes.value = []
-    this.held.value = -1
+    this.held.value = {}
     this.clock = 0
     this.partAt.clear()
     this.wholeAt = 0
-    this.asked = -1
+    this.asked.clear()
   }
 
-  private leave(left: readonly SlotChange<V>[]): void {
-    this.changes.value = this.changes.value.filter((change) => !left.includes(change))
+  /** Whether one of `parts` was read after the clock stood at `at`. */
+  private readSince(parts: readonly string[], at: number): boolean {
+    return Math.max(this.wholeAt, ...parts.map((part) => this.partAt.get(part) ?? 0)) > at
+  }
+
+  private raise(revisions: Revisions): void {
+    const held = { ...this.held.value }
+    for (const [part, revision] of Object.entries(revisions)) {
+      held[part] = Math.max(held[part] ?? -1, revision)
+    }
+    this.held.value = held
+  }
+
+  /** Whether the page holds a read of every part `until` names at that revision or a later one. */
+  private reached(until: Revisions): boolean {
+    return Object.entries(until).every(([part, revision]) => this.revision(part) >= revision)
   }
 
   /**
-   * The waiting changes `of` names leave when the value read now is newer
-   * than their write: read after it landed, or, when the answer named a
-   * revision, at that revision. `since` is where the clock stood when the
-   * request for the read went out.
+   * The landed changes a read now holds leave: those whose revisions it
+   * reached; those without revisions of which `of` read a part, when the
+   * request for the read went out at `since`, after they landed; and those
+   * whose effect the value read already has.
    */
-  private releaseWaiting(of: (change: SlotChange<V>) => boolean, since: number): void {
-    const released = (change: SlotChange<V>) => {
-      const { waiting } = change
-      if (waiting === null || !of(change)) {
+  private release(of: (change: SlotChange<V, M>) => boolean, since: number): void {
+    const read = this.read.value
+    const released = (change: SlotChange<V, M>) => {
+      if (change.status !== 'landed') {
         return false
       }
-      return waiting.until === undefined ? since >= waiting.landedAt : this.held.value >= waiting.until
+      if (change.until !== null) {
+        return this.reached(change.until)
+      }
+      if (of(change) && since >= change.landedAt!) {
+        return true
+      }
+      return read !== null && change.apply(read) === read
     }
-    if (this.changes.value.some(released)) {
-      this.changes.value = this.changes.value.filter((change) => !released(change))
-    }
+    this.leave(this.changes.value.filter(released))
   }
 }

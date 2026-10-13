@@ -725,7 +725,7 @@ test('a draft saved on one page reaches another, a save over a version the page 
   try {
     expect(await loadDraft(id, signal)).toEqual({ revision: 0, text: '', files: [], replaced: null })
     const trace = { type: 'remote_file', deviceId, path: join(runner.home, 'trace.txt') } as const
-    const first = await saveDraft(id, { base: 0, text: `Fix the login ${ATTACHMENT_MARK}`, files: [trace] }, { signal })
+    const first = (await saveDraft(id, { base: 0, text: `Fix the login ${ATTACHMENT_MARK}`, files: [trace] }, { signal })).draft
     expect(first).toEqual({ revision: 1, text: `Fix the login ${ATTACHMENT_MARK}`, files: [trace], replaced: null })
     // The other page learns of the save from the summary, then reads the draft.
     await pageShows(other, id, (summary) => summary.draftRevision === 1)
@@ -733,11 +733,11 @@ test('a draft saved on one page reaches another, a save over a version the page 
 
     // Both pages type on revision 1 at once.
     const mine = await saveDraft(id, { base: 1, text: 'Fix the login bug', files: [] }, { signal })
-    expect(mine).toMatchObject({ revision: 2, replaced: null })
-    const theirs = await saveDraft(id, { base: 1, text: 'Fix the login test', files: [] }, { signal })
+    expect(mine).toMatchObject({ draft: { revision: 2, replaced: null }, revisions: { draft: 2, saved: 0 } })
+    const theirs = (await saveDraft(id, { base: 1, text: 'Fix the login test', files: [] }, { signal })).draft
     expect(theirs).toEqual({ revision: 3, text: 'Fix the login test', files: [], replaced: { revision: 2, text: 'Fix the login bug', files: [] } })
     // Restoring exchanges the two, so nothing is lost.
-    const restored = await changeReplacedDraft(id, { action: 'restore', revision: 2 }, signal)
+    const restored = (await changeReplacedDraft(id, { action: 'restore', revision: 2 }, signal)).draft
     expect(restored).toEqual({ revision: 4, text: 'Fix the login bug', files: [], replaced: { revision: 3, text: 'Fix the login test', files: [] } })
     // A page that still offers revision 2 is told the draft changed.
     const refused = await changeReplacedDraft(id, { action: 'dismiss', revision: 2 }, signal).catch((error: unknown) => error)
