@@ -108,7 +108,7 @@ const glyphPx = computed(() => {
       @keyup="pressOnKey"
       role="button"
       :tabindex="disabled || loading ? undefined : 0"
-      class="focus-ring inline-flex shrink-0 cursor-default items-center justify-center transition-[color,background-color,box-shadow] duration-200 ease-out"
+      class="inline-flex shrink-0 cursor-default items-center justify-center transition-[color,background-color,box-shadow] duration-200 ease-out"
       :aria-disabled="disabled || loading || undefined"
       :aria-busy="loading || undefined"
       :data-pressed="!disabled && pressed ? true : undefined"

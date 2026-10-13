@@ -24,7 +24,7 @@ watch(() => props.open, (open) => {
     :class="open ? 'is-open' : ''"
     :style="{ '--fold-ms': `${FOLD_MS}ms` }"
   >
-    <div class="fold-clip" :inert="!open">
+    <div class="fold-clip overflow-hidden" :inert="!open">
       <slot v-if="opened" />
     </div>
   </div>
@@ -43,7 +43,6 @@ watch(() => props.open, (open) => {
 
 .fold-clip {
   min-height: 0;
-  overflow: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {

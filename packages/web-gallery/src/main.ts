@@ -5,7 +5,6 @@ import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
 import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/back-close'
 import { persistGalleryState } from './gallery-state'
 import { router } from './router'
-import { installClipAudit } from './clip-audit'
 import { installSizeAudit } from './size-audit'
 import App from './App.vue'
 import './style.css'
@@ -20,5 +19,4 @@ installPhonePage()
 router.beforeEach(() => historySettled())
 setHistoryTraversal((delta) => router.options.history.go(delta, false))
 createApp(App).use(router).mount('#app')
-installClipAudit((run) => router.afterEach(run))
 installSizeAudit((run) => router.afterEach(run))

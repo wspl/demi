@@ -31,7 +31,7 @@ const model = defineModel<T>({ required: true })
       type="button"
       role="radio"
       :aria-checked="model === option.value"
-      class="flex min-w-0 cursor-default select-none flex-col gap-1 rounded-xl border p-3 text-left outline-none transition-colors duration-200 ease-out focus-visible:ring-2 focus-visible:ring-line-focus"
+      class="flex min-w-0 cursor-default select-none flex-col gap-1 rounded-xl border p-3 text-left transition-colors duration-200 ease-out"
       :class="model === option.value ? 'border-accent-fill bg-accent-fill/8' : 'border-line bg-surface-float hover:border-line-strong hover:bg-hover active:bg-active'"
       @click="model = option.value"
     >

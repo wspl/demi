@@ -115,10 +115,11 @@ const shownPictures = computed(() => (props.pictures ?? []).slice(0, picturesFit
       :class="isExpandable ? 'group text-fg-row hover:text-fg-muted' : 'text-fg-row'"
       @click="toggle"
     >
+      <!-- Focused by the keyboard, it rises over the face and lets pointers through, so its ring shows whole over the face's icon and pictures. -->
       <button
         v-if="isExpandable"
         type="button"
-        class="absolute inset-0 cursor-default rounded-sm outline-offset-[-2px]"
+        class="absolute inset-0 cursor-default rounded-sm focus-visible:pointer-events-none focus-visible:z-10"
         :aria-expanded="isOpen"
         :aria-labelledby="faceId"
       ></button>

@@ -80,7 +80,7 @@ onBeforeUnmount(() => {
   >
     <button
       type="button"
-      class="relative block rounded outline-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-line-focus"
+      class="relative block rounded"
       :class="picture.kind === 'image' ? 'cursor-zoom-in' : 'cursor-pointer'"
       :aria-label="picture.kind === 'image' ? `Open ${picture.name} large` : `Play ${picture.name}`"
       v-bind="{ [KEEPS_WINDOWS]: '' }"
