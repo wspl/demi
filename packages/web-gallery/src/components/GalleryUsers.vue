@@ -47,12 +47,6 @@ function verified(): boolean {
 }
 
 let added = 0
-/** The nickname an account made by an address starts with: its name before the @, capitalized. */
-function nicknameOf(email: string): string {
-  const name = email.split('@')[0] ?? email
-  return name.charAt(0).toUpperCase() + name.slice(1)
-}
-
 function find(id: string) {
   return props.state.users.find((user) => user.id === id)
 }
@@ -83,17 +77,17 @@ const host = computed<SettingsUsersHost>(() => ({
       return { kind: 'emailTaken' }
     }
     added += 1
-    const nickname = nicknameOf(draft.email)
+    // A new account has no nickname until its owner chooses one, so the list names it by its email.
     props.state.users.push({
       id: `added-${added}`,
-      nickname,
+      nickname: '',
       email: draft.email.toLowerCase(),
       role: draft.role,
       disabled: false,
       choosesPassword: true,
       lastActiveAt: null,
     })
-    return { kind: 'added', id: `added-${added}`, nickname, password: fakeFirstPassword() }
+    return { kind: 'added', id: `added-${added}`, nickname: draft.email.toLowerCase(), password: fakeFirstPassword() }
   },
   newPassword: async (id) => {
     await beat()

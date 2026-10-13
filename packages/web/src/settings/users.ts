@@ -24,11 +24,11 @@ import { useSession } from '../auth/session'
 import { browserHasPasskeys } from '../auth/webauthn'
 import { useProduct } from '../state/product'
 
-/** A listed account as Settings › Users shows it. */
+/** A listed account as Settings › Users shows it; one without a nickname is named by its email there. */
 function row(user: ListedUser): SettingsUser {
   return {
     id: user.id,
-    nickname: user.nickname !== '' ? user.nickname : user.email,
+    nickname: user.nickname,
     email: user.email,
     role: user.role,
     disabled: user.disabled,
