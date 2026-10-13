@@ -1,4 +1,5 @@
 import { reactive } from 'vue'
+import { shownError, type ShownError } from '../infra/errors'
 import { createId } from '@demicodes/utils'
 import { joinPath, relativePath } from './paths'
 import { FileBrowserError, type FileBrowserSource } from './types'
@@ -72,9 +73,8 @@ export type UploadStep =
 export type UploadFileStep = Extract<UploadStep, { kind: 'file' }>
 
 /** Why a step failed: its path as it reads inside the upload, `''` for the upload's own. */
-export interface UploadFailure {
+export interface UploadFailure extends ShownError {
   path: string
-  message: string
 }
 
 /**
@@ -126,7 +126,7 @@ export function uploadSize(upload: FileUpload): number {
 interface Run {
   controller: AbortController
   running: Map<UploadStep, number>
-  failed: Map<UploadStep, string>
+  failed: Map<UploadStep, ShownError>
   /** A step other than a file's failed: nothing more starts. */
   stopped: boolean
   pace: (sent: number) => number | null
@@ -266,7 +266,7 @@ export class FileUploads {
       // A cancelled upload says nothing more; it has left the list.
       if (signal.aborted)
         return
-      current.failed.set(step, failureMessage(error))
+      current.failed.set(step, failureOf(error))
       if (step.kind !== 'file')
         current.stopped = true
     }).finally(() => {
@@ -289,8 +289,8 @@ export class FileUploads {
       return
     this.#runs.delete(upload.id)
     const failures = upload.steps.flatMap((step) => {
-      const message = run.failed.get(step)
-      return message === undefined ? [] : [{ path: relativePath(upload.path, step.path), message }]
+      const failure = run.failed.get(step)
+      return failure === undefined ? [] : [{ path: relativePath(upload.path, step.path), ...failure }]
     })
     upload.state = failures.length === 0 ? { phase: 'done' } : { phase: 'failed', failures }
   }
@@ -371,10 +371,10 @@ function recentPace(start: number): (sent: number) => number | null {
   }
 }
 
-function failureMessage(error: unknown): string {
+function failureOf(error: unknown): ShownError {
   if (error instanceof FileBrowserError && error.kind === 'exists')
-    return 'A file with this name is there now.'
-  return error instanceof Error ? error.message : String(error)
+    return shownError(error, 'A file with this name is there now.')
+  return shownError(error)
 }
 
 const bySource = new WeakMap<UploadSource, FileUploads>()

@@ -49,7 +49,9 @@ const rules = [
         <p class="max-w-3xl text-[13px] leading-5 text-fg-muted">
           Every failure the product can show, pinned in its failed state. The
           surface is chosen by where the failure belongs, and a failure is named
-          exactly once.
+          exactly once. A failure a request answered names it under the
+          message, Request ID with Copy, for the user to send to whoever runs
+          the server.
         </p>
         <ScrollArea axis="x" class="rounded-xl border border-line">
           <table class="w-full min-w-[48rem] text-left text-[12px] leading-4">

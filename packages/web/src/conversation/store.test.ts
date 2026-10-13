@@ -87,7 +87,7 @@ class FakeXhr {
       if (FakeXhr.failures > 0) {
         FakeXhr.failures -= 1
         this.status = 500
-        this.responseText = JSON.stringify({ code: 'internal_error', message: 'The blob store failed.' })
+        this.responseText = JSON.stringify({ requestId: 'req_test000000000001', code: 'internal_error', message: 'The blob store failed.' })
       } else {
         this.status = 201
         this.responseText = JSON.stringify({ attachment: {
@@ -126,7 +126,7 @@ function draftRoute(id: string, method: string, action: boolean, body: Record<st
   } else if (action) {
     const replaced = current.replaced
     if (!replaced || replaced.revision !== body.revision) {
-      return Response.json({ code: 'draft_changed', message: 'The replaced version changed' }, { status: 409 })
+      return Response.json({ requestId: 'req_test000000000001', code: 'draft_changed', message: 'The replaced version changed' }, { status: 409 })
     }
     const { text, files } = current
     next = body.action === 'restore'
@@ -207,7 +207,7 @@ beforeEach(async () => {
     }
     if (path === `/api/conversations/${FIRST}/fork`) {
       if (rejectFork) {
-        return Response.json({ code: 'internal_error', message: 'Fork unavailable' }, { status: 500 })
+        return Response.json({ requestId: 'req_test000000000001', code: 'internal_error', message: 'Fork unavailable' }, { status: 500 })
       }
       const created = records.find((item) => item.id === body.id) ?? {
         ...record(body.id), title: 'first (Fork)',
@@ -221,6 +221,7 @@ beforeEach(async () => {
       if (rejectCreate) {
         return Response.json(
           {
+            requestId: 'req_test000000000001',
             code: 'internal_error',
             message: 'Not saved',
           },
@@ -444,7 +445,7 @@ test('sidebar stays active until the last running child closes after its parent 
     job: { ...job, phase: 'completed', endedAt: '2026-09-13T00:01:00.000Z' },
   })
   expect(conversation.status).toBe('active')
-  conversation.lastError = 'The parent failed while its second child was working'
+  conversation.lastError = { message: 'The parent failed while its second child was working', requestId: null }
   updateLiveStatus(conversation)
   expect(conversation.status).toBe('active')
   applyConversationEvent(conversation, {
@@ -833,7 +834,7 @@ test('a first send waiting for the model list ends undelivered with the list’s
     channels.last().send({ type: 'providers', providers: [{ ...stubProvider, label: 'Stub Account' }] })
     await waitFor(() => lists.length === 2)
     answerCreate.resolve()
-    lists[1]!.resolve(Response.json({ code: 'internal_error', message: 'Catalog offline' }, { status: 500 }))
+    lists[1]!.resolve(Response.json({ requestId: 'req_test000000000001', code: 'internal_error', message: 'Catalog offline' }, { status: 500 }))
     await sending
     expect(conversation.pendingSends.map((pending) => pending.error)).toEqual(['Couldn’t load the models: Catalog offline'])
     expect(submit).not.toHaveBeenCalled()
@@ -1851,7 +1852,7 @@ test('history remains readable during its own connection after navigation', asyn
     connection.reject(new Error('Connection failed'))
     await opening
     expect(current).toMatchObject({ load: 'failed' })
-    expect(current.lastError).toBe('Connection failed')
+    expect(current.lastError).toEqual({ message: 'Connection failed', requestId: null })
   } finally {
     history.resolve(Response.json(EMPTY_PAGE))
     connection.resolve()
@@ -2350,7 +2351,7 @@ test('deleted rows leave at once, and a deletion that fails brings its row back 
   globalThis.fetch = (async (input, init) => {
     if (init?.method === 'DELETE') {
       return String(input) === `/api/conversations/${SECOND}`
-        ? Response.json({ code: 'internal_error', message: 'Storage unavailable' }, { status: 500 })
+        ? Response.json({ requestId: 'req_test000000000001', code: 'internal_error', message: 'Storage unavailable' }, { status: 500 })
         : new Response(null, { status: 204 })
     }
     return fetch(input, init)
@@ -2574,14 +2575,14 @@ test('a conversation the backend does not have fails to open at once', async () 
   const served = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     if (String(input).endsWith('/transcript')) {
-      return Response.json({ code: 'conversation_not_found', message: 'Conversation not found' }, { status: 404 })
+      return Response.json({ requestId: 'req_test000000000001', code: 'conversation_not_found', message: 'Conversation not found' }, { status: 404 })
     }
     return served(input, init)
   }) as typeof fetch
   try {
     await store.activate(FIRST)
     expect(first.load).toBe('failed')
-    expect(first.lastError).toBe('Conversation not found')
+    expect(first.lastError).toEqual({ message: 'Conversation not found', requestId: 'req_test000000000001' })
   } finally {
     restoreFetch()
   }
@@ -2597,7 +2598,7 @@ test('a conversation the server cannot read fails to open in the page’s words'
   const message = '/srv/demi/conversations/c.sqlite was made by a newer release or another build of Demi: return to the release that made it, or restore the databases of this release with `demi-server rollback`'
   globalThis.fetch = (async (input, init) => {
     if (String(input).endsWith('/transcript')) {
-      return Response.json({ code: 'conversation_unreadable', message }, { status: 500 })
+      return Response.json({ requestId: 'req_test000000000001', code: 'conversation_unreadable', message }, { status: 500 })
     }
     return served(input, init)
   }) as typeof fetch
@@ -2605,7 +2606,8 @@ test('a conversation the server cannot read fails to open in the page’s words'
   try {
     await store.activate(FIRST)
     expect(first.load).toBe('failed')
-    expect(first.lastError).toBe(CONVERSATION_UNREADABLE)
+    // The page's words, and the request whose answer it read.
+    expect(first.lastError).toEqual({ message: CONVERSATION_UNREADABLE, requestId: 'req_test000000000001' })
     expect(logged.mock.calls.some((call) => call.some((value) => value instanceof Error && value.message === message))).toBe(true)
   } finally {
     logged.mockRestore()

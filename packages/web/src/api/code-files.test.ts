@@ -18,7 +18,7 @@ function stubHost(files: readonly string[], status = 200): string[][] {
     asked.push(paths)
     return status === 200
       ? Response.json({ files: paths.filter((path) => files.includes(path)) })
-      : Response.json({ code: 'host_stopped', message: 'The Cloud is stopped.' }, { status })
+      : Response.json({ requestId: 'req_test000000000001', code: 'host_stopped', message: 'The Cloud is stopped.' }, { status })
   }) as typeof fetch
   return asked
 }

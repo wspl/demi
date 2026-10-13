@@ -10,11 +10,33 @@ import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 import { productWould } from '../product-would'
+import { requestFailure } from '../fixtures/request-failures'
+import { reportError } from '@demicodes/web-ui/infra/errors'
+import Button from '@demicodes/web-ui/ui/Button.vue'
+import { ref } from 'vue'
 
 /**
  * Each error surface once, in its fullest form. The other pages show where
  * each one sits; this page is the reference for what each one looks like.
  */
+
+/** A refused request, as the product shows one: its words and the ID the backend answered with. */
+const refused = requestFailure('Another change of this provider is still running.')
+/** Whether the failure toast specimen is still shown; Close hides it, Show Again brings it back. */
+const toastShown = ref(true)
+
+/**
+ * A failure the page found itself, as the product meets one: an answer
+ * whose value did not read. The product reports it to the server's log and
+ * the toast names the report's ID once it is in; the gallery's reporter
+ * answers with a simulated ID.
+ */
+function failOnThePage(): void {
+  reportError('Could Not Read the Plugin’s Data', new Error('Invalid server response: Invalid input: expected string, received number'), {
+    userVisible: true,
+    detail: '✖ Invalid input: expected string, received number\n  → at sections[0].title',
+  })
+}
 
 /** A restore the gallery simulates: it fails again after a moment, as a backend that still fails the read would. */
 function retryRestore(): Promise<void> {
@@ -67,6 +89,12 @@ const usageLimitPayload = JSON.stringify({
           copy-text="Anthropic API request failed with HTTP 429"
         />
       </GallerySpecimen>
+      <GallerySpecimen wide variant="A refused frame · the socket's Request ID under the sentence">
+        <ErrorNotice
+          label="Use the transcript for an archived conversation’s history"
+          :request-id="requestFailure('Use the transcript for an archived conversation’s history').requestId"
+        />
+      </GallerySpecimen>
     </GallerySection>
     <GallerySection
       title="RegionStatus · Content Cannot Be Shown"
@@ -81,6 +109,7 @@ const usageLimitPayload = JSON.stringify({
               label="Couldn’t load this conversation."
               loading-label="Loading conversation…"
               :detail="CONVERSATION_UNREADABLE"
+              :request-id="requestFailure(CONVERSATION_UNREADABLE).requestId"
               :on-retry="retryRestore"
             />
           </div>
@@ -103,6 +132,9 @@ const usageLimitPayload = JSON.stringify({
     >
       <GallerySpecimen wide variant="Under a field">
         <InlineError message="The email or password is incorrect." />
+      </GallerySpecimen>
+      <GallerySpecimen wide variant="A refused request · its Request ID under the line, which Copy takes">
+        <InlineError :message="refused.message" :request-id="refused.requestId" />
       </GallerySpecimen>
     </GallerySection>
     <GallerySection
@@ -132,12 +164,19 @@ const usageLimitPayload = JSON.stringify({
       title="Toast · the Request Itself Failed"
       note="A save that did not reach the server, a fork or edit the server refused, a revoke, a background refresh: the reader cannot fix these on the page, so the page shows nothing inline. Title, and a message only when it adds a fact. Success is silent."
     >
-      <GallerySpecimen wide variant="Danger">
+      <GallerySpecimen wide variant="Danger · the request's ID under the message, which Copy takes">
         <Toast
+          v-if="toastShown"
           title="Could Not Save the Provider"
           message="HTTP 503: the endpoint is unavailable."
           tone="danger"
+          :request-id="requestFailure('HTTP 503: the endpoint is unavailable.').requestId"
+          @dismiss="toastShown = false"
         />
+        <Button v-else size="sm" @click="toastShown = true">Show Again</Button>
+      </GallerySpecimen>
+      <GallerySpecimen wide variant="The page's own failure · reported, its ID shown once the report is in">
+        <Button size="sm" @click="failOnThePage">Read a Malformed Answer</Button>
       </GallerySpecimen>
     </GallerySection>
   </div>

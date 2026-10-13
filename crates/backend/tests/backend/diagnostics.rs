@@ -112,6 +112,34 @@ async fn the_server_log_finds_a_requests_lines_from_its_shard_for_an_administrat
     let text = serde_json::to_string(&line).unwrap();
     assert!(!text.contains("s3cret-value"), "{text}");
 
+    // Every request logs one line as it is answered, a refused one
+    // included, so any ID a user copies finds at least its request.
+    let refused = backend.get("/api/no-such-route", Some(&master)).await;
+    let refused_id = request_id(&refused);
+    let answered_line = || async {
+        lines_of(&backend, &master, &refused_id)
+            .await
+            .lines
+            .into_iter()
+            .find(|line| line.message == "a request was answered")
+    };
+    eventually("the refused request's line is in the log", || async {
+        answered_line().await.is_some()
+    })
+    .await;
+    let answered = answered_line().await.unwrap();
+    assert_eq!(answered.level, LogLevel::Info);
+    for (field, value) in [
+        ("status", json!(404)),
+        ("code", json!("not_found")),
+        ("method", json!("GET")),
+        ("path", json!("/api/no-such-route")),
+        ("user_id", json!(master.user.id.as_str())),
+    ] {
+        assert_eq!(answered.fields[field], value, "{field} in {answered:?}");
+    }
+    assert!(answered.fields["duration_ms"].is_u64(), "{answered:?}");
+
     harness.add_user("ana@example.com", "correct horse battery", Role::User);
     let ana = backend.login("ana@example.com", "correct horse battery").await;
     let refused = backend

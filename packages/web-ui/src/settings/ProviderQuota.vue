@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
+import RequestIdLine from '../ui/RequestIdLine.vue'
 import { computed, useTemplateRef, watch } from 'vue'
 import { useElementVisibility } from '@vueuse/core'
 import QuotaWindowRow from './QuotaWindowRow.vue'
@@ -15,7 +17,7 @@ const props = defineProps<{
   windows: SettingsQuotaWindow[]
   autoRefresh: boolean
   /** The vendor's words for the last manual refresh that failed; none after the next answer. */
-  error?: string | null
+  error?: ShownError | null
 }>()
 const emit = defineEmits<{ refresh: [] }>()
 const region = useTemplateRef<HTMLDivElement>('region')
@@ -29,7 +31,10 @@ watch(computed(() => visible.value && props.autoRefresh), (shown) => {
 
 <template>
   <div ref="region" class="text-[12px] leading-4 text-fg-subtle tabular-nums">
-    <p v-if="error" class="mb-2 break-words text-fg-subtle">{{ error }}</p>
+    <div v-if="error" class="mb-2 text-fg-subtle">
+      <p class="break-words">{{ error.message }}</p>
+      <RequestIdLine v-if="error.requestId" :request-id="error.requestId" />
+    </div>
     <!-- Empty snapshots still have a visible region, so the first display can fetch them. -->
     <span v-if="!windows.length">Usage not available yet</span>
     <div v-else class="flex flex-col gap-2.5">

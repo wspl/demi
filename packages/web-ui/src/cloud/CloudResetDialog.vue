@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed } from 'vue'
 import { CircleCheck } from '@lucide/vue'
 import type { CloudState } from './types'
@@ -25,8 +26,8 @@ const props = defineProps<{
   phase: CloudState['phase']
   /** The reset was requested from this dialog. */
   submitted: boolean
-  /** Why the reset failed, if it did. */
-  error: string | null
+  /** Why the reset failed, if it did, with the request that refused it. */
+  error: ShownError | null
   /** A reset is in flight: no second request. */
   busy: boolean
 }>()
@@ -76,7 +77,7 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
         <CircleCheck :size="ICON_PX.in24" aria-hidden="true" />
         {{ resetPhaseLabels.ready }}
       </p>
-      <InlineError v-else-if="failed" :message="error ?? resetPhaseLabels.failed" />
+      <InlineError v-else-if="failed" :message="error?.message ?? resetPhaseLabels.failed" :request-id="error?.requestId" />
     </div>
     <template #footer>
       <!-- Cancel, or Close once the reset is under way, is the default, last: Return never resets (Dialog). -->

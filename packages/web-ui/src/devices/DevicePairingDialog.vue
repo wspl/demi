@@ -112,7 +112,8 @@ function submit() {
         </div>
         <InlineError
           v-if="phase.kind === 'code' && phase.error"
-          :message="phase.error"
+          :message="phase.error.message"
+          :request-id="phase.error.requestId"
         />
       </template>
       <div

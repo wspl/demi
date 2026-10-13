@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
 import { Trash2 } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -42,7 +43,8 @@ const props = defineProps<{
   /** The credential edited; null for a new one. */
   credential: SettingsCredential | null
   pending?: boolean
-  error?: string | null
+  /** Why the last save failed, with the request it came from. */
+  error?: ShownError | null
 }>()
 
 const emit = defineEmits<{
@@ -263,7 +265,7 @@ const keepLabel = computed(() => {
           </SettingsRow>
         </div>
       </ScrollArea>
-      <InlineError v-if="error" class="px-5 pt-3" :message="error" />
+      <InlineError v-if="error" class="px-5 pt-3" :message="error.message" :request-id="error.requestId" />
     </div>
     <template v-if="credential" #footer-leading>
       <Button variant="danger" :disabled="pending" @click="emit('delete')">Delete</Button>

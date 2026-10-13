@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import Button from '../ui/Button.vue'
 import AuthPage from './AuthPage.vue'
@@ -25,7 +26,7 @@ import { isEmail } from './email'
  */
 export type EmailLoginPhase = {
   busy?: boolean
-  error?: string
+  error?: ShownError
   /** The address is locked until this time, in milliseconds since the epoch. */
   lockedUntil?: number
   /** The session ended and sent them back to this page. */
@@ -33,7 +34,7 @@ export type EmailLoginPhase = {
   /** A passkey sign-in runs. */
   passkeyBusy?: boolean
   /** Why the last passkey sign-in failed. */
-  passkeyError?: string
+  passkeyError?: ShownError
 }
 
 const props = defineProps<{
@@ -103,8 +104,15 @@ const message = computed(() => {
   if (props.phase.lockedUntil !== undefined) {
     return undefined
   }
-  return props.phase.error ?? props.phase.passkeyError
+  return (props.phase.error ?? props.phase.passkeyError)?.message
 })
+
+/** The request the shown failure came from; none for the lockout's countdown. */
+const requestId = computed(() =>
+  lockedSeconds.value > 0 || props.phase.lockedUntil !== undefined
+    ? null
+    : (props.phase.error ?? props.phase.passkeyError)?.requestId ?? null,
+)
 
 const canSubmit = computed(
   () =>
@@ -172,7 +180,7 @@ watch(
       </label>
       <!-- The line keeps its height with nothing to say, so a message never moves the form. -->
       <div class="min-h-4">
-        <InlineError v-if="message" :message="message" />
+        <InlineError v-if="message" :message="message" :request-id="requestId" />
       </div>
       <Button
         size="lg"

@@ -78,7 +78,7 @@ watch(
     :name-max-length="nameMaxLength"
     :cloud="cloud"
     :reset-pending="reset.status === 'pending'"
-    :reset-error="reset.status === 'failed' ? reset.message : null"
+    :reset-error="reset.status === 'failed' ? reset : null"
     :overlay-store="appOverlayStore"
     :install-commands="installCommands"
     :claim-device="claimDevice"

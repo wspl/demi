@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { useSession } from '../auth/session'
 import { fileExtensionSchema } from '@demicodes/protocol'
 import { SerialQueue } from '@demicodes/utils'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import { reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
@@ -52,7 +52,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   const operations = ref<Record<string, SettingsProviderOperation>>({})
   const refreshingUsage = ref<Record<string, Record<string, SettingsQuotaRefresh>>>({})
   /** The vendor's words for the last manual usage refresh that failed, per provider and account, until that account's next answer; the surfaces show them, no toast does. */
-  const usageFailures = ref<Record<string, Record<string, string>>>({})
+  const usageFailures = ref<Record<string, Record<string, ShownError>>>({})
   const quotaRefreshCache = createQuotaRefreshCache()
   const testing = computed(
     () =>
@@ -574,7 +574,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       // Automatic refresh stays silent unless the user explicitly joins it.
       if (!current.signal.aborted && refreshingUsage.value[provider.id]?.[accountId] === 'manual') {
         usageFailures.value[provider.id] ??= {}
-        usageFailures.value[provider.id]![accountId] = error instanceof Error ? error.message : String(error)
+        usageFailures.value[provider.id]![accountId] = shownError(error)
         // The account's line shows it, wherever its windows show; no toast.
         reportError('Could Not Refresh Usage', error)
       }
@@ -689,10 +689,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         select(result.providerId)
       } else if (result.status === 'failed') {
         loginId = null
-        login.value.phase = {
-          kind: 'failed',
-          message: result.message,
-        }
+        // The vendor's words, which a successful answer carried: no request failed.
+        login.value.phase = { kind: 'failed', message: result.message, requestId: null }
       } else {
         if (result.verificationUrl && result.needsCode) {
           // A pasted code keeps the dialog signing in until the login ends or
@@ -719,7 +717,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       if (!controller.signal.aborted && login.value) {
         login.value.phase = {
           kind: 'failed',
-          message: error instanceof Error ? error.message : String(error),
+          ...shownError(error),
         }
       }
     }
@@ -762,7 +760,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       if (!controller.signal.aborted && login.value) {
         login.value.phase = {
           kind: 'failed',
-          message: error instanceof Error ? error.message : String(error),
+          ...shownError(error),
         }
       }
     }
@@ -792,7 +790,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       if (!controller.signal.aborted && login.value === current) {
         current.phase = {
           kind: 'failed',
-          message: error instanceof Error ? error.message : String(error),
+          ...shownError(error),
         }
       }
     }

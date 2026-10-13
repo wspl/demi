@@ -101,7 +101,7 @@ test('a failure stays listed with its reason until retried or cleared', async ()
   await settle()
   expect(uploads.items[0]!.state).toEqual({
     phase: 'failed',
-    failures: [{ path: '', message: 'A file with this name is there now.' }],
+    failures: [{ path: '', message: 'A file with this name is there now.', requestId: null }],
   })
 
   // A retry goes after the ones still waiting or on their way.
@@ -171,7 +171,7 @@ test('a file of a folder that fails is noted and the rest go on; a retry sends o
   source.calls[2]!.done.resolve()
   await settle()
   expect(source.calls.map((call) => call.options.replace)).toEqual([true, true, true])
-  expect(uploads.items[0]!.state).toEqual({ phase: 'failed', failures: [{ path: 'api/b.md', message: 'Permission denied' }] })
+  expect(uploads.items[0]!.state).toEqual({ phase: 'failed', failures: [{ path: 'api/b.md', message: 'Permission denied', requestId: null }] })
 
   source.log.length = 0
   uploads.retry(uploads.items[0]!.id)
@@ -190,7 +190,7 @@ test('replacing deletes what is there before anything else starts, and a delete 
   ])
   expect(source.log).toEqual(['remove /w/src/auth', 'remove /w/src/http'])
   await settle()
-  expect(uploads.items[0]!.state).toEqual({ phase: 'failed', failures: [{ path: '', message: 'Permission denied' }] })
+  expect(uploads.items[0]!.state).toEqual({ phase: 'failed', failures: [{ path: '', message: 'Permission denied', requestId: null }] })
   expect(source.log).toEqual(['remove /w/src/auth', 'remove /w/src/http', 'upload /w/src/http/client.ts'])
 })
 

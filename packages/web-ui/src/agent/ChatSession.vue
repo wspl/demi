@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { provideEditSelection, type EditSelectionHandler } from './edit-selection'
 import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
@@ -96,7 +97,7 @@ const props = withDefaults(defineProps<{
   /** A decision on a request is on its way. */
   decidingPermission?: boolean
   /** What the backend refused the last credential answer for, shown under the card's form. */
-  requestError?: string | null
+  requestError?: ShownError | null
   /**
    * A block to bring into view and mark for a moment, as a search result
    * opened at it or a report's title asks: in the list, or in the subagent

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed } from 'vue'
 import AsyncRegion from '../ui/AsyncRegion.vue'
 import Button from '../ui/Button.vue'
@@ -30,7 +31,7 @@ const props = defineProps<{
   load?: 'loading' | 'ready' | 'failed'
   cloud: CloudState | null
   resetPending?: boolean
-  resetError?: string | null
+  resetError?: ShownError | null
   devices: SettingsDevice[]
   /** The device whose page is shown, the Cloud's included; null shows the list. */
   shown?: string | null

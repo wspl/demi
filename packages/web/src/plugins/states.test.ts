@@ -75,7 +75,7 @@ test('a failed read keeps the last state and says why, until a read succeeds', a
   const feed = states.follow('browser', CONVERSATION)
   await shows(feed, { tabs: ['t1'] })
 
-  answers.push(async () => Response.json({ code: 'device_offline', message: 'The device is offline' }, { status: 409 }))
+  answers.push(async () => Response.json({ requestId: 'req_test000000000001', code: 'device_offline', message: 'The device is offline' }, { status: 409 }))
   snapshot.value = at(2)
   await until(() => feed.error()).not.toBeNull()
   expect(feed.error()?.reason).toBe('device_offline')

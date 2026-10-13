@@ -1,3 +1,4 @@
+import { requestIdOf, type ShownError } from '../infra/errors'
 import { onScopeDispose, ref } from 'vue'
 
 export type PairingDevice = {
@@ -12,12 +13,14 @@ export type PairingResult =
   | {
       ok: false
       code: 'invalid_code' | 'rate_limited' | 'unavailable'
+      /** The request that refused the code; none when no answer came. */
+      requestId: string | null
     }
 export type PairingPhase =
   | { kind: 'setup' }
   | {
       kind: 'code'
-      error?: string
+      error?: ShownError
     }
   | { kind: 'pairing' }
   | {
@@ -75,10 +78,11 @@ export function useDevicePairing(
     try {
       controller = new AbortController()
       result = await claim(code.trim(), controller.signal)
-    } catch {
+    } catch (error) {
       result = {
         ok: false,
         code: 'unavailable',
+        requestId: requestIdOf(error),
       }
     }
     if (request !== generation) {
@@ -87,7 +91,7 @@ export function useDevicePairing(
     if (!result.ok) {
       phase.value = {
         kind: 'code',
-        error: pairingErrors[result.code],
+        error: { message: pairingErrors[result.code], requestId: result.requestId },
       }
       return
     }

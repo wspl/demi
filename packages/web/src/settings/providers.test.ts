@@ -332,7 +332,7 @@ test('automatic quota failures stay quiet; a manual retry records the vendor\'s 
   let requests = 0
   probe = async () => {
     requests++
-    return Response.json({ code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 })
+    return Response.json({ requestId: 'req_test000000000001', code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 })
   }
   await settings.refreshUsage(provider, 'first', true)
   expect(toasts).toHaveLength(0)
@@ -343,7 +343,7 @@ test('automatic quota failures stay quiet; a manual retry records the vendor\'s 
   await settings.refreshUsage(provider, 'first')
   expect(requests).toBe(2)
   expect(toasts).toHaveLength(0)
-  expect(settings.usageFailures).toEqual({ configured: { first: 'Billing unavailable' } })
+  expect(settings.usageFailures).toEqual({ configured: { first: { message: 'Billing unavailable', requestId: 'req_test000000000001' } } })
 })
 
 test('a manual refresh joins an automatic request and shows its pending state and failure', async () => {
@@ -362,11 +362,11 @@ test('a manual refresh joins an automatic request and shows its pending state an
   await settings.refreshUsage(provider, 'first', true)
   expect(settings.refreshingUsage.configured?.first).toBe('manual')
   expect(requests).toBe(1)
-  deferred.resolve(Response.json({ code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 }))
+  deferred.resolve(Response.json({ requestId: 'req_test000000000001', code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 }))
   await automatic
   expect(settings.refreshingUsage).toEqual({})
   expect(toasts).toHaveLength(0)
-  expect(settings.usageFailures).toEqual({ configured: { first: 'Billing unavailable' } })
+  expect(settings.usageFailures).toEqual({ configured: { first: { message: 'Billing unavailable', requestId: 'req_test000000000001' } } })
 })
 
 test('a manual usage refresh that fails keeps the vendor\'s words for that account until the next answer', async () => {
@@ -375,16 +375,16 @@ test('a manual usage refresh that fails keeps the vendor\'s words for that accou
   let fail = true
   probe = async () =>
     fail
-      ? Response.json({ code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 })
+      ? Response.json({ requestId: 'req_test000000000001', code: 'quota_unavailable', message: 'Billing unavailable' }, { status: 503 })
       : Response.json({})
   await settings.refreshUsage(provider, 'first', true)
   expect(settings.usageFailures).toEqual({})
   await settings.refreshUsage(provider, 'first')
-  expect(settings.usageFailures).toEqual({ configured: { first: 'Billing unavailable' } })
+  expect(settings.usageFailures).toEqual({ configured: { first: { message: 'Billing unavailable', requestId: 'req_test000000000001' } } })
   expect(toasts).toHaveLength(0)
   fail = false
   await settings.refreshUsage(provider, 'second')
-  expect(settings.usageFailures).toEqual({ configured: { first: 'Billing unavailable' } })
+  expect(settings.usageFailures).toEqual({ configured: { first: { message: 'Billing unavailable', requestId: 'req_test000000000001' } } })
   await settings.refreshUsage(provider, 'first')
   expect(settings.usageFailures).toEqual({})
 })

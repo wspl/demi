@@ -13,6 +13,7 @@ import {
   type InjectionKey,
   type PropType,
 } from 'vue'
+import { schemaRefusal } from '@demicodes/protocol'
 import { z } from 'zod'
 import type { PanelTabKind, TabCommand } from '../agent/panel-kinds/kind'
 import type { HostArtifact } from '../devices/installed'
@@ -48,15 +49,27 @@ export type PluginCallAnswer =
   | { type: 'none' }
   | { type: 'unreadable' }
 
-/** A call the plugin, or the host in front of it, refused: its reason word and message. */
+/**
+ * A call the plugin, or the host in front of it, refused: its reason word
+ * and message, with the request it came from; or an answer the page could
+ * not read, with what of it did not read.
+ */
 export class PluginCallError extends Error {
+  /** The request the refusal answered, which the page shows with it. */
+  readonly requestId: string | null
+  /** What of an answer did not read, which the page's report carries (`schemaRefusal`). */
+  readonly detail: string | undefined
+
   constructor(
     /** The plugin's snake_case reason, or the host's code when the plugin did not answer. */
     readonly reason: string,
     message: SentenceText,
     readonly answer: PluginCallAnswer = { type: 'none' },
+    from: { requestId?: string | null; detail?: string } = {},
   ) {
     super(message)
+    this.requestId = from.requestId ?? null
+    this.detail = from.detail
   }
 }
 
@@ -411,7 +424,8 @@ export function providePage(context: PageContext): void {
 
 /** The failure of a value that does not read with its schema: `reason`, and what did not read. */
 function unreadable(reason: string, error: z.ZodError): PluginCallError {
-  return new PluginCallError(reason, z.prettifyError(error), { type: 'unreadable' })
+  const refusal = schemaRefusal(error)
+  return new PluginCallError(reason, refusal, { type: 'unreadable' }, { detail: refusal })
 }
 
 /**

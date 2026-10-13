@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed, watch } from 'vue'
 import { Check } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -21,14 +22,14 @@ export type ChangeEmailPhase =
       kind: 'form'
       currentEmail: string
       busy?: boolean
-      error?: string
+      error?: ShownError
     }
   | {
       kind: 'verify'
       email: string
       resent?: boolean
       busy?: boolean
-      error?: string
+      error?: ShownError
     }
   | {
       kind: 'done'
@@ -179,7 +180,7 @@ function resend() {
           <!-- Last in the card, so the card's row dividers skip it; it is out of the flow. -->
           <input v-bind="hiddenUsername(phase.currentEmail)" />
         </div>
-        <InlineError v-if="phase.error" :message="phase.error" />
+        <InlineError v-if="phase.error" :message="phase.error.message" :request-id="phase.error.requestId" />
         <InlineError
           v-else-if="sameAsCurrent"
           message="That is already your email."
@@ -200,7 +201,7 @@ function resend() {
             />
           </SettingsRow>
         </div>
-        <InlineError v-if="phase.error" :message="phase.error" />
+        <InlineError v-if="phase.error" :message="phase.error.message" :request-id="phase.error.requestId" />
         <p class="select-none text-[12px] text-fg-subtle">
           <template v-if="phase.resent"
             >A new code went to {{ phase.email }}.</template

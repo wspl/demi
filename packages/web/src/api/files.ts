@@ -124,6 +124,7 @@ export function fileBrowserError(error: unknown): unknown {
   return new FileBrowserError(kind, failureSentence(error, kind), {
     version: error.headers.get('etag'),
     readAt: readAtOf(error.headers),
+    requestId: error.requestId,
   })
 }
 

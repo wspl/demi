@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed, reactive, ref, useId } from 'vue'
 import { KeyRound } from '@lucide/vue'
 import Button from '../ui/Button.vue'
@@ -32,7 +33,7 @@ const props = defineProps<{
   /** An answer is on its way: the form waits for it. */
   deciding?: boolean
   /** What the backend refused the last answer for, such as values that do not match the fields. */
-  error?: string | null
+  error?: ShownError | null
 }>()
 
 const emit = defineEmits<{
@@ -87,7 +88,7 @@ function save(): void {
         <span class="text-[12px] leading-4 text-fg-muted">Keep until</span>
         <Segmented v-model="keep" :options="KEEP_OPTIONS" size="sm" :disabled="deciding" />
       </div>
-      <InlineError v-if="error" :message="error" />
+      <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
     </form>
     <template #footer>
       <Button size="sm" :disabled="deciding" @click="emit('decide', request.id, 'deny')">Decline</Button>

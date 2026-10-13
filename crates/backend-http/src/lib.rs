@@ -497,9 +497,16 @@ fn edge(app: Router<AppState>, closing: CancellationToken, state: AppState) -> R
             refuse_while_closing,
         ))
         .merge(pipes)
-        .layer(TraceLayer::new_for_http().make_span_with(
-            |request: &axum::http::Request<axum::body::Body>| request_id::span(request),
-        ))
+        // The request's line is `request_id::answered`'s alone: the layer's
+        // own failure line would say a 5xx answer twice.
+        .layer(
+            TraceLayer::new_for_http()
+                .make_span_with(|request: &axum::http::Request<axum::body::Body>| {
+                    request_id::span(request)
+                })
+                .on_response(request_id::answered)
+                .on_failure(()),
+        )
         // Outermost, so every answer carries the request's ID, a refusal of
         // the layers inside included.
         .layer(middleware::from_fn(request_id::assign))

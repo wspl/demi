@@ -42,7 +42,7 @@ function answer(method: string, path: string): Response {
     const name = body !== null && typeof body === 'object' && 'name' in body ? body.name : null
     if (name === 'default') {
       return Response.json(
-        { code: 'invalid_body', message: 'name: "default" is reserved for inheriting the parent' },
+        { requestId: 'req_test000000000001', code: 'invalid_body', message: 'name: "default" is reserved for inheriting the parent' },
         { status: 400 },
       )
     }
