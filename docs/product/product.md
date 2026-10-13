@@ -69,6 +69,11 @@ or iPad, *Touch ID* on a Mac, *Windows Hello* on Windows, *your
 fingerprint, face or screen lock* on Android, and *your device's screen
 lock* elsewhere; its symbol is a passkey's key, the same on every device.
 
+An account's other pages follow the choice: a page waiting on *Choose Your
+Password* goes on by itself once another page of the account chose it.
+A disabled account's sign-in says *This account is disabled. Ask your
+administrator to enable it.*
+
 Administrators manage accounts in Settings › Users, which only the master
 and admins see, as macOS's Users & Groups or a GitHub organization's
 People. For example, Ana, an admin, adds Bo for a new colleague: Add User…
@@ -78,7 +83,8 @@ signs in with the password on his computer, and either way he chooses his
 own password first. When Bo leaves, she disables his account.
 
 - **The list** has one row per account: its nickname and email, its role,
-  and when it was last active, with *Disabled* on a disabled one and
+  and when it was last active, which the account keeps after its sessions
+  end, so a disabled account still says when it was last used, with *Disabled* on a disabled one and
   *Hasn't Chosen a Password* on one still to choose its own; the
   user's own row is marked *You*. A row has a ··· menu with what the user
   may do to that account, and none on the user's own or on one of a role
