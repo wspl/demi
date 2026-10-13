@@ -32,10 +32,16 @@ export type AttachmentLookup =
   | { state: 'missing' }
   | { state: 'failed' }
 
-/** A Host file a message names, by its absolute path, and the line it opens at, if any. */
+/**
+ * A Host file a message names, by its absolute path, and the line it opens
+ * at, if any; an empty path names no file, only a directory's tree. `root`
+ * is the directory the view opens for, the working directory of the agent
+ * that wrote the link; absent, the conversation's.
+ */
 export interface MessageFileTarget {
   path: string
   line: number | null
+  root?: string
 }
 
 /**

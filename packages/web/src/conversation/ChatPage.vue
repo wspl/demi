@@ -189,7 +189,7 @@ const files = computed<ConversationFiles | undefined>(() => {
     home: resources.deviceById(executionFor(current).deviceId)?.home ?? null,
     imageUrl: (path) => contents.url(path),
     open: work.canOpen('file')
-      ? ({ path, line }) => work.openIn(current.id, { intent: 'file', payload: line === null ? { path } : { path, line } })
+      ? ({ path, line, root }) => work.openIn(current.id, { intent: 'file', payload: { path, ...(line === null ? {} : { line }), ...(root === undefined ? {} : { root }) } })
       : undefined,
     codeFiles: (paths) => lookupCodeFiles(current.id, paths, primaryHost.value?.state ?? 'offline'),
     attachment: (id) => lookupAttachment(current.id, id),

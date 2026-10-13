@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { LineCounts, usePage } from '@demicodes/plugin-sdk'
-import type { ChangeData } from './data'
+import { viewDirectory, type ChangeData } from './data'
 
 /**
  * The strip's counts beside Change: the lines the working tree adds and
@@ -12,8 +12,8 @@ import type { ChangeData } from './data'
 const props = defineProps<{ conversation: string; data: ChangeData }>()
 
 const files = usePage().files(props.conversation)
-files.showChanges()
-const totals = computed(() => files.changes.files.reduce(
+files.showChanges(() => viewDirectory(props.data))
+const totals = computed(() => files.changes(viewDirectory(props.data)).files.reduce(
   (sum, file) => ({ added: sum.added + file.added, removed: sum.removed + file.removed }),
   { added: 0, removed: 0 },
 ))

@@ -273,16 +273,30 @@ pub struct UploadQuery {
     pub replace: StrictBool,
 }
 
-/// `?path=` of a working tree file.
+/// `?directory=` of the working tree's changes list: the working tree's
+/// root on the primary Host, the conversation's execution directory when
+/// omitted (`web-api.md` § File text and working tree changes).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+pub struct ChangesQuery {
+    #[serde(default)]
+    pub directory: Option<AbsolutePath>,
+}
+
+/// `?path=&directory=` of a working tree file: `path` is relative to
+/// `directory`, the conversation's execution directory when omitted.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct TreeFileQuery {
     pub path: TreePath,
+    #[serde(default)]
+    pub directory: Option<AbsolutePath>,
 }
 
-/// `?path=&download=` of the committed side of a working tree file.
+/// `?path=&directory=&download=` of the committed side of a working tree file.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct CommittedFileQuery {
     pub path: TreePath,
+    #[serde(default)]
+    pub directory: Option<AbsolutePath>,
     #[serde(default)]
     pub download: StrictBool,
 }

@@ -174,14 +174,18 @@ describe('the pills', () => {
   })
 
   test('open a file at the call’s first edit under its name now; a file a later call removed is no control', () => {
-    expect(pillSelection('child', requests, s2, 's2', '/w/login.ts')).toEqual({
+    expect(pillSelection('child', requests, s2, 's2', '/w/login.ts', '/slots/2')).toEqual({
       node: 'child',
       request: 'u1',
       file: '/w/login.ts',
       edit: { call: 's2', path: '/w/login.ts', segment: 0 },
+      // The view opens for the directory the child wrote the call in.
+      root: '/slots/2',
     })
-    expect(pillSelection(null, requests, s1, 's1', '/w/notes.md')).toBeNull()
-    expect(pillSelection(null, requests, s4, 's4', '/w/old.css')).toBeNull()
+    // The conversation's own agent names none: the view opens for the conversation's.
+    expect(pillSelection(null, requests, s2, 's2', '/w/login.ts', null)).not.toHaveProperty('root')
+    expect(pillSelection(null, requests, s1, 's1', '/w/notes.md', null)).toBeNull()
+    expect(pillSelection(null, requests, s4, 's4', '/w/old.css', null)).toBeNull()
   })
 
   test('of a page read in light form are those of the whole transcript', () => {

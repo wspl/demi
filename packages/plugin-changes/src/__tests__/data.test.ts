@@ -50,3 +50,12 @@ test('history tells requests, files and edits apart, and another file shows its 
   // The same selection again is no step of its own.
   expect(showRequestEdit(data, { ...other })).toBe(data)
 })
+
+test('a request of another directory is another selection: the same file of two directories is not the view shown', () => {
+  const child = { ...pill, root: '/slots/2' }
+  const data = showRequestEdit(firstChangeData(), pill)
+  const moved = showRequestEdit(data, child)
+  expect(moved.request).toEqual(child)
+  expect(goBack(moved).request).toEqual(pill)
+  expect(showRequestEdit(moved, { ...child })).toBe(moved)
+})

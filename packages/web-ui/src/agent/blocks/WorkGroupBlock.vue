@@ -151,7 +151,9 @@ onBeforeUnmount(() => {
 function selection(path: string) {
   const first = changed.value.find((file) => file.path === path)?.edits[0]
   const call = calls.value.at(-1)
-  return transcript && first && call ? pillSelection(transcript.node, transcript.requests(), call, first.call, first.path) : null
+  return transcript && first && call
+    ? pillSelection(transcript.node, transcript.requests(), call, first.call, first.path, transcript.directory(call.id))
+    : null
 }
 function selectable(path: string): boolean {
   return select() !== undefined && selection(path) !== null

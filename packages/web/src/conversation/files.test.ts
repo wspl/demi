@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { effectScope, nextTick } from 'vue'
+import { effectScope, nextTick, shallowRef } from 'vue'
 import { conversationSummary, productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
 import type { FileWatchMessage } from '../api/generated/web-api'
@@ -19,6 +19,8 @@ let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>
 /** How often the page listed the working tree's changes. */
 let listed: number
+/** The directories the page asked the changes of, `null` for the conversation's own. */
+let listedDirectories: (string | null)[]
 
 /** The laptop as the product state carries it; offline, so no file watch opens and nothing confirms a read. */
 function laptop(name: string) {
@@ -92,11 +94,15 @@ beforeEach(() => {
   pinia = createPinia()
   setActivePinia(pinia)
   listed = 0
+  listedDirectories = []
   globalThis.fetch = (async (input) => {
     const path = String(input)
-    if (path === `/api/conversations/${CONVERSATION}/changes`) {
+    const changes = new URL(path, 'http://page').pathname === `/api/conversations/${CONVERSATION}/changes`
+    if (changes) {
       listed += 1
-      return Response.json({ root: '/home/ada/work', repository: true, head: null, files: [], truncated: false, watched: false })
+      const directory = new URL(path, 'http://page').searchParams.get('directory')
+      listedDirectories.push(directory)
+      return Response.json({ root: directory ?? '/home/ada/work', repository: true, head: null, files: [], truncated: false, watched: false })
     }
     if (path.startsWith(`/api/conversations/${CONVERSATION}/hosts/${CLOUD}/fs?`)) {
       return Response.json(
@@ -148,7 +154,7 @@ async function until(done: () => boolean): Promise<void> {
   }
 }
 
-test('the changes list is read when shown, and a product state that keeps its Host and directory reads it no more and keeps the workspace', async () => {
+test('the changes list is read when shown, a product state that keeps its Host and directory reads it no more and keeps the workspace, and a view of a child’s directory lists that working tree', async () => {
   const scope = effectScope()
   const files = conversationFiles(CONVERSATION)
   scope.run(() => files.showChanges())
@@ -164,6 +170,20 @@ test('the changes list is read when shown, and a product state that keeps its Ho
   // The File view has nothing to render again.
   expect(files.workspace).toBe(workspace)
   scope.stop()
+
+  // A view opened for a child's directory lists that working tree, kept apart from the conversation's.
+  const directory = shallowRef<string | undefined>(undefined)
+  const child = effectScope()
+  child.run(() => files.showChanges(() => directory.value))
+  await settle()
+  const shown = listedDirectories.length
+  directory.value = '/home/ada/other'
+  await until(() => listedDirectories.length > shown)
+  expect(listedDirectories.slice(shown)).toEqual(['/home/ada/other'])
+  expect(files.changes('/home/ada/other')).not.toBe(files.changes())
+  // The conversation's own directory named is its working tree, not another one.
+  expect(files.changes('/home/ada/work')).toBe(files.changes())
+  child.stop()
 })
 
 test("the attachment picker watches an attached Cloud's listing on the conversation's watch, naming the Cloud, and again at once when it starts", async () => {
