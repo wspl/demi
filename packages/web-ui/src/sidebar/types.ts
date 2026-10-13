@@ -52,6 +52,8 @@ export type SidebarDevice =
 
 /** The signed-in account the sidebar's foot shows. */
 export interface SidebarAccount {
+  /** The account id, which the avatar's tone follows. */
+  id: string
   name: string
   email: string
 }

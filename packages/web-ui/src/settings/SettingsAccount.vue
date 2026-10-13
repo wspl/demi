@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { accountInitial } from '../auth/account-display'
 import type { OverlayStore } from '../overlay/overlayStore'
+import Avatar from '../ui/Avatar.vue'
 import Button from '../ui/Button.vue'
 import InlineError from '../ui/InlineError.vue'
 import Tag from '../ui/Tag.vue'
@@ -32,6 +32,8 @@ import SettingsRow from './SettingsRow.vue'
  */
 const props = defineProps<{
   overlayStore: OverlayStore
+  /** The account id, which the avatar's tone follows. */
+  accountId: string
   /** While the display name saves: the field waits, and says so. */
   nameSaving?: boolean
   email: string
@@ -74,7 +76,6 @@ const emit = defineEmits<{
   deleteAccount: []
 }>()
 
-const initial = computed(() => accountInitial(name.value, props.email))
 
 /** Why the name in the field is not saved; it stays in the field until it is fixed. */
 const nameProblem = ref<string | null>(null)
@@ -88,12 +89,9 @@ function checkName(value: string): string | null {
     <SettingsGroup title="Profile">
       <SettingsRow
         label="Avatar"
-        description="Your initial, until pictures arrive."
+        description="Your initials, until pictures arrive."
       >
-        <span
-          class="flex size-8 select-none items-center justify-center rounded-full bg-tint-accent text-[13px] font-medium text-on-accent"
-          >{{ initial }}</span
-        >
+        <Avatar :account-id="accountId" :name="name" :email="email" :size="32" />
       </SettingsRow>
       <SettingsRow label="Display name">
         <template v-if="nameProblem" #detail>
