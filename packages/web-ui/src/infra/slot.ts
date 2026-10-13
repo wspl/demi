@@ -1,5 +1,4 @@
 import { computed, shallowRef, type ComputedRef, type ShallowRef } from 'vue'
-import type { SerialQueue } from '@demicodes/utils'
 
 /**
  * What a write's answer says of the slot (`web-application.md` § Responding
@@ -65,7 +64,7 @@ export class SlotChange<V> {
  * A piece of state the page reads from the backend (`web-application.md`
  * § Responding to the user): the value it last read, the revision that value
  * carries, and the changes the page made and has not seen land. The page
- * shows `value`, the value read with those changes applied in the order they
+ * shows `shown`, the value read with those changes applied in the order they
  * were made. One mechanism serves every slot:
  *
  * - A change leaves when its answer is applied, or, when a value of the slot
@@ -95,11 +94,11 @@ export class Slot<V> {
   /** The newest revision a read was started for. */
   private asked = -1
   /** The value the page shows: the value read, or `empty` before the first read, with its changes on top. */
-  readonly value: ComputedRef<V | null>
+  readonly shown: ComputedRef<V | null>
 
   /** `empty` is the value to show before the first read, for a slot whose first read is a list that is nothing yet. */
   constructor(private readonly empty: V | null = null) {
-    this.value = computed(() => {
+    this.shown = computed(() => {
       const base = this.read.value ?? this.empty
       return base === null ? null : this.changes.value.reduce<V>((value, change) => change.apply(value), base)
     })
@@ -185,19 +184,19 @@ export class Slot<V> {
 
   /**
    * Makes the write of `changes` and says how it ended: `request` goes out in
-   * its turn among the writes of `keys` in `queue`, and answers what the
+   * its turn, `order` being how the writes of one thing wait for each other,
+   * such as a `SerialQueue`'s `run` of the thing's key, and answers what the
    * write says of the slot, or nothing. A write that fails is a refusal: the
    * changes leave and `refused` reports it.
    */
   write(
     changes: SlotChange<V> | readonly SlotChange<V>[],
-    queue: SerialQueue,
-    keys: string | readonly string[],
+    order: <T>(operation: () => Promise<T>) => Promise<T>,
     request: () => Promise<SlotAnswer<V> | void>,
     refused: (error: unknown) => void,
   ): Promise<SlotWrite> {
     const sent = Array.isArray(changes) ? changes : [changes as SlotChange<V>]
-    return queue.run(keys, async (): Promise<SlotWrite> => {
+    return order(async (): Promise<SlotWrite> => {
       try {
         this.send(sent)
         const answer = await request()
@@ -262,12 +261,17 @@ export class Slot<V> {
     this.leave(live)
   }
 
+  /** The newest revision held or asked for: a read of an older one is not worth starting. */
+  get requested(): number {
+    return Math.max(this.held.value, this.asked)
+  }
+
   /**
    * Whether a read of revision `revision` is worth starting: it is newer than
    * the value held and than any read started before, which it then counts as.
    */
   ask(revision: number): boolean {
-    if (revision <= Math.max(this.held.value, this.asked)) {
+    if (revision <= this.requested) {
       return false
     }
     this.asked = revision

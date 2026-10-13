@@ -44,6 +44,11 @@ const stubProvider = {
   wireApi: null, vendorId: null, compatible: false, endpoint: null, hasApiKey: true, models: null, createdAt: '2026-09-09T00:00:00.000Z',
   details: { type: 'failed' as const, message: 'Not read in this test' },
 }
+/** The state the page read lists the stub provider entry too. */
+function addStubProvider(): void {
+  const product = useProduct()
+  product.read = { ...product.read!, providers: [...product.read!.providers, stubProvider] }
+}
 /** A catalog with the one stub model. */
 function stubCatalog() {
   return { providers: [{
@@ -822,7 +827,7 @@ test('a first send whose conversation opens while the model list loads again goe
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  product.snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const asked = deferred<void>()
   const answerCreate = deferred<void>()
   /** Each model list the page asked for, answered when the test says. */
@@ -888,7 +893,7 @@ test('a first send waiting for the model list ends undelivered with the list’s
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  product.snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const asked = deferred<void>()
   const answerCreate = deferred<void>()
   /** Each model list the page asked for, answered when the test says. */
@@ -959,7 +964,7 @@ function answerOpening(id: string, intercept: (path: string) => void = () => {})
 
 /** The conversation infers with the stub model, which the catalog lists. */
 async function chooseStubModel(conversation: ReturnType<typeof useConversations>['items'][number]): Promise<void> {
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   await useProduct().loadModels(true)
   await useConversations().changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
 }
@@ -1336,7 +1341,7 @@ test('the first send keeps the new conversation shown while its record opens', a
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -1374,7 +1379,7 @@ test('the first send creates the conversation with its settings in one request a
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const originalFetch = globalThis.fetch
   const readBack: string[] = []
   globalThis.fetch = (async (input, init) => {
@@ -1409,7 +1414,7 @@ test('a draft moves without telling anyone and is created where it moved; a conv
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) =>
     String(input).startsWith('/api/models') ? Response.json(stubCatalog()) : originalFetch(input, init)) as typeof fetch
@@ -1507,7 +1512,7 @@ test('a conversation whose turn ended meanwhile moves at once, and one whose sto
 test('a detach shows the hosts without the one it removed, with no read', async () => {
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
-  first.attachedHosts = [{ deviceId: 'laptop', name: 'laptop', cwd: null }]
+  first.attachedHosts.replace([{ deviceId: 'laptop', name: 'laptop', cwd: null, state: 'online', attachedAt: '2026-09-09T00:00:00.000Z' }])
   const originalFetch = globalThis.fetch
   const sent: string[] = []
   globalThis.fetch = (async (input, init) => {
@@ -1519,7 +1524,7 @@ test('a detach shows the hosts without the one it removed, with no read', async 
   }) as typeof fetch
   try {
     await store.detachHost(first, 'laptop')
-    expect(first.attachedHosts).toEqual([])
+    expect(first.attachedHosts.shown.value).toEqual([])
     expect(sent).toEqual([`DELETE /api/conversations/${FIRST}/hosts/laptop`])
   } finally {
     globalThis.fetch = originalFetch
@@ -1587,7 +1592,7 @@ test('a file whose capsule was deleted comes back when undo brings the capsule b
 test('a message sends its text and files in the order the composer shows them', async () => {
   const store = useConversations()
   const current = store.items[0]!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -1643,7 +1648,7 @@ test('a message sends its text and files in the order the composer shows them', 
 async function withSession(check: (current: ReturnType<typeof useConversations>['items'][number], sent: ClientContent[][]) => Promise<void>): Promise<void> {
   const store = useConversations()
   const current = store.items[0]!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const restore = answerOpening(current.id)
   const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
   const sent: ClientContent[][] = []
@@ -1903,7 +1908,7 @@ test('history remains readable during its own connection after navigation', asyn
   const cached = [{ type: 'text' as const, id: 'cached', createdAt: '2026-09-09T00:00:00.000Z', model, text: 'cached' }]
   current.history = wholeHistory(cached)
   current.draft = 'Keep the draft'
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const historyRequested = deferred<void>()
   const history = deferred<Response>()
   const connecting = deferred<void>()
@@ -2223,7 +2228,7 @@ async function startOpening(
 ) {
   records.find((item) => item.id === id)!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
   await changed(id)
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const answering = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -2372,7 +2377,7 @@ test('a new conversation whose first session cannot connect is opening, not reco
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -3234,7 +3239,7 @@ test('output that advances an open conversation\'s revision reads nothing; a rai
   records[0]!.hostsRevision = 1
   await changed(FIRST)
   const first = store.items.find((item) => item.id === FIRST)!
-  await waitFor(() => first.attachedHosts[0]?.cwd === '/work/sub', () => 'the hosts were not read again')
+  await waitFor(() => first.attachedHosts.shown.value?.[0]?.cwd === '/work/sub', () => 'the hosts were not read again')
   expect([reads('hosts'), reads('transcript'), first.load]).toEqual([2, 1, 'ready'])
 })
 
@@ -3470,7 +3475,7 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
   const signOut = signIn()
   const store = useConversations()
   const current = store.items.find((item) => item.id === FIRST)!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   serverDrafts.set(FIRST, { revision: 1, text: 'Ship it', files: [], replaced: null })
   records[0]!.draftRevision = 1
   const originalFetch = globalThis.fetch
@@ -3649,8 +3654,8 @@ test('the messages saved for later show as the conversation opens, and a raised 
   const first = store.items.find((item) => item.id === FIRST)!
   const reads = (id: string) => requests.filter((item) => item.path === `/api/conversations/${id}/saved`).length
   await store.activate(FIRST)
-  await until(() => first.saved?.revision === 1, 'the list is read as the conversation opens')
-  expect(first.saved?.messages.map((message) => message.text)).toEqual(['Check prod’s DNS next'])
+  await until(() => first.saved.revision === 1, 'the list is read as the conversation opens')
+  expect(first.saved.shown.value?.map((message) => message.text)).toEqual(['Check prod’s DNS next'])
 
   // Another page saved one: the summary's revision moves ahead, the page
   // reads the list again; the same summary again reads nothing.
@@ -3658,8 +3663,8 @@ test('the messages saved for later show as the conversation opens, and a raised 
   records[0]!.savedRevision = 2
   await changed(FIRST)
   await changed(FIRST)
-  await until(() => first.saved?.revision === 2, 'the list is read again')
-  expect(first.saved?.messages.map((message) => message.id)).toEqual(['ipv6', 'dns'])
+  await until(() => first.saved.revision === 2, 'the list is read again')
+  expect(first.saved.shown.value?.map((message) => message.id)).toEqual(['ipv6', 'dns'])
   await settle()
   expect(reads(FIRST)).toBe(2)
 
@@ -3679,14 +3684,266 @@ test('Save for Later sends the composer\'s message on the revision it was built 
     const store = useConversations()
     const first = store.items.find((item) => item.id === FIRST)!
     await store.activate(FIRST)
-    await until(() => first.saved !== null && first.draftBase === 1, 'the draft and the list are read')
+    await until(() => first.saved.read.value !== null && first.draftBase === 1, 'the draft and the list are read')
     first.draft = 'Check prod’s DNS next'
     await store.saveForLater(first)
     const save = requests.find((item) => item.path === `/api/conversations/${FIRST}/saved/from-draft`)
-    expect(save?.body).toEqual({ base: 1, text: 'Check prod’s DNS next', files: [] })
-    expect([first.draft, first.draftBase, first.saved?.messages.map((message) => message.text)])
+    expect(save?.body).toEqual({ id: expect.any(String), base: 1, text: 'Check prod’s DNS next', files: [] })
+    expect([first.draft, first.draftBase, first.saved.shown.value?.map((message) => message.text)])
       .toEqual(['', 2, ['Check prod’s DNS next']])
   } finally {
     signOut()
+  }
+})
+
+/**
+ * Holds the writes of messages saved for later, of the conversation's record
+ * and of its batch changes: each reaches the backend and waits for the test
+ * to answer it, so the test looks at the page in between.
+ */
+function holdWrites() {
+  const waiting: { method: string; path: string; body: unknown; answer: (response: Response) => void }[] = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    const method = init?.method ?? 'GET'
+    const holds = method !== 'GET' && (/\/saved(\/|$)/.test(path) || /^\/api\/conversations\/(batch|[^/]+)$/.test(path))
+    if (!holds) {
+      return originalFetch(input, init)
+    }
+    const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null
+    requests.push({ path, body })
+    return new Promise<Response>((answer) => waiting.push({ method, path, body, answer }))
+  }) as typeof fetch
+  return { waiting, restore: () => void (globalThis.fetch = originalFetch) }
+}
+
+const refusal = (code: string, status = 409) =>
+  Response.json({ requestId: 'req_test000000000001', code, message: `The backend refuses: ${code}` }, { status })
+const texts = (list: SavedMessage[] | null | undefined) => (list ?? []).map((message) => message.text)
+const savedMessage = (id: string, text: string): SavedMessage => ({ id, text, files: [], savedAt: '2026-09-09T00:00:00.000Z' })
+
+/** The conversation `FIRST` opened with its list of messages saved for later read. */
+async function openWithSaved(saved: SavedMessage[]) {
+  serveHistory()
+  serverSaved.set(FIRST, saved)
+  records[0]!.savedRevision = 1
+  const store = useConversations()
+  const first = store.items.find((item) => item.id === FIRST)!
+  await store.activate(FIRST)
+  await until(() => first.saved.revision === 1, 'the list is read as the conversation opens')
+  return { store, first }
+}
+
+test('a saved message stands at the top of the list from the press, with the id the request names, and a refusal takes it away and refills the composer', async () => {
+  const signOut = signIn()
+  const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
+  const held = holdWrites()
+  try {
+    first.draft = 'Then the IPv6'
+    const saving = store.saveForLater(first)
+    await until(() => held.waiting.length === 1, 'the save reaches the backend')
+    // The backend has not answered: the composer is empty and the row stands.
+    expect([first.draft, texts(first.saved.shown.value)]).toEqual(['', ['Then the IPv6', 'Check prod’s DNS next']])
+    expect(texts(first.saved.read.value)).toEqual(['Check prod’s DNS next'])
+    expect(held.waiting[0]!.body).toMatchObject({ id: first.saved.shown.value![0]!.id, text: 'Then the IPv6' })
+
+    held.waiting[0]!.answer(refusal('saved_full'))
+    await saving
+    expect([first.draft, texts(first.saved.shown.value)]).toEqual(['Then the IPv6', ['Check prod’s DNS next']])
+  } finally {
+    held.restore()
+    signOut()
+  }
+})
+
+test('editing a saved message fills the composer and moves the row at once, with what the composer held in its place; a refusal gives both back', async () => {
+  const signOut = signIn()
+  const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
+  const held = holdWrites()
+  try {
+    first.draft = 'Half written'
+    const editing = store.editSaved(first, 'dns')
+    await until(() => held.waiting.length === 1, 'the edit reaches the backend')
+    expect(held.waiting[0]!.path).toBe(`/api/conversations/${FIRST}/saved/dns/edit`)
+    expect([first.draft, texts(first.saved.shown.value)]).toEqual(['Check prod’s DNS next', ['Half written']])
+    // The draft it saved before the exchange is what the backend would swap out.
+    expect(draftSaves().map((save) => (save.body as { text: string }).text)).toEqual(['Half written'])
+
+    held.waiting[0]!.answer(refusal('saved_not_found', 404))
+    await editing
+    expect([first.draft, texts(first.saved.shown.value)]).toEqual(['Half written', ['Check prod’s DNS next']])
+  } finally {
+    held.restore()
+    signOut()
+  }
+})
+
+test('an edit the backend answers leaves the composer as it showed, and the list the backend then reads', async () => {
+  const signOut = signIn()
+  const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
+  const held = holdWrites()
+  try {
+    first.draft = 'Half written'
+    const editing = store.editSaved(first, 'dns')
+    await until(() => held.waiting.length === 1, 'the edit reaches the backend')
+    // The backend swapped them, naming the half written one itself.
+    serverSaved.set(FIRST, [savedMessage('half', 'Half written')])
+    records[0]!.savedRevision = 2
+    const draft = { revision: 3, text: 'Check prod’s DNS next', files: [], replaced: null }
+    serverDrafts.set(FIRST, draft)
+    held.waiting[0]!.answer(Response.json({ draft }))
+    await editing
+    await until(() => first.saved.revision === 2, 'the list is read after the exchange')
+    expect([first.draft, first.savedDraft?.revision, texts(first.saved.shown.value)]).toEqual(['Check prod’s DNS next', 3, ['Half written']])
+  } finally {
+    held.restore()
+    signOut()
+  }
+})
+
+test('sending a saved message takes its row away and shows the message on its way at once; a refusal brings the row back', async () => {
+  const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next'), savedMessage('ipv6', 'Then the IPv6')])
+  addStubProvider()
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
+    if (path === `/api/conversations/${FIRST}` && init?.method === 'PATCH') {
+      return Response.json({ conversation: records[0], results: [] })
+    }
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const answer = deferred<boolean>()
+  const send = spyOn(ConversationRuntime.prototype, 'sendSaved').mockImplementation(() => answer.promise)
+  try {
+    await useProduct().loadModels(true)
+    await store.changeModel(first, { model: { providerId: 'stub', modelId: 'stub' } })
+    const sending = store.sendSaved(first, 'dns', 'send')
+    await until(() => send.mock.calls.length === 1, 'the session is asked to send it')
+    expect(send.mock.calls[0]).toEqual(['dns', 'message'])
+    expect(texts(first.saved.shown.value)).toEqual(['Then the IPv6'])
+    expect(first.pendingSends.map(({ id, text, way }) => ({ id, text, way }))).toEqual([{ id: 'dns', text: 'Check prod’s DNS next', way: 'send' }])
+
+    answer.reject(new Error('The session cannot take it.'))
+    await sending
+    expect(texts(first.saved.shown.value)).toEqual(['Check prod’s DNS next', 'Then the IPv6'])
+    expect(first.pendingSends).toEqual([])
+  } finally {
+    send.mockRestore()
+    connect.mockRestore()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('a saved message the session took is on its way until it holds it, and gone from the list', async () => {
+  const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
+  addStubProvider()
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
+    if (path === `/api/conversations/${FIRST}` && init?.method === 'PATCH') {
+      return Response.json({ conversation: records[0], results: [] })
+    }
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const answer = deferred<boolean>()
+  const send = spyOn(ConversationRuntime.prototype, 'sendSaved').mockImplementation(() => answer.promise)
+  try {
+    await useProduct().loadModels(true)
+    await store.changeModel(first, { model: { providerId: 'stub', modelId: 'stub' } })
+    const sending = store.sendSaved(first, 'dns', 'send')
+    await until(() => send.mock.calls.length === 1, 'the session is asked to send it')
+    // The backend takes it off its list as the session takes it.
+    serverSaved.set(FIRST, [])
+    records[0]!.savedRevision = 2
+    answer.resolve(true)
+    await sending
+    await changed(FIRST)
+    await until(() => first.saved.revision === 2, 'the list is read')
+    expect([texts(first.saved.shown.value), first.pendingSends]).toEqual([[], []])
+  } finally {
+    send.mockRestore()
+    connect.mockRestore()
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('a deleted saved message leaves at once with its Undo toast, Undo saves it again under its id, and a refusal of the delete brings the row back and the toast goes', async () => {
+  const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
+  toasts.splice(0)
+  const held = holdWrites()
+  try {
+    const deleting = store.deleteSaved(first, 'dns')
+    await until(() => held.waiting.length === 1, 'the delete reaches the backend')
+    expect(texts(first.saved.shown.value)).toEqual([])
+    expect(toasts.map((toast) => toast.title)).toEqual(['Saved Message Deleted'])
+    held.waiting[0]!.answer(refusal('internal_error', 500))
+    await deleting
+    expect(texts(first.saved.shown.value)).toEqual(['Check prod’s DNS next'])
+    // The Undo toast went; the refusal is told.
+    expect(toasts.map((toast) => toast.title)).toEqual(['Could Not Delete the Message'])
+    toasts.splice(0)
+
+    // Undo pressed before the delete was answered waits behind it, and names the same id.
+    const again = store.deleteSaved(first, 'dns')
+    await until(() => held.waiting.length === 2, 'the second delete reaches the backend')
+    toasts[0]!.action!.run()
+    expect(texts(first.saved.shown.value)).toEqual(['Check prod’s DNS next'])
+    expect(held.waiting).toHaveLength(2)
+    held.waiting[1]!.answer(new Response(null, { status: 204 }))
+    await again
+    await until(() => held.waiting.length === 3, 'the Undo reaches the backend after the delete')
+    expect(held.waiting[2]!.body).toMatchObject({ id: 'dns', text: 'Check prod’s DNS next' })
+  } finally {
+    held.restore()
+  }
+})
+
+test('a change of the model shows at once and a refusal gives the stored settings back', async () => {
+  const { store, first } = await openWithSaved([])
+  records[0]!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
+  await changed(FIRST)
+  expect(first.model.serviceTierId).toBeNull()
+  const held = holdWrites()
+  try {
+    const changing = store.changeModel(first, { serviceTierId: 'priority' })
+    await until(() => held.waiting.length === 1, 'the change reaches the backend')
+    expect(first.model.serviceTierId).toBe('priority')
+    expect(useProduct().snapshot!.conversations[0]!.model?.serviceTierId).toBe('priority')
+    held.waiting[0]!.answer(refusal('internal_error', 500))
+    await changing
+    expect(first.model.serviceTierId).toBeNull()
+  } finally {
+    held.restore()
+  }
+})
+
+test('moving a conversation into a project on its Host shows the project at once; a refusal moves it back', async () => {
+  const { store, first } = await openWithSaved([])
+  const product = useProduct()
+  const cloud = productState({ devices: [{
+    id: 'cloud', name: 'Cloud', kind: 'managed', platform: 'linux', claimedAt: '2026-09-10T00:00:00.000Z', lastSeenAt: null,
+    state: 'online', home: null, installed: [], startCommand: null, os: null, runnerVersion: null, route: 'automatic',
+  }] }).devices
+  product.read = {
+    ...product.read!,
+    devices: cloud,
+    workspaces: [{ id: 'notes', deviceId: 'cloud', path: '/notes', name: 'notes', createdAt: '2026-09-10T00:00:00.000Z' }],
+  }
+  const held = holdWrites()
+  try {
+    // The move is on its way, and the page answers that it moved.
+    expect(await store.switchTarget(FIRST, { kind: 'workspace', workspaceId: 'notes' })).toBe(true)
+    await until(() => held.waiting.length === 1, 'the move reaches the backend')
+    expect([first.target, first.projectId, first.cwd]).toEqual([{ kind: 'workspace', workspaceId: 'notes' }, 'notes', '/notes'])
+    held.waiting[0]!.answer(refusal('internal_error', 500))
+    await until(() => first.projectId === null, 'the refusal moves it back')
+    expect(first.target).toEqual({ kind: 'cloud' })
+  } finally {
+    held.restore()
   }
 })

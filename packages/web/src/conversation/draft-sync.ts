@@ -92,13 +92,24 @@ export function hasUnsavedDraft(conversation: Conversation): boolean {
   return conversation.draftBase !== held.revision || !sameContent(content, held)
 }
 
+/** What the composer holds, as a save sends it: the content, and the revision of the draft it was built on. */
+export interface HeldDraft {
+  content: DraftContent
+  base: number | null
+}
+
+/** What the composer holds now. */
+export function heldDraft(conversation: Pick<Conversation, 'draft' | 'files' | 'attachmentIds' | 'draftBase'>): HeldDraft {
+  return { content: draftContent(conversation).content, base: conversation.draftBase }
+}
+
 /** Whether a save has something to send now; a send not yet accepted holds it back. */
-function needsSave(conversation: Conversation): boolean {
-  const held = conversation.savedDraft
-  if (conversation.persistence !== 'synced' || conversation.archived || conversation.pendingSends.length > 0 || !held) {
+function needsSave(conversation: Conversation, held: HeldDraft = heldDraft(conversation)): boolean {
+  const saved = conversation.savedDraft
+  if (conversation.persistence !== 'synced' || conversation.archived || conversation.pendingSends.length > 0 || !saved) {
     return false
   }
-  return conversation.draftBase !== held.revision || !sameContent(draftContent(conversation).content, held)
+  return held.base !== saved.revision || !sameContent(held.content, saved)
 }
 
 export function createDraftSync(options: {
@@ -149,17 +160,18 @@ export function createDraftSync(options: {
     return queue.run(conversation.id, () => saveNow(conversation))
   }
 
-  async function saveNow(conversation: Conversation, keepalive = false): Promise<void> {
-    if (!needsSave(conversation)) {
+  /** Saves what the composer holds, or, for a save that waits its turn, what it held when the save was asked for. */
+  async function saveNow(conversation: Conversation, keepalive = false, held: HeldDraft = heldDraft(conversation)): Promise<void> {
+    if (!needsSave(conversation, held)) {
       return
     }
     const signal = lifetime.signal
-    const { content } = draftContent(conversation)
+    const { content } = held
     saving.add(conversation.id)
     try {
       const draft = await saveDraft(
         conversation.id,
-        { base: conversation.draftBase ?? 0, ...content },
+        { base: held.base ?? 0, ...content },
         { signal, keepalive },
       )
       signal.throwIfAborted()
@@ -259,43 +271,52 @@ export function createDraftSync(options: {
   }
 
   /**
-   * Saves the composer's message for later (`web-api.md` § Messages saved
-   * for later), after the conversation's requests before it: `content`, as
-   * the composer held it, built on the revision `base`. The backend empties
-   * the draft with it, which the page takes as a draft it read; a change
-   * typed since stays to be saved. Answers the saved message.
+   * Runs `operation` after the conversation's requests before it, which are
+   * its draft's and its messages saved for later, one thing in the backend.
+   * One that changes the draft, `changesDraft`, supersedes a save waiting for
+   * typing to pause.
    */
-  function saveForLater(conversation: Conversation, content: DraftContent, base: number): Promise<SavedMessage> {
-    const signal = lifetime.signal
-    clearTimer(conversation.id)
-    return queue.run(conversation.id, async () => {
-      const { message, draft } = await saveFromDraft(conversation.id, { base, ...content }, signal)
-      signal.throwIfAborted()
-      receive(conversation, draft)
-      schedule(conversation, DRAFT_SAVE_DELAY_MS)
-      return message
-    })
+  function ordered<T>(conversation: Conversation, operation: () => Promise<T>, changesDraft = false): Promise<T> {
+    if (changesDraft) {
+      clearTimer(conversation.id)
+    }
+    return queue.run(conversation.id, operation)
   }
 
   /**
-   * Puts the message saved for later `id` in the composer, after the
-   * conversation's requests before it and a save of what the composer
-   * holds, which the backend keeps for later in its place.
+   * Saves the composer's message for later (`web-api.md` § Messages saved
+   * for later) as the message `id`, from inside `ordered`: `held`, as the
+   * composer held it, built on the revision it names. The backend empties
+   * the draft with it, which the page takes as a draft it read; a change
+   * typed since stays to be saved. Answers the saved message.
    */
-  function editSaved(conversation: Conversation, id: string): Promise<void> {
+  async function saveForLaterNow(conversation: Conversation, id: string, held: HeldDraft): Promise<SavedMessage> {
     const signal = lifetime.signal
-    clearTimer(conversation.id)
-    return queue.run(conversation.id, async () => {
-      await saveNow(conversation)
-      if (needsSave(conversation)) {
-        throw new Error('The message in the composer is not saved yet. Try again in a moment.')
-      }
-      const draft = await editSavedRequest(conversation.id, id, signal)
-      signal.throwIfAborted()
-      conversation.savedDraft = draft
-      conversation.draftBase = draft.revision
-      options.apply(conversation, draft)
-    })
+    const { message, draft } = await saveFromDraft(conversation.id, { id, base: held.base ?? 0, ...held.content }, signal)
+    signal.throwIfAborted()
+    receive(conversation, draft)
+    schedule(conversation, DRAFT_SAVE_DELAY_MS)
+    return message
+  }
+
+  /**
+   * Puts the message saved for later `id` in the draft, from inside
+   * `ordered`, after a save of what the composer held, `held`, which the
+   * backend keeps for later in its place. The composer shows the message
+   * already; what the user typed since is saved on top.
+   */
+  async function editSavedNow(conversation: Conversation, id: string, held: HeldDraft): Promise<void> {
+    const signal = lifetime.signal
+    await saveNow(conversation, false, held)
+    const saved = conversation.savedDraft
+    if (saved && !sameContent(held.content, saved)) {
+      throw new Error('The message in the composer is not saved yet. Try again in a moment.')
+    }
+    const draft = await editSavedRequest(conversation.id, id, signal)
+    signal.throwIfAborted()
+    conversation.savedDraft = draft
+    conversation.draftBase = draft.revision
+    schedule(conversation, DRAFT_SAVE_DELAY_MS)
   }
 
   /**
@@ -330,5 +351,5 @@ export function createDraftSync(options: {
     refused.clear()
   }
 
-  return { changed, save, read, act, saveForLater, editSaved, flush, stop }
+  return { changed, save, read, act, ordered, saveForLaterNow, editSavedNow, flush, stop }
 }

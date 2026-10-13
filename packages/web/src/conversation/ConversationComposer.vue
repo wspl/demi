@@ -80,7 +80,7 @@ const replaced = computed(() => {
 
 /** The messages saved for later as the list under the composer shows them, newest first. */
 const savedRows = computed<SavedRow[]>(() =>
-  (props.conversation.saved?.messages ?? []).map((message) => (
+  (props.conversation.saved.shown.value ?? []).map((message) => (
     { id: message.id, preview: savedPreview(message.text), attachmentCount: message.files.length }
   )),
 )
@@ -169,7 +169,7 @@ const remoteHosts = computed(() => {
           },
         ]
       : []),
-    ...props.conversation.attachedHosts
+    ...(props.conversation.attachedHosts.shown.value ?? [])
       .filter((host) =>
         resources.deviceById(host.deviceId) !== null,
       )
@@ -184,7 +184,7 @@ const remoteHosts = computed(() => {
     const cwd =
       host.id === primary.deviceId
         ? primary.path
-        : props.conversation.attachedHosts.find(
+        : props.conversation.attachedHosts.shown.value?.find(
             (attached) => attached.deviceId === host.id,
           )?.cwd
     return {

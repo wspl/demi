@@ -240,7 +240,7 @@ export const useProduct = defineStore('product', () => {
   /** The account a channel of an account still to choose its password sent first, before any state; null otherwise. */
   const firstUser = ref<ProductState['user'] | null>(null)
   /** What the page shows: the state it last read with its own changes not landed yet applied on top. */
-  const snapshot = slot.value
+  const snapshot = slot.shown
   const load = ref<'loading' | 'ready' | 'failed'>('loading')
   const modelSnapshot = ref<{ key: string; providers: CatalogProvider[]; checkedAt: number } | null>(null)
   const vendors = ref<VendorCatalog | null>(null)
