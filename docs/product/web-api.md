@@ -757,7 +757,12 @@ or `user`, creates an account of a role the caller outranks and returns
 caller does not outrank answers 403 `forbidden`, and disabling ends the
 account's sessions and runner connections at once. `POST
 /api/users/:id/sign-out` ends every session of a lower-ranked account and
-answers 204. An id that names no account answers 404 `user_not_found` and an
+answers 204. `POST /api/users/:id/sign-in-code` makes a sign-in code for a
+lower-ranked account and answers `{ id, url, expiresInMs }` as
+`POST /api/auth/handoff/code` does, with `to` the product's home; a session
+not verified in the last five minutes answers 403 `verification_required`.
+It ends that account's earlier sign-in code; `POST /api/auth/handoff` takes
+it as it takes a handoff code, and the session it makes records the issuer. An id that names no account answers 404 `user_not_found` and an
 account the caller does not outrank 403 `forbidden`, both before the body is
 checked. A disabled account's sign-in answers 403 `account_disabled`, by any
 way it signs in.
@@ -816,7 +821,8 @@ Verification, handoff codes and sessions ([Authentication and ownership](../back
   `invalid_credentials`; `POST /api/auth/verify/passkey/options` and
   `POST /api/auth/verify/passkey` verify with a passkey of the account as
   sign-in does, answering 204, or 401 `unknown_passkey` for another
-  account's. Each marks the session verified now.
+  account's. Each marks the session verified now, as every sign-in does,
+  by a password, a passkey, a handoff code or a sign-in code.
 - `POST /api/auth/handoff/code` takes `{ to }`, a path of the product, and
   answers `{ id, url, expiresInMs }`, the page counting the time left from
   the answer's arrival, never comparing the server's clock with its own; a session not verified in the last five
@@ -829,7 +835,8 @@ Verification, handoff codes and sessions ([Authentication and ownership](../back
   `POST /api/auth/login` does; with none, it signs in; a code that is unknown,
   expired or spent answers 401 `handoff_expired`.
 - `GET /api/auth/sessions` returns `{ sessions }`, each `{ id, name,
-  createdAt, lastActiveAt, current, handoffId }`, newest first;
+  createdAt, lastActiveAt, current, handoffId, issuedBy }`, newest first,
+  `issuedBy` the nickname of the administrator whose sign-in code made it;
   `DELETE /api/auth/sessions/:id` signs another session out and answers
   204, the current one answering 409 `current_session` (Sign Out ends it),
   an id the account has no session of 404 `session_not_found`. The
