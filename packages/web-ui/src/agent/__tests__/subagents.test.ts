@@ -1,4 +1,5 @@
 import { expect, test } from 'bun:test'
+import { effectScope, nextTick, ref } from 'vue'
 import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
 import {
   agentsChipLabel,
@@ -154,6 +155,40 @@ test('a running inspect lists every running child; a finished inspect sits besid
   ])
 })
 
+// Retry after a failed opening loads the conversation again from nothing:
+// production left the Agents window open over the loading pane, showing the
+// earlier attempt's agents. Cost: a few reactive updates.
+test('an open window closes when its conversation loads again or another is shown, not when its session opens', async () => {
+  const shown = ref<string | null>('first')
+  const scope = effectScope()
+  const panels = scope.run(() => useSessionPanels(
+    () => [agent({ id: 'reader', name: 'Read the notes', phase: 'running' })],
+    () => [],
+    () => shown.value,
+  ))!
+  try {
+    panels.toggleAgents()
+    expect(panels.activeSubagentId.value).toBe('reader')
+    // Retry: the conversation loads again.
+    shown.value = null
+    await nextTick()
+    expect(panels.agentsOpen.value).toBe(false)
+    // Its first step, then another conversation.
+    shown.value = 'first'
+    await nextTick()
+    panels.toggleAgents()
+    // The session opens: what it shows is the same conversation.
+    shown.value = 'first'
+    await nextTick()
+    expect(panels.agentsOpen.value).toBe(true)
+    shown.value = 'second'
+    await nextTick()
+    expect(panels.agentsOpen.value).toBe(false)
+  } finally {
+    scope.stop()
+  }
+})
+
 test('the Agents panel opens on the oldest running child, or empty when none runs', () => {
   const running = [
     agent({ id: 'run-new', name: 'New', phase: 'running', startedAt: '2026-09-09T00:02:00.000Z' }),
@@ -161,7 +196,7 @@ test('the Agents panel opens on the oldest running child, or empty when none run
   ]
   const done = agent({ id: 'done', name: 'Done', phase: 'completed', endedAt: '2026-09-09T00:03:00.000Z' })
   let agents: SubagentRecord[] = [...running, done]
-  const panels = useSessionPanels(() => agents, () => [])
+  const panels = useSessionPanels(() => agents, () => [], () => 'conversation')
   panels.toggleAgents()
   expect([panels.agentsOpen.value, panels.activeSubagentId.value]).toEqual([true, 'run-old'])
   panels.toggleAgents()

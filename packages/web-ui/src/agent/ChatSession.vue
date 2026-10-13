@@ -367,8 +367,8 @@ const { agentsOpen, activeSubagentId, activeTerminalId, toggleAgents, toggleTerm
   useSessionPanels(
     () => props.conversation.subagents,
     () => terminals.value,
+    () => (props.conversation.load === 'loading' ? null : props.conversation.id),
   )
-watch(() => props.conversation.id, close)
 // A receipt's name opens the Agents window on its sender's tab, a finished
 // sender as Completed picks it, and the host brings the block it names into
 // view there; the root's block, in the transcript.
