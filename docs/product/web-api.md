@@ -23,7 +23,8 @@ its message counts, never reach the web app.
 
 Paths in the index are relative to `/api`, except the public installation row.
 Detailed sections use the same relative paths or spell out the `/api` prefix.
-JSON errors carry `{ code, message }`. `code` is a value of `ErrorCode`, the
+Every response carries `X-Request-Id`, and JSON errors carry
+`{ code, message, requestId }` ([Request IDs and the server log](../backend/backend.md#request-ids-and-the-server-log)). `code` is a value of `ErrorCode`, the
 `web-api-protocol` crate's list of every code the web app can see, which the web
 app receives as a string union. A situation has one code on every route:
 for example, an archived conversation that refuses an operation always answers
@@ -61,6 +62,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Models | `GET /models?refresh=true\|false` returns the account-wide catalog |
 | Providers | `GET /providers/catalog`, `GET/POST /providers`, `PATCH/DELETE /providers/:id`, `GET /providers/:id/status`, `POST /providers/:id/test`, `POST /providers/:id/quota`; account routes below |
 | Usage | `GET /usage` for the caller; `GET /usage/instance` for admins in shared mode |
+| Diagnostics | `POST /page-errors { title, message, detail }`, `GET /server/log?request=&since=&limit=&level=` (administrator) |
 | Devices | `GET /devices`, `POST /devices/claim { code }`, `PATCH /devices/:id { name?, route? }`, `DELETE /devices/:id`, `GET /devices/:id/fs?path=<absolute>`, `POST /devices/:id/fs { path }` |
 | Workspaces | `GET/POST /workspaces`, `PATCH /workspaces/:id { name }`, `DELETE /workspaces/:id` |
 | Cloud | `GET /cloud`, `POST /cloud/reset { operationId }` |
