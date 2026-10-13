@@ -96,6 +96,13 @@ it loads, and the tab opens on the address the user last asked for.
   land first, such as navigating a tab that is still opening, is kept as the
   user's latest wish and carried out once it can be; a wish the user replaced
   before then is never carried out.
+- **A choice the user must make is a wizard at the centre.** Steps the
+  user answers before going on, such as choosing a password at the first
+  sign-in and then the passkey offer, are a wizard: on a computer one
+  dialog at the centre of the page, over the dimmed page, whose steps
+  replace each other in place; on a phone the whole screen, as iOS's own
+  setup does. A step that cannot be skipped has no close button; a toast
+  or a card at an edge only informs and never asks.
 - **Only a failure interrupts.** When the backend or the Host refuses what
   the user did, the page says so where it happened and offers to try again,
   and shows what is really there again.
