@@ -6,6 +6,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import { hiddenUsername } from '@demicodes/web-ui/ui/field-autofill'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { isEmail } from '../auth/email'
 import SettingsRow from './SettingsRow.vue'
@@ -160,6 +161,7 @@ function resend() {
             <TextInput
               v-model="email"
               aria-label="New email"
+              autocomplete="off"
               focused
               :placeholder="phase.currentEmail"
               class="w-48 max-w-full"
@@ -169,10 +171,13 @@ function resend() {
             <TextInput
               v-model="password"
               aria-label="Current password"
-              secret
+              masked="password"
+              autocomplete="current-password"
               class="w-48 max-w-full"
             />
           </SettingsRow>
+          <!-- Last in the card, so the card's row dividers skip it; it is out of the flow. -->
+          <input v-bind="hiddenUsername(phase.currentEmail)" />
         </div>
         <InlineError v-if="phase.error" :message="phase.error" />
         <InlineError
