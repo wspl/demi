@@ -600,9 +600,12 @@ next spawn on its agents can start `explore` and `reviewer`.
   `description`, `instructions` (optional), `spawning` (default `false`),
   and its model as `model`, a model id, with `effort` and `tier` (optional;
   without a model the child inherits its parent's). A model id is looked
-  for in the user's provider entries in their order, the first entry whose
-  catalog has it taking it; one no entry has makes the profile unavailable,
-  as a profile's missing model does.
+  for in the entries the model menu offers, in the order it lists them,
+  the first entry that offers it taking it; one no entry offers makes the
+  profile unavailable, as a profile's missing model does. A workflow file is
+  at most 1 MiB; its instructions are read with the project's files, once
+  per input turn ([When it is sent](instructions.md#when-it-is-sent)), and
+  the conversation's choice at every request.
 - **Its instructions** are the root's: they join the
   [instructions block](instructions.md#what-the-model-receives) as an element
   of their own, `<workflow name="Review Team">`, after the project's files,
@@ -611,7 +614,8 @@ next spawn on its agents can start `explore` and `reviewer`.
   same way. Each profile's own `instructions` are its child's, as a user's
   profile's are.
 - **The menu** is the conversation's choice, kept with the conversation as
-  its model is. **Default**, which a new conversation starts with, applies
+  its model is, a new conversation's included before its first message,
+  which keeps the choice it was given. **Default**, which a new conversation starts with, applies
   the user's Subagents settings. **No Subagents** turns subagents off for this
   conversation, as the settings' switch does for all of them. **A workflow**
   applies its profiles in place of the user's, for this conversation only,
@@ -629,8 +633,9 @@ next spawn on its agents can start `explore` and `reviewer`.
   workflows from the conversation's [file watch](../product/web-api.md#file-watch),
   so a workflow added, changed or removed shows at once, with no polling. A file
   that does not parse is listed as unavailable with the parse error.
-- **How the model learns the format.** `demi agent workflows --help` is
-  where the format is written: where workflow files live, each field, and a
+- **How the model learns the format.** `demi agent workflows --help`, the
+  group's own help, which a command group may give a longer text than its
+  one-line description, is where the format is written: where workflow files live, each field, and a
   whole example, kept with the parser that reads them. `demi agent workflows
   list` lists the project's workflows as the menu does, the conversation's
   choice marked and a file that does not parse with its error; `demi agent
