@@ -340,6 +340,10 @@ thinking setting.
   process waits for that server before it answers the session's last input,
   whose request would otherwise carry no tools;
 - the request's model, system prompt and thinking effort;
+- `--safe-mode`, which keeps out everything the machine or the account
+  would add beside Demi's own: the CLI's `CLAUDE.md` files, skills,
+  plugins, agents and LSP servers, and the claude.ai connectors attached to
+  the account, so the model's only tool is Demi's `shell`;
 - the thinking display, always `--thinking-display summarized`, the most
   detailed the vendor gives, whatever the selection's summary says: without it the CLI leaves the display to
   the vendor, which sends every thinking block empty. A summarized block's
