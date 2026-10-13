@@ -133,19 +133,17 @@ interface DraftVersion {
   text: string
   files: ComposerAttachment[]
 }
-/** A saved draft as the product's server keeps it: the message, its files and when it was saved. */
+/** A saved draft as the product's server keeps it: the message and its files. */
 interface SavedDraft {
   id: string
   markdown: string
   files: ComposerAttachment[]
-  savedAt: string
 }
 const savedDrafts = ref<SavedDraft[]>(
   (props.drafts ?? []).map((seed) => ({
     id: createId(),
     markdown: seed.text,
     files: (seed.files ?? []).map((item) => composerAttachment(item)),
-    savedAt: new Date(Date.now() - seed.minutesAgo * 60_000).toISOString(),
   })),
 )
 const draftsOpen = ref(props.draftsOpen === true)
@@ -153,7 +151,6 @@ const draftRows = computed<DraftRow[]>(() => savedDrafts.value.map((saved) => ({
   id: saved.id,
   preview: draftPreview(saved.markdown, saved.files.map((file) => file.name)),
   attachmentCount: saved.files.length,
-  savedAt: saved.savedAt,
 })))
 /** The version a later save replaced, as the product's backend keeps it. */
 const replacedVersion = ref<DraftVersion | null>(
@@ -339,7 +336,7 @@ function saveDraft() {
     forget(item.id, true)
   }
   savedDrafts.value = [
-    { id: createId(), markdown: draft.value, files, savedAt: new Date().toISOString() },
+    { id: createId(), markdown: draft.value, files },
     ...savedDrafts.value,
   ]
   draft.value = ''
@@ -389,7 +386,7 @@ function sendDraft(id: string) {
   )
   handOn(taken.saved.markdown, taken.saved.files, way)
   if (way === 'send') {
-    showToast({ title: 'Sent', tone: 'success' })
+    productWould('Send the Draft')
   }
 }
 

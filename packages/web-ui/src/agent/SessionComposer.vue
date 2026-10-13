@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, inject, ref, watch } from 'vue'
-import { isFocusedElementEditable } from '@vueuse/core'
+import { isFocusedElementEditable, useElementSize } from '@vueuse/core'
 import type { ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import { ArrowUp, File as FileIcon, HardDrive, NotebookPen, Paperclip, RotateCcw, Square, X } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
@@ -281,6 +281,19 @@ const hasDraft = computed(
 )
 /** Save as Draft keeps a message that holds something; not an edit of a sent one. */
 const canSaveDraft = computed(() => hasDraft.value && !shownEdit.value && !props.disabled)
+/**
+ * The composer's width under which the entry keeps its mark and count: the
+ * model's chip and the context ring need the rest of the row.
+ */
+const COMPACT_ENTRY_BELOW_PX = 380
+const composerRoot = ref<HTMLElement | null>(null)
+const { width: composerWidth } = useElementSize(composerRoot)
+const compactEntry = computed(() => composerWidth.value > 0 && composerWidth.value < COMPACT_ENTRY_BELOW_PX)
+/** Edit puts the draft in the composer, so the list gives its room back; Send and Delete keep it open for the next. */
+function editDraft(id: string) {
+  draftsOpen.value = false
+  emit('editDraft', id)
+}
 // The list closes with its last draft, so the next one does not open it unasked.
 watch(() => props.drafts.length, (count) => {
   if (count === 0) {
@@ -530,7 +543,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
       "
       @action="emit('configure')"
     />
-    <div v-else key="composer" class="w-full" @keydown="saveKey">
+    <div v-else key="composer" ref="composerRoot" class="w-full" @keydown="saveKey">
       <input
         ref="fileInput"
         type="file"
@@ -656,13 +669,14 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
           <DraftsEntry
             :count="drafts.length"
             :open="draftsOpen"
+            :compact="compactEntry"
             @toggle="draftsOpen = !draftsOpen"
           />
         </template>
         <template v-if="draftsOpen && drafts.length && !shownEdit" #list>
           <DraftsList
             :rows="drafts"
-            @edit="emit('editDraft', $event)"
+            @edit="editDraft"
             @send="emit('sendDraft', $event)"
             @delete="emit('deleteDraft', $event)"
           />

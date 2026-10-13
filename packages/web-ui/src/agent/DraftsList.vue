@@ -3,7 +3,6 @@ import { ArrowUp, Paperclip, Pencil, Trash2 } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import MenuItem from '../ui/MenuItem.vue'
-import RelativeTime from '../ui/RelativeTime.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import type { DraftRow } from './drafts'
@@ -11,10 +10,10 @@ import type { DraftRow } from './drafts'
 /**
  * The list of drafts under the composer (`product.md` § Drafts), about four
  * rows tall and scrolling within; a fifth row shows half, so the list reads
- * as one that goes on. Each row is a menu row: its first line, its files'
- * count and when it was saved; pressing it edits the draft, and while the
- * pointer is on it, Edit, Send and Delete stand in place of the count and
- * the time, at the row's end, where the row keeps their inset.
+ * as one that goes on. Each row is a menu row: its first line and, when the
+ * draft has files, their count, with no time; pressing it edits the draft,
+ * and while the pointer is on it, Edit, Send and Delete stand in place of the
+ * count, at the row's end, where the row keeps their inset.
  */
 defineProps<{ rows: DraftRow[] }>()
 
@@ -37,12 +36,9 @@ const emit = defineEmits<{
       >
         <span class="min-w-0 truncate">{{ row.preview }}</span>
         <template #suffix>
-          <span class="flex items-center gap-2 whitespace-nowrap text-fg-subtle">
-            <span v-if="row.attachmentCount" class="inline-flex items-center gap-0.5">
-              <Paperclip :size="ICON_PX.in28" class="shrink-0" />
-              {{ row.attachmentCount }}
-            </span>
-            <RelativeTime :timestamp="row.savedAt" />
+          <span v-if="row.attachmentCount" class="inline-flex items-center gap-0.5 whitespace-nowrap text-fg-subtle">
+            <Paperclip :size="ICON_PX.in28" class="shrink-0" />
+            {{ row.attachmentCount }}
           </span>
         </template>
         <template #actions>

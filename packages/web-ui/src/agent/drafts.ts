@@ -2,16 +2,14 @@ import { isMacOS } from '@tiptap/core'
 
 /**
  * One saved draft as the list under the composer shows it
- * (`product.md` § Drafts): the message's first line, how many files it
- * carries and when it was saved.
+ * (`product.md` § Drafts): the message's first line and how many files it
+ * carries. The list shows no time.
  */
 export interface DraftRow {
   id: string
   /** The message as one line, as `draftPreview` builds it. */
   preview: string
   attachmentCount: number
-  /** When it was saved, an ISO timestamp. */
-  savedAt: string
 }
 
 /** The entry's text under the composer: `1 Draft`, `3 Drafts`. */
