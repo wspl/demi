@@ -48,7 +48,33 @@ there is no public registration or password-recovery flow.
 | User | No administration of other accounts |
 
 A role can act only on lower roles. No role can reset a peer's password through
-the admin endpoint. Everyone can change their own password by providing the
+the admin endpoint.
+
+Administrators manage accounts in Settings › Users, which only the master
+and admins see, as macOS's Users & Groups or a GitHub organization's
+People. For example, Ana, an admin, adds Bo for a new colleague: Add User…
+asks his email, his role and a first password, which she types or has made
+for her and copies, and Bo signs in with it and changes it in Settings ›
+Account. When Bo leaves, she disables his account.
+
+- **The list** has one row per account: its nickname and email, its role,
+  and when it was last active, with *Disabled* on a disabled one; the
+  user's own row is marked *You*. A row has a ··· menu with what the user
+  may do to that account, and none on the user's own or on one of a role
+  not below theirs.
+- **Reset Password…** sets a password the administrator types or has made
+  and copies; the account's sessions and passkeys stay.
+- **Change Role…** moves an account between the roles below the
+  administrator's own: the master makes users admins and admins users; an
+  admin changes no role.
+- **Sign Out Everywhere** ends every session of the account at once, its
+  open pages included, as Sign Out beside a browser does for one.
+- **Disable Account…** signs the account out everywhere and refuses its
+  sign-ins, by password, passkey or handoff code, until **Enable Account**.
+  Nothing of it is removed: its conversations, Clouds, devices and settings
+  wait, a Cloud stops as a signed-out user's does, and its paired devices
+  cannot reach the backend meanwhile. A disabled account is never deleted;
+  removing an account and its data is not offered. Everyone can change their own password by providing the
 current password, edit their nickname, and change email after verifying a code
 sent to the new address. Setup and account creation do not require email delivery;
 email change does, and reports an unavailable mail service explicitly.
