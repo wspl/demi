@@ -12,7 +12,7 @@ use demi_agent_tools::{
     ChosenWorkflow, ConversationProfiles, EFFORT_OFF, HostResolver, NewProfileDraft, Profile,
     ProfileEdit, SubagentSettings, Unavailable, WorkflowListing,
 };
-use demi_shared_types::{ModelSelection, NodeId, THINKING_OFF, WorkflowChoice};
+use demi_shared_types::{ModelSelection, THINKING_OFF, WorkflowChoice};
 use futures_util::future::join_all;
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -180,15 +180,14 @@ impl<H: HostResolver> Tree<H> {
         server.deps.subagents.workflows(self.root.id()).await
     }
 
-    /// The text of the file `path`, relative to `caller`'s working
-    /// directory, which `demi agent workflows check` parses.
-    pub(crate) async fn workflow_file(&self, caller: &NodeId, path: &str) -> Result<String, String> {
+    /// The text of the file `path`, read against `directory`, the invoking
+    /// shell's, which `demi agent workflows check` parses.
+    pub(crate) async fn workflow_file(&self, directory: &str, path: &str) -> Result<String, String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
-        let directory = self.directory_of(caller).await?;
         server
             .deps
             .subagents
-            .read_workflow_file(self.root.id(), &directory, path)
+            .read_workflow_file(self.root.id(), directory, path)
             .await
     }
 
