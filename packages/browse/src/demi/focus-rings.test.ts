@@ -66,8 +66,47 @@ test.skipIf(!existsSync(chromium.executablePath()))(
     expect(found).toEqual([
       ['"Flush"', 'Tab', [['clipped', 'div.clip', { top: 3, right: 0, bottom: 0, left: 3 }]]],
       ['"Shadow"', 'Tab', [['clipped', 'div.clip', { top: 2, right: 0, bottom: 0, left: 2 }]]],
-      ['"Under"', 'Tab', [['covered', 'div.cover', { top: 0, right: 3, bottom: 0, left: 0 }]]],
+      ['"Under"', 'Tab', [['covered', 'div.cover', { top: 0, right: 2, bottom: 0, left: 0 }]]],
     ])
     expect(report.checked).toBe(7)
+  },
+)
+
+const WITH_DIALOG = `
+<style>
+  button { outline: none; }
+  button:focus-visible { outline: 2px solid blue; outline-offset: 1px; }
+  .clip { overflow: hidden; width: 120px; height: 40px; }
+  .dialog { position: fixed; left: 200px; top: 100px; width: 200px; background: white; }
+  .selected { outline: 2px solid blue; }
+</style>
+<div class="clip"><button id="behind">Behind</button></div>
+<div class="dialog" role="dialog"><div class="clip"><button id="inside">Inside</button></div><button id="free">Free</button></div>
+<div class="clip"><span class="selected" id="chosen">Chosen</span></div>`
+
+test.skipIf(!existsSync(chromium.executablePath()))(
+  'focus rings: an open dialog is the only part checked, and an indicator a state draws is read where it stands',
+  async () => {
+    const tool: Tool = {
+      slot,
+      browser,
+      network: () => Promise.reject(new Error('focusRings needs no network')),
+      print: () => undefined,
+      env: {},
+      wrote: () => undefined,
+      release: () => undefined,
+      endServer: () => undefined,
+    }
+    const page = await browser.page()
+    await page.setContent(WITH_DIALOG)
+    const inDialog = await focusRings(tool, { shots: false })
+    const chosen = await focusRings.of(tool, page.locator('#chosen'), { shots: false })
+    expect([
+      inDialog.checked, inDialog.offenders.map((offender) => offender.element.split(' ')[1]),
+      chosen.offenders.map((offender) => [offender.reached, offender.findings.map((finding) => [finding.by, finding.cuts])]),
+    ]).toEqual([
+      2, ['"Inside"'],
+      [['shown', [['div.clip', { top: 2, right: 0, bottom: 0, left: 2 }]]]],
+    ])
   },
 )
