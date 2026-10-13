@@ -94,6 +94,20 @@ pub(super) async fn verify_passkey(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// The session's verification must hold: it signed in, or was verified, in
+/// the last five minutes. What needs the user's confirmation (a handoff
+/// code, adding a passkey) is gated by this, and by nothing else.
+pub(super) fn require_verification(services: &Services, session: &CurrentSession) -> Result<(), ApiError> {
+    if services.sessions.verification_holds(session.verified_at) {
+        return Ok(());
+    }
+    Err(ApiError::new(
+        StatusCode::FORBIDDEN,
+        ErrorCode::VerificationRequired,
+        "Confirm it is you first",
+    ))
+}
+
 /// `POST /auth/handoff/code`: a code that opens `to` on a phone, for a
 /// session verified in the last five minutes; it ends the account's
 /// earlier code.
@@ -103,13 +117,7 @@ pub(super) async fn make_code(
     session: CurrentSession,
     JsonBody(request): JsonBody<HandoffRequest>,
 ) -> Result<Json<HandoffCode>, ApiError> {
-    if !services.sessions.verification_holds(session.verified_at) {
-        return Err(ApiError::new(
-            StatusCode::FORBIDDEN,
-            ErrorCode::VerificationRequired,
-            "Confirm it is you first",
-        ));
-    }
+    require_verification(&services, &session)?;
     let public = services
         .public_url
         .get()
