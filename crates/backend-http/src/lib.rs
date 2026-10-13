@@ -51,6 +51,7 @@ mod sync;
 mod transfer;
 mod usage;
 mod users;
+mod workflows;
 mod workspaces;
 
 use std::io;
@@ -334,6 +335,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/streams/{name}", get(streams::open))
         .route("/conversations/{id}/fs/watch", get(file_watch::open))
         .route("/conversations/{id}/panel", get(panel::read))
+        .route("/conversations/{id}/workflows", get(workflows::list))
         .route("/conversations/{id}/panel/changes", post(panel::change))
         .route(
             "/conversations/{id}/draft",
@@ -401,6 +403,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/devices/{id}/fs",
             get(devices::browse).post(devices::make_directory),
         )
+        .route("/devices/{id}/workflows", get(devices::workflows))
         .route("/devices/{id}/log", get(devices::log))
         .route("/devices/{id}/direct", get(direct::open))
         .route("/devices/{id}/fs/watch", get(file_watch::open_device))

@@ -102,6 +102,10 @@ class FakeXhr {
 globalThis.XMLHttpRequest = FakeXhr as unknown as typeof XMLHttpRequest
 let records: ConversationSummary[]
 let rejectCreate: boolean
+/** Holds the next creation's answer until the test opens it. */
+let holdCreate: Promise<void> | null
+/** What a test records the order of: each conversation PATCH the backend took, beside what it records. */
+let order: string[] | null
 let rejectFork: boolean
 let requests: {
   path: string
@@ -189,6 +193,8 @@ beforeEach(async () => {
   FakeXhr.gate = null
   FakeXhr.failures = 0
   rejectCreate = false
+  holdCreate = null
+  order = null
   rejectFork = false
   requests = []
   globalThis.fetch = (async (input, init) => {
@@ -218,6 +224,9 @@ beforeEach(async () => {
       return Response.json({ conversation: created }, { status: 201 })
     }
     if (path === '/api/conversations') {
+      const held = holdCreate
+      holdCreate = null
+      await held
       if (rejectCreate) {
         return Response.json(
           {
@@ -276,6 +285,16 @@ beforeEach(async () => {
         },
         { status: 207 },
       )
+    }
+    const conversationPatch = /^\/api\/conversations\/([^/]+)$/.exec(path)
+    if (conversationPatch && init?.method === 'PATCH') {
+      order?.push('patch')
+      const current = records.find((item) => item.id === decodeURIComponent(conversationPatch[1]!))!
+      Object.assign(current, body)
+      return Response.json({
+        conversation: current,
+        results: Object.keys(body).map((field) => ({ field, status: 'applied' })),
+      })
     }
     if (path.endsWith('/read')) {
       return new Response(null, { status: 204 })
@@ -700,6 +719,75 @@ test('repeated new reuses the active empty draft and a new snapshot preserves it
   expect(store.items[0]?.id).toBe(id)
   store.items[0]!.draft = 'Keep this draft'
   expect(await store.create()).not.toBe(id)
+})
+
+test('a new conversation keeps the workflow it was given, in its saved draft and in the record its first send makes', async () => {
+  const written = spyOn(draftStorage, 'writeDraft').mockResolvedValue(undefined)
+  const store = useConversations()
+  const id = store.create()
+  const conversation = store.items.find((item) => item.id === id)!
+  store.changeWorkflow(id, { type: 'workflow', id: 'review' })
+  // Kept with the draft, and no record is asked to change.
+  expect(conversation.workflow).toEqual({ type: 'workflow', id: 'review' })
+  expect(requests.some((request) => request.path.startsWith('/api/conversations'))).toBe(false)
+  conversation.draft = 'First message'
+  await store.send(conversation)
+  const saved = written.mock.calls.map(([, , draft]) => draft).filter((draft) => draft.local !== null)
+  expect(saved.at(-1)?.workflow).toEqual({ type: 'workflow', id: 'review' })
+  const created = requests.filter((request) => request.path === '/api/conversations')
+  expect(created.map((request) => (request.body as { workflow?: unknown }).workflow)).toEqual([{ type: 'workflow', id: 'review' }])
+  written.mockRestore()
+})
+
+test('a choice made while the first message makes the record applies before that message goes, after a failed creation and its retry too', async () => {
+  const seen: string[] = []
+  order = seen
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async () => {
+    seen.push('submit')
+  })
+  const store = useConversations()
+  const product = useProduct()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  // A model the conversation can open with.
+  product.snapshot!.providers.push(stubProvider)
+  const backend = globalThis.fetch
+  globalThis.fetch = (async (input, init) =>
+    String(input).startsWith('/api/models') ? Response.json(stubCatalog()) : backend(input, init)) as typeof fetch
+  await product.loadModels(true)
+  await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
+  conversation.draft = 'First message'
+  // The record's creation is held; meanwhile the user chooses Review Team.
+  let open!: () => void
+  holdCreate = new Promise((resolve) => { open = resolve })
+  rejectCreate = true
+  const sending = store.send(conversation)
+  await waitFor(() => requests.some((request) => request.path === '/api/conversations'), () => 'the record was not asked for')
+  await store.changeWorkflow(id, { type: 'workflow', id: 'review' })
+  expect(requests.filter((request) => request.path === `/api/conversations/${id}`)).toEqual([])
+  open()
+  await sending
+  // It failed: the retry carries the choice made meanwhile.
+  expect(conversation.pendingSends[0]?.error).toBe('Not saved')
+  const messageId = conversation.pendingSends[0]!.id
+  rejectCreate = false
+  holdCreate = new Promise((resolve) => { open = resolve })
+  const retried = store.retrySend(conversation, messageId)
+  await waitFor(() => requests.filter((request) => request.path === '/api/conversations').length === 2, () => 'no retry')
+  expect((requests.at(-1)!.body as { workflow?: unknown }).workflow).toEqual({ type: 'workflow', id: 'review' })
+  // While the retry is held, the user chooses No Subagents: it is written
+  // once the record is made, before the message goes to the session.
+  await store.changeWorkflow(id, { type: 'none' })
+  open()
+  await retried
+  expect(requests.filter((request) => request.path === `/api/conversations/${id}`).map((request) => request.body))
+    .toEqual([{ workflow: { type: 'none' } }])
+  expect(records.find((record) => record.id === id)!.workflow).toEqual({ type: 'none' })
+  expect(seen).toEqual(['patch', 'submit'])
+  submit.mockRestore()
+  connect.mockRestore()
 })
 
 test('first send failure preserves the conversation and retries its UUID and message', async () => {

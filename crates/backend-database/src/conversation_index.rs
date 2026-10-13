@@ -2,12 +2,13 @@
 //! records): each conversation's owner, title, archive and pin state, place
 //! in the sidebar, read revision, target, execution-context revision and
 //! model selection, which is the conversation's model settings (`models.md`
-//! § A conversation's model settings). The agent tree itself is in the
+//! § A conversation's model settings), and Workflow menu choice
+//! (`subagents.md` § Workflows of a project). The agent tree itself is in the
 //! conversation's own database. A conversation's id is the one the web app chose, kept in the
 //! case it arrived in and compared without case, so an id another
 //! conversation holds in any spelling is taken.
 
-use demi_shared_types::{ModelSelection, Timestamp};
+use demi_shared_types::{ModelSelection, Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::{ConversationTarget, ModelChoice};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use garde::Validate;
@@ -36,6 +37,8 @@ pub struct ConversationRecord {
     /// The conversation's model selection; none until its first model is
     /// chosen.
     pub model: Option<ModelSelection>,
+    /// Its Workflow menu choice (`subagents.md` § Workflows of a project).
+    pub workflow: WorkflowChoice,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     /// The revision of the conversation's draft, 0 before its first save.
@@ -153,6 +156,8 @@ pub enum RecordChange {
     Pinned(bool),
     /// The conversation's new model selection.
     Model(ModelSelection),
+    /// The conversation's new Workflow menu choice.
+    Workflow(WorkflowChoice),
     /// A device of the user's attached (`sessions-and-targets.md` § Attached
     /// hosts); one attached already stays as it is.
     Attach(AttachedHostRecord),
@@ -181,6 +186,9 @@ pub struct ConversationStart {
     pub pinned: bool,
     pub target: ConversationTarget,
     pub model: Option<ModelSelection>,
+    /// Its Workflow menu choice, which a new conversation is given before
+    /// its first message.
+    pub workflow: WorkflowChoice,
 }
 
 impl Default for ConversationStart {
@@ -190,6 +198,7 @@ impl Default for ConversationStart {
             pinned: false,
             target: ConversationTarget::Cloud { path: None },
             model: None,
+            workflow: WorkflowChoice::Default,
         }
     }
 }
@@ -214,7 +223,7 @@ const PLACEHOLDER_TITLE: &str = "New conversation";
 const SIDEBAR_ORDER: &str = "pinned DESC, sort_order, id";
 
 const CONVERSATION_COLUMNS: &str = "id, user_id, title, archived, pinned, read_revision, target_kind, target_device_id,
-     target_path, target_workspace_id, context_version, model, created_at, updated_at, hosts_revision,
+     target_path, target_workspace_id, context_version, model, workflow_kind, workflow_id, created_at, updated_at, hosts_revision,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
      COALESCE((SELECT saved_revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS saved_revision,
      (SELECT count(*) FROM saved_messages WHERE conversation_id = conversations.id) AS saved,
@@ -297,6 +306,7 @@ impl ControlService {
                     pinned: start.pinned,
                     target: &start.target,
                     model: start.model.as_ref(),
+                    workflow: &start.workflow,
                     at: now,
                 },
             )?;
@@ -480,6 +490,13 @@ impl ControlService {
                     "UPDATE conversations SET model = ?2 WHERE id = ?1",
                     params![id.as_str(), to_json(model)],
                 )?,
+                RecordChange::Workflow(choice) => {
+                    let (kind, workflow) = workflow_columns(choice);
+                    transaction.execute(
+                        "UPDATE conversations SET workflow_kind = ?2, workflow_id = ?3 WHERE id = ?1",
+                        params![id.as_str(), kind, workflow],
+                    )?
+                }
                 RecordChange::Attach(host) => {
                     if insert_attached_host(&transaction, &id, host, now)? {
                         advance_context(&transaction, &id)?;
@@ -608,6 +625,7 @@ pub struct NewConversation<'a> {
     pub pinned: bool,
     pub target: &'a ConversationTarget,
     pub model: Option<&'a ModelSelection>,
+    pub workflow: &'a WorkflowChoice,
     /// When it was created, and last active.
     pub at: Timestamp,
 }
@@ -619,13 +637,14 @@ pub fn insert_conversation(
     new: &NewConversation<'_>,
 ) -> Result<usize, StorageError> {
     let target = TargetColumns::of(new.target);
+    let (workflow_kind, workflow_id) = workflow_columns(new.workflow);
     let inserted = connection.execute(
         "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
            read_revision, target_kind, target_device_id, target_path, target_workspace_id, context_version,
-           model, created_at, updated_at)
+           model, created_at, updated_at, workflow_kind, workflow_id)
          VALUES (?1, ?2, ?3, ?4, 0, ?11,
            (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?2),
-           0, ?5, ?6, ?7, ?8, 0, ?9, ?10, ?10)
+           0, ?5, ?6, ?7, ?8, 0, ?9, ?10, ?10, ?12, ?13)
          ON CONFLICT (id) DO NOTHING",
         params![
             new.id.as_str(),
@@ -638,7 +657,9 @@ pub fn insert_conversation(
             target.workspace,
             new.model.map(to_json),
             new.at.as_millisecond(),
-            new.pinned
+            new.pinned,
+            workflow_kind,
+            workflow_id
         ],
     )?;
     Ok(inserted)
@@ -661,6 +682,35 @@ pub fn conversation_by_id(
     ))?;
     let mut rows = statement.query([id.as_str()])?;
     rows.next()?.map(conversation_row).transpose()
+}
+
+/// A Workflow menu choice as its typed columns: the kind, and the
+/// workflow's id for a workflow.
+fn workflow_columns(choice: &WorkflowChoice) -> (&'static str, Option<&str>) {
+    match choice {
+        WorkflowChoice::Default => ("default", None),
+        WorkflowChoice::None => ("none", None),
+        WorkflowChoice::Workflow { id } => ("workflow", Some(id)),
+    }
+}
+
+/// The choice a `conversations` row's workflow columns hold.
+fn workflow_row(row: &Row<'_>) -> Result<WorkflowChoice, StorageError> {
+    let kind: String = row.get("workflow_kind")?;
+    let id: Option<String> = row.get("workflow_id")?;
+    let choice = match (kind.as_str(), id) {
+        ("default", None) => WorkflowChoice::Default,
+        ("none", None) => WorkflowChoice::None,
+        ("workflow", Some(id)) => WorkflowChoice::Workflow { id },
+        _ => {
+            return Err(StorageError::Corrupt {
+                table: "conversations",
+                column: "workflow_kind",
+                reason: format!("the kind {kind} does not fit its id"),
+            });
+        }
+    };
+    Ok(choice)
 }
 
 /// A `conversations` row, read from its columns in `CONVERSATION_COLUMNS`.
@@ -694,6 +744,7 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
             u64::try_from(row.get::<_, i64>("context_version")?),
         )?,
         model,
+        workflow: workflow_row(row)?,
         created_at: instant(row, TABLE, "created_at")?,
         updated_at: instant(row, TABLE, "updated_at")?,
         draft_revision: decode(

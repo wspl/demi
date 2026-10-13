@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     AgentServer,
     profile_commands::{PROFILES_CATEGORY, profiles_group},
+    workflow_commands::workflows_group,
     shell_output::shell_group,
     tree::{ShownAgent, StartInput, Tree, TreeEntry},
 };
@@ -129,7 +130,7 @@ struct ShowArgs {
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const AGENT_ENTRY: &str = "Runs subagents, each with a fresh context of its own, that work in parallel on parts of a task and report back; forks one into a new child that goes on from what it already knows, on another profile; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites, pages or libraries to look into; for a long investigation whose details would crowd your context; or for a task one of the user's subagent profiles fits: run `demi agent profiles list` first and give each subagent the one that fits. A single lookup or edit is faster done yourself.";
+const AGENT_ENTRY: &str = "Runs subagents, each with a fresh context of its own, that work in parallel on parts of a task and report back; forks one into a new child that goes on from what it knows, on another profile; sends them messages and checks on them. Use it when a task splits into independent pieces, such as several sites or libraries to look into; for a long investigation whose details would crowd your context; or for a task a subagent profile fits: run `demi agent profiles list` first and give each the one that fits. Also lists and checks the project's workflows. A single lookup or edit is faster by hand.";
 
 /// `demi agent spawn --json`, `fork --json` and `resume --json`.
 #[derive(Serialize, JsonSchema)]
@@ -274,7 +275,8 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
                 .json_output::<Shown>()
                 .bind(TypedRpc::new(verb(server.clone(), show))),
         )
-        .group(profiles_group(server))
+        .group(profiles_group(server.clone()))
+        .group(workflows_group(server))
 }
 
 /// A verb's call against the live tree of the invoking job's conversation,
@@ -285,6 +287,9 @@ pub(super) struct Invoked<H: HostResolver, A> {
     pub(super) caller: NodeId,
     /// The node's `shell` call that started the job.
     pub(super) call: String,
+    /// The invoking shell's directory, which a relative path an argument
+    /// names is read against.
+    pub(super) cwd: String,
     /// The command's path, which a failure of one of several values
     /// begins with (`commands.md` § Handle an rpc call).
     pub(super) command: String,
@@ -324,6 +329,7 @@ where
                 tree,
                 caller: job.node,
                 call: job.tool_use_id,
+                cwd: call.invocation.cwd.clone(),
                 command: call.invocation.path.join(" "),
                 json: call.invocation.json,
                 args: call.args,

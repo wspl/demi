@@ -73,4 +73,5 @@ mod uploads;
 mod usage;
 mod users;
 mod work;
+mod workflows;
 mod workspaces;

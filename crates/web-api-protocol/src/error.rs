@@ -212,6 +212,9 @@ pub enum ErrorCode {
     /// The Host's filesystem refused the operation: nothing at the path, or
     /// no permission for it.
     FsError,
+    /// The directory a request names is not on the Host (`web-api.md`
+    /// § Workflows of a directory).
+    FsNotFound,
     /// The file is no longer the version the request named.
     FileChanged,
     /// A directory is at the path a file upload names.

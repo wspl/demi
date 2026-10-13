@@ -28,6 +28,7 @@ import type { Conversation } from '../state/types'
 import { cliPackageOf } from '../state/catalog'
 import { useSettingsAddress } from '../settings/address'
 import { useContextCard } from './context-card'
+import { useConversationWorkflows } from './workflows'
 
 const props = defineProps<{
   conversation: Conversation
@@ -105,6 +106,22 @@ const card = useContextCard(() => props.openFile)
 const limits = computed(() => card.limitsOf(props.conversation.model.providerId))
 
 const execution = computed(() => executionFor(props.conversation))
+
+/**
+ * The Workflow menu's choice, as the record shows it with the changes on
+ * their way, and the project's workflows; none before the first send makes
+ * the record.
+ */
+const record = computed(() => product.snapshot?.conversations.find((item) => item.id === props.conversation.id) ?? null)
+const workflowList = useConversationWorkflows(() => props.conversation)
+/**
+ * The record's choice, with the changes on their way; a new conversation's
+ * own until its record is made, whatever the channel already brought of it.
+ */
+const workflow = computed(() => ({
+  choice: props.conversation.persistence === 'synced' && record.value ? record.value.workflow : props.conversation.workflow,
+  list: workflowList.value,
+}))
 // A reset holds the conversations that cannot work without the Cloud: it is
 // their target, or where their provider's process runs. The account snapshot
 // the page polls says when it ends, and the input returns by itself.
@@ -228,6 +245,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :plugins-changed="conversation.pluginsChanged"
       :reloading="store.pendingChanges.includes(conversation.id)"
       :saved="savedRows"
+      :workflow="workflow"
       v-model:saved-open="savedOpen"
       @save-for-later="store.saveForLater(conversation)"
       @edit-saved="store.editSaved(conversation, $event)"
@@ -244,6 +262,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @arrange-attachments="store.arrangeFiles(conversation, $event)"
       @retry-attachment="store.retryFile(conversation, $event)"
       @change-model="store.changeModel(conversation, $event)"
+      @change-workflow="void store.changeWorkflow(conversation.id, $event)"
       @change-context-limit="preferences.setContextLimit($event)"
       @stop="store.stop(conversation)"
       @compact="store.compact(conversation)"
