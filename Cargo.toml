@@ -71,7 +71,7 @@ members = [
 [workspace.package]
 version = "0.1.21"
 edition = "2024"
-license = "LicenseRef-Commons-Clause-Apache-2.0"
+license = "LicenseRef-Demi-License"
 
 [workspace.dependencies]
 base64 = "0.22"
