@@ -121,9 +121,10 @@ security key, and lists them in Settings › Account with the manager's name,
 such as iCloud Keychain, whether it syncs (Synced) or stays on one device
 (This Device Only), and when it was added and last used; the user renames
 or removes one there, and changes the password there. Adding a passkey
-always takes the account's password, so a browser left signed in cannot add
-one; instance setup offers the new master account to add one right after
-its password, which it has just entered. An administrator's password reset
+always takes a confirmation that it is the user in the last five minutes,
+the password or a passkey, a sign-in counting as one, so a browser left
+signed in long ago cannot add one; instance setup offers the new master
+account to add one right after its password, which it has just entered. An administrator's password reset
 leaves the account's passkeys as they are.
 
 Passkeys belong to the host name of the backend's public URL, such as

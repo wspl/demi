@@ -798,8 +798,9 @@ Passkeys ([User system](product.md#user-system),
   base64url, as `unknown_passkey`'s `credentialId` and the browser name it,
   and `userHandle` the account's WebAuthn user handle, which the page passes
   to the browser's signal methods with the relying party's id. `POST /api/auth/passkeys/options` takes
-  `{ password }`, checks it as `PUT /api/auth/password` checks `current`, and
-  returns `{ challengeId, options }`, the creation options, which exclude the
+  no body; a session not verified in the last five minutes answers 403
+  `verification_required`, and the page verifies with `POST /api/auth/verify`
+  first. It returns `{ challengeId, options }`, the creation options, which exclude the
   account's passkeys. `POST /api/auth/passkeys` takes `{ challengeId,
   credential }` and answers 201 `{ passkey }`; its name is the password
   manager's for the few managers most people use, whose AAGUIDs their
