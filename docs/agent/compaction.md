@@ -65,6 +65,14 @@ API's 32 MB, so the request that would carry the fiftieth compacts first.
 | Before a model switch | The estimate or the request is at or over a threshold of the new model | Until both are under, at most eight, stopping when a pass compacts nothing |
 | A `compact` action | The estimate is at least 50% of the window in use, or the model has none | One |
 
+A response's usage is that of its last call to the model, the size of what
+the model read for it; a provider whose run makes several calls, as Claude
+Code's does when the model calls tools, reports the last one's, never their
+sum ([Claude Code](../providers/claude-code.md)). A reported input above the
+model's window cannot be one call's: the response triggers no compaction,
+and the backend logs an error naming the provider and the numbers, so a
+provider that misreports is found rather than compacting every turn.
+
 Inside a turn, the session first runs the tools the response requested, holding
 waiting input back, then compacts. When the pass made the estimate smaller, it
 appends a `resume` block and asks the provider to continue. When it did not,
