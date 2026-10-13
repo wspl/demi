@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { HeadlineText, TitleText } from '../ui/ui-text'
-import { computed, nextTick, ref, watch, type Component } from 'vue'
+import { computed, nextTick, ref, useId, watch, type Component } from 'vue'
 import {
   ChevronDown,
   ChevronUp,
@@ -10,6 +10,7 @@ import {
   WifiOff,
 } from '@lucide/vue'
 import { useTypeSelect } from '../composables/useTypeSelect'
+import { focusedByKeyboard } from '../ui/active-row'
 import HighlightText from '../ui/HighlightText.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
@@ -83,6 +84,10 @@ const selectedIndex = computed(() =>
   props.entries.findIndex((entry) => entry.name === selected.value),
 )
 
+// The selected row is the list's active row: it wears the ring while the keyboard has the list.
+const listId = useId()
+const keyboard = ref(false)
+
 function pickable(entry: FileBrowserEntry) {
   return props.mode === 'file' || entry.isDirectory
 }
@@ -144,10 +149,25 @@ function moveSelection(delta: number) {
   revealSelected()
 }
 
+/** The list took focus from the keyboard: with nothing selected, the first row you can pick is. */
+function onFocus(event: FocusEvent) {
+  if (!focusedByKeyboard(event)) {
+    return
+  }
+  keyboard.value = true
+  if (selectedIndex.value < 0) {
+    const first = props.entries.find(pickable)
+    if (first) {
+      selected.value = first.name
+    }
+  }
+}
+
 function onKeydown(event: KeyboardEvent) {
   if (props.creating) {
     return
   }
+  keyboard.value = true
   if (typeSelect.keydown(event)) {
     event.preventDefault()
     return
@@ -278,6 +298,10 @@ defineExpose({
         role="listbox"
         :aria-label="mode === 'file' ? 'Files' : 'Folders'"
         tabindex="0"
+        :aria-activedescendant="selectedIndex >= 0 ? `${listId}-${selectedIndex}` : undefined"
+        @focus="onFocus"
+        @blur="keyboard = false"
+        @pointerdown="keyboard = false"
         @keydown="onKeydown"
         @click.self="selected = null"
       >
@@ -303,7 +327,8 @@ defineExpose({
           </span>
         </div>
         <div
-          v-for="entry in entries"
+          v-for="(entry, index) in entries"
+          :id="`${listId}-${index}`"
           :key="entry.name"
           role="option"
           :aria-selected="entry.name === selected"
@@ -312,7 +337,7 @@ defineExpose({
           class="grid h-7 shrink-0 select-none grid-cols-[minmax(0,1fr)_5.5rem] items-center rounded-md px-1 text-chrome transition-colors duration-200 ease-out @md:grid-cols-[minmax(0,1fr)_10rem_5.5rem]"
           :class="
             entry.name === selected
-              ? 'bg-active text-fg-emphasis'
+              ? ['bg-active text-fg-emphasis', keyboard ? 'focus-ring-shown' : '']
               : pickable(entry)
                 ? 'text-fg-body hover:bg-hover'
                 : 'text-fg-faint'

@@ -143,3 +143,38 @@ test.skipIf(!existsSync(chromium.executablePath()))(
     expect([report.checked, report.offenders.length, report.withoutIndicator]).toEqual([1, 0, ['div Unlit']])
   },
 )
+
+const WITH_LISTS = `
+<style>
+  [role=listbox] { outline: none; margin-bottom: 24px; }
+  .lit { outline: 2px solid blue; outline-offset: 1px; }
+</style>
+<div role="listbox" tabindex="0" aria-label="Lit" aria-activedescendant="lit-1">
+  <div role="option" id="lit-0">First</div><div role="option" id="lit-1" class="lit">Second</div>
+</div>
+<div role="listbox" tabindex="0" aria-label="Unlit" aria-activedescendant="unlit-0">
+  <div role="option" id="unlit-0">First</div>
+</div>
+<div role="listbox" tabindex="0" aria-label="Idle">
+  <div role="option">First</div>
+</div>`
+
+test.skipIf(!existsSync(chromium.executablePath()))(
+  'focus rings: a list that keeps the focus shows its ring on its active row; one with no lit active row is listed',
+  async () => {
+    const tool: Tool = {
+      slot,
+      browser,
+      network: () => Promise.reject(new Error('focusRings needs no network')),
+      print: () => undefined,
+      env: {},
+      wrote: () => undefined,
+      release: () => undefined,
+      endServer: () => undefined,
+    }
+    const page = await browser.page()
+    await page.setContent(WITH_LISTS)
+    const report = await focusRings(tool, { shots: false })
+    expect([report.checked, report.offenders.length, report.withoutIndicator]).toEqual([1, 0, ['div Unlit', 'div Idle']])
+  },
+)
