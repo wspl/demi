@@ -436,6 +436,32 @@ the turn there and starts its own
 ([Send now](../agent/runtime.md#send-now)). Stop is different: it stops the
 turn and the commands it is running.
 
+### Drafts
+
+A draft is a message the user keeps to send later, and nothing ever sends it
+but the user. For example, while the agent works Ana writes *Check prod's
+DNS next*, which is not for now: she presses Save as Draft beside the send
+button, the composer empties, and *1 Draft* appears at the left of the row
+under the composer. An hour later she opens it and presses Send on the
+draft's row.
+
+- **Save as Draft** (`NotebookPen`, ⌘S) stands left of Stop and Send while
+  the message holds text or attachments, and keeps the whole message, its
+  attachments included, as a draft.
+- **The entry** under the composer, at the left of the model's row, reads
+  *1 Draft*, *3 Drafts*, and is absent while there is none. Pressed, it
+  opens the list under the composer, which rises to make room: about four
+  rows tall, scrolling within. Each row shows the message's first line, its
+  attachments' count and when it was saved; pressing the row edits it, and
+  its end holds Edit, Send and Delete.
+- **Edit** puts the draft in the composer and removes it from the list; a
+  composer holding a message first saves that one as a draft, so nothing is
+  lost. **Send** sends it as the composer would, by the same choice of steer
+  or queue while the agent works. **Delete** removes it at once, with Undo
+  in a toast.
+- **Drafts belong to the conversation** and live on the server, so every
+  page and device shows the same; archiving the conversation keeps them.
+
 ### Recovering an unfinished turn
 
 A turn can end without finishing in two ways, and the agent can go on from
