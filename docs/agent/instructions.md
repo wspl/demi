@@ -57,7 +57,7 @@ repository, only the working directory is searched.
 - In each directory, `.demi/instructions.md` is read too, after that
   directory's `AGENTS.md` or `CLAUDE.md`: instructions for Demi alone, which
   other agents reading `AGENTS.md` should not follow, such as which
-  subagent set to use or how to use Demi's browser for this project. It
+  workflow to use or how to use Demi's browser for this project. It
   reaches the model as a `project_instructions` element of its own path.
 - Names are matched exactly. A symbolic link is followed.
 - A file that is empty or holds only white space is left out.
