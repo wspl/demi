@@ -426,24 +426,26 @@ impl TranscriptLog {
     }
 
     /// Marks the last block's text complete, so a Fork may end at it
-    /// (`conversation-fork.md` § Eligibility). Text that follows a call still
-    /// executing cannot be a Fork's end, so it stays as it is.
-    pub fn complete_tail_text(&mut self) {
+    /// (`conversation-fork.md` § Eligibility), and answers whether it did.
+    /// Text that follows a call still executing cannot be a Fork's end, so
+    /// it stays as it is.
+    pub fn complete_tail_text(&mut self) -> bool {
         let Some(index) = self.blocks.len().checked_sub(1) else {
-            return;
+            return false;
         };
         let (earlier, tail) = self.blocks.split_at_mut(index);
         let Block::Text(text) = &mut tail[0] else {
-            return;
+            return false;
         };
         let executing = earlier.iter().any(
             |block| matches!(block, Block::ToolCall(call) if call.status == ToolCallStatus::Executing),
         );
         if text.forkable || executing {
-            return;
+            return false;
         }
         text.forkable = true;
         self.record_replace(index);
+        true
     }
 
     /// A requested call, saved as executing until the session completes it.

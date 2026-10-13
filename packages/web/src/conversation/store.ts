@@ -1066,19 +1066,34 @@ export const useConversations = defineStore('conversations', () => {
       // Share global model discovery, but render history before it completes.
       // Model load errors belong to the composer, not transcript restoration.
       const modelsLoaded = product.loadModels().catch(() => {})
+      let hostsRead: Promise<void> = Promise.resolve()
       if (madeHere.delete(conversation.id)) {
         // Its record is what the page created: no transcript yet, the hosts
         // its answer listed, and the composer's draft.
         await draftRestored
         conversation.load = 'ready'
       } else {
-        await readOpening(conversation, signal, draftRestored)
+        hostsRead = (await readOpening(conversation, signal, draftRestored)).hosts
+        // The transcript shows with the phase, the pending steers and the
+        // wait, once the handshake is applied, so a reload never draws a
+        // moment without them (`runtime.md` § Connections and the live
+        // tree); one that opens no session, or whose model list has not
+        // answered, shows it now.
+        if (!runnable || product.catalogLoad === 'loading') {
+          conversation.load = 'ready'
+        }
       }
       await modelsLoaded
       signal.throwIfAborted()
       const made = early
       early = null
       await startSession(conversation, entry, made)
+      // No session started: archived meanwhile, or its model is not one the
+      // page can use.
+      if (!entry.runtime && conversation.load === 'loading') {
+        conversation.load = 'ready'
+      }
+      await hostsRead
     } catch (error) {
       discardEarly()
       if (!signal.aborted) {
@@ -1163,14 +1178,15 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Reads what the page shows of a conversation it opens, all at once: its
-   * transcript, which shows without waiting for its hosts, its hosts and
-   * its draft.
+   * transcript, its hosts and its draft. It answers once the transcript is
+   * held, with the hosts' read, which neither the transcript nor the
+   * session's opening waits for.
    */
   async function readOpening(
     conversation: Conversation,
     signal: AbortSignal,
     draftRestored: Promise<void>,
-  ): Promise<void> {
+  ): Promise<{ hosts: Promise<void> }> {
     const reads = earlyReads.get(conversation.id) ?? openingReads(conversation.id, signal)
     earlyReads.delete(conversation.id)
     const hostsRevision = conversation.hostsRevision
@@ -1207,8 +1223,7 @@ export const useConversations = defineStore('conversations', () => {
       contextUsage: null,
     }))
     updateLiveStatus(conversation)
-    conversation.load = 'ready'
-    await hostsRead
+    return { hosts: hostsRead }
   }
 
   /**
