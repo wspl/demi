@@ -363,7 +363,7 @@ export function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly Re
       if (fadingAround(element, el, fading)?.[1] === step)
         continue
       fading.set(element, step)
-      fade(element, marks[step]!.at)
+      fade(element, marks[step]!.at, () => element.classList.remove('stream-ink'))
     }
   }
 
@@ -379,7 +379,7 @@ export function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly Re
     const span = document.createElement('span')
     piece.replaceWith(span)
     span.append(piece)
-    fade(span, marks[step]!.at)
+    fade(span, marks[step]!.at, () => span.replaceWith(...span.childNodes))
   }
 }
 
@@ -403,9 +403,17 @@ function fadingAround(node: Node, root: Element, fading: ReadonlyMap<Element, nu
   return undefined
 }
 
-/** Fades `element` in from `at`, the time its step was shown. */
-function fade(element: Element, at: number): void {
+/**
+ * Fades `element` in from `at`, the time its step was shown, and calls
+ * `done` once it has: a render can stay in the page after its fades end
+ * (`useMarkdownBlocks`), and `done` leaves it as it was rendered.
+ */
+function fade(element: Element, at: number, done: () => void): void {
   // The class marks what is still fading in, for whoever looks at the page.
   element.classList.add('stream-ink')
-  element.animate(FADE_IN, { duration: STREAM_PACE.fadeMs, fill: 'backwards' }).startTime = at
+  const animation = element.animate(FADE_IN, { duration: STREAM_PACE.fadeMs, fill: 'backwards' })
+  animation.startTime = at
+  // Only a cancel rejects it, which nothing here calls; a fade whose element
+  // left the page runs out all the same.
+  animation.finished.then(done, () => {})
 }
