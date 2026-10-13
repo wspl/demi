@@ -809,7 +809,7 @@ The tabs open in one of the user's browsers share this storage, and a page
 writes a conversation's record only for a change its own user made, so a tab
 never replaces what another tab wrote for a conversation it left alone.
 Preferences kept in the user's browser
-hold presentation-only choices. Work-panel width and per-conversation open/closed state use the same account-scoped
+hold presentation-only choices. Work-panel width, the dock windows' height as a share of the session's, and per-conversation open/closed state use the same account-scoped
 local preferences. Refreshing restores whether the panel was open; a conversation
 without a saved choice starts closed. The panel's tabs and selection are saved
 with the conversation ([Work panel](#work-panel)); the pinned tabs' data and

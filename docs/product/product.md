@@ -528,7 +528,15 @@ or a notice, stands above the chips, so the control the user reaches for
 next stays where the hand already is.
 
 The Agents and Running chips each open a window over the session, as an
-editor's bottom panel opens. Its windows, and the windows they open, such as
+editor's bottom panel opens. Its top edge resizes it: dragged, the window
+grows or shrinks with the pointer; double-clicked, it returns to its usual
+height; focused, the arrow keys move it. Its height is kept as a share of
+the session's height, so a window made tall in a large browser window
+stays tall, and never larger than the room, in a small one; it never
+shrinks below its header, its bar and a few lines of transcript, nor grows
+over the session's own header. The two windows keep one height between
+them, as an editor's bottom panel keeps one for each of its views. On a
+phone a window takes the whole screen and has no edge to drag. Its windows, and the windows they open, such as
 the media viewer over a screenshot in a subagent's transcript or the
 terminal of a running command, stand in the order they opened, the newest in
 front. A press outside every window, on the transcript, the sidebar, the composer,
