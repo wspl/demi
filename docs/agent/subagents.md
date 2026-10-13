@@ -1048,7 +1048,7 @@ session's inference transcript is only its own transcript frames.
 
 | Server frame | Fields | Sent |
 | --- | --- | --- |
-| `subagent` | `event` (`started`, `changed` or `closed`), `job` | When a child starts (spawn, resume, or restore), when its record changes, as when it moves to another directory, and when it closes |
+| `subagent` | `event` (`started`, `changed`, `closed` or `gone`), `job`, or for `gone` only the `subagentId` | When a child starts (spawn, resume, or restore), when its record changes, as when it moves to another directory, and when it closes |
 | `subagent_transcript_reset` | `subagentId`, `start`, `blocks` from that index on, `length`, `revision`, optional `failures` | After `started`, and for every live child when a page opens the conversation or syncs its transcript; it starts at the child's latest page ([Where a reset starts](runtime.md#where-a-reset-starts)) |
 | `subagent_transcript_patch` | `subagentId`, `patches`, `revision`, optional `failures` | When a child's transcript changes |
 
@@ -1108,7 +1108,12 @@ the children it holds as running and the highest subagent number it knows
 that no longer runs, and for each numbered above what it knew that has
 already ended, the handshake sends `subagent` with `closed` and its final
 job, then `subagent_transcript_reset` with its latest page, so a child that
-ended while the page was away shows as it ended. Every command the page
+ended while the page was away shows as it ended; a held child the store no
+longer has is answered by `subagent` with `gone`, and the page drops it.
+The handshake reads the store's ended children before it attaches and does
+not read them again: a child that starts or ends after that read reaches
+the page by the ordinary `subagent` frames that follow the attach, and a
+`closed` the page already applied changes nothing. Every command the page
 held as running is answered by its `shell_output`, its end included, or by
 `shell_gone` when the conversation no longer has it, and every node's
 `context_usage` is sent, with no usage when it cannot be computed without
