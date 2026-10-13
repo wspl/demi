@@ -8,15 +8,20 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::drafts::{ConversationDraft, DraftFile};
+use crate::ids::SavedMessageId;
 
 /// The most messages a conversation keeps saved for later.
 pub const SAVED_MAX: usize = 200;
 
 /// `POST /conversations/:id/saved/from-draft`: the composer's message, as a
-/// draft's `PUT` names it, with the revision its text was built on.
+/// draft's `PUT` names it, with the revision its text was built on and the id
+/// the page gives the new message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SavedFromDraft {
+    /// The new message's id, which the page chooses.
+    #[garde(skip)]
+    pub id: SavedMessageId,
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub base: u64,
     #[garde(skip)]
@@ -31,6 +36,9 @@ pub struct SavedFromDraft {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SavedSave {
+    /// The new message's id, which the page chooses.
+    #[garde(skip)]
+    pub id: SavedMessageId,
     #[garde(skip)]
     pub text: String,
     #[garde(dive)]

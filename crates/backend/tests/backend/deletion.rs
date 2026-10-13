@@ -273,6 +273,7 @@ async fn the_collection_after_a_deletion_keeps_what_a_fork_names_and_what_is_you
             &format!("/api/conversations/{SECOND}/saved"),
             Some(&master),
             json!({
+                "id": uuid::Uuid::new_v4().to_string(),
                 "text": "Compare \u{FFFC}",
                 "files": [{ "type": "upload", "ref": kept.id, "fileName": "kept.png" }],
             }),

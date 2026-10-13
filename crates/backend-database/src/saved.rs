@@ -7,7 +7,7 @@
 
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::drafts::ConversationDraft;
-use demi_web_api_protocol::ids::{AttachmentId, ConversationId, UserId};
+use demi_web_api_protocol::ids::{AttachmentId, ConversationId, SavedMessageId, UserId};
 use demi_web_api_protocol::saved::{SAVED_MAX, SavedList, SavedMessage};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
@@ -31,6 +31,9 @@ pub enum SavedRefusal {
     Full,
     /// The conversation has no saved message of that id.
     NotFound,
+    /// A saved message has the id already, with other content or in another
+    /// conversation.
+    IdTaken,
 }
 
 impl ControlService {
@@ -67,25 +70,34 @@ impl ControlService {
             .await
     }
 
-    /// Saves the composer's message, `text` and `files`, for later and
-    /// empties the conversation's draft, as a save of an empty draft built on
-    /// the revision `base` would, in one transaction. Each upload is
-    /// presented with what its record holds, as a draft's is.
+    /// Saves the composer's message, `text` and `files`, for later as the
+    /// message `id` and empties the conversation's draft, as a save of an
+    /// empty draft built on the revision `base` would, in one transaction.
+    /// Each upload is presented with what its record holds, as a draft's is.
+    /// A save sent again, with an `id` the conversation keeps with the same
+    /// content, changes nothing and answers the message with the draft as it
+    /// is.
     pub async fn save_from_draft(
         &self,
         conversation: ConversationId,
         owner: UserId,
+        id: SavedMessageId,
         base: u64,
         text: String,
         files: Vec<StagedFile>,
     ) -> Result<Result<(SavedMessage, ConversationDraft), SavedRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            let version = match staged(&transaction, &conversation, &owner, text, files)? {
-                Ok(version) => version,
+            let version = match staged(&transaction, &conversation, &owner, &id, text, files)? {
+                Ok(Staged::New(version)) => version,
+                Ok(Staged::Again(message)) => {
+                    let draft = stored(&transaction, &conversation)?
+                        .unwrap_or_else(|| Stored::written(None, Version::empty()));
+                    return Ok(Ok((message, draft.present())));
+                }
                 Err(refusal) => return Ok(Err(refusal)),
             };
-            let message = insert(&transaction, &conversation, version, now)?;
+            let message = insert(&transaction, &conversation, &id, version, now)?;
             let mut draft =
                 Stored::saved_on(stored(&transaction, &conversation)?, base, Version::empty());
             draft.saved_revision += 1;
@@ -96,22 +108,25 @@ impl ControlService {
         .await
     }
 
-    /// Adds `text` and `files` as a message saved for later, leaving the
-    /// draft as it is, as Undo after a removal does.
+    /// Adds `text` and `files` as the message `id` saved for later, leaving
+    /// the draft as it is, as Undo after a removal does; sent again with the
+    /// same content, it changes nothing.
     pub async fn add_saved(
         &self,
         conversation: ConversationId,
         owner: UserId,
+        id: SavedMessageId,
         text: String,
         files: Vec<StagedFile>,
     ) -> Result<Result<SavedMessage, SavedRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            let version = match staged(&transaction, &conversation, &owner, text, files)? {
-                Ok(version) => version,
+            let version = match staged(&transaction, &conversation, &owner, &id, text, files)? {
+                Ok(Staged::New(version)) => version,
+                Ok(Staged::Again(message)) => return Ok(Ok(message)),
                 Err(refusal) => return Ok(Err(refusal)),
             };
-            let message = insert(&transaction, &conversation, version, now)?;
+            let message = insert(&transaction, &conversation, &id, version, now)?;
             raise(&transaction, &conversation, now)?;
             transaction.commit()?;
             Ok(Ok(message))
@@ -137,7 +152,9 @@ impl ControlService {
             };
             let current = stored(&transaction, &conversation)?;
             if let Some(draft) = current.as_ref().filter(|draft| !draft.version.is_empty()) {
-                insert(&transaction, &conversation, draft.version.clone(), now)?;
+                let id = SavedMessageId::try_from(uuid::Uuid::new_v4().to_string())
+                    .expect("a v4 UUID is a message id");
+                insert(&transaction, &conversation, &id, draft.version.clone(), now)?;
             }
             let mut draft = Stored::written(current, document);
             draft.saved_revision += 1;
@@ -189,16 +206,38 @@ impl ControlService {
     }
 }
 
-/// The message a save names, when the conversation may keep it: not
-/// archived, every upload the caller's, within a draft's limit, and fewer
-/// than [`SAVED_MAX`] kept already.
+/// What a save names.
+enum Staged {
+    /// A message the conversation may keep: not archived, every upload the
+    /// caller's, within a draft's limit, and fewer than [`SAVED_MAX`] kept
+    /// already.
+    New(Version),
+    /// The save was made already: the conversation keeps a message of that id
+    /// with this content.
+    Again(SavedMessage),
+}
+
+/// The message a save of `id` names, or the one the conversation kept when
+/// that save was made before. An id the conversation keeps with other
+/// content, or another conversation keeps, is taken.
 fn staged(
     connection: &Connection,
     conversation: &ConversationId,
     owner: &UserId,
+    id: &SavedMessageId,
     text: String,
     files: Vec<StagedFile>,
-) -> Result<Result<Version, SavedRefusal>, StorageError> {
+) -> Result<Result<Staged, SavedRefusal>, StorageError> {
+    let kept_by: Option<String> = connection
+        .query_row(
+            "SELECT conversation_id FROM saved_messages WHERE id = ?1",
+            [id.as_str()],
+            |row| row.get(0),
+        )
+        .optional()?;
+    if kept_by.is_some_and(|kept_by| !kept_by.eq_ignore_ascii_case(conversation.as_str())) {
+        return Ok(Err(SavedRefusal::IdTaken));
+    }
     if archived(connection, conversation)? {
         return Ok(Err(SavedRefusal::Archived));
     }
@@ -209,6 +248,13 @@ fn staged(
     if version.too_large() {
         return Ok(Err(SavedRefusal::TooLarge));
     }
+    if let Some(kept) = saved(connection, conversation, id.as_str())? {
+        return Ok(if kept.text == version.text && kept.files == version.files {
+            Ok(Staged::Again(kept))
+        } else {
+            Err(SavedRefusal::IdTaken)
+        });
+    }
     let kept: i64 = connection.query_row(
         "SELECT count(*) FROM saved_messages WHERE conversation_id = ?1",
         [conversation.as_str()],
@@ -217,7 +263,7 @@ fn staged(
     if kept >= count(SAVED_MAX) {
         return Ok(Err(SavedRefusal::Full));
     }
-    Ok(Ok(version))
+    Ok(Ok(Staged::New(version)))
 }
 
 fn saved(
@@ -245,20 +291,20 @@ fn saved_row(row: &Row<'_>) -> Result<SavedMessage, StorageError> {
     })
 }
 
-/// Saves `version` as a new message of the conversation, saved `now`.
+/// Saves `version` as the message `id` of the conversation, saved `now`.
 fn insert(
     connection: &Connection,
     conversation: &ConversationId,
+    id: &SavedMessageId,
     version: Version,
     now: Timestamp,
 ) -> Result<SavedMessage, StorageError> {
-    let id = uuid::Uuid::new_v4().to_string();
     connection.execute(
         "INSERT INTO saved_messages (id, conversation_id, saved_at, document) VALUES (?1, ?2, ?3, ?4)",
-        params![id, conversation.as_str(), now.as_millisecond(), to_json(&version)],
+        params![id.as_str(), conversation.as_str(), now.as_millisecond(), to_json(&version)],
     )?;
     Ok(SavedMessage {
-        id,
+        id: id.to_string(),
         text: version.text,
         files: version.files,
         saved_at: now,

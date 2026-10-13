@@ -320,6 +320,9 @@ pub enum ErrorCode {
     SavedFull,
     /// The conversation has no message saved for later of that id.
     SavedNotFound,
+    /// A message saved for later has the id already, with other content or in
+    /// another conversation.
+    IdTaken,
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);
