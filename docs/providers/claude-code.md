@@ -341,8 +341,7 @@ thinking setting.
   whose request would otherwise carry no tools;
 - the request's model, system prompt and thinking effort;
 - the thinking display, always `--thinking-display summarized`, the most
-  detailed the vendor gives, whatever the selection's summary says, which
-  the provider does not offer: without it the CLI leaves the display to
+  detailed the vendor gives, whatever the selection's summary says: without it the CLI leaves the display to
   the vendor, which sends every thinking block empty. A summarized block's
   text arrives in its `thinking_delta`s, and the block's start ends the
   page's Requesting at once
