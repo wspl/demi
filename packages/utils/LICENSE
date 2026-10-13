@@ -9,23 +9,24 @@ these conditions prevail.
    business. You may charge others for services around Demi that they run
    for themselves, such as deployment, integration, consulting and support.
 
-2. Selling. Without a commercial license from The Demi Authors, you may not
+2. Selling. Unless The Demi Authors permit it in writing, you may not
    offer Demi, or a modified version of it, to third parties for a fee or
    other consideration: neither by operating it as a hosted or multi-tenant
    service that they use, nor by selling, licensing or bundling it as a
-   product whose functionality is substantially Demi's. For a commercial
-   license, write to support@demi.sh.
+   product whose functionality is substantially Demi's. To ask for
+   permission, write to support@demi.sh.
 
 3. Branding. When you run or distribute Demi's web front end, you may not
    remove, hide or change the Demi name, logo or copyright notices it shows,
-   nor present it under another name, without a commercial license from The
-   Demi Authors. This does not apply to uses of Demi that do not include its
+   nor present it under another name, unless The Demi Authors permit it in
+   writing. This does not apply to uses of Demi that do not include its
    web front end. The names and marks of Demi otherwise remain subject to
    section 6 of the Apache License.
 
 4. Contributions. By contributing to Demi, you agree that The Demi Authors
    may use your contribution under these terms and may also license it to
-   others under other terms, including commercial licenses.
+   others under other terms, including terms that permit what condition 2
+   or 3 forbids.
 
 5. Versions of Demi released under the Apache License 2.0 alone, before
    these conditions, keep that license.

@@ -94,4 +94,4 @@ before you add or change a test.
 By contributing, you agree that your contributions are licensed under the
 project's license, the [Demi License](LICENSE),
 and that The Demi Authors may also license them to others under other terms,
-including the commercial licenses that allow selling Demi.
+including terms that permit what the license otherwise forbids.
