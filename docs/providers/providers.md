@@ -57,8 +57,11 @@ different keys, endpoints or model lists.
 | `grok-build` | Subscription account, from device login | Chat Completions through Grok Build's chat proxy | Backend |
 | `claude-code` | Subscription account, from a Claude sign-in | stream-json with the Claude Code CLI | The user's Cloud |
 
-An API-key entry stores its family, key, optional endpoint, optional wire
-protocol, optional vendor ID, and optional typed model list. These are user
+An API-key entry is a **vendor entry**, of the family's own vendor or of a
+vendor models.dev lists, or a **compatible entry**, of any endpoint that
+speaks the family's protocol ([Endpoints](#endpoints)). It stores its family,
+key, its endpoint when it is a compatible entry, optional wire protocol,
+optional vendor ID, and optional typed model list. These are user
 configuration: a change in the vendor's catalog does not overwrite them. A
 subscription entry names its family and holds its accounts. Each owner has at
 most one subscription entry per family; that entry can hold several accounts,
@@ -101,9 +104,15 @@ provider's directory) and how the backend caches them is defined in
 
 ### Endpoints
 
-An API-key entry's endpoint is the base URL of the vendor's API. The provider
-appends the path of the request it makes, unless the configured URL already
-ends with that path. An entry without an endpoint uses the family's default:
+An API-key entry's endpoint is the base URL of the API. A vendor entry has
+no endpoint of its own: it uses its vendor's, the family's default below or
+the `api` URL models.dev states for the vendor, and its catalog is the
+vendor's. A compatible entry has an endpoint, which the user gives and may
+change, and its catalog is only the models the user configures
+([Catalog sources](models.md#catalog-sources)); whether an entry stores an
+endpoint is what makes it compatible. The provider appends the path of the
+request it makes, unless the configured URL already ends with that path. The
+families' defaults:
 
 | Family | Default base URL | Request |
 |---|---|---|
