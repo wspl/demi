@@ -174,7 +174,9 @@ why.
   flipped: archive and restore with Undo, pin and unpin, renaming,
   reordering, marking read, a conversation's model, effort and tier, moving
   it to a project, its messages saved for later (saving, editing, sending,
-  deleting with Undo), switches, choices and fields that save themselves,
+  deleting with Undo), the product's own switches, choices and fields that
+  save themselves, a plugin's switches excepted, whose state the plugin
+  tells ([Calls and states](../architecture/plugin-pages.md#calls-and-states)),
   the active account, enabling models.
 - **No click goes unanswered.** Every press of a control changes the
   screen in the same frame: with its result, when it shows at once, or
