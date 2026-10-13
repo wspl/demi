@@ -64,6 +64,15 @@ Account. When Bo leaves, she disables his account.
   not below theirs.
 - **Reset Password…** sets a password the administrator types or has made
   and copies; the account's sessions and passkeys stay.
+- **Sign-In Code…** shows a QR code that signs a phone in to that account,
+  as a handoff code does: good for ten minutes and once, ending the
+  account's earlier sign-in code, and asking the administrator's own
+  confirmation as Hand Off to Phone does. Add User… shows it too once the
+  account is made, so the new user's phone is signed in and adds a passkey
+  there and then. The account's list of signed-in browsers names the
+  administrator on a browser signed in this way, *Signed in with a code
+  from Ana*. It grants no more than a password reset does, which already
+  lets an administrator in, and changes no password.
 - **Change Role…** moves an account between the roles below the
   administrator's own: the master makes users admins and admins users; an
   admin changes no role.
@@ -127,6 +136,21 @@ phone.
   password sign-in on the phone would: signing out on one leaves the other
   signed in. A browser signed in to another account signs that one out and
   takes this one, so it holds one session, never two.
+- **The phone can add a passkey at once.** A sign-in by a code counts as
+  the phone's confirmation, as a password sign-in does, so for five minutes
+  the phone adds a passkey without asking the password again. The page the
+  code opens offers it once on that browser, *Use Face ID next time?* with
+  Add Passkey and Not Now, and not again on that browser whichever is
+  pressed; a phone whose password manager already holds a passkey of the
+  account answers so, and the page says *This phone already has a passkey
+  for Demi.* The passkey then signs the phone in by itself and, by the
+  browser's own *Use a phone or tablet* code, signs in a computer too.
+
+A computer signs in with a passkey on the phone without a code of Demi's:
+Sign In with Passkey on the computer shows the browser's own choice of a
+phone, whose QR code the phone's camera reads, and Face ID on the phone
+signs the computer in. This is the browser's cross-device passkey sign-in
+(both need Bluetooth on), which a passkey of any manager offers.
 
 Settings › Account lists the browsers signed in to the account: each by its
 browser and system, such as *Safari on iPhone*, or *Web Browser* when its
