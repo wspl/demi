@@ -197,7 +197,8 @@ page                                    backend
   sign-in is not counted toward the address lockout, since a signature
   cannot be guessed.
 
-A handoff code gives a phone a session of the account that made it
+A handoff code opens the account that made it on a phone, in the phone's
+own session of that account when it has one, else in a new one
 ([User system](../product/product.md#user-system)):
 
 ```

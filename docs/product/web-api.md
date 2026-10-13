@@ -771,8 +771,11 @@ Verification, handoff codes and sessions ([Authentication and ownership](../back
   the answer's arrival, never comparing the server's clock with its own; a session not verified in the last five
   minutes answers 403 `verification_required`, a `to` that is not a path of
   the product 400 `invalid_body`. It ends the account's earlier code.
-- `POST /api/auth/handoff` is public, takes `{ code }`, and signs in as
-  `POST /api/auth/login` does, answering `{ to }`; a code that is unknown,
+- `POST /api/auth/handoff` is public, takes `{ code }` and answers
+  `{ to }`. With a session cookie of the code's account it keeps that
+  session, records the code on it as `handoffId` and sets no cookie; with
+  another account's, it ends that session and signs in as
+  `POST /api/auth/login` does; with none, it signs in; a code that is unknown,
   expired or spent answers 401 `handoff_expired`.
 - `GET /api/auth/sessions` returns `{ sessions }`, each `{ id, name,
   createdAt, lastActiveAt, current, handoffId }`, newest first;
