@@ -52,7 +52,7 @@ import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
-import { resumeWaitsFor, sessionFailureNotice, turnRecovery } from './session-status'
+import { dockChipsShown, resumeWaitsFor, sessionFailureNotice, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import { EMPTY_TRANSCRIPT, latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
@@ -625,7 +625,7 @@ watch(
                 @decide="(id, decision, credential) => emit('decidePermission', id, decision, credential)"
               />
             </template>
-            <template #chips>
+            <template v-if="dockChipsShown(conversation.load)" #chips>
               <!-- The transcript says what happened; the one recovery control is here, over the input. -->
               <Tooltip
                 v-if="recovery"
