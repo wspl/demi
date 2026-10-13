@@ -7,6 +7,7 @@ import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
 import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
 import { openMessageLink, pressMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'
+import { useHostImages } from '@demicodes/web-ui/markdown/host-images'
 import { useMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import { useTranscript } from '@demicodes/web-ui/agent/edit-selection'
 import AgentLinkMark from '@demicodes/web-ui/agent/AgentLinkMark.vue'
@@ -52,6 +53,8 @@ const viewer = useMediaViewer()
 const transcript = useTranscript()
 // The files the reply's inline code names, asked about once it is complete.
 const codeFiles = computed(() => replyCodeFiles(props.content, props.streaming, files()))
+// The Host images of what shows, each at the version of its file the page keeps.
+const hostImages = useHostImages(() => visible.value, files)
 
 // Closers apply to finished text too: an aborted stream leaves the same half-open markers.
 // The render also follows the highlighter: its arrival and the document's theme.
@@ -60,6 +63,7 @@ const renderedMarkdown = computed(() => {
   return md.render(visible.value + closeOpenInlineMarkdown(visible.value), {
     files: files(),
     codeFiles: codeFiles.value,
+    hostImages: hostImages.value,
     agents: agents(),
   })
 })

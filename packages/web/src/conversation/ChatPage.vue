@@ -15,7 +15,7 @@ import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { useWorkPanel } from './work'
 import { usePermissions } from './permissions'
-import { conversationFileRoutes, rawFileContents } from '../api/files'
+import { conversationFiles } from './files'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
 import { lookupAttachment } from '../api/attachments'
 import { lookupCodeFiles } from '../api/code-files'
@@ -176,21 +176,22 @@ const selectEdit = computed<EditSelectionHandler | undefined>(() => {
 })
 
 /**
- * The Host files the conversation's messages name: images from its raw
- * route, files opened through the `file` intent while a plugin opens it, at
- * their lines, and which paths of a reply's inline code are files, from the
- * Host, whose home a `~/` path starts from; and the attachments they name,
- * from the attachment route.
+ * The Host files the conversation's messages name: images from the files
+ * the conversation's service keeps, at the version its file watch keeps
+ * current, files opened through the `file` intent while a plugin opens it,
+ * at their lines, and which paths of a reply's inline code are files, from
+ * the Host, whose home a `~/` path starts from; and the attachments they
+ * name, from the attachment route.
  */
 const files = computed<ConversationFiles | undefined>(() => {
   const current = conversation.value
   if (!current) {
     return undefined
   }
-  const contents = rawFileContents(conversationFileRoutes(current.id).raw)
+  const contents = conversationFiles(current.id).workspace?.source.contents
   return {
     home: resources.deviceById(executionFor(current).deviceId)?.home ?? null,
-    imageUrl: (path) => contents.url(path),
+    ...(contents ? { contents } : {}),
     open: work.canOpen('file')
       ? ({ path, line, root }) => work.openIn(current.id, { intent: 'file', payload: { path, ...(line === null ? {} : { line }), ...(root === undefined ? {} : { root }) } })
       : undefined,
