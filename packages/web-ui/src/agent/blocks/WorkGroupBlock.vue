@@ -18,7 +18,7 @@ import GoneMediaLines from './GoneMediaLines.vue'
 import { stepIcon } from './tool-row-icon'
 import { runFace, stepKey, workRunning, workSummary, type WorkGroupBlock, type WorkStep } from '../work-groups'
 import { useEditSelection, useTranscript } from '../edit-selection'
-import { changeFile, pillSelection, runFiles } from '../../files/request-changes'
+import { changeFile, pillSelection, requestFileSelection, runFiles } from '../../files/request-changes'
 import { foldedMedia, splitMedia } from '../tool-media'
 import { useElapsedTime } from '../../composables/useElapsedTime'
 import BlockScope from './BlockScope.vue'
@@ -155,11 +155,30 @@ function selection(path: string) {
     ? pillSelection(transcript.node, transcript.requests(), call, first.call, first.path, transcript.directory(call.id))
     : null
 }
+/** What the "+N Files" pill opens: the first of its files the request lists. */
+function restSelection(paths: readonly string[]) {
+  const call = calls.value.at(-1)
+  if (!transcript || !call)
+    return null
+  const directory = transcript.directory(call.id)
+  for (const path of paths) {
+    const found = selection(path)
+      ?? requestFileSelection(transcript.node, transcript.requests(), call, path, directory)
+    if (found)
+      return found
+  }
+  return null
+}
 function selectable(path: string): boolean {
   return select() !== undefined && selection(path) !== null
 }
 function pick(path: string): void {
   const picked = selection(path)
+  if (picked)
+    select()?.(picked)
+}
+function pickRest(paths: readonly string[]): void {
+  const picked = restSelection(paths)
   if (picked)
     select()?.(picked)
 }
@@ -243,7 +262,9 @@ function pick(path: string): void {
         :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
         :files="files"
         :selectable="selectable"
+        :rest-selectable="(paths) => select() !== undefined && restSelection(paths) !== null"
         @select="pick"
+        @open-rest="pickRest"
       />
     </Fold>
   </template>
