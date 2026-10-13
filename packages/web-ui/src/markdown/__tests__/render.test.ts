@@ -1,14 +1,28 @@
 import { expect, test } from 'bun:test'
 import { messageMedia, renderMarkdown } from '../render'
 import type { AttachmentLookup, MessageFiles } from '../types'
+import type { HostImage } from '../../files/host-image'
+import type { FileContents } from '../../files/types'
 import type { MessageAgents } from '../../agent/agent-links'
 
 // The files a message names (`file-previews.md` § Files named in messages).
 
+/** The Host's kept files, which a message's Host images show; never read here. */
+const contents: FileContents = {
+  url: (path) => `/raw?path=${encodeURIComponent(path)}`,
+  describe: () => new Promise(() => {}),
+  showDescription: () => { throw new Error('Rendering shows no file') },
+}
+
 const files: MessageFiles = {
   cwd: '/work',
-  imageUrl: (path) => `/raw?path=${encodeURIComponent(path)}`,
+  contents,
   open: () => {},
+}
+
+/** The Host images at `paths` as the page shows them once their files are read. */
+function shownImages(...paths: string[]): ReadonlyMap<string, HostImage> {
+  return new Map(paths.map((path) => [path, { state: 'shown', src: `/raw?path=${encodeURIComponent(path)}` }]))
 }
 
 /** A link of text to a Host file, as a message shows it: the file's icon, then the text. */
@@ -44,10 +58,10 @@ test('a link opens a Host file or a web page, and anything else stays text', () 
 test('an image loads from the web, as a data URL, or from the Host; anything else shows its alt text', () => {
   const html = renderMarkdown(
     '![chart](out/chart.png) and ![logo](https://example.com/l.png) and ![dot](data:image/png;base64,AAAA) and ![mail](mailto:a@b.c)',
-    { files },
+    { files, hostImages: shownImages('/work/out/chart.png') },
   )
   // A click on any of them shows it large in the media viewer, so none is wrapped in a link.
-  expect(html).toContain(`<img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" />`)
+  expect(html).toContain(`<img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" data-host-file="/work/out/chart.png" />`)
   expect(html).toContain('<img src="https://example.com/l.png" alt="logo" />')
   expect(html).not.toContain('<a ')
   // Each stands on its own line, the words between them on theirs.
@@ -56,17 +70,24 @@ test('an image loads from the web, as a data URL, or from the Host; anything els
 
 test('a link or image path starting ~/ names the Host home, and stays text while the home is not known', () => {
   const markdown = '[todo](~/notes/todo.md) ![chart](~/out/chart.png)'
-  const html = renderMarkdown(markdown, { files: { ...files, home: '/Users/alex' } })
+  const html = renderMarkdown(markdown, { files: { ...files, home: '/Users/alex' }, hostImages: shownImages('/Users/alex/out/chart.png') })
   expect(html).toContain(fileLink('/Users/alex/notes/todo.md', 'todo'))
-  expect(html).toContain(`<img src="/raw?path=${encodeURIComponent('/Users/alex/out/chart.png')}" alt="chart" />`)
+  expect(html).toContain(`<img src="/raw?path=${encodeURIComponent('/Users/alex/out/chart.png')}" alt="chart" data-host-file="/Users/alex/out/chart.png" />`)
   expect(renderMarkdown(markdown, { files })).toBe('<p>todo chart</p>\n')
 })
 
 test('an image inside a link follows the link', () => {
   expect(renderMarkdown('[![build](https://example.com/badge.svg)](https://example.com/ci)', { files }))
     .toBe('<p class="media-lone"><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer"><img src="https://example.com/badge.svg" alt="build" /></a></p>\n')
-  expect(renderMarkdown('[![chart](out/chart.png)](docs/charts.md)', { files }))
-    .toContain(`<a href="/work/docs/charts.md" data-file-link><img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" /></a>`)
+  expect(renderMarkdown('[![chart](out/chart.png)](docs/charts.md)', { files, hostImages: shownImages('/work/out/chart.png') }))
+    .toContain(`<a href="/work/docs/charts.md" data-file-link><img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" data-host-file="/work/out/chart.png" /></a>`)
+})
+
+test('a Host image shows its alt text while its file is read, and as words when the Host has no file there', () => {
+  const reading = renderMarkdown('![chart](out/chart.png)', { files, hostImages: new Map() })
+  expect(reading).toBe('<p class="media-lone">chart</p>\n')
+  const none = renderMarkdown('see ![chart](out/chart.png)', { files, hostImages: new Map([['/work/out/chart.png', { state: 'none' }]]) })
+  expect(none).toBe('<p>see chart</p>\n')
 })
 
 test('without a Host, paths stay text and Host images show their alt text', () => {
@@ -285,7 +306,7 @@ test('a message\'s pictures are its images that load and its attachments that ar
     '![](attachment:a1)',
   ].join('\n\n')
   expect(messageMedia(markdown, withAttachments)).toEqual([
-    { kind: 'image', src: `/raw?path=${encodeURIComponent('/work/out/chart.png')}`, name: 'chart' },
+    { kind: 'image', file: { path: '/work/out/chart.png', contents }, name: 'chart' },
     { kind: 'image', src: 'https://example.com/l.png', name: 'logo' },
     { kind: 'video', src: '/blobs/2?type=video%2Fmp4', name: 'flow.mp4', size: { width: 1280, height: 720 } },
     { kind: 'image', src: '/blobs/1?type=image%2Fpng', name: 'login.png', size: { width: 480, height: 300 } },
@@ -294,5 +315,5 @@ test('a message\'s pictures are its images that load and its attachments that ar
 
 test('an image inside a link follows the link and is not among a message\'s pictures', () => {
   expect(messageMedia('[![build](https://example.com/badge.svg)](https://example.com/ci) ![chart](out/chart.png)', files))
-    .toEqual([{ kind: 'image', src: `/raw?path=${encodeURIComponent('/work/out/chart.png')}`, name: 'chart' }])
+    .toEqual([{ kind: 'image', file: { path: '/work/out/chart.png', contents }, name: 'chart' }])
 })
