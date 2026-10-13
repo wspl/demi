@@ -150,7 +150,6 @@ fn environment(site: &CliSite) -> BTreeMap<String, Option<String>> {
         ("CLAUDE_CODE_RESUME_INTERRUPTED_TURN".to_owned(), set("1")),
         ("DISABLE_AUTOUPDATER".to_owned(), set("1")),
         ("DISABLE_AUTO_COMPACT".to_owned(), set("1")),
-        ("DISABLE_TELEMETRY".to_owned(), set("1")),
         ("MAX_MCP_OUTPUT_TOKENS".to_owned(), set("1000000")),
         ("CLAUDECODE".to_owned(), None),
     ])
