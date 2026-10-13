@@ -68,7 +68,9 @@ const emit = defineEmits<{
         :size="phone ? ICON_PX.phoneRow : ICON_PX.in28"
         class="shrink-0"
       />
-      <span class="min-w-0 flex-1 truncate">{{ label }}</span>
+      <slot>
+        <span class="min-w-0 flex-1 truncate">{{ label }}</span>
+      </slot>
       <span
         v-if="shortcut"
         class="text-[11px] text-fg-faint phone:hidden"

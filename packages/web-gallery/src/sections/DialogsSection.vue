@@ -91,9 +91,14 @@ const emailPhases: { variant: string; phase: ChangeEmailPhase }[] = [
   { variant: 'verify · code resent', phase: { kind: 'verify', email: 'zan@demi.codes', resent: true } },
   { variant: 'done', phase: { kind: 'done', email: 'zan@demi.codes' } },
 ]
-const revokeConfirmations: { variant: string; device: string; projects: string[] }[] = [
-  { variant: 'with projects', device: 'alex-mbp', projects: ['demi', 'notes'] },
-  { variant: 'without projects', device: 'build-01', projects: [] },
+const revokeConfirmations: { variant: string; device: string; home: string; projects: string[] }[] = [
+  {
+    variant: 'with projects · two of one name',
+    device: 'alex-mbp',
+    home: '/Users/alex',
+    projects: ['/Users/alex/Projects/demi', '/Users/alex/Work/demi', '/Users/alex/Projects/notes'],
+  },
+  { variant: 'without projects', device: 'build-01', home: '/home/build', projects: [] },
 ]
 /** The name the Rename Device specimen opens on; a rename keeps the new one, as the device's row would. */
 const renamedDevice = ref('alex-mbp')
@@ -469,7 +474,7 @@ const resetPhases: {
     </template>
 
     <template v-if="view === 'devices'">
-      <GallerySection title="Revoke Device" note="Asked before a device is revoked. The projects on it go with it, named here; their files and conversations stay. A device without projects is asked about plainly.">
+      <GallerySection title="Revoke Device" note="Asked before a device is revoked. The projects on it go with it, each named by its directory with its location beside it, so two of one name differ; their files and conversations stay. A device without projects is asked about plainly.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="item in revokeConfirmations" :key="item.variant" wide :variant="item.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -478,6 +483,7 @@ const resetPhases: {
                 :overlay-store="appOverlayStore"
                 :device="item.device"
                 :projects="item.projects"
+                :home="item.home"
                 @close="close"
                 @revoke="finish(close, `Revoke the Device ${item.device}`)"
               />

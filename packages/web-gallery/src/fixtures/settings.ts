@@ -749,10 +749,10 @@ export function searchMockModels(query: string, signal: AbortSignal): Promise<Se
 
 /** The paired devices the devices page lists. */
 /** The projects on the paired devices, which a revoked device takes with it. */
-function galleryDeviceProjects(): { deviceId: string; name: string }[] {
+function galleryDeviceProjects(): { deviceId: string; path: string }[] {
   return [
-    { deviceId: 'mac', name: 'demi' },
-    { deviceId: 'mac', name: 'notes' },
+    { deviceId: 'mac', path: '/Users/alex/Projects/demi' },
+    { deviceId: 'mac', path: '/Users/alex/Projects/notes' },
   ]
 }
 
