@@ -1,6 +1,7 @@
 import { inject, provide, type InjectionKey } from 'vue'
 import { transcriptRowOf, type MediaSequence, type MediaViewerState } from '../files/media-viewer'
 import { messagePicture } from './media-run'
+import { HOST_FILE_ATTRIBUTE } from './render'
 import type { MessageAgents } from '../agent/agent-links'
 import type { MessageFiles } from './types'
 
@@ -57,7 +58,10 @@ export function openMessageLink(
   if (target instanceof HTMLImageElement && !target.closest('a')) {
     event.preventDefault()
     const { kind, src, size, caption } = messagePicture(target)
-    viewer.show({ kind, src, name: caption || 'image', size, row: transcriptRowOf(target) }, among)
+    const path = target.getAttribute(HOST_FILE_ATTRIBUTE)
+    const shown = { kind, name: caption || 'image', size, row: transcriptRowOf(target) }
+    // A Host image shows its file, at the version the page keeps, as the message does.
+    viewer.show(path !== null && files?.contents ? { ...shown, file: { path, contents: files.contents } } : { ...shown, src }, among)
     return
   }
   const link = target?.closest('a[data-file-link]')
