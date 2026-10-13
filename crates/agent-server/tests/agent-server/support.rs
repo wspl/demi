@@ -32,7 +32,7 @@ use demi_host_interface::{
 };
 use demi_provider_common::{
     InferenceItem, InferenceRequest, ProviderRun, ProviderRuntime, RequestLimits, UserPart,
-    testing::{FixedClock, ScriptedRuntime, Turn},
+    testing::{FixedClock, ManualClock, ScriptedRuntime, Turn},
 };
 use demi_shared_types::{
     Block, Clock, CommandId, ModelSelection, NodeId, ProviderModel, ServiceTier, StreamKind,
@@ -547,6 +547,22 @@ impl Fixture {
         resolver.provide("stub", script);
         let clock = Arc::new(FixedClock(start()));
         Self::build(resolver, product, store, config, clock)
+    }
+
+    /// A server of the provider `stub` playing `script`, on a clock the
+    /// test moves.
+    pub fn with_clock(script: &ScriptedRuntime) -> (Self, Arc<ManualClock>) {
+        let resolver = Rc::new(ScriptedProviders::default());
+        resolver.provide("stub", script);
+        let clock = Arc::new(ManualClock::new(start()));
+        let fixture = Self::build(
+            resolver,
+            TestProduct::default(),
+            MemoryTreeStore::new(),
+            ServerConfig::default(),
+            clock.clone(),
+        );
+        (fixture, clock)
     }
 
     /// A server of the provider `stub` answering from `model`, with

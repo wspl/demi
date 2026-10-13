@@ -467,13 +467,23 @@ async fn read(
                         event,
                         ProviderEvent::TextDelta(_) | ProviderEvent::ThinkingSignature(_)
                     );
-                if completes_text {
-                    complete_text(s);
-                }
                 if let ProviderEvent::Response(Some(usage)) = &event {
                     recover |= s.config.compaction.reached(window, model, usage);
                 }
-                s.update(|core| core.apply_event(event, thinking_started));
+                // The page says Requesting under text the model finished,
+                // so its end starts the wait again within the run, until
+                // something else shows (`runtime.md` § Waiting for the
+                // model); the response's end is the run's, after which the
+                // turn ends or its next request waits. One update, so an
+                // event that shows, such as a whole call, ends that wait
+                // before any page hears of it.
+                let within_run = !matches!(event, ProviderEvent::Response(_));
+                s.update(|core| {
+                    if completes_text && core.complete_tail_text() && within_run {
+                        core.start_waiting();
+                    }
+                    core.apply_event(event, thinking_started);
+                });
                 thinking_started = false;
             }
         }
@@ -486,7 +496,9 @@ async fn read(
 /// Marks open answer text at the end complete, so a Fork may end at it
 /// (`conversation-fork.md` § Eligibility).
 fn complete_text(s: &SessionShared) {
-    s.update(|core| core.complete_tail_text());
+    s.update(|core| {
+        core.complete_tail_text();
+    });
 }
 
 /// Runs the calls the last response requested, after saving them as
