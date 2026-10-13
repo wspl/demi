@@ -26,39 +26,45 @@ fn refusal(directory: &Path) -> Option<String> {
 }
 
 #[test]
-fn a_program_older_than_its_sources_stops_the_test_with_the_build_that_renews_it() {
+fn a_program_older_than_its_sources_stops_the_test_with_both_times_and_the_build_that_renews_it() {
     let directory = tempfile::tempdir().unwrap();
     let missing = refusal(directory.path()).expect("a missing program is refused");
     assert!(missing.contains("is not built") && missing.contains(BUILD_PROGRAMS), "{missing}");
 
     // As Cargo leaves a program and its dep-info, with a space in a
-    // source's path escaped.
+    // source's path escaped. Two sources changed after the build; the
+    // report names the newer, which the dep-info lists last.
     let program = directory
         .path()
         .join(format!("demi-runner{}", std::env::consts::EXE_SUFFIX));
     let wire = directory.path().join("wire messages.rs");
     let main = directory.path().join("main.rs");
-    for path in [&program, &wire, &main] {
+    let hello = directory.path().join("hello.rs");
+    for path in [&program, &wire, &main, &hello] {
         File::create(path).unwrap();
     }
     std::fs::write(
         directory.path().join("demi-runner.d"),
         format!(
-            "{}: {} {}\n",
+            "{}: {} {} {}\n",
             program.display(),
             main.display(),
+            hello.display(),
             wire.display().to_string().replace(' ', "\\ ")
         ),
     )
     .unwrap();
     touch(&main, 100);
     touch(&program, 200);
+    touch(&hello, 250);
     touch(&wire, 300);
     let stale = refusal(directory.path()).expect("a stale program is refused");
-    assert!(
-        stale.contains("wire messages.rs") && stale.contains(BUILD_PROGRAMS),
-        "{stale}"
+    let seen = format!(
+        "{} (modified 1970-01-01T00:03:20Z) is older than {} (modified 1970-01-01T00:05:00Z)",
+        program.display(),
+        wire.display()
     );
+    assert!(stale.contains(&seen) && stale.contains(BUILD_PROGRAMS), "{stale}");
 
     // Built again after the change.
     touch(&program, 400);

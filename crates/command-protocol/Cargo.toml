@@ -14,12 +14,14 @@ bench = false
 [features]
 # The programs a test finds beside itself and the runner's native fixture's
 # operations (`command_protocol::testing`).
-testing = []
+testing = ["dep:jiff"]
 
 [dependencies]
 bytes.workspace = true
 garde.workspace = true
 gix-imara-diff = "0.2.5"
+# The times a stale program's report names (`testing`).
+jiff = { workspace = true, optional = true }
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true
