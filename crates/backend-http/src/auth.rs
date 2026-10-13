@@ -98,6 +98,9 @@ pub(super) async fn login(
         ));
     };
     services.limiter.succeeded(&email);
+    if account.user.disabled {
+        return Err(ApiError::account_disabled());
+    }
     let session = services
         .sessions
         .open(account.user.id.clone(), user_agent(&headers))
@@ -143,28 +146,38 @@ pub(super) async fn set_nickname(
     Ok(Json(Identity { user }))
 }
 
-/// Changes the caller's password when the current one checks.
+/// Changes the caller's password when the current one checks; an account
+/// still to choose its own sends the next one alone, which is its choice.
 pub(super) async fn change_password(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
     JsonBody(change): JsonBody<PasswordChange>,
 ) -> Result<StatusCode, ApiError> {
-    let stored = services
-        .control
-        .account(user.id.clone())
-        .await?
-        .map(|account| account.password_hash);
-    if !services.hasher.verify(change.current, stored).await? {
-        return Err(ApiError::new(
-            StatusCode::UNAUTHORIZED,
-            ErrorCode::InvalidCredentials,
-            "Current password is wrong",
-        ));
+    match (user.chooses_password, change.current) {
+        (true, None) => {}
+        (false, Some(current)) => {
+            let stored = services
+                .control
+                .account(user.id.clone())
+                .await?
+                .map(|account| account.password_hash);
+            if !services.hasher.verify(current, stored).await? {
+                return Err(ApiError::new(
+                    StatusCode::UNAUTHORIZED,
+                    ErrorCode::InvalidCredentials,
+                    "Current password is wrong",
+                ));
+            }
+        }
+        (true, Some(_)) => {
+            return Err(ApiError::invalid_body("A password still to be chosen has no current one"));
+        }
+        (false, None) => return Err(ApiError::invalid_body("The current password is needed")),
     }
     let password_hash = services.hasher.hash(change.next).await?;
     services
         .control
-        .set_password(user.id, password_hash)
+        .set_chosen_password(user.id.clone(), password_hash)
         .await?;
     Ok(StatusCode::NO_CONTENT)
 }

@@ -9,7 +9,7 @@ use std::sync::atomic::Ordering;
 use axum::extract::{FromRequestParts, Request, State};
 use axum::http::header::{HOST, ORIGIN, SET_COOKIE, UPGRADE};
 use axum::http::request::Parts;
-use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
@@ -205,6 +205,9 @@ pub(super) async fn session(
     if session.active {
         services.sync.mark(&session.user.id, Part::Sessions);
     }
+    if session.user.chooses_password && !opens_before_password_choice(request.method(), request.uri().path()) {
+        return ApiError::password_choice_required().into_response();
+    }
     request.extensions_mut().insert(CurrentSession {
         token: TokenHash::of(&token),
         id: session.id,
@@ -220,6 +223,17 @@ pub(super) async fn session(
     }
     let renewed = jar.add(cookies::session(&token, session.expires_at, https));
     (renewed, response).into_response()
+}
+
+/// Whether a request opens for an account still to choose its password
+/// (`web-api.md` § Account API): reading who it is, choosing the password,
+/// signing out, and the passkey routes. `path` is the one the `/api` router
+/// sees.
+fn opens_before_password_choice(method: &Method, path: &str) -> bool {
+    match (method, path) {
+        (&Method::GET, "/auth/me") | (&Method::PUT, "/auth/password") | (&Method::POST, "/auth/logout") => true,
+        _ => path.starts_with("/auth/passkeys") || path.starts_with("/auth/verify/passkey"),
+    }
 }
 
 fn sets_session_cookie(response: &Response) -> bool {

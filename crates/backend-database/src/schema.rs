@@ -63,8 +63,9 @@ impl ReadBlob for NoBlobs {
 /// build on a server): 0.1.22-dev.20261011T123543Z's, the one with the
 /// plugins' secrets before a request had a read state, the one with the
 /// users' credentials before passkeys, the one with passkeys before the
-/// signed-in browsers, and the one with the signed-in browsers before the
-/// messages saved for later. The schemas with the subagent
+/// signed-in browsers, the one with the signed-in browsers before the
+/// messages saved for later, and the one with them before administered
+/// accounts. The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
 /// and the server's migrate through them.
@@ -139,8 +140,41 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.signed-in-browsers.sql"),
             migration: Migration::Sql(CONTROL_FROM_SIGNED_IN_BROWSERS),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.saved-messages.sql"),
+            migration: Migration::Sql(CONTROL_FROM_SAVED_MESSAGES),
+        },
     ],
 };
+
+/// From the control schema with the messages saved for later to the one
+/// with administered accounts (`storage.md` § Control records): an account
+/// is enabled and has chosen its own password, as every account that
+/// exists did; a session was not made by an administrator's code; each
+/// user's one handoff code becomes their handoff code of its kind, and
+/// no sign-in code exists. The codes' table is rebuilt, since SQLite changes
+/// a primary key only so.
+const CONTROL_FROM_SAVED_MESSAGES: &str = "
+ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1));
+ALTER TABLE users ADD COLUMN chooses_password INTEGER NOT NULL DEFAULT 0 CHECK (chooses_password IN (0, 1));
+ALTER TABLE web_sessions ADD COLUMN issued_by TEXT REFERENCES users (id);
+CREATE TABLE handoff_codes_new (
+  user_id    TEXT NOT NULL REFERENCES users (id),
+  kind       TEXT NOT NULL CHECK (kind IN ('handoff', 'sign_in')),
+  issued_by  TEXT REFERENCES users (id),
+  id         TEXT NOT NULL UNIQUE,
+  code_hash  TEXT NOT NULL UNIQUE,
+  to_path    TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  spent      INTEGER NOT NULL CHECK (spent IN (0, 1)),
+  PRIMARY KEY (user_id, kind),
+  CHECK ((kind = 'sign_in') = (issued_by IS NOT NULL))
+) STRICT;
+INSERT INTO handoff_codes_new (user_id, kind, id, code_hash, to_path, expires_at, spent)
+  SELECT user_id, 'handoff', id, code_hash, to_path, expires_at, spent FROM handoff_codes;
+DROP TABLE handoff_codes;
+ALTER TABLE handoff_codes_new RENAME TO handoff_codes;
+";
 
 /// From the control schema with the signed-in browsers to the one with the
 /// messages saved for later (`storage.md` § Control records): a new table,
@@ -1341,14 +1375,19 @@ CREATE TABLE users (
   nickname      TEXT NOT NULL,
   password_hash TEXT NOT NULL,
   role          TEXT NOT NULL CHECK (role IN ('master', 'admin', 'user')),
-  created_at    INTEGER NOT NULL
+  created_at    INTEGER NOT NULL,
+  -- A disabled account is signed out and refused every sign-in; nothing of it is removed.
+  disabled      INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1)),
+  -- True until the owner of an account an administrator made or reset chooses its own password.
+  chooses_password INTEGER NOT NULL DEFAULT 0 CHECK (chooses_password IN (0, 1))
 ) STRICT;
 CREATE UNIQUE INDEX users_one_master ON users (role) WHERE role = 'master';
 
 -- A signed-in browser: the SHA-256 of its cookie's token, and its id in the
 -- account's list. Its last activity is written at most once an hour; it was
 -- verified when its user last proved it was them on it; a handoff code that
--- made it is named, though the code's row is replaced by the next one.
+-- made it is named, though the code's row is replaced by the next one; the
+-- administrator whose sign-in code made it is named too.
 CREATE TABLE web_sessions (
   token_hash     TEXT PRIMARY KEY,
   id             TEXT NOT NULL UNIQUE,
@@ -1358,20 +1397,27 @@ CREATE TABLE web_sessions (
   created_at     INTEGER NOT NULL,
   last_active_at INTEGER NOT NULL,
   verified_at    INTEGER,
-  handoff_id     TEXT
+  handoff_id     TEXT,
+  issued_by      TEXT REFERENCES users (id)
 ) STRICT;
 CREATE INDEX web_sessions_expiry ON web_sessions (expires_at);
 CREATE INDEX web_sessions_of_user ON web_sessions (user_id, created_at);
 
--- Each user's one handoff code, by the SHA-256 of the code, with the path it
--- opens; a spent one stays until the next replaces it.
+-- Each user's one handoff code and one sign-in code, by the SHA-256 of the
+-- code, with the path it opens; a sign-in code is made by an administrator
+-- for the account, who is named. A spent one stays until the next of its
+-- kind replaces it.
 CREATE TABLE handoff_codes (
-  user_id    TEXT PRIMARY KEY REFERENCES users (id),
+  user_id    TEXT NOT NULL REFERENCES users (id),
+  kind       TEXT NOT NULL CHECK (kind IN ('handoff', 'sign_in')),
+  issued_by  TEXT REFERENCES users (id),
   id         TEXT NOT NULL UNIQUE,
   code_hash  TEXT NOT NULL UNIQUE,
   to_path    TEXT NOT NULL,
   expires_at INTEGER NOT NULL,
-  spent      INTEGER NOT NULL CHECK (spent IN (0, 1))
+  spent      INTEGER NOT NULL CHECK (spent IN (0, 1)),
+  PRIMARY KEY (user_id, kind),
+  CHECK ((kind = 'sign_in') = (issued_by IS NOT NULL))
 ) STRICT;
 
 -- One pending address change per user.
@@ -3314,8 +3360,62 @@ mod tests {
         }
         connection
             .execute(
-                "INSERT INTO handoff_codes (user_id, id, code_hash, to_path, expires_at, spent)
-                   VALUES ('u1', 'h1', 'c1', '/chat', 5, 0)",
+                "INSERT INTO handoff_codes (user_id, kind, id, code_hash, to_path, expires_at, spent)
+                   VALUES ('u1', 'handoff', 'h1', 'c1', '/chat', 5, 0)",
+                [],
+            )
+            .unwrap();
+    }
+
+    /// A database of the control schema before administered accounts keeps
+    /// its accounts enabled and with their own passwords, its sessions made
+    /// by no administrator and each user's handoff code as a handoff code,
+    /// and takes sign-in codes beside it.
+    #[test]
+    fn the_control_schema_before_administered_accounts_keeps_its_accounts_and_codes() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.22-dev.saved-messages.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('u1', 'a@example.test', 'Ana', 'hash', 'master', 1),
+                          ('u2', 'b@example.test', 'Bo', 'hash', 'user', 2);
+                 INSERT INTO web_sessions (token_hash, id, user_id, expires_at, name, created_at, last_active_at)
+                   VALUES ('t1', 's1', 'u2', 9, 'Safari on iPhone', 3, 4);
+                 INSERT INTO handoff_codes (user_id, id, code_hash, to_path, expires_at, spent)
+                   VALUES ('u2', 'h1', 'c1', '/chat', 5, 0);",
+            )
+            .unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let users: Vec<(String, bool, bool)> = connection
+            .prepare("SELECT id, disabled, chooses_password FROM users ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            users,
+            [("u1".to_owned(), false, false), ("u2".to_owned(), false, false)]
+        );
+        let session: (String, Option<String>) = connection
+            .query_row("SELECT name, issued_by FROM web_sessions WHERE id = 's1'", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(session, ("Safari on iPhone".to_owned(), None));
+        let code: (String, String, Option<String>, String) = connection
+            .query_row(
+                "SELECT user_id, kind, issued_by, to_path FROM handoff_codes WHERE id = 'h1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            )
+            .unwrap();
+        assert_eq!(code, ("u2".to_owned(), "handoff".to_owned(), None, "/chat".to_owned()));
+        connection
+            .execute(
+                "INSERT INTO handoff_codes (user_id, kind, issued_by, id, code_hash, to_path, expires_at, spent)
+                   VALUES ('u2', 'sign_in', 'u1', 'h2', 'c2', '/', 6, 0)",
                 [],
             )
             .unwrap();
