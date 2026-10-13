@@ -192,6 +192,18 @@ fn named_entry(
     Ok(entry.id.clone())
 }
 
+/// The first of the user's entries, in their order, whose models the menu
+/// offers `model` of (`subagents.md` § Workflows of a project).
+pub(crate) fn first_offering(scope: &Scope, model: &str) -> Option<ProviderId> {
+    scope.entries.iter().find_map(|entry| {
+        let catalog = scope.catalog_of(entry)?;
+        let offers = scope.offers(catalog)
+            && !scope.preferences.hides_model(&catalog.provider_id, model)
+            && catalog.models.iter().any(|listed| listed.model.id == model);
+        offers.then(|| entry.id.clone())
+    })
+}
+
 /// The one entry of the menu that offers `model`.
 fn offering_entry(
     scope: &Scope,

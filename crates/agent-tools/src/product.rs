@@ -11,9 +11,11 @@ use demi_conversation_socket_protocol::JobModel;
 use demi_agent_store::Placement;
 use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
 use demi_shared_types::{
-    InstructionEntry, ModelSelection, NodeId, ProviderModel, THINKING_OFF, TurnId,
+    InstructionEntry, ModelSelection, NodeId, ProviderModel, THINKING_OFF, TurnId, WorkflowChoice,
 };
 use futures_util::future::LocalBoxFuture;
+use schemars::JsonSchema;
+use serde::Serialize;
 
 /// The commands every node of a tree starts from, which a tree takes when
 /// it opens and keeps until it closes; `revision` tells two toolsets with
@@ -115,6 +117,70 @@ pub enum Unavailable {
     /// failed; the spawn fails with it as with a missing part.
     #[error("its model settings could not be checked: {0}")]
     Failed(String),
+}
+
+/// The profiles a conversation's spawns use now (`subagents.md`
+/// § Workflows of a project): its Workflow menu choice, with the chosen
+/// workflow as its file reads at this moment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConversationProfiles {
+    /// Default: the user's Subagents settings.
+    Settings,
+    /// No Subagents: subagents are off for this conversation.
+    Off,
+    /// The profiles of the chosen workflow, in place of the user's.
+    Workflow(ChosenWorkflow),
+    /// The chosen workflow cannot be used now: its file is gone or does not
+    /// read, as `reason` says.
+    Unavailable { id: String, reason: String },
+}
+
+/// A workflow a conversation chose, as its file reads now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChosenWorkflow {
+    pub id: String,
+    /// What the menu shows.
+    pub name: String,
+    /// Its profiles, in the file's order.
+    pub profiles: Vec<WorkflowChild>,
+}
+
+/// One profile of a chosen workflow, its model resolved against the user's
+/// provider entries now.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorkflowChild {
+    /// The `--profile` value.
+    pub name: String,
+    pub description: String,
+    /// Added to the child's system prompt after the product's.
+    pub instructions: Option<String>,
+    pub can_spawn: bool,
+    /// None for the parent's model; otherwise the selection its model id
+    /// makes in the first entry that offers it, or what is missing, which
+    /// makes the profile unavailable.
+    pub model: Option<Result<ModelSelection, String>>,
+}
+
+/// `demi agent workflows list`: the conversation's choice, and the
+/// workflows of its working directory as the menu lists them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct WorkflowListing {
+    pub chosen: WorkflowChoice,
+    /// The directory that holds them, `.demi/workflows` of the nearest
+    /// directory that has one; null when none has.
+    pub directory: Option<String>,
+    /// By id.
+    pub workflows: Vec<ListedWorkflow>,
+}
+
+/// A workflow file of the project.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct ListedWorkflow {
+    pub id: String,
+    /// What the menu shows; null for a file that does not read.
+    pub name: Option<String>,
+    /// Why the file does not read; null while it does.
+    pub error: Option<String>,
 }
 
 /// The model options of a profile change: `--model`, `--provider`,
@@ -233,7 +299,36 @@ pub trait SubagentSource {
     fn delete_profile<'a>(&'a self, _name: &'a str) -> LocalBoxFuture<'a, Result<(), String>> {
         Box::pin(async { Err(FIXED.to_owned()) })
     }
+
+    /// The profiles the spawns of the conversation `root` use now, from its
+    /// Workflow menu choice, the chosen workflow's file read as it is.
+    fn conversation_profiles<'a>(
+        &'a self,
+        _root: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<ConversationProfiles, String>> {
+        Box::pin(async { Ok(ConversationProfiles::Settings) })
+    }
+
+    /// The workflows of the conversation `root`'s working directory and its
+    /// choice, read now.
+    fn workflows<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, Result<WorkflowListing, String>> {
+        Box::pin(async { Err(NO_WORKFLOWS.to_owned()) })
+    }
+
+    /// The text of the file `path`, read against `directory`, on the
+    /// conversation `root`'s Host, which `demi agent workflows check` parses.
+    fn read_workflow_file<'a>(
+        &'a self,
+        _root: &'a NodeId,
+        _directory: &'a str,
+        _path: &'a str,
+    ) -> LocalBoxFuture<'a, Result<String, String>> {
+        Box::pin(async { Err(NO_WORKFLOWS.to_owned()) })
+    }
 }
+
+/// Why a product without a Host to read workflows from lists none.
+const NO_WORKFLOWS: &str = "this product reads no workflows";
 
 /// Why a source whose settings never change refuses a change.
 const FIXED: &str = "the subagent settings of this product cannot be changed";

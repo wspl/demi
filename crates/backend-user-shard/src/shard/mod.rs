@@ -6,7 +6,7 @@
 //! runs on the shard and need not be, and the answer is `Send`.
 
 mod adoption;
-mod agent_profiles;
+pub(crate) mod agent_profiles;
 pub(crate) mod credential_commands;
 pub mod credentials;
 #[cfg(test)]

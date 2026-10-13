@@ -11,7 +11,7 @@ use demi_backend_blobs::blobs::UserBlobs;
 use demi_backend_remote_host::{DirectoryFile, Link, Look, LookAt, RemoteHost, WeakLink};
 use demi_host_interface::{FileKind, Host as _, HostError, HostErrorKind};
 use demi_plugin_interface::{EntryKind, HostDirectory, HostEntry, HostFile, HostRead, PluginId};
-use demi_shared_types::B64Bytes;
+use demi_shared_types::{B64Bytes, ReadAt};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use tokio_util::sync::CancellationToken;
 
@@ -68,13 +68,14 @@ impl dyn HostShard + '_ {
     /// a stopped Cloud or an offline device is not running and is not
     /// woken, the read is no activity, and a transition ends it instead of
     /// waiting for it. A path the Host cannot read answers as unreadable;
-    /// the rest answer in the order of `reads`.
+    /// the rest answer in the order of `reads`, with the Host's number
+    /// before it read them (`runner.md` § Watching files).
     pub async fn read_files(
         &self,
         id: &ConversationId,
         reads: &[HostRead],
         cancel: &CancellationToken,
-    ) -> Result<Vec<HostFile>, ReadFilesError> {
+    ) -> Result<(Vec<HostFile>, ReadAt), ReadFilesError> {
         let access = self.admit_stream(id, None, Attention::Looks, cancel).await?;
         let waits = Waits::until_ended(cancel, &access.open.ended);
         let found = waits.wait(look(&access.host.host, reads)).await?;
@@ -144,7 +145,7 @@ async fn sync_directories(
     let found = if listed.is_empty() {
         Vec::new()
     } else {
-        host.look(&listed).await?
+        host.look(&listed).await?.0
     };
     let mut removed = Vec::new();
     let mut missing = Vec::new();
@@ -222,7 +223,7 @@ async fn install(
 /// (`runner.md` § Host operations): a failure on the Host about a path
 /// answers for the path; any other, such as the connection's end, fails
 /// the read.
-async fn look(host: &RemoteHost, reads: &[HostRead]) -> Result<Vec<HostFile>, HostError> {
+async fn look(host: &RemoteHost, reads: &[HostRead]) -> Result<(Vec<HostFile>, ReadAt), HostError> {
     let paths: Vec<LookAt> = reads
         .iter()
         .map(|read| LookAt {
@@ -230,8 +231,8 @@ async fn look(host: &RemoteHost, reads: &[HostRead]) -> Result<Vec<HostFile>, Ho
             limit: read.limit,
         })
         .collect();
-    let found = host.look(&paths).await?;
-    Ok(found
+    let (found, read_at) = host.look(&paths).await?;
+    let files = found
         .into_iter()
         .map(|look| match look {
             Look::Missing => HostFile::Missing,
@@ -253,7 +254,8 @@ async fn look(host: &RemoteHost, reads: &[HostRead]) -> Result<Vec<HostFile>, Ho
                 message: error.message,
             },
         })
-        .collect())
+        .collect();
+    Ok((files, read_at))
 }
 
 fn entry_kind(kind: FileKind) -> EntryKind {
@@ -329,7 +331,7 @@ mod tests {
             read("plain/SKILL.md", 0),
             read("locked", 0),
         ];
-        let found = look(&fixture.host(), &reads).await.unwrap();
+        let (found, _) = look(&fixture.host(), &reads).await.unwrap();
 
         assert_eq!(answered_requests(&mut replies), 1, "one request reads them all");
         assert_eq!(

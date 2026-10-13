@@ -413,6 +413,7 @@ fn keep_leaves(
                     name: group.name.clone(),
                     summary: group.summary.clone(),
                     index_entry: group.index_entry.clone(),
+                    details: group.details.clone(),
                     permissions: group.permissions.clone(),
                     subcommands,
                 })
