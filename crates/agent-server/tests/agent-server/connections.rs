@@ -119,6 +119,50 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
     assert!(revision > version.revision);
 }
 
+// The model wrote its text and writes a call whose title it has not
+// written: the page says Requesting under the text, from the text's end. A
+// page that opens eleven seconds later receives, after the transcript, how
+// long the root has waited, so a reload goes on counting from 11s
+// (`runtime.md` § Waiting for the model). Cost: one held run.
+#[tokio::test(flavor = "local")]
+async fn a_page_that_opens_after_the_answers_text_ended_receives_how_long_the_root_has_waited() {
+    let gate = Gate::new();
+    let script = ScriptedRuntime::new([streamed_then_held(
+        &gate,
+        vec![event::text("Let me look."), event::tool_call_start("t1", "shell")],
+        vec![event::response(1, 1)],
+    )]);
+    let (fixture, clock) = Fixture::with_clock(&script);
+    let mut first = fixture.opened().await;
+    first.send(send("m1", "hi")).await;
+    first
+        .next_until(|frame| {
+            matches!(frame, ServerFrame::PendingCalls { subagent_id: None, pending_calls } if !pending_calls.is_empty())
+        })
+        .await;
+    clock.advance(jiff::SignedDuration::from_secs(11));
+
+    let mut second = fixture.client();
+    second.send(open()).await;
+    let handshake = second.received();
+    let reset = handshake
+        .iter()
+        .position(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
+        .expect("the handshake carries the transcript");
+    let waited = handshake.iter().enumerate().find_map(|(index, frame)| match frame {
+        ServerFrame::Waiting {
+            subagent_id: None,
+            waited_ms,
+        } => Some((index, *waited_ms)),
+        _ => None,
+    });
+    let Some((index, Some(waited_ms))) = waited else {
+        panic!("the root waits since its text ended: {handshake:?}");
+    };
+    assert!(index > reset, "{handshake:?}");
+    assert!(waited_ms >= 11_000, "{waited_ms}");
+}
+
 // A page whose socket was lost mid-turn opens the conversation again while
 // the run holds the provider runtime: its handshake still ends with the
 // usage, and it receives the rest of the turn.

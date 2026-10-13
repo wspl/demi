@@ -40,8 +40,10 @@ export class TestSocket extends EventTarget {
     this.dispatchEvent(new Event('open'))
   }
 
-  receive(frame: ServerFrame): void {
-    this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(frame) }))
+  /** One message: one frame as an object, several as an array, as the backend sends frames ready together. */
+  receive(...frames: [ServerFrame, ...ServerFrame[]]): void {
+    const message = frames.length === 1 ? frames[0] : frames
+    this.dispatchEvent(new MessageEvent('message', { data: JSON.stringify(message) }))
   }
 
   /** The backend or the network ends it, as a backend that restarts does. */
