@@ -6,10 +6,20 @@
 // and browser. In the gallery the theme also sets the gallery's own theme,
 // which it otherwise keeps whatever the system's is. Answers the screen the
 // page now has.
+//
+// The tool is the one owner of these settings (browse.md § Conditions): on
+// every page of the slot's context, Playwright's `setViewportSize` and
+// `emulateMedia({ colorScheme })` are `demi.emulate` under Playwright's
+// names (`routeToEmulate`), since Playwright's own session setting them
+// would be undone by the tool's at the next load.
+import type { Page } from 'playwright'
 import { screenOf, type Screen } from '../emulation'
 import { readState, updateState, type Emulation } from '../state'
 import { Failure, type Tool } from '../tool'
 import { applyGalleryTheme } from './gallery'
+
+/** What `demi.emulate` needs of the call: the slot and its browser. */
+type Owner = Pick<Tool, 'slot' | 'browser'>
 
 export interface EmulateOptions {
   viewport?: { width: number, height: number }
@@ -21,7 +31,7 @@ export interface EmulateOptions {
   reset?: boolean
 }
 
-export async function emulate(tool: Tool, options: EmulateOptions): Promise<Screen> {
+export async function emulate(tool: Owner, options: EmulateOptions): Promise<Screen> {
   const before = readState(tool.slot).emulation ?? {}
   const change: Emulation = options.reset ? {} : { ...before }
   // A phone brings its own screen: a size or a scale set before it would
@@ -50,10 +60,38 @@ export async function emulate(tool: Tool, options: EmulateOptions): Promise<Scre
   updateState(tool.slot, (state) => {
     state.emulation = change
   })
-  await tool.browser.emulate(change)
-  const page = await tool.browser.existingPage()
-  if (page && change.theme !== undefined) {
-    await applyGalleryTheme(tool.slot, page, change.theme)
+  const pages = await tool.browser.emulate(change)
+  if (change.theme !== undefined) {
+    for (const page of pages) {
+      await applyGalleryTheme(tool.slot, page, change.theme)
+    }
   }
   return screen
+}
+
+/**
+ * Makes `page`'s `setViewportSize`, `viewportSize` and the colour scheme of
+ * its `emulateMedia` the slot's emulation. The media `emulateMedia` sets
+ * besides, such as reduced motion, stay Playwright's: the tool sets no other,
+ * and applying the slot's emulation again after it keeps the theme the tool's.
+ */
+export function routeToEmulate(page: Page, owner: Owner): void {
+  const playwrightMedia = page.emulateMedia.bind(page)
+  page.setViewportSize = async (viewport) => {
+    await emulate(owner, { viewport })
+  }
+  page.viewportSize = () => {
+    const { width, height } = screenOf(readState(owner.slot).emulation ?? {})
+    return { width, height }
+  }
+  page.emulateMedia = async (options = {}) => {
+    const { colorScheme, ...rest } = options
+    if (colorScheme === null || colorScheme === 'no-preference') {
+      throw new Failure(`The slot's theme is light or dark, not ${colorScheme}: demi.emulate({ reset: true }) goes back to the system's`)
+    }
+    if (Object.keys(rest).length > 0) {
+      await playwrightMedia(rest)
+    }
+    await emulate(owner, { theme: colorScheme })
+  }
 }
