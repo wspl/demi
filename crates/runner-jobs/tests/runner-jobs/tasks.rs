@@ -5,6 +5,7 @@
 use bytes::Bytes;
 use demi_runner_jobs::{
     job_directories::JobDirectories,
+    scratch::Scratch,
     tasks::{JobConfig, JobTable, TaskCommand, TaskSpec, WorkId},
 };
 use demi_runner_process::{
@@ -209,6 +210,7 @@ async fn table(
     let table = JobTable::new(JobConfig {
         output,
         directories: directories.clone(),
+        scratch: Scratch::new(root),
         pipes,
         shell: Arc::new(Puppets(started)),
         commands: None,
@@ -225,6 +227,7 @@ fn start(table: &mut JobTable, root: &Path, script: &str) {
             env: BTreeMap::new(),
             command: TaskCommand::Shell {
                 script: script.into(),
+                conversation: "conversation".into(),
                 stdin: None,
                 stdout: None,
                 commands: None,

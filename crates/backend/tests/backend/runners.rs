@@ -1044,3 +1044,44 @@ async fn the_runner_socket_serves_runners_and_nothing_a_browser_uses() {
     assert_eq!(backend.get("/api/setup", None).await.status, StatusCode::OK);
     backend.close().await;
 }
+
+/// A runner's welcome names the user's conversations that still exist,
+/// archived ones included and deleted ones not, whose scratch directories
+/// the runner keeps (`runner.md` § Scratch directory). About a second: a
+/// runner pairs.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_runners_welcome_names_the_conversations_that_still_exist() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    let token = laptop.token().await;
+    let [active, archived, deleted] = [(); 3].map(|()| uuid::Uuid::new_v4().to_string());
+    for id in [&active, &archived, &deleted] {
+        create(&backend, &master, id).await;
+    }
+    let archiving = backend
+        .patch(
+            &format!("/api/conversations/{archived}"),
+            &master,
+            json!({ "archived": true }),
+        )
+        .await;
+    assert_eq!(archiving.status, StatusCode::OK);
+    let deleting = backend
+        .delete(&format!("/api/conversations/{deleted}"), &master)
+        .await;
+    assert_eq!(deleting.status, StatusCode::NO_CONTENT);
+    laptop.runner.stop().await;
+    backend.until_online(&master, laptop.id(), false).await;
+
+    let mut runner = RawRunner::connect(&backend).await;
+    runner.send(&hello(wire::VERSION, Some(&token), None)).await;
+    let Some(Inbound::HelloOk { mut conversations, .. }) = runner.next().await else {
+        panic!("expected a welcome");
+    };
+    conversations.sort();
+    let mut existing = vec![active, archived];
+    existing.sort();
+    assert_eq!(conversations, existing);
+    backend.close().await;
+}
