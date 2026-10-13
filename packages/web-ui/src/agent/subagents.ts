@@ -24,6 +24,8 @@ export interface AgentRun {
   phase: SubagentPhase
   startedAt: string
   endedAt?: string
+  /** Where its `shell` calls start now, on the primary Host (`subagents.md` § Working directory). */
+  cwd: string
 }
 
 export interface SubagentRecord extends AgentRun {
@@ -93,6 +95,7 @@ export function subagentJobFields(job: SubagentJob): SubagentJobFields {
     phase: job.phase,
     startedAt: job.startedAt,
     endedAt: job.endedAt ?? undefined,
+    cwd: job.cwd,
   }
 }
 

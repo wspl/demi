@@ -586,6 +586,24 @@ test('a child keeps the failure facts of its transcript, which resets and patche
     .toEqual({ first: lifts, second: { retryAt: null } })
 })
 
+test('a child’s directory follows its changed frames, with the round untouched', () => {
+  const conversation = useConversations().items[0]!
+  const job = {
+    subagentId: 'mover',
+    number: 2,
+    parentSessionId: conversation.id,
+    description: 'Mover',
+    profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
+    phase: 'running' as const,
+    startedAt: '2026-09-13T00:00:00.000Z',
+    endedAt: null,
+  }
+  applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
+  expect(conversation.subagents.find((agent) => agent.id === 'mover')?.cwd).toBe('/work')
+  applyConversationEvent(conversation, { type: 'subagent', event: 'changed', job: { ...job, cwd: '/work/slots/2' } })
+  expect(conversation.subagents.find((agent) => agent.id === 'mover')).toMatchObject({ cwd: '/work/slots/2', round: 1, phase: 'running' })
+})
+
 test('restored running children keep an idle parent active in the sidebar', () => {
   const conversation = useConversations().items[0]!
   conversation.phase = 'idle'
@@ -605,6 +623,7 @@ test('restored running children keep an idle parent active in the sidebar', () =
     history: EMPTY_TRANSCRIPT,
     failures: {},
     contextUsage: null,
+    cwd: '/work',
   }]
   updateLiveStatus(conversation)
   expect(conversation.status).toBe('active')

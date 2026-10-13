@@ -8,7 +8,7 @@ const mode = ref<'preview' | 'source'>('preview')
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { FileView, joinPath, relativePath, treeLayout, usePage } from '@demicodes/plugin-sdk'
+import { FileView, joinPath, treeLayout, usePage } from '@demicodes/plugin-sdk'
 import { goBack, goForward, showFile, type FileData } from './data'
 
 /**
@@ -32,8 +32,12 @@ function absolute(root: string, path: string): string {
   return path.startsWith('/') ? path : joinPath(root, path)
 }
 
-function open(root: string, path: string): void {
-  emit('update', showFile(props.data, relativePath(root, path)))
+/** The directory the view was opened for, whose tree it shows: the conversation's unless a child's link opened it. */
+const root = computed(() => props.data.root ?? workspace.value?.root ?? '/')
+
+/** A file picked in the tree or a link in a document, in the directory the view was opened for. */
+function open(path: string): void {
+  emit('update', showFile(props.data, path, undefined, props.data.root))
 }
 </script>
 
@@ -44,13 +48,13 @@ function open(root: string, path: string): void {
     v-model:tree-width="treeLayout.width.value"
     v-model:mode="mode"
     :source="workspace.source"
-    :root="workspace.root"
-    :root-name="workspace.name"
-    :path="data.path ? absolute(workspace.root, data.path) : null"
+    :root="root"
+    :root-name="data.root === undefined ? workspace.name : undefined"
+    :path="data.path ? absolute(root, data.path) : null"
     :line="data.line ?? null"
     :can-back="data.back.length > 0"
     :can-forward="data.forward.length > 0"
-    @open="open(workspace.root, $event)"
+    @open="open"
     @back="emit('update', goBack(data))"
     @forward="emit('update', goForward(data))"
   />
