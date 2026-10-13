@@ -438,3 +438,51 @@ export interface SettingsSessionHost {
   /** Signs another browser out; a refusal the host says itself. */
   signOut: (id: string) => Promise<void>
 }
+
+/** An account's role (`product.md` § User system). */
+export type UserRole = 'master' | 'admin' | 'user'
+
+/** An account as Settings › Users lists it (`web-api.md` § Account API), its password left out. */
+export interface SettingsUser {
+  id: string
+  nickname: string
+  email: string
+  role: UserRole
+  disabled: boolean
+  /** The latest activity of any of its sessions, as an ISO 8601 timestamp; null before it first signed in. */
+  lastActiveAt: string | null
+}
+
+/** What Add User… asks. */
+export interface SettingsNewUser {
+  email: string
+  role: Exclude<UserRole, 'master'>
+  /** The first password, which the new user changes in Settings › Account. */
+  password: string
+}
+
+/**
+ * How adding an account ended: added; refused because an account has the
+ * address, said under the dialog's email field; or failed, said under its
+ * fields.
+ */
+export type UserAddOutcome =
+  | { kind: 'added' }
+  | { kind: 'emailTaken' }
+  | ({ kind: 'failed' } & ShownError)
+
+/**
+ * The accounts and what the host does with them, for Settings › Users. The
+ * page decides from `users` and `viewerId` which actions each row offers; the
+ * host carries them out, and says itself a refusal it could not hide.
+ */
+export interface SettingsUsersHost {
+  users: readonly SettingsUser[]
+  /** The signed-in user's account: its row is marked You and has no menu. */
+  viewerId: string
+  add: (user: SettingsNewUser) => Promise<UserAddOutcome>
+  resetPassword: (id: string, password: string) => Promise<void>
+  setRole: (id: string, role: Exclude<UserRole, 'master'>) => Promise<void>
+  signOutEverywhere: (id: string) => Promise<void>
+  setDisabled: (id: string, disabled: boolean) => Promise<void>
+}
