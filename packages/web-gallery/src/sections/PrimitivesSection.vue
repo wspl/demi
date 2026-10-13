@@ -879,7 +879,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
               @compact="pulseCompact('idle')"
             />
           </GallerySpecimen>
-          <GallerySpecimen variant="warning · 72%">
+          <GallerySpecimen variant="warning · 75%">
             <ContextUsageIndicator
               :usage="usageAt(0.75)"
               :is-compacting="compactWarn"
