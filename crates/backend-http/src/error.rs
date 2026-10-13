@@ -118,6 +118,25 @@ impl ApiError {
         )
     }
 
+    /// A disabled account's sign-in, by any way it signs in.
+    pub(crate) fn account_disabled() -> Self {
+        Self::new(
+            StatusCode::FORBIDDEN,
+            ErrorCode::AccountDisabled,
+            "This account is disabled",
+        )
+    }
+
+    /// A request of an account still to choose its own password, which
+    /// nothing but choosing it, signing out and the passkey routes answers.
+    pub(crate) fn password_choice_required() -> Self {
+        Self::new(
+            StatusCode::FORBIDDEN,
+            ErrorCode::PasswordChoiceRequired,
+            "Choose your own password first",
+        )
+    }
+
     pub(crate) fn invalid_body(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidBody, message)
     }

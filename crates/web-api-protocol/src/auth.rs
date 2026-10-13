@@ -53,6 +53,11 @@ pub struct UserDto {
     pub nickname: String,
     pub role: Role,
     pub created_at: Timestamp,
+    /// A disabled account is signed out and refuses every sign-in.
+    pub disabled: bool,
+    /// True until the owner of an account that Add User… made, or whose
+    /// password an administrator reset, chooses its own password.
+    pub chooses_password: bool,
 }
 
 /// `{ user }`: the answer of setup, login, `GET/PATCH /auth/me` and a
@@ -163,12 +168,14 @@ pub struct NicknamePatch {
     pub nickname: Nickname,
 }
 
-/// `PUT /auth/password`: the current password and the next one.
+/// `PUT /auth/password`: the next password, with the current one; an
+/// account still to choose its own password sends the next one alone, and
+/// every other account the current one too.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct PasswordChange {
-    #[garde(length(chars, min = 1))]
-    pub current: Password,
+    #[garde(inner(length(chars, min = 1)))]
+    pub current: Option<Password>,
     #[garde(length(chars, min = 8, max = 1024))]
     pub next: Password,
 }
