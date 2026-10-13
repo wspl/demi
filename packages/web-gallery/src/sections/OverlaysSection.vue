@@ -132,24 +132,22 @@ function blobSize(blob: string): { width: number; height: number } | null {
   return size.width && size.height ? { width: size.width, height: size.height } : null
 }
 
-function showPreviewed(picture: (typeof previewPictures)[number], event: MouseEvent): void {
+function showPreviewed(picture: (typeof previewPictures)[number]): void {
   mediaViewer.show({
     kind: picture.kind,
     src: galleryBlobUrl(picture.blob, picture.kind === 'video' ? 'video/webm' : 'image/png'),
     name: picture.name,
     size: blobSize(picture.blob),
-    from: event.currentTarget instanceof Element ? event.currentTarget : null,
   })
 }
 
-function showPicture(picture: (typeof viewerPictures)[number], event: MouseEvent): void {
+function showPicture(picture: (typeof viewerPictures)[number]): void {
   const size = galleryBlobSize(picture.blob)
   mediaViewer.show({
     kind: 'image',
     src: galleryBlobUrl(picture.blob, 'image/png'),
     name: picture.name,
     size: size.width && size.height ? { width: size.width, height: size.height } : null,
-    from: event.currentTarget instanceof Element ? event.currentTarget : null,
   })
 }
 const inlineDialogOpen = ref(true)
@@ -302,7 +300,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                 class="block cursor-zoom-in overflow-hidden rounded outline outline-1 -outline-offset-1 outline-line"
                 :aria-label="`Open ${picture.name} large`"
                 v-bind="{ [KEEPS_WINDOWS]: '' }"
-                @click="showPreviewed(picture, $event)"
+                @click="showPreviewed(picture)"
               >
                 <video
                   v-if="picture.kind === 'video'"
@@ -1260,7 +1258,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen v-for="picture in viewerPictures" :key="picture.name" :variant="picture.variant">
-            <Button size="md" v-bind="{ [KEEPS_WINDOWS]: '' }" @click="showPicture(picture, $event)">Open {{ picture.name }}</Button>
+            <Button size="md" v-bind="{ [KEEPS_WINDOWS]: '' }" @click="showPicture(picture)">Open {{ picture.name }}</Button>
           </GallerySpecimen>
         </div>
       </GallerySection>

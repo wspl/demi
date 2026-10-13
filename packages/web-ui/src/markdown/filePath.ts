@@ -113,23 +113,15 @@ export function isLikelyFilePath(rawPath: string): boolean {
 }
 
 /**
- * Where an image a message names loads from, and what a click on it opens:
- * a web image in a new tab, a Host image in the File view, a `data:` image
- * nothing. Null for a target that loads nothing, which shows its alt text.
+ * Where an image a message names loads from: the web, a `data:` URL or the
+ * conversation's Host. Null for a target that loads nothing, which shows its
+ * alt text. A click on it shows it large in the media viewer.
  */
-export function messageImage(
-  target: string,
-  files: MessageFiles | undefined,
-): { src: string; opens: { web: string } | { file: string } | null } | null {
-  if (isHttpUrl(target))
-    return { src: target, opens: { web: target } }
-  if (target.startsWith('data:'))
-    return { src: target, opens: null }
+export function messageImage(target: string, files: MessageFiles | undefined): { src: string } | null {
+  if (isHttpUrl(target) || target.startsWith('data:'))
+    return { src: target }
   if (!files)
     return null
   const path = messageHostPath(target, files)
-  if (path === null)
-    return null
-  // A Host image opens whole only where a plugin opens files.
-  return { src: files.imageUrl(path), opens: files.open ? { file: path } : null }
+  return path === null ? null : { src: files.imageUrl(path) }
 }

@@ -39,3 +39,8 @@ export function childMessageFiles(files: MessageFiles, directory: string): Messa
     ...(open ? { open: (target) => open({ ...target, root: directory }) } : {}),
   }
 }
+
+/** The files a block's messages name: the conversation's, read from the directory a subagent wrote the block in when it names one. */
+export function blockMessageFiles(conversation: MessageFiles | undefined, directory: string | null): MessageFiles | undefined {
+  return conversation && directory !== null ? childMessageFiles(conversation, directory) : conversation
+}
