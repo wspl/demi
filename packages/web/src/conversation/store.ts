@@ -1232,6 +1232,10 @@ export const useConversations = defineStore('conversations', () => {
     conversation.summaries = Object.fromEntries(page.summaries.map((summary) => [summary.marker, summary.summaryTokens]))
     reconcileSubmission(conversation)
     conversation.terminals = []
+    // The first copy of the children, which the open's `subagents` frame
+    // replaces whole (`subagents.md` § Protocol); the session that sends it
+    // starts only after this read is applied, so the read never overwrites
+    // a frame.
     conversation.subagents = listed.subagents.map((subagent) => ({
       ...subagentJobFields(subagent),
       pendingCalls: [],

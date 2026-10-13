@@ -35,6 +35,7 @@ export type ClientSessionEvent =
   | ServerFrameOf<'retry_scheduled'>
   | ServerFrameOf<'error'>
   | ServerFrameOf<'subagent'>
+  | ServerFrameOf<'subagents'>
   | {
       /** The blocks from `start` on (`runtime.md` § Where a reset starts). */
       type: 'transcript_reset'

@@ -717,6 +717,7 @@ export class ConversationClient {
       case 'edit_result':
       case 'remove_result':
       case 'shell_output':
+      case 'subagents':
       case 'shell_write_result':
       case 'retry_scheduled':
       case 'context_usage':

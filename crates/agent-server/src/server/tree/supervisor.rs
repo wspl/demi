@@ -18,7 +18,7 @@ use demi_agent_store::{Checkpoint, ChildDirectory, ClosePhase, NodeClose, NodeRe
 use demi_agent_transcript::{CutError, ForkEnd, last_answer, last_failure};
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
-    JobModel, JobPhase, ServerFrame, SubagentEvent, SubagentJob, TranscriptPatch, index_u32,
+    JobModel, JobPhase, ServerFrame, SubagentEvent, SubagentJob, SubagentSummary, TranscriptPatch, index_u32,
     latest_page_start,
 };
 use demi_provider_common::ProviderRuntime;
@@ -53,6 +53,16 @@ const INHERIT_LABEL: &str = "(inherit)";
 /// directory).
 const ROOT_CWD: &str = "The main agent works in the conversation's directory; move the conversation with `demi conversation move` to work elsewhere.";
 const OWNER_CLOSING: &str = "owner session is closing";
+
+/// A child of the tree, live or closed, as an open's snapshot lists it
+/// (`subagents.md` § Protocol).
+pub(crate) struct Summary {
+    pub(super) record: NodeRecord,
+    pub(super) runs_on: JobModel,
+    /// Its transcript's revision when it closed; a live child's is its
+    /// session's, and one read from the store has none it can tell, 0.
+    pub(super) revision: u64,
+}
 
 /// A live child: its node, and what its supervision keeps about it.
 pub(crate) struct Child<H: HostResolver> {
@@ -753,9 +763,11 @@ impl<H: HostResolver> Tree<H> {
             .set_cwd(cwd.clone(), now.clone())
             .await
             .map_err(|error| error.to_string())?;
+        let record = child.node.record();
+        self.remember(&record, &child.runs_on, 0);
         self.sink.emit(ServerFrame::Subagent {
             event: SubagentEvent::Changed,
-            job: child.job(&child.node.record(), Some(&now)),
+            job: child.job(&record, Some(&now)),
         });
         Ok(cwd)
     }
@@ -811,7 +823,7 @@ impl<H: HostResolver> Tree<H> {
                     SessionEvent::ContextUsageChanged { usage } => {
                         sink.emit(ServerFrame::ContextUsage {
                             node: id.clone(),
-                            usage: usage.clone(),
+                            usage: Some(usage.clone()),
                         });
                     }
                     SessionEvent::ActionFailed { report } => {
@@ -838,6 +850,7 @@ impl<H: HostResolver> Tree<H> {
         self.children
             .borrow_mut()
             .insert(child.id().clone(), child.clone());
+        self.remember(&child.node.record(), &child.runs_on, 0);
         self.bump();
         for frame in child_frames(&child, placement) {
             self.sink.emit(frame);
@@ -942,8 +955,9 @@ impl<H: HostResolver> Tree<H> {
     /// subtree.
     async fn delete_unbuilt(&self, id: &NodeId, error: &str) {
         tracing::warn!(node = %id, %error, "a live subagent could not be rebuilt and is deleted");
-        if let Err(error) = self.store.delete_node(id).await {
-            self.report(format!("subagent {id} was not deleted: {error}"));
+        match self.store.delete_node(id).await {
+            Ok(()) => self.forget(id),
+            Err(error) => self.report(format!("subagent {id} was not deleted: {error}")),
         }
     }
 
@@ -972,6 +986,7 @@ impl<H: HostResolver> Tree<H> {
             closed: Some(close.clone()),
             ..record
         };
+        self.remember(&closed, &runs_on, 0);
         let placement = self.placement().await;
         self.sink.emit(ServerFrame::Subagent {
             event: SubagentEvent::Closed,
@@ -1153,14 +1168,19 @@ impl<H: HostResolver> Tree<H> {
             at: self.clock.now(),
         };
         let committed = self.store.close_node(&record.id, close.clone()).await;
+        let closed = NodeRecord {
+            closed: Some(close.clone()),
+            ..record.clone()
+        };
         self.children.borrow_mut().remove(&record.id);
+        // In the step it leaves the directory: an open's snapshot lists it
+        // closed from then on, before its `closed` frame goes.
+        if committed.is_ok() {
+            self.remember(&closed, &child.runs_on, session.transcript_version().revision);
+        }
         self.bump();
         match committed {
             Ok(()) => {
-                let closed = NodeRecord {
-                    closed: Some(close.clone()),
-                    ..record.clone()
-                };
                 let placement = self.placement().await;
                 self.sink.emit(ServerFrame::Subagent {
                     event: SubagentEvent::Closed,
@@ -1322,6 +1342,59 @@ impl<H: HostResolver> Tree<H> {
             .iter()
             .flat_map(|child| child_frames(child, placement))
             .collect()
+    }
+
+    /// The summary of every child, in the order of their numbers, while the
+    /// conversation works at `placement`: a live child's revision is its
+    /// session's now.
+    pub(super) fn subagent_summaries(&self, placement: Option<&Placement>) -> Vec<SubagentSummary> {
+        let children = self.children.borrow();
+        self.summaries
+            .borrow()
+            .values()
+            .map(|summary| {
+                let child = summary
+                    .record
+                    .child(summary.runs_on.clone(), placement)
+                    .expect("a subagent's record has a child");
+                let revision = children.get(&summary.record.id).map_or(summary.revision, |live| {
+                    live.node.session().transcript_version().revision
+                });
+                SubagentSummary { child, revision }
+            })
+            .collect()
+    }
+
+    /// Keeps `record` as its child's summary now, with what its round runs
+    /// on and, once it closed, its transcript's last revision.
+    fn remember(&self, record: &NodeRecord, runs_on: &JobModel, revision: u64) {
+        self.summaries.borrow_mut().insert(
+            record.number,
+            Summary {
+                record: record.clone(),
+                runs_on: runs_on.clone(),
+                revision,
+            },
+        );
+    }
+
+    /// Forgets the child `id` and its subtree, which the store deleted.
+    fn forget(&self, id: &NodeId) {
+        let mut summaries = self.summaries.borrow_mut();
+        let mut gone = vec![id.clone()];
+        while let Some(parent) = gone.pop() {
+            let children: Vec<(u64, NodeId)> = summaries
+                .iter()
+                .filter(|(_, summary)| summary.record.parent.as_ref() == Some(&parent) || summary.record.id == parent)
+                .map(|(number, summary)| (*number, summary.record.id.clone()))
+                .collect();
+            for (number, child) in children {
+                summaries.remove(&number);
+                if child != parent {
+                    gone.push(child);
+                }
+            }
+        }
     }
 
     /// Every live child, depth first in spawn order.

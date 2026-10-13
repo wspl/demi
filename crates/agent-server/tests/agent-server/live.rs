@@ -116,6 +116,32 @@ async fn output_that_waited_or_came_while_no_page_was_attached_never_reaches_the
     assert_eq!(tails(&second.received()), ["one\ntwo\nthree\nfour\n"]);
 }
 
+/// A page whose connection dropped while a command ran opens again after
+/// the command ended: its snapshot brings the command with its end, and
+/// the page's running commands are the snapshot's
+/// (`web-application.md` § What a reopened socket brings back).
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_reopened_page_is_told_of_the_command_that_ended_while_it_was_away() {
+    let (server, shell, first, _script) = serving().await;
+    // The page's connection drops; the command ends while it is away.
+    drop(first);
+    shell.end();
+    settle().await;
+
+    let mut again = TestClient::connect(&server, &conversation());
+    again.send(open()).await;
+    let handshake = again.received();
+
+    let commands: Vec<bool> = handshake
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::ShellOutput { status, .. } => Some(matches!(**status, ShellStatus::Running { .. })),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(commands, [false], "{handshake:?}");
+}
+
 /// A command that runs is the conversation's work (`resource-lifecycle.md`
 /// § Runtime), so a tree no page is attached to stays live while one of its
 /// commands runs, and its idle time starts once the last one ended.
