@@ -100,7 +100,7 @@ function save(): void {
         <template v-else>
           <TextInput
             v-model="keyDraft"
-            secret
+            masked="secret"
             trim
             size="sm"
             placeholder="Exa API key"

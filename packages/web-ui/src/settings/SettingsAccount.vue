@@ -152,10 +152,11 @@ function checkName(value: string): string | null {
       :is-open="passwordOpen"
       :overlay-store="overlayStore"
       :phase="passwordPhase"
+      :email="email"
       @close="passwordOpen = false"
       @submit="(current, next) => emit('submitPassword', current, next)"
     />
-    <SettingsPasskeys v-if="passkeys" :host="passkeys" :overlay-store="overlayStore" />
+    <SettingsPasskeys v-if="passkeys" :host="passkeys" :overlay-store="overlayStore" :email="email" />
     <SettingsGroup title="Session">
       <SettingsRow
         label="Sign out"

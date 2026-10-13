@@ -21,6 +21,7 @@ import { provideLayerElevation } from '../overlay/layerElevation'
 import { inSheetKey } from './sheet-context'
 import { useAutofocus } from './autofocus'
 import { ICON_PX } from './icon-metrics'
+import { NO_AUTOFILL } from './field-autofill'
 import { NO_RESULTS, type HeadlineText, type PlaceholderText } from './ui-text'
 
 /**
@@ -321,9 +322,10 @@ function handleKeydown(event: KeyboardEvent) {
       <input
         ref="inputRef"
         v-model="filterQuery"
-        type="text"
+        type="search"
+        v-bind="NO_AUTOFILL"
         :placeholder="filterPlaceholder"
-        class="w-0 min-w-0 flex-1 bg-transparent text-chrome text-fg-body placeholder-fg-subtle outline-none"
+        class="w-0 min-w-0 flex-1 bg-transparent text-chrome text-fg-body placeholder-fg-subtle outline-none [&::-webkit-search-cancel-button]:appearance-none"
       />
       <span
         v-if="filterQuery"

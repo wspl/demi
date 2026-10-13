@@ -253,7 +253,7 @@ const keepLabel = computed(() => {
             </template>
             <TextInput
               v-model="field.value"
-              :secret="field.kind === 'secret'"
+              :masked="field.kind === 'secret' ? 'secret' : undefined"
               literal
               class="w-80 max-w-full"
               :placeholder="field.saved !== null ? 'Leave empty to keep it' : undefined"
