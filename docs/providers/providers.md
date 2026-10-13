@@ -109,8 +109,10 @@ no endpoint of its own: it uses its vendor's, the family's default below or
 the `api` URL models.dev states for the vendor, and its catalog is the
 vendor's. A compatible entry has an endpoint, which the user gives and may
 change, and its catalog is only the models the user configures
-([Catalog sources](models.md#catalog-sources)); whether an entry stores an
-endpoint is what makes it compatible. The provider appends the path of the
+([Catalog sources](models.md#catalog-sources)); an entry is a vendor
+entry when it names a vendor, of models.dev or its family's own, and a
+compatible entry otherwise. A compatible entry's protocol is fixed with it,
+as its family is; only its endpoint changes. The provider appends the path of the
 request it makes, unless the configured URL already ends with that path. The
 families' defaults:
 
