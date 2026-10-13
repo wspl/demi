@@ -1,7 +1,7 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { expect, test } from 'bun:test'
 import type { FileContents } from '../../files/types'
-import type { MessageFiles } from '../types'
+import type { MessageFiles, MessageFileTarget } from '../types'
 
 // A click on what a message shows (`file-previews.md` § Files named in
 // messages): an image opens in the media viewer, a Host image as any other,
@@ -62,4 +62,29 @@ test('a link to a file still opens the File view, and an image inside a link fol
   const linked = click('[![chart](out/chart.png)](docs/charts.md)', 'img')
   expect(linked.shown).toBeNull()
   expect(linked.opened).toEqual(['/work/docs/charts.md'])
+})
+
+// The conversation makes its files anew each time a reply's text grows; a
+// streaming reply's settled blocks render once, which holds only while their
+// render reads the same object (`useMarkdownBlocks`). A few milliseconds.
+test('a render reads the same files while the conversation makes them anew, and new ones when they change', async () => {
+  const { effectScope, shallowRef } = await import('vue')
+  const { useRenderedFiles } = await import('../message-files')
+  const conversation = shallowRef<MessageFiles>({ ...files })
+  const scope = effectScope()
+  // Each time with a service of its own, as a subagent's messages' files are.
+  const rendered = scope.run(() => useRenderedFiles(() => {
+    const { open } = conversation.value
+    return { ...conversation.value, ...(open ? { open: (target: MessageFileTarget) => open(target) } : {}) }
+  }))!
+  const first = rendered.value
+  conversation.value = { ...files }
+  expect(rendered.value).toBe(first)
+  // A subagent's message reads its paths from another directory.
+  conversation.value = { ...files, cwd: '/work/child' }
+  expect(rendered.value?.cwd).toBe('/work/child')
+  // A Host whose files the page cannot open shows paths as text.
+  conversation.value = { cwd: '/work/child', contents }
+  expect(rendered.value?.open).toBeUndefined()
+  scope.stop()
 })

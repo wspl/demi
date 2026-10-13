@@ -115,7 +115,7 @@ export function isLikelyFilePath(rawPath: string): boolean {
 /**
  * Where an image a message names loads from: a web image or a `data:` URL
  * from its `url`, a Host image from the file at `path`, in the version the
- * page keeps of it (`useHostImages`). Null for a target that loads nothing,
+ * page keeps of it (`useHostImagesAt`). Null for a target that loads nothing,
  * which shows its alt text. A click on it shows it large in the media viewer.
  */
 export function messageImage(target: string, files: MessageFiles | undefined): { url: string } | { path: string } | null {

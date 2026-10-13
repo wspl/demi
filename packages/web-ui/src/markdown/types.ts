@@ -101,7 +101,7 @@ export interface MarkdownRenderOptions {
   codeFiles?: ReadonlySet<string> | null
   /**
    * What shows of each Host image the message names, by its absolute path
-   * (`useHostImages`); one it does not name yet is still being read, and
+   * (`useHostImagesAt`); one it does not name yet is still being read, and
    * shows its alt text meanwhile.
    */
   hostImages?: ReadonlyMap<string, HostImage>
