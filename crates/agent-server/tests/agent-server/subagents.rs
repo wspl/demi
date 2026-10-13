@@ -89,7 +89,7 @@ pub(crate) fn lifecycle(frames: &[ServerFrame]) -> Vec<(SubagentEvent, NodeId, J
         .iter()
         .filter_map(|frame| match frame {
             ServerFrame::Subagent { event, job } => {
-                Some((*event, job.subagent_id.clone(), job.phase))
+                Some((*event, job.child.subagent_id.clone(), job.child.phase))
             }
             _ => None,
         })
@@ -120,7 +120,7 @@ fn is_receipt_patch(frame: &ServerFrame) -> bool {
 }
 
 pub(crate) fn is_closed(child: &NodeId) -> impl Fn(&ServerFrame) -> bool + '_ {
-    move |frame| matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Closed, job } if &job.subagent_id == child)
+    move |frame| matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Closed, job } if &job.child.subagent_id == child)
 }
 
 pub(crate) fn closed_phase(fixture: &Fixture, child: &NodeId) -> Option<ClosePhase> {
@@ -166,6 +166,138 @@ async fn a_page_that_opens_while_a_child_waits_for_its_model_is_told_the_wait() 
     gate.open();
     let frames = client.next_until(is_closed(&child)).await;
     assert!(frames.iter().any(|frame| waits(frame, false)), "{frames:?}");
+}
+
+/// The children an open's snapshot lists, each as its number, its phase
+/// and whether it ended.
+fn summaries(frames: &[ServerFrame]) -> Vec<(u64, JobPhase, bool)> {
+    let lists: Vec<_> = frames
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::Subagents { subagents } => Some(subagents),
+            _ => None,
+        })
+        .collect();
+    let [list] = lists.as_slice() else {
+        panic!("one snapshot of the children: {frames:?}")
+    };
+    list.iter()
+        .map(|summary| {
+            let child = &summary.child;
+            (child.number, child.phase, child.ended_at.is_some())
+        })
+        .collect()
+}
+
+/// A page whose connection dropped while a child worked opens again: its
+/// snapshot lists every child as it is now, the one that ended while it was
+/// away and the one that started and ended meanwhile, finished
+/// (`subagents.md` § Protocol). Before, the handshake named
+/// only live children, and the page kept showing the first running where it
+/// was when the connection dropped.
+#[tokio::test(flavor = "local")]
+async fn a_reopened_page_is_told_of_the_children_that_ended_while_it_was_away() {
+    let gate = Gate::new();
+    let model = Model::default();
+    model.root([said("working"), said("got it"), said("noted")]);
+    model.child("Read notes.md", [held_said(&gate, "the file says 42")]);
+    model.child("Count to three", [said("one two three")]);
+    let fixture = fixture(&model, TestProduct::default());
+    let mut page = fixture.opened().await;
+    page.send(send("m1", "start")).await;
+    page.next_until(is_idle).await;
+    let reader = spawn(
+        &fixture,
+        &root(),
+        json!({ "prompt": "Read notes.md and report its content", "description": "reader" }),
+    )
+    .await;
+    page.next_until(|frame| matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Started, .. }))
+        .await;
+    let mut running = fixture.client();
+    running.send(open()).await;
+    assert_eq!(summaries(&running.received()), [(1, JobPhase::Running, false)]);
+    // The page's connection drops while the reader runs; an observer stays.
+    drop(page);
+    drop(running);
+    let mut observer = fixture.opened().await;
+    gate.open();
+    observer.next_until(is_closed(&reader)).await;
+    let counter = spawn(
+        &fixture,
+        &root(),
+        json!({ "prompt": "Count to three", "description": "counter" }),
+    )
+    .await;
+    observer.next_until(is_closed(&counter)).await;
+
+    let mut again = fixture.client();
+    again.send(open()).await;
+    let handshake = again.received();
+
+    assert_eq!(
+        summaries(&handshake),
+        [(1, JobPhase::Completed, true), (2, JobPhase::Completed, true)],
+        "{handshake:?}"
+    );
+    // Neither runs, so neither is replayed.
+    assert_eq!(lifecycle(&handshake), []);
+}
+
+/// A child that closes while a page opens, after the open read where the
+/// conversation works and before it attached, ends closed on that page:
+/// its `closed` frame went before the page was attached, and the snapshot,
+/// taken in the step of the attach, lists it closed (`subagents.md`
+/// § Protocol). Before, the page never heard of the close.
+#[tokio::test(flavor = "local")]
+async fn a_child_that_closes_while_a_page_opens_ends_closed_on_that_page() {
+    let gate = Gate::new();
+    let model = Model::default();
+    model.root([said("working"), said("got it")]);
+    model.child("Read notes.md", [held_said(&gate, "the file says 42")]);
+    let fixture = fixture(&model, TestProduct::default());
+    let mut observer = fixture.opened().await;
+    observer.send(send("m1", "start")).await;
+    observer.next_until(is_idle).await;
+    let reader = spawn(
+        &fixture,
+        &root(),
+        json!({ "prompt": "Read notes.md and report its content", "description": "reader" }),
+    )
+    .await;
+    observer
+        .next_until(|frame| matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Started, .. }))
+        .await;
+
+    // The open waits for where the conversation works; meanwhile the child
+    // answers and closes.
+    let slow = Gate::new();
+    fixture.product.placement_hold.replace(Some(slow.clone()));
+    let mut page = fixture.client();
+    let closing = async {
+        until(|| fixture.product.placement_hold.borrow().is_none()).await;
+        gate.open();
+        observer.next_until(is_closed(&reader)).await;
+        slow.open();
+    };
+    tokio::join!(page.send(open()), closing);
+    let frames = page.received();
+
+    // What the page shows of the child, frame by frame.
+    let mut shown = None;
+    for frame in &frames {
+        match frame {
+            ServerFrame::Subagents { subagents } => {
+                shown = subagents
+                    .iter()
+                    .find(|summary| summary.child.subagent_id == reader)
+                    .map(|summary| summary.child.phase);
+            }
+            ServerFrame::Subagent { job, .. } if job.child.subagent_id == reader => shown = Some(job.child.phase),
+            _ => {}
+        }
+    }
+    assert_eq!(shown, Some(JobPhase::Completed), "{frames:?}");
 }
 
 #[tokio::test(flavor = "local")]
@@ -215,12 +347,12 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
         .expect("the child started");
     assert_eq!(
         (
-            &started.subagent_id,
-            &started.parent_session_id,
-            started.description.as_str(),
-            started.profile.as_deref(),
-            started.phase,
-            started.ended_at,
+            &started.child.subagent_id,
+            &started.child.parent_session_id,
+            started.child.description.as_str(),
+            started.child.profile.as_deref(),
+            started.child.phase,
+            started.child.ended_at,
             started.result.as_deref()
         ),
         (
@@ -243,10 +375,10 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
         unreachable!()
     };
     assert_eq!(
-        (job.phase, job.result.as_deref()),
+        (job.child.phase, job.result.as_deref()),
         (JobPhase::Completed, Some("the file says 42"))
     );
-    assert!(job.ended_at.is_some());
+    assert!(job.child.ended_at.is_some());
     let receipt = frames
         .iter()
         .position(is_receipt_patch)
@@ -1416,9 +1548,9 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
                 event: SubagentEvent::Closed,
                 job,
             } => Some((
-                job.subagent_id.clone(),
-                job.parent_session_id.clone(),
-                job.phase,
+                job.child.subagent_id.clone(),
+                job.child.parent_session_id.clone(),
+                job.child.phase,
             )),
             _ => None,
         })
@@ -1744,5 +1876,5 @@ async fn a_child_works_in_the_conversations_directory_once_the_conversation_move
     let Some(ServerFrame::Subagent { job, .. }) = frames.last() else {
         unreachable!();
     };
-    assert_eq!(job.cwd, "/elsewhere");
+    assert_eq!(job.child.cwd, "/elsewhere");
 }

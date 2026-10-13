@@ -702,6 +702,11 @@ impl AgentSession {
         self.shared.read(|core| core.model.clone())
     }
 
+    /// The transcript's version, without copying its blocks.
+    pub fn transcript_version(&self) -> TranscriptVersion {
+        self.shared.read(|core| core.transcript.version())
+    }
+
     pub fn transcript(&self) -> TranscriptSnapshot {
         self.shared.read(|core| TranscriptSnapshot {
             blocks: core.transcript.blocks().to_vec(),
