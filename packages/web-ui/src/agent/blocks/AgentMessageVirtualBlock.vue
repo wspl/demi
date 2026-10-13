@@ -26,7 +26,7 @@ import { provideBlockScope } from '../whole-blocks'
 import IndeterminateSpinner from '../../ui/IndeterminateSpinner.vue'
 import { useTranscript } from '../edit-selection'
 import { childBrief } from '../subagents'
-import { childMessageFiles } from '../working-directory'
+import { blockMessageFiles } from '../working-directory'
 import { provideMessageFiles, useMessageFiles } from '../../markdown/message-files'
 
 defineOptions({ inheritAttrs: false })
@@ -69,11 +69,7 @@ const attrs = useAttrs()
 const transcript = useTranscript()
 // A child's messages name files from the directory it wrote them in.
 const files = useMessageFiles()
-provideMessageFiles(() => {
-  const directory = transcript?.directory(props.block.id) ?? null
-  const conversation = files()
-  return conversation && directory !== null ? childMessageFiles(conversation, directory) : conversation
-})
+provideMessageFiles(() => blockMessageFiles(files(), transcript?.directory(props.block.id) ?? null))
 // A light block's row opens to read it whole (`web-api.md` § Light form).
 provideBlockScope(() => ('createdAt' in props.block ? props.block : undefined))
 /** Rows built on FunctionalBlock: the 28px chrome face. Text streams in on its own. */

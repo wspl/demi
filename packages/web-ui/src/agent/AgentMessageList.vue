@@ -32,7 +32,10 @@ import { highlightFound } from '../ui/found-highlight'
 import { provideTranscript } from './edit-selection'
 import { useOpenRuns } from './open-runs'
 import { storedRequests } from '../files/request-changes'
-import { blockDirectories } from './working-directory'
+import { blockDirectories, blockMessageFiles } from './working-directory'
+import { useMessageFiles } from '../markdown/message-files'
+import { useMediaAddress } from './media-source'
+import { transcriptPictures } from './transcript-pictures'
 
 const props = withDefaults(defineProps<{
   conversationId: string
@@ -169,12 +172,21 @@ const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.e
 const requests = computed(() => storedRequests(props.blocks))
 // Where a subagent wrote each block, from the working directory blocks of its transcript.
 const directories = computed(() => props.cwd === undefined ? null : blockDirectories(props.blocks, props.cwd))
+const conversationFiles = useMessageFiles()
+const mediaAddress = useMediaAddress()
+// The pictures the media viewer steps through, read only while one is open.
+const pictures = computed(() => transcriptPictures(renderBlocks.value, {
+  node: props.node ?? null,
+  files: (blockId) => blockMessageFiles(conversationFiles(), directories.value?.get(blockId) ?? props.cwd ?? null),
+  address: mediaAddress,
+}))
 provideTranscript({
   get node() {
     return props.node ?? null
   },
   requests: () => requests.value,
   directory: (blockId) => directories.value?.get(blockId) ?? props.cwd ?? null,
+  pictures: () => pictures.value,
 })
 const transcriptIndexById = computed(
   () =>

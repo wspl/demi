@@ -59,6 +59,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:rect': [rect: WindowRect]
   close: []
+  /** A key pressed while the focus is in the window, which the window itself does nothing with. */
+  keydown: [event: KeyboardEvent]
 }>()
 
 const slots = defineSlots<{
@@ -200,6 +202,7 @@ defineExpose({ activate })
           tabindex="-1"
           class="overlay-dialog flex h-full w-full flex-col overflow-hidden rounded-xl bg-surface-dialog shadow-2xl outline-none"
           :style="{ '--window-bar-h': `${WINDOW_TITLE_BAR_PX}px` }"
+          @keydown="emit('keydown', $event)"
         >
           <div
             class="window-bar flex shrink-0 select-none items-center gap-2 border-b border-line-subtle"
