@@ -10,6 +10,7 @@ import RelativeTime from '../ui/RelativeTime.vue'
 import Tag from '../ui/Tag.vue'
 import { formatMoment } from '../ui/dates'
 import CredentialDialog from './CredentialDialog.vue'
+import { answerInDialog } from './dialog-work'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -41,59 +42,59 @@ interface Editor {
   /** The credential edited; null for a new one. */
   credential: SettingsCredential | null
   open: boolean
-  status: { kind: 'idle' | 'saving' } | ({ kind: 'failed' } & ShownError)
+  /** Why the last save or delete was refused, shown in the dialog. */
+  error: ShownError | null
 }
 
 const editor = ref<Editor | null>(null)
 
 function open(credential: SettingsCredential | null): void {
-  editor.value = { credential, open: true, status: { kind: 'idle' } }
+  editor.value = { credential, open: true, error: null }
 }
 
-function failed(error: unknown): Editor['status'] {
+function failed(error: unknown): ShownError {
   // A refused name or field is the user's to correct in the dialog.
-  return { kind: 'failed', ...formError(error, { invalid_body: null, credential_name_taken: null }) }
+  return formError(error, { invalid_body: null, credential_name_taken: null })
 }
 
-async function save(draft: SettingsCredentialDraft): Promise<void> {
+/** The credential as the target of its Save and Delete, one group of operations (`operations.ts`). */
+function credentialTarget(id: string | null): string {
+  return `credential:${id ?? 'new'}`
+}
+
+/** The dialog of credential `id`, if it is the one open: the answer to its work goes there and nowhere else. */
+function shownEditor(id: string | null): Editor | null {
   const current = editor.value
-  if (!current || current.status.kind === 'saving') {
-    return
-  }
-  current.status = { kind: 'saving' }
-  try {
-    await props.saveCredential(current.credential?.id ?? null, draft)
-    current.status = { kind: 'idle' }
-    current.open = false
-  } catch (error) {
-    current.status = failed(error)
-  }
+  return current?.open && (current.credential?.id ?? null) === id ? current : null
+}
+
+function save(draft: SettingsCredentialDraft): Promise<void> {
+  const id = editor.value?.credential?.id ?? null
+  return answerInDialog(() => shownEditor(id), 'Could Not Save the Credential', failed, () => props.saveCredential(id, draft))
 }
 
 /** Deleting asks first, over the credential's dialog. */
 const deleteOpen = ref(false)
 
 async function remove(): Promise<void> {
-  deleteOpen.value = false
-  const current = editor.value
-  if (!current?.credential || current.status.kind === 'saving') {
+  const id = editor.value?.credential?.id
+  if (!id) {
     return
   }
-  current.status = { kind: 'saving' }
-  try {
-    await props.deleteCredential(current.credential.id)
-    current.status = { kind: 'idle' }
-    current.open = false
-  } catch (error) {
-    current.status = failed(error)
+  await answerInDialog(() => shownEditor(id), 'Could Not Delete the Credential', failed, () => props.deleteCredential(id))
+  // The question closes with its answer, if it still asks about this credential.
+  if (editor.value?.credential?.id === id) {
+    deleteOpen.value = false
   }
+}
+
+/** Save and Delete exclude each other on one credential: while one works, the other cannot be pressed. */
+function editing(action: 'save' | 'delete', id: string | null) {
+  return { action, target: credentialTarget(id), group: 'edit' }
 }
 
 /** What the user has revealed, by credential: its values and the secret fields shown. */
 const revealed = ref(new Map<string, { values: Record<string, string>; shown: Set<string> }>())
-/** The credentials whose values are being read. */
-const reading = ref(new Set<string>())
-
 async function toggle(credential: SettingsCredential, field: string): Promise<void> {
   const held = revealed.value.get(credential.id)
   if (held?.shown.has(field)) {
@@ -104,19 +105,9 @@ async function toggle(credential: SettingsCredential, field: string): Promise<vo
     held.shown.add(field)
     return
   }
-  if (reading.value.has(credential.id)) {
-    return
-  }
-  reading.value = new Set(reading.value).add(credential.id)
-  try {
-    const values = await props.revealCredential(credential.id)
-    if (values) {
-      revealed.value = new Map(revealed.value).set(credential.id, { values, shown: new Set([field]) })
-    }
-  } finally {
-    const next = new Set(reading.value)
-    next.delete(credential.id)
-    reading.value = next
+  const values = await props.revealCredential(credential.id)
+  if (values) {
+    revealed.value = new Map(revealed.value).set(credential.id, { values, shown: new Set([field]) })
   }
 }
 
@@ -165,6 +156,7 @@ const empty = computed(() => props.credentials.length === 0)
         <SettingsRow
           :label="credential.name"
           :description="credential.note || undefined"
+          :target="credentialTarget(credential.id)"
           interactive
           isolate-controls
           @click="open(credential)"
@@ -186,7 +178,6 @@ const empty = computed(() => props.credentials.length === 0)
                         :icon="fieldValue(credential, field) === null ? Eye : EyeOff"
                         size="xs"
                         variant="ghost"
-                        :loading="reading.has(credential.id)"
                         :aria-label="`${fieldValue(credential, field) === null ? 'Show' : 'Hide'} ${field.label}`"
                         @click.stop="toggle(credential, field.name)"
                       />
@@ -229,8 +220,9 @@ const empty = computed(() => props.credentials.length === 0)
       :is-open="editor.open"
       :overlay-store="overlayStore"
       :credential="editor.credential"
-      :pending="editor.status.kind === 'saving'"
-      :error="editor.status.kind === 'failed' ? editor.status : null"
+      :error="editor.error"
+      :save-operation="editing('save', editor.credential?.id ?? null)"
+      :delete-operation="editing('delete', editor.credential?.id ?? null)"
       @close="editor.open = false"
       @save="save"
       @delete="deleteOpen = true"
@@ -240,6 +232,7 @@ const empty = computed(() => props.credentials.length === 0)
       :overlay-store="overlayStore"
       :title="`Delete the credential “${editor?.credential?.name ?? ''}”?`"
       action="Delete"
+      :operation="editing('delete', editor?.credential?.id ?? null)"
       @close="deleteOpen = false"
       @confirm="remove"
     >

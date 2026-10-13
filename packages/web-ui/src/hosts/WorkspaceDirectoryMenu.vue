@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, getCurrentInstance, ref } from 'vue'
+import { operations, type Operation } from '../ui/operations'
 import { Folder } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
@@ -50,7 +51,8 @@ const directoryCompact = useRoomLabel(directoryLabel, () => directoryName.value,
 const browsingDevice = ref<string | null>(null)
 const browserOpen = ref(false)
 const browserPath = ref<string | undefined>()
-const pending = ref(false)
+/** Choosing a folder, as an operation (`operations.ts`): Use This Folder shows it while it works. */
+const choosing: Operation = { action: 'choose', target: `directory:${getCurrentInstance()?.uid ?? 0}` }
 // The home of the Host the conversation runs on, which writes each row's location from `~`.
 const home = computed(() => props.hosts.find((host) => host.id === props.deviceId)?.source.home)
 const browsingHost = computed(() =>
@@ -76,20 +78,15 @@ function selectRecent(id: string) {
 }
 async function selectFolder(path: string) {
   const deviceId = browsingDevice.value
-  if (props.locked || !deviceId || pending.value) {
+  if (props.locked || !deviceId) {
     return
   }
-  pending.value = true
-  try {
-    if (
-      (await props.selectFolder(deviceId, path)) &&
-      browsingDevice.value === deviceId
-    ) {
+  await operations.run(choosing, async () => {
+    // Done, the browser closes if it still shows the device it was chosen on.
+    if ((await props.selectFolder(deviceId, path)) && browserOpen.value && browsingDevice.value === deviceId) {
       browserOpen.value = false
     }
-  } finally {
-    pending.value = false
-  }
+  })
 }
 defineExpose({ browse })
 </script>
@@ -159,7 +156,7 @@ defineExpose({ browse })
       :host-id="browsingDevice ?? undefined"
       confirm-label="Use This Folder"
       :confirm-disabled="locked"
-      :confirm-pending="pending"
+      :confirm-operation="choosing"
       @select="selectFolder"
       @close="browserOpen = false"
       @update:host-id="switchBrowserHost"

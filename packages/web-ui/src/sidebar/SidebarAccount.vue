@@ -10,7 +10,10 @@ import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue';
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue';
 import { pressOnKey } from '@demicodes/web-ui/ui/button-events';
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics';
+import { provideRowTarget, type Action } from '@demicodes/web-ui/ui/operations';
+import RowSpinner from '@demicodes/web-ui/ui/RowSpinner.vue';
 import type { SidebarAccount } from './types';
+import { THIS_SESSION } from './session-target';
 
 /**
  * The signed-in user at the foot of the sidebar; the menu behind it holds
@@ -20,12 +23,16 @@ import type { SidebarAccount } from './types';
  */
 const props = defineProps<{
   account: SidebarAccount;
+  /** Signs this browser out; the row works until the page goes to the sign-in page. */
+  onSignOut?: Action;
 }>();
 
 const emit = defineEmits<{
   openSettings: [];
-  signOut: [];
 }>();
+
+// Signing out, from this menu or from Settings, shows on the account's row.
+const signingOut = provideRowTarget(() => THIS_SESSION.target);
 
 const displayName = computed(() =>
   accountDisplayName(props.account.name, props.account.email)
@@ -60,7 +67,8 @@ const displayName = computed(() =>
           :email="account.email"
           :size="24"
         />
-        <span class="min-w-0 truncate text-chrome text-fg phone:text-[16px]">{{ displayName }}</span>
+        <span class="min-w-0 flex-1 truncate text-chrome text-fg phone:text-[16px]">{{ displayName }}</span>
+        <RowSpinner v-if="signingOut" />
       </div>
     </template>
     <template #content="{ close }">
@@ -90,10 +98,8 @@ const displayName = computed(() =>
         <MenuItem
           :icon="LogOut"
           label="Sign Out"
-          @select="
-            close();
-            emit('signOut');
-          "
+          :operation="THIS_SESSION"
+          @select="onSignOut?.()"
         />
       </Menu>
     </template>

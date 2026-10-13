@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { operations, type Operation } from '../ui/operations'
 import { requestIdOf, type ShownError } from '../infra/errors'
 import {
   computed,
@@ -87,7 +88,8 @@ const props = withDefaults(
     confirmLabel?: string
     /** Browsing stays open while choosing is not allowed (a running turn, an archived conversation). */
     confirmDisabled?: boolean
-    confirmPending?: boolean
+    /** What the confirm button does (`operations.ts`): it shows it while it works. */
+    confirmOperation?: Operation
   }>(),
   {
     places: () => [],
@@ -172,7 +174,7 @@ const confirmLabel = computed(
     props.confirmLabel ?? (props.mode === 'file' ? 'Open' : 'Select Folder'),
 )
 const canConfirm = computed(() => {
-  if (props.confirmDisabled || props.confirmPending) {
+  if (props.confirmDisabled || (props.confirmOperation !== undefined && operations.runs(props.confirmOperation))) {
     return false
   }
   if (selectedEntry.value) {
@@ -574,8 +576,8 @@ onBeforeUnmount(() => pending?.abort())
         <Button @click="emit('cancel')">Cancel</Button>
         <Button
           variant="primary"
-          :disabled="!canConfirm && !confirmPending"
-          :loading="confirmPending"
+          :disabled="!canConfirm && !(confirmOperation && operations.runs(confirmOperation))"
+          :operation="confirmOperation"
           @click="confirm"
           >{{ confirmLabel }}</Button
         >

@@ -8,6 +8,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
+import type { Action, Operation } from '@demicodes/web-ui/ui/operations'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
@@ -33,7 +34,10 @@ import { formatTokens } from '../ui/token-count'
  * setting: a model without it cannot drive the agent, so it is never offered.
  */
 const props = defineProps<{
-  pending?: boolean
+  /** Saves the model; Add or Save works until it settles. */
+  onSave?: Action<[model: SettingsModelDraft]>
+  /** What Add or Save does, to which model (`operations.ts`). */
+  operation?: Operation
   /** Why the last save failed, with the request it came from. */
   error?: ShownError | null
   isOpen: boolean
@@ -46,7 +50,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   close: []
-  save: [model: SettingsModelDraft]
 }>()
 
 const draft = ref<SettingsModelDraft>(clone(props.model))
@@ -184,7 +187,6 @@ const canSave = computed(() => {
         </p>
       </header>
       <ScrollArea
-        :inert="pending"
         class="min-h-0"
         :viewport-class="`flex flex-col gap-4 px-5 ${editable ? '' : 'pb-5'}`"
       >
@@ -377,8 +379,8 @@ const canSave = computed(() => {
       <Button
         variant="primary"
         :disabled="!canSave"
-        :loading="pending"
-        @click="emit('save', clone(draft))"
+        :operation="operation"
+        @click="onSave?.(clone(draft))"
         >{{ mode === 'create' ? 'Add' : 'Save' }}</Button
       >
     </template>

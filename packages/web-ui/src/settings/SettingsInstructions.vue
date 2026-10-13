@@ -24,7 +24,8 @@ const props = defineProps<{
 const LIMIT = 65_536
 
 const draft = ref(props.text)
-const status = ref<{ kind: 'idle' | 'saving' } | ({ kind: 'failed' } & ShownError)>({ kind: 'idle' })
+/** The refusal of the last save, until the next one starts; Save shows the work itself. */
+const failure = ref<ShownError | null>(null)
 
 // Another page's save, or this one's answer, replaces a draft the user has not changed.
 let shown = props.text
@@ -39,16 +40,14 @@ const length = computed(() => [...draft.value].length)
 const tooLong = computed(() => length.value > LIMIT)
 const changed = computed(() => draft.value !== props.text)
 
+const saveButton = ref<InstanceType<typeof Button> | null>(null)
+
 async function submit(): Promise<void> {
-  if (!changed.value || tooLong.value || status.value.kind === 'saving') {
-    return
-  }
-  status.value = { kind: 'saving' }
+  failure.value = null
   try {
     await props.save(draft.value)
-    status.value = { kind: 'idle' }
   } catch (error) {
-    status.value = { kind: 'failed', ...shownError(error) }
+    failure.value = shownError(error)
   }
 }
 </script>
@@ -66,8 +65,9 @@ async function submit(): Promise<void> {
         <Button
           size="sm"
           variant="primary"
+          ref="saveButton"
+          :operation="{ action: 'save', target: 'instructions' }"
           :disabled="!changed || tooLong"
-          :loading="status.kind === 'saving'"
           @click="submit"
         >
           Save
@@ -78,13 +78,13 @@ async function submit(): Promise<void> {
           v-model="draft"
           :rows="12"
           aria-label="Personal instructions"
-          @keydown.meta.enter.prevent="submit"
-          @keydown.ctrl.enter.prevent="submit"
+          @keydown.meta.enter.prevent="saveButton?.press()"
+          @keydown.ctrl.enter.prevent="saveButton?.press()"
         />
         <div class="flex items-start justify-between gap-3 text-[12px] leading-4">
-          <div v-if="status.kind === 'failed'" class="min-w-0">
-            <p class="text-on-danger">{{ status.message }}</p>
-            <RequestIdLine v-if="status.requestId" class="text-fg-muted" :request-id="status.requestId" />
+          <div v-if="failure" class="min-w-0">
+            <p class="text-on-danger">{{ failure.message }}</p>
+            <RequestIdLine v-if="failure.requestId" class="text-fg-muted" :request-id="failure.requestId" />
           </div>
           <span v-else />
           <span class="shrink-0 tabular-nums" :class="tooLong ? 'text-on-danger' : 'text-fg-subtle'">

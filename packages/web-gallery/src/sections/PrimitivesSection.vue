@@ -39,6 +39,7 @@ import { usageAt, usageOf } from '../fixtures/catalog'
 import { useCardLimits } from '../fixtures/usage-limits'
 import GallerySection from '../components/GallerySection.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
+import GalleryWorkingControls from '../components/GalleryWorkingControls.vue'
 import { productWould } from '../product-would'
 import { demoInstructions, demoOpenInstruction } from '../fixtures/instructions'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
@@ -270,6 +271,13 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             <Button disabled :disabled-reason="IN_DEVELOPMENT">In Development</Button>
           </GallerySpecimen>
         </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Working"
+        note="No click goes unanswered. A control is bound to an operation, an action on one target, and its handler returns the operation’s promise: the page keeps the running operations, not the control, so a menu or a dialog opened again shows the operation working and a press meanwhile starts nothing. A button keeps its look, a danger button its red, and shows the spinner in place of its icon or beside its label; an icon button shows it in place of its icon; a menu item closes its menu and the row of its target shows the spinner, and the item opened again shows it too (a choice, which keeps the menu open, shows it in its check gutter); a row action shows it on its row. Operations that exclude each other on one target, such as a dialog’s Save and Delete, form a group: while one works the other cannot be pressed, and Cancel always can. Closing a dialog while it works leaves the progress on its row. Each specimen waits 0.9 s, the menu and the dialog 3 s."
+      >
+        <GalleryWorkingControls />
       </GallerySection>
 
       <GallerySection

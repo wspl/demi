@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { GitBranch, RefreshCw, Trash2 } from '@lucide/vue'
-import type { OverlayStore, SettingsRowStatus } from '@demicodes/plugin-sdk'
+import type { Action, OverlayStore, SettingsRowStatus } from '@demicodes/plugin-sdk'
 import { Fold } from '@demicodes/plugin-sdk'
 import { FoldChevron } from '@demicodes/plugin-sdk'
 import { IconButton } from '@demicodes/plugin-sdk'
@@ -36,11 +36,13 @@ const props = defineProps<{
   pending?: readonly string[]
   /** Adds a source; the dialog stays open until it is added. */
   addSource: (draft: SettingsSkillDraft) => Promise<AddSourceAnswer>
+  /** Removes a source; Remove in the question works until it settles. */
+  onRemove?: Action<[source: string]>
+  /** Fetches a source again; its button works until it settles. */
+  onUpdate?: Action<[source: string]>
 }>()
 
 const emit = defineEmits<{
-  remove: [source: string]
-  update: [source: string]
   switch: [source: string, skill: string, enabled: boolean]
   switchSource: [source: string, enabled: boolean]
 }>()
@@ -143,11 +145,12 @@ const removedSkills = computed(() => {
   return [...names.slice(0, NAMED_SKILLS), `and ${names.length - NAMED_SKILLS} more`]
 })
 
-function confirmRemove(): void {
-  if (removing.value) {
-    emit('remove', removing.value.id)
+async function confirmRemove(): Promise<void> {
+  try {
+    await (removing.value ? props.onRemove?.(removing.value.id) : undefined)
+  } finally {
+    removeOpen.value = false
   }
-  removeOpen.value = false
 }
 </script>
 
@@ -204,7 +207,7 @@ function confirmRemove(): void {
                 :spinning="source.fetching"
                 :disabled="source.fetching"
                 aria-label="Update"
-                @click="emit('update', source.id)"
+                @click="onUpdate?.(source.id)"
               />
             </Tooltip>
             <Tooltip content="Remove">

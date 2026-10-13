@@ -16,6 +16,7 @@ import TagLine from '../ui/TagLine.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import type { SentenceText } from '../ui/ui-text'
+import { answerInDialog } from './dialog-work'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -77,7 +78,8 @@ interface Editor {
   id: string | null
   draft: SettingsSubagentDraft
   open: boolean
-  status: { kind: 'idle' | 'saving' } | ({ kind: 'failed' } & ShownError)
+  /** Why the last save or delete was refused, shown in the dialog. */
+  error: ShownError | null
 }
 
 const editor = ref<Editor | null>(null)
@@ -116,47 +118,54 @@ function open(profile: SettingsSubagentProfile | null): void {
         }
       : { ...NEW_PROFILE },
     open: true,
-    status: { kind: 'idle' },
+    error: null,
   }
 }
 
-function failed(error: unknown): Editor['status'] {
+function failed(error: unknown): ShownError {
   // A refused name or field is the user's to correct in the dialog.
-  return { kind: 'failed', ...formError(error, { invalid_body: null, profile_exists: null }) }
+  return formError(error, { invalid_body: null, profile_exists: null })
 }
 
-async function save(draft: SettingsSubagentDraft): Promise<void> {
+/** The profile as the target of its Save and Delete, one group of operations (`operations.ts`). */
+function profileTarget(id: string | null): string {
+  return `profile:${id ?? 'new'}`
+}
+
+/** Save and Delete exclude each other on one profile: while one works, the other cannot be pressed. */
+function editing(action: 'save' | 'delete', id: string | null) {
+  return { action, target: profileTarget(id), group: 'edit' }
+}
+
+/** The dialog of profile `id`, if it is the one open: the answer to its work goes there and nowhere else. */
+function shownEditor(id: string | null): Editor | null {
   const current = editor.value
-  if (!current || current.status.kind === 'saving') {
-    return
+  return current?.open && current.id === id ? current : null
+}
+
+function save(draft: SettingsSubagentDraft): Promise<void> {
+  const current = editor.value
+  if (!current) {
+    return Promise.resolve()
   }
+  // The draft stays, for the dialog to keep its fields until the backend took them.
   current.draft = draft
-  current.status = { kind: 'saving' }
-  try {
-    await props.saveProfile(current.id, draft)
-    current.status = { kind: 'idle' }
-    current.open = false
-  } catch (error) {
-    current.status = failed(error)
-  }
+  const id = current.id
+  return answerInDialog(() => shownEditor(id), 'Could Not Save the Profile', failed, () => props.saveProfile(id, draft))
 }
 
 /** Deleting asks first, over the profile's dialog. */
 const deleteOpen = ref(false)
 
 async function remove(): Promise<void> {
-  deleteOpen.value = false
-  const current = editor.value
-  if (!current?.id || current.status.kind === 'saving') {
+  const id = editor.value?.id
+  if (!id) {
     return
   }
-  current.status = { kind: 'saving' }
-  try {
-    await props.deleteProfile(current.id)
-    current.status = { kind: 'idle' }
-    current.open = false
-  } catch (error) {
-    current.status = failed(error)
+  await answerInDialog(() => shownEditor(id), 'Could Not Delete the Profile', failed, () => props.deleteProfile(id))
+  // The question closes with its answer, if it still asks about this profile.
+  if (editor.value?.id === id) {
+    deleteOpen.value = false
   }
 }
 
@@ -234,6 +243,7 @@ const empty = computed(() => props.profiles.length === 0)
         :label="profile.name"
         :description="profile.description"
         :muted="!profile.enabled || !enabled"
+        :target="profileTarget(profile.id)"
         interactive
         isolate-controls
         @click="open(profile)"
@@ -275,8 +285,9 @@ const empty = computed(() => props.profiles.length === 0)
       :providers="providers"
       :models="models"
       :catalog-models="catalogModels"
-      :pending="editor.status.kind === 'saving'"
-      :error="editor.status.kind === 'failed' ? editor.status : null"
+      :error="editor.error"
+      :save-operation="editing('save', editor.id)"
+      :delete-operation="editing('delete', editor.id)"
       @close="editor.open = false"
       @save="save"
       @delete="deleteOpen = true"
@@ -287,6 +298,7 @@ const empty = computed(() => props.profiles.length === 0)
       :overlay-store="overlayStore"
       :title="`Delete the profile “${editor?.draft.name ?? ''}”?`"
       action="Delete"
+      :operation="editing('delete', editor?.id ?? null)"
       @close="deleteOpen = false"
       @confirm="remove"
     >

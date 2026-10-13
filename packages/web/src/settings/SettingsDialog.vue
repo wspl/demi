@@ -17,6 +17,7 @@ import { PageScope, settingsPage, withPluginSections } from '@demicodes/web-ui/p
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import { SerialQueue } from '@demicodes/utils'
 import { formError, reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
@@ -43,6 +44,7 @@ import InstructionsPanel from './InstructionsPanel.vue'
 import SubagentsPanel from './SubagentsPanel.vue'
 import CredentialsPanel from './CredentialsPanel.vue'
 import UsersPanel from './UsersPanel.vue'
+import type { Action } from '@demicodes/web-ui/ui/operations'
 
 /**
  * The refusals the user corrects in the form they filled, in the page's
@@ -58,7 +60,10 @@ const CODE_CORRECTIONS = {
   email_taken: 'That email address is already in use.',
 } as const
 
-const emit = defineEmits<{ signOut: [] }>()
+defineProps<{
+  /** Signs this browser out; Sign Out works until the page goes to the sign-in page. */
+  onSignOut?: Action
+}>()
 const resources = useResources()
 const product = useProduct()
 const preferences = usePreferences()
@@ -115,36 +120,39 @@ function report(title: HeadlineText, error: unknown): void {
   reportError(title, error, { userVisible: true })
 }
 
-const nameSaving = ref(false)
-const nameDraft = ref<string | null>(null)
+/** The display name's changes on their way, in the order the user made them. */
+const nameWrites = new SerialQueue()
 
-async function rename(nickname: string): Promise<void> {
-  if (!nickname.trim() || nameSaving.value) {
-    return
+/**
+ * Changes the display name as the field commits it: the page shows it at
+ * once, and a refusal gives the old name back with a toast.
+ */
+function rename(nickname: string): Promise<void> {
+  const next = nickname.trim()
+  if (!next) {
+    return Promise.resolve()
   }
-  nameSaving.value = true
-  nameDraft.value = nickname
-  try {
-    const sentAt = product.sent()
-    const response = await apiRequest('/auth/me', {
-      method: 'PATCH',
-      signal: lifetime.signal,
-      ...jsonBody({ nickname: nickname.trim() } satisfies NicknamePatch),
+  const shown = product.change('user', (state) => ({ ...state, user: { ...state.user, nickname: next } }))
+  return nameWrites
+    .run('nickname', async () => {
+      shown.send()
+      const response = await apiRequest('/auth/me', {
+        method: 'PATCH',
+        signal: lifetime.signal,
+        ...jsonBody({ nickname: next } satisfies NicknamePatch),
+      })
+      const { user } = await readResponse(response, identitySchema)
+      lifetime.signal.throwIfAborted()
+      session.current = {
+        status: 'signedIn',
+        user,
+      }
+      shown.land({ type: 'user', user })
     })
-    const { user } = await readResponse(response, identitySchema)
-    lifetime.signal.throwIfAborted()
-    session.current = {
-      status: 'signedIn',
-      user,
-    }
-    product.answered(sentAt, { type: 'user', user })
-    nameDraft.value = null
-    nameSaving.value = false
-  } catch (error) {
-    // The field keeps the draft; the toast says why it was not saved.
-    nameSaving.value = false
-    report('Could Not Change Your Name', error)
-  }
+    .catch((error) => {
+      shown.drop()
+      report('Could Not Change Your Name', error)
+    })
 }
 
 /** Why the email cannot be changed on a server without mail (`web-api.md` § Account API). */
@@ -414,8 +422,7 @@ function resetShortcuts(): void {
     />
     <SettingsAccount
       v-else-if="section === 'account'"
-      :name="nameDraft ?? resources.username"
-      :name-saving="nameSaving"
+      :name="resources.username"
       v-model:email-draft="emailDraft"
       v-model:password-draft="passwordDraft"
       v-model:email-open="emailOpen"
@@ -435,7 +442,7 @@ function resetShortcuts(): void {
       @verify-email="verifyEmail"
       @resend-email="resendEmail"
       @submit-password="submitPassword"
-      @sign-out="emit('signOut')"
+      :on-sign-out="onSignOut"
     />
     <SettingsNotifications
       v-else-if="section === 'notifications'"

@@ -310,7 +310,8 @@ export interface SettingsModelEditor {
   model: SettingsModelDraft
   original: SettingsProviderModel | null
   open: boolean
-  status: { kind: 'idle' | 'saving' } | ({ kind: 'failed' } & ShownError)
+  /** Why the last save was refused, shown in the dialog. */
+  error: ShownError | null
 }
 
 export type ProviderLoginPhase =
@@ -342,7 +343,7 @@ export type ProviderLoginPhase =
 
 export type SettingsProviderOperation =
   | { kind: 'saving' | 'testing' | 'refreshing' | 'removing' | 'cli' }
-  | { kind: 'account'; accountId: string; action: 'activate' | 'remove' | 'test' }
+  | { kind: 'account'; accountId: string; action: 'remove' | 'test' }
 
 /**
  * A subagent profile as the Subagent section lists and edits it

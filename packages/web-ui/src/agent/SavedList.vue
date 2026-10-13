@@ -3,6 +3,7 @@ import { ArrowUp, Paperclip, Pencil, Trash2 } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import MenuItem from '../ui/MenuItem.vue'
+import type { Action } from '../ui/operations'
 import ScrollArea from '../ui/ScrollArea.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import type { SavedRow } from './saved'
@@ -18,13 +19,18 @@ import type { SavedRow } from './saved'
  * their inset, the count before them: quiet, and the normal icon color while
  * the pointer or the focus is on the row.
  */
-defineProps<{ rows: SavedRow[] }>()
-
-const emit = defineEmits<{
-  edit: [id: string]
-  send: [id: string]
-  delete: [id: string]
+defineProps<{
+  rows: SavedRow[]
+  /** Each action may return a promise, which its control shows until it settles. */
+  onEdit?: Action<[id: string]>
+  onSend?: Action<[id: string]>
+  onDelete?: Action<[id: string]>
 }>()
+
+/** Edit, Send and Delete of one saved message exclude each other (`operations.ts`). */
+function onSaved(action: 'edit' | 'send' | 'delete', id: string) {
+  return { action, target: `saved:${id}`, group: 'saved' }
+}
 </script>
 
 <template>
@@ -34,7 +40,8 @@ const emit = defineEmits<{
         v-for="row in rows"
         :key="row.id"
         iconless
-        @select="emit('edit', row.id)"
+        :operation="onSaved('edit', row.id)"
+        @select="onEdit?.(row.id)"
       >
         <span class="min-w-0 truncate">{{ row.preview }}</span>
         <template #actions>
@@ -48,7 +55,8 @@ const emit = defineEmits<{
               variant="ghost"
               size="xs"
               aria-label="Edit"
-              @click.stop="emit('edit', row.id)"
+              :operation="onSaved('edit', row.id)"
+              @click.stop="onEdit?.(row.id)"
             />
           </Tooltip>
           <Tooltip content="Send" class="inline-flex saved-action">
@@ -57,7 +65,8 @@ const emit = defineEmits<{
               variant="ghost"
               size="xs"
               aria-label="Send"
-              @click.stop="emit('send', row.id)"
+              :operation="onSaved('send', row.id)"
+              @click.stop="onSend?.(row.id)"
             />
           </Tooltip>
           <Tooltip content="Delete" class="inline-flex saved-action">
@@ -66,7 +75,8 @@ const emit = defineEmits<{
               variant="ghost"
               size="xs"
               aria-label="Delete"
-              @click.stop="emit('delete', row.id)"
+              :operation="onSaved('delete', row.id)"
+              @click.stop="onDelete?.(row.id)"
             />
           </Tooltip>
         </template>

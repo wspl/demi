@@ -176,6 +176,7 @@ function detach(id: string): void {
           >
             <HostMenu
               :primary-host="primaryHost"
+              conversation-id="gallery-connected-session"
               :attached-hosts="attachedHosts"
               :devices="devices"
               :locked="locked"
@@ -207,7 +208,7 @@ function detach(id: string): void {
       :is-open="moveQuestion.open.value"
       :overlay-store="appOverlayStore"
       :question="moveQuestion.question.value"
-      :busy="moveQuestion.busy.value"
+      :answers="moveQuestion.answers"
       @close="moveQuestion.cancel"
       @move="moveQuestion.answer"
     />

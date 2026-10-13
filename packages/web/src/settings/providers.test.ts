@@ -9,6 +9,8 @@ import { useResources } from '../state/resources'
 import { useProviderSettings } from './providers'
 import { dismissToast, toasts } from '@demicodes/web-ui/infra/toast'
 import { waitFor } from '@demicodes/utils'
+import { operations } from '@demicodes/web-ui/ui/operations'
+import { providerOperation, providerTarget } from '@demicodes/web-ui/settings/provider-operations'
 
 const realFetch = globalThis.fetch
 let pinia: ReturnType<typeof createPinia>
@@ -25,6 +27,8 @@ let created: Record<string, unknown>[]
 let nextId: string
 let write: (body: Record<string, unknown>) => Promise<Response>
 let probe: (body: string, signal: AbortSignal | null | undefined) => Promise<Response>
+/** What the backend answers to making another account the active one. */
+let activate: () => Promise<Response>
 
 beforeEach(async () => {
   pinia = createPinia()
@@ -49,6 +53,7 @@ beforeEach(async () => {
   })
   writes = 0
   probe = async () => Response.json({})
+  activate = async () => new Response(null, { status: 204 })
   write = async (body) => {
     if (typeof body.label === 'string') {
       state.providers[0]!.label = body.label
@@ -116,6 +121,9 @@ beforeEach(async () => {
       channels.last().send({ type: 'providers', providers: state.providers })
       return answer
     }
+    if (path === '/api/providers/codex/accounts/active' && init?.method === 'PUT') {
+      return activate()
+    }
     if (path === '/api/providers/configured/quota' && init?.method === 'POST') {
       return probe(String(init.body), init.signal)
     }
@@ -138,7 +146,7 @@ afterEach(() => {
 
 async function idle(): Promise<void> {
   for (let attempt = 0; attempt < 30; attempt++) {
-    if (!Object.keys(useProviderSettings().operations).length) {
+    if (!useProviderSettings().providers.some((entry) => operations.onTarget(providerTarget(entry.id))) && !operations.onTarget(providerTarget('new'))) {
       return
     }
     await new Promise<void>((resolve) => setImmediate(resolve))
@@ -284,7 +292,7 @@ test('an edit or a model made while a test runs shows at once and is saved when 
   }
   settings.test({ ...provider(), models: [gpt] })
   await nextTick()
-  expect(settings.operations.configured?.kind).toBe('testing')
+  expect(operations.runs(providerOperation('configured', { kind: 'testing' }))).toBe(true)
 
   settings.change(provider(), { name: 'Renamed' })
   expect(provider().name).toBe('Renamed')
@@ -450,7 +458,7 @@ test('provider writes become busy before dispatch and reject duplicate clicks', 
   const deferred = Promise.withResolvers<Response>()
   write = () => deferred.promise
   settings.change(provider, { name: 'Changed' })
-  expect(settings.operations.configured?.kind).toBe('saving')
+  expect(operations.runs(providerOperation('configured', { kind: 'saving' }))).toBe(true)
   settings.change(provider, { name: 'Duplicate' })
   await nextTick()
   expect(writes).toBe(1)
@@ -460,7 +468,7 @@ test('provider writes become busy before dispatch and reject duplicate clicks', 
   expect(
     settings.providers.find((entry) => entry.id === 'configured')?.name,
   ).toBe('Changed')
-  expect(settings.operations.configured).toBeUndefined()
+  expect(operations.onTarget(providerTarget('configured'))).toBe(false)
 })
 
 test('a failed save is a toast; the input stays and the next change resends it', async () => {
@@ -515,4 +523,49 @@ test('an API key change, which no view shows, still loads the catalog once the c
   await idle()
   await new Promise<void>((resolve) => setImmediate(resolve))
   expect(catalogReads).toEqual(['/api/models'])
+})
+
+test('Activate moves the Active mark at once, and a refused switch moves it back with a toast', async () => {
+  // Cost: the product state and a stubbed backend; a few milliseconds.
+  const account = (id: string) => ({ id, label: `${id}@example.com`, detail: null, updatedAt: null, quota: null })
+  state.providers.push({
+    id: 'codex',
+    kind: 'subscription',
+    providerType: 'codex',
+    label: 'Codex',
+    wireApi: null,
+    vendorId: null,
+    compatible: false,
+    endpoint: null,
+    hasApiKey: false,
+    models: null,
+    createdAt: '2026-09-10T00:00:00.000Z',
+    details: {
+      type: 'read',
+      auth: { status: 'authenticated' },
+      runtime: { status: 'ready' },
+      accounts: [account('a'), account('b')],
+      active: 'a',
+      quota: null,
+      quotaCapability: { type: 'none' },
+      cliPackage: null,
+    },
+  })
+  channels.last().send({ type: 'providers', providers: state.providers })
+  const settings = useProviderSettings()
+  const entry = () => settings.providers.find((candidate) => candidate.id === 'codex')!
+  const activeAccount = () => entry().accounts.find((candidate) => candidate.active)?.id
+  expect(activeAccount()).toBe('a')
+
+  const answer = Promise.withResolvers<Response>()
+  activate = () => answer.promise
+  const switching = settings.activateAccount(entry(), 'b')
+  expect(activeAccount()).toBe('b')
+
+  answer.resolve(
+    Response.json({ requestId: 'req_test000000000001', code: 'account_not_found', message: 'That account is gone.' }, { status: 404 }),
+  )
+  await switching
+  expect(activeAccount()).toBe('a')
+  expect(toasts.map((toast) => toast.title)).toEqual(['Could Not Switch Accounts'])
 })

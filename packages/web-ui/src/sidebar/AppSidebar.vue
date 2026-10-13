@@ -5,6 +5,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
+import type { Action } from '@demicodes/web-ui/ui/operations'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
@@ -58,6 +59,10 @@ const props = defineProps<{
   newShortcut?: string
   /** The keys Search conversations has in the keyboard settings, which Search shows; none when it has none. */
   searchShortcut?: string
+  /** Removes a project; its row works until it settles. */
+  onRemoveProject?: Action<[id: string]>
+  /** Signs this browser out; the account's row works until the page goes. */
+  onSignOut?: Action
 }>()
 
 const emit = defineEmits<{
@@ -67,7 +72,6 @@ const emit = defineEmits<{
   /** Opens the search window. */
   search: []
   addProject: []
-  removeProject: [id: string]
   rename: [id: string, title: string]
   pin: [ids: string[], pinned: boolean]
   archive: [ids: string[]]
@@ -77,7 +81,6 @@ const emit = defineEmits<{
   openSettings: [section?: string]
   /** The phone mark at the foot: hand off to a phone by a QR code. */
   handOffToPhone: []
-  signOut: []
   retryList: []
 }>()
 
@@ -667,8 +670,8 @@ function selectProjectConversations(project: SidebarProject): void {
     >
       <SidebarAccountRow
         :account="account"
+        :on-sign-out="onSignOut"
         @open-settings="emit('openSettings')"
-        @sign-out="emit('signOut')"
       />
       <!-- A page that is itself on a phone has no phone to hand the account to. -->
       <Tooltip v-if="!phone" content="Hand Off to Phone" placement="top">
@@ -721,7 +724,7 @@ function selectProjectConversations(project: SidebarProject): void {
           @create="emit('create', menuProject.id)"
           @toggle-fold="setFolded(menuProject.id, !isFolded(menuProject.id))"
           @select-all="selectProjectConversations(menuProject)"
-          @remove="emit('removeProject', menuProject.id)"
+          @remove="onRemoveProject?.(menuProject.id)"
         />
       </template>
     </ContextMenu>
