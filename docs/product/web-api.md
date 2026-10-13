@@ -1020,8 +1020,10 @@ every node of the user's conversations.
 
 `POST /api/providers` takes
 `{ source: "vendor", vendorId, label?, apiKey?, models? }` or
-`{ source: "custom", providerType, wireApi?, label?, apiKey?, baseUrl, models? }`,
-a vendor entry or a compatible one ([Endpoints](../providers/providers.md#endpoints)):
+`{ source: "custom", providerType, wireApi?, label?, apiKey?, baseUrl?, models? }`:
+the first a vendor entry of a models.dev vendor, the second the family's own
+vendor's entry without `baseUrl`, such as Anthropic's, and a compatible entry
+with it ([Endpoints](../providers/providers.md#endpoints)):
 everything but the kind may come later, and the entry is
 [incomplete](../providers/models.md#a-provider-is-in-the-list-from-the-start)
 until it has what it needs; `label` defaults to the vendor's or family's name.
