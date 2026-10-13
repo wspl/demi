@@ -136,25 +136,48 @@ impl ControlService {
 
     /// Moves the saved message `id` into the conversation's draft, and the
     /// draft's text and files, when it holds any, into a message saved for
-    /// later, in one transaction.
+    /// later under `becomes`, in one transaction. Sent again, when `id` is
+    /// gone and the conversation keeps `becomes`, it answers the draft as it
+    /// is; a `becomes` another message holds is taken.
     pub async fn edit_saved(
         &self,
         conversation: ConversationId,
         id: String,
+        becomes: SavedMessageId,
     ) -> Result<Result<ConversationDraft, SavedRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             if archived(&transaction, &conversation)? {
                 return Ok(Err(SavedRefusal::Archived));
             }
+            let kept_by: Option<String> = transaction
+                .query_row(
+                    "SELECT conversation_id FROM saved_messages WHERE id = ?1",
+                    [becomes.as_str()],
+                    |row| row.get(0),
+                )
+                .optional()?;
+            let taken = kept_by.is_some();
+            if kept_by.is_some_and(|kept| !kept.eq_ignore_ascii_case(conversation.as_str())) {
+                return Ok(Err(SavedRefusal::IdTaken));
+            }
             let Some(document) = remove(&transaction, &conversation, &id)? else {
-                return Ok(Err(SavedRefusal::NotFound));
+                // The edit was made already: the message the draft became is kept.
+                return Ok(if taken {
+                    let draft = stored(&transaction, &conversation)?
+                        .unwrap_or_else(|| Stored::written(None, Version::empty()));
+                    Ok(draft.present())
+                } else {
+                    Err(SavedRefusal::NotFound)
+                });
             };
+            if taken {
+                // Another message holds the id the draft would become under.
+                return Ok(Err(SavedRefusal::IdTaken));
+            }
             let current = stored(&transaction, &conversation)?;
             if let Some(draft) = current.as_ref().filter(|draft| !draft.version.is_empty()) {
-                let id = SavedMessageId::try_from(uuid::Uuid::new_v4().to_string())
-                    .expect("a v4 UUID is a message id");
-                insert(&transaction, &conversation, &id, draft.version.clone(), now)?;
+                insert(&transaction, &conversation, &becomes, draft.version.clone(), now)?;
             }
             let mut draft = Stored::written(current, document);
             draft.saved_revision += 1;

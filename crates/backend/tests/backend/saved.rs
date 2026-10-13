@@ -83,14 +83,18 @@ async fn from_draft(
     (message, draft)
 }
 
-async fn edit(backend: &TestBackend, session: &Session, message: &str) -> Answer {
+async fn edit_as(backend: &TestBackend, session: &Session, message: &str, becomes: &str) -> Answer {
     backend
         .post(
             &format!("/api/conversations/{FIRST}/saved/{message}/edit"),
             Some(session),
-            json!({}),
+            json!({ "id": becomes }),
         )
         .await
+}
+
+async fn edit(backend: &TestBackend, session: &Session, message: &str) -> Answer {
+    edit_as(backend, session, message, &fresh()).await
 }
 
 async fn put_draft(backend: &TestBackend, session: &Session, base: u64, text: &str, files: &Value) {
@@ -284,6 +288,40 @@ async fn a_save_sent_again_with_its_id_makes_one_message_and_another_content_or_
         )
         .await;
     assert_eq!(named.status, StatusCode::BAD_REQUEST);
+    backend.close().await;
+}
+
+// About 50 ms: a few edits on a local backend.
+#[tokio::test]
+async fn an_edit_sent_again_with_its_id_answers_as_the_first_did_and_an_id_another_message_holds_is_refused() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    create(&backend, &master, FIRST).await;
+    let dns = save(&backend, &master, "Check the DNS", &json!([])).await;
+    let other = save(&backend, &master, "Other", &json!([])).await;
+    put_draft(&backend, &master, 0, "Half written", &json!([])).await;
+
+    // The half written message is saved under the page's id, the saved one is in the draft.
+    let becomes = fresh();
+    let first = edit_as(&backend, &master, &dns.id, &becomes).await;
+    assert_eq!(first.status, StatusCode::OK, "{}", String::from_utf8_lossy(&first.body));
+    let first = first.json::<DraftAnswer>().draft;
+    assert_eq!(first.text, "Check the DNS");
+    let read = list(&backend, &master).await;
+    assert_eq!(read.messages.iter().find(|message| message.id == becomes).map(|message| message.text.as_str()), Some("Half written"));
+
+    // Sent again, it changes nothing and answers the draft as it is.
+    let again = edit_as(&backend, &master, &dns.id, &becomes).await;
+    assert_eq!(again.status, StatusCode::OK, "{}", String::from_utf8_lossy(&again.body));
+    assert_eq!(again.json::<DraftAnswer>().draft, first);
+    assert_eq!(list(&backend, &master).await, read);
+
+    // An id another message holds is taken, and nothing moves.
+    assert_eq!(
+        edit_as(&backend, &master, &other.id, &becomes).await.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::IdTaken)
+    );
+    assert_eq!(list(&backend, &master).await, read);
     backend.close().await;
 }
 

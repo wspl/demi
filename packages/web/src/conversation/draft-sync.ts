@@ -302,17 +302,17 @@ export function createDraftSync(options: {
   /**
    * Puts the message saved for later `id` in the draft, from inside
    * `ordered`, after a save of what the composer held, `held`, which the
-   * backend keeps for later in its place. The composer shows the message
+   * backend keeps for later in its place, as the message `becomes`. The composer shows the message
    * already; what the user typed since is saved on top.
    */
-  async function editSavedNow(conversation: Conversation, id: string, held: HeldDraft): Promise<void> {
+  async function editSavedNow(conversation: Conversation, id: string, becomes: string, held: HeldDraft): Promise<void> {
     const signal = lifetime.signal
     await saveNow(conversation, false, held)
     const saved = conversation.savedDraft
     if (saved && !sameContent(held.content, saved)) {
       throw new Error('The message in the composer is not saved yet. Try again in a moment.')
     }
-    const draft = await editSavedRequest(conversation.id, id, signal)
+    const draft = await editSavedRequest(conversation.id, id, becomes, signal)
     signal.throwIfAborted()
     conversation.savedDraft = draft
     conversation.draftBase = draft.revision

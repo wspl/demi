@@ -200,6 +200,7 @@ pub fn web() -> Vec<Root> {
         sends::<saved::SavedFromDraft>(),
         receives::<saved::FromDraftAnswer>(),
         sends::<saved::SavedSave>(),
+        sends::<saved::SavedEdit>(),
         receives::<saved::SavedList>(),
         receives::<saved::SavedAnswer>(),
         receives::<permissions::ConversationPermissions>(),

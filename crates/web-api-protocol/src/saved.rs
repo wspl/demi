@@ -45,6 +45,15 @@ pub struct SavedSave {
     pub files: Vec<ClientContent>,
 }
 
+/// `POST /conversations/:id/saved/:messageId/edit`: the id the page gives the
+/// message the draft becomes, when the draft holds one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SavedEdit {
+    #[garde(skip)]
+    pub id: SavedMessageId,
+}
+
 /// A message saved for later.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
