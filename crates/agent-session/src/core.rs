@@ -1590,10 +1590,12 @@ impl SessionCore {
         );
     }
 
-    /// Marks the answer text at the end complete.
-    pub(super) fn complete_tail_text(&mut self) {
-        self.transcript.complete_tail_text();
+    /// Marks the answer text at the end complete, and answers whether it
+    /// did.
+    pub(super) fn complete_tail_text(&mut self) -> bool {
+        let completed = self.transcript.complete_tail_text();
         self.commit();
+        completed
     }
 
     /// Completes the call `tool_use_id` with its result as the transcript

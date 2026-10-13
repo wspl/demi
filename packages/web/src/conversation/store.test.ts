@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, jest, spyOn, test } from 'bun:test'
 import { deferred, waitFor } from '@demicodes/utils'
-import type { ClientContent } from '@demicodes/protocol'
+import type { ClientContent, ServerFrame } from '@demicodes/protocol'
 import { ConversationRuntime, RemovalRefusedError } from '@demicodes/web-ui/agent/conversation-runtime'
 import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
 import { rowKey } from '@demicodes/web-ui/agent/row-key'
@@ -1844,10 +1844,11 @@ const shownBlock = { type: 'text' as const, id: 'shown', createdAt: '2026-09-09T
 /**
  * Opens the conversation `id` with a session: its transcript holds one
  * block, and its socket opens at once and answers `open` as the backend
- * does. Answers the conversation, its sockets in the order the page opened
- * them, and every `load` it had since it opened.
+ * does, with `opened` and the `handshake` after it in one message. Answers
+ * the conversation, its sockets in the order the page opened them, and
+ * every `load` it had since it opened.
  */
-async function openWithSession(id: string) {
+async function openWithSession(id: string, handshake: ServerFrame[] = []) {
   records.find((item) => item.id === id)!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
   await changed(id)
   useProduct().snapshot!.providers.push(stubProvider)
@@ -1876,7 +1877,7 @@ async function openWithSession(id: string) {
     socket.send = (data) => {
       send(data)
       if (socket.sent.at(-1)?.type === 'open') {
-        queueMicrotask(() => socket.receive({ type: 'opened' }))
+        queueMicrotask(() => socket.receive({ type: 'opened' }, ...handshake))
       }
     }
     sockets.push(socket)
@@ -1897,6 +1898,41 @@ async function openWithSession(id: string) {
 }
 
 const transcriptReads = () => requests.filter((request) => request.path.endsWith('/transcript')).length
+
+// A reload while the agent waits for the model, with a steer waiting: the
+// page shows the conversation once, as the session has it, the transcript
+// with the steer and the Requesting clock counting on from the wait the
+// session tells, never a moment without the steer, with nothing running or
+// with a clock at 0s (`runtime.md` § Connections and the live tree,
+// § Waiting for the model). Before, the transcript showed as soon as it was
+// read, a round trip before the handshake. Cost: one opening.
+test('a conversation opened during a turn shows its transcript with its steer and its wait together', async () => {
+  const store = useConversations()
+  const conversation = () => store.items.find((item) => item.id === FIRST)!
+  const steer = { id: 'steer-1', turnId: 'turn-1', model, content: [{ type: 'text' as const, text: 'Also look at the tests.' }] }
+  const shown: string[] = []
+  const stop = watch(
+    () => {
+      const current = conversation()
+      const wait = current.waitingSince === null ? 'no wait' : `waited ${Math.floor((Date.now() - current.waitingSince) / 1000)}s`
+      const steers = current.pendingSteers.map((pending) => pending.id).join() || 'no steer'
+      return current.load === 'ready' ? `${current.phase}, ${steers}, ${wait}` : current.load
+    },
+    (state) => shown.push(state),
+    { flush: 'sync' },
+  )
+  await openWithSession(FIRST, [
+    { type: 'transcript_reset', start: 0, length: 1, blocks: [shownBlock], version: { epoch: 'epoch', revision: 1 } },
+    { type: 'phase', phase: 'running' },
+    { type: 'queue', queue: [] },
+    { type: 'pending_steers', pendingSteers: [steer] },
+    { type: 'pending_calls', pendingCalls: [] },
+    { type: 'waiting', waitedMs: 11_000 },
+  ])
+  stop()
+  expect(shown.filter((state) => state !== 'loading')).toEqual(['running, steer-1, waited 11s'])
+  expect(shownRows(conversation()).waiting).toEqual(['message:steer-1'])
+})
 
 test('archiving the open conversation keeps its transcript, and Undo connects it again from the blocks it holds, never loading', async () => {
   const store = useConversations()
