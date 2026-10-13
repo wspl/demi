@@ -122,14 +122,11 @@ export const useSessions = defineStore('sessions', () => {
     try {
       await apiRequest(`/auth/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' })
     } catch (error) {
-      reportError('Could Not Sign Out the Browser', error, {
-        userVisible: true,
-        // The page's words for the code; the backend's message is the log's.
-        message: error instanceof ApiError && error.code === 'session_not_found'
-          ? 'It was already signed out.'
-          : undefined,
-      })
-      return
+      // A browser already signed out is what was asked: its row leaves all the same.
+      if (!(error instanceof ApiError && error.code === 'session_not_found')) {
+        reportError('Could Not Sign Out the Browser', error, { userVisible: true })
+        return
+      }
     }
     product.answered(at, (read) => ({
       type: 'sessions',

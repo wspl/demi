@@ -105,8 +105,11 @@ export const usePasskeys = defineStore('passkeys', () => {
     try {
       await apiRequest(`/auth/passkeys/${encodeURIComponent(id)}`, { method: 'DELETE' })
     } catch (error) {
-      reportError('Could Not Remove the Passkey', error, { userVisible: true })
-      return
+      // A passkey already removed is what was asked: its row leaves all the same.
+      if (!(error instanceof ApiError && error.code === 'passkey_not_found')) {
+        reportError('Could Not Remove the Passkey', error, { userVisible: true })
+        return
+      }
     }
     product.answered(at, passkeysAnswer((current) => current.filter((passkey) => passkey.id !== id)))
     if (rpId.value !== null) {
