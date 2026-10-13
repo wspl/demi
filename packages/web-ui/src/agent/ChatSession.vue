@@ -17,6 +17,7 @@ import {
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
+import { DOCK_WINDOW_SHARE } from '@demicodes/web-ui/agent/dock-window'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
@@ -126,7 +127,12 @@ const props = withDefaults(defineProps<{
   // where there is no panel; absent stays undefined.
   asideOpen: undefined,
 })
+/** The share of the session area's height the dock's windows keep; the host keeps it (`dock-window.ts`). */
+const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_WINDOW_SHARE.default })
+
 const emit = defineEmits<{
+  /** The dock windows' share settled: a drag ended, a key or a double-click applied. */
+  dockWindowResizeEnd: [share: number]
   openAside: []
   rename: [title: string]
   /** The row menu's commands, from the phone's title sheet; Delete once the user confirmed it. */
@@ -556,7 +562,11 @@ watch(
       </div>
     </header>
     <div class="relative min-h-0 flex-1 overflow-hidden">
-      <SessionSurface ref="surface">
+      <SessionSurface
+        ref="surface"
+        v-model:dock-window-share="dockWindowShare"
+        @dock-window-resize-end="emit('dockWindowResizeEnd', $event)"
+      >
         <div class="flex h-full min-h-0 flex-col">
           <AgentMessageList
             ref="list"
