@@ -335,6 +335,16 @@ Conversation does: an immediately typeable draft, which the first send makes a
 conversation, so a project the user only wanted to set up leaves no empty
 conversation behind.
 
+### Subagents of a conversation
+
+The composer's lower left has the Subagents menu, which shows its choice,
+such as *Subagents: Default*. Default follows Settings › Subagents, Off turns
+subagents off for this conversation, and each subagent set the project keeps
+in `.demi/subagents/` is an option of its own, by its name
+([Subagent sets of a project](../agent/subagents.md#subagent-sets-of-a-project)).
+The choice is the conversation's, kept with it as its model is, and applies
+from the next spawn; subagents already running go on as they were started.
+
 ### Where a conversation runs
 
 The conversation's header shows the Host it runs on, the primary Host, with

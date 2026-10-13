@@ -54,6 +54,11 @@ repository, only the working directory is searched.
 - In each directory, `AGENTS.md` is read when it is a file, and otherwise
   `CLAUDE.md`. One directory gives at most one file, so a `CLAUDE.md` that
   links to the `AGENTS.md` beside it, or copies it, reaches the model once.
+- In each directory, `.demi/instructions.md` is read too, after that
+  directory's `AGENTS.md` or `CLAUDE.md`: instructions for Demi alone, which
+  other agents reading `AGENTS.md` should not follow, such as which
+  subagent set to use or how to use Demi's browser for this project. It
+  reaches the model as a `project_instructions` element of its own path.
 - Names are matched exactly. A symbolic link is followed.
 - A file that is empty or holds only white space is left out.
 - A file the Host cannot read is left out and logged.
