@@ -366,6 +366,20 @@ impl AgentTreeStore for MemoryTreeStore {
         })
     }
 
+    fn subagents(&self) -> LocalBoxFuture<'_, Result<Vec<(NodeRecord, ModelSelection)>, StoreError>> {
+        Box::pin(async move {
+            let stored = self.stored.borrow();
+            let mut subagents: Vec<(NodeRecord, ModelSelection)> = stored
+                .nodes
+                .values()
+                .filter(|node| node.record.parent.is_some())
+                .map(|node| (node.record.clone(), node.state.model.clone()))
+                .collect();
+            subagents.sort_by_key(|(record, _)| record.number);
+            Ok(subagents)
+        })
+    }
+
     fn create_node(
         &self,
         record: NodeRecord,

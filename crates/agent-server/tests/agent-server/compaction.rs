@@ -33,7 +33,7 @@ const WINDOW: u64 = 100_000;
 /// user may compact from.
 fn usage(frame: Option<&ServerFrame>) -> Option<(u64, Option<u64>, Option<u64>)> {
     match frame? {
-        ServerFrame::ContextUsage { usage, .. } => {
+        ServerFrame::ContextUsage { usage: Some(usage), .. } => {
             Some((usage.tokens, usage.window, usage.compact_from))
         }
         _ => None,
@@ -69,7 +69,7 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
     let opened = client.next_until(is_context_usage).await;
     // Before any message the estimate is the system prompt's and the
     // tools', all of it the System prompt and Commands rows.
-    let Some(ServerFrame::ContextUsage { node, usage: first }) = opened.last() else {
+    let Some(ServerFrame::ContextUsage { node, usage: Some(first) }) = opened.last() else {
         panic!("the open reported no usage: {opened:?}");
     };
     assert_eq!(node, &conversation());
@@ -111,7 +111,7 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
     assert_eq!(kinds(&blocks).last().map(String::as_str), Some("compaction_marker"));
     // The summary replaced what the response measured: the usage is the
     // estimate of the blocks from the boundary on, far below the half.
-    let Some(ServerFrame::ContextUsage { usage, .. }) = last_usage(&compaction) else {
+    let Some(ServerFrame::ContextUsage { usage: Some(usage), .. }) = last_usage(&compaction) else {
         panic!("the compaction reported no usage: {compaction:?}");
     };
     assert!(usage.tokens < WINDOW / 2, "{usage:?}");
@@ -244,7 +244,7 @@ async fn a_pass_names_the_command_and_the_subagent_that_still_run() {
 
 /// Whether `frame` is the usage of `node` with `tokens` in it.
 fn is_usage_of(node: &NodeId, tokens: u64) -> impl Fn(&ServerFrame) -> bool + '_ {
-    move |frame| matches!(frame, ServerFrame::ContextUsage { node: shown, usage } if shown == node && usage.tokens == tokens)
+    move |frame| matches!(frame, ServerFrame::ContextUsage { node: shown, usage: Some(usage) } if shown == node && usage.tokens == tokens)
 }
 
 /// A subagent's session reports its usage as the root's does, naming the
@@ -313,7 +313,7 @@ async fn a_subagent_reports_its_own_usage_and_compact_names_it() {
         ServerFrame::Phase { subagent_id: Some(id), phase: SessionPhase::Compacting } if id == &child)),
         "{compaction:?}");
     assert!(compaction.iter().any(|frame| matches!(frame,
-        ServerFrame::ContextUsage { node, usage } if node == &child && usage.tokens < WINDOW / 2)),
+        ServerFrame::ContextUsage { node, usage: Some(usage) } if node == &child && usage.tokens < WINDOW / 2)),
         "{compaction:?}");
     let tree = server.tree(&conversation()).expect("the tree is live");
     let child_blocks = tree.node(&child).expect("the child is live").session().transcript().blocks;

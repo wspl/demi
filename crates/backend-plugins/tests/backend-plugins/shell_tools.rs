@@ -816,7 +816,7 @@ async fn a_subagent_whose_command_runs_stays_live_and_closes_once_it_ended_and_t
         let Some(ServerFrame::Subagent { job, .. }) = started.last() else {
             unreachable!()
         };
-        let child = job.subagent_id.clone();
+        let child = job.child.subagent_id.clone();
         let tree = fixture.server.tree(&conversation()).unwrap();
 
         // The child answered and its command runs: it stays live.
@@ -833,7 +833,7 @@ async fn a_subagent_whose_command_runs_stays_live_and_closes_once_it_ended_and_t
         client
             .next_until(|frame| {
                 matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Closed, job }
-                    if job.subagent_id == child && job.result.as_deref() == Some("The server stopped."))
+                    if job.child.subagent_id == child && job.result.as_deref() == Some("The server stopped."))
             })
             .await;
         client.next_until(is_idle).await;

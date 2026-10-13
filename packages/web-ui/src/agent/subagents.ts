@@ -43,6 +43,12 @@ export interface SubagentRecord extends AgentRun {
   endedAt?: string
   /** The parts of this agent's transcript the page holds, from its pages and its stream. */
   history: HeldTranscript
+  /**
+   * The revision of its transcript as the last open's snapshot listed it,
+   * which tells whether a finished child's held transcript is still
+   * current (`subagents.md` § Protocol); absent before a snapshot listed it.
+   */
+  revision?: number
   /** The calls this agent's model is writing (`runtime.md` § Calls being written). */
   pendingCalls: PendingCall[]
   /**

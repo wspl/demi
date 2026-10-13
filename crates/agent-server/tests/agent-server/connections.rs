@@ -103,6 +103,7 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
             "pending_steers",
             "pending_calls",
             "waiting",
+            "subagents",
             "context_usage"
         ]
     );
@@ -201,6 +202,7 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
             "pending_steers",
             "pending_calls",
             "waiting",
+            "subagents",
             "context_usage"
         ]
     );
@@ -679,6 +681,7 @@ async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
             "pending_steers",
             "pending_calls",
             "waiting",
+            "subagents",
             "context_usage"
         ]
     );

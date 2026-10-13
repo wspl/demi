@@ -17,7 +17,7 @@ pub use client::{
 };
 pub use server::{
     AbortResult, AbortTarget, CommandView, EditOutcome, Failures, JobModel, JobPhase, ServerFrame,
-    RemoveOutcome, ShellStatus, SteerOutcome, SubagentEvent, SubagentJob,
+    RemoveOutcome, ShellStatus, SteerOutcome, SubagentChild, SubagentEvent, SubagentJob, SubagentSummary,
 };
 pub use transcript::{
     LIGHT_INPUT_BYTES, PAGE_BYTES, PageAt, TranscriptPatch, TranscriptVersion, index_u32, latest_page_start, light,

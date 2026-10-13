@@ -105,8 +105,13 @@ pub enum ServerFrame {
         /// The agent whose context it is: the root, or a live subagent.
         #[garde(skip)]
         node: NodeId,
+        /// None when an open cannot tell it without reading a blob
+        /// (`compaction.md` § Context estimate): the page then shows no
+        /// figure rather than one from before.
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<ContextUsage>")]
         #[garde(dive)]
-        usage: ContextUsage,
+        usage: Option<ContextUsage>,
     },
     /// The whole queue.
     Queue {
@@ -240,6 +245,13 @@ pub enum ServerFrame {
         event: SubagentEvent,
         #[garde(dive)]
         job: SubagentJob,
+    },
+    /// Every child of the tree, finished ones included, which the page
+    /// takes whole: sent on each open, after the root's state
+    /// (`subagents.md` § Protocol).
+    Subagents {
+        #[garde(dive)]
+        subagents: Vec<SubagentSummary>,
     },
     SubagentTranscriptReset {
         #[garde(skip)]
@@ -379,10 +391,44 @@ pub enum SubagentEvent {
 serde_plain::derive_display_from_serialize!(SubagentEvent);
 serde_plain::derive_fromstr_from_deserialize!(SubagentEvent);
 
-/// One child agent as the parent's connection sees it.
+/// One child as an open's snapshot lists it: what a job says of it but its
+/// result, which the page reads with its transcript when it shows it, and
+/// the revision of its transcript, which tells the page whether the
+/// transcript it holds is still current (`subagents.md` § Protocol).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct SubagentSummary {
+    #[serde(flatten)]
+    #[garde(dive)]
+    pub child: SubagentChild,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub revision: u64,
+}
+
+/// One child agent as the parent's connection sees it: the child, and on a
+/// `completed` close its result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct SubagentJob {
+    #[serde(flatten)]
+    #[garde(dive)]
+    pub child: SubagentChild,
+    /// Only on a `completed` close: the child's last assistant text, at most
+    /// 32 KiB.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub result: Option<String>,
+}
+
+/// What a job and a summary say of one child.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct SubagentChild {
     #[garde(skip)]
     pub subagent_id: NodeId,
     /// The number the model knows it by, which `demi agent spawn` printed
@@ -422,16 +468,6 @@ pub struct SubagentJob {
     #[schemars(with = "Nullable<Timestamp>")]
     #[garde(skip)]
     pub ended_at: Option<Timestamp>,
-    /// Only on a `completed` close: the child's last assistant text, at most
-    /// 32 KiB.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "String")]
-    #[garde(skip)]
-    pub result: Option<String>,
     /// Its working directory on the primary Host now, where its `shell`
     /// calls start (`subagents.md` § Working directory); a `changed` frame
     /// tells a change while it runs.
