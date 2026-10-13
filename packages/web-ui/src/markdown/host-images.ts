@@ -1,6 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
 import { hostImage, type HostImage } from '../files/host-image'
 import { useShowings } from '../files/showing'
+import type { FileContents } from '../files/types'
 import { messageImage } from './filePath'
 import { messageImageTargets } from './render'
 import type { MessageFiles } from './types'
@@ -17,18 +18,25 @@ function hostImagePaths(content: string, files: MessageFiles | undefined): strin
 }
 
 /**
- * What shows of each Host image a message's `content` names, by its path
+ * What shows of each Host image at `paths`, by its path
  * (`file-previews.md` § Files named in messages): each file's description
- * is shown from the conversation's kept files while the calling component
+ * is shown from the kept files `contents` gives while the calling component
  * lives, so when the Host reports the file changed it is read again and its
- * image shows the new version, in this message and in every other that
- * names it.
+ * image shows the new version, wherever it is named. The one owner of how a
+ * Host image follows its file, for a message and for a Markdown document.
  */
+export function useHostImagesAt(
+  contents: () => FileContents | undefined,
+  paths: () => string[],
+): ComputedRef<ReadonlyMap<string, HostImage>> {
+  const shown = useShowings(contents, paths, (kept, path) => kept.showDescription(path))
+  return computed(() => new Map([...shown.value].map(([path, entry]) => [path, hostImage(entry, contents(), path)])))
+}
+
+/** What shows of each Host image a message's `content` names, by its path. */
 export function useHostImages(
   content: () => string,
   files: () => MessageFiles | undefined,
 ): ComputedRef<ReadonlyMap<string, HostImage>> {
-  const contents = () => files()?.contents
-  const shown = useShowings(contents, () => hostImagePaths(content(), files()), (kept, path) => kept.showDescription(path))
-  return computed(() => new Map([...shown.value].map(([path, entry]) => [path, hostImage(entry, contents(), path)])))
+  return useHostImagesAt(() => files()?.contents, () => hostImagePaths(content(), files()))
 }

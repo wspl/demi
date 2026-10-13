@@ -1053,6 +1053,12 @@ html[data-theme="light"] .file-pill {
   max-height: calc(var(--composer-line) * 4);
 }
 
+/* A sent message's image is a tile on a line of its own (`ImageNodeView.vue`):
+   the line break that ends its line would leave a blank line under it. */
+.message-editor-text .media-lone + br {
+  display: none;
+}
+
 @layer base {
   /* While a pointer drag lasts (`ui/pointer-drag.ts`), the whole document keeps its cursor and selects nothing. */
   html.is-dragging,
