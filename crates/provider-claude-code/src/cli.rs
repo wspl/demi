@@ -2,10 +2,11 @@
 //! § Accounts and sign-in): no tools, slash commands or permission prompts
 //! of its own; the session the provider wrote, resumed and mirrored, with
 //! the system prompt and tools of the request rather than those the session
-//! recorded; the request's model, system prompt and effort; stream-json in
+//! recorded; the request's model, system prompt and effort; the thinking
+//! display; stream-json in
 //! and out with partial messages; its own configuration directory; the
 //! account's access token on a descriptor, never in its environment; the
-//! CLI's updater, automatic compaction and telemetry off; and the input a
+//! CLI's updater and automatic compaction off; and the input a
 //! session ends with answered at once. A sign-in runs the CLI's own login
 //! in a directory of its own.
 
@@ -15,6 +16,7 @@ use bytes::Bytes;
 use demi_host_interface::{Descriptor, SpawnEnv, SpawnRequest};
 use demi_provider_common::openai_request::reasoning_effort;
 use demi_provider_common::{InferenceRequest, Secret};
+use demi_shared_types::ThinkingConfig;
 
 use crate::input::MCP_SERVER;
 use crate::placement::{CliSite, CliStart};
@@ -76,8 +78,8 @@ pub(crate) fn login_request(site: &CliSite) -> CliStart {
     }
 }
 
-/// The CLI's arguments for `request`'s model, system prompt and effort, to
-/// resume the session `session`.
+/// The CLI's arguments for `request`'s model, system prompt, effort and
+/// thinking display, to resume the session `session`.
 pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
     let mut args: Vec<String> = [
         "--print",
@@ -112,6 +114,13 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
     if let Some(effort) = reasoning_effort(request.thinking.as_ref()) {
         args.push("--effort".into());
         args.push(effort.to_owned());
+    }
+    // The vendor's summary of the thinking, the most it gives, whatever the
+    // selection's summary says: without the flag the CLI leaves the display
+    // to the vendor, which sends every thinking block empty (Claude Code
+    // 2.1.296).
+    if !matches!(request.thinking, Some(ThinkingConfig::Disabled {})) {
+        args.extend(["--thinking-display".into(), "summarized".into()]);
     }
     // A server the configuration names is one the CLI waits for before its
     // first request; the `initialize` request alone declares it only after

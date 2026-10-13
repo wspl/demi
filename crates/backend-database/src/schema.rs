@@ -292,20 +292,10 @@ pub(crate) const CONVERSATION: Schema = Schema {
         },
         Shipped {
             sql: include_str!("schema/conversation-0.1.22-dev.forked-from.sql"),
-            migration: Migration::Sql(CONVERSATION_FROM_BLOCK_FORMAT_5_FORKED),
+            migration: Migration::Code(relist_blocks),
         },
     ],
 };
-
-/// From the conversation schema of transcript block format 5 in which a
-/// node says which agent it was forked from, which the server keeps data
-/// of, to format 6, where a `response` leaves out the usage its provider
-/// did not report (`claude-code.md` § Reading): every stored response
-/// carries one, which format 6 reads as it is. Responses whose usage summed
-/// a Claude Code run stay as recorded; the next response anchors the
-/// estimate in their place, and one above the window anchors nothing
-/// (`compaction.md` § Context estimate).
-const CONVERSATION_FROM_BLOCK_FORMAT_5_FORKED: &str = "";
 
 /// From the conversation schema in which a node's instructions are the
 /// ones its profile adds, before a node said which agent it was forked
@@ -817,7 +807,15 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
 /// shows); from 0.1.22-dev.20261011T123543Z's, format 3, whose runs end at
 /// a `resume` block and at a Stop the user continued, to format 4, where
 /// the steps after them join the run before (`runtime.md` § Work groups),
-/// with the run's files to match. Each agent's transcript is walked in
+/// with the run's files to match; from format 5's in which a node says
+/// which agent it was forked from, which the server keeps data of, to
+/// format 6, where redacted reasoning is a step of its run, and a run it
+/// opens is named after it (format 6 also leaves out of a `response` the
+/// usage its provider did not report, `claude-code.md` § Reading: every
+/// stored response carries one, which format 6 reads as it is; responses
+/// whose usage summed a Claude Code run stay as recorded, and the next
+/// response anchors the estimate in their place, `compaction.md` § Context
+/// estimate). Each agent's transcript is walked in
 /// order from the edit copies in the conversation's blob namespace, by the
 /// code that computes them for a new block. The tables are as they were. A
 /// copy that cannot be read stops the migration, which the next open tries
@@ -2784,6 +2782,95 @@ mod tests {
             assert_eq!(boundary.summary, "The user asked for notes.");
             assert!(boundary.kept.is_empty());
         }
+    }
+
+    /// A conversation the server's build stored (transcript block format 5,
+    /// which a node says it was forked from) whose turn opened with
+    /// redacted reasoning: that block belonged to no run, and the thinking
+    /// after it opened its own. Migrated to format 6, the redacted
+    /// reasoning is the run's first step and the thinking joins its run.
+    // Cost: one database on disk, a few milliseconds.
+    #[test]
+    fn redacted_reasoning_stored_outside_a_run_opens_its_run() {
+        use demi_shared_types::Block;
+
+        let model = serde_json::json!({
+            "providerId": "anthropic",
+            "model": {
+                "id": "claude-opus-4-8",
+                "name": "Claude Opus 4.8",
+                "contextWindow": 200000,
+                "outputLimit": 64000,
+                "thinking": [{"type": "adaptive", "efforts": ["high"]}],
+                "acceptedExtensions": ["png"]
+            },
+            "thinking": {"type": "adaptive", "effort": "high"},
+            "serviceTierId": null
+        });
+        let blocks = [
+            serde_json::json!({
+                "type": "user",
+                "id": "u1",
+                "turnId": "t1",
+                "createdAt": "2026-10-13T05:00:00.000Z",
+                "model": model,
+                "content": [{"type": "text", "text": "Go"}],
+                "preamble": null
+            }),
+            serde_json::json!({
+                "type": "redacted_thinking",
+                "id": "r1",
+                "createdAt": "2026-10-13T05:00:01.000Z",
+                "model": model,
+                "data": "opaque"
+            }),
+            serde_json::json!({
+                "type": "thinking",
+                "id": "k1",
+                "createdAt": "2026-10-13T05:00:02.000Z",
+                "model": model,
+                "text": "Plan.",
+                "signature": "sig",
+                "run": "k1"
+            }),
+            serde_json::json!({
+                "type": "text",
+                "id": "a1",
+                "createdAt": "2026-10-13T05:00:03.000Z",
+                "model": model,
+                "text": "Done.",
+                "forkable": true
+            }),
+        ];
+        let sql = include_str!("schema/conversation-0.1.22-dev.forked-from.sql");
+        let (_directory, path, mut connection) = database(sql);
+        connection
+            .execute(
+                "INSERT INTO nodes
+                   (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                 VALUES ('root', 0, '', 1, 0, 1, 0, ?1, ?2, 0)",
+                rusqlite::params![state_of_development(), i64::try_from(blocks.len()).unwrap()],
+            )
+            .unwrap();
+        for (index, block) in blocks.iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
+                    rusqlite::params![i64::try_from(index).unwrap(), block.to_string()],
+                )
+                .unwrap();
+        }
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let runs: Vec<Option<String>> = connection
+            .prepare("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(|text| demi_shared_types::decode::<Block>(&text.unwrap()).unwrap())
+            .map(|block| block.run().map(|run| run.as_str().to_owned()))
+            .collect();
+        assert_eq!(runs, [None, Some("r1".to_owned()), Some("r1".to_owned()), None]);
     }
 
     /// A subagent limit stored before the number was kept: a number stays

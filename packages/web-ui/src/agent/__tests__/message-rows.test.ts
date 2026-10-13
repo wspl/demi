@@ -474,6 +474,44 @@ test('a call being written without its description leaves the face as it was, th
   next.stop()
 })
 
+const redacted = (id: string, run = id): Block => ({ type: 'redacted_thinking', id, run, createdAt, model, data: 'opaque' })
+
+// Reasoning ends the wait as soon as its block starts, whether its text
+// streams, never comes, or is redacted (`runtime.md` § Waiting for the
+// model): the server ends the wait, and the reasoning, shown as thinking
+// without text, takes the Requesting row's place in that row, so the page
+// never counts Requesting on its own clock while the model thinks. Once the
+// answer follows, the reasoning has nothing to show and goes.
+test.each([
+  { name: 'empty', reasoning: thinking('k-1') },
+  { name: 'redacted', reasoning: redacted('k-1') },
+])('$name reasoning shows the Thinking row in the Requesting row\'s place from its start', async ({ reasoning }) => {
+  const asked = answered()
+  asked.blocks = [...asked.blocks, userBlock('u-2', 'm-2', 'Sort the downloads into folders.')]
+  asked.phase = 'running'
+  asked.waitingSince = Date.now() - 5_000
+  const { list, step, stop } = follow(asked)
+  expect(list.slot.value).toEqual({ kind: 'requesting', since: Date.now() - 5_000 })
+  const requesting = list.keyOf(list.rows.value.at(-1)!)
+
+  await step('reasoning starts', () => {
+    asked.blocks = [...asked.blocks, reasoning]
+    asked.waitingSince = null
+  })
+  expect(list.slot.value).toBeNull()
+  const row = list.rows.value.at(-1)!
+  expect(row.type === 'work_group' && [row.live, row.steps.map((each) => [each.type, each.id])])
+    .toEqual([true, [['thinking', 'k-1']]])
+  expect(list.keyOf(row)).toBe(requesting)
+
+  await step('answer', () => {
+    asked.blocks = [...asked.blocks, text('a-2', 'Sorted.')]
+  })
+  expect(list.rows.value.some((each) => each.type === 'work_group')).toBe(false)
+  expect(list.keyOf(list.rows.value.at(-1)!)).toBe(requesting)
+  stop()
+})
+
 // A steer shows what it is from the moment it is sent (`product.md` § Steer
 // or queue): its line under it, in the row the steer the session holds
 // keeps, so the row neither pops its line in late nor grows; the line goes

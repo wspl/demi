@@ -1403,30 +1403,29 @@ impl SessionCore {
         self.commit();
     }
 
-    /// Applies one provider event. `thinking_started` says a thinking start
-    /// came before it, which opens a reasoning block first.
-    pub(super) fn apply_event(&mut self, event: ProviderEvent, thinking_started: bool) {
-        // Entries write no block, so a thinking start waits on.
+    /// Applies one provider event.
+    pub(super) fn apply_event(&mut self, event: ProviderEvent) {
         if let ProviderEvent::Entries { of, entries } = event {
             self.keep_entries(of, entries);
             return;
         }
-        // The wait for the model ends with the first output a page shows
-        // (`runtime.md` § Waiting for the model): reasoning, which a
-        // thinking start opens before any event, text, a whole call, or a
-        // call being written once its title is. Hidden reasoning, the
-        // response's usage and a call without its title show nothing, and
-        // the row goes on saying Requesting.
-        let shows = thinking_started
-            || matches!(
-                event,
-                ProviderEvent::ThinkingDelta(_)
-                    | ProviderEvent::ThinkingSignature(_)
-                    | ProviderEvent::TextDelta(_)
-                    | ProviderEvent::ToolCall(_)
-            );
+        // The wait for the model ends with its first output (`runtime.md` §
+        // Waiting for the model): reasoning as soon as its block starts,
+        // with text or without, redacted reasoning too, text, a whole call,
+        // or a call being written once its title is. The response's usage
+        // and a call without its title show nothing, and the row goes on
+        // saying Requesting.
+        let shows = matches!(
+            event,
+            ProviderEvent::ThinkingStart
+                | ProviderEvent::ThinkingDelta(_)
+                | ProviderEvent::ThinkingSignature(_)
+                | ProviderEvent::RedactedThinking(_)
+                | ProviderEvent::TextDelta(_)
+                | ProviderEvent::ToolCall(_)
+        );
         let before = self.transcript.blocks().len();
-        self.apply_event_to_transcript(event, thinking_started);
+        self.apply_event_to_transcript(event);
         if shows || self.writing.iter().any(|writing| writing.call.description.is_some()) {
             self.stop_waiting();
         }
@@ -1461,76 +1460,66 @@ impl SessionCore {
         self.commit();
     }
 
-    fn apply_event_to_transcript(&mut self, event: ProviderEvent, thinking_started: bool) {
+    fn apply_event_to_transcript(&mut self, event: ProviderEvent) {
         match event {
-            ProviderEvent::ThinkingDelta(text) if thinking_started => {
-                self.transcript.open_thinking(&self.model, text);
+            ProviderEvent::ThinkingStart => {
+                self.transcript.open_thinking(&self.model, String::new());
             }
-            event => {
-                if thinking_started {
-                    self.transcript.open_thinking(&self.model, String::new());
+            ProviderEvent::ThinkingDelta(text) => {
+                self.transcript.append_thinking(&self.model, &text)
+            }
+            ProviderEvent::ThinkingSignature(signature) => {
+                self.transcript.sign_thinking(signature)
+            }
+            ProviderEvent::RedactedThinking(data) => {
+                self.transcript.push_redacted_thinking(&self.model, data);
+            }
+            ProviderEvent::TextDelta(text) => {
+                self.transcript.append_text(&self.model, &text)
+            }
+            ProviderEvent::ToolCallStart {
+                tool_use_id,
+                tool_name,
+            } => {
+                if !self.writing.iter().any(|writing| writing.call.tool_use_id == tool_use_id) {
+                    self.writing.push(WritingCall {
+                        call: PendingCall {
+                            tool_use_id,
+                            tool_name,
+                            description: None,
+                        },
+                        input: String::new(),
+                    });
                 }
-                match event {
-                    ProviderEvent::ThinkingStart => {
-                        self.transcript.open_thinking(&self.model, String::new());
-                    }
-                    ProviderEvent::ThinkingDelta(text) => {
-                        self.transcript.append_thinking(&self.model, &text)
-                    }
-                    ProviderEvent::ThinkingSignature(signature) => {
-                        self.transcript.sign_thinking(signature)
-                    }
-                    ProviderEvent::RedactedThinking(data) => {
-                        self.transcript.push_redacted_thinking(&self.model, data);
-                    }
-                    ProviderEvent::TextDelta(text) => {
-                        self.transcript.append_text(&self.model, &text)
-                    }
-                    ProviderEvent::ToolCallStart {
-                        tool_use_id,
-                        tool_name,
-                    } => {
-                        if !self.writing.iter().any(|writing| writing.call.tool_use_id == tool_use_id) {
-                            self.writing.push(WritingCall {
-                                call: PendingCall {
-                                    tool_use_id,
-                                    tool_name,
-                                    description: None,
-                                },
-                                input: String::new(),
-                            });
-                        }
-                    }
-                    ProviderEvent::ToolCallInput {
-                        tool_use_id,
-                        partial_json,
-                    } => {
-                        if let Some(writing) = self
-                            .writing
-                            .iter_mut()
-                            .find(|writing| writing.call.tool_use_id == tool_use_id)
-                        {
-                            writing.input.push_str(&partial_json);
-                            if writing.call.description.is_none() {
-                                writing.call.description = written_description(&writing.input);
-                            }
-                        }
-                    }
-                    // The call leaves the calls being written in the step
-                    // that adds its block.
-                    ProviderEvent::ToolCall(call) => {
-                        self.writing
-                            .retain(|writing| writing.call.tool_use_id != call.tool_use_id);
-                        self.transcript.push_tool_call(&self.model, call)
-                    }
-                    ProviderEvent::Response(usage) => {
-                        self.transcript.push_response(&self.model, usage)
-                    }
-                    ProviderEvent::Error(failure) => self.push_failure(&(&failure).into()),
-                    ProviderEvent::Entries { .. } => {
-                        unreachable!("apply_event keeps entries before it writes blocks")
+            }
+            ProviderEvent::ToolCallInput {
+                tool_use_id,
+                partial_json,
+            } => {
+                if let Some(writing) = self
+                    .writing
+                    .iter_mut()
+                    .find(|writing| writing.call.tool_use_id == tool_use_id)
+                {
+                    writing.input.push_str(&partial_json);
+                    if writing.call.description.is_none() {
+                        writing.call.description = written_description(&writing.input);
                     }
                 }
+            }
+            // The call leaves the calls being written in the step
+            // that adds its block.
+            ProviderEvent::ToolCall(call) => {
+                self.writing
+                    .retain(|writing| writing.call.tool_use_id != call.tool_use_id);
+                self.transcript.push_tool_call(&self.model, call)
+            }
+            ProviderEvent::Response(usage) => {
+                self.transcript.push_response(&self.model, usage)
+            }
+            ProviderEvent::Error(failure) => self.push_failure(&(&failure).into()),
+            ProviderEvent::Entries { .. } => {
+                unreachable!("apply_event keeps entries before it writes blocks")
             }
         }
     }

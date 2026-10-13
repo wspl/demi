@@ -38,7 +38,7 @@ enum Place {
 
 fn place(block: &Block) -> Place {
     match block {
-        Block::Thinking(_) | Block::ToolCall(_) => Place::Step,
+        Block::Thinking(_) | Block::RedactedThinking(_) | Block::ToolCall(_) => Place::Step,
         // A block of progress reports alone shows nothing.
         Block::Wakeup(wakeup) => {
             if wakeup
@@ -63,8 +63,7 @@ fn place(block: &Block) -> Place {
         // A boundary shows only where an edit removed its marker, which an
         // edit does only by cutting every block after it; its marker is the
         // divider that ends the run.
-        Block::RedactedThinking(_)
-        | Block::Response(_)
+        Block::Response(_)
         | Block::Resume(_)
         | Block::Context(_)
         | Block::CompactionBoundary(_) => Place::Passes,

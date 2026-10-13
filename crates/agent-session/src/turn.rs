@@ -421,7 +421,6 @@ async fn read(
     mut events: ProviderRun<'_>,
     request_cancel: &CancellationToken,
 ) -> Result<Result<bool, ProviderFailure>, TurnError> {
-    let mut thinking_started = false;
     let mut recover = false;
     let mut cut = std::pin::pin!(sent_now(s));
     loop {
@@ -438,15 +437,13 @@ async fn read(
         };
         cancel.check()?;
         match event {
-            ProviderEvent::ThinkingStart => thinking_started = true,
             // What follows a failure is the retry's to decide: what was
             // held for the turn's end shows now.
             ProviderEvent::Error(failure) => {
                 s.release_events();
                 return Ok(Err(failure));
             }
-            // Entries write no block: open text stays open, and a thinking
-            // start still waits for what follows it.
+            // Entries write no block: open text stays open.
             ProviderEvent::Entries { of, entries } => {
                 s.update(|core| core.keep_entries(of, entries));
             }
@@ -462,11 +459,10 @@ async fn read(
                 {
                     s.hold_events();
                 }
-                let completes_text = thinking_started
-                    || !matches!(
-                        event,
-                        ProviderEvent::TextDelta(_) | ProviderEvent::ThinkingSignature(_)
-                    );
+                let completes_text = !matches!(
+                    event,
+                    ProviderEvent::TextDelta(_) | ProviderEvent::ThinkingSignature(_)
+                );
                 if let ProviderEvent::Response(Some(usage)) = &event {
                     recover |= s.config.compaction.reached(window, model, usage);
                 }
@@ -482,9 +478,8 @@ async fn read(
                     if completes_text && core.complete_tail_text() && within_run {
                         core.start_waiting();
                     }
-                    core.apply_event(event, thinking_started);
+                    core.apply_event(event);
                 });
-                thinking_started = false;
             }
         }
     }
