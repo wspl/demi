@@ -10,7 +10,7 @@ import { productWould } from './product-would'
  * toast. `session` binds a `ChatSession`, `panel` a `SubagentPanel`.
  */
 export function useAgentContext() {
-  const { limits, refresh } = useCardLimits('zan@example.com')
+  const { limits, refresh } = useCardLimits('alex@example.com')
   const usageLimits = () => limits.value
   const onRefreshLimits = (_providerId: string, automatic: boolean) => refresh(automatic)
   const onOpenInstruction = (entry: InstructionEntry) => demoOpenInstruction(entry, productWould)

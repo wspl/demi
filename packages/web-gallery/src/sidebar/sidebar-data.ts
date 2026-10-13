@@ -6,8 +6,8 @@ const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
 
 export const demoAccount: SidebarAccount = {
-  name: 'Zan',
-  email: 'zan@example.com',
+  name: 'Alex',
+  email: 'alex@example.com',
 }
 
 /** An account with no name, so its email stands in: too long for the narrowest sidebar, not the default. */
@@ -30,22 +30,22 @@ export function demoProjects(): SidebarProject[] {
       name: 'demi',
       hostKind: 'device',
       device: { kind: 'paired', name: 'alex-mbp', state: 'online' },
-      path: '/Users/alex/Projects/demi'
+      path: '/Users/alex/Projects/shop'
     },
     {
       id: 'p-demi-mini',
       name: 'demi',
       hostKind: 'device',
       device: { kind: 'paired', name: 'mac-mini', state: 'online' },
-      path: '/Users/alex/Projects/demi'
+      path: '/Users/alex/Projects/shop'
     },
     {
       id: 'p-ledable',
       // The only project of its name: the mark alone shows its device, whose name shows in its tip.
-      name: 'ledable-app',
+      name: 'photo-album',
       hostKind: 'device',
       device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'online' },
-      path: '/Users/alex/Projects/ledable-app'
+      path: '/Users/alex/Projects/photo-album'
     },
     {
       id: 'p-assets',

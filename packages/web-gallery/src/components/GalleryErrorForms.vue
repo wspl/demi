@@ -120,7 +120,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               :is-open="open"
               :overlay-store="appOverlayStore"
               :phase="password"
-              email="zan@example.com"
+              email="alex@example.com"
               @close="close"
               @submit="productWould('Change the Password')"
             />

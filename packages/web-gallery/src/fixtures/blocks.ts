@@ -132,8 +132,8 @@ export const movedReceiptMessage: AgentMessage = {
   id: 'moved:4',
   recipientId: 'gallery-parent',
   timestamp: '2026-09-12T12:08:00.000Z',
-  content: 'The user moved this conversation from Cloud (/home/demi/sessions/0f4e2a1c) to MacBook Pro (/Users/alex/code/ledable-app). Files did not move. Check what this means for the work so far, and tell the user.',
-  event: { type: 'moved', host: 'MacBook Pro', path: '/Users/alex/code/ledable-app', home: '/Users/zan' },
+  content: 'The user moved this conversation from Cloud (/home/demi/sessions/0f4e2a1c) to MacBook Pro (/Users/alex/code/photo-album). Files did not move. Check what this means for the work so far, and tell the user.',
+  event: { type: 'moved', host: 'MacBook Pro', path: '/Users/alex/code/photo-album', home: '/Users/alex' },
 }
 /** A decision on a request of two categories, and Demi's notice that a move the agent asked for failed. */
 export const organizeReceiptMessages: AgentMessage[] = [
@@ -142,7 +142,7 @@ export const organizeReceiptMessages: AgentMessage[] = [
     recipientId: 'gallery-parent',
     timestamp: '2026-09-12T12:06:00.000Z',
     content:
-      'The user allowed this conversation to organize conversations and manage devices; the command `demi conversation move ledable-app` can now run.',
+      'The user allowed this conversation to organize conversations and manage devices; the command `demi conversation move photo-album` can now run.',
     event: { type: 'permission' as const, outcome: 'allowed' as const, action: 'organize conversations and manage devices' },
   },
   {
@@ -1436,7 +1436,7 @@ export function transcriptDemoBlocks(): Block[] {
         },
         {
           type: 'reference',
-          reference: encodeRemoteReference('alex-mbp', '/Users/alex/Projects/demi/package.json')
+          reference: encodeRemoteReference('alex-mbp', '/Users/alex/Projects/shop/package.json')
         },
         { type: 'text', text: 'Failing log and the screenshot from CI.' },
       ],

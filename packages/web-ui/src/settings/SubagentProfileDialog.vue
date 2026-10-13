@@ -165,7 +165,6 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               v-model="draft.name"
               :focused="mode === 'create'"
               class="w-48 max-w-full"
-              placeholder="explore"
               literal
               aria-label="Name"
             />
@@ -174,7 +173,6 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
             <TextInput
               v-model="draft.description"
               class="w-80 max-w-full"
-              placeholder="Use for finding code; it reports and changes nothing."
               aria-label="Description"
             />
           </SettingsRow>
@@ -216,7 +214,6 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               mono
               :rows="7"
               aria-label="Instructions"
-              placeholder="Find code and report where it is. Change nothing."
             />
           </div>
           <SettingsRow label="Children may spawn" description="Off removes spawn, abort and resume from its children’s demi agent commands.">

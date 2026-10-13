@@ -27,7 +27,7 @@ function inUse(): void {
 }
 function signIn(): void {
   productWould('Open Exa’s Sign-In Page in a New Tab')
-  state.account = { email: 'zan@example.com' }
+  state.account = { email: 'alex@example.com' }
   inUse()
 }
 function signOut(): void {
