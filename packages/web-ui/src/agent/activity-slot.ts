@@ -66,10 +66,11 @@ export interface ActivitySlotInput {
  * everything, since a recovery or a turn cannot progress without it: the row
  * says Connecting while the page still reaches the backend, and nothing while
  * the connection banner says the backend is away. A conversation that failed
- * to open waits for nothing: the failure told at the tail says so.
+ * to open waits for nothing: the failure told at the tail says so. A first
+ * opening whose socket is not made yet says Connecting as a lost one does.
  */
 export function activitySlotKind(input: ActivitySlotInput): ActivityKind | null {
-  if (input.load === 'reconnecting') {
+  if (input.load === 'reconnecting' || input.load === 'connecting') {
     return input.backendAway ? null : 'connecting'
   }
   if (input.load === 'failed') {

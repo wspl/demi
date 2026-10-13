@@ -1,11 +1,12 @@
 import { onScopeDispose, ref, watch } from 'vue'
 import { CHROME_ENTER_MS } from '../ui/chrome-enter'
-import type { SessionLoad } from './session-status'
+import { isOpening, type SessionLoad } from './session-status'
 
 /**
  * Which rows of the transcript are arriving right now, by the keys that name
  * them across their forms (`row-key.ts`). Rows present when the list opens
- * or finishes loading are history and do not move. A row that joins
+ * or when a step of the conversation's opening lands are history and do not
+ * move. A row that joins
  * afterwards enters once, then is settled, so a virtual row remounted by
  * scrolling stays still, and a row that changes form stays still too, as
  * does a row that takes another's place under its key (`succeedKeys`). A
@@ -50,7 +51,7 @@ export function useChromeEntrance(
       if (
         currentScope !== previousScope
         || currentLoad === 'loading'
-        || previousLoad === 'loading'
+        || isOpening(previousLoad)
         || currentLoad === 'failed'
       ) {
         clearTimers()

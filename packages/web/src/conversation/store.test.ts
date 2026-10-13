@@ -2081,31 +2081,14 @@ test('a change of one conversation goes out beside another\'s archive, and one o
 const shownBlock = { type: 'text' as const, id: 'shown', createdAt: '2026-09-09T00:00:00.000Z', model, text: 'Shown' }
 
 /**
- * Opens the conversation `id` with a session: its transcript holds one
- * block, and its socket opens at once and answers `open` as the backend
- * does, with `opened` and the `handshake` after it in one message. Answers
- * the conversation, its sockets in the order the page opened them, and
- * every `load` it had since it opened.
+ * Plays the page's conversation sockets from now on, which open at once:
+ * with a `handshake`, each answers `open` as the backend does, with
+ * `opened` and the handshake after it in one message; without, the test
+ * answers it. The page's synchronization channel stays the test's. Answers
+ * the sockets in the order the page opened them.
  */
-async function openWithSession(id: string, handshake: ServerFrame[] = []) {
-  records.find((item) => item.id === id)!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
-  await changed(id)
-  useProduct().snapshot!.providers.push(stubProvider)
-  const answering = globalThis.fetch
-  globalThis.fetch = (async (input, init) => {
-    const path = String(input)
-    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
-    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
-    if (path.endsWith('/transcript')) {
-      requests.push({ path, body: null })
-      return Response.json({ start: 0, length: 1, blocks: [shownBlock], instructions: [], summaries: [] })
-    }
-    return answering(input, init)
-  }) as typeof fetch
+function playPageSockets(handshake?: ServerFrame[]): TestSocket[] {
   const sockets: TestSocket[] = []
-  // The page's conversation sockets open at once and answer `open`; its
-  // synchronization channel stays the test's.
   const channel = globalThis.WebSocket
   function PageSocket(url: string | URL) {
     if (!new URL(url).pathname.endsWith('/stream')) {
@@ -2115,7 +2098,7 @@ async function openWithSession(id: string, handshake: ServerFrame[] = []) {
     const send = socket.send.bind(socket)
     socket.send = (data) => {
       send(data)
-      if (socket.sent.at(-1)?.type === 'open') {
+      if (handshake && socket.sent.at(-1)?.type === 'open') {
         queueMicrotask(() => socket.receive({ type: 'opened' }, ...handshake))
       }
     }
@@ -2125,16 +2108,300 @@ async function openWithSession(id: string, handshake: ServerFrame[] = []) {
   }
   Object.assign(PageSocket, { CONNECTING: 0, OPEN: 1, CLOSING: 2, CLOSED: 3 })
   Reflect.set(globalThis, 'WebSocket', PageSocket)
-  await useProduct().loadModels(true)
+  return sockets
+}
+
+/** Waits until the page's socket `index` has sent `open`. */
+async function openSent(sockets: TestSocket[], index = 0): Promise<void> {
+  await waitFor(() => sockets[index]?.sent.some((frame) => frame.type === 'open') === true, () => `socket ${index} sent no open`)
+}
+
+/**
+ * Starts opening the conversation `id` with a session: its transcript holds
+ * one block, its agents are `subagents`, and its socket opens at once. With
+ * a `handshake`, the socket answers `open` as the backend does, with
+ * `opened` and the handshake after it in one message; without, the test
+ * answers it. `models` holds the model list until it answers. Answers the
+ * conversation, its sockets in the order the page opened them, and the
+ * opening.
+ */
+async function startOpening(
+  id: string,
+  { handshake, subagents = [], models }: {
+    handshake?: ServerFrame[]
+    subagents?: unknown[]
+    models?: Promise<void>
+  } = {},
+) {
+  records.find((item) => item.id === id)!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
+  await changed(id)
+  useProduct().snapshot!.providers.push(stubProvider)
+  const answering = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) {
+      await models
+      return Response.json(stubCatalog())
+    }
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/subagents')) return Response.json({ subagents })
+    if (path.endsWith('/transcript')) {
+      requests.push({ path, body: null })
+      return Response.json({ start: 0, length: 1, blocks: [shownBlock], instructions: [], summaries: [] })
+    }
+    return answering(input, init)
+  }) as typeof fetch
+  const sockets = playPageSockets(handshake)
+  const listed = useProduct().loadModels(true)
+  if (!models) {
+    await listed
+  }
   const store = useConversations()
-  await store.activate(id)
+  const opening = store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
+  return { conversation, sockets, opening }
+}
+
+/**
+ * Opens the conversation `id` with a session, whose socket answers `open`
+ * with the `handshake` (`startOpening`). Answers the conversation, its
+ * sockets in the order the page opened them, and every `load` it had since
+ * it opened.
+ */
+async function openWithSession(id: string, handshake: ServerFrame[] = []) {
+  const { conversation, sockets, opening } = await startOpening(id, { handshake })
+  await opening
   expect(conversation.load).toBe('ready')
   expect(sockets).toHaveLength(1)
   const loads: string[] = []
   watch(() => conversation.load, (load) => loads.push(load), { flush: 'sync' })
   return { conversation, sockets, loads }
 }
+
+/** A child of the conversation `FIRST`, as the backend lists it. */
+function child(subagentId: string, number: number, phase: 'running' | 'completed') {
+  return {
+    subagentId, number, parentSessionId: FIRST, description: `Agent ${number}`,
+    profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
+    phase, startedAt: '2026-09-13T00:00:00.000Z', endedAt: phase === 'running' ? null : '2026-09-13T00:01:00.000Z',
+  }
+}
+
+/** The step of the opening the conversation shows: what names its agents, and what only its session knows. */
+function shownStep(conversation: ReturnType<typeof useConversations>['items'][number]) {
+  return {
+    load: conversation.load,
+    transcript: latestBlocks(conversation.history).map((block) => block.id),
+    agents: conversation.subagents.map((agent) => `${agent.id} ${agent.phase}`),
+    phase: conversation.phase,
+    commands: conversation.terminals.map((terminal) => terminal.id),
+    status: conversation.status,
+  }
+}
+
+// `web-application.md` § Opening a conversation shows in two steps:
+// production showed the dock's "1 Agent" over the loading pane, the REST
+// list applied before the transcript showed, and a running conversation's
+// sidebar dot went out while it opened, computed from a phase the page had
+// not heard. Cost: one opening, no wait.
+test('a conversation opens in two steps: its transcript with its agents, then its session', async () => {
+  records.find((item) => item.id === FIRST)!.status = 'running'
+  const subagents = [child('reader', 1, 'completed')]
+  const { conversation, sockets, opening } = await startOpening(FIRST, { subagents })
+  await waitFor(() => sockets[0]?.sent.some((frame) => frame.type === 'open') === true, () => 'no open sent')
+
+  // The first step: the transcript with its agents, the status the summary's.
+  expect(shownStep(conversation)).toEqual({
+    load: 'opening', transcript: ['shown'], agents: ['reader completed'], phase: 'idle', commands: [], status: 'active',
+  })
+
+  sockets[0]!.receive(
+    { type: 'opened' },
+    { type: 'transcript_reset', start: 0, length: 1, blocks: [shownBlock], version: { epoch: 'epoch', revision: 1 } },
+    { type: 'phase', phase: 'running' },
+    { type: 'subagents', subagents: subagents.map((summary) => ({ ...summary, revision: 2 })) },
+    {
+      type: 'shell_output',
+      status: { status: 'running', commandId: 'cmd-1', toolUseId: 'call-cmd-1', tail: 'one\n', chars: 4, runningMs: 10 },
+    },
+  )
+  await opening
+
+  // The second step: the session's turn and its running command join.
+  expect(shownStep(conversation)).toEqual({
+    load: 'ready', transcript: ['shown'], agents: ['reader completed'], phase: 'running', commands: ['cmd-1'], status: 'active',
+  })
+})
+
+// Marking read needs only the transcript, so it comes with the first step,
+// not with a session that may take long to open (`web-application.md`
+// § Opening a conversation shows in two steps). Cost: one opening, no wait.
+test('a conversation is marked read at the first step of its opening, before its session opens', async () => {
+  const original = globalThis.document
+  Object.defineProperty(globalThis, 'document', { configurable: true, value: { visibilityState: 'visible' } })
+  try {
+    Object.assign(records.find((item) => item.id === FIRST)!, { unread: true, revision: 4 })
+    const { conversation, sockets } = await startOpening(FIRST)
+    await waitFor(() => sockets[0]?.sent.some((frame) => frame.type === 'open') === true, () => 'no open sent')
+    expect(conversation.load).toBe('opening')
+
+    await useConversations().markRead(FIRST)
+
+    expect(requests.find((request) => request.path.endsWith('/read'))?.body).toEqual({ revision: 4 })
+    expect(conversation.unread).toBe(false)
+  } finally {
+    Object.defineProperty(globalThis, 'document', { configurable: true, value: original })
+  }
+})
+
+// Retry after a refused opening loads again from nothing: production kept
+// the earlier attempt's agents, so "1 Agent" stood over the loading pane.
+// Cost: two openings, no wait.
+test('Retry after a refused opening shows nothing of the earlier attempt while it loads again', async () => {
+  const store = useConversations()
+  const { conversation, sockets, opening } = await startOpening(FIRST, { subagents: [child('reader', 1, 'running')] })
+  await openSent(sockets)
+  sockets[0]!.receive({ type: 'error', message: 'Choose a model for the conversation before opening it', code: 'model_not_selected', requestId: 'req_socket0000000001' })
+  await opening
+  expect(shownStep(conversation)).toMatchObject({ load: 'failed', transcript: ['shown'], agents: ['reader running'] })
+
+  const held = holdOpening()
+  void store.reloadSession(FIRST)
+  await waitFor(() => held.arrived.includes('transcript'), () => 'no transcript read')
+
+  expect(shownStep(conversation)).toEqual({
+    load: 'loading', transcript: [], agents: [], phase: 'idle', commands: [], status: conversation.status,
+  })
+  expect(conversation.lastError).toBeNull()
+})
+
+// Every first session is an opening (`web-application.md` § Opening a
+// conversation shows in two steps): a new conversation's first send whose
+// socket cannot be made says it connects, never that it reconnects to a
+// session it never had. Cost: one socket, no wait.
+test('a new conversation whose first session cannot connect is opening, not reconnecting', async () => {
+  const store = useConversations()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  useProduct().snapshot!.providers.push(stubProvider)
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path === `/api/conversations/${id}` && init?.method === 'PATCH') {
+      return Response.json({ conversation: records.find((item) => item.id === id), results: [] })
+    }
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+  const sockets = playPageSockets()
+  const loads: string[] = []
+  const stop = watch(() => conversation.load, (load) => loads.push(load), { flush: 'sync' })
+  try {
+    await useProduct().loadModels(true)
+    await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
+    conversation.draft = 'First message'
+    void store.send(conversation)
+    await openSent(sockets)
+    sockets[0]!.end()
+    await waitFor(() => conversation.load === 'connecting', () => `it is ${conversation.load}`)
+    expect(loads).toEqual(['opening', 'connecting'])
+  } finally {
+    stop()
+    submit.mockRestore()
+  }
+})
+
+// A conversation opened while archived starts its first session once it is
+// restored, which is an opening too. Cost: one opening, one socket, no wait.
+test('a conversation restored from the archive whose first session cannot connect is opening, not reconnecting', async () => {
+  const store = useConversations()
+  records.find((item) => item.id === FIRST)!.archived = true
+  const { conversation, sockets, opening } = await startOpening(FIRST)
+  await opening
+  // Archived, it opens no session.
+  expect(conversation.load).toBe('ready')
+  expect(sockets).toEqual([])
+  const loads: string[] = []
+  const stop = watch(() => conversation.load, (load) => loads.push(load), { flush: 'sync' })
+  try {
+    void store.restore([FIRST])
+    await openSent(sockets)
+    sockets[0]!.end()
+    await waitFor(() => conversation.load === 'connecting', () => `it is ${conversation.load}`)
+    expect(loads).toEqual(['opening', 'connecting'])
+  } finally {
+    stop()
+  }
+})
+
+// A first opening whose socket cannot be made is still an opening: it shows
+// the transcript with its agents and says it connects, never a session it
+// never had. Cost: two sockets, no wait.
+test('a first opening that cannot connect shows its transcript, connects, and only then its session', async () => {
+  records.find((item) => item.id === FIRST)!.status = 'running'
+  const { conversation, sockets, opening } = await startOpening(FIRST, { subagents: [child('reader', 1, 'running')] })
+  await waitFor(() => sockets[0]?.sent.some((frame) => frame.type === 'open') === true, () => 'no open sent')
+  sockets[0]!.end()
+  await waitFor(() => conversation.load !== 'opening', () => 'the lost socket left the opening as it was')
+
+  expect(shownStep(conversation)).toEqual({
+    load: 'connecting', transcript: ['shown'], agents: ['reader running'], phase: 'idle', commands: [], status: 'active',
+  })
+
+  await pageReturned()
+  await waitFor(() => sockets[1]?.sent.some((frame) => frame.type === 'open') === true, () => 'no second open')
+  sockets[1]!.receive({ type: 'opened' }, { type: 'phase', phase: 'running' })
+  await opening
+  expect(shownStep(conversation)).toMatchObject({ load: 'ready', phase: 'running', status: 'active' })
+})
+
+// History does not wait for the model list; the session does, and the
+// conversation shows its first step until then. Cost: one opening, no wait.
+test('a conversation whose model list has not answered shows its first step until its session opens', async () => {
+  const models = deferred<void>()
+  const { conversation, sockets, opening } = await startOpening(FIRST, {
+    handshake: [{ type: 'phase', phase: 'idle' }],
+    subagents: [child('reader', 1, 'completed')],
+    models: models.promise,
+  })
+  await waitFor(() => conversation.load !== 'loading', () => 'the transcript waited for the model list')
+
+  expect(shownStep(conversation)).toMatchObject({ load: 'opening', transcript: ['shown'], agents: ['reader completed'] })
+  expect(sockets.flatMap((socket) => socket.sent)).toEqual([])
+
+  models.resolve()
+  await opening
+  expect(conversation.load).toBe('ready')
+})
+
+// A conversation that opens no session stops at the first step, its status
+// the summary's: here a turn the process died under, which its transcript
+// alone would not tell. Cost: one opening.
+test('a conversation that opens no session shows its transcript with its agents and keeps the summary’s status', async () => {
+  records.find((item) => item.id === FIRST)!.status = 'interrupted'
+  await changed(FIRST)
+  const store = useConversations()
+  const restoreFetch = answerOpening(FIRST)
+  const served = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [child('reader', 1, 'completed')] })
+    if (path.endsWith('/transcript')) return Response.json({ start: 0, length: 1, blocks: [shownBlock], instructions: [], summaries: [] })
+    return served(input, init)
+  }) as typeof fetch
+  try {
+    await store.activate(FIRST)
+    const conversation = store.items.find((item) => item.id === FIRST)!
+    expect(shownStep(conversation)).toEqual({
+      load: 'ready', transcript: ['shown'], agents: ['reader completed'], phase: 'idle', commands: [], status: 'error',
+    })
+  } finally {
+    restoreFetch()
+  }
+})
 
 const transcriptReads = () => requests.filter((request) => request.path.endsWith('/transcript')).length
 
@@ -2319,7 +2586,8 @@ test('a conversation opened during a turn shows its transcript with its steer an
     { type: 'waiting', waitedMs: 11_000 },
   ])
   stop()
-  expect(shown.filter((state) => state !== 'loading')).toEqual(['running, steer-1, waited 11s'])
+  // The transcript shows first, then the session's turn with its steer and its wait in one change.
+  expect(shown.filter((state) => state !== 'loading')).toEqual(['opening', 'running, steer-1, waited 11s'])
   expect(shownRows(conversation()).waiting).toEqual(['message:steer-1'])
 })
 
