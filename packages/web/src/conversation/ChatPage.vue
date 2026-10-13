@@ -6,6 +6,7 @@ import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import { conversationPageKind } from '@demicodes/web-ui/agent/session-status'
 import ConversationComposer from './ConversationComposer.vue'
+import { useContextCard } from './context-card'
 import WorkspaceInfo from '../targets/WorkspaceInfo.vue'
 import { executionFor, primaryHostOf } from '../targets/execution'
 import { useConversations } from './store'
@@ -195,6 +196,9 @@ const files = computed<ConversationFiles | undefined>(() => {
   }
 })
 
+/** What a child's context card in the Agents window shows and opens beside its usage. */
+const card = useContextCard(() => files.value?.open)
+
 async function fork(request: MessageForkRequest): Promise<void> {
   const sourceId = conversation.value?.id
   if (!sourceId) {
@@ -264,6 +268,10 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @show-latest="conversation.shownAt = null"
     @read-subagent="(id, at) => readHistory(at === 'latest' ? store.history.readLatest(conversation!, id) : store.history.readBefore(conversation!, id))"
     @open-aside="work.setOpen(work.stateFor(conversation.id), true)"
+    :usage-limits="card.limitsOf"
+    @compact-subagent="store.compact(conversation, $event)"
+    @refresh-limits="card.refreshLimits"
+    @open-instruction="card.openInstruction"
   >
     <template #workspace
       ><WorkspaceInfo ref="place" :project="project" :conversation="conversation"

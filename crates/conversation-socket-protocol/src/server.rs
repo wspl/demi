@@ -97,10 +97,14 @@ pub enum ServerFrame {
         #[garde(skip)]
         phase: SessionPhase,
     },
-    /// The estimate of the root's next request with the window its
-    /// thresholds use: on open, after each response and compaction pass,
-    /// and when an action ends.
+    /// The estimate of a node's next request with the window its
+    /// thresholds use: every node's session, a subagent's as the root's,
+    /// reports it on open, after each response and compaction pass, and
+    /// when an action ends.
     ContextUsage {
+        /// The agent whose context it is: the root, or a live subagent.
+        #[garde(skip)]
+        node: NodeId,
         #[garde(dive)]
         usage: ContextUsage,
     },
@@ -433,6 +437,9 @@ pub struct SubagentJob {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct JobModel {
+    /// The provider entry's id, which finds the entry and its account.
+    #[garde(skip)]
+    pub provider_id: String,
     /// The provider entry's name.
     #[garde(skip)]
     pub provider: String,

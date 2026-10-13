@@ -722,6 +722,12 @@ impl<H: HostResolver> Tree<H> {
                             phase: *phase,
                         });
                     }
+                    SessionEvent::ContextUsageChanged { usage } => {
+                        sink.emit(ServerFrame::ContextUsage {
+                            node: id.clone(),
+                            usage: usage.clone(),
+                        });
+                    }
                     SessionEvent::ActionFailed { report } => {
                         if let Some(child) = child.upgrade() {
                             child.failure.replace(Some(report.message.clone()));

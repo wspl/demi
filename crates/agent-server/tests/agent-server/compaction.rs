@@ -20,7 +20,8 @@ use serde_json::json;
 
 use crate::support::{
     Fixture, Gate, LiveHosts, Model, ScriptedShells, agent, conversation, held, is_context_usage,
-    is_idle, is_pending_steers, kinds, named_node, open, request_text, send, session_of, until,
+    is_idle, is_pending_steers, kinds, named_node, open, request_text, scripted_host_server, send,
+    session_of, until,
 };
 
 /// The test model's window, which `model_of` gives every scripted model.
@@ -30,7 +31,7 @@ const WINDOW: u64 = 100_000;
 /// user may compact from.
 fn usage(frame: Option<&ServerFrame>) -> Option<(u64, Option<u64>, Option<u64>)> {
     match frame? {
-        ServerFrame::ContextUsage { usage } => {
+        ServerFrame::ContextUsage { usage, .. } => {
             Some((usage.tokens, usage.window, usage.compact_from))
         }
         _ => None,
@@ -66,9 +67,10 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
     let opened = client.next_until(is_context_usage).await;
     // Before any message the estimate is the system prompt's and the
     // tools', all of it the System prompt and Commands rows.
-    let Some(ServerFrame::ContextUsage { usage: first }) = opened.last() else {
+    let Some(ServerFrame::ContextUsage { node, usage: first }) = opened.last() else {
         panic!("the open reported no usage: {opened:?}");
     };
+    assert_eq!(node, &conversation());
     let row_kinds: Vec<_> = first.rows.iter().map(|row| row.kind).collect();
     let prompt: u64 = first.rows[..2].iter().map(|row| row.tokens).sum();
     assert_eq!(
@@ -85,7 +87,7 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
     client.send(send("m1", "first")).await;
     let turn = client.next_until(is_idle).await;
     assert_eq!(usage(last_usage(&turn)), of_window(30_000));
-    client.send(ClientFrame::Compact {}).await;
+    client.send(ClientFrame::Compact { node: None }).await;
     assert_eq!(
         client.next().await,
         Some(ServerFrame::Rejected {
@@ -97,7 +99,7 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
     client.send(send("m2", "second")).await;
     let turn = client.next_until(is_idle).await;
     assert_eq!(usage(last_usage(&turn)), of_window(60_000));
-    client.send(ClientFrame::Compact {}).await;
+    client.send(ClientFrame::Compact { node: None }).await;
     let compaction = client.next_until(is_idle).await;
     assert!(compaction.contains(&ServerFrame::Phase {
         subagent_id: None,
@@ -107,7 +109,7 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
     assert_eq!(kinds(&blocks).last().map(String::as_str), Some("compaction_marker"));
     // The summary replaced what the response measured: the usage is the
     // estimate of the blocks from the boundary on, far below the half.
-    let Some(ServerFrame::ContextUsage { usage }) = last_usage(&compaction) else {
+    let Some(ServerFrame::ContextUsage { usage, .. }) = last_usage(&compaction) else {
         panic!("the compaction reported no usage: {compaction:?}");
     };
     assert!(usage.tokens < WINDOW / 2, "{usage:?}");
@@ -264,4 +266,95 @@ async fn a_pass_names_the_command_and_the_subagent_that_still_run() {
     let request = model.root_requests().pop().expect("the root asked again");
     assert!(request_text(&request).contains(&context.text), "{}", request_text(&request));
     gate.open();
+}
+
+/// Whether `frame` is the usage of `node` with `tokens` in it.
+fn is_usage_of(node: &NodeId, tokens: u64) -> impl Fn(&ServerFrame) -> bool + '_ {
+    move |frame| matches!(frame, ServerFrame::ContextUsage { node: shown, usage } if shown == node && usage.tokens == tokens)
+}
+
+/// A subagent's session reports its usage as the root's does, naming the
+/// child: after its response, and to a page that opens; the child's context
+/// card compacts that child with `compact { node }`, and the root keeps its
+/// transcript (`subagents.md` § What an agent runs on).
+// One tree, a child idle beside the command it left running, on a paused
+// clock, which the command's quiet start-up waits on: a few milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_subagent_reports_its_own_usage_and_compact_names_it() {
+    let model = Model::default();
+    model.child(
+        "task serve",
+        [
+            Turn::Events(vec![
+                event::tool_call(
+                    "call-1",
+                    "shell",
+                    json!({"script": "serve", "description": "Start the server", "intervalMs": null}),
+                ),
+                event::response(55_000, 0),
+            ]),
+            answer("serving", 60_000),
+            answer("the summary", 10),
+        ],
+    );
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide_runtime("stub", model.clone());
+    let store = MemoryTreeStore::new();
+    let server = scripted_host_server(providers, Rc::new(ScriptedShells::default()), store.clone());
+    let mut page = TestClient::connect(&server, &conversation(), "/workspace");
+    page.send(open()).await;
+    page.next_until(is_pending_steers).await;
+    let spawned = agent(&server, &conversation(), "spawn", json!({ "prompt": "task serve" })).await;
+    let child = named_node(&store, &spawned);
+
+    // Each response's usage names the child.
+    page.next_until(is_usage_of(&child, 55_000)).await;
+    page.next_until(is_usage_of(&child, 60_000)).await;
+    page.next_until(|frame| {
+        matches!(frame, ServerFrame::Phase { subagent_id: Some(id), phase: SessionPhase::Idle } if id == &child)
+    })
+    .await;
+
+    // A page that opens is told the root's usage and the live child's.
+    let mut opening = TestClient::connect(&server, &conversation(), "/workspace");
+    opening.send(open()).await;
+    let handshake = opening.next_until(is_usage_of(&child, 60_000)).await;
+    let nodes: Vec<&NodeId> = handshake
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::ContextUsage { node, .. } => Some(node),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(nodes, [&conversation(), &child]);
+    drop(opening);
+
+    page.send(ClientFrame::Compact { node: Some(child.clone()) }).await;
+    let compaction = page
+        .next_until(|frame| {
+            matches!(frame, ServerFrame::Phase { subagent_id: Some(id), phase: SessionPhase::Idle } if id == &child)
+        })
+        .await;
+    assert!(compaction.iter().any(|frame| matches!(frame,
+        ServerFrame::Phase { subagent_id: Some(id), phase: SessionPhase::Compacting } if id == &child)),
+        "{compaction:?}");
+    assert!(compaction.iter().any(|frame| matches!(frame,
+        ServerFrame::ContextUsage { node, usage } if node == &child && usage.tokens < WINDOW / 2)),
+        "{compaction:?}");
+    let tree = server.tree(&conversation()).expect("the tree is live");
+    let child_blocks = tree.node(&child).expect("the child is live").session().transcript().blocks;
+    // Its command still runs, so the pass names it after the marker.
+    assert_eq!(kinds(&child_blocks[child_blocks.len() - 2..]), ["compaction_marker", "context"]);
+    assert!(!kinds(&tree.root().session().transcript().blocks).iter().any(|kind| kind == "compaction_marker"));
+    assert!(model.is_done());
+
+    // A node the tree no longer runs is refused.
+    page.send(ClientFrame::Compact { node: Some(NodeId::try_from("gone").unwrap()) }).await;
+    assert_eq!(
+        page.next().await,
+        Some(ServerFrame::Rejected {
+            command: ClientFrameKind::Compact,
+            reason: "The agent has ended".into(),
+        })
+    );
 }

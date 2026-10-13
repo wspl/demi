@@ -1,10 +1,11 @@
-import type { JobModel, PendingCall, ProviderFailureFacts, SessionPhase, SubagentJob } from '@demicodes/protocol'
+import type { ContextUsage, JobModel, PendingCall, ProviderFailureFacts, SessionPhase, SubagentJob } from '@demicodes/protocol'
 import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { ConversationStatus } from './conversation-status'
 import type { MessageEditContent } from './message-editing'
 import { effortWord } from './reasoning'
 import { formatSpan, countOf } from '@demicodes/utils'
 import { elapsedBetween } from '../composables/useElapsedTime'
+import { COMPACT_AFTER_TURN } from './context-usage'
 
 export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'
 
@@ -49,6 +50,28 @@ export interface SubagentRecord extends AgentRun {
   waitingSince: number | null
   /** The failure facts of this agent's error blocks, by block id. */
   failures: Record<string, ProviderFailureFacts>
+  /**
+   * How full this agent's next request is, as its session last said
+   * (`compaction.md` § Context estimate); null until it says, and for a
+   * child that ended before the page opened.
+   */
+  contextUsage: ContextUsage | null
+}
+
+/**
+ * Where a child's context card stands on Compact: whether the child
+ * compacts now, and why Compact cannot run apart from the usage. A closed
+ * child has no session to compact; a running turn compacts after it ends,
+ * while a child idle beside a command it left running may compact.
+ */
+export function agentCompaction(agent: SubagentRecord): { compacting: boolean, unavailableReason: string | null } {
+  if (agent.phase !== 'running') {
+    return { compacting: false, unavailableReason: 'The agent has ended.' }
+  }
+  return {
+    compacting: agent.sessionPhase === 'compacting',
+    unavailableReason: agent.sessionPhase === 'running' ? COMPACT_AFTER_TURN : null,
+  }
 }
 
 /** What a child's job sets on its record: who it is, and its round as the job says it now. */

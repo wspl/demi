@@ -12,6 +12,10 @@ import { useSessionPanels } from '@demicodes/web-ui/agent/useSessionPanels'
 import { agentLinksMarkdown } from '../fixtures/subagents'
 import { productWould } from '../product-would'
 import GalleryComposer from './GalleryComposer.vue'
+import { useAgentContext } from '../agent-context'
+
+/** What a child's context card in the Agents window shows and does beside its usage. */
+const agentContext = useAgentContext()
 
 /**
  * A dock with the agents chip over a conversation's children, as the
@@ -84,6 +88,7 @@ const createdAt = new Date(Date.now() - 60_000).toISOString()
           :terminals="terminals"
           @abort="emit('abort')"
           @abort-agent="(id) => emit('abortAgent', id)"
+          v-bind="agentContext.panel"
         />
       </template>
     </SessionSurface>
