@@ -11,6 +11,7 @@ import type { DeviceReport } from '../devices/report'
 import type { DeviceStart } from '../devices/installation'
 import type { CredentialFieldView, CredentialKeep } from '../permissions/types'
 import type { HandoffHost } from '../auth/handoff'
+import type { VerificationHost } from '../auth/verification'
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
@@ -412,6 +413,9 @@ export type PasskeyAddOutcome =
  */
 export type PasskeyOfferOutcome = PasskeyAddOutcome | { kind: 'needsPassword' }
 
+/** The steps the passkey offer's wizard has, which it names its own step by (`PasskeyOfferSteps`). */
+export type PasskeyOfferStep = 'ask' | 'password' | 'held'
+
 /** The account's passkeys and what the host does with them, for Settings › Account. */
 export interface SettingsPasskeyHost {
   passkeys: readonly SettingsPasskey[]
@@ -431,6 +435,8 @@ export interface SettingsSession {
   lastActiveAt: string
   /** The browser the user is reading the list in. */
   current: boolean
+  /** The administrator whose sign-in code signed it in, by name; null for a browser the user signed in. */
+  issuedBy: string | null
 }
 
 /** The account's signed-in browsers and what the host does with them, for Settings › Account. */
@@ -456,39 +462,53 @@ export interface SettingsUser {
   lastActiveAt: string | null
 }
 
-/** What Add User… asks. */
+/** What Add User… asks: the server makes the first password. */
 export interface SettingsNewUser {
   email: string
   role: Exclude<UserRole, 'master'>
-  /** The first password, which the new user changes in Settings › Account. */
-  password: string
 }
 
 /**
- * How adding an account ended: added; refused because an account has the
- * address, said under the dialog's email field; or failed, said under its
- * fields.
+ * How adding an account ended: added, with the first password the server made
+ * and the account's name; refused because an account has the address, said
+ * under the dialog's email field; the administrator's own confirmation is
+ * needed first (the dialog asks it and tries again); or failed, said under
+ * its fields.
  */
 export type UserAddOutcome =
-  /** `id` is the new account's, which its sign-in code is made for. */
-  | { kind: 'added'; id: string }
+  | { kind: 'added'; id: string; nickname: string; password: string }
   | { kind: 'emailTaken' }
+  | { kind: 'needsVerification' }
   | ({ kind: 'failed' } & ShownError)
+
+/** How making a new first password ended: made, the confirmation is needed first, or failed. */
+export type NewPasswordOutcome =
+  | { kind: 'made'; password: string }
+  | { kind: 'needsVerification' }
+  /** The host said why itself. */
+  | { kind: 'failed' }
 
 /**
  * The accounts and what the host does with them, for Settings › Users. The
  * page decides from `users` and `viewerId` which actions each row offers; the
  * host carries them out, and says itself a refusal it could not hide.
  */
-export interface SettingsUsersHost {
+export interface SettingsUsersHost extends VerificationHost {
   users: readonly SettingsUser[]
   /** The signed-in user's account: its row is marked You and has no menu. */
   viewerId: string
   add: (user: SettingsNewUser) => Promise<UserAddOutcome>
-  resetPassword: (id: string, password: string) => Promise<void>
+  /** Makes a new first password for the account, which stops its earlier one; Reset Password… and New Password. */
+  newPassword: (id: string) => Promise<NewPasswordOutcome>
   setRole: (id: string, role: Exclude<UserRole, 'master'>) => Promise<void>
   signOutEverywhere: (id: string) => Promise<void>
   setDisabled: (id: string, disabled: boolean) => Promise<void>
-  /** The sign-in codes of the account `id` (`product.md` § User system), made as a handoff code is: good for ten minutes and once, after the administrator confirms it is them. */
+  /** The sign-in codes of the account `id` (`product.md` § User system): good for ten minutes and once; the dialog asks the confirmation itself. */
   signInCode: (id: string) => HandoffHost
 }
+
+/**
+ * How choosing the account's own password ended (`ChoosePasswordWizard`):
+ * chosen, or failed, said in the step.
+ */
+export type PasswordChoiceOutcome = { kind: 'chosen' } | ({ kind: 'failed' } & ShownError)

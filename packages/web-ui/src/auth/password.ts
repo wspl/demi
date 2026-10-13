@@ -19,26 +19,3 @@ export function isTooShort(password: string): boolean {
 export function differs(password: string, confirmation: string): boolean {
   return confirmation.length > 0 && confirmation !== password
 }
-
-/** The characters a generated password uses: letters and digits without the look-alikes (0 O 1 l I), so it can be read out loud or typed from a screen. */
-const GENERATED_ALPHABET = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-
-export const GENERATED_PASSWORD_LENGTH = 16
-
-/**
- * A random password for an administrator to hand over (`product.md` § User
- * system). Bytes the alphabet's size does not divide are dropped, so every
- * character is equally likely.
- */
-export function generatePassword(): string {
-  const limit = 256 - (256 % GENERATED_ALPHABET.length)
-  let password = ''
-  while (password.length < GENERATED_PASSWORD_LENGTH) {
-    for (const byte of crypto.getRandomValues(new Uint8Array(GENERATED_PASSWORD_LENGTH))) {
-      if (byte < limit && password.length < GENERATED_PASSWORD_LENGTH) {
-        password += GENERATED_ALPHABET[byte % GENERATED_ALPHABET.length]
-      }
-    }
-  }
-  return password
-}

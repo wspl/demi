@@ -2,11 +2,11 @@
 import { computed, ref } from 'vue'
 import { Ellipsis } from '@lucide/vue'
 import HandoffDialog from '../auth/HandoffDialog.vue'
-import { addedUserWording, signInCodeWording, type HandoffHost, type HandoffWording } from '../auth/handoff'
+import { signInCodeWording, userReadyWording, type HandoffHost, type HandoffWording } from '../auth/handoff'
+import VerifyDialog from '../auth/VerifyDialog.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
-import CopyButton from '../ui/CopyButton.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
@@ -14,11 +14,10 @@ import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
 import Tag from '../ui/Tag.vue'
-import TextInput from '../ui/TextInput.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import AddUserDialog from './AddUserDialog.vue'
 import ChangeUserRoleDialog from './ChangeUserRoleDialog.vue'
-import ResetUserPasswordDialog from './ResetUserPasswordDialog.vue'
+import FirstPasswordCard from './FirstPasswordCard.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -27,19 +26,23 @@ import { ROLE_LABEL, assignableRoles, userActions, type UserAction } from './use
 
 /**
  * Settings › Users (`product.md` § User system), which only the master and
- * admins see, as macOS's Users & Groups or a GitHub organization's People: one
- * row per account with its nickname and email, its role and when it was last
- * active, *Disabled* on a disabled one, *Hasn’t Chosen a Password* on one still
- * to choose its own (new, or reset by an administrator) and *You* on the user's own. A row's
- * ··· menu offers what the user may do to that account and is absent where
- * they may do nothing (their own row, a peer or a higher role). Add User…
- * asks the email, the role and a first password; Reset Password… and Change
- * Role… ask for one thing; Sign-In Code… shows a QR code that signs the
- * account's phone in, in the Hand Off to Your Phone dialog, and Add User…
- * ends in the same code beside the first password; Sign Out Everywhere and Disable Account… ask
- * first, saying what happens; Enable Account does not ask, since it only
- * undoes. The host carries each out and says itself a refusal it could not
- * hide.
+ * admins see, as macOS's Users & Groups or a GitHub organization's People:
+ * one row per account with its nickname and email, its role and when it was
+ * last active, *Disabled* on a disabled one, *Hasn’t Chosen a Password* on
+ * one still to choose its own (new, or reset by an administrator) and *You*
+ * on the user's own. A row's ··· menu offers what the user may do to that
+ * account and is absent where they may do nothing (their own row, a peer or
+ * a higher role).
+ *
+ * Add User… asks the email and the role; the server makes the first password.
+ * Reset Password… asks first and makes another. Both end on one last step:
+ * the password, with Copy and New Password, beside a sign-in code, which Sign-In
+ * Code… shows alone. Those three ask the administrator's own confirmation, as
+ * Hand Off to Your Phone does, when the session has not been verified in
+ * the last five minutes. Change Role…, Sign Out Everywhere… and Disable
+ * Account… ask for one thing or confirm, saying what happens; Enable Account does
+ * not ask, since it only undoes. The host carries each out and says itself a
+ * refusal it could not hide.
  */
 const props = defineProps<{
   host: SettingsUsersHost
@@ -56,14 +59,55 @@ const open = ref<Dialog | null>(null)
 /** The account a dialog is about, kept while the dialog closes. */
 const target = ref<SettingsUser | null>(null)
 const busy = ref(false)
+const addError = ref<Exclude<UserAddOutcome, { kind: 'added' | 'needsVerification' }> | undefined>()
+
 /**
- * The sign-in code dialog's account: its host, its wording and, after Add
- * User, the first password shown beside the code. It stays while the dialog
- * closes; `signInOpen` shows it.
+ * The last step of an action, kept while its dialog closes: the sign-in
+ * code's host and wording, and for Add User… and Reset Password… the account
+ * and the first password shown beside the code.
  */
-const signIn = ref<{ host: HandoffHost; wording: HandoffWording; name: string; password: string | null } | null>(null)
-const signInOpen = ref(false)
-const addError = ref<Exclude<UserAddOutcome, { kind: 'added' }> | undefined>()
+const ready = ref<{
+  host: HandoffHost
+  wording: HandoffWording
+  account: { id: string; email: string } | null
+  /** What the step says above the password. */
+  lead: string
+  password: string | null
+} | null>(null)
+const readyOpen = ref(false)
+
+/** The administrator's confirmation, which an action that answered it needs asks for in a dialog of its own. */
+const confirming = ref<{ done: (confirmed: boolean) => void; message: string } | null>(null)
+
+function confirmIt(message: string): Promise<boolean> {
+  return new Promise((done) => {
+    confirming.value = { done, message }
+  })
+}
+
+function settleConfirmation(confirmed: boolean): void {
+  const pending = confirming.value
+  confirming.value = null
+  pending?.done(confirmed)
+}
+
+/**
+ * Runs `run`, and again after the administrator confirmed it is them when
+ * its answer says that is needed; null when they did not.
+ */
+async function confirmed<T extends { kind: string }>(
+  run: () => Promise<T>,
+  message: string,
+): Promise<Exclude<T, { kind: 'needsVerification' }> | null> {
+  let outcome = await run()
+  while (outcome.kind === 'needsVerification') {
+    if (!(await confirmIt(message))) {
+      return null
+    }
+    outcome = await run()
+  }
+  return outcome as Exclude<T, { kind: 'needsVerification' }>
+}
 
 function actionsOf(user: SettingsUser): UserAction[] {
   return viewer.value ? userActions(viewer.value, user) : []
@@ -100,12 +144,20 @@ async function add(user: SettingsNewUser): Promise<void> {
   busy.value = true
   addError.value = undefined
   try {
-    const outcome = await props.host.add(user)
+    const outcome = await confirmed(() => props.host.add(user), 'Adding an account asks it is you.')
+    if (outcome === null) {
+      return
+    }
     if (outcome.kind === 'added') {
       open.value = null
-      const added = props.host.users.find((candidate) => candidate.id === outcome.id)
-      const name = added?.nickname ?? user.email
-      showSignInCode({ id: outcome.id, nickname: name }, addedUserWording(name), user.password)
+      ready.value = {
+        host: props.host.signInCode(outcome.id),
+        wording: userReadyWording('Add User', outcome.nickname),
+        account: { id: outcome.id, email: user.email },
+        lead: `The account for ${user.email} is ready.`,
+        password: outcome.password,
+      }
+      readyOpen.value = true
     } else {
       addError.value = outcome
     }
@@ -114,11 +166,43 @@ async function add(user: SettingsNewUser): Promise<void> {
   }
 }
 
-async function resetPassword(password: string): Promise<void> {
+/** Reset Password… confirmed: makes a new first password and ends on the last step. */
+async function resetPassword(): Promise<void> {
   const user = target.value
-  if (user) {
-    await carryOut(() => props.host.resetPassword(user.id, password))
+  if (!user || busy.value) {
+    return
   }
+  busy.value = true
+  try {
+    const outcome = await confirmed(() => props.host.newPassword(user.id), 'Resetting a password asks it is you.')
+    if (outcome?.kind === 'made') {
+      ready.value = {
+        host: props.host.signInCode(user.id),
+        wording: userReadyWording('Reset Password', user.nickname),
+        account: { id: user.id, email: user.email },
+        lead: `${user.email} has a new password.`,
+        password: outcome.password,
+      }
+      readyOpen.value = true
+    }
+  } finally {
+    busy.value = false
+    open.value = null
+  }
+}
+
+/** New Password on the last step: another first password, which stops the one shown. */
+async function makeAnotherPassword(): Promise<boolean> {
+  const account = ready.value?.account
+  if (!account) {
+    return false
+  }
+  const outcome = await confirmed(() => props.host.newPassword(account.id), 'A new password asks it is you.')
+  if (outcome?.kind !== 'made' || !ready.value) {
+    return false
+  }
+  ready.value = { ...ready.value, password: outcome.password }
+  return true
 }
 
 async function changeRole(role: SettingsNewUser['role']): Promise<void> {
@@ -142,9 +226,15 @@ async function disableAccount(): Promise<void> {
   }
 }
 
-function showSignInCode(user: { id: string; nickname: string }, wording: HandoffWording, password: string | null): void {
-  signIn.value = { host: props.host.signInCode(user.id), wording, name: user.nickname, password }
-  signInOpen.value = true
+function showSignInCode(user: SettingsUser): void {
+  ready.value = {
+    host: props.host.signInCode(user.id),
+    wording: signInCodeWording(user.nickname),
+    account: null,
+    lead: '',
+    password: null,
+  }
+  readyOpen.value = true
 }
 
 function run(action: UserAction, user: SettingsUser): void {
@@ -153,7 +243,7 @@ function run(action: UserAction, user: SettingsUser): void {
   } else if (action === 'changeRole') {
     ask('role', user)
   } else if (action === 'signInCode') {
-    showSignInCode(user, signInCodeWording(user.nickname), null)
+    showSignInCode(user)
   } else if (action === 'signOutEverywhere') {
     ask('signOut', user)
   } else if (action === 'disable') {
@@ -244,14 +334,6 @@ function closeDialog(): void {
     @submit="add"
     @edit="addError = undefined"
   />
-  <ResetUserPasswordDialog
-    :is-open="open === 'reset'"
-    :overlay-store="overlayStore"
-    :name="targetName"
-    :busy="busy"
-    @close="closeDialog"
-    @submit="resetPassword"
-  />
   <ChangeUserRoleDialog
     :is-open="open === 'role'"
     :overlay-store="overlayStore"
@@ -262,29 +344,45 @@ function closeDialog(): void {
     @close="closeDialog"
     @submit="changeRole"
   />
-  <HandoffDialog
-    v-if="signIn"
-    :is-open="signInOpen"
+  <ConfirmDialog
+    :is-open="open === 'reset'"
     :overlay-store="overlayStore"
-    :host="signIn.host"
-    :email="viewer?.email ?? ''"
-    :wording="signIn.wording"
-    @close="signInOpen = false"
+    :title="`Reset ${targetName}’s password?`"
+    action="Reset Password"
+    :busy="busy"
+    @close="closeDialog"
+    @confirm="resetPassword"
   >
-    <template v-if="signIn.password" #code-lead>
+    <p>
+      Demi makes a new first password and shows it to you once. The one they have stops working, and they choose
+      a password of their own the next time they sign in. Their signed-in browsers and passkeys stay.
+    </p>
+  </ConfirmDialog>
+  <HandoffDialog
+    v-if="ready"
+    :is-open="readyOpen"
+    :overlay-store="overlayStore"
+    :host="ready.host"
+    :email="viewer?.email ?? ''"
+    :wording="ready.wording"
+    @close="readyOpen = false"
+  >
+    <template v-if="ready.account && ready.password !== null" #code-lead>
       <p class="text-[13px] leading-5 text-fg-muted">
-        {{ signIn.name }}’s account is ready. Give them this password, or have them scan the code.
+        {{ ready.lead }} Give them this password, or have them scan the code.
       </p>
-      <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
-        <SettingsRow label="Password">
-          <CopyButton :source="signIn.password" label="Copy password" />
-          <template #below>
-            <TextInput :model-value="signIn.password" aria-label="Password" literal readonly class="w-full font-mono" />
-          </template>
-        </SettingsRow>
-      </div>
+      <FirstPasswordCard :password="ready.password" :make="makeAnotherPassword" />
     </template>
   </HandoffDialog>
+  <VerifyDialog
+    :is-open="confirming !== null"
+    :overlay-store="overlayStore"
+    :host="host"
+    :email="viewer?.email ?? ''"
+    :message="confirming?.message ?? ''"
+    @close="settleConfirmation(false)"
+    @verified="settleConfirmation(true)"
+  />
   <ConfirmDialog
     :is-open="open === 'signOut'"
     :overlay-store="overlayStore"
@@ -309,8 +407,8 @@ function closeDialog(): void {
     @confirm="disableAccount"
   >
     <p>
-      {{ targetName }} is signed out everywhere and can’t sign in, by password, passkey or handoff code.
-      Their Cloud stops, and their paired devices can’t reach the server.
+      {{ targetName }} is signed out everywhere and can’t sign in any way. Their Cloud stops, and their paired
+      devices can’t reach the server.
     </p>
     <p>
       Nothing is removed: their conversations, Clouds, devices and settings wait.

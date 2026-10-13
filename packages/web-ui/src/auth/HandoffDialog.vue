@@ -8,17 +8,15 @@ import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import InlineError from '../ui/InlineError.vue'
-import TextInput from '../ui/TextInput.vue'
-import SettingsRow from '../settings/SettingsRow.vue'
-import { hiddenUsername } from '../ui/field-autofill'
 import {
   HANDOFF_WORDING,
   timeLeft,
   type HandoffCodeView,
   type HandoffHost,
-  type HandoffVerifyOutcome,
   type HandoffWording,
 } from './handoff'
+import VerifyForm from './VerifyForm.vue'
+import { useVerification } from './verification'
 
 /**
  * Hand Off to Your Phone (`product.md` § User system). Opening it asks the
@@ -57,12 +55,7 @@ type Step =
   | ({ kind: 'failed' } & ShownError)
 
 const step = ref<Step>({ kind: 'starting' })
-const password = ref('')
-/** What is wrong with the password, said under it; null when nothing is. */
-const passwordProblem = ref<string | null>(null)
-/** A failure of the confirmation, said under its fields. */
-const verifyError = ref<ShownError | null>(null)
-const busy = ref<'password' | 'passkey' | null>(null)
+const verification = useVerification(() => props.host, () => start())
 const now = ref(Date.now())
 let ticking: ReturnType<typeof setInterval> | null = null
 let closing: ReturnType<typeof setTimeout> | null = null
@@ -103,9 +96,7 @@ async function start(): Promise<void> {
       break
     }
     case 'verify':
-      password.value = ''
-      passwordProblem.value = null
-      verifyError.value = null
+      verification.reset()
       step.value = { kind: 'verify' }
       break
     case 'failed':
@@ -129,57 +120,6 @@ onBeforeUnmount(() => {
   attempt += 1
   stopTimers()
 })
-watch(password, () => {
-  passwordProblem.value = null
-})
-
-async function verified(outcome: HandoffVerifyOutcome): Promise<void> {
-  switch (outcome.kind) {
-    case 'verified':
-      await start()
-      break
-    case 'wrongPassword':
-      passwordProblem.value = outcome.message
-      break
-    case 'dismissed':
-      break
-    case 'failed':
-      verifyError.value = outcome
-      break
-  }
-}
-
-async function submitPassword(): Promise<void> {
-  if (busy.value) {
-    return
-  }
-  if (password.value === '') {
-    passwordProblem.value = 'Required'
-    return
-  }
-  busy.value = 'password'
-  verifyError.value = null
-  try {
-    await verified(await props.host.verifyPassword(password.value))
-  } finally {
-    busy.value = null
-  }
-}
-
-async function usePasskey(): Promise<void> {
-  const verify = props.host.verifyPasskey
-  if (busy.value || !verify) {
-    return
-  }
-  busy.value = 'passkey'
-  verifyError.value = null
-  try {
-    await verified(await verify())
-  } finally {
-    busy.value = null
-  }
-}
-
 const left = computed(() => (step.value.kind === 'code' ? timeLeft(step.value.code.deadline, now.value) : null))
 const handedOffTo = computed(() =>
   step.value.kind === 'code' ? props.host.handedOffTo(step.value.code.id) : null,
@@ -223,29 +163,7 @@ watch(handedOffTo, (name) => {
         <IndeterminateSpinner />
       </div>
       <template v-else-if="step.kind === 'verify'">
-        <form
-          class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
-          @submit.prevent="submitPassword"
-        >
-          <SettingsRow label="Password">
-            <template v-if="passwordProblem" #detail>
-              <InlineError :message="passwordProblem" />
-            </template>
-            <TextInput
-              v-model="password"
-              aria-label="Password"
-              masked="password"
-              focused
-              autocomplete="current-password"
-              :invalid="passwordProblem !== null"
-              :readonly="busy !== null"
-              class="w-48 max-w-full"
-              @keydown.enter="submitPassword"
-            />
-          </SettingsRow>
-          <input v-bind="hiddenUsername(email)" />
-        </form>
-        <InlineError v-if="verifyError" :message="verifyError.message" :request-id="verifyError.requestId" />
+        <VerifyForm :verification="verification" :email="email" />
       </template>
       <template v-else-if="step.kind === 'code'">
         <slot name="code-lead" />
@@ -277,11 +195,21 @@ watch(handedOffTo, (name) => {
     </div>
     <template #footer>
       <template v-if="step.kind === 'verify'">
-        <Button :disabled="busy !== null" @click="emit('close')">Cancel</Button>
-        <Button v-if="host.verifyPasskey" :loading="busy === 'passkey'" :disabled="busy === 'password'" @click="usePasskey">
+        <Button :disabled="verification.busy.value !== null" @click="emit('close')">Cancel</Button>
+        <Button
+          v-if="host.verifyPasskey"
+          :loading="verification.busy.value === 'passkey'"
+          :disabled="verification.busy.value === 'password'"
+          @click="verification.usePasskey()"
+        >
           Use Passkey
         </Button>
-        <Button variant="primary" :loading="busy === 'password'" :disabled="busy === 'passkey'" @click="submitPassword">
+        <Button
+          variant="primary"
+          :loading="verification.busy.value === 'password'"
+          :disabled="verification.busy.value === 'passkey'"
+          @click="verification.submitPassword()"
+        >
           Continue
         </Button>
       </template>

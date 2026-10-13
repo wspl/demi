@@ -26,3 +26,11 @@ export function createUsersState(viewerId: string) {
 
 export type UsersState = ReturnType<typeof createUsersState>
 
+
+const FIRST_PASSWORD_CHARACTERS = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+
+/** A first password as the server makes one: 20 random letters and digits. */
+export function fakeFirstPassword(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(20))
+  return Array.from(bytes, (byte) => FIRST_PASSWORD_CHARACTERS[byte % FIRST_PASSWORD_CHARACTERS.length]).join('')
+}

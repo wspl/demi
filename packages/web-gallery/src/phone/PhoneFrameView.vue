@@ -13,6 +13,7 @@ import { providePageHost, sidebarEntries, withPluginSections } from '@demicodes/
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
 import { callTerminal } from '@demicodes/web-ui/agent/terminals'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import ChoosePasswordWizard from '@demicodes/web-ui/auth/ChoosePasswordWizard.vue'
 import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
 import { deviceReportKey } from '@demicodes/web-ui/auth/device-unlock'
 import { DEVICE_REPORTS } from '../fixtures/device-reports'
@@ -23,6 +24,7 @@ import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
 import { galleryBrowser } from '../fixtures/live-browser'
 import { galleryPasskeyOffer } from '../fixtures/passkey-offer'
+import { galleryPasswordChoice } from '../fixtures/password-choice'
 import { galleryConversationFiles } from '../fixtures/message-files'
 import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
 import { createSettingsState } from '../fixtures/settings'
@@ -101,6 +103,8 @@ const primaryHost = computed<HostMenuHost>(() => {
 
 /** The passkey offer after a handoff, which the scene of that name shows: the whole screen. */
 const passkeyOfferOpen = ref(scene === 'passkey')
+/** Choose Your Password at a first sign-in, which the scene of that name shows: the whole screen. */
+const passwordChoiceOpen = ref(scene === 'password')
 
 const sidebarOpen = ref(false)
 const projects = ref(demoProjects())
@@ -282,6 +286,17 @@ onMounted(async () => {
         <GalleryWorkPanel :work="work" @close="work.open.value = false" />
       </template>
       <template #dialogs>
+        <ChoosePasswordWizard
+          :is-open="passwordChoiceOpen"
+          :overlay-store="appOverlayStore"
+          email="bo@example.com"
+          :choose="galleryPasswordChoice('saves')"
+          offer
+          :add="galleryPasskeyOffer('adds')"
+          @answered="productWould('Remember the Answer on This Browser')"
+          @done="passwordChoiceOpen = false"
+          @sign-out="productWould('Sign Out and Open the Sign-In Page')"
+        />
         <PasskeyOffer
           :is-open="passkeyOfferOpen"
           :overlay-store="appOverlayStore"
