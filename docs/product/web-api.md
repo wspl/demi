@@ -615,10 +615,15 @@ message is `{ id, text, files, savedAt }`, its `text` and `files` as a
 draft's are ([Conversation drafts](#conversation-drafts)).
 
 - `GET /api/conversations/:id/saved` answers `{ revision, messages }`.
-- `POST /api/conversations/:id/saved` takes `{ text, files }`, as a draft's
-  `PUT` names them, saves them as a message for later and empties the
-  conversation's draft in the same transaction, so the message is never in
-  both places; it answers `{ message }` with 201. A text without exactly
+- `POST /api/conversations/:id/saved/from-draft` takes `{ base, text,
+  files }`, as a draft's `PUT` does, the composer's message: it saves them
+  as a message for later and empties the conversation's draft in the same
+  transaction, so the message is never in both places, and answers
+  `{ message, draft }` with 201.
+- `POST /api/conversations/:id/saved` takes `{ text, files }` and adds them
+  as a message for later, leaving the draft as it is, as Undo after Delete
+  does; it answers `{ message }` with 201.
+- Either save: a text without exactly
   one mark per file answers 400 `invalid_body`, a message over 256 KiB 413
   `too_large`, and a conversation with 200 saved messages 409
   `saved_full`.
