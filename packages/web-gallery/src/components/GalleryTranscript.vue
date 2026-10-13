@@ -12,7 +12,7 @@ import { useGalleryTranscripts } from '../fixtures/transcripts'
  */
 const props = defineProps<{ blocks: Block[] }>()
 const requests = computed(() => storedRequests(props.blocks))
-provideTranscript({ node: null, requests: () => requests.value })
+provideTranscript({ node: null, requests: () => requests.value, directory: () => null })
 useGalleryTranscripts(() => ({ blocks: props.blocks, subagents: [] }))
 </script>
 

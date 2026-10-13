@@ -9,9 +9,12 @@ export interface IntentPayloads {
   /**
    * A file on the conversation's Host, by its absolute path, and the line to
    * open it at, scrolled there and marked for a moment, when one is named
-   * (`file-previews.md` § Files named in messages).
+   * (`file-previews.md` § Files named in messages); an empty path shows the
+   * directory's tree alone. `root` is the directory the view opens for, the
+   * working directory of the agent that named the file; absent, the
+   * conversation's.
    */
-  file: { path: string; line?: number }
+  file: { path: string; line?: number; root?: string }
   /**
    * A request's changes, as its line or a file pill under one of its calls
    * names them: the request, its file, and the edit of it or All Changes.

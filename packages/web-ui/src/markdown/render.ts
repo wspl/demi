@@ -32,13 +32,48 @@ function webLink(url: string): string {
  * that starts with an icon is spaced from the words around it
  * (`icon-link`).
  */
-function fileLink({ path, line }: MessageFileTarget, named: boolean): string {
+function fileLink({ path, line }: MessageFileTarget, named: boolean, tight = false): string {
   const at = line === null ? '' : ` data-line="${line}"`
   if (!named)
     return `<a href="${escapeHtml(path)}" data-file-link${at}>`
   const icon = `<span class="message-file-icon" data-file-icon="${escapeHtml(baseName(path))}" aria-hidden="true"></span>`
-  return `<a href="${escapeHtml(path)}" class="icon-link" data-file-link${at}>${icon}`
+  return `<a href="${escapeHtml(path)}" class="${iconLinkClass(tight)}" data-file-link${at}>${icon}`
 }
+
+/** The classes of a link that starts with an icon, `tight` when ASCII punctuation follows it, which keeps no space after its name. */
+function iconLinkClass(tight: boolean): string {
+  return tight ? 'icon-link icon-link-tight' : 'icon-link'
+}
+
+/** Punctuation that stands right after the word before it in Latin text, which a link's own space must not part from it. */
+const CLOSING_PUNCTUATION_RE = /^[.,;:!?)\]}]/
+
+/**
+ * Marks each link that starts with an icon and is followed at once by
+ * ASCII punctuation, so that it keeps no space after its name: "main agent;"
+ * reads as it was written, where the 0.2em of space an icon link keeps would
+ * show "main agent ;". Full-width punctuation carries its own space and
+ * keeps the link's.
+ */
+function tightenLinks(tokens: Token[]): void {
+  const mark = (inline: readonly Token[]) => inline.forEach((part, index) => {
+    const next = inline[index + 1]
+    if (part.type === 'link' && next?.type === 'text' && CLOSING_PUNCTUATION_RE.test(next.raw))
+      tightLinks.add(part)
+  })
+  // A walk gives each token, but a table's cells hold their inline tokens apart from it.
+  agentMarked.walkTokens(tokens, (token) => {
+    if (token.type === 'table') {
+      for (const cell of [...token.header, ...token.rows.flat()])
+        mark(cell.tokens)
+    } else if ('tokens' in token && Array.isArray(token.tokens)) {
+      mark(token.tokens)
+    }
+  })
+}
+
+/** The links `tightenLinks` marked, by token. */
+const tightLinks = new WeakSet<Token>()
 
 /**
  * A link to agent `number` of the conversation (`subagents.md` § Linking an
@@ -51,7 +86,7 @@ function fileLink({ path, line }: MessageFileTarget, named: boolean): string {
  * chip is: a press on it is not one outside the window (`KEEPS_WINDOWS`),
  * so a click when the window shows its tab closes the window.
  */
-function agentLink(number: number, body: string): string {
+function agentLink(number: number, body: string, tight: boolean): string {
   const agents = activeOptions?.agents
   if (!agents)
     return body
@@ -60,7 +95,7 @@ function agentLink(number: number, body: string): string {
   // A button element lays out as one block, so a long name would move whole
   // to a line of its own: the link is inline text that acts as a button.
   const lead = firstWord(body.slice(0, body.search(/<|$/)))
-  return `<span role="button" tabindex="0" class="agent-link icon-link" data-agent-link="${number}" ${KEEPS_WINDOWS}>`
+  return `<span role="button" tabindex="0" class="agent-link ${iconLinkClass(tight)}" data-agent-link="${number}" ${KEEPS_WINDOWS}>`
     + `<span class="agent-link-lead"><span class="agent-link-mark" data-agent-mark="${number}"></span>${lead}</span>`
     + `${body.slice(lead.length)}</span>`
 }
@@ -228,7 +263,7 @@ const messageRenderer: RendererObject = {
       return attachmentTarget(attachment, body, (found) => `${attachmentLink(found)}${body}</a>`)
     const agent = linkedAgent(token.href)
     if (agent !== null)
-      return agentLink(agent, body)
+      return agentLink(agent, body, tightLinks.has(token))
     // A file nobody opens is named as text.
     const files = activeOptions?.files
     const target = files?.open ? messageFileTarget(token.href, files) : null
@@ -236,7 +271,7 @@ const messageRenderer: RendererObject = {
       return body
     // A picture that links a file shows itself, not the file's icon.
     const named = !(token.tokens ?? []).some((part) => part.type === 'image')
-    return `${fileLink(target, named)}${body}</a>`
+    return `${fileLink(target, named, tightLinks.has(token))}${body}</a>`
   },
   image(token) {
     const attachment = attachmentId(token.href)
@@ -412,6 +447,7 @@ agentMarked.use({ extensions: mathExtensions({ throwOnError: false, output: 'htm
 agentMarked.use({
   hooks: {
     processAllTokens(tokens) {
+      tightenLinks(tokens)
       separateMedia(tokens)
       return tokens
     },

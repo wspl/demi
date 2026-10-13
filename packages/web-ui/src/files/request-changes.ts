@@ -169,6 +169,12 @@ export const requestEditSelectionSchema = z.object({
   /** The file's path, as the Host names it. */
   file: z.string(),
   edit: requestEditRefSchema.nullable(),
+  /**
+   * The directory the agent worked in when it wrote the call, which the view
+   * roots its tree at (`file-previews.md` § The File view's bars); absent
+   * for the conversation's own agent, which works in the conversation's.
+   */
+  root: z.string().optional(),
 })
 export type RequestEditSelection = z.infer<typeof requestEditSelectionSchema>
 
@@ -176,7 +182,8 @@ export type RequestEditSelection = z.infer<typeof requestEditSelectionSchema>
  * What a file pill opens: the file of the request whose edits hold the
  * call `call`'s edit of `path`, at that edit, under the name the file has
  * there now; null once a later call removed it, or for a file the call
- * only removed or renamed.
+ * only removed or renamed. `root` is the directory the call's agent worked
+ * in, null for the conversation's own.
  */
 export function pillSelection(
   node: string | null,
@@ -184,6 +191,7 @@ export function pillSelection(
   block: ToolCallBlock,
   call: string,
   path: string,
+  root: string | null,
 ): RequestEditSelection | null {
   const request = requests.requestOf.get(block.id)
   for (const file of request?.files ?? []) {
@@ -191,7 +199,7 @@ export function pillSelection(
       continue
     const first = file.edits.find((edit) => edit.call === call && edit.path === path)
     if (request && first)
-      return { node, request: request.id, file: file.path, edit: editRef(first) }
+      return { node, request: request.id, file: file.path, edit: editRef(first), ...(root === null ? {} : { root }) }
   }
   return null
 }

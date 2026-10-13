@@ -179,6 +179,7 @@ function closeTab(id: string): void {
         class="min-h-0 flex-1"
         :conversation-id="active.id"
         :node="active.id"
+        :cwd="active.cwd"
         :blocks="shown?.blocks ?? []"
         :at-start="shownEdges?.atStart ?? true"
         :at-end="true"

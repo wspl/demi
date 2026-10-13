@@ -29,6 +29,7 @@ function agent(
     waitingSince: null,
     failures: {},
     contextUsage: null,
+    cwd: '/work',
     ...partial,
   }
 }
