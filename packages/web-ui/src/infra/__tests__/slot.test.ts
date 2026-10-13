@@ -22,15 +22,15 @@ test('a change shows over the value read at once, in the order it was made, and 
   const slot = listOf(['a'])
   const first = slot.change(add('b'))
   const second = slot.change(add('c'))
-  expect(slot.value.value).toEqual(['c', 'b', 'a'])
+  expect(slot.shown.value).toEqual(['c', 'b', 'a'])
   first.send()
   second.send()
   // The answer tells the list as the write left it.
   expect(first.land({ value: (read) => ['b', ...read] })).toBe(true)
   expect(slot.read.value).toEqual(['b', 'a'])
-  expect(slot.value.value).toEqual(['c', 'b', 'a'])
+  expect(slot.shown.value).toEqual(['c', 'b', 'a'])
   second.land()
-  expect(slot.value.value).toEqual(['c', 'b', 'a'])
+  expect(slot.shown.value).toEqual(['c', 'b', 'a'])
   expect(slot.read.value).toEqual(['c', 'b', 'a'])
 })
 
@@ -42,10 +42,10 @@ test('a value read between a write and its answer is not overwritten by the answ
   slot.replace(['x', 'a'])
   expect(change.land()).toBe(false)
   expect(slot.read.value).toEqual(['x', 'a'])
-  expect(slot.value.value).toEqual(['b', 'x', 'a'])
+  expect(slot.shown.value).toEqual(['b', 'x', 'a'])
   // The next value read after the answer holds the write.
   slot.replace(['b', 'x', 'a'])
-  expect(slot.value.value).toEqual(['b', 'x', 'a'])
+  expect(slot.shown.value).toEqual(['b', 'x', 'a'])
 })
 
 test('a read that went out before the answer landed does not release the change; one that went out after does', () => {
@@ -57,10 +57,10 @@ test('a read that went out before the answer landed does not release the change;
   change.land()
   // The early read answers late: it may not hold the write.
   slot.replace(['a'], { since: early })
-  expect(slot.value.value).toEqual(['b', 'a'])
+  expect(slot.shown.value).toEqual(['b', 'a'])
   const late = slot.now()
   slot.replace(['b', 'a'], { since: late })
-  expect(slot.value.value).toEqual(['b', 'a'])
+  expect(slot.shown.value).toEqual(['b', 'a'])
   expect(slot.read.value).toEqual(['b', 'a'])
 })
 
@@ -72,14 +72,14 @@ test('an answer that names a revision releases the change with the value of that
   expect(change.land({ revision: 6 })).toBe(false)
   // A value older than the answer's revision does not release it, nor is an older read taken.
   expect(slot.replace(['older'], { revision: 5 })).toBe(false)
-  expect(slot.value.value).toEqual(['b', 'x', 'a'])
+  expect(slot.shown.value).toEqual(['b', 'x', 'a'])
   slot.replace(['b', 'x', 'a'], { revision: 6 })
-  expect(slot.value.value).toEqual(['b', 'x', 'a'])
+  expect(slot.shown.value).toEqual(['b', 'x', 'a'])
 
   const held = slot.change(add('c'))
   held.send()
   expect(held.land({ revision: 6 })).toBe(true)
-  expect(slot.value.value).toEqual(['b', 'x', 'a'])
+  expect(slot.shown.value).toEqual(['b', 'x', 'a'])
 })
 
 test('a refused change leaves, the slot shows what the backend has, and the refusal is told', async () => {
@@ -87,13 +87,13 @@ test('a refused change leaves, the slot shows what the backend has, and the refu
   const queue = new SerialQueue()
   const told: unknown[] = []
   const change = slot.change(add('b'))
-  expect(slot.value.value).toEqual(['b', 'a'])
-  const ended = await slot.write(change, queue, 'list', async () => {
+  expect(slot.shown.value).toEqual(['b', 'a'])
+  const ended = await slot.write(change, (operation) => queue.run('list', operation), async () => {
     throw new Error('refused')
   }, (error) => void told.push(error))
   expect(ended).toBe('refused')
   expect(told).toEqual([new Error('refused')])
-  expect(slot.value.value).toEqual(['a'])
+  expect(slot.shown.value).toEqual(['a'])
 })
 
 test('the writes of one thing go one at a time in order, and those of different things side by side', async () => {
@@ -101,7 +101,7 @@ test('the writes of one thing go one at a time in order, and those of different 
   const queue = new SerialQueue()
   const sent: string[] = []
   const answers = new Map<string, ReturnType<typeof deferred>>()
-  const write = (item: string, key: string) => slot.write(slot.change(add(item)), queue, key, () => {
+  const write = (item: string, key: string) => slot.write(slot.change(add(item)), (operation) => queue.run(key, operation), () => {
     sent.push(item)
     const answer = deferred()
     answers.set(item, answer)
@@ -113,7 +113,7 @@ test('the writes of one thing go one at a time in order, and those of different 
   await settled()
   // The second write of x waits for the first; y does not.
   expect(sent).toEqual(['one', 'other'])
-  expect(slot.value.value).toEqual(['other', 'two', 'one'])
+  expect(slot.shown.value).toEqual(['other', 'two', 'one'])
   answers.get('one')!.resolve(undefined)
   await one
   await settled()

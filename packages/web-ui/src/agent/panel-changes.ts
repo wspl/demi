@@ -131,7 +131,7 @@ export class PanelTabs {
     /** Reports a change the backend refused, or a read that failed. */
     private readonly refused: (error: unknown) => void,
   ) {
-    this.tabs = computed(() => this.slot.value.value ?? [])
+    this.tabs = computed(() => this.slot.shown.value ?? [])
   }
 
   /** The revision of the panel last read; -1 before the first read. */
