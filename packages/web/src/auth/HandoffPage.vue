@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import HandoffPage, { type HandoffPagePhase } from '@demicodes/web-ui/auth/HandoffPage.vue'
 import { spendHandoffCode } from './handoff'
+import { usePasskeyOffer } from './passkey-offer'
 
 /**
  * The page a phone's camera opens from a handoff code (`backend.md`
@@ -11,9 +12,10 @@ import { spendHandoffCode } from './handoff'
  * history keeps no code, spends it, and loads the page it opens, signed in:
  * a load, since the phone may have been signed out, or in to another
  * account, whose state the page held. A phone signed in to the account
- * keeps its session.
+ * keeps its session. The page it opens offers the phone a passkey.
  */
 const router = useRouter()
+const offer = usePasskeyOffer()
 const phase = ref<HandoffPagePhase>({ kind: 'opening' })
 
 onMounted(async () => {
@@ -26,6 +28,9 @@ onMounted(async () => {
   const spent = await spendHandoffCode(code)
   switch (spent.kind) {
     case 'handedOff':
+      // The page it opens is a load, which the request outlives: the phone
+      // is offered a passkey there, its sign-in having just proved the user.
+      offer.request()
       window.location.replace(spent.to)
       break
     case 'expired':

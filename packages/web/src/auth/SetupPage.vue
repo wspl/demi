@@ -88,6 +88,9 @@ async function addFirstPasskey(): Promise<void> {
     case 'wrongPassword':
       phase.value = { passkey: { error: { message: outcome.message, requestId: null } } }
       return
+    case 'held':
+      phase.value = { passkey: { error: { message: outcome.message, requestId: null } } }
+      return
     case 'failed':
       phase.value = { passkey: { error: outcome } }
       return

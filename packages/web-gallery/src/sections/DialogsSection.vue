@@ -7,8 +7,10 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ChangeEmailDialog, { type ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import ChangePasswordDialog, { type ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import HandoffDialog from '@demicodes/web-ui/auth/HandoffDialog.vue'
+import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { galleryHandoff, type HandoffSpecimenStart } from '../fixtures/handoff'
+import { galleryPasskeyOffer, type PasskeyOfferScript } from '../fixtures/passkey-offer'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
@@ -107,6 +109,15 @@ function restartHandoff(index: number): void {
   const specimen = handoffSpecimens.value[index]!
   handoffSpecimens.value[index] = { ...specimen, ...galleryHandoff(specimen.start) }
 }
+/** The passkey offer, one specimen for each way the browser can answer Add Passkey. */
+const passkeyOffers: { variant: string; add: ReturnType<typeof galleryPasskeyOffer> }[] = (
+  [
+    ['Adds · the browser saves the passkey, and the wizard closes', 'adds'],
+    ['Stale sign-in · Add Passkey asks for the password; wrong is refused', 'needsPassword'],
+    ['Already has one · the password manager holds a passkey of the account', 'held'],
+    ['Fails · the backend could not verify it', 'fails'],
+  ] as [string, PasskeyOfferScript][]
+).map(([variant, script]) => ({ variant, add: galleryPasskeyOffer(script) }))
 const emailPhases: { variant: string; phase: ChangeEmailPhase }[] = [
   { variant: 'form', phase: { kind: 'form', currentEmail: 'zan@example.com' } },
   { variant: 'form · busy', phase: { kind: 'form', currentEmail: 'zan@example.com', busy: true } },
@@ -327,6 +338,25 @@ const resetPhases: {
               </GalleryDialogFrame>
               <Button v-if="item.start === 'code'" size="sm" @click="item.phoneScans()">Scan on the Phone</Button>
             </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+      <GallerySection
+        title="Passkey Offer"
+        note="A wizard of one step (Responding to the user): on a computer one dialog at the centre over the dimmed page, on a phone the whole screen (Phone page). A host opens it once on a browser, after a sign-in that has just proved the user: a handoff code’s, a password chosen at the first sign-in. Add Passkey adds without the password while the sign-in is fresh; Not Now, Escape and the scrim leave it, and either answer is remembered on that browser, so the wizard does not come back. A password manager that holds a passkey of the account says so, which is no failure."
+      >
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+          <GallerySpecimen v-for="item in passkeyOffers" :key="item.variant" wide :variant="item.variant">
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <PasskeyOffer
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                :add="item.add"
+                email="zan@example.com"
+                @answered="productWould('Remember the Answer on This Browser')"
+                @close="close"
+              />
+            </GalleryDialogFrame>
           </GallerySpecimen>
         </div>
       </GallerySection>

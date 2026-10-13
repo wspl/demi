@@ -1,5 +1,5 @@
 //! Passkeys (`web-api.md` § Account API): the public sign-in with one, and
-//! the caller's own, which adding takes the password for. A change reaches
+//! the caller's own, which adding takes a verified session for. A change reaches
 //! the caller's pages as the `passkeys` part.
 
 use std::sync::Arc;
@@ -17,15 +17,15 @@ use demi_backend_user_shard::services::Services;
 use demi_web_api_protocol::auth::{Identity, UserDto};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::passkeys::{
-    CreationChallenge, NewPasskey, PasskeyAnswer, PasskeyId, PasskeyList, PasskeyPassword,
+    CreationChallenge, NewPasskey, PasskeyAnswer, PasskeyId, PasskeyList,
     PasskeyPatch, PasskeySignIn, SignInChallenge,
 };
 
 use super::body::JsonBody;
 use super::cookies::{self, Https};
 use super::error::ApiError;
-use super::gate::{self, AuthUser};
-use super::sessions::user_agent;
+use super::gate::{self, AuthUser, CurrentSession};
+use super::sessions::{require_verification, user_agent};
 
 /// The relying party for this request, or 409 `passkeys_unavailable` when
 /// the backend offers no passkeys.
@@ -133,27 +133,17 @@ pub(super) async fn list(
     Ok(Json(passkey_list(&services.control, &user.id).await?))
 }
 
-/// `POST /auth/passkeys/options`: the password first, checked as a password
-/// change checks the current one.
+/// `POST /auth/passkeys/options`: for a session verified in the last five
+/// minutes, by a sign-in of any kind or `POST /auth/verify`, so a browser
+/// left signed in cannot add one.
 pub(super) async fn add_options(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
+    session: CurrentSession,
     headers: HeaderMap,
-    JsonBody(request): JsonBody<PasskeyPassword>,
 ) -> Result<Json<CreationChallenge>, ApiError> {
     let party = relying_party(&services, &headers)?;
-    let stored = services
-        .control
-        .account(user.id.clone())
-        .await?
-        .map(|account| account.password_hash);
-    if !services.hasher.verify(request.password, stored).await? {
-        return Err(ApiError::new(
-            StatusCode::UNAUTHORIZED,
-            ErrorCode::InvalidCredentials,
-            "Wrong password",
-        ));
-    }
+    require_verification(&services, &session)?;
     let challenge = passkeys::start_registration(&services.control, &party, &user)
         .await?
         .map_err(too_many)?;
