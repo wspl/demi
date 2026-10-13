@@ -227,7 +227,11 @@ impl FileTransfers {
             for wanted in &paths {
                 // Without a pipe, no file's bytes are read.
                 let limit = if output.is_some() { wanted.limit } else { 0 };
-                looked.push(look_at(&base, &wanted.path, limit, &mut bytes, &transfer).await);
+                let found = match &wanted.within {
+                    None => look_at(&base, &wanted.path, limit, &mut bytes, &transfer).await,
+                    Some(within) => look_within(&base, within, &wanted.path, limit, &mut bytes).await,
+                };
+                looked.push(found);
             }
             let answer = wire::encode(&wire::Outbound::FsOk(wire::FsOk {
                 id: id.clone(),
@@ -589,6 +593,32 @@ fn exactly(
 
 /// What is at `path`, a symbolic link followed. A file's first `limit`
 /// bytes are added to `bytes`; a file it could not read adds none.
+/// What `path` is, read against `base` as [`look_at`] does, following no
+/// link from `within` down ([`crate::nofollow`]).
+async fn look_within(base: &Path, within: &str, path: &str, limit: u64, bytes: &mut Vec<u8>) -> wire::Looked {
+    let unreadable = |error: io::Error| wire::Looked::Unreadable {
+        code: error_code(&error).map(String::from),
+        message: error.to_string(),
+    };
+    let (within, target) = match (resolve(base, within), resolve(base, path)) {
+        (Ok(within), Ok(target)) => (within, target),
+        (Err(error), _) | (_, Err(error)) => return unreadable(error),
+    };
+    let mut read = std::mem::take(bytes);
+    let looked = tokio::task::spawn_blocking(move || {
+        let looked = crate::nofollow::look_within(&within, &target, limit, &mut read);
+        (looked, read)
+    })
+    .await;
+    match looked {
+        Ok((looked, read)) => {
+            *bytes = read;
+            looked.unwrap_or_else(unreadable)
+        }
+        Err(error) => unreadable(io::Error::other(error)),
+    }
+}
+
 async fn look_at(
     base: &Path,
     path: &str,

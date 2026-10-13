@@ -5,6 +5,7 @@ export const demoInstructions: InstructionEntry[] = [
   { kind: 'personal' },
   { kind: 'file', path: '/Users/alex/Projects/shop/AGENTS.md' },
   { kind: 'file', path: '/Users/alex/Projects/shop/packages/web/CLAUDE.md' },
+  { kind: 'workflow', name: 'Review Team', path: '/Users/alex/Projects/shop/.demi/workflows/review.yaml' },
 ]
 
 /** The personal instructions the Instructions section starts with. */

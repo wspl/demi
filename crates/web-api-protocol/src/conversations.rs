@@ -5,6 +5,7 @@
 use demi_conversation_socket_protocol::{Failures, SubagentJob};
 use demi_shared_types::{
     Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp,
+    WorkflowChoice,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -119,6 +120,16 @@ pub struct CreateConversation {
     #[schemars(with = "ConversationTarget")]
     #[garde(dive)]
     pub target: Option<ConversationTarget>,
+    /// Its Workflow menu choice, which the new conversation was given before
+    /// its first message; Default when absent.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "WorkflowChoice")]
+    #[garde(dive)]
+    pub workflow: Option<WorkflowChoice>,
 }
 
 /// What `POST /conversations` answers: the conversation as the list shows
@@ -151,6 +162,9 @@ pub struct ConversationSummary {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ModelSettings>")]
     pub model: Option<ModelSettings>,
+    /// The conversation's Workflow menu choice (`subagents.md` § Workflows
+    /// of a project), kept as its model is.
+    pub workflow: WorkflowChoice,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     /// The directory the conversation's work runs in, resolved by the backend
@@ -493,6 +507,15 @@ pub struct ConversationPatch {
     #[schemars(with = "Option<String>")]
     #[garde(length(chars, min = 1))]
     pub service_tier_id: Option<Option<String>>,
+    /// The conversation's Workflow menu choice, from its next spawn on.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "WorkflowChoice")]
+    #[garde(dive)]
+    pub workflow: Option<WorkflowChoice>,
     /// A switch of the conversation's execution target.
     #[serde(
         default,
@@ -542,6 +565,7 @@ pub enum PatchField {
     Model,
     ThinkingEffort,
     ServiceTierId,
+    Workflow,
     Target,
 }
 

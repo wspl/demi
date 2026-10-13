@@ -18,7 +18,8 @@ use demi_agent_server::{
 };
 use demi_agent_store::{AgentTreeStore, Placement, testing::MemoryTreeStore};
 use demi_agent_tools::{
-    ContextAnswer, ContextSource, EnvironmentScope, HostResolver, NodeContext,
+    ContextAnswer, ContextSource, ConversationProfiles, EnvironmentScope, HostResolver, NodeContext,
+    WorkflowListing,
     ShellEnvironmentFactory, SubagentSettings, SubagentSource, Toolset,
     testing::{NoHost, NoShells},
 };
@@ -63,6 +64,12 @@ pub struct TestProduct {
     /// Holds the next read of where the conversation works until the gate
     /// opens, as a Host that is slow to answer; the read takes it.
     pub placement_hold: RefCell<Option<Gate>>,
+    /// The conversation's Workflow menu choice as its spawns read it.
+    pub workflow: RefCell<ConversationProfiles>,
+    /// What `demi agent workflows list` reads.
+    pub workflows: RefCell<Option<WorkflowListing>>,
+    /// The Host's files `demi agent workflows check` reads, by path.
+    pub files: RefCell<HashMap<String, String>>,
 }
 
 /// A plugin's context source: it answers its text once per node.
@@ -100,6 +107,9 @@ impl Default for TestProduct {
             context: RefCell::default(),
             seen: RefCell::default(),
             placement_hold: RefCell::default(),
+            workflow: RefCell::new(ConversationProfiles::Settings),
+            workflows: RefCell::default(),
+            files: RefCell::default(),
             plugin: None,
             plugin_asked_meanwhile: RefCell::default(),
         }
@@ -128,6 +138,29 @@ impl SubagentSource for TestProduct {
     fn current(&self) -> LocalBoxFuture<'_, Result<SubagentSettings, String>> {
         let settings = self.subagents.borrow().clone();
         Box::pin(async move { Ok(settings) })
+    }
+
+    fn conversation_profiles<'a>(
+        &'a self,
+        _root: &'a NodeId,
+    ) -> LocalBoxFuture<'a, Result<ConversationProfiles, String>> {
+        let profiles = self.workflow.borrow().clone();
+        Box::pin(async move { Ok(profiles) })
+    }
+
+    fn workflows<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, Result<WorkflowListing, String>> {
+        let listing = self.workflows.borrow().clone();
+        Box::pin(async move { listing.ok_or_else(|| "no listing".to_owned()) })
+    }
+
+    fn read_workflow_file<'a>(
+        &'a self,
+        _root: &'a NodeId,
+        directory: &'a str,
+        path: &'a str,
+    ) -> LocalBoxFuture<'a, Result<String, String>> {
+        let text = self.files.borrow().get(&format!("{directory}/{path}")).cloned();
+        Box::pin(async move { text.ok_or_else(|| format!("no file {path}")) })
     }
 }
 

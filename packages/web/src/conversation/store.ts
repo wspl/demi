@@ -78,6 +78,7 @@ import {
   type SidebarReorder,
   type Subagents,
   type TranscriptPage,
+  type WorkflowChoice,
 } from '../api/generated/web-api'
 import { isEmptyMessage, joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { blobPicture, createConversationUploads, sendingFileIds } from './uploads'
@@ -413,6 +414,7 @@ export const useConversations = defineStore('conversations', () => {
       pendingCalls: [],
       waitingSince: null,
       model: record.model ? { ...record.model } : initialModelSettings(),
+      workflow: record.workflow,
       lastError: null,
       draft: '',
       savedDraft: null,
@@ -592,6 +594,8 @@ export const useConversations = defineStore('conversations', () => {
       text: unsaved ? conversation.draft : '',
       // A conversation with a record holds its model settings there.
       model: local ? { ...conversation.model } : null,
+      // And its Workflow menu choice; Default goes unwritten.
+      ...(local && conversation.workflow.type !== 'default' ? { workflow: { ...conversation.workflow } } : {}),
       files: files.map((file) =>
         isComposerFile(file)
           ? {
@@ -738,6 +742,7 @@ export const useConversations = defineStore('conversations', () => {
           revision: 0,
           readRevision: 0,
           unread: false,
+          workflow: { type: 'default' },
         })
         conversation.persistence = draft.local.phase
         conversation.load = 'ready'
@@ -816,6 +821,9 @@ export const useConversations = defineStore('conversations', () => {
         // record.
         if (draft.model && conversation.persistence !== 'synced') {
           conversation.model = draft.model
+        }
+        if (draft.workflow && conversation.persistence !== 'synced') {
+          conversation.workflow = draft.workflow
         }
         conversation.scroll = draft.scroll
         // The composer's text is here only when the backend does not have
@@ -1650,6 +1658,7 @@ export const useConversations = defineStore('conversations', () => {
       revision: 0,
       readRevision: 0,
       unread: false,
+      workflow: { type: 'default' },
       pluginsChanged: false,
       draftRevision: 0,
       saved: 0,
@@ -1708,6 +1717,7 @@ export const useConversations = defineStore('conversations', () => {
       pinned: conversation.pinned,
       target: conversation.target,
       ...(settings ? settingsPatch(settings) : {}),
+      ...(conversation.workflow.type === 'default' ? {} : { workflow: conversation.workflow }),
     }
     const response = await apiRequest('/conversations', {
       method: 'POST',
@@ -1717,6 +1727,9 @@ export const useConversations = defineStore('conversations', () => {
     const result = await readResponse(response, createdConversationSchema)
     signal.throwIfAborted()
     product.answered(sentAt, { type: 'conversation', conversation: result.conversation })
+    // The choice the menu made while the record was on its way, which the
+    // request could not carry.
+    const chosen = conversation.workflow
     conversation.persistence = 'synced'
     Object.assign(conversation, metadata(result.conversation))
     followRecordModel(conversation, result.conversation)
@@ -1725,6 +1738,11 @@ export const useConversations = defineStore('conversations', () => {
     // A retry that found the record an earlier attempt made reads it.
     if (response.status === 201) {
       madeHere.add(conversation.id)
+    }
+    // It applies before the first message goes, so the first turn's spawns
+    // and instructions follow it (`subagents.md` § Workflows of a project).
+    if (!sameWorkflow(chosen, result.conversation.workflow)) {
+      await changeWorkflow(conversation.id, chosen)
     }
   }
 
@@ -1934,6 +1952,44 @@ export const useConversations = defineStore('conversations', () => {
     } catch (error) {
       report('Could Not Change the Model', error)
     }
+  }
+
+  /**
+   * Makes `workflow` the conversation's Workflow menu choice
+   * (`product.md` § A conversation's workflow): it shows at once, and a
+   * write that fails or is refused gives the stored choice back.
+   */
+  /**
+   * Makes `workflow` the conversation's Workflow menu choice; settles once
+   * it is written or refused. A conversation without a record keeps it in
+   * its draft, which its first send gives the record, and one whose record
+   * is on its way applies it as soon as the record is made, before its
+   * first message goes.
+   */
+  async function changeWorkflow(id: string, workflow: WorkflowChoice): Promise<void> {
+    const conversation = items.value.find((item) => item.id === id)
+    if (conversation && conversation.persistence !== 'synced') {
+      conversation.workflow = workflow
+      saveDrafts()
+      return
+    }
+    const change = product.change(`conversation:${id}`, (state) =>
+      withConversation(state, id, (record) => ({ ...record, workflow })))
+    const signal = lifetime.signal
+    await writes
+      .run(id, () => {
+        signal.throwIfAborted()
+        return patch(id, { workflow }, change)
+      })
+      .catch((error) => {
+        change.drop()
+        report('Could Not Change the Workflow', error)
+      })
+  }
+
+  /** Whether two choices of the Workflow menu are the same. */
+  function sameWorkflow(a: WorkflowChoice, b: WorkflowChoice): boolean {
+    return a.type === b.type && (a.type !== 'workflow' || (b.type === 'workflow' && a.id === b.id))
   }
 
   /** The settings become the user's last choice, which new conversations start with. */
@@ -2659,6 +2715,7 @@ export const useConversations = defineStore('conversations', () => {
         undefined,
       ),
     changeModel,
+    changeWorkflow,
     send,
     retrySend,
     editVersion: (conversation: Conversation) =>

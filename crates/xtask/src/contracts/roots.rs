@@ -71,7 +71,7 @@ pub fn web() -> Vec<Root> {
         panel,
         passkeys,
         permissions,
-        plugins, providers, saved, search, sessions, settings, sidebar, state, subagents, usage, users, workspaces,
+        plugins, providers, saved, search, sessions, settings, sidebar, state, subagents, usage, users, workflows, workspaces,
     };
     vec![
         receives::<error::ErrorBody>(),
@@ -193,6 +193,7 @@ pub fn web() -> Vec<Root> {
         receives::<panel::WorkPanel>(),
         sends::<panel::PanelChanges>(),
         receives::<panel::PanelAnswer>(),
+        receives::<workflows::ConversationWorkflows>(),
         sends::<drafts::DraftSave>(),
         sends::<drafts::ReplacedDraftAction>(),
         receives::<drafts::DraftAnswer>(),

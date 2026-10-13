@@ -26,6 +26,7 @@ mod socket;
 mod summary;
 pub(crate) mod titles;
 pub mod transition;
+pub mod workflows;
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
