@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import Tooltip from '../../ui/Tooltip.vue'
 import { KEEPS_WINDOWS } from '../../ui/window-stack'
 
 /**
@@ -14,10 +13,8 @@ import { KEEPS_WINDOWS } from '../../ui/window-stack'
  * one outside the session's windows (`KEEPS_WINDOWS`, `product.md` § the
  * dock's chips). On a narrow row the title gives way
  * first, down to a few characters, and then the words, each ending in an
- * ellipsis. The `tip` slot, when given, is what the title shows pointed at,
- * such as what an agent runs on.
+ * ellipsis.
  */
-defineSlots<{ tip?(): unknown }>()
 defineProps<{
   notice: string
   /** What the notice names; none for a notice that names nothing. */
@@ -37,7 +34,7 @@ defineProps<{
     :class="subject ? 'notice-label-subject' : ''"
   >
     <span v-if="!subject" class="notice-words">{{ notice }}:</span>
-    <Tooltip class="notice-title" :disabled="!$slots.tip" wide>
+    <span class="notice-title">
       <!-- The title's click is its own, never the row's. -->
       <button
         v-if="go"
@@ -47,10 +44,7 @@ defineProps<{
         @click.stop="go"
       >{{ title }}</button>
       <span v-else class="notice-title-text text-fg-muted">{{ title }}</span>
-      <template v-if="$slots.tip" #overlay>
-        <slot name="tip" />
-      </template>
-    </Tooltip>
+    </span>
     <span v-if="subject" class="notice-words">{{ notice }}</span>
   </span>
 </template>
