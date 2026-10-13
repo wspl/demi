@@ -4,7 +4,7 @@ import { ICON_PX } from '../../ui/icon-metrics'
 import type { ToolCallBlock } from '../block-types'
 import { storedShellView } from '../block-helpers'
 import { useEditSelection, useTranscript } from '../edit-selection'
-import { callPills, pillSelection } from '../../files/request-changes'
+import { callPills, pillSelection, requestFileSelection } from '../../files/request-changes'
 import FileChangePills from './FileChangePills.vue'
 
 /**
@@ -29,12 +29,32 @@ function selection(path: string) {
     ? pillSelection(transcript.node, transcript.requests(), props.block, call, path, transcript.directory(props.block.id))
     : null
 }
+/** What the "+N Files" pill opens: the first of its files the request lists. */
+function restSelection(paths: readonly string[]) {
+  const call = storedShellView(props.block)?.commandId
+  if (!transcript || !call)
+    return null
+  const directory = transcript.directory(props.block.id)
+  for (const path of paths) {
+    const found = pillSelection(transcript.node, transcript.requests(), props.block, call, path, directory)
+      ?? requestFileSelection(transcript.node, transcript.requests(), props.block, path, directory)
+    if (found)
+      return found
+  }
+  return null
+}
 function selectable(path: string): boolean {
   return select() !== undefined && selection(path) !== null
 }
 
 function pick(path: string): void {
   const picked = selection(path)
+  if (picked) {
+    select()?.(picked)
+  }
+}
+function pickRest(paths: readonly string[]): void {
+  const picked = restSelection(paths)
   if (picked) {
     select()?.(picked)
   }
@@ -48,6 +68,8 @@ function pick(path: string): void {
     :style="{ paddingLeft: `${ICON_PX.in28 + 8}px` }"
     :files="files"
     :selectable="selectable"
+    :rest-selectable="(paths) => select() !== undefined && restSelection(paths) !== null"
     @select="pick"
+    @open-rest="pickRest"
   />
 </template>
