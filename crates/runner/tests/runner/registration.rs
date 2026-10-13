@@ -257,11 +257,7 @@ async fn uninstall_without_an_active_runner_asks_the_backend_itself() {
 
         let backend = async {
             host.reconnected().await;
-            host.send(Inbound::HelloOk {
-                device_id: "device".into(),
-                device_name: "fixture".into(),
-            })
-            .await;
+            host.welcome(&[crate::CONVERSATION]).await;
             assert!(matches!(host.frame().await, Outbound::Revoke {}));
             let projects = vec!["notes".to_owned()];
             host.send(Inbound::Revoked { projects }).await;

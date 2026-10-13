@@ -37,10 +37,14 @@ pub enum Inbound {
         conversation_id: String,
     },
     /// The device the hello's token names, by its id and the name the
-    /// user sees.
+    /// user sees, and the user's conversations that still exist, archived
+    /// ones included, whose scratch directories the runner keeps
+    /// (`runner.md` § Scratch directory).
     HelloOk {
         device_id: String,
         device_name: String,
+        #[garde(inner(custom(conversation_name)))]
+        conversations: Vec<String>,
     },
     ClaimPending {
         claim_token: String,

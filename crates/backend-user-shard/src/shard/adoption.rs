@@ -70,6 +70,22 @@ impl Shard {
                 Vec::new()
             }
         };
+        // The user's conversations, archived ones included, whose scratch
+        // directories the runner keeps (`runner.md` § Scratch directory).
+        // Without them the runner would remove every one, so a runner whose
+        // welcome cannot name them is dropped and connects again.
+        let conversations = match self
+            .services()
+            .control
+            .conversation_order(self.user().clone())
+            .await
+        {
+            Ok(conversations) => conversations.iter().map(ToString::to_string).collect(),
+            Err(error) => {
+                tracing::warn!(device = %device.id, error = &error as &dyn std::error::Error, "the user's conversations could not be read; the runner connects again");
+                return;
+            }
+        };
         // A held connection that answers its ping keeps the device; one
         // that does not is the same runner's, lost without a close, and
         // gives way.
@@ -109,6 +125,7 @@ impl Shard {
         let welcome = Inbound::HelloOk {
             device_id: device.id.to_string(),
             device_name: device.name.clone(),
+            conversations,
         };
         // A runner that started anew kept nothing of its packages' state
         // (`native-runtime.md` § Messages to the plugin).

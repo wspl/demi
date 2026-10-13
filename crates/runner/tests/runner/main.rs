@@ -45,6 +45,12 @@ impl Host {
     /// Starts a runner whose environment is the test's with `env` added, as
     /// the device the backend already paired, and takes its `hello`.
     pub async fn start(env: BTreeMap<String, String>) -> Self {
+        Self::start_in(env, None).await
+    }
+
+    /// [`Host::start`] with the runner's home and state made in
+    /// `directory`, the system's temporary directory when none.
+    pub async fn start_in(env: BTreeMap<String, String>, directory: Option<&Path>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a local port");
@@ -61,6 +67,7 @@ impl Host {
                         .collect(),
                 ),
                 token: Some("test-token".into()),
+                directory: directory.map(Path::to_owned),
                 ..RunnerProcessOptions::default()
             },
         );
@@ -74,14 +81,22 @@ impl Host {
         }
     }
 
-    /// Accepts the registration, as the backend's `hello_ok` does.
+    /// Accepts the registration, as the backend's `hello_ok` does, with the
+    /// conversation the tests' jobs belong to.
     pub async fn online(mut self) -> Self {
+        self.welcome(&[CONVERSATION]).await;
+        self
+    }
+
+    /// Accepts the current connection's registration with the
+    /// conversations of the user that still exist.
+    pub async fn welcome(&mut self, conversations: &[&str]) {
         self.send(Inbound::HelloOk {
             device_id: "device".into(),
             device_name: "fixture".into(),
+            conversations: conversations.iter().map(|&name| name.to_owned()).collect(),
         })
         .await;
-        self
     }
 
     /// The runner's home, its `$HOME`, where its jobs start.
@@ -192,11 +207,14 @@ async fn next(socket: &mut WebSocketStream<TcpStream>, process: &RunnerProcess) 
     }
 }
 
+/// The conversation the tests' jobs belong to.
+const CONVERSATION: &str = "conversation";
+
 /// A command context for jobs that run no declared command.
 fn context() -> CommandContext {
     CommandContext {
         color_scheme: demi_command_protocol::ColorScheme::Light,
-        conversation: "conversation".into(),
+        conversation: CONVERSATION.into(),
         caller: CommandCaller::agent(1),
         locale: CommandLocale {
             time_zone: "UTC".into(),
@@ -207,7 +225,13 @@ fn context() -> CommandContext {
 
 /// Starts `script` as job `job` in the runner's home.
 async fn start_job(host: &mut Host, job: &str, script: &str) {
-    let cwd = host.home().to_string_lossy().into_owned();
+    let cwd = host.home().to_owned();
+    start_job_in(host, job, &cwd, script).await;
+}
+
+/// Starts `script` as job `job` in `cwd`.
+async fn start_job_in(host: &mut Host, job: &str, cwd: &Path, script: &str) {
+    let cwd = cwd.to_string_lossy().into_owned();
     host.send(Inbound::JobStart {
         manifest_hash: None,
         viewable: None,

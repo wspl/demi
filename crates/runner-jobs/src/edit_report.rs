@@ -4,6 +4,7 @@ use demi_command_protocol::{EDIT_FILE_BYTES, PathChange};
 use demi_command_sdk::edits::Recorder;
 use demi_command_protocol::line_counts;
 use demi_runner_protocol::wire;
+use crate::scratch::Scratch;
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
@@ -17,10 +18,14 @@ pub struct EditReport {
     pub truncated: bool,
 }
 
-pub fn finish(recorder: Option<&Recorder>) -> EditReport {
+/// The report of what `recorder` recorded of a job that started in
+/// `working`.
+pub fn finish(recorder: Option<&Recorder>, scratch: &Scratch, working: &Path) -> EditReport {
     let Some(recorder) = recorder else {
         return EditReport::default();
     };
+    let working = Directory::new(working.to_owned());
+    let is_temporary = |path: &str| is_temporary(Path::new(path), scratch, &working);
     let journal = match recorder.report() {
         Ok(journal) => journal,
         Err(error) => {
@@ -57,7 +62,7 @@ pub fn finish(recorder: Option<&Recorder>) -> EditReport {
                 }
             }
             wire::JobFileChange {
-                temporary: is_temporary(Path::new(&file.path)),
+                temporary: is_temporary(&file.path),
                 path: file.path,
                 kind: file.kind,
                 edits: file.edits,
@@ -73,12 +78,12 @@ pub fn finish(recorder: Option<&Recorder>) -> EditReport {
             .into_iter()
             .map(|change| match change {
                 PathChange::Renamed { from, to } => wire::JobPathChange::Renamed {
-                    temporary: is_temporary(Path::new(&to)),
+                    temporary: is_temporary(&to),
                     from,
                     to,
                 },
                 PathChange::Removed { path } => wire::JobPathChange::Removed {
-                    temporary: is_temporary(Path::new(&path)),
+                    temporary: is_temporary(&path),
                     path,
                 },
             })
@@ -98,24 +103,71 @@ fn read_snapshot(path: &String) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
-/// Whether `path` is in one of the Host's temporary directories
-/// (`edit-tracking.md` § Temporary files): the directories as named and as
-/// their links resolve, compared component by component, so `/tmp/x` and
-/// macOS's `/private/tmp/x` both are and `/tmpfoo/x` is not.
-fn is_temporary(path: &Path) -> bool {
+/// Whether `path` is temporary (`edit-tracking.md` § Temporary files): in
+/// a conversation's scratch directory, or else outside the job's `working`
+/// directory and in one of the Host's temporary directories. The scratch
+/// directory comes first: the working directory, such as the user's home,
+/// may hold it.
+fn is_temporary(path: &Path, scratch: &Scratch, working: &Directory) -> bool {
     let resolved = resolved(path);
+    if scratch.directory().holds(path, &resolved) {
+        return true;
+    }
+    if working.holds(path, &resolved) {
+        return false;
+    }
     temporary_directories()
         .iter()
-        .any(|directory| path.starts_with(directory) || resolved.starts_with(directory))
+        .any(|directory| directory.holds(path, &resolved))
         || in_per_user_temporary(&resolved)
+}
+
+/// A directory as named and as its links resolve. It holds a path when
+/// the path, as named or with its folders' links resolved, is in either,
+/// compared component by component, so `/tmp` holds `/tmp/x` and macOS's
+/// `/private/tmp/x` and not `/tmpfoo/x`.
+#[derive(Clone, Debug)]
+pub(crate) struct Directory {
+    named: PathBuf,
+    resolved: Option<PathBuf>,
+}
+
+impl Directory {
+    /// `named` and where it resolves; one that does not resolve, such as a
+    /// missing `/var/tmp`, still names where its files would be.
+    pub(crate) fn new(named: PathBuf) -> Self {
+        let resolved = std::fs::canonicalize(&named).ok();
+        Self { named, resolved }
+    }
+
+    /// `name` in `parent`, as named and as `parent` resolves, for a
+    /// directory that may not exist yet.
+    pub(crate) fn within(parent: &Path, name: &str) -> Self {
+        Self {
+            named: parent.join(name),
+            resolved: std::fs::canonicalize(parent).ok().map(|parent| parent.join(name)),
+        }
+    }
+
+    /// The directory as named.
+    pub(crate) fn path(&self) -> &Path {
+        &self.named
+    }
+
+    /// Whether it holds `path`, whose folders' links resolve to `resolved`.
+    fn holds(&self, path: &Path, resolved: &Path) -> bool {
+        std::iter::once(&self.named)
+            .chain(&self.resolved)
+            .any(|directory| path.starts_with(directory) || resolved.starts_with(directory))
+    }
 }
 
 /// The temporary directories every Host names: the process's own
 /// (`$TMPDIR`, or `%TMP%` on Windows), `/tmp` and `/var/tmp`, and
-/// `%TEMP%`, each as named and as resolved. Read once: the runner's
-/// environment does not change while it runs.
-fn temporary_directories() -> &'static [PathBuf] {
-    static DIRECTORIES: OnceLock<Vec<PathBuf>> = OnceLock::new();
+/// `%TEMP%`. Read once: the runner's environment does not change while it
+/// runs.
+fn temporary_directories() -> &'static [Directory] {
+    static DIRECTORIES: OnceLock<Vec<Directory>> = OnceLock::new();
     DIRECTORIES.get_or_init(|| {
         let mut named = vec![std::env::temp_dir()];
         if cfg!(unix) {
@@ -124,18 +176,7 @@ fn temporary_directories() -> &'static [PathBuf] {
         if cfg!(windows) {
             named.extend(["TEMP", "TMP"].into_iter().filter_map(std::env::var_os).map(PathBuf::from));
         }
-        let mut directories = Vec::new();
-        for directory in named {
-            // A directory that does not resolve, such as a missing
-            // `/var/tmp`, still names where its files would be.
-            if let Ok(canonical) = std::fs::canonicalize(&directory) {
-                directories.push(canonical);
-            }
-            directories.push(directory);
-        }
-        directories.sort();
-        directories.dedup();
-        directories
+        named.into_iter().map(Directory::new).collect()
     })
 }
 

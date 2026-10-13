@@ -2,11 +2,11 @@
 //! output through functions and compound pipelines drains, and a kill ends a
 //! job that blocks in a utility.
 
-use std::{collections::BTreeMap, time::Duration};
+use std::{collections::BTreeMap, path::Path, time::Duration};
 
 use demi_runner_protocol::wire::{Inbound, JobFileChange, JobPathChange, Outbound, OutputStream, Signal};
 
-use crate::{Host, start_job};
+use crate::{Host, start_job, start_job_in};
 
 #[tokio::test]
 async fn functions_and_compound_pipelines_drain_large_output_and_here_documents() {
@@ -395,6 +395,92 @@ async fn a_file_in_a_temporary_directory_is_reported_temporary_and_a_move_out_of
                 temporary: true,
             }]
         );
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// A conversation's job finds its scratch directory made and named by
+/// `DEMI_SCRATCH`, and what it writes there is reported temporary, while
+/// what it writes in its working directory is not, though that directory is
+/// in a temporary one (`runner.md` § Scratch directory, `edit-tracking.md`
+/// § Temporary files). About a second: two jobs start a login shell.
+#[tokio::test]
+async fn a_job_writes_in_its_scratch_directory_as_temporary_and_in_its_working_directory_as_work() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        // The runner's state, `DEMI_HOME`, is out of the system's temporary
+        // directories, in Cargo's own, and the job works in `/tmp`.
+        let outside = Path::new(env!("CARGO_TARGET_TMPDIR"));
+        let mut host = Host::start_in(BTreeMap::new(), Some(outside)).await.online().await;
+        let working = tempfile::tempdir_in("/tmp").unwrap();
+        let scratch = host.state().join("scratch").join(crate::CONVERSATION);
+        let scratch = scratch.to_string_lossy().into_owned();
+
+        start_job_in(
+            &mut host,
+            "where",
+            working.path(),
+            r#"printf '%s' "$DEMI_SCRATCH"; test -d "$DEMI_SCRATCH""#,
+        )
+        .await;
+        let mut named = Vec::new();
+        loop {
+            match host.frame().await {
+                Outbound::JobOutput { bytes, .. } => named.extend(bytes.0),
+                Outbound::JobExit { exit_code, .. } => {
+                    assert_eq!(exit_code, Some(0), "the directory exists");
+                    break;
+                }
+                _ => {}
+            }
+        }
+        assert_eq!(String::from_utf8(named).unwrap(), scratch);
+
+        start_job_in(
+            &mut host,
+            "write",
+            working.path(),
+            r#"echo hi > "$DEMI_SCRATCH/x.txt"; echo hi > y.txt"#,
+        )
+        .await;
+        let (files, _) = reported(&mut host, "write").await;
+        let mut marked: Vec<_> = files
+            .iter()
+            .map(|file| (Path::new(&file.path).file_name().unwrap().to_owned(), file.temporary))
+            .collect();
+        marked.sort();
+        assert_eq!(marked, [("x.txt".into(), true), ("y.txt".into(), false)]);
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// A runner that connects removes the scratch directory of a conversation
+/// the backend's welcome no longer names, a deleted one's, and keeps those
+/// of the conversations it names, and anything under `scratch` that is no
+/// directory (`runner.md` § Scratch directory). About a second: the runner
+/// starts twice.
+#[tokio::test]
+async fn a_reconnect_removes_the_scratch_directory_of_a_deleted_conversation_only() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        let root = host.state().join("scratch");
+        for conversation in ["kept", "deleted"] {
+            std::fs::create_dir_all(root.join(conversation)).unwrap();
+            std::fs::write(root.join(conversation).join("page.png"), "png").unwrap();
+        }
+        std::fs::write(root.join("notes"), "not a conversation's").unwrap();
+
+        host.restart().await;
+        host.welcome(&["kept", crate::CONVERSATION]).await;
+        // The runner removes them before it starts the next job.
+        start_job(&mut host, "after", "true").await;
+        reported(&mut host, "after").await;
+        assert!(!root.join("deleted").exists());
+        assert!(root.join("kept").join("page.png").exists());
+        assert!(root.join("notes").exists());
         host.close().await;
     })
     .await
