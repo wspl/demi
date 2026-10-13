@@ -60,7 +60,6 @@ const roles = computed(() => (viewer.value ? assignableRoles(viewer.value.role) 
 const open = ref<Dialog | null>(null)
 /** The account a dialog is about, kept while the dialog closes. */
 const target = ref<SettingsUser | null>(null)
-const busy = ref(false)
 const addError = ref<Exclude<UserAddOutcome, { kind: 'added' | 'needsVerification' }> | undefined>()
 
 /**
@@ -130,56 +129,58 @@ function openAdd(): void {
   open.value = 'add'
 }
 
-/** Runs a host call with the dialog's button loading, then closes it. */
-async function carryOut(call: () => Promise<void>): Promise<void> {
-  if (busy.value) {
-    return
-  }
-  busy.value = true
-  try {
-    await call()
-  } finally {
-    busy.value = false
+/** An action on an account, as an operation (`operations.ts`): the account's row shows it while it runs. */
+function onUser(action: string, user: SettingsUser | null) {
+  return { action, target: userTarget(user) }
+}
+
+function userTarget(user: SettingsUser | null): string {
+  return `user:${user?.id ?? 'new'}`
+}
+
+/** Closes `dialog` once its work on `user` is done, if it is still the dialog shown about that account. */
+function closeIfShown(dialog: Dialog, user: SettingsUser): void {
+  if (open.value === dialog && target.value?.id === user.id) {
     open.value = null
   }
 }
 
+/** Runs a host call, which the dialog's button shows until it settles, then closes the dialog if it is still this one. */
+async function carryOut(dialog: Dialog, user: SettingsUser, call: () => Promise<void>): Promise<void> {
+  try {
+    await call()
+  } finally {
+    closeIfShown(dialog, user)
+  }
+}
+
 async function add(user: SettingsNewUser): Promise<void> {
-  if (busy.value) {
+  addError.value = undefined
+  const outcome = await confirmed(() => props.host.add(user), 'Adding an account asks it is you.')
+  if (outcome === null) {
     return
   }
-  busy.value = true
-  addError.value = undefined
-  try {
-    const outcome = await confirmed(() => props.host.add(user), 'Adding an account asks it is you.')
-    if (outcome === null) {
-      return
+  if (outcome.kind === 'added') {
+    open.value = null
+    ready.value = {
+      host: props.host.signInCode(outcome.id),
+      wording: userReadyWording('Add User', outcome.nickname),
+      account: { id: outcome.id, email: user.email },
+      lead: `The account for ${user.email} is ready.`,
+      password: outcome.password,
     }
-    if (outcome.kind === 'added') {
-      open.value = null
-      ready.value = {
-        host: props.host.signInCode(outcome.id),
-        wording: userReadyWording('Add User', outcome.nickname),
-        account: { id: outcome.id, email: user.email },
-        lead: `The account for ${user.email} is ready.`,
-        password: outcome.password,
-      }
-      readyOpen.value = true
-    } else {
-      addError.value = outcome
-    }
-  } finally {
-    busy.value = false
+    readyOpen.value = true
+  } else {
+    addError.value = outcome
   }
 }
 
 /** Reset Password… confirmed: makes a new first password and ends on the last step. */
 async function resetPassword(): Promise<void> {
   const user = target.value
-  if (!user || busy.value) {
+  if (!user) {
     return
   }
-  busy.value = true
   try {
     const outcome = await confirmed(() => props.host.newPassword(user.id), 'Resetting a password asks it is you.')
     if (outcome?.kind === 'made') {
@@ -193,8 +194,7 @@ async function resetPassword(): Promise<void> {
       readyOpen.value = true
     }
   } finally {
-    busy.value = false
-    open.value = null
+    closeIfShown('reset', user)
   }
 }
 
@@ -215,21 +215,21 @@ async function makeAnotherPassword(): Promise<boolean> {
 async function changeRole(role: SettingsNewUser['role']): Promise<void> {
   const user = target.value
   if (user) {
-    await carryOut(() => props.host.setRole(user.id, role))
+    await carryOut('role', user, () => props.host.setRole(user.id, role))
   }
 }
 
 async function signOutEverywhere(): Promise<void> {
   const user = target.value
   if (user) {
-    await carryOut(() => props.host.signOutEverywhere(user.id))
+    await carryOut('signOut', user, () => props.host.signOutEverywhere(user.id))
   }
 }
 
 async function disableAccount(): Promise<void> {
   const user = target.value
   if (user) {
-    await carryOut(() => props.host.setDisabled(user.id, true))
+    await carryOut('disable', user, () => props.host.setDisabled(user.id, true))
   }
 }
 
@@ -244,7 +244,8 @@ function showSignInCode(user: SettingsUser): void {
   readyOpen.value = true
 }
 
-function run(action: UserAction, user: SettingsUser): void {
+/** Starts an account's action: a dialog that asks first, or, for Enable Account, the work itself, which the row shows. */
+function run(action: UserAction, user: SettingsUser): void | Promise<void> {
   if (action === 'resetPassword') {
     ask('reset', user)
   } else if (action === 'changeRole') {
@@ -256,7 +257,7 @@ function run(action: UserAction, user: SettingsUser): void {
   } else if (action === 'disable') {
     ask('disable', user)
   } else {
-    void props.host.setDisabled(user.id, false)
+    return props.host.setDisabled(user.id, false)
   }
 }
 
@@ -272,9 +273,7 @@ const ACTION_LABEL: Record<UserAction, string> = {
 const targetName = computed(() => (target.value ? nameOf(target.value) : ''))
 
 function closeDialog(): void {
-  if (!busy.value) {
-    open.value = null
-  }
+  open.value = null
 }
 </script>
 
@@ -284,7 +283,14 @@ function closeDialog(): void {
       <template #actions>
         <Button size="sm" @click="openAdd">Add User…</Button>
       </template>
-      <SettingsRow v-for="user in host.users" :key="user.id" :label="nameOf(user)" :muted="user.disabled" center-leading>
+      <SettingsRow
+        v-for="user in host.users"
+        :key="user.id"
+        :label="nameOf(user)"
+        :muted="user.disabled"
+        :target="userTarget(user)"
+        center-leading
+      >
         <template #leading>
           <Avatar :account-id="user.id" :name="user.nickname" :email="user.email" :size="32" />
         </template>
@@ -319,14 +325,15 @@ function closeDialog(): void {
                 />
               </Tooltip>
             </template>
-            <template #content="{ close }">
+            <template #content>
               <Menu>
                 <template v-for="action in actionsOf(user)" :key="action">
                   <MenuDivider v-if="action === 'signOutEverywhere'" />
                   <MenuItem
                     :label="ACTION_LABEL[action]"
                     :is-danger="action === 'disable'"
-                    @select="run(action, user); close()"
+                    :operation="onUser(action, user)"
+                    @select="run(action, user)"
                   />
                 </template>
               </Menu>
@@ -340,8 +347,8 @@ function closeDialog(): void {
     :is-open="open === 'add'"
     :overlay-store="overlayStore"
     :roles="roles"
-    :busy="busy"
     :error="addError"
+    :operation="onUser('add', null)"
     @close="closeDialog"
     @submit="add"
     @edit="addError = undefined"
@@ -352,7 +359,7 @@ function closeDialog(): void {
     :name="targetName"
     :current="target?.role ?? 'user'"
     :roles="roles"
-    :busy="busy"
+    :operation="onUser('changeRole', target)"
     @close="closeDialog"
     @submit="changeRole"
   />
@@ -361,7 +368,7 @@ function closeDialog(): void {
     :overlay-store="overlayStore"
     :title="`Reset ${targetName}’s password?`"
     action="Reset Password"
-    :busy="busy"
+    :operation="onUser('resetPassword', target)"
     @close="closeDialog"
     @confirm="resetPassword"
   >
@@ -400,7 +407,7 @@ function closeDialog(): void {
     :overlay-store="overlayStore"
     :title="`Sign ${targetName} out everywhere?`"
     action="Sign Out Everywhere"
-    :busy="busy"
+    :operation="onUser('signOutEverywhere', target)"
     @close="closeDialog"
     @confirm="signOutEverywhere"
   >
@@ -414,7 +421,7 @@ function closeDialog(): void {
     :overlay-store="overlayStore"
     :title="`Disable ${targetName}’s account?`"
     action="Disable Account"
-    :busy="busy"
+    :operation="onUser('disable', target)"
     @close="closeDialog"
     @confirm="disableAccount"
   >

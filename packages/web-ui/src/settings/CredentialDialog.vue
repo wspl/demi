@@ -12,6 +12,7 @@ import IconButton from '../ui/IconButton.vue'
 import InlineError from '../ui/InlineError.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
+import type { Action, Operation } from '../ui/operations'
 import ScrollArea from '../ui/ScrollArea.vue'
 import Segmented from '../ui/Segmented.vue'
 import TextInput from '../ui/TextInput.vue'
@@ -35,21 +36,24 @@ import type { SettingsCredential, SettingsCredentialDraft } from './types'
  * under it; a saved field keeps its name, and its value left empty keeps the
  * saved one, which the page never has. A problem shows under its field once
  * the user has left it, and Save waits until nothing is wrong. The host
- * saves; a refusal shows under the fields, and the draft stays.
+ * saves (`onSave`, whose promise Save shows until it settles); a refusal shows
+ * under the fields, and the draft stays.
  */
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   /** The credential edited; null for a new one. */
   credential: SettingsCredential | null
-  pending?: boolean
+  onSave?: Action<[draft: SettingsCredentialDraft]>
+  /** What Save does, and what Delete does, one group on the credential (`operations.ts`): while one works, the other cannot be pressed. */
+  saveOperation?: Operation
+  deleteOperation?: Operation
   /** Why the last save failed, with the request it came from. */
   error?: ShownError | null
 }>()
 
 const emit = defineEmits<{
   close: []
-  save: [draft: SettingsCredentialDraft]
   delete: []
 }>()
 
@@ -106,7 +110,6 @@ const labelProblems = computed(() => fields.value.map((field) => textProblem(fie
 const valueProblems = computed(() => fields.value.map((field) => valueProblem(field.value, field.saved !== null)))
 const canSave = computed(
   () =>
-    !props.pending &&
     nameProblem.value === null &&
     fields.value.length > 0 &&
     labelProblems.value.every((problem) => problem === null) &&
@@ -125,11 +128,11 @@ function removeField(key: number): void {
   fields.value = fields.value.filter((field) => field.key !== key)
 }
 
-function save(): void {
+function save(): unknown {
   if (!canSave.value) {
     return
   }
-  emit('save', {
+  return props.onSave?.({
     name: name.value.trim(),
     note: note.value.trim(),
     keep: keep.value,
@@ -161,7 +164,7 @@ const keepLabel = computed(() => {
       </header>
 
       <!-- Only the fields scroll; the title and the buttons stay in place. -->
-      <ScrollArea :inert="pending" class="min-h-0" viewport-class="flex flex-col gap-3 px-5">
+      <ScrollArea class="min-h-0" viewport-class="flex flex-col gap-3 px-5">
         <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
           <SettingsRow label="Name">
             <template v-if="shown('name', nameProblem)" #detail>
@@ -266,11 +269,11 @@ const keepLabel = computed(() => {
       <InlineError v-if="error" class="px-5 pt-3" :message="error.message" :request-id="error.requestId" />
     </div>
     <template v-if="credential" #footer-leading>
-      <Button variant="danger" :disabled="pending" @click="emit('delete')">Delete</Button>
+      <Button variant="danger" :operation="deleteOperation" @click="emit('delete')">Delete</Button>
     </template>
     <template #footer>
       <Button @click="emit('close')">Cancel</Button>
-      <Button variant="primary" :disabled="!canSave" @click="save">
+      <Button variant="primary" :disabled="!canSave" :operation="saveOperation" @click="save">
         {{ credential ? 'Save' : 'Create Credential' }}
       </Button>
     </template>

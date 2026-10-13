@@ -33,7 +33,6 @@ defineProps<{
         focused
         autocomplete="current-password"
         :invalid="verification.passwordProblem.value !== null"
-        :readonly="verification.busy.value !== null"
         class="w-48 max-w-full"
         @keydown.enter="verification.submitPassword()"
       />

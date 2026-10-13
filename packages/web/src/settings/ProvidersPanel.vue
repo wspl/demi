@@ -13,7 +13,7 @@ const resources = useResources()
 const preferences = usePreferences()
 const product = useProduct()
 const settings = useProviderSettings()
-const { providers, testing, refreshing, login } = storeToRefs(settings)
+const { providers, login } = storeToRefs(settings)
 const {
   report,
   change,
@@ -25,7 +25,8 @@ const {
   test,
   refresh,
   refreshUsage,
-  accountAction,
+  removeAccount,
+  activateAccount,
   saveModel,
   saveModels,
   searchModels,
@@ -89,9 +90,6 @@ onUnmounted(() => {
     @retry-models="retryModels"
     :vendors="resources.vendors"
     :overlay-store="appOverlayStore"
-    :operations="settings.operations"
-    :testing="testing"
-    :refreshing="refreshing"
     :refreshing-usage="settings.refreshingUsage"
     :usage-failures="settings.usageFailures"
     @change="change"
@@ -108,10 +106,8 @@ onUnmounted(() => {
     @refresh-usage="refreshUsage"
     @check-cli="checkCli"
     @install-cli="installCli"
-    @activate-account="
-      (provider, id) => accountAction(provider, id, 'activate')
-    "
-    @remove-account="(provider, id) => accountAction(provider, id, 'remove')"
+    @activate-account="activateAccount"
+    @remove-account="removeAccount"
     :save-model="saveModel"
     :search-models="searchModels"
     @remove-model="

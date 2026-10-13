@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import type { Operation } from '../ui/operations'
 import { X } from '@lucide/vue'
 import Dialog from '../ui/Dialog.vue'
 import IconButton from '../ui/IconButton.vue'
@@ -31,7 +32,8 @@ const props = defineProps<{
   hostId?: string
   confirmLabel?: TitleText
   confirmDisabled?: boolean
-  confirmPending?: boolean
+  /** What the confirm button does (`operations.ts`). */
+  confirmOperation?: Operation
 }>()
 
 const emit = defineEmits<{
@@ -81,7 +83,7 @@ const title = computed(
         :host-id="hostId"
         :confirm-label="confirmLabel"
         :confirm-disabled="confirmDisabled"
-        :confirm-pending="confirmPending"
+        :confirm-operation="confirmOperation"
         @select="emit('select', $event)"
         @cancel="emit('close')"
         @update:host-id="emit('update:hostId', $event)"

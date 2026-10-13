@@ -195,19 +195,17 @@ watch(handedOffTo, (name) => {
     </div>
     <template #footer>
       <template v-if="step.kind === 'verify'">
-        <Button :disabled="verification.busy.value !== null" @click="emit('close')">Cancel</Button>
+        <Button @click="emit('close')">Cancel</Button>
         <Button
           v-if="host.verifyPasskey"
-          :loading="verification.busy.value === 'passkey'"
-          :disabled="verification.busy.value === 'password'"
+          :operation="verification.withPasskey"
           @click="verification.usePasskey()"
         >
           Use Passkey
         </Button>
         <Button
           variant="primary"
-          :loading="verification.busy.value === 'password'"
-          :disabled="verification.busy.value === 'passkey'"
+          :operation="verification.withPassword"
           @click="verification.submitPassword()"
         >
           Continue

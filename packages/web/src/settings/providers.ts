@@ -8,6 +8,8 @@ import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refres
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
+import { providerOperation, providerTarget } from '@demicodes/web-ui/settings/provider-operations'
+import { operations } from '@demicodes/web-ui/ui/operations'
 import {
   type SettingsCompatibleDraft,
   type SettingsModelDraft,
@@ -49,23 +51,13 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   const modelEditor = ref<SettingsModelEditor | null>(null)
   const edits = ref<Record<string, Partial<SettingsProviderEntry>>>({})
   const manualDrafts = ref<Record<string, SettingsProviderModel[]>>({})
-  const operations = ref<Record<string, SettingsProviderOperation>>({})
   const refreshingUsage = ref<Record<string, Record<string, SettingsQuotaRefresh>>>({})
   /** The vendor's words for the last manual usage refresh that failed, per provider and account, until that account's next answer; the surfaces show them, no toast does. */
   const usageFailures = ref<Record<string, Record<string, ShownError>>>({})
   const quotaRefreshCache = createQuotaRefreshCache()
-  const testing = computed(
-    () =>
-      Object.keys(operations.value).find(
-        (id) => operations.value[id]?.kind === 'testing',
-      ) ?? null,
-  )
-  const refreshing = computed(
-    () =>
-      Object.keys(operations.value).find(
-        (id) => operations.value[id]?.kind === 'refreshing',
-      ) ?? null,
-  )
+  /** Whether provider `id`'s operation of `kind` runs, as the page's one store of operations keeps it. */
+  const runs = (id: string, kind: 'saving' | 'testing' | 'refreshing' | 'removing' | 'cli') =>
+    operations.runs(providerOperation(id, { kind }))
   const testResults = ref<
     Record<
       string,
@@ -82,8 +74,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   let lifetime = new AbortController()
   /** The provider operations on their way, by provider: each provider's in order. */
   const writes = new SerialQueue()
-  /** The operation running for each provider, which an edit made during a test waits for. */
-  const running = new Map<string, Promise<void>>()
   const providers = computed(() => {
     const configured = resources.providers.map((provider) => ({
       ...provider,
@@ -142,8 +132,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         return 'Could Not Update the Command-Line Tool'
       case 'account':
         switch (operation.action) {
-          case 'activate':
-            return 'Could Not Switch Accounts'
           case 'remove':
             return 'Could Not Remove the Account'
           case 'test':
@@ -152,42 +140,54 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
   }
 
+  /**
+   * Runs the provider's operation after its earlier writes, as one of the
+   * page's operations (`operations.ts`): a control bound to it shows it, and
+   * nothing starts while another of the provider's runs. Answers whether it
+   * ran.
+   */
   async function run(
     id: string,
     operation: SettingsProviderOperation,
     action: (signal: AbortSignal) => Promise<void>,
-  ): Promise<void> {
-    if (operations.value[id]) {
-      return
-    }
+  ): Promise<boolean> {
     const current = lifetime
-    operations.value[id] = operation
-    const done = writes.run(id, async () => {
-      current.signal.throwIfAborted()
-      await action(current.signal)
-    })
-    running.set(id, done.then(() => {}, () => {}))
-    try {
-      await done
-    } finally {
-      running.delete(id)
-      if (current === lifetime) {
-        delete operations.value[id]
-      }
+    const done = operations.run(providerOperation(id, operation), () =>
+      writes.run(id, async () => {
+        current.signal.throwIfAborted()
+        await action(current.signal)
+      }),
+    )
+    if (done === null) {
+      return false
+    }
+    await done
+    return true
+  }
+
+  /** Resolves once the provider does nothing, for work that waits for that rather than being refused. */
+  async function untilIdle(id: string): Promise<void> {
+    const any = providerOperation(id, { kind: 'saving' })
+    while (operations.blocked(any)) {
+      await operations.whenFree(any)
     }
   }
 
+  /** Runs the operation and reports its failure; the promise ends with it, for the control that started it to show. */
   function perform(
     id: string,
     operation: SettingsProviderOperation,
     action: (signal: AbortSignal) => Promise<void>,
-  ): void {
+  ): Promise<void> {
     const current = lifetime
-    void run(id, operation, action).catch((error) => {
-      if (!current.signal.aborted) {
-        report(failureTitle(operation), error)
-      }
-    })
+    return run(id, operation, action).then(
+      () => {},
+      (error) => {
+        if (!current.signal.aborted) {
+          report(failureTitle(operation), error)
+        }
+      },
+    )
   }
 
   function emptyProvider(
@@ -307,15 +307,19 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       preferences.showProvider(provider.id, changes.enabled)
       return
     }
-    const busy = operations.value[provider.id]
-    if (busy && busy.kind !== 'testing' && busy.kind !== 'refreshing') {
+    // A test or a refresh only reads; any other operation of the provider
+    // holds its fields, so a new edit then is refused, and one made before
+    // waits for it too.
+    const reading = runs(provider.id, 'testing') || runs(provider.id, 'refreshing')
+    const holding = !reading && operations.blocked(providerOperation(provider.id, { kind: 'saving' }))
+    if (holding && Object.keys(changes).length > 0) {
       return
     }
     changes = { ...edits.value[provider.id], ...changes }
     edits.value[provider.id] = changes
-    if (busy) {
-      // A test or a refresh only reads: the edit shows at once and is saved when it ends.
-      void running.get(provider.id)?.then(() => change(provider, {}))
+    if (reading || holding) {
+      // The edit shows at once and is saved when the provider is free.
+      void untilIdle(provider.id).then(() => change(provider, {}))
       return
     }
     perform(provider.id, { kind: 'saving' }, async (signal) => {
@@ -354,8 +358,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     })
   }
 
-  function removeProvider(id: string): void {
-    perform(id, { kind: 'removing' }, async (signal) => {
+  function removeProvider(id: string): Promise<void> {
+    return perform(id, { kind: 'removing' }, async (signal) => {
       await apiRequest(`/providers/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         signal,
@@ -370,15 +374,15 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   ): Promise<void> {
     // A model saved during a test, a refresh or another save waits for it to
     // end, and for an edit queued behind it, rather than being refused.
-    for (let pending = running.get(provider.id); pending; pending = running.get(provider.id)) {
-      await pending
-    }
-    await run(provider.id, { kind: 'saving' }, async (signal) => {
+    const save = async (signal: AbortSignal) => {
       signal.throwIfAborted()
       await patch(provider, { models: models.map(modelConfig) })
       delete manualDrafts.value[provider.id]
       delete edits.value[provider.id]
-    })
+    }
+    do {
+      await untilIdle(provider.id)
+    } while (!(await run(provider.id, { kind: 'saving' }, save)))
   }
 
   async function saveModel(
@@ -526,8 +530,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     })
   }
 
-  function installCli(provider: SettingsProviderEntry): void {
-    perform(provider.id, { kind: 'cli' }, async (signal) => {
+  function installCli(provider: SettingsProviderEntry): Promise<void> {
+    return perform(provider.id, { kind: 'cli' }, async (signal) => {
       try {
         await apiRequest(`/providers/${encodeURIComponent(provider.id)}/cli/install`, { method: 'POST', signal })
         await readCli(provider.id, false, lifetime.signal)
@@ -601,29 +605,51 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     })
   }
 
-  function accountAction(
-    provider: SettingsProviderEntry,
-    id: string,
-    action: 'activate' | 'remove',
-  ): void {
-    perform(
+  function removeAccount(provider: SettingsProviderEntry, id: string): Promise<void> {
+    return perform(
       provider.id,
-      { kind: 'account', accountId: id, action },
+      { kind: 'account', accountId: id, action: 'remove' },
       async (signal) => {
-        const base = `/providers/${encodeURIComponent(provider.id)}/accounts`
-        await apiRequest(
-          action === 'activate'
-            ? `${base}/active`
-            : `${base}/${encodeURIComponent(id)}`,
-          {
-            method: action === 'activate' ? 'PUT' : 'DELETE',
-            signal,
-            ...(action === 'activate' ? jsonBody({ credentialId: id } satisfies ActivateAccount) : {}),
-          },
-        )
+        await apiRequest(`/providers/${encodeURIComponent(provider.id)}/accounts/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          signal,
+        })
         signal.throwIfAborted()
       },
     )
+  }
+
+  /**
+   * Makes `id` the provider's active account as the user presses Activate:
+   * the Active mark moves at once (it is a switch, `web-application.md`
+   * § Responding to the user), the change is sent after the provider's
+   * earlier writes, and a refusal moves the mark back with a toast.
+   */
+  function activateAccount(provider: SettingsProviderEntry, id: string): Promise<void> {
+    const shown = product.change('providers', (state) => ({
+      ...state,
+      providers: state.providers.map((entry) =>
+        entry.id === provider.id && entry.details.type === 'read'
+          ? { ...entry, details: { ...entry.details, active: id } }
+          : entry,
+      ),
+    }))
+    const current = lifetime
+    return writes
+      .run(provider.id, async () => {
+        current.signal.throwIfAborted()
+        shown.send()
+        await apiRequest(`/providers/${encodeURIComponent(provider.id)}/accounts/active`, {
+          method: 'PUT',
+          signal: current.signal,
+          ...jsonBody({ credentialId: id } satisfies ActivateAccount),
+        })
+        shown.land()
+      })
+      .catch((error) => {
+        shown.drop()
+        report('Could Not Switch Accounts', error)
+      })
   }
 
   const login = ref<{
@@ -809,7 +835,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       modelEditor.value = null
       manualDrafts.value = {}
       testResults.value = {}
-      operations.value = {}
       refreshingUsage.value = {}
       usageFailures.value = {}
       quotaRefreshCache.clear()
@@ -824,12 +849,9 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   return {
     modelEditor,
-    operations,
     refreshingUsage,
     usageFailures,
     providers,
-    testing,
-    refreshing,
     login,
     report,
     change,
@@ -840,7 +862,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     closeLogin,
     test,
     refresh,
-    accountAction,
+    removeAccount,
+    activateAccount,
     saveModel,
     saveModels,
     searchModels,

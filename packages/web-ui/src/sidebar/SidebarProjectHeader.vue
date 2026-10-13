@@ -3,15 +3,17 @@ import { Folder, FolderOpen, SquarePen } from '@lucide/vue'
 import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
+import RowSpinner from '@demicodes/web-ui/ui/RowSpinner.vue'
+import { provideRowTarget } from '@demicodes/web-ui/ui/operations'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
 import DeviceMark from './DeviceMark.vue'
-import { projectHostName } from './project-hosts'
+import { projectHostName, projectTarget } from './project-hosts'
 import type { SidebarProject } from './types'
 
 /** A project row: the checkout's name, the host it is on as the row's end mark, and the fold. */
-defineProps<{
+const props = defineProps<{
   project: SidebarProject
   /** Another project of this name runs on another host: the row names its host in words before the mark. */
   namesake: boolean
@@ -19,6 +21,9 @@ defineProps<{
   /** The keyboard cursor is here. */
   focused: boolean
 }>()
+
+// An operation on the project, such as Remove Project from its menu, shows the spinner where the host's mark stands.
+const working = provideRowTarget(() => projectTarget(props.project.id))
 
 const phone = usePhone()
 
@@ -73,7 +78,8 @@ const emit = defineEmits<{
         </span>
       </span>
     </span>
-    <DeviceMark :host="project.hostKind === 'cloud' ? { kind: 'cloud' } : project.device" />
+    <RowSpinner v-if="working" />
+    <DeviceMark v-else :host="project.hostKind === 'cloud' ? { kind: 'cloud' } : project.device" />
     <span
       class="absolute inset-y-0 right-[calc(var(--spacing-hit-sm)+4px)] flex items-center opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto phone:right-9 phone:opacity-100 phone:pointer-events-auto"
     >

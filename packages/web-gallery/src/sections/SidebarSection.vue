@@ -29,6 +29,7 @@ import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixt
 import { productWould } from '../product-would'
 import HandoffDialog from '@demicodes/web-ui/auth/HandoffDialog.vue'
 import { galleryHandoff } from '../fixtures/handoff'
+import { slow } from '../fixtures/slow'
 import { demoAccount, demoConversations, demoProjects, emailOnlyAccount, longEmailAccount } from '../sidebar/sidebar-data'
 
 const projects = ref(demoProjects())
@@ -243,7 +244,8 @@ function without(list: SidebarConversation[], ids: string[]): SidebarConversatio
 }
 
 /** Removing a project keeps its conversations as plain ones. */
-function removeProject(id: string): void {
+async function removeProject(id: string): Promise<void> {
+  await slow()
   projects.value = projects.value.filter((project) => project.id !== id)
   patchMany(
     conversations.value.filter((c) => c.projectId === id).map((c) => c.id),
@@ -594,7 +596,7 @@ onBeforeUnmount(() => {
                 @search="productWould('Open the Search Window')"
                 @create="productWould('Start a New Conversation')"
                 @add-project="productWould('Add a Project')"
-                @remove-project="productWould('Remove the Project')"
+                @remove-project="async () => { await slow(); productWould('Remove the Project') }"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
                 @hand-off-to-phone="wouldHandOffToPhone"

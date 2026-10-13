@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { countOf, upperFirst } from '@demicodes/utils'
+import { operations, type Operation } from '../ui/operations'
 import type { SentenceText } from '../ui/ui-text'
 import { isSubagentRunning, type SubagentRecord } from '../agent/subagents'
 import { isTerminalRunning, type TerminalRecord } from '../agent/terminals'
@@ -58,6 +59,15 @@ export function stopSentence(work: WorkToStop): string {
   return `${upperFirst(list)} will stop.`
 }
 
+/** The operations of the question's two answers. */
+export interface MoveAnswers {
+  move: Operation
+  tell: Operation
+}
+
+/** How many move questions the page has made, which names each one's answers. */
+let questions = 0
+
 /** A move the dialog asks about: where the conversation goes, and where it leaves. */
 export interface MoveQuestion {
   /** What the move stops first, while the agent works; none for a conversation at rest. */
@@ -82,7 +92,12 @@ export interface MoveQuestion {
 export function useMoveQuestion() {
   const question = ref<MoveQuestion | null>(null)
   const open = ref(false)
-  const busy = ref<'move' | 'tell' | null>(null)
+  /** Move and Move and Tell Agent: one group, so while one works the other cannot be pressed (`operations.ts`). */
+  const target = `move:${++questions}`
+  const answers: MoveAnswers = {
+    move: { action: 'move', target, group: 'answer' },
+    tell: { action: 'tell', target, group: 'answer' },
+  }
   let pending: {
     carryOut: (tell: boolean) => Promise<boolean>
     answer: (moved: boolean) => void
@@ -98,29 +113,33 @@ export function useMoveQuestion() {
     })
   }
 
+  /** Carries out the answer; once it is done, the dialog closes if it still asks this question. */
   async function answer(tell: boolean): Promise<void> {
     const asked = pending
-    if (!asked || busy.value) {
+    if (!asked) {
       return
     }
-    busy.value = tell ? 'tell' : 'move'
-    try {
-      asked.answer(await asked.carryOut(tell))
-    } finally {
-      busy.value = null
-      open.value = false
-      pending = null
-    }
+    await operations.run(tell ? answers.tell : answers.move, async () => {
+      try {
+        asked.answer(await asked.carryOut(tell))
+      } finally {
+        if (pending === asked) {
+          open.value = false
+          pending = null
+        }
+      }
+    })
   }
 
+  /** Cancel, Escape or the scrim: a move under way goes on and answers when it is done, as a sent mail goes on sending. */
   function cancel(): void {
-    if (busy.value) {
+    open.value = false
+    if (operations.blocked(answers.move)) {
       return
     }
     pending?.answer(false)
     pending = null
-    open.value = false
   }
 
-  return { question, open, busy, ask, answer, cancel }
+  return { question, open, answers, ask, answer, cancel }
 }

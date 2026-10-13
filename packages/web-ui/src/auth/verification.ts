@@ -1,4 +1,5 @@
 import { ref, watch, type Ref } from 'vue'
+import { operations, type Operation } from '../ui/operations'
 import type { ShownError } from '../infra/errors'
 import type { HandoffHost, HandoffVerifyOutcome } from './handoff'
 
@@ -12,7 +13,12 @@ export interface Verification {
   passwordProblem: Ref<string | null>
   /** A failure of the confirmation, said under its fields. */
   error: Ref<ShownError | null>
-  busy: Ref<'password' | 'passkey' | null>
+  /**
+   * Continue's and Use Passkey's operations, one group (`operations.ts`):
+   * while one works, the other cannot be pressed; Cancel always can.
+   */
+  withPassword: Operation
+  withPasskey: Operation
   /** Starts the step over, as it opens. */
   reset(): void
   submitPassword(): Promise<void>
@@ -26,11 +32,16 @@ export interface Verification {
  * dismissed browser prompt says nothing; `verified` runs once the host
  * confirmed.
  */
+/** How many confirmation steps the page has made, which names each one's operations. */
+let verifications = 0
+
 export function useVerification(host: () => VerificationHost, verified: () => void | Promise<void>): Verification {
   const password = ref('')
   const passwordProblem = ref<string | null>(null)
   const error = ref<ShownError | null>(null)
-  const busy = ref<'password' | 'passkey' | null>(null)
+  const target = `verification:${++verifications}`
+  const withPassword: Operation = { action: 'password', target, group: 'verify' }
+  const withPasskey: Operation = { action: 'passkey', target, group: 'verify' }
 
   watch(password, () => {
     passwordProblem.value = null
@@ -58,36 +69,28 @@ export function useVerification(host: () => VerificationHost, verified: () => vo
     }
   }
 
+  /** Continue, or Return in the field: nothing while the group works. */
   async function submitPassword(): Promise<void> {
-    if (busy.value) {
-      return
-    }
     if (password.value === '') {
       passwordProblem.value = 'Required'
       return
     }
-    busy.value = 'password'
-    error.value = null
-    try {
+    await operations.run(withPassword, async () => {
+      error.value = null
       await settle(await host().verifyPassword(password.value))
-    } finally {
-      busy.value = null
-    }
+    })
   }
 
   async function usePasskey(): Promise<void> {
     const verify = host().verifyPasskey
-    if (busy.value || !verify) {
+    if (!verify) {
       return
     }
-    busy.value = 'passkey'
-    error.value = null
-    try {
+    await operations.run(withPasskey, async () => {
+      error.value = null
       await settle(await verify())
-    } finally {
-      busy.value = null
-    }
+    })
   }
 
-  return { password, passwordProblem, error, busy, reset, submitPassword, usePasskey }
+  return { password, passwordProblem, error, withPassword, withPasskey, reset, submitPassword, usePasskey }
 }
