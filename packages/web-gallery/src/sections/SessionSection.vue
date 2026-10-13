@@ -109,6 +109,7 @@ import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { agentCompaction, firstRunningSubagentId } from '@demicodes/web-ui/agent/subagents'
 import GalleryCachedSessions from '../components/GalleryCachedSessions.vue'
 import GalleryTranscriptEntrance from '../components/GalleryTranscriptEntrance.vue'
+import GalleryOpeningSteps from '../components/GalleryOpeningSteps.vue'
 import GalleryHistoryWindow from '../components/GalleryHistoryWindow.vue'
 import GalleryCommandWakeup from '../components/GalleryCommandWakeup.vue'
 import GalleryBusyRequest from '../components/GalleryBusyRequest.vue'
@@ -3212,7 +3213,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Session Load"
-        note="First opening uses the loading pane until history arrives. History stays readable while models load or the connection opens. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the “Connecting” tail row. Enter while the models load says why on the send button, and the message goes once they have (Finish Loading). An unconfirmed send keeps its user message as it will stay, and the next message can be sent meanwhile, after it; Retry sends it again with the same ID and says Requesting from then, through the confirmation, until the answer begins. New conversation opens a local draft immediately."
+        note="First opening uses the loading pane until history and agents arrive, then shows them before its session opens. History stays readable while models load or the connection opens. Switching back to a cached session is immediate and reuses its connection. A dropped connection in an open session uses the “Connecting” tail row. Enter while the models load says why on the send button, and the message goes once they have (Finish Loading). An unconfirmed send keeps its user message as it will stay, and the next message can be sent meanwhile, after it; Retry sends it again with the same ID and says Requesting from then, through the confirmation, until the answer begins. New conversation opens a local draft immediately."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="unconfirmed send · retry the same message" wide>
@@ -3272,6 +3273,12 @@ onBeforeUnmount(() => {
             <Button size="sm" class="mt-2" @click="historyModelsLoaded = !historyModelsLoaded">
               {{ historyModelsLoaded ? 'Load Models Again' : 'Finish Loading' }}
             </Button>
+          </GallerySpecimen>
+          <GallerySpecimen variant="opening · transcript with its agents, then the session" wide>
+            <p class="pb-2 text-[12px] leading-4 text-fg-muted">
+              A conversation the page opens shows in two steps. Read History: the transcript appears with everything that names its agents, the Agents chip among them, and the composer; the turn is not known yet, so no tail row, Running or Resume shows, and the sidebar keeps the summary’s status. Open Session: the session’s turn and its running command join in one change. Lose the Socket shows a first opening that cannot connect: it says it connects, never a session it never had.
+            </p>
+            <GalleryOpeningSteps />
           </GallerySpecimen>
           <GallerySpecimen variant="switching · cached sessions" wide>
             <GalleryCachedSessions />

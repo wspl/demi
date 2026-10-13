@@ -41,6 +41,7 @@ const emit = defineEmits<{
 const { agentsOpen, activeSubagentId, toggleAgents, close } = useSessionPanels(
   () => props.agents,
   () => props.terminals,
+  () => 'gallery-agents',
 )
 provideMessageAgents(() => ({
   find: (number) => findAgent(props.agents, number),

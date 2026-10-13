@@ -21,6 +21,8 @@ use demi_backend_database::conversation_index::{
 use demi_agent_session::left_by_offline_host;
 use demi_backend_database::devices::{CLOUD_NAME, DeviceRecord};
 use demi_agent_store::Placement;
+use demi_backend_database::tree;
+use demi_conversation_socket_protocol::SubagentJob;
 use demi_agent_tools::NodeContext;
 use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::{conversation_of, root_of};
@@ -30,6 +32,17 @@ use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::ids::ConversationId;
 
 use crate::shard::Shard;
+use super::runs_on::runs_on;
+
+/// Why the conversation's subagents could not be listed.
+#[derive(Debug, thiserror::Error)]
+pub enum SubagentsError {
+    #[error(transparent)]
+    Host(#[from] HostAccessError),
+    /// The conversation's database could not be read.
+    #[error(transparent)]
+    Unreadable(StorageError),
+}
 
 /// What opens every context block, before the revision it describes.
 const CONTEXT: &str = "[Execution context ";
@@ -193,6 +206,41 @@ impl Shard {
             device: target.device().map(ToString::to_string),
             directory: target.path().to_owned(),
         })
+    }
+
+    /// Every subagent the conversation `id` has had, in the order they
+    /// started, each working where the conversation works now: its live
+    /// tree's own list whenever a tree is live as the answer is made, the
+    /// one the open's `subagents` frame sends, and otherwise the store's
+    /// (`subagents.md` § Protocol). The store's reading awaits, and a tree
+    /// opened meanwhile answers instead, so the answer never disagrees with
+    /// a handshake made before it.
+    pub async fn subagents(&self, id: &ConversationId) -> Result<Vec<SubagentJob>, SubagentsError> {
+        let placement = self.placement(id).await?;
+        let live = || {
+            self.agent()
+                .tree(&root_of(id))
+                .map(|tree| tree.subagent_jobs(Some(&placement)))
+        };
+        if let Some(listed) = live() {
+            return Ok(listed);
+        }
+        let nodes = self
+            .services()
+            .conversations
+            .read(id, tree::subagents)
+            .await
+            .map_err(SubagentsError::Unreadable)?
+            .unwrap_or_default();
+        let selections: Vec<_> = nodes.iter().map(|(_, model)| model.clone()).collect();
+        let models = runs_on(self.services(), self.user(), &selections).await;
+        Ok(live().unwrap_or_else(|| {
+            nodes
+                .iter()
+                .zip(models)
+                .filter_map(|((node, _), model)| node.job(model, Some(&placement)))
+                .collect()
+        }))
     }
 
     /// How the primary Host of the conversation `id` writes its paths: in

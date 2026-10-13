@@ -49,7 +49,7 @@ pub use self::deletion::finish_deletions;
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
 pub use self::pending::settle_pending;
-pub use self::runs_on::runs_on;
+pub use self::announcement::SubagentsError;
 pub(crate) use self::product::ShardHosts;
 use self::product::{
     ExecutionContext, HARNESS_GUIDE, INSTRUCTIONS, PluginContext, ShardSubagents, ShardToolsets,

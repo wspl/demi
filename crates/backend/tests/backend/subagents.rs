@@ -6,7 +6,8 @@
 //! for a command it runs through `demi host shell`, and runs on after
 //! its spawn command has exited; a Fork taken while a child runs leaves the
 //! child with its source; a spawn reads the user's subagent settings and
-//! builds its child's model from the catalog; and a Cloud reset holds a
+//! builds its child's model from the catalog; a live tree's subagent list
+//! is the one its open sends; and a Cloud reset holds a
 //! conversation whose child's profile infers with a provider on the Cloud.
 //! The model is a scripted family that answers each
 //! node of a tree from a script of its own; the device is a real runner. No
@@ -20,7 +21,7 @@ use demi_backend_providers::llm::families::{
     FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
 };
 use demi_conversation_socket_protocol::{
-    JobModel, JobPhase, ServerFrame, SubagentEvent, SubagentJob,
+    ClientFrame, JobModel, JobPhase, ServerFrame, SubagentEvent, SubagentJob,
 };
 use demi_provider_claude_code::Placement;
 use demi_provider_common::testing::event;
@@ -32,6 +33,7 @@ use demi_shared_types::{
     AuthState, Block, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
     RuntimeState, Timestamp,
 };
+use demi_web_api_protocol::conversations::Subagents;
 use demi_web_api_protocol::providers::{CredentialKind, ProviderAnswer};
 use futures_util::future::{BoxFuture, LocalBoxFuture};
 use futures_util::{StreamExt as _, stream};
@@ -51,6 +53,9 @@ pub(crate) type Answer = Vec<ProviderEvent>;
 #[derive(Default)]
 pub(crate) struct Scripts {
     state: Mutex<ScriptState>,
+    /// The next read of the provider's health, held: it says it arrived on
+    /// the first, and goes on once the second is notified.
+    health_hold: Mutex<Option<(Arc<Notify>, Arc<Notify>)>>,
 }
 
 #[derive(Default)]
@@ -81,6 +86,14 @@ impl Scripts {
             .unwrap()
             .unclaimed
             .push_back(answers.into());
+    }
+
+    /// Holds the next read of the provider's health, as a catalog read
+    /// makes it: answers what says the read arrived and what lets it go on.
+    pub(crate) fn hold_next_health(&self) -> (Arc<Notify>, Arc<Notify>) {
+        let hold = (Arc::new(Notify::new()), Arc::new(Notify::new()));
+        *self.health_hold.lock().unwrap() = Some(hold.clone());
+        hold
     }
 
     /// What the requests of the sessions `keep` accepts carried, in order.
@@ -184,7 +197,12 @@ impl Provider for TreeProvider {
     }
 
     fn auth_status(&self) -> BoxFuture<'_, AuthState> {
-        Box::pin(async {
+        let hold = self.scripts.health_hold.lock().unwrap().take();
+        Box::pin(async move {
+            if let Some((arrived, release)) = hold {
+                arrived.notify_one();
+                release.notified().await;
+            }
             AuthState::Authenticated {
                 account_label: None,
             }
@@ -894,6 +912,105 @@ async fn a_childs_job_says_what_its_round_runs_on_in_the_menus_names() {
             (3, None, inherited, 1, Some(2))
         ]
     );
+    backend.close().await;
+}
+
+// Half a second: a parent and its child each run a shell job on a real
+// device, and the tree is restored once.
+#[tokio::test]
+async fn a_live_trees_subagent_list_is_the_one_its_open_sends() {
+    let scripts = Arc::new(Scripts::default());
+    let (_harness, backend, master, _paired, root, provider) = tree(&scripts).await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    // The child waits until its parent's turn has ended, so that its
+    // completion wakes the idle parent.
+    scripts.root(
+        FIRST,
+        vec![shell("t1", "demi agent spawn <<< 'Look'"), say("dispatched"), say("received")],
+    );
+    scripts.child(vec![shell("c1", WAIT), say("found")]);
+    socket.chat("t1", "Go").await;
+    std::fs::write(format!("{root}/go"), "").unwrap();
+    socket
+        .until(|frame| {
+            matches!(
+                frame,
+                ServerFrame::Subagent {
+                    event: SubagentEvent::Closed,
+                    ..
+                }
+            )
+        })
+        .await;
+    socket.until_idle().await;
+    // The entry's new name reaches the store's reading of the child, not
+    // the live tree's, whose summary names what its round ran on.
+    let renamed = backend
+        .patch(
+            &format!("/api/providers/{provider}"),
+            &master,
+            json!({ "label": "Renamed" }),
+        )
+        .await;
+    assert_eq!(renamed.status, StatusCode::OK);
+
+    let listed = backend
+        .get(&format!("/api/conversations/{FIRST}/subagents"), Some(&master))
+        .await;
+    assert_eq!(listed.status, StatusCode::OK);
+    let listed: Vec<_> = listed
+        .json::<Subagents>()
+        .subagents
+        .into_iter()
+        .map(|job| job.child)
+        .collect();
+    let mut page = Socket::connect(&backend, &master, FIRST).await;
+    page.open().await;
+    let opened = page
+        .until(|frame| matches!(frame, ServerFrame::Subagents { .. }))
+        .await;
+    let Some(ServerFrame::Subagents { subagents }) = opened.last() else {
+        unreachable!("the handshake ends at its subagents frame")
+    };
+    let sent: Vec<_> = subagents.iter().map(|summary| summary.child.clone()).collect();
+    assert_eq!(listed, sent);
+    assert_eq!(
+        sent.iter().map(|child| (child.number, child.phase, child.model.provider.as_str())).collect::<Vec<_>>(),
+        [(1, JobPhase::Completed, "Tree")]
+    );
+
+    // A list read from the store while no tree is live, whose tree opens
+    // before it answers, after the entry was renamed again: the answer is
+    // the tree's, the handshake's.
+    page.send(&ClientFrame::Close {}).await;
+    page.until(|frame| *frame == ServerFrame::Closed).await;
+    let (arrived, release) = scripts.hold_next_health();
+    let path = format!("/api/conversations/{FIRST}/subagents");
+    let (listed, sent) = tokio::join!(
+        backend.get(&path, Some(&master)),
+        async {
+            arrived.notified().await;
+            let renamed = backend
+                .patch(&format!("/api/providers/{provider}"), &master, json!({ "label": "Again" }))
+                .await;
+            assert_eq!(renamed.status, StatusCode::OK);
+            let mut page = Socket::connect(&backend, &master, FIRST).await;
+            page.open().await;
+            let opened = page
+                .until(|frame| matches!(frame, ServerFrame::Subagents { .. }))
+                .await;
+            release.notify_one();
+            let Some(ServerFrame::Subagents { subagents }) = opened.last() else {
+                unreachable!("the handshake ends at its subagents frame")
+            };
+            subagents.iter().map(|summary| summary.child.clone()).collect::<Vec<_>>()
+        },
+    );
+    assert_eq!(listed.status, StatusCode::OK);
+    let listed: Vec<_> = listed.json::<Subagents>().subagents.into_iter().map(|job| job.child).collect();
+    assert_eq!(listed, sent);
+    assert_eq!(sent[0].model.provider, "Again");
     backend.close().await;
 }
 

@@ -6,7 +6,7 @@ import { ConversationRuntime, RemovalRefusedError, type RuntimeState } from '../
 import { ConversationSocketError, connectConversationClient } from '../../transport/conversation-socket'
 import { pageReturned } from '../../transport/liveness'
 import { playSockets } from '../../transport/__tests__/test-socket'
-import { EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
+import { ConversationClient, EMPTY_TRANSCRIPT } from '@demicodes/conversation-client'
 import { clientHarness, createdAt, model, userBlock } from './agent-harness'
 
 function state(): RuntimeState {
@@ -445,7 +445,7 @@ test('a connection that cannot be made is tried again after the page\'s waits, n
     const opening = runtime.connect()
     await turn()
     expect(connects).toBe(1)
-    expect(current.load).toBe('reconnecting')
+    expect(current.load).toBe('connecting')
     expect(current.lastError).toBeNull()
     jest.advanceTimersByTime(499)
     await turn()
@@ -487,7 +487,7 @@ test('a connection lost before the session answered opens the conversation again
     expect(lost.sent).toEqual([{ type: 'open' }])
     lost.end()
     await turn()
-    expect(current.load).toBe('reconnecting')
+    expect(current.load).toBe('connecting')
     expect(current.lastError).toBeNull()
     jest.advanceTimersByTime(1_000)
     await turn()
@@ -632,7 +632,7 @@ test('a page back from sleep breaks a conversation socket that still waits for i
     // The opening learns of the break through its promises, then waits no
     // reconnect wait: the zero-delay timer the return left is due now.
     await turn()
-    expect(current.load).toBe('reconnecting')
+    expect(current.load).toBe('connecting')
     jest.advanceTimersByTime(0)
     await turn()
     const next = sockets.last()
@@ -646,6 +646,48 @@ test('a page back from sleep breaks a conversation socket that still waits for i
     jest.useRealTimers()
     runtime.dispose()
     sockets.restore()
+  }
+})
+
+// The frames of the handshake wait until the session has opened, then go:
+// the subscription that held them lives as long as the connection, and
+// once held a transcript and every command's output for that long. Cost:
+// one opening and two collections.
+test('the handshake\'s frames are applied once the session opens and are not kept after', async () => {
+  const current = state()
+  let deliver: (frame: unknown) => void = () => {}
+  const client = new ConversationClient({
+    send(frame) {
+      if (frame.type === 'open') {
+        deliver({ type: 'opened' })
+        deliver({ type: 'queue', queue: [] })
+      }
+    },
+    onFrame(handler) {
+      deliver = handler
+      return () => {}
+    },
+    onClose: () => () => {},
+    close() {},
+  })
+  let frame: WeakRef<object> | undefined
+  client.subscribe((event) => {
+    if (event.type === 'queue') {
+      frame = new WeakRef(event)
+    }
+  })
+  const runtime = new ConversationRuntime({ state: current, connect: async () => client })
+  try {
+    await runtime.connect()
+    expect(current.load).toBe('ready')
+    expect(frame).toBeDefined()
+    await turn()
+    Bun.gc(true)
+    await turn()
+    Bun.gc(true)
+    expect(frame!.deref()).toBeUndefined()
+  } finally {
+    runtime.dispose()
   }
 })
 
