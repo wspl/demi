@@ -19,12 +19,12 @@ import { shot } from './shot'
 import { stop } from './stop'
 import { timeline } from './timeline'
 import { turn } from './turn'
-import { up } from './up'
+import { up, type UpOptions } from './up'
 import { webkitPage } from './webkit'
 
 export function createDemi(tool: Tool) {
   return {
-    up: (...servers: string[]) => up(tool, servers),
+    up: (...args: (string | UpOptions)[]) => up(tool, args),
     down: (...args: DownArgument[]) => down(tool, args),
     stop: () => stop(tool),
     help: () => help(tool),
