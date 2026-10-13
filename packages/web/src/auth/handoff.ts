@@ -22,12 +22,24 @@ import { browserHasPasskeys, signWithPasskey } from './webauthn'
  * (`web-api.md` § Account API); `verify` when the backend wants the session
  * confirmed first, which its 403 decides.
  */
-export async function makeHandoffCode(to: string): Promise<HandoffStart> {
+export function makeHandoffCode(to: string): Promise<HandoffStart> {
+  return startCode(() =>
+    apiRequest('/auth/handoff/code', { method: 'POST', ...jsonBody({ to } satisfies HandoffRequest) }),
+  )
+}
+
+/**
+ * An administrator's sign-in code for the account `id` (`web-api.md` § Account
+ * API): as a handoff code is made, for a session verified in the last five
+ * minutes, and opening the product's home.
+ */
+export function makeSignInCode(id: string): Promise<HandoffStart> {
+  return startCode(() => apiRequest(`/users/${encodeURIComponent(id)}/sign-in-code`, { method: 'POST' }))
+}
+
+async function startCode(request: () => Promise<Response>): Promise<HandoffStart> {
   try {
-    const response = await apiRequest('/auth/handoff/code', {
-      method: 'POST',
-      ...jsonBody({ to } satisfies HandoffRequest),
-    })
+    const response = await request()
     const { id, url, expiresInMs } = await readResponse(response, handoffCodeSchema)
     // The time left counts from the answer's arrival on the page's own clock.
     return { kind: 'code', code: { id, url, deadline: Date.now() + expiresInMs } }
@@ -114,6 +126,7 @@ export const useSessions = defineStore('sessions', () => {
       createdAt: session.createdAt,
       lastActiveAt: session.lastActiveAt,
       current: session.current,
+      issuedBy: session.issuedBy ?? null,
     })),
   )
 

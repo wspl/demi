@@ -544,8 +544,8 @@ impl Harness {
             .unwrap();
     }
 
-    /// An account setup did not create, written to the control database:
-    /// account administration is not a route of this backend yet.
+    /// An account setup did not create, written to the control database with
+    /// the password its owner chose, as an account that has signed in is.
     pub fn add_user(&self, email: &str, password: &str, role: Role) {
         use argon2::password_hash::rand_core::OsRng;
         use argon2::password_hash::{PasswordHasher as _, SaltString};
@@ -1230,6 +1230,27 @@ impl TestBackend {
             String::from_utf8_lossy(&answer.body)
         );
         session_from(&answer)
+    }
+
+    /// An account `actor` made, whose owner has signed in with its first
+    /// password and chosen `{name}-pass-1` as its own, as every account an
+    /// administrator makes does before it can do anything else; its session.
+    pub async fn make_user(&self, actor: &Session, email: &str, role: &str) -> Session {
+        let created = self
+            .post("/api/users", Some(actor), json!({ "email": email, "role": role }))
+            .await;
+        assert_eq!(
+            created.status,
+            StatusCode::CREATED,
+            "{}",
+            String::from_utf8_lossy(&created.body)
+        );
+        let first = created.json::<Value>()["password"].as_str().unwrap().to_owned();
+        let owner = self.login(email, &first).await;
+        let own = format!("{}-pass-1", email.split('@').next().unwrap());
+        let chosen = self.put("/api/auth/password", &owner, json!({ "next": own })).await;
+        assert_eq!(chosen.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&chosen.body));
+        owner
     }
 
     pub async fn login_answer(&self, email: &str, password: &str) -> Answer {

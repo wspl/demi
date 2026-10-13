@@ -67,7 +67,7 @@ function loadPage(): void {
 /** The page signs in as `id` and its account loads, on a server that offers passkeys. */
 function accountLoads(id: string): void {
   const { user } = identitySchema.parse({
-    user: { id, email: `${id}@example.test`, nickname: id, role: 'master', createdAt: '2026-09-18T00:00:00.000Z' },
+    user: { id, email: `${id}@example.test`, nickname: id, role: 'master', createdAt: '2026-09-18T00:00:00.000Z', disabled: false, choosesPassword: false },
   })
   useSession().current = { status: 'signedIn', user }
   useProduct().start()
@@ -118,7 +118,7 @@ test('nothing is offered where no flow asked, or the server offers no passkeys',
   usePasskeyOffer().request()
   loadPage()
   const { user } = identitySchema.parse({
-    user: { id: 'ana', email: 'ana@example.test', nickname: 'ana', role: 'master', createdAt: '2026-09-18T00:00:00.000Z' },
+    user: { id: 'ana', email: 'ana@example.test', nickname: 'ana', role: 'master', createdAt: '2026-09-18T00:00:00.000Z', disabled: false, choosesPassword: false },
   })
   useSession().current = { status: 'signedIn', user }
   useProduct().start()

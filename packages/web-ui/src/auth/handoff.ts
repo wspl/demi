@@ -38,6 +38,52 @@ export type HandoffVerifyOutcome =
   | { kind: 'dismissed' }
   | ({ kind: 'failed' } & ShownError)
 
+/**
+ * What the dialog says, which the same code flow words for who shows it and
+ * who scans it: Hand Off to Your Phone (the user's own phone), an
+ * administrator's Sign-In Code… for an account, and Add User's last step.
+ */
+export interface HandoffWording {
+  /** The dialog's title: a command's name, title style. */
+  title: string
+  /** What the confirmation step says under the title. */
+  confirm: string
+  /** The line under the QR code. */
+  scan: string
+  /** What the dialog says once a browser spent the code. */
+  done: (browser: string) => string
+}
+
+export const HANDOFF_WORDING: HandoffWording = {
+  title: 'Hand Off to Your Phone',
+  confirm: 'Confirm it’s you. Your phone then opens this page, signed in to this account.',
+  scan: 'Scan with your phone’s camera.',
+  done: (browser) => `Handed off to ${browser}.`,
+}
+
+/** An administrator's Sign-In Code… for the account `name`, which signs a phone in to it. */
+export function signInCodeWording(name: string): HandoffWording {
+  return {
+    title: 'Sign-In Code',
+    confirm: `Confirm it’s you. A code then signs ${name}’s phone in to their account.`,
+    scan: 'Scan with their phone’s camera.',
+    done: (browser) => `Signed in on ${browser}.`,
+  }
+}
+
+/**
+ * The last step of Add User… and Reset Password…, once the account is made
+ * or has a new password: `title` names the action, and the password the
+ * server made stands beside the code.
+ */
+export function userReadyWording(title: string, name: string): HandoffWording {
+  return {
+    ...signInCodeWording(name),
+    title,
+    scan: 'Or scan with their phone’s camera to sign it in.',
+  }
+}
+
 /** What the dialog's host does: the backend's side of every step. */
 export interface HandoffHost {
   /** A new code for the page the user is on, which ends the one before. */

@@ -10,11 +10,12 @@ import {
   Monitor,
   ScrollText,
   Settings2,
-  Sparkles
+  Sparkles,
+  Users
 } from '@lucide/vue'
 import { IN_DEVELOPMENT } from '../ui/disabled'
 import { APP_SHORTCUTS } from './shortcuts'
-import type { SettingsNavGroup } from './types'
+import type { SettingsNavGroup, SettingsNavItem, UserRole } from './types'
 
 const deferred = { disabled: true, disabledReason: IN_DEVELOPMENT } as const
 
@@ -168,3 +169,26 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
     ],
   },
 ]
+
+/** Settings › Users, which only the master and admins have (`product.md` § User system). */
+export const USERS_SECTION: SettingsNavItem = {
+  id: 'users',
+  label: 'Users',
+  icon: Users,
+  keywords: ['accounts', 'people', 'admin', 'add user', 'invite', 'reset password', 'role', 'disable', 'sign out everywhere'],
+}
+
+/** The rail with Users after Devices, for a user whose role manages accounts; the rail unchanged for a user's. */
+export function withUsersSection(groups: SettingsNavGroup[], role: UserRole): SettingsNavGroup[] {
+  if (role === 'user') {
+    return groups
+  }
+  return groups.map((group) =>
+    group.items.some((item) => item.id === 'devices')
+      ? {
+          ...group,
+          items: group.items.flatMap((item) => (item.id === 'devices' ? [item, USERS_SECTION] : [item])),
+        }
+      : group,
+  )
+}

@@ -21,6 +21,18 @@ pub enum HashError {
     Task(#[from] tokio::task::JoinError),
 }
 
+/// How many characters a first password has: letters and digits, about 119
+/// bits, which its owner replaces at once.
+const FIRST_PASSWORD_LENGTH: usize = 20;
+
+/// A first password for an account an administrator made or reset
+/// (`product.md` § User system): 20 random letters and digits, never typed
+/// by anyone.
+pub fn generate_first_password() -> Password {
+    use rand::distr::{Alphanumeric, SampleString as _};
+    Password::from(Alphanumeric.sample_string(&mut rand::rng(), FIRST_PASSWORD_LENGTH))
+}
+
 /// Hashes and verifies passwords with the argon2 crate's default parameters,
 /// on the blocking pool and no more at once than the machine has CPUs,
 /// because each hash holds its memory until it finishes.
@@ -92,5 +104,18 @@ fn verify(password: &Password, stored: &PasswordHash) -> Result<bool, HashError>
         Ok(()) => Ok(true),
         Err(password_hash::Error::Password) => Ok(false),
         Err(error) => Err(HashError::Argon2(error)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_first_password_is_twenty_letters_and_digits_and_never_repeats() {
+        let first = generate_first_password();
+        assert_eq!(first.expose().chars().count(), 20);
+        assert!(first.expose().chars().all(|c| c.is_ascii_alphanumeric()));
+        assert_ne!(first.expose(), generate_first_password().expose());
     }
 }

@@ -138,6 +138,8 @@ function partEvent(state: ProductState, part: Part): PartEvent {
       return { type: 'passkeys', ...state.passkeys }
     case 'sessions':
       return { type: 'sessions', sessions: state.sessions }
+    case 'users':
+      return { type: 'users', users: state.users ?? [] }
   }
   if (part.startsWith('plugin:')) {
     const plugin = part.slice('plugin:'.length)
@@ -183,6 +185,8 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
       return { ...state, passkeys: { passkeys: event.passkeys, userHandle: event.userHandle } }
     case 'sessions':
       return { ...state, sessions: event.sessions }
+    case 'users':
+      return { ...state, users: event.users }
   }
 }
 
@@ -231,6 +235,8 @@ interface PendingChange {
 export const useProduct = defineStore('product', () => {
   /** The state as the channel and the writes' answers last left it. */
   const read = ref<ProductState | null>(null)
+  /** The account a channel of an account still to choose its password sent first, before any state; null otherwise. */
+  const firstUser = ref<ProductState['user'] | null>(null)
   /** This page's changes not landed yet, in the order the user made them. */
   const changes = shallowRef<PendingChange[]>([])
   /**
@@ -454,6 +460,10 @@ export const useProduct = defineStore('product', () => {
     partAt.set(part, received)
     if (read.value) {
       read.value = withPart(read.value, event)
+    } else if (event.type === 'user') {
+      // The channel of an account still to choose its password carries the
+      // account alone, until the choice, on this page or another.
+      firstUser.value = event.user
     }
     release((change) => change.part === part)
     if (event.type === 'providers') {
@@ -771,6 +781,7 @@ export const useProduct = defineStore('product', () => {
     partAt.clear()
     changes.value = []
     read.value = null
+    firstUser.value = null
     clearModels()
     vendors.value = null
     vendorRequest = null
@@ -779,8 +790,12 @@ export const useProduct = defineStore('product', () => {
     load.value = 'loading'
   }
 
+  /** The account as the channel last told it, before the state arrived or with it. */
+  const account = computed(() => snapshot.value?.user ?? firstUser.value)
+
   return {
     snapshot,
+    account,
     read,
     load,
     connection,

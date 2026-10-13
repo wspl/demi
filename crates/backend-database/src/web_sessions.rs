@@ -14,19 +14,21 @@ use rusqlite::{OptionalExtension, Row, params};
 use super::StorageError;
 use super::accounts::{ResolvedSession, SessionPolicy, TokenHash};
 use super::columns::{decode, instant};
-use super::control::{ControlService, later, user_row};
+use super::control::{ControlService, USER_COLUMNS, later, user_row};
 
 const SESSIONS: &str = "web_sessions";
 const HANDOFFS: &str = "handoff_codes";
-const COLUMNS: &str = "token_hash, id, name, created_at, last_active_at, handoff_id";
+const COLUMNS: &str = "s.token_hash, s.id, s.name, s.created_at, s.last_active_at, s.handoff_id,
+     COALESCE(NULLIF(issuer.nickname, ''), issuer.email) AS issued_by_name";
 
 /// A session to open: its token's hash, its user, the browser and system it
-/// signs in from, and the handoff code that makes it, if one does.
+/// signs in from, and the handoff code that makes it, if one does, with the
+/// administrator whose sign-in code it was.
 pub struct NewSession {
     pub token: TokenHash,
     pub user: UserId,
     pub name: String,
-    pub handoff: Option<HandoffId>,
+    pub handoff: Option<(HandoffId, Option<UserId>)>,
 }
 
 /// A live session of an account, as the account's list shows it.
@@ -37,6 +39,9 @@ pub struct SessionRecord {
     pub created_at: Timestamp,
     pub last_active_at: Timestamp,
     pub handoff: Option<HandoffId>,
+    /// The nickname of the administrator whose sign-in code made it, or
+    /// their email while they have none.
+    pub issued_by: Option<String>,
 }
 
 impl SessionRecord {
@@ -49,24 +54,29 @@ impl SessionRecord {
             last_active_at: self.last_active_at,
             current: self.token == *reader,
             handoff_id: self.handoff.clone(),
+            issued_by: self.issued_by.clone(),
         }
     }
 }
 
-/// A handoff code to keep in place of the user's previous one: its id, the
-/// hash of the code, and the page it opens.
+/// A handoff code to keep in place of the user's previous one of its kind:
+/// its id, the hash of the code, the page it opens, and the administrator
+/// who made it as a sign-in code for the user, if one did.
 pub struct HandoffIssue {
     pub id: HandoffId,
     pub user: UserId,
     pub code: TokenHash,
     pub to: ProductPath,
+    pub issued_by: Option<UserId>,
 }
 
-/// A handoff code just spent: its id, its user and the page it opens.
+/// A handoff code just spent: its id, its user, the page it opens and the
+/// administrator whose sign-in code it was, if it was one.
 pub struct SpentHandoff {
     pub id: HandoffId,
     pub user: UserId,
     pub to: ProductPath,
+    pub issued_by: Option<UserId>,
 }
 
 impl ControlService {
@@ -86,10 +96,15 @@ impl ControlService {
                 "DELETE FROM web_sessions WHERE expires_at <= ?1",
                 [now.as_millisecond()],
             )?;
+            // A sign-in is the account's activity, which outlives the session.
+            transaction.execute(
+                "UPDATE users SET last_active_at = ?1 WHERE id = ?2",
+                params![now.as_millisecond(), session.user.as_str()],
+            )?;
             transaction.execute(
                 "INSERT INTO web_sessions
-                   (token_hash, id, user_id, expires_at, name, created_at, last_active_at, verified_at, handoff_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?7)",
+                   (token_hash, id, user_id, expires_at, name, created_at, last_active_at, verified_at, handoff_id, issued_by)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6, ?7, ?8)",
                 params![
                     session.token.as_str(),
                     id.as_str(),
@@ -97,7 +112,12 @@ impl ControlService {
                     expires_at.as_millisecond(),
                     session.name,
                     now.as_millisecond(),
-                    session.handoff.as_ref().map(HandoffId::as_str),
+                    session.handoff.as_ref().map(|(id, _)| id.as_str()),
+                    session
+                        .handoff
+                        .as_ref()
+                        .and_then(|(_, issuer)| issuer.as_ref())
+                        .map(UserId::as_str),
                 ],
             )?;
             transaction.commit()?;
@@ -119,10 +139,12 @@ impl ControlService {
             let transaction = connection.transaction()?;
             let found = {
                 let mut statement = transaction.prepare_cached(
-                    "SELECT s.id AS session_id, s.expires_at, s.last_active_at, s.verified_at,
-                            u.id, u.email, u.nickname, u.role, u.created_at
-                     FROM web_sessions s JOIN users u ON u.id = s.user_id
-                     WHERE s.token_hash = ?1",
+                    &format!(
+                        "SELECT s.id AS session_id, s.expires_at, s.last_active_at, s.verified_at,
+                                {USER_COLUMNS}
+                         FROM web_sessions s JOIN users ON users.id = s.user_id
+                         WHERE s.token_hash = ?1"
+                    ),
                 )?;
                 let mut rows = statement.query([token.as_str()])?;
                 match rows.next()? {
@@ -165,6 +187,11 @@ impl ControlService {
                 transaction.execute(
                     "UPDATE web_sessions SET last_active_at = ?1 WHERE token_hash = ?2",
                     params![now.as_millisecond(), token.as_str()],
+                )?;
+                // The account keeps it after its sessions end.
+                transaction.execute(
+                    "UPDATE users SET last_active_at = ?1 WHERE id = ?2",
+                    params![now.as_millisecond(), user.id.as_str()],
                 )?;
             }
             transaction.commit()?;
@@ -225,8 +252,10 @@ impl ControlService {
     pub async fn web_sessions(&self, user: UserId) -> Result<Vec<SessionRecord>, StorageError> {
         self.call(move |connection, now| {
             let mut statement = connection.prepare_cached(&format!(
-                "SELECT {COLUMNS} FROM web_sessions WHERE user_id = ?1 AND expires_at > ?2
-                 ORDER BY created_at DESC, rowid DESC"
+                "SELECT {COLUMNS} FROM web_sessions s
+                   LEFT JOIN users issuer ON issuer.id = s.issued_by
+                 WHERE s.user_id = ?1 AND s.expires_at > ?2
+                 ORDER BY s.created_at DESC, s.rowid DESC"
             ))?;
             let mut rows = statement.query(params![user.as_str(), now.as_millisecond()])?;
             let mut sessions = Vec::new();
@@ -258,8 +287,9 @@ impl ControlService {
         .await
     }
 
-    /// Keeps `issue` as its user's one handoff code, ending the previous
-    /// one, until `lifetime` from now.
+    /// Keeps `issue` as its user's one code of its kind, a sign-in code when
+    /// an administrator made it and a handoff code when the user did, ending
+    /// the previous one, until `lifetime` from now.
     pub async fn issue_handoff_code(
         &self,
         issue: HandoffIssue,
@@ -268,13 +298,15 @@ impl ControlService {
         self.call(move |connection, now| {
             let expires_at = later(now, lifetime)?;
             connection.execute(
-                "INSERT INTO handoff_codes (user_id, id, code_hash, to_path, expires_at, spent)
-                 VALUES (?1, ?2, ?3, ?4, ?5, 0)
-                 ON CONFLICT (user_id) DO UPDATE SET
-                   id = excluded.id, code_hash = excluded.code_hash, to_path = excluded.to_path,
-                   expires_at = excluded.expires_at, spent = 0",
+                "INSERT INTO handoff_codes (user_id, kind, issued_by, id, code_hash, to_path, expires_at, spent)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0)
+                 ON CONFLICT (user_id, kind) DO UPDATE SET
+                   issued_by = excluded.issued_by, id = excluded.id, code_hash = excluded.code_hash,
+                   to_path = excluded.to_path, expires_at = excluded.expires_at, spent = 0",
                 params![
                     issue.user.as_str(),
+                    if issue.issued_by.is_some() { "sign_in" } else { "handoff" },
+                    issue.issued_by.as_ref().map(UserId::as_str),
                     issue.id.as_str(),
                     issue.code.as_str(),
                     issue.to.as_str(),
@@ -296,7 +328,7 @@ impl ControlService {
             let mut statement = connection.prepare_cached(
                 "UPDATE handoff_codes SET spent = 1
                  WHERE code_hash = ?1 AND spent = 0 AND expires_at > ?2
-                 RETURNING id, user_id, to_path",
+                 RETURNING id, user_id, to_path, issued_by",
             )?;
             let mut rows = statement.query(params![code.as_str(), now.as_millisecond()])?;
             let Some(row) = rows.next()? else {
@@ -308,6 +340,10 @@ impl ControlService {
                 // A path checked as the code was made is checked again as it
                 // is spent.
                 to: decode(HANDOFFS, "to_path", ProductPath::try_from(row.get::<_, String>("to_path")?))?,
+                issued_by: row
+                    .get::<_, Option<String>>("issued_by")?
+                    .map(|id| decode(HANDOFFS, "issued_by", UserId::try_from(id)))
+                    .transpose()?,
             }))
         })
         .await
@@ -325,6 +361,7 @@ fn session_row(row: &Row<'_>) -> Result<SessionRecord, StorageError> {
             .get::<_, Option<String>>("handoff_id")?
             .map(|id| decode(SESSIONS, "handoff_id", HandoffId::try_from(id)))
             .transpose()?,
+        issued_by: row.get("issued_by_name")?,
     })
 }
 
