@@ -2883,7 +2883,7 @@ test('a child\'s usage frame sets its own record\'s usage', () => {
     event: 'started',
     job: {
       subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Serve',
-      profile: null, model: RUNS_ON, round: 1, forkedFrom: null, phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
+      profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work', phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
     },
   })
   const usage = { tokens: 60_000, window: 100_000, compactFrom: 50_000, rows: [] }

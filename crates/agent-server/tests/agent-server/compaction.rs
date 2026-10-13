@@ -352,7 +352,7 @@ fn tree_server(model: &Model) -> (Rc<AgentServer<LiveHosts>>, Rc<MemoryTreeStore
         }),
         instructions: Rc::from("system prompt"),
         guide: Rc::from("harness guide"),
-        hosts: Rc::new(LiveHosts),
+        hosts: Rc::default(),
         context: Rc::new([]),
         providers,
         shells: Rc::new(ScriptedShells::default()),

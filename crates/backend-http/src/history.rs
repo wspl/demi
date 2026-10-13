@@ -135,11 +135,20 @@ pub(super) async fn subagents(
         .unwrap_or_default();
     let selections: Vec<_> = nodes.iter().map(|(_, model)| model.clone()).collect();
     let models = runs_on(services, &user.id, &selections).await;
+    // Where each child works follows where the conversation works now
+    // (`subagents.md` § Working directory).
+    let conversation = record.id.clone();
+    let placement = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.placement(&conversation).await })
+        .await?
+        .map_err(ApiError::from)?;
     Ok(Json(Subagents {
         subagents: nodes
             .iter()
             .zip(models)
-            .filter_map(|((node, _), model)| node.job(model))
+            .filter_map(|((node, _), model)| node.job(model, Some(&placement)))
             .collect(),
     }))
 }

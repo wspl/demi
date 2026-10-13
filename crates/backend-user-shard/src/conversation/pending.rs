@@ -176,8 +176,7 @@ impl Shard {
         host.switch_target(record, moving.target.clone(), Some(moving.id.clone()))
             .await
             .map_err(|refusal| reason(&refusal))?;
-        // A deadline of the old binding never releases the new one.
-        self.restart_idle(&record.id);
+        self.switched(&record.id).await;
         Ok(())
     }
 

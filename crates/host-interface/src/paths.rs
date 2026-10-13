@@ -110,6 +110,16 @@ impl HostPaths {
     }
 }
 
+/// `path` relative to `directory` when it is inside it, `.` for
+/// `directory` itself; none when it is outside. Each path is read in the
+/// form its text has, a Windows one by its drive or share.
+pub fn relative_to(directory: &str, path: &str) -> Option<String> {
+    let path = typed_path::Utf8TypedPath::derive(path).normalize();
+    let directory = typed_path::Utf8TypedPath::derive(directory).normalize();
+    let relative = path.strip_prefix(&directory).ok()?.to_string();
+    Some(if relative.is_empty() { ".".to_owned() } else { relative })
+}
+
 #[cfg(test)]
 mod tests {
     use super::HostPaths::{Posix, Windows};

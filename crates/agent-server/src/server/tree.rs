@@ -19,7 +19,7 @@ use std::{
 
 use bytes::Bytes;
 use demi_agent_session::{Continuation, ModelSwitch, SessionEvent, Settle, Status, Subscription};
-use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
+use demi_agent_store::{Placement, AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_output};
 use demi_agent_transcript::IdSource;
 use demi_conversation_socket_protocol::{ServerFrame, index_u32, reset_start};
@@ -610,6 +610,7 @@ impl<H: HostResolver> Tree<H> {
         outbox: Rc<Outbox>,
         from: Option<u32>,
         edge: Option<&BlockId>,
+        placement: Option<&Placement>,
     ) {
         self.sink.attach(Attachment {
             connection,
@@ -640,7 +641,7 @@ impl<H: HostResolver> Tree<H> {
         ];
         for frame in root
             .into_iter()
-            .chain(self.replay())
+            .chain(self.replay(placement))
             .chain(self.live_commands())
         {
             // A frame the fresh outbox refuses belongs to a socket that is
@@ -656,9 +657,10 @@ impl<H: HostResolver> Tree<H> {
         &self,
         from: Option<u32>,
         edge: Option<&BlockId>,
+        placement: Option<&Placement>,
     ) -> Vec<ServerFrame> {
         std::iter::once(self.root_reset(from, edge))
-            .chain(self.replay())
+            .chain(self.replay(placement))
             .chain(self.live_commands())
             .collect()
     }
