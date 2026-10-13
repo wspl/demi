@@ -83,6 +83,10 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
     variant: 'An image first',
     content: text('![The test pattern](assets/photo.png)\nThis is what the capture should show; ours is shifted left by a column.'),
   },
+  {
+    variant: 'A web image',
+    content: text(`The page as it looked: ![The test pattern](${window.location.origin}${demoImageUrl})\nIt opens large in the media viewer.`),
+  },
   { variant: 'A code block', content: text(code) },
   { variant: 'A table, as typed', content: text(table) },
   {
