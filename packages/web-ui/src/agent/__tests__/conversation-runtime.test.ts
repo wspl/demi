@@ -298,7 +298,7 @@ test('a steer the session accepts waits as a pending steer, and one it refuses, 
     await accepted
     // The turn is ending: the session refuses the next steer.
     const refused = runtime.steer(content, 'second')
-    await waitFor(() => h.sent.at(-1)?.type === 'steer')
+    await waitFor(() => h.sent.filter((frame) => frame.type === 'steer').length === 2)
     h.receive({ type: 'steer_result', steerId: 'second', outcome: { status: 'rejected', reason: 'The running turn is finishing' } })
     await waitFor(() => h.sent.at(-1)?.type === 'send')
     expect(h.sent.at(-1)).toEqual({ type: 'send', messageId: 'second', content })

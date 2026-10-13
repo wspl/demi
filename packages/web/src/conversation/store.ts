@@ -14,7 +14,8 @@ import {
   type MessageEditHost,
   type MessageEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
-import { reportError, shownError } from '@demicodes/web-ui/infra/errors'
+import { reportError, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
+import { ConversationSocketError } from '@demicodes/web-ui/transport/conversation-socket'
 import { CONVERSATION_UNREADABLE } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
@@ -264,12 +265,12 @@ export const useConversations = defineStore('conversations', () => {
   const storageReported = new Set<'save' | 'restore' | 'unreadable'>()
 
   // A failed operation is a toast; server state is never replaced by a message.
-  function report(title: HeadlineText, error: unknown): void {
+  function report(title: HeadlineText, error: unknown, options: ReportErrorOptions = {}): void {
     if (error instanceof DOMException && error.name === 'AbortError') {
       return
     }
     if (!lifetime.signal.aborted) {
-      reportError(title, error, { userVisible: true })
+      reportError(title, error, { ...options, userVisible: true })
     }
   }
 
@@ -2449,8 +2450,17 @@ export const useConversations = defineStore('conversations', () => {
       await operation(await runtimeFor(conversation))
       return true
     } catch (error) {
-      // A turn that ran and failed is already a record in the transcript.
-      if (!isRecordedTurnFailure(error)) {
+      if (error instanceof ConversationSocketError) {
+        // The socket dropped before the session answered: the page cannot
+        // tell whether it got the request, and never sends it again
+        // (`web-application.md` § A request the drop interrupts). The drop
+        // itself is reported where the socket was replaced.
+        report('Connection Lost', error, {
+          expected: true,
+          message: 'Demi may not have received your request. Check the conversation once it reconnects.',
+        })
+      } else if (!isRecordedTurnFailure(error)) {
+        // A turn that ran and failed is already a record in the transcript.
         report('The conversation did not accept the request.', error)
       }
       return false
