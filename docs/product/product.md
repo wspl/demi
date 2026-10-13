@@ -748,10 +748,12 @@ few milliseconds reads as the list twitching.
   later message started, with Retry: it is the message still to send, and
   Retry sends it next.
 - **One size for the reading.** The agent's text, the user's messages and
-  the transcript's rows, a step, a notice, a receipt, and what an opened row
-  shows, a thinking's text or a receipt's message, read at one size, the size
-  the user picks in Settings › Appearance, 15 pixels unless they pick
-  another; the rows stand apart by their color, not their size. Labels under a
+  the transcript's rows, a step, a notice, a receipt, and a receipt's message
+  an opened row shows, read at one size, the size the user picks in Settings
+  › Appearance, 15 pixels unless they pick another; the rows stand apart by
+  their color, not their size. A thinking's text, which the reader skims
+  rather than reads, stands one pixel smaller, with looser lines, and follows
+  the same setting. Labels under a
   message, its time or a steer's line, stay small.
 - **The message being sent** is drawn as the message it will become, at its
   height: whether it is still on its way shows in the Requesting row, and a
