@@ -60,10 +60,11 @@ impl ReadBlob for NoBlobs {
 /// The control database's. Its history holds the schema of each published
 /// release before the one that ships the current schema, and of each
 /// development build a server keeps data of (`upgrades.md` § A development
-/// build on a server); 0.1.22-dev.20261011T123543Z shipped the last of
-/// those. The schemas with the subagent limits, without Detect Title, with
-/// the kept limits and with the plugins' secrets after it no server keeps,
-/// but development databases do, and the server's migrate through them.
+/// build on a server): 0.1.22-dev.20261011T123543Z's, and the one with the
+/// plugins' secrets before a request had a read state. The schemas with
+/// the subagent limits, without Detect Title, with the kept limits and
+/// with the plugins' secrets and read states no server keeps, but
+/// development databases do, and the server's migrate through them.
 pub(crate) const CONTROL: Schema = Schema {
     sql: CONTROL_V1,
     history: &[
@@ -114,6 +115,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.22-dev.kept-limits.sql"),
             migration: Migration::Sql(CONTROL_FROM_KEPT_LIMITS),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.plugin-secrets-unread.sql"),
+            migration: Migration::Sql(CONTROL_FROM_PLUGIN_SECRETS_UNREAD),
         },
         Shipped {
             sql: include_str!("schema/control-0.1.22-dev.plugin-secrets.sql"),
@@ -184,11 +189,16 @@ CREATE TABLE credential_allowances (
 CREATE INDEX credential_allowances_of_credential ON credential_allowances (credential_id);
 ";
 
+/// From the control schema with the plugins' secrets, which a server keeps,
+/// to the one where a request has a read state (`product.md`
+/// § Conversations and projects): a request that waits has not been read
+/// yet.
+const CONTROL_FROM_PLUGIN_SECRETS_UNREAD: &str =
+    "ALTER TABLE permission_requests ADD COLUMN read INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1));";
+
 /// From the control schema whose subagent limits keep their numbers to the
 /// one with the plugins' secrets and OAuth clients (`plugins.md` § Secrets,
-/// § OAuth sign-in): two new tables, empty; and a request's read state
-/// (`product.md` § Conversations and projects), which a request that waits
-/// has not yet.
+/// § OAuth sign-in): two new tables, empty.
 const CONTROL_FROM_KEPT_LIMITS: &str = "
 CREATE TABLE plugin_secrets (
   user_id  TEXT NOT NULL REFERENCES users (id),
@@ -205,7 +215,6 @@ CREATE TABLE plugin_oauth_clients (
   client_id    TEXT NOT NULL,
   PRIMARY KEY (plugin, issuer)
 ) STRICT, WITHOUT ROWID;
-ALTER TABLE permission_requests ADD COLUMN read INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1));
 ";
 
 /// Each conversation's database's. Its history holds the schema of each
@@ -2796,9 +2805,57 @@ mod tests {
         );
     }
 
+    /// A database of the control schema with the plugins' secrets before a
+    /// request had a read state, which a server keeps, migrates; a request
+    /// that waits there keeps its values and is unread.
+    #[test]
+    fn a_waiting_request_of_the_control_schema_before_read_states_is_unread() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.22-dev.plugin-secrets-unread.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('u1', 'a@example.test', 'a', 'h', 'master', 0);
+                 INSERT INTO conversations
+                   (id, user_id, title, title_origin, archived, pinned, sort_order, read_revision,
+                    target_kind, context_version, created_at, updated_at)
+                   VALUES ('c1', 'u1', 't', 'user', 0, 0, 0, 0, 'cloud', 0, 0, 0);
+                 INSERT INTO permission_requests
+                   (id, conversation_id, categories, command, node_id, agent_number, agent_description,
+                    created_at, decision, decided_at)
+                   VALUES ('r1', 'c1', '[\"skills.manage\"]', 'demi skills add a/b', 'n1', NULL, NULL,
+                           5, NULL, NULL);",
+            )
+            .unwrap();
+
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let row: (String, String, String, String, i64, Option<String>, i64) = connection
+            .query_row(
+                "SELECT kind, categories, command, node_id, created_at, decision, read
+                 FROM permission_requests WHERE id = 'r1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?, row.get(6)?)),
+            )
+            .unwrap();
+        assert_eq!(
+            row,
+            (
+                "permission".to_owned(),
+                "[\"skills.manage\"]".to_owned(),
+                "demi skills add a/b".to_owned(),
+                "n1".to_owned(),
+                5,
+                None,
+                0
+            )
+        );
+    }
+
     /// The development builds' schemas are the ones their server's
     /// databases record, and formats 4 and 5's, the subagent limits' and
     /// the one without Detect Title the ones development databases record.
+    /// A server records the one with the plugins' secrets before read
+    /// states.
     #[test]
     fn the_development_builds_in_the_history_are_the_ones_their_server_records() {
         for (schema, development, version) in [
@@ -2809,6 +2866,7 @@ mod tests {
             (&CONTROL, include_str!("schema/control-0.1.22-dev.20261011T123543Z.sql"), 388_363_661),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.subagent-limits.sql"), 491_070_162),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.no-detect-title.sql"), 1_079_978_983),
+            (&CONTROL, include_str!("schema/control-0.1.22-dev.plugin-secrets-unread.sql"), 1_293_042_998),
         ] {
             assert_eq!(version_of(development), version);
             assert!(schema.history.iter().any(|shipped| shipped.sql == development));
