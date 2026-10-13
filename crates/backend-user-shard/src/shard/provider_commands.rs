@@ -484,14 +484,15 @@ async fn add(shard: Rc<Shard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8,
     let wire_api = args.wire.map(wire).transpose()?;
     let body = match (args.vendor, args.family) {
         (Some(vendor_id), None) => {
-            if wire_api.is_some() {
-                return Err(failed("--wire is the vendor's; give it only with --family"));
+            if wire_api.is_some() || base_url.is_some() {
+                return Err(failed(
+                    "--wire and --base-url are the vendor's; give them only with --family",
+                ));
             }
             CreateProvider::Vendor {
                 vendor_id,
                 label,
                 api_key,
-                base_url,
                 models: None,
             }
         }

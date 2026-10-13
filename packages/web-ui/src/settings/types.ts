@@ -135,6 +135,22 @@ export const WIRE_API_LABELS: Record<SettingsWireApi, string> = {
   'openai-chat': 'OpenAI Chat Completions',
 }
 
+/** The protocols a compatible API can speak, the ones Add Provider offers (`product.md` § Models & providers). */
+export const COMPATIBLE_WIRE_APIS: readonly SettingsWireApi[] = [
+  'anthropic-messages',
+  'openai-chat',
+  'openai-responses',
+]
+
+/** What Add Provider asks for a compatible API once its protocol is chosen: the endpoint is required, the rest may come later. */
+export interface SettingsCompatibleDraft {
+  wireApi: SettingsWireApi
+  label: string
+  baseUrl: string
+  /** Empty to add the key later. */
+  apiKey: string
+}
+
 /** A models.dev vendor an API key can be added for. */
 export interface SettingsVendor {
   id: string
@@ -148,13 +164,12 @@ export interface SettingsVendor {
 
 /**
  * `setup` is an entry that is not complete yet (`models.md` § A provider is
- * in the list from the start): its `missing` names what it lacks.
+ * in the list from the start): a plain wait, never a failure. `error` and
+ * `unreachable` are failures, which a refused key, an endpoint that did not
+ * answer or a catalog that could not be read cause.
  */
 export type SettingsProviderState =
   'ready' | 'setup' | 'error' | 'unreachable' | 'signed-out' | 'disabled'
-
-/** A part an incomplete entry lacks: its API key, its first model, or its sign-in. */
-export type SettingsSetupPart = 'apiKey' | 'models' | 'account'
 
 /** A model models.dev lists, which the Add Model dialog offers to fill a model from. */
 export interface SettingsModelMatch {
@@ -214,8 +229,15 @@ export interface SettingsProviderEntry {
   id: string
   name: string
   kind: 'api_key' | 'subscription'
-  /** models.dev vendor; null for a bare endpoint. */
+  /** models.dev vendor; null for a compatible API and for a family's own vendor. */
   vendorId: string | null
+  /**
+   * A compatible API (`product.md` § Models & providers): its endpoint and
+   * protocol are the user's to edit and its models are the ones the user
+   * adds. Any other API-key entry is a vendor's: its endpoint is shown, never
+   * edited. Fixed with the entry, so editing the endpoint never changes it.
+   */
+  compatible: boolean
   baseUrl: string
   wireApi: SettingsWireApi
   apiKey: string
@@ -227,15 +249,10 @@ export interface SettingsProviderEntry {
    * requests are HTTP.
    */
   cli?: SettingsProviderCli | null
-  /** Where the model list comes from: the vendor catalog, or ids the user typed. */
+  /** Where the model list comes from: the vendor catalog, or ids the user typed (always, for a compatible API). */
   modelSource: 'catalog' | 'manual'
   catalogFetched: string | null
   state: SettingsProviderState
-  /**
-   * What an incomplete entry lacks, from which the page marks its fields; only
-   * read while `state` is `setup`, and absent for a subscription that has no entry yet.
-   */
-  missing?: SettingsSetupPart[]
   /**
    * What went wrong, from the last test or request: the provider's own words,
    * passed through in full and never paraphrased. Never a note about a healthy

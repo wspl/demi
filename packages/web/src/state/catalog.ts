@@ -2,7 +2,6 @@ import type { ModelInfo } from '@demicodes/web-ui/transport/protocol'
 import type {
   SettingsProviderEntry,
   SettingsProviderModel,
-  SettingsSetupPart,
   SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
@@ -99,14 +98,14 @@ export interface Hidden {
 }
 
 /**
- * What an incomplete entry lacks, from its catalog's availability
+ * Why an incomplete entry cannot infer yet, from its catalog's availability
  * (`models.md` § A provider is in the list from the start); null once it has
  * everything it needs to try.
  */
-export function setupOf(catalog: CatalogProvider | undefined): { message: string; missing: SettingsSetupPart[] } | null {
+export function setupOf(catalog: CatalogProvider | undefined): { message: string } | null {
   const availability = catalog?.availability
   return availability?.type === 'unavailable' && availability.reason === 'setup'
-    ? { message: availability.message, missing: availability.missing ?? [] }
+    ? { message: availability.message }
     : null
 }
 
@@ -167,14 +166,15 @@ export function providerView(
     cliPackage: details?.cliPackage ?? catalog?.cliPackage ?? null,
     keyConfigured: entry.hasApiKey,
     vendorId: entry.vendorId,
-    baseUrl: entry.baseUrl ?? '',
+    compatible: entry.compatible,
+    baseUrl: entry.endpoint ?? '',
     wireApi: wireApi(entry.providerType, entry.wireApi),
     apiKey: '',
-    modelSource: entry.models ? 'manual' : 'catalog',
+    // A compatible API has no catalog: its list is the one the user keeps.
+    modelSource: entry.models || entry.compatible ? 'manual' : 'catalog',
     // The Unix epoch is what a list that was never downloaded reports: no time to show.
     catalogFetched: catalog && Date.parse(catalog.sourceFetchedAt) > 0 ? catalog.sourceFetchedAt : null,
     state,
-    ...(setup ? { missing: setup.missing } : {}),
     // A healthy provider's messages are notes ("Uses the … API"), not failures;
     // an incomplete one says what it lacks on its fields.
     detail: state === 'ready' || state === 'setup'

@@ -99,7 +99,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Providers',
-    'A bare rail of providers beside the selected one, with no surface of its own. Every supported subscription is always listed. A dot means attention, for every kind of provider alike: none while it works, yellow while it is not set up, red when it failed or cannot be reached. An API-key entry edits its endpoint, key and models on the page; a subscription entry manages accounts. Adding a provider asks only its kind and the entry joins the list at once, selected; signing in, and adding or editing a model, open dialogs.'
+    'A bare rail of providers beside the selected one, with no surface of its own. Every supported subscription is always listed. A dot means attention, for every kind of provider alike: none while it works, yellow while it is not set up, red only when it failed or cannot be reached. A vendor entry shows its vendor’s endpoint as plain text and lists the vendor’s models, which a manual list can replace; a compatible API edits its endpoint, lists only the models you add and has nothing to refresh. A subscription entry manages accounts. The entry joins the list at once, selected; signing in, and adding or editing a model, open dialogs.'
   ],
   [
     'Credentials',
@@ -333,7 +333,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Providers · Adding"
-        note="Add in the API Keys caption asks only the kind, a vendor or a protocol of your own endpoint. The entry joins the list at once, selected, with the yellow dot, and its page marks what it lacks: pick Google, paste any key into the red API key field, and Add Model finds Gemini on models.dev; the dot goes with the last part."
+        note="Add in the API Keys caption offers a compatible API, by protocol and then its endpoint and key, or a vendor. The entry joins the list at once, selected, with the yellow dot and nothing red: pick Google, paste any key into the API key field, and Add Model finds Gemini on models.dev; or add a compatible API and see its Models say No models yet until you add one. The dot goes with the last part."
       >
         <div class="h-[640px] w-full max-w-4xl @container rounded-xl border border-line bg-surface-dialog p-6">
           <GallerySettingsProviders :state="adding" />
@@ -342,7 +342,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Providers · Incomplete"
-        note="An entry that cannot run yet wears the yellow dot, and each part it lacks is marked on its page: a missing key is a red field with Required under it, an empty model list says Add at least one model under Add Model, and a subscription nobody signed in to says Sign in required. Google lacks its key, Lab Server its first model, OpenAI Responses API both, Codex its sign-in. Each mark goes the moment its part is saved."
+        note="An entry that cannot run yet wears the yellow dot and nothing red, since nothing has failed: a compatible API with no model says No models yet in plain text, with Add Model and no refresh, and a subscription nobody signed in to says so. Google, a vendor, shows its endpoint as plain text and lacks its key; Lab Server lacks its first model, OpenAI Responses API both, Codex its sign-in. The dot goes the moment the last part is saved."
       >
         <div class="h-[640px] w-full max-w-4xl @container rounded-xl border border-line bg-surface-dialog p-6">
           <GallerySettingsProviders :state="incomplete" />

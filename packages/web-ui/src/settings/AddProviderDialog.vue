@@ -11,16 +11,20 @@ import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { TitleText } from '../ui/ui-text'
 import {
+  COMPATIBLE_WIRE_APIS,
   WIRE_API_LABELS,
   type SettingsVendor,
   type SettingsWireApi,
 } from './types'
 
 /**
- * Adding an API-key provider is one pick. The protocols Demi speaks come
- * first, for any endpoint; a models.dev vendor below brings its endpoint and
- * catalog. Either is then configured on the provider's own page, so nothing here
- * repeats it. Subscriptions are not added: every supported one is always listed.
+ * Adding an API-key provider is one pick of two kinds (`product.md` § Models
+ * & providers). A compatible API, for any proxy or server that speaks one of
+ * the protocols, comes first and asks the protocol here; its endpoint and key
+ * follow in a dialog of their own. A vendor, Anthropic, OpenAI, Google or one
+ * models.dev lists, brings its endpoint and catalog, and is then configured on
+ * the provider's own page. Subscriptions are not added: every supported one is
+ * always listed.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -33,21 +37,22 @@ const emit = defineEmits<{
   retry: []
   close: []
   add: [vendor: SettingsVendor]
-  /** A bare endpoint speaking one of the protocols Demi implements. */
-  addEndpoint: [wireApi: SettingsWireApi]
+  /** A compatible API speaking this protocol: the host asks its endpoint next. */
+  addCompatible: [wireApi: SettingsWireApi]
 }>()
 
 const query = ref('')
 
 const q = computed(() => query.value.trim().toLowerCase())
-const protocols = (Object.keys(WIRE_API_LABELS) as SettingsWireApi[]).map(
+const protocols = COMPATIBLE_WIRE_APIS.map(
   (value): { value: SettingsWireApi; label: TitleText } => ({
     value,
-    label: `${WIRE_API_LABELS[value]} API`,
+    label: WIRE_API_LABELS[value],
   }),
 )
+// A search for "compatible" finds the group, as a search for a vendor finds the vendor.
 const protocolResults = computed(() =>
-  q.value
+  q.value && !'compatible api'.includes(q.value)
     ? protocols.filter((p) => p.label.toLowerCase().includes(q.value))
     : protocols,
 )
@@ -75,7 +80,7 @@ const results = computed(() =>
       <div
         class="select-none px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
       >
-        Any Endpoint
+        Compatible API
       </div>
       <div
         class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float"
@@ -85,7 +90,7 @@ const results = computed(() =>
           :key="p.value"
           type="button"
           class="flex h-10 w-full cursor-default select-none items-center gap-3 px-3 text-left hover:bg-hover"
-          @click="emit('addEndpoint', p.value)"
+          @click="emit('addCompatible', p.value)"
         >
           <span
             class="inline-flex size-6 items-center justify-center rounded-md bg-overlay/8 text-fg-muted"
@@ -102,7 +107,7 @@ const results = computed(() =>
         <div
           class="select-none px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
         >
-          Vendors on models.dev
+          Vendors
         </div>
         <div
           class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float"
