@@ -2323,7 +2323,6 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
- "typed-path",
  "url",
  "uuid",
 ]
@@ -2605,6 +2604,7 @@ dependencies = [
  "thiserror 2.0.20",
  "tokio",
  "tokio-util",
+ "typed-path",
 ]
 
 [[package]]

@@ -648,7 +648,7 @@ async fn a_connection_dropped_with_its_socket_detaches_and_its_outbox_ends() {
     let (connection, mut frames) =
         fixture
             .server
-            .connect(conversation(), "/workspace".into(), TestFiles::new());
+            .connect(conversation(), TestFiles::new());
     connection.handle(open()).await;
     let tree = fixture.server.tree(&conversation()).unwrap();
     assert!(tree.is_attached());

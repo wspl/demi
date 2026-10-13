@@ -49,6 +49,9 @@ const RESULT_MAX_BYTES: usize = 32 * 1024;
 /// The most recent tool calls `show` lists.
 const SHOW_RECENT_TOOLS: usize = 8;
 const INHERIT_LABEL: &str = "(inherit)";
+/// Why the root's directory does not change (`subagents.md` § Working
+/// directory).
+const ROOT_CWD: &str = "The main agent works in the conversation's directory; move the conversation with `demi conversation move` to work elsewhere.";
 const OWNER_CLOSING: &str = "owner session is closing";
 
 /// A live child: its node, and what its supervision keeps about it.
@@ -80,12 +83,8 @@ impl<H: HostResolver> Child<H> {
         self.node.id()
     }
 
-    fn parent(&self) -> &NodeId {
-        self.node
-            .record()
-            .parent
-            .as_ref()
-            .expect("a child's record names its parent")
+    fn parent(&self) -> NodeId {
+        self.node.parent().expect("a child's record names its parent")
     }
 
     /// Its place among its siblings: spawn order, its number's.
@@ -112,6 +111,9 @@ pub(crate) enum StartInput {
         prompt: String,
         profile_name: Option<String>,
         description: String,
+        /// `--cwd`, read against the caller's directory; none for the
+        /// caller's own.
+        cwd: Option<String>,
     },
     Resume {
         id: NodeId,
@@ -186,7 +188,7 @@ impl<H: HostResolver> Tree<H> {
             .children
             .borrow()
             .values()
-            .filter(|child| child.parent() == owner)
+            .filter(|child| &child.parent() == owner)
             .cloned()
             .collect();
         children.sort_by_key(|child| child.rank());
@@ -211,7 +213,7 @@ impl<H: HostResolver> Tree<H> {
     /// Whether `child` is a live child of `owner`.
     pub(crate) fn is_child_of(&self, child: &NodeId, owner: &NodeId) -> bool {
         self.child(child)
-            .is_some_and(|child| child.parent() == owner)
+            .is_some_and(|child| &child.parent() == owner)
     }
 
     /// The node that owns a start: the caller, live and not closing.
@@ -311,7 +313,11 @@ impl<H: HostResolver> Tree<H> {
                     prompt,
                     profile_name,
                     description,
-                } => tree.spawn(&owner, prompt, profile_name, description).await,
+                    cwd,
+                } => {
+                    tree.spawn(&owner, prompt, profile_name, description, cwd)
+                        .await
+                }
                 StartInput::Resume { id, message } => tree.reopen(&owner, id, message).await,
                 StartInput::Fork {
                     source,
@@ -331,7 +337,8 @@ impl<H: HostResolver> Tree<H> {
 
     /// Spawns a child of `owner` with the next agent number and `prompt`
     /// queued, under the user's current subagent settings and the profile
-    /// `profile_name`, none for the inherit profile. A check that fails
+    /// `profile_name`, none for the inherit profile, working in `owner`'s
+    /// directory or the one `cwd` names against it. A check that fails
     /// creates nothing. Answers its number.
     async fn spawn(
         self: &Rc<Self>,
@@ -339,6 +346,7 @@ impl<H: HostResolver> Tree<H> {
         prompt: String,
         profile_name: Option<String>,
         description: String,
+        cwd: Option<String>,
     ) -> Result<u64, String> {
         if !owner.record().can_spawn_subagents {
             return Err("this session may not spawn subagents".to_owned());
@@ -347,6 +355,10 @@ impl<H: HostResolver> Tree<H> {
         let setup = self
             .spawn_setup(&server, owner, profile_name.as_deref())
             .await?;
+        let cwd = match cwd {
+            Some(dir) => owner.existing_directory(&dir).await?,
+            None => owner.directory().await.map_err(|error| error.to_string())?,
+        };
         self.check_depth(owner, setup.limits).await?;
         let slot = self.reserve_live(setup.limits)?;
         let runtime = self
@@ -371,10 +383,10 @@ impl<H: HostResolver> Tree<H> {
             closed: None,
             delivered: false,
             forked_from: None,
+            cwd: Some(cwd),
         };
         let origin = Origin::New {
             record,
-            cwd: owner.cwd().to_owned(),
             model: setup.model,
             first_message: Some(self.text_message(prompt)),
         };
@@ -414,6 +426,8 @@ impl<H: HostResolver> Tree<H> {
             .spawn_setup(&server, owner, profile_name.as_deref())
             .await?;
         let mut seed = self.fork_seed(&source).await?;
+        // A fork starts where its parent works, as a spawn does.
+        let cwd = owner.directory().await.map_err(|error| error.to_string())?;
         self.check_depth(owner, setup.limits).await?;
         let slot = self.reserve_live(setup.limits)?;
         // The child starts on the source's model, which compacts what the
@@ -460,6 +474,7 @@ impl<H: HostResolver> Tree<H> {
             closed: None,
             delivered: false,
             forked_from: Some(source.number),
+            cwd: Some(cwd),
         };
         seed.state.queue.push(self.text_message(message));
         let origin = Origin::Forked {
@@ -673,6 +688,40 @@ impl<H: HostResolver> Tree<H> {
         self.restore_children(&child.node).await;
         self.supervise(&child);
         Ok(id)
+    }
+
+    /// The working directory of the live agent `caller`: a child's own, the
+    /// conversation's for the root.
+    pub(crate) async fn directory_of(&self, caller: &NodeId) -> Result<String, String> {
+        let node = self
+            .live_agent(caller)
+            .ok_or("this session is not in the agent directory")?;
+        node.directory().await.map_err(|error| error.to_string())
+    }
+
+    /// Moves the live child `caller` to `dir`, read against its directory,
+    /// from its next `shell` call on, and tells the pages; the root works
+    /// in the conversation's directory, and a directory the primary Host
+    /// does not have changes nothing (`subagents.md` § Working directory).
+    /// Answers the new directory.
+    pub(crate) async fn change_cwd(&self, caller: &NodeId, dir: &str) -> Result<String, String> {
+        if caller == self.root.id() {
+            return Err(ROOT_CWD.to_owned());
+        }
+        let child = self
+            .child(caller)
+            .ok_or("this session is not in the agent directory")?;
+        let cwd = child.node.existing_directory(dir).await?;
+        child
+            .node
+            .set_cwd(cwd.clone())
+            .await
+            .map_err(|error| error.to_string())?;
+        self.sink.emit(ServerFrame::Subagent {
+            event: SubagentEvent::Changed,
+            job: child.job(&child.node.record()),
+        });
+        Ok(cwd)
     }
 
     /// Registers a new live child, sends its `started` frame and its
@@ -1014,7 +1063,7 @@ impl<H: HostResolver> Tree<H> {
     /// goes to its parent, whose save marks it delivered.
     async fn close(self: &Rc<Self>, child: &Rc<Child<H>>, kind: CloseKind) {
         let record = child.node.record().clone();
-        let owner = self.node(child.parent());
+        let owner = self.node(&child.parent());
         let _lease = match &owner {
             Some(owner) => Some(owner.lifecycle().enter(Purpose::Maintenance).await),
             None => None,
@@ -1341,7 +1390,7 @@ impl<H: HostResolver> Tree<H> {
     pub(crate) async fn show(&self, number: u64) -> Result<Option<(ShownAgent, String)>, String> {
         let now = self.clock.now().as_millisecond();
         if let Some(child) = self.child_numbered(number) {
-            let Some(parent) = self.node(child.parent()) else {
+            let Some(parent) = self.node(&child.parent()) else {
                 return Ok(None);
             };
             let snapshot = self.snapshot(&child, parent.record().number, now);
@@ -1397,7 +1446,7 @@ impl<H: HostResolver> Tree<H> {
     /// The live child of `owner` the model knows by `number`.
     pub(crate) fn live_child_of(&self, owner: &NodeId, number: u64) -> Option<NodeId> {
         self.child_numbered(number)
-            .filter(|child| child.parent() == owner)
+            .filter(|child| &child.parent() == owner)
             .map(|child| child.id().clone())
     }
 
@@ -1546,7 +1595,7 @@ fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 5] {
     [
         ServerFrame::Subagent {
             event: SubagentEvent::Started,
-            job: child.job(child.node.record()),
+            job: child.job(&child.node.record()),
         },
         {
             // The page holds none of a child's blocks until it shows it

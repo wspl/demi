@@ -20,7 +20,9 @@ use demi_backend_database::conversation_index::{
 };
 use demi_agent_session::left_by_offline_host;
 use demi_backend_database::devices::{CLOUD_NAME, DeviceRecord};
-use demi_backend_host_access::root_of;
+use demi_agent_tools::NodeContext;
+use demi_backend_host_access::access::HostAccessError;
+use demi_backend_host_access::{conversation_of, root_of};
 use demi_backend_remote_host::host_paths;
 use demi_host_interface::HostPaths;
 use demi_runner_protocol::wire::RunnerPlatform;
@@ -164,6 +166,17 @@ impl Shard {
             (None, None) => CLOUD_NAME.to_owned(),
         };
         Ok((device, name))
+    }
+
+    /// The working directory of `node` on the primary Host: a child's own,
+    /// and for the root the conversation's, its target's directory
+    /// (`subagents.md` § Working directory).
+    pub(crate) async fn node_directory(&self, node: NodeContext<'_>) -> Result<String, HostAccessError> {
+        if let Some(cwd) = node.cwd {
+            return Ok(cwd.to_owned());
+        }
+        let record = self.host_shard().owned_conversation(&conversation_of(node.root)).await?;
+        Ok(self.host_shard().resolve_target(&record).await?.path().to_owned())
     }
 
     /// How the primary Host of the conversation `id` writes its paths: in

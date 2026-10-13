@@ -266,7 +266,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     let files = TestFiles::new();
     files.upload("upload-1", resolved);
     let mut client =
-        TestClient::connect_with(&fixture.server, &conversation(), "/workspace", files);
+        TestClient::connect_with(&fixture.server, &conversation(), files);
     client.send(open()).await;
     client.next_until(is_pending_steers).await;
     client
@@ -397,7 +397,7 @@ async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_
     let files = TestFiles::new();
     files.upload("upload-1", resolved);
     let mut client =
-        TestClient::connect_with(&fixture.server, &conversation(), "/workspace", files);
+        TestClient::connect_with(&fixture.server, &conversation(), files);
     client.send(open()).await;
     client.next_until(is_pending_steers).await;
     client
@@ -1084,7 +1084,6 @@ async fn a_restored_report_of_a_command_no_shells_hold_carries_its_stored_output
                     agent_inputs: Vec::new(),
                     reports: vec![pending],
                     intervals: Vec::new(),
-                    cwd: "/workspace".into(),
                     model: demi_agent_store::testing::test_model(),
                     edits: Vec::new(),
                 },

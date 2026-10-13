@@ -52,6 +52,7 @@ fn instructions(personal: &str) -> NewContext {
         source: "instructions".to_owned(),
         text,
         instructions: entries,
+        cwd: None,
     }
 }
 
@@ -68,6 +69,7 @@ fn skills() -> NewContext {
             entry("web-design")
         ),
         instructions: Vec::new(),
+        cwd: None,
     }
 }
 

@@ -284,7 +284,6 @@ mod tests {
             agent_inputs: Vec::new(),
             reports: Vec::new(),
             intervals: Vec::new(),
-            cwd: "/work".into(),
             model: test_model(),
             edits: Vec::new(),
         };

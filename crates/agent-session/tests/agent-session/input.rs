@@ -655,7 +655,6 @@ async fn a_message_admitted_while_the_action_finishes_opens_the_next_continuatio
     };
     let init = SessionInit {
         id: root(),
-        cwd: "/workspace".to_owned(),
         model: test_model(),
         runtime: Box::new(provider.clone()),
     };

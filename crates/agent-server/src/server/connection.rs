@@ -125,12 +125,11 @@ impl FrameRx {
 }
 
 /// One conversation socket's handling. It belongs to one conversation: the
-/// backend names the conversation and its working directory, and the client
-/// never sends them. Dropping it detaches it; the tree's turns keep running.
+/// backend names the conversation, and the client never sends it. Dropping
+/// it detaches it; the tree's turns keep running.
 pub struct Connection<H: HostResolver> {
     id: u64,
     root: NodeId,
-    cwd: String,
     server: Rc<AgentServer<H>>,
     resolver: Rc<dyn ContentResolver>,
     outbox: Rc<Outbox>,
@@ -141,14 +140,12 @@ impl<H: HostResolver> Connection<H> {
         server: Rc<AgentServer<H>>,
         id: u64,
         root: NodeId,
-        cwd: String,
         resolver: Rc<dyn ContentResolver>,
     ) -> (Self, FrameRx) {
         let (outbox, frames) = Outbox::new(server.deps.config.outbox_frames);
         let connection = Self {
             id,
             root,
-            cwd,
             server,
             resolver,
             outbox,
@@ -258,7 +255,7 @@ impl<H: HostResolver> Connection<H> {
             return;
         }
         let _turn = self.server.opening.acquire(self.root.clone()).await;
-        let (tree, continuation) = match self.server.live_or_open(&self.root, &self.cwd).await {
+        let (tree, continuation) = match self.server.live_or_open(&self.root).await {
             Ok(opened) => opened,
             Err(error) => {
                 self.error(error);

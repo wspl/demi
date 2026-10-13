@@ -109,7 +109,6 @@ pub struct SessionDeps {
 /// A new session's state.
 pub struct SessionInit {
     pub id: NodeId,
-    pub cwd: String,
     pub model: ModelSelection,
     pub runtime: Box<dyn ProviderRuntime>,
 }
@@ -522,7 +521,6 @@ impl AgentSession {
         let transcript = TranscriptLog::new(Vec::new(), deps.ids.clone(), deps.clock.clone());
         let parts = CoreParts {
             id: init.id,
-            cwd: init.cwd,
             model: init.model,
             provider: init.runtime,
             transcript,
@@ -602,7 +600,6 @@ impl AgentSession {
         let held = interrupted || transcript.ends_with_interruption();
         let parts = CoreParts {
             id,
-            cwd: state.cwd,
             model: state.model,
             provider: runtime,
             transcript,

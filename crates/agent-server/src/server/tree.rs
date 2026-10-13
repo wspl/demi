@@ -254,7 +254,6 @@ impl<H: HostResolver> Tree<H> {
     pub(crate) async fn open(
         server: &Rc<AgentServer<H>>,
         root: &NodeId,
-        cwd: &str,
     ) -> Result<(Rc<Self>, Option<Continuation>), OpenError> {
         let deps = &server.deps;
         let toolset = deps.toolsets.current().await.map_err(OpenError::Toolset)?;
@@ -268,7 +267,6 @@ impl<H: HostResolver> Tree<H> {
             .map_err(AssembleError::from)?;
         let origin = stored.unwrap_or_else(|| Origin::New {
             record: NodeRecord::root(root.clone(), deps.clock.now()),
-            cwd: cwd.to_owned(),
             model: model.clone(),
             first_message: None,
         });

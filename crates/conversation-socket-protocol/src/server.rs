@@ -366,11 +366,13 @@ pub enum AbortTarget {
 serde_plain::derive_display_from_serialize!(AbortTarget);
 serde_plain::derive_fromstr_from_deserialize!(AbortTarget);
 
-/// Whether a subagent started or closed.
+/// Whether a subagent started, changed while it runs, as when `demi agent
+/// cwd` moved it, or closed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SubagentEvent {
     Started,
+    Changed,
     Closed,
 }
 
@@ -430,6 +432,11 @@ pub struct SubagentJob {
     #[schemars(with = "String")]
     #[garde(skip)]
     pub result: Option<String>,
+    /// Its working directory on the primary Host now, where its `shell`
+    /// calls start (`subagents.md` § Working directory); a `changed` frame
+    /// tells a change while it runs.
+    #[garde(length(min = 1))]
+    pub cwd: String,
 }
 
 /// What a child's round runs on (`subagents.md` § What an agent runs on),

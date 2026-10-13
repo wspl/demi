@@ -119,8 +119,12 @@ impl ContextSource for Instructions {
                 .instructions(shard.user().clone())
                 .await
                 .map_err(|error| format!("the personal instructions cannot be read: {error}"))?;
+            let cwd = shard
+                .node_directory(node)
+                .await
+                .map_err(|error| format!("the working directory cannot be read: {error}"))?;
             let files = self
-                .project_files(&shard, conversation_of(node.root), node.cwd, turn)
+                .project_files(&shard, conversation_of(node.root), &cwd, turn)
                 .await;
             let answer = match render(&personal, &files) {
                 Some(answer) => answer,
