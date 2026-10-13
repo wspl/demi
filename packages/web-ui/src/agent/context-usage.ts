@@ -73,13 +73,18 @@ export function contextFilled(usage: ContextUsage): number {
 }
 
 /**
- * The figure the context card's header shows and the ring's tip repeats:
+ * The figure the context card's header shows and the ring's tip repeats after its label:
  * what fills the context against the window and its share, such as
  * `139K / 1M (13%)`; the filled tokens alone while the model has no window.
  */
 export function contextFigure(usage: ContextUsage): string {
   const filled = formatTokens(contextFilled(usage))
   return usage.window ? `${filled} / ${formatTokens(usage.window)} (${contextPercent(usage)})` : filled
+}
+
+/** The ring's tip: the card header's figure under the word Context; none while the model has no window. */
+export function contextTip(usage: ContextUsage | null): string | undefined {
+  return usage?.window ? `Context ${contextFigure(usage)}` : undefined
 }
 
 /** The rows that stand after what the request carries, in this order. */
