@@ -8,7 +8,7 @@ import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import { useDevicePairing, type PairingResult } from '@demicodes/web-ui/devices/pairing'
 import { baseName, delay } from '@demicodes/utils'
-import { demoDeviceInstallation } from '../fixtures/device-installation'
+import { demoInstallCommands } from '../fixtures/device-installation'
 import type { WorkspaceDraft, WorkspaceHostChoice, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import FileTree from '@demicodes/web-ui/files/FileTree.vue'
@@ -700,7 +700,7 @@ onMounted(() => {
             :is-open="workspacePairing.isOpen.value"
             stack
             :overlay-store="appOverlayStore"
-            :installation="demoDeviceInstallation"
+            :install-commands="demoInstallCommands"
             :phase="workspacePairing.phase.value"
             @close="workspacePairing.close"
             @next="workspacePairing.phase.value = { kind: 'code' }"

@@ -11,7 +11,7 @@ use crate::auth::UserDto;
 use crate::cloud::CloudStatus;
 use crate::conversations::ConversationSummary;
 use crate::credentials::CredentialDto;
-use crate::devices::{DeviceDto, StunUrl};
+use crate::devices::{DeviceDto, InstallCommands, StunUrl};
 use crate::ids::ConversationId;
 use crate::plugins::PluginEntry;
 use crate::providers::ProviderState;
@@ -38,10 +38,12 @@ pub struct ProductState {
     pub providers: Vec<ProviderState>,
     pub workspaces: Vec<WorkspaceDto>,
     pub devices: Vec<DeviceDto>,
-    /// The URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`), whose origin
-    /// serves the installers: the page's install command names it, since
-    /// the page's own origin may be another server's, as in development.
+    /// The URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`).
     pub public_url: String,
+    /// The commands that install the runner on each system, which fetch the
+    /// installer from the origin of `public_url`, not from the page's own,
+    /// which may be another server's, as in development.
+    pub install_commands: InstallCommands,
     /// The STUN servers the page's peers ask for the address the internet
     /// sees the browser at (`DEMI_STUN_URLS`, `direct-channel.md` § Making
     /// the channel); none keeps direct channels to one network.
