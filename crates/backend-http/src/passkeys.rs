@@ -118,6 +118,9 @@ pub(super) async fn sign_in(
         .account(user.clone())
         .await?
         .ok_or_else(|| refused(Refusal::Failed))?;
+    if account.user.disabled {
+        return Err(ApiError::account_disabled());
+    }
     services.sync.mark(&user, Part::Passkeys);
     let session = services.sessions.open(user.clone(), user_agent(&headers)).await?;
     services.sync.mark(&user, Part::Sessions);

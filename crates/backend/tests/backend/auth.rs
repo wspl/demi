@@ -299,7 +299,7 @@ async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_pa
     // An administrator's request from another page creates no account, and a
     // sign-out from another page ends no session.
     let account =
-        |email: &str| Some(json!({ "email": email, "password": "user-pass-1", "role": "user" }));
+        |email: &str| Some(json!({ "email": email, "role": "user" }));
     for origin in others {
         let created = post_from(
             &backend,
@@ -325,7 +325,7 @@ async fn a_request_that_could_act_comes_from_a_page_of_the_product_or_from_no_pa
         .await
         .json::<Users>()
         .users;
-    let emails: Vec<&str> = users.iter().map(|user| user.email.as_str()).collect();
+    let emails: Vec<&str> = users.iter().map(|listed| listed.user.email.as_str()).collect();
     assert_eq!(emails, [MASTER_EMAIL]);
     for (origin, email) in [
         (Some(product.as_str()), "page@example.test"),

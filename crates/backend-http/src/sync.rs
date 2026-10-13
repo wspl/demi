@@ -37,6 +37,10 @@ pub(super) async fn channel(
         .check(&token)
         .await?
         .ok_or_else(ApiError::unauthenticated)?;
+    // No socket of an account still to choose its password opens.
+    if session.user.chooses_password {
+        return Err(ApiError::password_choice_required());
+    }
     let upgrade = upgrade.map_err(|_| {
         ApiError::new(
             StatusCode::UPGRADE_REQUIRED,

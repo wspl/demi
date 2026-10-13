@@ -17,16 +17,7 @@ const PNG: [u8; 12] = [
 ];
 
 pub(crate) async fn user(backend: &TestBackend, master: &Session, email: &str) -> Session {
-    let password = format!("{}-pass-1", email.split('@').next().unwrap());
-    let body = json!({ "email": email, "password": password, "role": "user" });
-    let created = backend.post("/api/users", Some(master), body).await;
-    assert_eq!(
-        created.status,
-        StatusCode::CREATED,
-        "{}",
-        String::from_utf8_lossy(&created.body)
-    );
-    backend.login(email, &password).await
+    backend.make_user(master, email, "user").await
 }
 
 /// Uploads `bytes`, and answers the upload's id and where its bytes are.

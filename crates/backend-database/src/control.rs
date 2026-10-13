@@ -11,11 +11,12 @@ use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::UserId;
 use demi_web_api_protocol::settings::Preferences;
 use demi_web_api_protocol::text::EmailAddress;
+use demi_web_api_protocol::users::ListedUser;
 use jiff::SignedDuration;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
 use super::accounts::{
-    Account, ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash, PasswordHash,
+    Account, ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash, PasswordHash, TokenHash,
 };
 use super::columns::{decode, instant, json, to_json};
 use super::{StorageError, schema, sqlite};
@@ -26,7 +27,9 @@ pub struct ControlService {
     clock: Arc<dyn Clock>,
 }
 
-const USER_COLUMNS: &str = "id, email, nickname, role, created_at";
+/// What `user_row` reads.
+pub(crate) const USER_COLUMNS: &str = "users.id, users.email, users.nickname, users.role, users.created_at,
+     users.disabled, users.chooses_password";
 
 impl ControlService {
     /// Opens the database, and gives a new one its schema.
@@ -111,6 +114,8 @@ impl ControlService {
                 nickname,
                 role: Role::Master,
                 created_at: now,
+                disabled: false,
+                chooses_password: false,
             }))
         })
         .await
@@ -142,24 +147,34 @@ impl ControlService {
         .await
     }
 
-    /// Every account, in the order they were created.
-    pub async fn users(&self) -> Result<Vec<UserDto>, StorageError> {
+    /// Every account, in the order they were created, each with the latest
+    /// activity of any of its sessions.
+    pub async fn users(&self) -> Result<Vec<ListedUser>, StorageError> {
         self.call(|connection, _| {
             let mut statement = connection.prepare_cached(&format!(
-                "SELECT {USER_COLUMNS} FROM users ORDER BY created_at, rowid"
+                "SELECT {USER_COLUMNS},
+                        (SELECT max(w.last_active_at) FROM web_sessions w WHERE w.user_id = users.id) AS active_at
+                 FROM users ORDER BY users.created_at, users.rowid"
             ))?;
             let mut rows = statement.query([])?;
             let mut users = Vec::new();
             while let Some(row) = rows.next()? {
-                users.push(user_row(row)?);
+                users.push(ListedUser {
+                    user: user_row(row)?,
+                    last_active_at: row
+                        .get::<_, Option<i64>>("active_at")?
+                        .map(|millisecond| decode("web_sessions", "last_active_at", Timestamp::from_millisecond(millisecond)))
+                        .transpose()?,
+                });
             }
             Ok(users)
         })
         .await
     }
 
-    /// A new account of `role`; `None`, writing nothing, when an account has
-    /// the address already.
+    /// A new account of `role` whose owner is still to choose its own
+    /// password; `None`, writing nothing, when an account has the address
+    /// already.
     pub async fn create_user(
         &self,
         email: EmailAddress,
@@ -169,8 +184,8 @@ impl ControlService {
         let id = UserId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         self.call(move |connection, now| {
             let created = connection.execute(
-                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
-                 VALUES (?1, ?2, '', ?3, ?4, ?5) ON CONFLICT (email) DO NOTHING",
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at, disabled, chooses_password)
+                 VALUES (?1, ?2, '', ?3, ?4, ?5, 0, 1) ON CONFLICT (email) DO NOTHING",
                 params![
                     id.as_str(),
                     email.as_str(),
@@ -185,6 +200,8 @@ impl ControlService {
                 nickname: String::new(),
                 role,
                 created_at: now,
+                disabled: false,
+                chooses_password: true,
             }))
         })
         .await
@@ -218,17 +235,100 @@ impl ControlService {
         .await
     }
 
-    pub async fn set_password(
+    /// Sets the password its owner chose, which ends the account's choice.
+    pub async fn set_chosen_password(
         &self,
         user: UserId,
         password_hash: PasswordHash,
     ) -> Result<(), StorageError> {
+        self.set_password(user, password_hash, false).await
+    }
+
+    /// Sets a first password an administrator's reset made, which its owner
+    /// replaces at once: the account chooses its own password again.
+    pub async fn set_first_password(
+        &self,
+        user: UserId,
+        password_hash: PasswordHash,
+    ) -> Result<(), StorageError> {
+        self.set_password(user, password_hash, true).await
+    }
+
+    async fn set_password(
+        &self,
+        user: UserId,
+        password_hash: PasswordHash,
+        chooses: bool,
+    ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             connection.execute(
-                "UPDATE users SET password_hash = ?1 WHERE id = ?2",
-                params![password_hash.as_str(), user.as_str()],
+                "UPDATE users SET password_hash = ?1, chooses_password = ?2 WHERE id = ?3",
+                params![password_hash.as_str(), chooses, user.as_str()],
             )?;
             Ok(())
+        })
+        .await
+    }
+
+    /// Gives the account `role`.
+    pub async fn set_role(&self, user: UserId, role: Role) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "UPDATE users SET role = ?1 WHERE id = ?2",
+                params![role.to_string(), user.as_str()],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// Disables or enables the account. Disabling deletes its sessions in
+    /// the same transaction and answers their tokens' hashes, whose pages'
+    /// channels and sockets end; enabling answers none.
+    pub async fn set_disabled(
+        &self,
+        user: UserId,
+        disabled: bool,
+    ) -> Result<Vec<TokenHash>, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            transaction.execute(
+                "UPDATE users SET disabled = ?1 WHERE id = ?2",
+                params![disabled, user.as_str()],
+            )?;
+            let ended = if disabled {
+                sign_out_all(&transaction, &user)?
+            } else {
+                Vec::new()
+            };
+            transaction.commit()?;
+            Ok(ended)
+        })
+        .await
+    }
+
+    /// Deletes every session of the account and answers their tokens'
+    /// hashes, whose pages' channels and sockets end.
+    pub async fn sign_out_everywhere(&self, user: UserId) -> Result<Vec<TokenHash>, StorageError> {
+        self.call(move |connection, _| sign_out_all(connection, &user))
+            .await
+    }
+
+    /// The tokens' hashes of every live session of the account, whose
+    /// channels and sockets end without the sessions: the account must
+    /// choose its password first.
+    pub async fn session_tokens(&self, user: UserId) -> Result<Vec<TokenHash>, StorageError> {
+        self.call(move |connection, now| {
+            let mut statement = connection.prepare_cached(
+                "SELECT token_hash FROM web_sessions WHERE user_id = ?1 AND expires_at > ?2",
+            )?;
+            let tokens = statement
+                .query_map(params![user.as_str(), now.as_millisecond()], |row| {
+                    row.get::<_, String>(0)
+                })?
+                .map(|token| token.map(TokenHash::from_stored))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(tokens)
         })
         .await
     }
@@ -455,7 +555,20 @@ pub(crate) fn user_row(row: &Row<'_>) -> Result<UserDto, StorageError> {
             row.get::<_, String>("role")?.parse::<Role>(),
         )?,
         created_at: instant(row, "users", "created_at")?,
+        disabled: row.get("disabled")?,
+        chooses_password: row.get("chooses_password")?,
     })
+}
+
+/// Deletes the user's sessions and answers their tokens' hashes.
+fn sign_out_all(connection: &Connection, user: &UserId) -> Result<Vec<TokenHash>, StorageError> {
+    let mut statement = connection
+        .prepare_cached("DELETE FROM web_sessions WHERE user_id = ?1 RETURNING token_hash")?;
+    let tokens = statement
+        .query_map([user.as_str()], |row| row.get::<_, String>(0))?
+        .map(|token| token.map(TokenHash::from_stored))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(tokens)
 }
 
 fn account(row: &Row<'_>) -> Result<Account, StorageError> {
