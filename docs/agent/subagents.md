@@ -1173,7 +1173,12 @@ Where the room runs out, *Forked from agent N* gives way first, then the
 model's name; the state and time always stay.
 
 - **The Agents window** shows it as a status bar along the window's bottom
-  edge, for the tab it shows.
+  edge, for the tab it shows, with the composer's context indicator after the
+  model and effort: the child's own context, and on click the same context
+  card, filled from the child's session ([Context card](compaction.md#what-fills-the-context)),
+  whose Compact compacts the child and whose usage limits are those of the
+  account the child runs on. The bar's text keeps the same distance from the
+  window's left and right edges as the transcript's content above it.
 - **An agent link and a receipt's name**, pointed at, show the two groups
   on one line and nothing more: the link's own text already names the
   child, and the state is the line's own first word.
