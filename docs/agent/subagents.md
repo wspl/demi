@@ -1222,7 +1222,8 @@ doing and what it runs on:
   when it is on.
 
 Where the room runs out, *Forked from agent N* gives way first, then the
-model's name; the state and time always stay.
+model's name and the folder's name together, the folder keeping its mark
+and its tip; the state and time always stay.
 
 - **The Agents window** shows it as a status bar along the window's bottom
   edge, for the tab it shows, made of segments as an editor's status bar is:
