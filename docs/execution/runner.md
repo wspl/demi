@@ -956,7 +956,8 @@ promise, since a system may clear it.
   creates at the conversation's first job on that Host; on Windows under
   `%USERPROFILE%\.demi`. Every agent of the conversation shares it.
 - **`DEMI_SCRATCH`** names it in every job of the conversation, on the
-  primary Host and on attached ones, and in the commands' context.
+  primary Host and on attached ones, so the commands a job runs find it in
+  their environment.
 - **Not a change:** the runner marks paths in it `temporary`, as it marks
   those in the system's temporary directories
   ([Temporary files](edit-tracking.md#temporary-files)).
@@ -965,7 +966,9 @@ promise, since a system may clear it.
   still exist, and the runner removes every scratch directory of a
   conversation not among them, so a deleted conversation's scratch leaves a
   Host offline at the time as soon as it connects, with nothing to remember
-  in between.
+  in between. A backend that cannot read the conversations then drops the
+  connection rather than name none, which would remove every scratch
+  directory; the runner connects again.
 
 The user login profile is the one in the job's home, the directory the job's
 `HOME` names, and the profiles see that directory as `$HOME`. A job's `HOME`
