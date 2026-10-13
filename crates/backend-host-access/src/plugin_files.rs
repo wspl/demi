@@ -140,6 +140,7 @@ async fn sync_directories(
         .map(|(plugin, _)| LookAt {
             path: base(plugin),
             limit: 0,
+            within: None,
         })
         .collect();
     let found = if listed.is_empty() {
@@ -154,7 +155,7 @@ async fn sync_directories(
             Look::Directory(entries) => entries.into_iter().map(|entry| entry.name).collect(),
             Look::Missing => Vec::new(),
             Look::Unreadable(error) => return Err(error),
-            Look::File { .. } | Look::Other => {
+            Look::File { .. } | Look::Other | Look::Link => {
                 return Err(HostError::failed(
                     None,
                     format!("{} is not a directory", base(plugin)),
@@ -229,6 +230,7 @@ pub async fn look_files(host: &RemoteHost, reads: &[HostRead]) -> Result<(Vec<Ho
         .map(|read| LookAt {
             path: read.path.clone(),
             limit: read.limit,
+            within: read.within.clone(),
         })
         .collect();
     let (found, read_at) = host.look(&paths).await?;
@@ -250,6 +252,7 @@ pub async fn look_files(host: &RemoteHost, reads: &[HostRead]) -> Result<(Vec<Ho
                 size,
             },
             Look::Other => HostFile::Other,
+            Look::Link => HostFile::Link,
             Look::Unreadable(error) => HostFile::Unreadable {
                 message: error.message,
             },
@@ -322,7 +325,8 @@ mod tests {
         let read = |path: &str, limit: u64| HostRead {
             path: format!("{home}/skills/{path}"),
             limit,
-        };
+    within: None,
+};
         let reads = [
             read("review", 0),
             read("review/SKILL.md", 8),

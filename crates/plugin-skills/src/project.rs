@@ -64,14 +64,12 @@ pub(crate) async fn search(
             .iter()
             .flat_map(|node| {
                 [
-                    HostRead {
-                        path: node.path.clone(),
-                        limit: 0,
-                    },
+                    HostRead::new(node.path.clone(), 0),
                     HostRead {
                         path: join(&node.path, "SKILL.md"),
                         limit: u64::try_from(SKILL_MD_MAX_BYTES).expect("a size fits") + 1,
-                    },
+    within: None,
+},
                 ]
             })
             .collect();

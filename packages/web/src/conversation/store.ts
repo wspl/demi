@@ -1727,6 +1727,9 @@ export const useConversations = defineStore('conversations', () => {
     const result = await readResponse(response, createdConversationSchema)
     signal.throwIfAborted()
     product.answered(sentAt, { type: 'conversation', conversation: result.conversation })
+    // The choice the menu made while the record was on its way, which the
+    // request could not carry.
+    const chosen = conversation.workflow
     conversation.persistence = 'synced'
     Object.assign(conversation, metadata(result.conversation))
     followRecordModel(conversation, result.conversation)
@@ -1735,6 +1738,11 @@ export const useConversations = defineStore('conversations', () => {
     // A retry that found the record an earlier attempt made reads it.
     if (response.status === 201) {
       madeHere.add(conversation.id)
+    }
+    // It applies before the first message goes, so the first turn's spawns
+    // and instructions follow it (`subagents.md` § Workflows of a project).
+    if (!sameWorkflow(chosen, result.conversation.workflow)) {
+      await changeWorkflow(conversation.id, chosen)
     }
   }
 
@@ -1951,9 +1959,14 @@ export const useConversations = defineStore('conversations', () => {
    * (`product.md` § A conversation's workflow): it shows at once, and a
    * write that fails or is refused gives the stored choice back.
    */
-  function changeWorkflow(id: string, workflow: WorkflowChoice): void {
-    // A conversation without a record keeps it in its draft, which its
-    // first send gives the record.
+  /**
+   * Makes `workflow` the conversation's Workflow menu choice; settles once
+   * it is written or refused. A conversation without a record keeps it in
+   * its draft, which its first send gives the record, and one whose record
+   * is on its way applies it as soon as the record is made, before its
+   * first message goes.
+   */
+  async function changeWorkflow(id: string, workflow: WorkflowChoice): Promise<void> {
     const conversation = items.value.find((item) => item.id === id)
     if (conversation && conversation.persistence !== 'synced') {
       conversation.workflow = workflow
@@ -1963,7 +1976,7 @@ export const useConversations = defineStore('conversations', () => {
     const change = product.change(`conversation:${id}`, (state) =>
       withConversation(state, id, (record) => ({ ...record, workflow })))
     const signal = lifetime.signal
-    void writes
+    await writes
       .run(id, () => {
         signal.throwIfAborted()
         return patch(id, { workflow }, change)
@@ -1972,6 +1985,11 @@ export const useConversations = defineStore('conversations', () => {
         change.drop()
         report('Could Not Change the Workflow', error)
       })
+  }
+
+  /** Whether two choices of the Workflow menu are the same. */
+  function sameWorkflow(a: WorkflowChoice, b: WorkflowChoice): boolean {
+    return a.type === b.type && (a.type !== 'workflow' || (b.type === 'workflow' && a.id === b.id))
   }
 
   /** The settings become the user's last choice, which new conversations start with. */

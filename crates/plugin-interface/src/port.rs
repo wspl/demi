@@ -335,9 +335,21 @@ pub struct DirectoryPath {
 pub struct HostRead {
     pub path: String,
     pub limit: u64,
+    /// A directory `path` is under, below which no link is followed: one
+    /// there answers [`HostFile::Link`]; absent, links are followed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub within: Option<String>,
 }
 
-/// What a path on a Host is. A symbolic link is followed.
+impl HostRead {
+    /// A read of `path` that follows links, as most reads do.
+    pub fn new(path: String, limit: u64) -> Self {
+        Self { path, limit, within: None }
+    }
+}
+
+/// What a path on a Host is. A symbolic link is followed, unless the read
+/// names a directory it is `within`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
     tag = "type",
@@ -358,6 +370,8 @@ pub enum HostFile {
     },
     /// Neither a file nor a directory.
     Other,
+    /// A link below the directory the read named it `within`, not followed.
+    Link,
     /// The Host could not read it, such as for want of permission.
     Unreadable {
         message: String,

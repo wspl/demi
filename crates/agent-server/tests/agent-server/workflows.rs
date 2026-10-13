@@ -170,8 +170,8 @@ async fn workflows_list_marks_the_choice_and_check_names_the_line_and_field_that
         directory: Some("/p/.demi/workflows".into()),
         unavailable: None,
         workflows: vec![
-            ListedWorkflow { id: "docs".into(), name: Some("Docs Review".into()), error: None },
-            ListedWorkflow { id: "review".into(), name: Some("Review Team".into()), error: None },
+            ListedWorkflow { id: "docs".into(), name: Some("Docs Review".into()), path: "/p/.demi/workflows/docs.yaml".into(), unavailable: None },
+            ListedWorkflow { id: "review".into(), name: Some("Review Team".into()), path: "/p/.demi/workflows/review.yaml".into(), unavailable: None },
         ],
     });
     fixture.product.files.borrow_mut().extend([

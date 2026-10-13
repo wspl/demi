@@ -137,6 +137,11 @@ impl ApiError {
         )
     }
 
+    /// What the error says, as its answer's `message`.
+    pub(crate) fn message(&self) -> &str {
+        &self.message
+    }
+
     pub(crate) fn invalid_body(message: impl Into<String>) -> Self {
         Self::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidBody, message)
     }

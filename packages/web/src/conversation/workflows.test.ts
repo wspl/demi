@@ -49,12 +49,12 @@ function at(directory: string) {
   })
 }
 
-/** What the backend answers for the workflows of `directory`. */
-function workflowsOf(directory: string) {
+/** What the backend answers for the workflows of `directory` at its `answer`th read. */
+function workflowsOf(directory: string, answer: number) {
   return {
     directory: `${directory}/.demi/workflows`,
     unavailable: null,
-    workflows: [{ id: 'review', name: `Review of ${directory}`, error: null }],
+    workflows: [{ id: 'review', name: `Review of ${directory} (${answer})`, path: `${directory}/.demi/workflows/review.yaml`, unavailable: null }],
     watch: [{ kind: 'folder_details', path: `${directory}/.demi/workflows` }],
   }
 }
@@ -74,7 +74,7 @@ beforeEach(() => {
       read.push(path)
       // The backend reads the conversation's directory as it is now.
       cwd = useProduct().snapshot!.conversations[0]!.cwd
-      return Response.json(workflowsOf(cwd), { headers: { 'x-demi-read-at': `e.${read.length}` } })
+      return Response.json(workflowsOf(cwd, read.length), { headers: { 'x-demi-read-at': `e.${read.length}` } })
     }
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [] })
@@ -116,7 +116,7 @@ test('a conversation moved to another directory of the same Host lists and watch
   const list = scope.run(() => app.runWithContext(() =>
     useConversationWorkflows(() => store.items.find((item) => item.id === CONVERSATION)!)))!
   await until(() => list.value.state === 'read')
-  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-a').workflows })
+  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-a', 1).workflows })
   await until(() => sockets.length > 0)
   sockets[0]!.dispatchEvent(new Event('open'))
   await until(() => sockets[0]!.sent.length > 0)
@@ -125,24 +125,26 @@ test('a conversation moved to another directory of the same Host lists and watch
 
   // The user moves the conversation to repo-b on the same laptop.
   channels.last().send({ type: 'conversation', conversation: at('/home/ada/repo-b') })
-  await until(() => list.value.state === 'read' && list.value.workflows[0]?.name === 'Review of /home/ada/repo-b')
+  await until(() => list.value.state === 'read' && list.value.workflows[0]?.name === 'Review of /home/ada/repo-b (2)')
   expect(read).toHaveLength(2)
-  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-b').workflows })
+  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-b', 2).workflows })
   await until(() => subscribed().length === 2)
   expect(subscribed().map((subscription) => subscription.path)).toEqual([
     '/home/ada/repo-a/.demi/workflows',
     '/home/ada/repo-b/.demi/workflows',
   ])
-  // A change in repo-b reads the list again; one in repo-a, which the
-  // conversation left, does not.
+  // Each change is numbered after the reads so far, as the Host's are.
+  // A change in repo-a, which the conversation left, reads nothing; one in
+  // repo-b, told after it, reads the list again. Once that read's answer
+  // shows, any read the first had started has reached the backend before
+  // it: there is none.
   const key = (path: string) => subscribed().find((subscription) => subscription.path === path)!.key
   sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'live', key: key('/home/ada/repo-b/.demi/workflows'), since: 0, epoch: 'e' }) }))
   sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'live', key: key('/home/ada/repo-a/.demi/workflows'), since: 0, epoch: 'e' }) }))
-  sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'changed', changes: [[key('/home/ada/repo-a/.demi/workflows'), 9]] }) }))
-  await until(() => false)
-  expect(read).toHaveLength(2)
-  sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'changed', changes: [[key('/home/ada/repo-b/.demi/workflows'), 9]] }) }))
-  await until(() => read.length === 3)
+  sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'changed', changes: [[key('/home/ada/repo-a/.demi/workflows'), read.length + 1]] }) }))
+  sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'changed', changes: [[key('/home/ada/repo-b/.demi/workflows'), read.length + 1]] }) }))
+  await until(() => list.value.state === 'read' && list.value.workflows[0]?.name === 'Review of /home/ada/repo-b (3)')
+  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-b', 3).workflows })
   expect(read).toHaveLength(3)
   scope.stop()
 })
