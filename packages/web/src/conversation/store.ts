@@ -31,7 +31,9 @@ import {
   type ModelSettingsChange,
 } from '@demicodes/web-ui/agent/model-selection'
 import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
-import { subagentJobFields } from '@demicodes/web-ui/agent/subagents'
+import { runningSubagents, subagentJobFields } from '@demicodes/web-ui/agent/subagents'
+import { workToStop } from '@demicodes/web-ui/hosts/move-question'
+import { runningTerminals } from '@demicodes/web-ui/agent/terminals'
 import { agentWorks, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import {
   composerAttachmentFromFile,
@@ -2431,18 +2433,28 @@ export const useConversations = defineStore('conversations', () => {
     }
   }
 
+  /** Runs `operation` on the conversation's runtime, reporting a failure; answers whether it succeeded. */
+  async function attempt(
+    conversation: Conversation,
+    operation: (runtime: ConversationRuntime) => Promise<void>,
+  ): Promise<boolean> {
+    try {
+      await operation(await runtimeFor(conversation))
+      return true
+    } catch (error) {
+      // A turn that ran and failed is already a record in the transcript.
+      if (!isRecordedTurnFailure(error)) {
+        report('The conversation did not accept the request.', error)
+      }
+      return false
+    }
+  }
+
   function action(
     conversation: Conversation,
     operation: (runtime: ConversationRuntime) => Promise<void>,
   ): void {
-    void runtimeFor(conversation)
-      .then(operation)
-      .catch((error) => {
-        // A turn that ran and failed is already a record in the transcript.
-        if (!isRecordedTurnFailure(error)) {
-          report('The conversation did not accept the request.', error)
-        }
-      })
+    void attempt(conversation, operation)
   }
 
   /**
@@ -2451,13 +2463,87 @@ export const useConversations = defineStore('conversations', () => {
    * holds the message, after the messages sent before the press; a message
    * that was not delivered started nothing.
    */
-  async function stop(conversation: Conversation): Promise<void> {
+  async function stop(conversation: Conversation): Promise<boolean> {
     const starting = turnStartingMessage(conversation.phase, conversation.pendingSends)?.id
     await deliveries.run(conversation.id, async () => {})
     if (starting !== undefined && conversation.pendingSends.some((pending) => pending.id === starting)) {
-      return
+      return true
     }
-    action(conversation, (runtime) => runtime.abort())
+    return attempt(conversation, (runtime) => runtime.abort())
+  }
+
+  /**
+   * Resolves true once the conversation runs nothing: its root is idle and
+   * its subagents and commands have ended, as their phases announce; false
+   * when the store stops first.
+   */
+  function untilIdle(conversation: Conversation): Promise<boolean> {
+    const active = () => workToStop(conversation) !== null
+    if (!active()) {
+      return Promise.resolve(true)
+    }
+    const signal = lifetime.signal
+    return new Promise((resolve) => {
+      const unwatch = watch(active, (now) => {
+        if (!now) {
+          settle(true)
+        }
+      }, { flush: 'sync' })
+      const onAbort = () => settle(false)
+      signal.addEventListener('abort', onAbort, { once: true })
+      function settle(idle: boolean): void {
+        unwatch()
+        signal.removeEventListener('abort', onAbort)
+        resolve(idle)
+      }
+    })
+  }
+
+  /**
+   * Stops what the conversation's agent does, its running subagents and
+   * commands included, and answers once the session says it is idle; a
+   * conversation that is idle already answers at once. False when a stop was
+   * refused or the store stopped before the session was idle.
+   */
+  async function stopWork(conversation: Conversation): Promise<boolean> {
+    if (runningSubagents(conversation.subagents).length > 0
+      && !await attempt(conversation, (runtime) => runtime.abortSubagents())) {
+      return false
+    }
+    for (const terminal of runningTerminals(conversation.terminals)) {
+      if (!await attempt(conversation, (runtime) => runtime.abortTerminal(terminal.id))) {
+        return false
+      }
+    }
+    if (conversation.phase !== 'idle' && !await stop(conversation)) {
+      return false
+    }
+    return untilIdle(conversation)
+  }
+
+  /**
+   * Moves the conversation to run on `target` (`product.md` § Where a
+   * conversation runs); with `notifyAgent`, the backend tells its agent.
+   */
+  function switchTarget(id: string, target: ConversationSummary['target'], notifyAgent = false): Promise<boolean> {
+    return changeConversations(
+      [id],
+      async () => (await applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, false, 'Move')).success,
+      false,
+    )
+  }
+
+  /**
+   * Moves a conversation whose agent works: stops the work, and sends the
+   * move only once the session says it is idle, since the backend refuses a
+   * move while the tree is busy. A turn that ended meanwhile moves at once.
+   */
+  async function switchTargetAfterStop(
+    conversation: Conversation,
+    target: ConversationSummary['target'],
+    notifyAgent: boolean,
+  ): Promise<boolean> {
+    return await stopWork(conversation) && switchTarget(conversation.id, target, notifyAgent)
   }
 
   function stopAll(): void {
@@ -2501,16 +2587,8 @@ export const useConversations = defineStore('conversations', () => {
     archive,
     restore,
     remove,
-    /**
-     * Moves the conversation to run on `target` (`product.md` § Where a
-     * conversation runs); with `notifyAgent`, the backend tells its agent.
-     */
-    switchTarget: (id: string, target: ConversationSummary['target'], notifyAgent = false) =>
-      changeConversations(
-        [id],
-        async () => (await applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, false, 'Move')).success,
-        false,
-      ),
+    switchTarget,
+    switchTargetAfterStop,
     pendingChanges,
     detachHost: (conversation: Conversation, deviceId: string) =>
       changeConversations(

@@ -1,3 +1,4 @@
+import type { MoveLock } from '@demicodes/web-ui/hosts/move-question'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import type { Conversation, Device } from '../state/types'
 import { useProduct } from '../state/product'
@@ -35,15 +36,19 @@ export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>)
 }
 
 /**
- * Whether the conversation cannot move now (`product.md` § Where a
- * conversation runs): its work runs, it is archived, or a change of it is
- * under way.
+ * Why the conversation's move controls are unavailable, if they are
+ * (`product.md` § Where a conversation runs): it is archived, or a change of
+ * it is under way. Work that runs does not lock them; moving asks to stop it
+ * first.
  */
-export function moveLocked(
-  conversation: Pick<Conversation, 'id' | 'phase' | 'archived'>,
+export function moveLock(
+  conversation: Pick<Conversation, 'id' | 'archived'>,
   pendingChanges: readonly string[],
-): boolean {
-  return conversation.phase !== 'idle' || conversation.archived || pendingChanges.includes(conversation.id)
+): MoveLock | undefined {
+  if (conversation.archived) {
+    return 'archived'
+  }
+  return pendingChanges.includes(conversation.id) ? 'moving' : undefined
 }
 
 /** The Host a conversation runs on, as Run On checks it. */
