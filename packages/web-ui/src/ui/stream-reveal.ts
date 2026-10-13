@@ -363,7 +363,11 @@ export function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly Re
       if (fadingAround(element, el, fading)?.[1] === step)
         continue
       fading.set(element, step)
-      fade(element, marks[step]!.at, () => element.classList.remove('stream-ink'))
+      fade(element, marks[step]!.at, () => {
+        element.classList.remove('stream-ink')
+        if (element.classList.length === 0)
+          element.removeAttribute('class')
+      })
     }
   }
 

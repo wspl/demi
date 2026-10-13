@@ -5,7 +5,7 @@ import { md } from '@demicodes/web-ui/markdown/md'
 import { fitMessageMedia, fitMessageMedium, messagePicture, messagePictures, type MessagePicture } from '@demicodes/web-ui/markdown/media-run'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
 import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
-import { openMessageLink, pressMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
+import { openMessageLink, pressMessageLink, useMessageFiles, useRenderedFiles } from '@demicodes/web-ui/markdown/message-files'
 import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'
 import { hostImagePaths, useHostImagesAt } from '@demicodes/web-ui/markdown/host-images'
 import type { HostImage } from '@demicodes/web-ui/files/host-image'
@@ -53,13 +53,14 @@ const renderVersion = useMarkdownRenderVersion()
 const agents = useMessageAgents()
 const viewer = useMediaViewer()
 const transcript = useTranscript()
+const renderFiles = useRenderedFiles(files)
 // The files the reply's inline code names, asked about once it is complete.
-const codeFiles = computed(() => replyCodeFiles(props.content, props.streaming, files()))
+const codeFiles = computed(() => replyCodeFiles(props.content, props.streaming, renderFiles.value))
 
 /** The Host image paths each block that shows names. */
 const blockImagePaths = shallowReactive(new Set<ComputedRef<string[]>>())
 // The Host images of what shows, each at the version of its file the page keeps.
-const hostImages = useHostImagesAt(() => files()?.contents, () => [...blockImagePaths].flatMap((paths) => paths.value))
+const hostImages = useHostImagesAt(() => renderFiles.value?.contents, () => [...blockImagePaths].flatMap((paths) => paths.value))
 
 /** Whether two blocks' Host images show the same. */
 function sameImages(a: ReadonlyMap<string, HostImage>, b: ReadonlyMap<string, HostImage>): boolean {
@@ -80,7 +81,7 @@ function sameImages(a: ReadonlyMap<string, HostImage>, b: ReadonlyMap<string, Ho
  * block's leaves it as it is.
  */
 function renderBlock(source: () => string): () => string {
-  const paths = computed(() => hostImagePaths(source(), files()))
+  const paths = computed(() => hostImagePaths(source(), renderFiles.value))
   blockImagePaths.add(paths)
   onScopeDispose(() => blockImagePaths.delete(paths))
   const images = computed<ReadonlyMap<string, HostImage>>((previous) => {
@@ -94,7 +95,7 @@ function renderBlock(source: () => string): () => string {
   return () => {
     void renderVersion.value
     return md.render(source(), {
-      files: files(),
+      files: renderFiles.value,
       codeFiles: codeFiles.value,
       hostImages: images.value,
       agents: agents(),
