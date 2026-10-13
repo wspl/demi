@@ -19,7 +19,7 @@ use demi_web_api_protocol::state::SyncEvent;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
-use crate::conversations::{FIRST, Socket, anthropic, answer, choose, create, send, transcript};
+use crate::conversations::{FIRST, SECOND, Socket, anthropic, answer, choose, create, send, transcript};
 use crate::support::{
     Answer, Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, SyncChannel, TestBackend,
 };
@@ -36,15 +36,25 @@ async fn list(backend: &TestBackend, session: &Session) -> SavedList {
     read.json()
 }
 
-/// Adds a message for later, as Undo does.
-async fn add(backend: &TestBackend, session: &Session, text: &str, files: &Value) -> Answer {
+/// The id a page gives a message it saves.
+fn fresh() -> String {
+    uuid::Uuid::new_v4().to_string()
+}
+
+/// Adds a message for later under the page's `id`, as Undo does.
+async fn add_as(backend: &TestBackend, session: &Session, id: &str, text: &str, files: &Value) -> Answer {
     backend
         .post(
             &format!("/api/conversations/{FIRST}/saved"),
             Some(session),
-            json!({ "text": text, "files": files }),
+            json!({ "id": id, "text": text, "files": files }),
         )
         .await
+}
+
+/// Adds a message for later under an id of its own.
+async fn add(backend: &TestBackend, session: &Session, text: &str, files: &Value) -> Answer {
+    add_as(backend, session, &fresh(), text, files).await
 }
 
 async fn save(backend: &TestBackend, session: &Session, text: &str, files: &Value) -> SavedMessage {
@@ -65,7 +75,7 @@ async fn from_draft(
         .post(
             &format!("/api/conversations/{FIRST}/saved/from-draft"),
             Some(session),
-            json!({ "base": base, "text": text, "files": files }),
+            json!({ "id": fresh(), "base": base, "text": text, "files": files }),
         )
         .await;
     assert_eq!(saved.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&saved.body));
@@ -208,11 +218,72 @@ async fn saving_the_composers_message_empties_the_draft_an_edit_exchanges_them_a
         .post(
             &format!("/api/conversations/{FIRST}/saved/from-draft"),
             Some(&laptop),
-            json!({ "base": 9, "text": "One more", "files": [] }),
+            json!({ "id": fresh(), "base": 9, "text": "One more", "files": [] }),
         )
         .await;
     assert_eq!(full.refusal(), (StatusCode::CONFLICT, ErrorCode::SavedFull));
     until_saved(&mut phone_page, FIRST, 200, 205).await;
+    backend.close().await;
+}
+
+// About 50 ms: a few saves on a local backend.
+#[tokio::test]
+async fn a_save_sent_again_with_its_id_makes_one_message_and_another_content_or_conversation_is_refused() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    create(&backend, &master, FIRST).await;
+    let id = fresh();
+
+    // The page's save did not reach it, as far as the page knows: it sends
+    // the same save again, and the list holds one message either way.
+    let first = add_as(&backend, &master, &id, "Check the DNS", &json!([])).await;
+    assert_eq!(first.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&first.body));
+    let again = add_as(&backend, &master, &id, "Check the DNS", &json!([])).await;
+    assert_eq!(again.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&again.body));
+    assert_eq!(again.json::<SavedAnswer>(), first.json::<SavedAnswer>());
+    let read = list(&backend, &master).await;
+    assert_eq!((read.revision, read.messages.len(), read.messages[0].id.as_str()), (1, 1, id.as_str()));
+
+    // The same id for another text is another save, which the id forbids.
+    assert_eq!(
+        add_as(&backend, &master, &id, "Something else", &json!([])).await.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::IdTaken)
+    );
+    // So is a conversation's save of an id another conversation keeps.
+    create(&backend, &master, SECOND).await;
+    let elsewhere = backend
+        .post(
+            &format!("/api/conversations/{SECOND}/saved"),
+            Some(&master),
+            json!({ "id": id, "text": "Check the DNS", "files": [] }),
+        )
+        .await;
+    assert_eq!(elsewhere.refusal(), (StatusCode::CONFLICT, ErrorCode::IdTaken));
+
+    // The composer's message saved twice: one message, and the second answer
+    // carries the draft as it is.
+    put_draft(&backend, &master, 0, "Now typed", &json!([])).await;
+    let from = fresh();
+    let body = json!({ "id": from, "base": 1, "text": "Now typed", "files": [] });
+    let path = format!("/api/conversations/{FIRST}/saved/from-draft");
+    let saved = backend.post(&path, Some(&master), body.clone()).await;
+    assert_eq!(saved.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&saved.body));
+    let saved = saved.json::<FromDraftAnswer>();
+    let again = backend.post(&path, Some(&master), body).await;
+    assert_eq!(again.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&again.body));
+    let again = again.json::<FromDraftAnswer>();
+    assert_eq!((again.message.clone(), again.draft), (saved.message, saved.draft));
+    assert_eq!(list(&backend, &master).await.messages.len(), 2);
+
+    // An id that is no UUID is no id.
+    let named = backend
+        .post(
+            &format!("/api/conversations/{FIRST}/saved"),
+            Some(&master),
+            json!({ "id": "saved-1", "text": "x", "files": [] }),
+        )
+        .await;
+    assert_eq!(named.status, StatusCode::BAD_REQUEST);
     backend.close().await;
 }
 

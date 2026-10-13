@@ -5,7 +5,8 @@
 //! conversation's draft and an edit exchanges a message with the draft, each
 //! in one transaction, while a plain save, Undo's, leaves the draft alone; an archived conversation reads its list and refuses
 //! the rest, as it does its draft. Sending one is the conversation socket's
-//! `send_saved` frame.
+//! `send_saved` frame. A save names its message's id; one sent again with the
+//! same id and content answers as the first did.
 
 use std::sync::Arc;
 
@@ -48,7 +49,7 @@ pub(super) async fn from_draft(
     let files = staged_files(&save.text, save.files)?;
     let (message, draft) = services
         .control
-        .save_from_draft(record.id.clone(), user.id.clone(), save.base, save.text, files)
+        .save_from_draft(record.id.clone(), user.id.clone(), save.id, save.base, save.text, files)
         .await?
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Conversation(record.id));
@@ -67,7 +68,7 @@ pub(super) async fn save(
     let files = staged_files(&save.text, save.files)?;
     let message = services
         .control
-        .add_saved(record.id.clone(), user.id.clone(), save.text, files)
+        .add_saved(record.id.clone(), user.id.clone(), save.id, save.text, files)
         .await?
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Conversation(record.id));
@@ -126,6 +127,11 @@ fn refused(refusal: SavedRefusal) -> ApiError {
             StatusCode::CONFLICT,
             ErrorCode::SavedFull,
             format!("The conversation keeps {SAVED_MAX} messages saved for later"),
+        ),
+        SavedRefusal::IdTaken => ApiError::new(
+            StatusCode::CONFLICT,
+            ErrorCode::IdTaken,
+            "A message saved for later has that id already",
         ),
         SavedRefusal::NotFound => ApiError::new(
             StatusCode::NOT_FOUND,
