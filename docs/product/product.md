@@ -438,20 +438,22 @@ the turn there and starts its own
 ([Send now](../agent/runtime.md#send-now)). Stop is different: it stops the
 turn and the commands it is running.
 
-### Drafts
+### Saved for later
 
-A draft is a message the user keeps to send later, and nothing ever sends it
-but the user. For example, while the agent works Ana writes *Check prod's
-DNS next*, which is not for now: she presses Save as Draft beside the send
-button, the composer empties, and *1 Draft* appears at the left of the row
+A message saved for later is one the user keeps to send later, and nothing
+ever sends it but the user. It is not the conversation's draft, the message
+the composer holds ([Conversations](#conversations)), which it leaves the
+composer to become. For example, while the agent works Ana writes *Check prod's
+DNS next*, which is not for now: she presses Save for Later beside the send
+button, the composer empties, and *1 Saved* appears at the left of the row
 under the composer. An hour later she opens it and presses Send on the
-draft's row.
+message's row.
 
-- **Save as Draft** (`NotebookPen`, ⌘S) stands left of Stop and Send while
+- **Save for Later** (`NotebookPen`, ⌘S) stands left of Stop and Send while
   the message holds text or attachments, and keeps the whole message, its
-  attachments included, as a draft.
+  attachments included.
 - **The entry** under the composer, at the left of the model's row, reads
-  *1 Draft*, *3 Drafts*, and is absent while there is none. Pressed, it
+  *1 Saved*, *3 Saved*, and is absent while there is none. Pressed, it
   opens the list under the composer, which rises to make room: about four
   rows tall, scrolling within. Each row shows the message's first line and,
   when it has attachments, their count; pressing the row edits it, and its
@@ -459,14 +461,14 @@ draft's row.
   darkens when the row is pointed at, since the row holds nothing else
   there. Where the row under the composer runs
   out of room, the entry shows its mark and the count alone, *7*, with
-  *7 Drafts* as its tip.
-- **Edit** puts the draft in the composer, removes it from the list and
-  closes the list; a composer holding a message first saves that one as a
-  draft, so nothing is lost. **Send** sends it as the composer would, by the
+  *7 Saved* as its tip.
+- **Edit** puts the message in the composer, removes it from the list and
+  closes the list; a composer holding a message first saves that one for
+  later, so nothing is lost. **Send** sends it as the composer would, by the
   same choice of steer or queue while the agent works, and the message shows
   in the transcript, with no toast. **Delete** removes it at once, with Undo
   in a toast. After Send or Delete the list stays open for the next.
-- **Drafts belong to the conversation** and live on the server, so every
+- **Saved messages belong to the conversation** and live on the server, so every
   page and device shows the same; archiving the conversation keeps them.
 
 ### Recovering an unfinished turn
