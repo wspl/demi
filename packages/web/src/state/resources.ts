@@ -105,6 +105,7 @@ export const useResources = defineStore('resources', () => {
   )
 
   const signedIn = computed(() => session.signedIn)
+  const userId = computed(() => session.user?.id ?? '')
   const username = computed(
     () => product.snapshot?.user.nickname ?? session.user?.nickname ?? '',
   )
@@ -312,6 +313,7 @@ export const useResources = defineStore('resources', () => {
 
   return {
     signedIn,
+    userId,
     username,
     email,
     appearance,

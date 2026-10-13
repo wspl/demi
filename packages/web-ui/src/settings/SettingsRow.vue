@@ -45,6 +45,8 @@ const props = defineProps<{
   interactive?: boolean
   /** Opens a page of its own: clickable as a whole, with a chevron at its end. */
   navigable?: boolean
+  /** The `leading` item is taller than a line of text, such as a 32 px avatar: it centres on the row instead of sitting on the name's line. */
+  centerLeading?: boolean
   isolateControls?: boolean
   muted?: boolean
   disabled?: boolean
@@ -100,9 +102,9 @@ const emit = defineEmits<{
     >
       <div
         v-if="$slots.leading"
-        class="flex h-5 shrink-0 items-center text-fg-muted"
-        :style="{ alignSelf: description || $slots.description || topAligned ? 'flex-start' : 'center' }"
-        :class="faded ? 'opacity-60' : ''"
+        class="flex shrink-0 items-center text-fg-muted"
+        :class="[centerLeading ? '' : 'h-5', faded ? 'opacity-60' : '']"
+        :style="{ alignSelf: !centerLeading && (description || $slots.description || topAligned) ? 'flex-start' : 'center' }"
       >
         <slot name="leading" />
       </div>

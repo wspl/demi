@@ -60,6 +60,8 @@ export interface SettingsNavGroup {
 }
 
 export interface SettingsAccountInfo {
+  /** The account id, which the avatar's tone follows. */
+  id: string
   email?: string
   name: string
 }

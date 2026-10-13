@@ -135,7 +135,7 @@ const anatomy: [string, string][] = [
   ],
 ]
 
-const account = { name: 'Alex' }
+const account = { id: 'alex', name: 'Alex' }
 const full = createSettingsState()
 /** Providers where the only API-key entry is complete: Add, then a vendor, adds an incomplete one. */
 const adding = createSettingsState()
@@ -406,6 +406,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
           <SettingsAccount
             v-model:name="noMail.name"
             :overlay-store="appOverlayStore"
+            account-id="alex"
             email="alex@example.com"
             email-unavailable="This server cannot send email, which a change needs for its code. Ask your administrator."
             :email-phase="{ kind: 'form', currentEmail: 'alex@example.com' }"

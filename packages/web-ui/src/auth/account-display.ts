@@ -3,10 +3,6 @@ export function accountDisplayName(name: string, email?: string): string {
   return name.trim() || email?.trim() || 'Account'
 }
 
-export function accountInitial(name: string, email?: string): string {
-  return Array.from(accountDisplayName(name, email))[0]!.toUpperCase()
-}
-
 /**
  * The letters an avatar shows: the first letters of the nickname's first two
  * words ("Alex Morgan" → AM, "Priya" → P, "李雷" → 李), else the first letter
