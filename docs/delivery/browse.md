@@ -89,6 +89,10 @@ conversation no longer runs, its subagents and background jobs included.
   runner. The backend's data lives in the slot's `.cache/browse/`, through
   `bun xtask dev --data`, so a check can restart the backend as an upgrade
   does and see the page come back to the same account and conversations.
+  `demi.up(..., { publicHost: 'localhost' })` gives the backend a public URL
+  on `localhost`, the one name besides a real domain for which browsers
+  make passkeys, so a check can add and use passkeys with Chrome's virtual
+  authenticator through the page's CDP session.
   `up` copies the user's `.env` into the slot for the backend and `down`
   deletes it. That `.env` names the development model with the file types
   it reads (`DEMI_DEV_PROVIDER_ACCEPTED_EXTENSIONS`), so a check that shows
