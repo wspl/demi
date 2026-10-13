@@ -10,7 +10,7 @@ import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotificati
 import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
-import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
+import { SETTINGS_SECTIONS, withUsersSection } from '@demicodes/web-ui/settings/sections'
 import { APP_SHORTCUTS, isAppShortcut } from '@demicodes/web-ui/settings/shortcuts'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { PageScope, settingsPage, withPluginSections } from '@demicodes/web-ui/plugins/page'
@@ -42,6 +42,7 @@ import ProvidersPanel from './ProvidersPanel.vue'
 import InstructionsPanel from './InstructionsPanel.vue'
 import SubagentsPanel from './SubagentsPanel.vue'
 import CredentialsPanel from './CredentialsPanel.vue'
+import UsersPanel from './UsersPanel.vue'
 
 /**
  * The refusals the user corrects in the form they filled, in the page's
@@ -69,8 +70,10 @@ const conversations = useConversations()
 const pluginSettings = usePluginSettings()
 const router = useRouter()
 const lifetime = new AbortController()
+/** The rail lists Users for the master and admins only (`product.md` § User system). */
+const withUsers = computed(() => withUsersSection(SETTINGS_SECTIONS, product.snapshot?.user.role ?? 'user'))
 const sections = computed(() =>
-  withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, (plugin) =>
+  withPluginSections(withUsers.value, PLUGIN_PAGES, (plugin) =>
     pluginEnabled(product.snapshot, plugin),
   ).map((group) => ({
     ...group,
@@ -444,6 +447,7 @@ function resetShortcuts(): void {
     />
     <ProvidersPanel v-else-if="section === 'models' && resources.canConfigure" />
     <DevicesPanel v-else-if="section === 'devices'" />
+    <UsersPanel v-else-if="section === 'users' && product.snapshot?.user.role !== 'user'" />
     <CredentialsPanel v-else-if="section === 'credentials'" />
     <InstructionsPanel v-else-if="section === 'instructions'" />
     <SubagentsPanel v-else-if="section === 'subagents'" />

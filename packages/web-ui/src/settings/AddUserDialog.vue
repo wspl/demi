@@ -10,17 +10,14 @@ import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import TextInput from '../ui/TextInput.vue'
 import { isEmail } from '../auth/email'
-import { PASSWORD_MIN_LENGTH, PASSWORD_TOO_SHORT, isTooShort } from '../auth/password'
-import NewPasswordRow from './NewPasswordRow.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsNewUser } from './types'
 import { ROLE_DESCRIPTION, ROLE_LABEL } from './users'
 
 /**
- * Add User…: the new account's email, its role and a first password the
- * administrator types or has made and copies, to hand over. The roles are
- * those below the administrator's own; an admin, who may add only users,
- * sees the role fixed. The host's answer to the submit arrives as `busy` and
+ * Add User…: the new account's email and its role; the server makes the
+ * first password, which the last step shows. The roles are those below the
+ * administrator's own; an admin, who may add only users, sees the role fixed. The host's answer to the submit arrives as `busy` and
  * `error`; an address another account has is said under the email field.
  */
 const props = defineProps<{
@@ -41,7 +38,6 @@ const emit = defineEmits<{
 }>()
 
 const email = ref('')
-const password = ref('')
 const role = ref<SettingsNewUser['role']>('user')
 
 // Each opening starts empty; the role the administrator gives most often, a user, is the default.
@@ -50,23 +46,19 @@ watch(
   (open) => {
     if (open) {
       email.value = ''
-      password.value = ''
       role.value = props.roles.includes('user') ? 'user' : (props.roles[0] ?? 'user')
     }
   },
   { immediate: true },
 )
 
-watch([email, password, role], () => emit('edit'))
+watch([email, role], () => emit('edit'))
 
-const tooShort = computed(() => isTooShort(password.value))
-const canSubmit = computed(
-  () => !props.busy && isEmail(email.value) && password.value.length >= PASSWORD_MIN_LENGTH,
-)
+const canSubmit = computed(() => !props.busy && isEmail(email.value))
 
 function submit(): void {
   if (canSubmit.value) {
-    emit('submit', { email: email.value.trim(), role: role.value, password: password.value })
+    emit('submit', { email: email.value.trim(), role: role.value })
   }
 }
 </script>
@@ -77,7 +69,7 @@ function submit(): void {
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Add User</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          They sign in with this email and password, then choose a password of their own.
+          Demi makes a first password, which they replace with one of their own at their first sign-in.
         </p>
       </header>
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
@@ -117,11 +109,9 @@ function submit(): void {
             </template>
           </Dropdown>
         </SettingsRow>
-        <NewPasswordRow v-model="password" />
       </div>
       <InlineError v-if="error?.kind === 'failed'" :message="error.message" :request-id="error.requestId" />
       <InlineError v-else-if="error?.kind === 'emailTaken'" message="An account already has that email address." />
-      <InlineError v-else-if="tooShort" :message="PASSWORD_TOO_SHORT" />
     </div>
     <template #footer>
       <Button @click="emit('close')">Cancel</Button>

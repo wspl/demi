@@ -6,6 +6,7 @@ import {
   signInChallengeSchema,
   type Credentials,
   type PasskeySignIn,
+  type PasswordChange,
   type SetupRequest,
   type SetupStatus,
   type UserDto,
@@ -23,6 +24,12 @@ type SessionState =
    * passkey before the app opens.
    */
   | { status: 'passkeyStep'; user: User }
+  /**
+   * The account is signed in and still to choose its own password, which
+   * nothing else of the product opens before (`product.md` § User system):
+   * the wizard asks, and `passwordChosen` ends the state.
+   */
+  | { status: 'choosingPassword'; user: User }
   | {
       status: 'signedOut'
       reason?: 'expired'
@@ -44,6 +51,11 @@ async function readIdentity(response: Response): Promise<User> {
     throw new Error('The server returned an invalid account response.')
   }
   return parsed.data.user
+}
+
+/** The state of an account that signed in: the product, or first the choice of its own password. */
+function signedInAs(user: User): SessionState {
+  return user.choosesPassword ? { status: 'choosingPassword', user } : { status: 'signedIn', user }
 }
 
 /**
@@ -89,10 +101,7 @@ export const useSession = defineStore('session', {
         const response = await apiRequest('/auth/me', { signal })
         const user = await readIdentity(response)
         signal?.throwIfAborted()
-        this.current = {
-          status: 'signedIn',
-          user,
-        }
+        this.current = signedInAs(user)
       } catch (error) {
         signal?.throwIfAborted()
         if (error instanceof ApiError && error.code === 'unauthenticated') {
@@ -128,10 +137,7 @@ export const useSession = defineStore('session', {
       })
       const user = await readIdentity(response)
       signal.throwIfAborted()
-      this.current = {
-        status: 'signedIn',
-        user,
-      }
+      this.current = signedInAs(user)
     },
     /**
      * Signs in with a passkey, which names the account: in the email
@@ -164,7 +170,7 @@ export const useSession = defineStore('session', {
       }
       const user = await readIdentity(response)
       signal.throwIfAborted()
-      this.current = { status: 'signedIn', user }
+      this.current = signedInAs(user)
       return true
     },
     /**
@@ -203,6 +209,24 @@ export const useSession = defineStore('session', {
     finishSetup(): void {
       if (this.current.status === 'passkeyStep') {
         this.current = { status: 'signedIn', user: this.current.user }
+      }
+    },
+    /**
+     * Chooses the account's own password (`PUT /auth/password` with the
+     * new one alone). The account stays in its state until the wizard ends,
+     * for the passkey offer that follows; `finishChoosing` opens the product.
+     */
+    async choosePassword(next: string): Promise<void> {
+      if (this.current.status !== 'choosingPassword') {
+        return
+      }
+      await apiRequest('/auth/password', { method: 'PUT', ...jsonBody({ next } satisfies PasswordChange) })
+      this.current = { status: 'choosingPassword', user: { ...this.current.user, choosesPassword: false } }
+    },
+    /** Ends the wizard: the product opens, signed in. */
+    finishChoosing(): void {
+      if (this.current.status === 'choosingPassword') {
+        this.current = { status: 'signedIn', user: { ...this.current.user, choosesPassword: false } }
       }
     },
     async signOut(): Promise<void> {

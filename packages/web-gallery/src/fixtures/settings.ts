@@ -40,9 +40,9 @@ function galleryPasskeys(): SettingsPasskey[] {
 export function gallerySessions(): SettingsSession[] {
   const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
   return [
-    { id: 'session-phone', name: 'Safari on iPhone', createdAt: ago(3_600_000), lastActiveAt: ago(3_600_000), current: false },
-    { id: 'session-mac', name: 'Safari on macOS', createdAt: ago(12 * DAY_MS), lastActiveAt: ago(60_000), current: true },
-    { id: 'session-windows', name: 'Chrome on Windows', createdAt: ago(20 * DAY_MS), lastActiveAt: ago(3 * DAY_MS), current: false },
+    { id: 'session-phone', name: 'Safari on iPhone', createdAt: ago(3_600_000), lastActiveAt: ago(3_600_000), current: false, issuedBy: 'Ana' },
+    { id: 'session-mac', name: 'Safari on macOS', createdAt: ago(12 * DAY_MS), lastActiveAt: ago(60_000), current: true, issuedBy: null },
+    { id: 'session-windows', name: 'Chrome on Windows', createdAt: ago(20 * DAY_MS), lastActiveAt: ago(3 * DAY_MS), current: false, issuedBy: null },
   ]
 }
 import { createSubagentState } from './subagent-profiles'

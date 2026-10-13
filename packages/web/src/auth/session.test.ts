@@ -9,6 +9,8 @@ const user = {
   nickname: 'Person',
   role: 'user' as const,
   createdAt: '2026-09-09T00:00:00.000Z',
+  disabled: false,
+  choosesPassword: false,
 }
 const originalFetch = globalThis.fetch
 
@@ -90,6 +92,28 @@ describe('cookie session', () => {
     expect(session.current).toEqual({ status: 'passkeyStep', user: { ...user, role: 'master' } })
     session.finishSetup()
     expect(session.user?.role).toBe('master')
+  })
+
+  test('an account still to choose its password signs in to the wizard, not the product, until it has chosen', async () => {
+    const session = useSession()
+    const first = { ...user, choosesPassword: true }
+    serve({ 'POST /api/auth/login': [{ user: first }, 200] })
+    await session.signIn(user.email, 'first-password-1234', new AbortController().signal)
+    // The product stays closed, and a page that reloads asks the same.
+    expect(session.signedIn).toBe(false)
+    expect(session.current).toEqual({ status: 'choosingPassword', user: first })
+    serve({ 'GET /api/auth/me': [{ user: first }, 200] })
+    await session.restore()
+    expect(session.current).toEqual({ status: 'choosingPassword', user: first })
+
+    // The choice is the new password alone; the account stays in the wizard
+    // for the passkey offer until it ends.
+    const sent = serve({ 'PUT /api/auth/password': [null, 204] })
+    await session.choosePassword('chosen by the owner')
+    expect(sent).toEqual([{ next: 'chosen by the owner' }])
+    expect(session.current).toEqual({ status: 'choosingPassword', user })
+    session.finishChoosing()
+    expect(session.current).toEqual({ status: 'signedIn', user })
   })
 
   test('a visitor whose setup came second is sent to sign in', async () => {
