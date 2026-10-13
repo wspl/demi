@@ -11,6 +11,7 @@ mod content;
 mod profile_commands;
 mod shell_output;
 mod tree;
+mod workflow_commands;
 
 use std::{
     cell::{Cell, RefCell},

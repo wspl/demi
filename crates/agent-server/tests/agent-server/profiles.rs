@@ -229,12 +229,12 @@ async fn each_spawn_reads_the_settings_as_they_are_and_a_child_keeps_what_it_was
     assert!(
         asked_one
             .system_prompt
-            .contains("Operations: cwd, send, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete\n")
+            .contains("Operations: cwd, send, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete, workflows list, workflows check\n")
     );
     assert!(
         asked_two
             .system_prompt
-            .contains("Operations: spawn, cwd, send, abort, resume, fork, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete\n")
+            .contains("Operations: spawn, cwd, send, abort, resume, fork, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete, workflows list, workflows check\n")
     );
 
     // Deleted after the spawn, the profile changes nothing in its child:
@@ -320,6 +320,7 @@ async fn profiles_lists_the_enabled_profiles_with_what_is_missing_and_says_when_
         listing,
         json!({
             "enabled": true,
+            "choice": { "type": "default" },
             "profiles": [
                 { "name": "explore", "description": "Finds code; it reports and changes nothing.", "unavailable": null },
                 { "name": "far-reviewer", "description": "Reviews a finished change.", "unavailable": gone },
@@ -351,7 +352,7 @@ async fn profiles_lists_the_enabled_profiles_with_what_is_missing_and_says_when_
         none,
         "The user has no enabled subagent profile; demi agent spawn without --profile inherits the parent.\n"
     );
-    assert_eq!(listing, json!({ "enabled": true, "profiles": [] }));
+    assert_eq!(listing, json!({ "enabled": true, "choice": { "type": "default" }, "profiles": [] }));
 
     change(&fixture, |settings| settings.enabled = false);
     let (off, listing) = profiles(&fixture, &root()).await;
@@ -359,7 +360,7 @@ async fn profiles_lists_the_enabled_profiles_with_what_is_missing_and_says_when_
         off,
         "Subagents are turned off in settings; demi agent spawn fails until the user turns them on.\n"
     );
-    assert_eq!(listing, json!({ "enabled": false, "profiles": [] }));
+    assert_eq!(listing, json!({ "enabled": false, "choice": { "type": "default" }, "profiles": [] }));
 }
 
 #[tokio::test(flavor = "local")]

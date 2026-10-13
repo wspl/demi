@@ -5,6 +5,7 @@
 use demi_conversation_socket_protocol::{Failures, SubagentJob};
 use demi_shared_types::{
     Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp,
+    WorkflowChoice,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -151,6 +152,9 @@ pub struct ConversationSummary {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ModelSettings>")]
     pub model: Option<ModelSettings>,
+    /// The conversation's Workflow menu choice (`subagents.md` § Workflows
+    /// of a project), kept as its model is.
+    pub workflow: WorkflowChoice,
     pub created_at: Timestamp,
     pub updated_at: Timestamp,
     /// The directory the conversation's work runs in, resolved by the backend
@@ -493,6 +497,15 @@ pub struct ConversationPatch {
     #[schemars(with = "Option<String>")]
     #[garde(length(chars, min = 1))]
     pub service_tier_id: Option<Option<String>>,
+    /// The conversation's Workflow menu choice, from its next spawn on.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "WorkflowChoice")]
+    #[garde(dive)]
+    pub workflow: Option<WorkflowChoice>,
     /// A switch of the conversation's execution target.
     #[serde(
         default,
@@ -542,6 +555,7 @@ pub enum PatchField {
     Model,
     ThinkingEffort,
     ServiceTierId,
+    Workflow,
     Target,
 }
 

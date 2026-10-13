@@ -1,7 +1,9 @@
 //! The instructions source (`instructions.md`): the user's personal
-//! instructions and the project's `AGENTS.md` or `CLAUDE.md` files, one per
-//! directory from the repository's root down to the node's working
-//! directory, as one context block, with the list of what it holds for the
+//! instructions and the project's `AGENTS.md` or `CLAUDE.md` file and
+//! `.demi/instructions.md` of each directory from the repository's root
+//! down to the node's working directory, and for the root the instructions
+//! of the workflow the conversation chose (`subagents.md` § Workflows of a
+//! project), as one context block, with the list of what it holds for the
 //! page.
 
 use std::cell::RefCell;
@@ -13,7 +15,7 @@ use demi_backend_host_access::conversation_of;
 use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_plugin_interface::project;
 use demi_plugin_interface::{HostFile, HostRead};
-use demi_shared_types::{INSTRUCTIONS_SOURCE, InstructionEntry, TurnId};
+use demi_shared_types::{INSTRUCTIONS_SOURCE, InstructionEntry, TurnId, WorkflowChoice, xml_escaped};
 use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
@@ -22,6 +24,10 @@ use crate::shard::Shard;
 
 /// The names read in each directory, the first that is a file taken.
 const NAMES: [&str; 2] = ["AGENTS.md", "CLAUDE.md"];
+
+/// Demi's own instructions of each directory, read after the one of
+/// [`NAMES`] it has: the directory and the file's name.
+const DEMI_FILE: [&str; 2] = [".demi", "instructions.md"];
 
 const PREAMBLE: &str = "These are the user's personal instructions and the project's instruction files. Follow them in this conversation together with your other instructions; this block replaces any earlier one. Where they conflict, the user's messages come first, then a file nearer the working directory over one further up, then the personal instructions.";
 
@@ -43,10 +49,26 @@ struct Search {
     files: Vec<ProjectFile>,
 }
 
+/// A workflow's name and instructions, which the root reads while the
+/// conversation uses it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WorkflowText {
+    name: String,
+    instructions: String,
+}
+
+/// The last read of a conversation's workflows and the input turn it ran
+/// in: each workflow that reads and has instructions, by id.
+struct WorkflowRead {
+    turn: TurnId,
+    texts: Vec<(String, WorkflowText)>,
+}
+
 /// The product's instructions source, asked after the execution context.
 pub(crate) struct Instructions {
     pub(crate) shard: Weak<Shard>,
     searches: RefCell<HashMap<(ConversationId, String), Search>>,
+    workflows: RefCell<HashMap<ConversationId, WorkflowRead>>,
 }
 
 impl Instructions {
@@ -54,7 +76,61 @@ impl Instructions {
         Self {
             shard,
             searches: RefCell::default(),
+            workflows: RefCell::default(),
         }
+    }
+
+    /// The instructions of the workflow `id` the conversation chose, none
+    /// when it has none or does not read: the workflows are read at the
+    /// first request of each input turn that needs them, as the project
+    /// files are, and what the last read found is used while a read cannot
+    /// run.
+    async fn workflow_text(
+        &self,
+        shard: &Shard,
+        conversation: &ConversationId,
+        id: &str,
+        turn: &TurnId,
+    ) -> Option<WorkflowText> {
+        let current = self
+            .workflows
+            .borrow()
+            .get(conversation)
+            .is_some_and(|read| read.turn == *turn);
+        if !current {
+            // The request ends with the provider request it serves, which
+            // drops this future.
+            match shard.project_workflows(conversation, &CancellationToken::new()).await {
+                Ok(found) => {
+                    let texts = found
+                        .files
+                        .into_iter()
+                        .filter_map(|file| {
+                            let workflow = file.read.ok()?;
+                            let instructions = workflow.instructions.filter(|text| !text.trim().is_empty())?;
+                            Some((file.id, WorkflowText { name: workflow.name, instructions }))
+                        })
+                        .collect();
+                    let read = WorkflowRead {
+                        turn: turn.clone(),
+                        texts,
+                    };
+                    self.workflows.borrow_mut().insert(conversation.clone(), read);
+                }
+                Err(error) => {
+                    if !matches!(error, ReadFilesError::NotRunning) {
+                        tracing::warn!(%conversation, %error, "the project's workflows were not read");
+                    }
+                }
+            }
+        }
+        self.workflows
+            .borrow()
+            .get(conversation)?
+            .texts
+            .iter()
+            .find(|(listed, _)| listed == id)
+            .map(|(_, text)| text.clone())
     }
 
     /// The project files for a node in `cwd`: searched at the first request
@@ -123,10 +199,22 @@ impl ContextSource for Instructions {
                 .node_directory(node)
                 .await
                 .map_err(|error| format!("the working directory cannot be read: {error}"))?;
+            let conversation = conversation_of(node.root);
             let files = self
-                .project_files(&shard, conversation_of(node.root), &cwd, turn)
+                .project_files(&shard, conversation.clone(), &cwd, turn)
                 .await;
-            let answer = match render(&personal, &files) {
+            // The workflow's instructions are the root's alone.
+            let workflow = if node.node == node.root {
+                match shard.workflow_choice(&conversation).await? {
+                    WorkflowChoice::Workflow { id } => {
+                        self.workflow_text(&shard, &conversation, &id, turn).await
+                    }
+                    WorkflowChoice::Default | WorkflowChoice::None => None,
+                }
+            } else {
+                None
+            };
+            let answer = match render(&personal, &files, workflow.as_ref()) {
                 Some(answer) => answer,
                 None if seen.last().is_some_and(|newest| *newest != NONE_LEFT) => {
                     ContextAnswer::from(NONE_LEFT.to_owned())
@@ -157,6 +245,8 @@ async fn search(
         .map_err(|error| ReadFilesError::Access(error.into()))?;
     let join = |directory: &str, name: &str| paths.join(directory, name);
     let ancestors = paths.ancestors(cwd);
+    let [demi, demi_name] = DEMI_FILE;
+    let demi_file = |directory: &str| join(&join(directory, demi), demi_name);
     let mut reads = project::root_reads(paths, &ancestors);
     for directory in &ancestors {
         for name in NAMES {
@@ -165,29 +255,37 @@ async fn search(
                 limit: 0,
             });
         }
+        reads.push(HostRead {
+            path: demi_file(directory),
+            limit: 0,
+        });
     }
-    let found = shard
+    let (found, _) = shard
         .host_shard()
         .read_files(conversation, &reads, cancel)
         .await?;
     let (git, named) = found.split_at(ancestors.len());
     let searched = project::searched(&ancestors, git).len();
-    let mut taken: Vec<HostRead> = Vec::new();
-    for (directory, answers) in ancestors.iter().zip(named.chunks(NAMES.len())).take(searched) {
-        let file = NAMES.iter().zip(answers).find_map(|(name, answer)| {
-            let path = join(directory, name);
-            match answer {
-                HostFile::File { size, .. } => Some(HostRead { path, limit: *size }),
-                HostFile::Unreadable { message } => {
-                    tracing::info!(%path, %message, "a project instruction file cannot be read");
-                    None
-                }
-                HostFile::Missing | HostFile::Directory { .. } | HostFile::Other => None,
-            }
-        });
-        taken.extend(file);
+    let taken_file = |path: String, answer: &HostFile| match answer {
+        HostFile::File { size, .. } => Some(HostRead { path, limit: *size }),
+        HostFile::Unreadable { message } => {
+            tracing::info!(%path, %message, "a project instruction file cannot be read");
+            None
+        }
+        HostFile::Missing | HostFile::Directory { .. } | HostFile::Other => None,
+    };
+    // Each directory's files in their order, nearest directory first.
+    let mut by_directory: Vec<Vec<HostRead>> = Vec::new();
+    for (directory, answers) in ancestors.iter().zip(named.chunks(NAMES.len() + 1)).take(searched) {
+        let (shared, own) = answers.split_at(NAMES.len());
+        let file = NAMES
+            .iter()
+            .zip(shared)
+            .find_map(|(name, answer)| taken_file(join(directory, name), answer));
+        let demi = taken_file(demi_file(directory), &own[0]);
+        by_directory.push(file.into_iter().chain(demi).collect());
     }
-    taken.reverse();
+    let mut taken: Vec<HostRead> = by_directory.into_iter().rev().flatten().collect();
     let mut texts: Vec<Option<String>> = vec![None; taken.len()];
     for _ in 0..=REREADS {
         let pending: Vec<usize> = (0..taken.len()).filter(|&index| texts[index].is_none()).collect();
@@ -195,7 +293,7 @@ async fn search(
             break;
         }
         let reads: Vec<HostRead> = pending.iter().map(|&index| taken[index].clone()).collect();
-        let answers = shard
+        let (answers, _) = shard
             .host_shard()
             .read_files(conversation, &reads, cancel)
             .await?;
@@ -224,9 +322,15 @@ async fn search(
     Ok(files)
 }
 
-/// The block for `personal` and `files`; none when both are empty.
-fn render(personal: &str, files: &[ProjectFile]) -> Option<ContextAnswer> {
-    if personal.is_empty() && files.is_empty() {
+/// The block for `personal`, `files` and the chosen `workflow`'s
+/// instructions, which join it as an element of their own after the
+/// project's files; none when all are empty.
+fn render(
+    personal: &str,
+    files: &[ProjectFile],
+    workflow: Option<&WorkflowText>,
+) -> Option<ContextAnswer> {
+    if personal.is_empty() && files.is_empty() && workflow.is_none() {
         return None;
     }
     let mut text = String::from(PREAMBLE);
@@ -242,6 +346,13 @@ fn render(personal: &str, files: &[ProjectFile]) -> Option<ContextAnswer> {
         text.push_str("\n\n");
         text.push_str(&entry.section(body));
         instructions.push(entry);
+    }
+    if let Some(workflow) = workflow {
+        text.push_str(&format!(
+            "\n\n<workflow name=\"{}\">\n{}\n</workflow>",
+            xml_escaped(&workflow.name),
+            workflow.instructions.trim_end()
+        ));
     }
     Some(ContextAnswer { text, instructions })
 }

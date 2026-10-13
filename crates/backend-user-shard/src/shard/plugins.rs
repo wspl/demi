@@ -101,6 +101,7 @@ impl ProductPort for ShardPort {
                 .host_shard()
                 .read_files(conversation, &reads, cancel)
                 .await
+                .map(|(files, _)| files)
                 .map_err(|error| match error {
                     ReadFilesError::NotRunning => PortFailure::Refused(PortRefusal::NotRunning),
                     ReadFilesError::Access(error) => access_refusal(error),

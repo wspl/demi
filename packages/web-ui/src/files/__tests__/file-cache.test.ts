@@ -477,3 +477,32 @@ test('a Retry ends when its read does, though the file is still not there or the
   expect(offline.entry).toMatchObject({ answer: null, failure: { kind: 'offline' }, reading: false })
   scope.stop()
 })
+
+test('an answer follows the subjects it names, and a change of one reads it again', async () => {
+  // As the Workflow menu's list does (`subagents.md` § Workflows of a
+  // project): the backend's answer names the folders it read.
+  const h = host()
+  const subjects = (value: string | undefined) =>
+    value === undefined ? [] : [{ kind: 'folder_details' as const, path: value }]
+  const shown = h.files.show(h.spec('answer', 'workflows:c1', { subjects }))
+  expect(h.asked()).toEqual(['answer workflows:c1'])
+  // Nothing to watch until the answer names it.
+  await h.answer('/p/.demi/workflows')
+  await h.open()
+  await h.live('folder_details', '/p/.demi/workflows')
+  expect(shown.entry.value).toBe('/p/.demi/workflows')
+  expect(h.asked()).toHaveLength(1)
+
+  // A workflow added: its folder changed, and the list is read again.
+  await h.event(['folder_details', '/p/.demi/workflows'])
+  expect(h.asked()).toHaveLength(2)
+  // Now a nearer directory has one: the answer names it, and the entry
+  // follows it instead.
+  await h.answer('/p/web/.demi/workflows')
+  expect(h.keyOf('folder_details', '/p/web/.demi/workflows')).toBeTruthy()
+  const dropped = h.requests('unsubscribe').flatMap((request) => request.type === 'unsubscribe' ? request.keys : [])
+  expect(dropped).toContain(h.keyOf('folder_details', '/p/.demi/workflows'))
+  await h.live('folder_details', '/p/web/.demi/workflows')
+  await h.event(['folder_details', '/p/web/.demi/workflows'])
+  expect(h.asked()).toHaveLength(3)
+})

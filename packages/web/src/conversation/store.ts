@@ -78,6 +78,7 @@ import {
   type SidebarReorder,
   type Subagents,
   type TranscriptPage,
+  type WorkflowChoice,
 } from '../api/generated/web-api'
 import { isEmptyMessage, joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { blobPicture, createConversationUploads, sendingFileIds } from './uploads'
@@ -738,6 +739,7 @@ export const useConversations = defineStore('conversations', () => {
           revision: 0,
           readRevision: 0,
           unread: false,
+          workflow: { type: 'default' },
         })
         conversation.persistence = draft.local.phase
         conversation.load = 'ready'
@@ -1650,6 +1652,7 @@ export const useConversations = defineStore('conversations', () => {
       revision: 0,
       readRevision: 0,
       unread: false,
+      workflow: { type: 'default' },
       pluginsChanged: false,
       draftRevision: 0,
       saved: 0,
@@ -1934,6 +1937,26 @@ export const useConversations = defineStore('conversations', () => {
     } catch (error) {
       report('Could Not Change the Model', error)
     }
+  }
+
+  /**
+   * Makes `workflow` the conversation's Workflow menu choice
+   * (`product.md` § A conversation's workflow): it shows at once, and a
+   * write that fails or is refused gives the stored choice back.
+   */
+  function changeWorkflow(id: string, workflow: WorkflowChoice): void {
+    const change = product.change(`conversation:${id}`, (state) =>
+      withConversation(state, id, (record) => ({ ...record, workflow })))
+    const signal = lifetime.signal
+    void writes
+      .run(id, () => {
+        signal.throwIfAborted()
+        return patch(id, { workflow }, change)
+      })
+      .catch((error) => {
+        change.drop()
+        report('Could Not Change the Workflow', error)
+      })
   }
 
   /** The settings become the user's last choice, which new conversations start with. */
@@ -2659,6 +2682,7 @@ export const useConversations = defineStore('conversations', () => {
         undefined,
       ),
     changeModel,
+    changeWorkflow,
     send,
     retrySend,
     editVersion: (conversation: Conversation) =>

@@ -1,0 +1,36 @@
+//! `GET /conversations/:id/workflows` (`subagents.md` § Workflows of a
+//! project): the Workflow menu's list, read through the conversation's host
+//! access in the form that never wakes its Host, with the Host's number
+//! before the read, as every answer the file watch keeps current carries.
+
+use axum::Json;
+use axum::extract::{Path, State};
+use axum::response::Response;
+use demi_backend_host_access::access::{HostAccessError, Refusal};
+use demi_backend_host_access::plugin_files::ReadFilesError;
+
+use super::AppState;
+use super::conversations::owned;
+use super::error::ApiError;
+use super::files::read_answer;
+use super::gate::AuthUser;
+
+/// `GET /conversations/:id/workflows`.
+pub(super) async fn list(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Response, ApiError> {
+    let record = owned(&state.services, &user.id, &id).await?;
+    let (workflows, read_at) = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.menu_workflows(&record.id).await })
+        .await?
+        .map_err(|error| match error {
+            // A Host that is not running answers as a stopped one does.
+            ReadFilesError::NotRunning => ApiError::from(HostAccessError::Refused(Refusal::Stopped)),
+            ReadFilesError::Access(error) => ApiError::from(error),
+        })?;
+    Ok(read_answer(&read_at, Json(workflows)))
+}

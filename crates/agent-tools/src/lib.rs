@@ -15,6 +15,7 @@ mod product;
 mod prompt;
 mod reports;
 mod result;
+mod workflow;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 
@@ -51,11 +52,16 @@ pub use result::{
     Look, interrupted_look, look_text, report_media, report_output, whole_look_text, whole_status,
 };
 pub use product::{
-    ContextAnswer, ContextSource, EFFORT_OFF, HostResolver,
+    ChosenWorkflow, ContextAnswer, ContextSource, ConversationProfiles, EFFORT_OFF, HostResolver,
+    ListedWorkflow, WorkflowChild, WorkflowListing,
     ModelChoice, ModelEdit, NewProfileDraft, NodeContext, Profile, ProfileEdit, ProfileModel,
     SubagentSettings, SubagentSource, TIER_DEFAULT, Toolset, ToolsetSource, Unavailable, runs_on,
 };
 pub use prompt::{ModelIdentity, system_prompt};
+pub use workflow::{
+    WORKFLOW_EXTENSION, WORKFLOW_FILE_MAX_BYTES, WORKFLOWS_DIRECTORY, WORKFLOWS_HELP, Workflow,
+    WorkflowError, WorkflowProfile, parse_workflow, workflow_id,
+};
 
 /// The most characters a page of `demi shell output` takes, so that a tool
 /// result printing one is never cut.

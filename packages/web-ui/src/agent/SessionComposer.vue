@@ -27,6 +27,8 @@ import { asksSaveForLater, saveForLaterKeys, type SavedRow } from './saved'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import { COMPACT_AFTER_TURN, type UsageLimits } from './context-usage'
 import ModelSelector from './ModelSelector.vue'
+import WorkflowMenu from './WorkflowMenu.vue'
+import type { WorkflowChoice, WorkflowList } from './workflow-menu'
 import { composerModel, type ModelSettings, type ModelSettingsChange } from './model-selection'
 import type { ContextLimitChange } from './context-limit'
 import SessionNoticeBar from './SessionNoticeBar.vue'
@@ -132,6 +134,12 @@ const props = withDefaults(
      */
     draftShown?: number
     /**
+     * The conversation's Workflow menu choice and the project's workflows
+     * (`product.md` § A conversation's workflow); none where a conversation
+     * has no choice yet, as before its first send.
+     */
+    workflow?: { choice: WorkflowChoice; list: WorkflowList } | null
+    /**
      * The conversation's messages saved for later, newest first
      * (`product.md` § Saved for later): the entry under the composer counts
      * them and opens their list.
@@ -176,6 +184,8 @@ const emit = defineEmits<{
   retryAttachment: [id: string]
   /** One change of the model settings, naming only the parts it changes. */
   changeModel: [change: ModelSettingsChange]
+  /** The conversation's new Workflow menu choice. */
+  changeWorkflow: [choice: WorkflowChoice]
   /** The user's context limit on a model, for all their conversations with it. */
   changeContextLimit: [change: ContextLimitChange]
   configure: []
@@ -670,13 +680,23 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             </template>
           </Dropdown>
         </template>
-        <template v-if="saved.length && !shownEdit" #below-start>
-          <SavedEntry
-            :count="saved.length"
-            :open="savedOpen"
-            :compact="compactEntry"
-            @toggle="savedOpen = !savedOpen"
-          />
+        <template v-if="(workflow || saved.length) && !shownEdit" #below-start>
+          <div class="flex items-center gap-1">
+            <WorkflowMenu
+              v-if="workflow"
+              :choice="workflow.choice"
+              :list="workflow.list"
+              :compact="compactEntry"
+              @change="emit('changeWorkflow', $event)"
+            />
+            <SavedEntry
+              v-if="saved.length"
+              :count="saved.length"
+              :open="savedOpen"
+              :compact="compactEntry"
+              @toggle="savedOpen = !savedOpen"
+            />
+          </div>
         </template>
         <template v-if="savedOpen && saved.length && !shownEdit" #list>
           <SavedList

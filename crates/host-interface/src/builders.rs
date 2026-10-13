@@ -21,6 +21,7 @@ pub struct GroupBuilder {
     name: String,
     summary: String,
     index_entry: Option<String>,
+    details: Option<String>,
     permissions: Vec<Category>,
     children: Vec<Declared>,
 }
@@ -31,6 +32,7 @@ impl GroupBuilder {
             name: name.into(),
             summary: summary.into(),
             index_entry: None,
+            details: None,
             permissions: Vec::new(),
             children: Vec::new(),
         }
@@ -43,6 +45,13 @@ impl GroupBuilder {
     /// § Capability index).
     pub fn index_entry(mut self, entry: impl Into<String>) -> Self {
         self.index_entry = Some(entry.into());
+        self
+    }
+
+    /// What only the group's own `--help` shows after its summary, such as
+    /// the format of the files its commands read.
+    pub fn details(mut self, details: impl Into<String>) -> Self {
+        self.details = Some(details.into());
         self
     }
 
@@ -98,6 +107,7 @@ impl From<GroupBuilder> for Declared {
                 name: group.name,
                 summary: group.summary,
                 index_entry: group.index_entry,
+                details: group.details,
                 permissions: group.permissions,
                 subcommands,
             }),
