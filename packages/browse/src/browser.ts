@@ -10,6 +10,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { dirname, join } from 'node:path'
 import { chromium, type BrowserContext, type CDPSession, type Browser as PlaywrightBrowser, type Page } from 'playwright'
+import { routeToEmulate } from './demi/emulate'
 import { Failure } from './tool'
 import { applyEmulation } from './emulation'
 import { Logs } from './logs'
@@ -30,6 +31,8 @@ const QUIT_MS = 5_000
 const ACTION_MS = 10_000
 /** How long a navigation waits for its page by default, Playwright's own default. */
 const NAVIGATION_MS = 30_000
+/** How long a change of emulation waits for each page to draw a frame with it. */
+const DRAW_MS = 2_000
 
 /**
  * The switches the browser starts with: Playwright's own for its Chromium
@@ -228,11 +231,15 @@ export class Browser {
       await context.setOffline(true)
     }
     await this.logs.watch(context)
+    const owner = { slot: this.slot, browser: this }
     context.on('page', (page) => {
+      // Before the script gets the page: `newPage` answers after this event.
+      routeToEmulate(page, owner)
       // A page that closes as it opens, such as a popup, needs no emulation.
       this.session(page, connection).catch(() => undefined)
     })
     for (const page of context.pages()) {
+      routeToEmulate(page, owner)
       await this.session(page, connection)
     }
     this.attached = connection
@@ -336,15 +343,25 @@ export class Browser {
     return this.connected ? this.page() : null
   }
 
-  /** Applies `emulation` to every page of an attached browser; a browser attached later gets it then. */
-  async emulate(emulation: Emulation): Promise<void> {
+  /**
+   * Applies `emulation` to every page of an attached browser, and returns
+   * once each page has drawn a frame with it: what a page does on the
+   * change, such as a phone's layer that closes as the page widens and takes
+   * its history entry off, has then begun, and a navigation the script
+   * starts next is no longer cut off by it. Answers the pages; a browser
+   * attached later gets the emulation then.
+   */
+  async emulate(emulation: Emulation): Promise<Page[]> {
     if (!this.connected) {
-      return
+      return []
     }
     const connection = await this.connected
-    for (const page of connection.context.pages()) {
+    const pages = connection.context.pages()
+    for (const page of pages) {
       await applyEmulation(await this.session(page, connection), emulation, connection.userAgent)
     }
+    await Promise.all(pages.map(drawn))
+    return pages
   }
 
   /**
@@ -431,6 +448,18 @@ export class Browser {
       this.print(`The browser did not quit when asked (${error instanceof Error ? error.message.split('\n')[0] : error}); stopping it`)
     }
   }
+}
+
+/**
+ * Resolves once `page` has drawn a frame, at most `DRAW_MS` later: a page
+ * that is hidden draws none, and one a dialog blocks draws none until the
+ * dialog closes.
+ */
+async function drawn(page: Page): Promise<void> {
+  const frame = page.evaluate(() => document.visibilityState === 'hidden'
+    || new Promise<boolean>((resolve) => requestAnimationFrame(() => resolve(true))))
+  // A page that navigates or closes meanwhile has no frame to wait for: a new document lays out with the emulation anyway.
+  await withinLimit(frame.catch(() => false), DRAW_MS)
 }
 
 /** Installs one of Playwright's browsers with Playwright's own installer, into its usual cache. */
