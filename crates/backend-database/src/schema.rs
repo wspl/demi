@@ -65,8 +65,9 @@ impl ReadBlob for NoBlobs {
 /// users' credentials before passkeys, the one with passkeys before the
 /// signed-in browsers, the one with the signed-in browsers before the
 /// messages saved for later, and the one with them before administered
-/// accounts, and the one with administered accounts before a conversation's
-/// workflow. The schemas with the subagent
+/// accounts, the one with administered accounts before a conversation's
+/// workflow, and the one with the workflow before the edits and sends of
+/// saved messages were kept. The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
 /// and the server's migrate through them.
@@ -149,8 +150,42 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.administered-accounts.sql"),
             migration: Migration::Sql(CONTROL_FROM_ADMINISTERED_ACCOUNTS),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.workflows.sql"),
+            migration: Migration::Sql(CONTROL_FROM_WORKFLOWS),
+        },
     ],
 };
+
+/// From the control schema with a conversation's workflow to the one that
+/// keeps the edits of messages saved for later and their sends for a day
+/// (`storage.md` § Control records): two new tables, empty.
+const CONTROL_FROM_WORKFLOWS: &str = "
+-- An edit of a message saved for later, by the page's id for it, with its
+-- answer, kept a day so the same edit sent again answers as it first did.
+-- answer: the edit's answer, `{ draft, revisions }` as `web-api.md`
+-- § Messages saved for later names it, as JSON.
+CREATE TABLE saved_edits (
+  op              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  answer          TEXT NOT NULL,
+  made_at         INTEGER NOT NULL
+) STRICT;
+CREATE INDEX saved_edits_by_age ON saved_edits (made_at);
+
+-- A message saved for later that a send took, with the turn the send became,
+-- kept a day so the same send, or a save of it, sent again is known.
+-- document: its text and files as saved_messages keeps them.
+CREATE TABLE saved_sends (
+  id              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  turn_id         TEXT NOT NULL,
+  saved_at        INTEGER NOT NULL,
+  document        TEXT NOT NULL,
+  sent_at         INTEGER NOT NULL
+) STRICT;
+CREATE INDEX saved_sends_by_age ON saved_sends (sent_at);
+";
 
 /// From the control schema with administered accounts to the one with a
 /// conversation's Workflow menu choice (`subagents.md` § Workflows of a
@@ -1764,6 +1799,31 @@ CREATE TABLE saved_messages (
   document        TEXT NOT NULL
 ) STRICT;
 CREATE INDEX saved_messages_of_conversation ON saved_messages (conversation_id, saved_at);
+
+-- An edit of a message saved for later, by the page's id for it, with its
+-- answer, kept a day so the same edit sent again answers as it first did.
+-- answer: the edit's answer, `{ draft, revisions }` as `web-api.md`
+-- § Messages saved for later names it, as JSON.
+CREATE TABLE saved_edits (
+  op              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  answer          TEXT NOT NULL,
+  made_at         INTEGER NOT NULL
+) STRICT;
+CREATE INDEX saved_edits_by_age ON saved_edits (made_at);
+
+-- A message saved for later that a send took, with the turn the send became,
+-- kept a day so the same send, or a save of it, sent again is known.
+-- document: its text and files as saved_messages keeps them.
+CREATE TABLE saved_sends (
+  id              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  turn_id         TEXT NOT NULL,
+  saved_at        INTEGER NOT NULL,
+  document        TEXT NOT NULL,
+  sent_at         INTEGER NOT NULL
+) STRICT;
+CREATE INDEX saved_sends_by_age ON saved_sends (sent_at);
 
 -- A conversation's requests (permissions.md § Requests), each of a kind: a
 -- permission request is a command an agent ran without the grants of its

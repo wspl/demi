@@ -18,7 +18,10 @@ import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import type { SessionLoad } from '@demicodes/web-ui/agent/session-status'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import type { ConversationDraft, ConversationTarget, DeviceKind, SavedList, WorkflowChoice } from '../api/generated/web-api'
+import type { Raw } from 'vue'
+import type { Slot } from '@demicodes/web-ui/infra/slot'
+import type { AttachedHost, ConversationTarget, DeviceKind, WorkflowChoice } from '../api/generated/web-api'
+import type { NotSaved, RecordSlot } from '../conversation/record'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { SavedDraft, SavedFile } from '../conversation/drafts'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
@@ -66,18 +69,18 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   lastError: ShownError | null
   /** The composer's Markdown, a mark where each file's capsule stands. */
   draft: string
-  /** The draft the backend holds, as this page last read or saved it; null until read. */
-  savedDraft: ConversationDraft | null
-  /** The revision of the backend's draft that `draft` was built on; null while none was read. */
-  draftBase: number | null
   /** Counts the drafts shown from outside, another page's or a restored one, which the editor then shows anew. */
   draftShown: number
   /**
-   * The conversation's messages saved for later as the page last read them,
-   * with the list's revision (`web-api.md` § Messages saved for later); null
-   * until the conversation opens.
+   * The conversation's draft and its messages saved for later, newest first
+   * (`web-api.md` § Messages saved for later): one slot, which the backend
+   * changes in one transaction, of what the page last read of each, with
+   * their revisions, and the page's own typing, saves, edits, sends and
+   * deletions not landed yet (`record.ts`). The composer shows its draft.
    */
-  saved: SavedList | null
+  record: Raw<RecordSlot>
+  /** The messages the backend did not save, newest first, which the list shows as Not Saved; only this page has them. */
+  notSaved: NotSaved[]
   /** Every file the composer carries, those of the message first, in its order. */
   files: ProductAttachment[]
   /** The files the message has, in the order of its capsules; the composer's document says so. */
@@ -97,13 +100,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   removing: string[]
   messageEdit: MessageEditState | null
   scroll: PersistedScrollState | null
-  attachedHosts: {
-    deviceId: string
-    name: string
-    cwd: string | null
-  }[]
-  /** The hosts revision `attachedHosts` was read at or is being read at; a summary with a higher one reads them again. */
-  hostsRevision: number
+  /** The devices the conversation's agents attached, as a slot whose revision is the summary's `hostsRevision`: a summary with a higher one reads them again. */
+  attachedHosts: Raw<Slot<AttachedHost[]>>
   subagents: SubagentRecord[]
   terminals: TerminalRecord[]
   load: SessionLoad

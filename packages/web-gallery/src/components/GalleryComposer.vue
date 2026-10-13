@@ -144,17 +144,19 @@ interface DraftVersion {
   text: string
   files: ComposerAttachment[]
 }
-/** A message saved for later as the product's server keeps it: its text and its files. */
+/** A message saved for later as the product's server keeps it: its text and its files, and whether the server did not save it. */
 interface SavedMessage {
   id: string
   markdown: string
   files: ComposerAttachment[]
+  notSaved: boolean
 }
 const savedMessages = ref<SavedMessage[]>(
   (props.saved ?? []).map((seed) => ({
     id: createId(),
     markdown: seed.text,
     files: (seed.files ?? []).map((item) => composerAttachment(item)),
+    notSaved: seed.notSaved === true,
   })),
 )
 const savedOpen = ref(props.savedOpen === true)
@@ -162,6 +164,7 @@ const savedRows = computed<SavedRow[]>(() => savedMessages.value.map((saved) => 
   id: saved.id,
   preview: savedPreview(saved.markdown),
   attachmentCount: saved.files.length,
+  state: saved.notSaved ? 'notSaved' : 'saved',
 })))
 /** The version a later save replaced, as the product's backend keeps it. */
 const replacedVersion = ref<DraftVersion | null>(
@@ -366,7 +369,7 @@ function saveForLater() {
     forget(item.id, true)
   }
   savedMessages.value = [
-    { id: createId(), markdown: draft.value, files },
+    { id: createId(), markdown: draft.value, files, notSaved: false },
     ...savedMessages.value,
   ]
   draft.value = ''
@@ -415,6 +418,12 @@ function sendSaved(id: string, way: SendWay) {
   }
 }
 
+/** Retry on a message the server did not save: here it is saved at once, and a toast names what the product would do. */
+function retrySaved(id: string) {
+  savedMessages.value = savedMessages.value.map((each) => each.id === id ? { ...each, notSaved: false } : each)
+  productWould('Save the Message Again')
+}
+
 /** Removes a saved message at once, with Undo in a toast that saves it again, the newest on the list, as the product's does. */
 function deleteSaved(id: string) {
   const taken = takeSaved(id)
@@ -427,7 +436,7 @@ function deleteSaved(id: string) {
     action: {
       label: 'Undo',
       run: () => {
-        savedMessages.value = [{ ...taken.saved, id: createId() }, ...savedMessages.value]
+        savedMessages.value = [{ ...taken.saved, id: createId(), notSaved: false }, ...savedMessages.value]
       },
     },
   })
@@ -696,6 +705,7 @@ onBeforeUnmount(() => {
     @edit-saved="editSaved"
     @send-saved="sendSaved"
     @delete-saved="deleteSaved"
+    @retry-saved="retrySaved"
     :plugins-changed="pluginsChanged"
     :reloading="reloading"
     :offline-host="offlineHost"
