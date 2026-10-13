@@ -129,7 +129,8 @@ conversation no longer runs, its subagents and background jobs included.
   page, then focuses what Tab skips, and reports each focus ring an ancestor
   clips or an element above covers, with the side and pixels cut and a
   picture of each; `demi.focusRings.of(locator)` reads a ring a state
-  draws, such as a selected capsule.
+  draws; a list that keeps the focus and marks a row by
+  `aria-activedescendant` is read at that row.
 - **Conditions.** `demi.emulate({ viewport, scale, theme, device, locale,
   timeZone })` applies to the page as it is, without reloading it, and
   returns once the page has drawn a frame under them; the theme reaches the

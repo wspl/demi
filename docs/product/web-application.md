@@ -155,7 +155,11 @@ after a click, a link's included, and never where the page moved the focus
 itself, as when a closed window or menu gives the focus back to what opened
 it, even when Escape closed it, nor on a field the page focuses on opening.
 A selected item shows its selection by its own selected look, never by the
-focus ring. The browse tool's `demi.focusRings` finds any ring a page cuts
+focus ring. A link in running text, a Markdown link, a file's or an agent's,
+draws no ring: focused from the keyboard it takes its pointed-at look, its
+underline and tint, as a link does in a browser's reading view, so a ring
+never boxes a word in a sentence. A list that takes the keyboard focus rests
+on its selected row, else its first, and rings that row. The browse tool's `demi.focusRings` finds any ring a page cuts
 or covers ([Product checks](../delivery/browse.md)). A disabled control is skipped. One web-ui
 primitive per kind of control owns this, so no caller makes a control
 focusable by hand.
