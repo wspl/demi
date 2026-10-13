@@ -64,6 +64,19 @@ test('a read that went out before the answer landed does not release the change;
   expect(slot.read.value).toEqual(['b', 'a'])
 })
 
+test('a read of the revision already held, requested after the change landed, releases it', () => {
+  const slot = listOf(['a'], 3)
+  const change = slot.change(add('b'))
+  change.send()
+  // The summary of the write came first and its read was taken: the list holds the write, at revision 4.
+  slot.replace(['b', 'a'], { revision: 4 })
+  expect(change.land()).toBe(false)
+  expect(slot.shown.value).toEqual(['b', 'b', 'a'])
+  // A read requested after the answer holds the same revision: the change is in it.
+  slot.replace(['b', 'a'], { revision: 4, since: slot.now() })
+  expect(slot.shown.value).toEqual(['b', 'a'])
+})
+
 test('an answer that names a revision releases the change with the value of that revision, or at once when it is held', () => {
   const slot = listOf(['a'], 4)
   const change = slot.change(add('b'))

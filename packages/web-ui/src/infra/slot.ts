@@ -116,23 +116,25 @@ export class Slot<V> {
 
   /**
    * Takes a read of the whole value, as a snapshot or a request answers. A
-   * read of a revision no newer than the one held changes nothing. `since` is
-   * where the clock stood when the request for it went out; a read from the
-   * channel needs none. Answers whether it was taken.
+   * read of a revision no newer than the one held leaves the value as it is,
+   * but still counts for the changes that landed before its request went out:
+   * what it holds is at least what their writes made. `since` is where the
+   * clock stood when the request for it went out; a read from the channel
+   * needs none. Answers whether the value was replaced.
    */
   replace(value: V, options: { revision?: number; since?: number } = {}): boolean {
     const { revision } = options
-    if (revision !== undefined) {
-      if (this.read.value !== null && revision <= this.held.value) {
-        return false
-      }
-      this.held.value = revision
-    }
     const at = ++this.clock
-    this.wholeAt = at
-    this.read.value = value
+    const older = revision !== undefined && this.read.value !== null && revision <= this.held.value
+    if (!older) {
+      if (revision !== undefined) {
+        this.held.value = revision
+      }
+      this.wholeAt = at
+      this.read.value = value
+    }
     this.releaseWaiting(() => true, options.since ?? at)
-    return true
+    return !older
   }
 
   /**
