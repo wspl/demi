@@ -1,11 +1,11 @@
 <script setup lang="ts">
+import { vInkEdgeEnd } from './ink-edge'
+
 /**
  * A card's section heading line: its text at the start and, in the `end`
- * slot, `xs` icon buttons at the end. The row owns the buttons' inset, so each
- * is as far from the row's end as from its top and bottom
- * ((row height - control height) / 2), as a menu row's actions are; a caller
- * never places them with a margin of its own. The row's side padding is sized
- * for text, so the end cell pulls back the difference.
+ * slot, `xs` icon buttons at the end. The row has no box of its own, so the
+ * last button's icon ends at its content edge, where the text and figures of
+ * the card around it end (`ink-edge.ts`).
  */
 defineSlots<{
   default(): unknown
@@ -18,7 +18,7 @@ defineSlots<{
     <div class="section-row-text">
       <slot />
     </div>
-    <div v-if="$slots['end']" class="section-row-end on-fill">
+    <div v-if="$slots['end']" v-ink-edge-end class="section-row-end on-fill">
       <slot name="end" />
     </div>
   </div>
@@ -46,6 +46,5 @@ defineSlots<{
   align-items: center;
   gap: 2px;
   margin-left: 0.25rem;
-  margin-right: calc((var(--section-row-h) - var(--spacing-hit-xs)) / 2 - var(--section-row-px));
 }
 </style>
