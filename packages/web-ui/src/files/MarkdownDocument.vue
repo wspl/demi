@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { renderMarkdownDocument, type DocumentPlace } from '../markdown/document'
+import { useDocumentImages } from './document-images'
+import type { FileContents } from './types'
 import { useMarkdownRenderVersion } from '../markdown/highlight'
 import { useContentScrollers } from '../composables/useContentScrollers'
 import ScrollArea from '../ui/ScrollArea.vue'
@@ -14,17 +16,20 @@ import CodeBlockCopy from '../markdown/CodeBlockCopy.vue'
 const props = defineProps<{
   text: string
   place: DocumentPlace
+  /** The Host's files, which the document's images show as the Host has them now. */
+  contents?: FileContents
   /** Counts the times the document was read again; each time, the images that did not load try again. */
   reloads?: number
 }>()
 const emit = defineEmits<{ open: [path: string] }>()
 
 const renderVersion = useMarkdownRenderVersion()
-const html = computed(() => {
+const rendered = computed(() => {
   // The highlighter arriving, or the theme changing, renders the code anew.
   void renderVersion.value
   return renderMarkdownDocument(props.text, props.place)
 })
+const html = computed(() => rendered.value.html)
 const scrollArea = ref<InstanceType<typeof ScrollArea>>()
 const root = computed(() => scrollArea.value?.el)
 useContentScrollers(root)
@@ -59,38 +64,13 @@ function follow(event: MouseEvent): void {
   }
 }
 
-/**
- * An image whose bytes do not load, as while the Host is away, shows its alt
- * text in a quiet box in its place, as a web browser shows a missing image's
- * description, instead of its broken picture glyph. Each placeholder keeps
- * its image, which tries again when the document is read again.
- */
-const failedImages = new Map<HTMLElement, HTMLImageElement>()
-
-function onImageError(event: Event): void {
-  const image = event.target
-  if (!(image instanceof HTMLImageElement))
-    return
-  const placeholder = document.createElement('span')
-  placeholder.className = 'inline-flex max-w-full items-center rounded-md border border-dashed border-line px-2 py-0.5 align-middle text-[12px] text-fg-muted'
-  const words = image.alt.trim() || 'Could not show this image.'
-  placeholder.setAttribute('role', 'img')
-  placeholder.setAttribute('aria-label', words)
-  placeholder.textContent = words
-  failedImages.set(placeholder, image)
-  image.replaceWith(placeholder)
-}
-
-// A new rendering brings its own images.
-watch(html, () => failedImages.clear())
-watch(() => props.reloads, () => {
-  for (const [placeholder, image] of failedImages) {
-    placeholder.replaceWith(image)
-    // Setting the address again loads it again.
-    image.src = image.src
-  }
-  failedImages.clear()
+const { onError: onImageError, reload } = useDocumentImages({
+  root: () => root.value,
+  html: () => html.value,
+  hostFiles: () => rendered.value.hostFiles,
+  contents: () => props.contents,
 })
+watch(() => props.reloads, reload)
 </script>
 
 <template>

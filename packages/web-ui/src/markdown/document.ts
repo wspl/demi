@@ -16,7 +16,7 @@ import { mathExtensions } from './math'
 import { markdownReader } from './reader'
 import { scrollingTable } from './table'
 
-/** Where a document sits, and how an image it names on the Host loads. */
+/** Where a document sits, against which the Host paths it names resolve. */
 export interface DocumentPlace {
   /** The document's own path; a relative target resolves against its directory. */
   path: string
@@ -25,8 +25,21 @@ export interface DocumentPlace {
    * GitHub resolves one against the repository root.
    */
   root: string
-  /** The URL an image at a Host path loads from. */
-  imageUrl(path: string): string
+}
+
+/**
+ * The attribute a Host image carries in the rendering, holding the path of
+ * its file: the image has no address yet, because the address names the
+ * version of the file the page keeps (`useHostImagesAt`), which is given
+ * to the image where it stands (`MarkdownDocument`) and changes with the file.
+ */
+export const HOST_FILE_ATTRIBUTE = 'data-host-file'
+
+/** A document as the page shows it. */
+export interface RenderedDocument {
+  html: string
+  /** The Host paths of the images the document names, each once. */
+  hostFiles: string[]
 }
 
 /** Past this size a document shows only its source: rendering that much stalls the page. */
@@ -84,9 +97,11 @@ const documentMarked = markdownReader({ breaks: false }, gfmHeadingId(), mathPla
 // hooks read the place of the render in progress.
 let purifier: Purifier | null = null
 let active: DocumentPlace | null = null
+/** The Host path of each image of the render in progress, until the hook that sets its attribute. */
+const hostFiles = new WeakMap<Node, string>()
 
-/** The document as HTML the page can show as it is. */
-export function renderMarkdownDocument(text: string, place: DocumentPlace): string {
+/** The document as HTML the page can show as it is, and the Host files its images name. */
+export function renderMarkdownDocument(text: string, place: DocumentPlace): RenderedDocument {
   const html = documentMarked.parse(frontMatterAsCode(text), { async: false })
   active = place
   let fragment: DocumentFragment
@@ -101,16 +116,17 @@ export function renderMarkdownDocument(text: string, place: DocumentPlace): stri
     active = null
   }
   renderAfterSanitizing(fragment)
+  const paths = [...fragment.querySelectorAll(`[${HOST_FILE_ATTRIBUTE}]`)].map((image) => image.getAttribute(HOST_FILE_ATTRIBUTE)!)
   const container = document.createElement('div')
   container.append(fragment)
-  return container.innerHTML
+  return { html: container.innerHTML, hostFiles: [...new Set(paths)] }
 }
 
 function documentPurifier(): Purifier {
   if (purifier)
     return purifier
   const instance = DOMPurify(window)
-  instance.addHook('uponSanitizeAttribute', (_node, data) => {
+  instance.addHook('uponSanitizeAttribute', (node, data) => {
     const place = active
     if (!place)
       return
@@ -124,18 +140,23 @@ function documentPurifier(): Purifier {
         break
       }
       case 'src': {
-        const src = imageTarget(data.attrValue, place)
-        if (src === null)
+        const image = imageTarget(data.attrValue, place)
+        if (image && 'url' in image) {
+          data.attrValue = image.url
+        } else {
           data.keepAttr = false
-        else
-          data.attrValue = src
+          if (image)
+            hostFiles.set(node, image.path)
+        }
         break
       }
       case 'srcset': {
         const candidates = data.attrValue.split(',').flatMap((candidate) => {
           const [url, ...descriptor] = candidate.trim().split(/\s+/)
-          const src = url ? imageTarget(url, place) : null
-          return src === null ? [] : [[src, ...descriptor].join(' ')]
+          // A Host image takes its address where it stands, from the version of its file
+          // the page keeps, which one candidate of a set cannot; only `src` names one.
+          const image = url ? imageTarget(url, place) : null
+          return image && 'url' in image ? [[image.url, ...descriptor].join(' ')] : []
         })
         if (candidates.length === 0)
           data.keepAttr = false
@@ -154,6 +175,9 @@ function documentPurifier(): Purifier {
     }
   })
   instance.addHook('afterSanitizeAttributes', (node) => {
+    const hostFile = hostFiles.get(node)
+    if (hostFile !== undefined && node.nodeName === 'IMG')
+      node.setAttribute(HOST_FILE_ATTRIBUTE, hostFile)
     if (node.nodeName === 'A') {
       const href = node.getAttribute('href') ?? ''
       if (isExternal(href)) {
@@ -225,15 +249,15 @@ export function linkTarget(target: string, place: DocumentPlace): string | null 
   return hostPath(trimmed, place)
 }
 
-/** Where an image loads from: the web, or the Host through `imageUrl`; null drops it. */
-export function imageTarget(target: string, place: DocumentPlace): string | null {
+/** Where an image loads from: the web, at its address, or the Host, from the file at a path; null drops it. */
+export function imageTarget(target: string, place: DocumentPlace): { url: string } | { path: string } | null {
   const trimmed = target.trim()
   if (isExternal(trimmed))
-    return trimmed
+    return { url: trimmed }
   if (hasScheme(trimmed) || trimmed.startsWith('#'))
     return null
   const path = hostPath(trimmed, place)
-  return path === null ? null : place.imageUrl(path)
+  return path === null ? null : { path }
 }
 
 /** The Host path a relative or `/`-rooted target names, its query and fragment dropped. */
