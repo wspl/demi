@@ -453,14 +453,18 @@ draft's row.
 - **The entry** under the composer, at the left of the model's row, reads
   *1 Draft*, *3 Drafts*, and is absent while there is none. Pressed, it
   opens the list under the composer, which rises to make room: about four
-  rows tall, scrolling within. Each row shows the message's first line, its
-  attachments' count and when it was saved; pressing the row edits it, and
-  its end holds Edit, Send and Delete.
-- **Edit** puts the draft in the composer and removes it from the list; a
-  composer holding a message first saves that one as a draft, so nothing is
-  lost. **Send** sends it as the composer would, by the same choice of steer
-  or queue while the agent works. **Delete** removes it at once, with Undo
-  in a toast.
+  rows tall, scrolling within. Each row shows the message's first line and,
+  when it has attachments, their count; pressing the row edits it, and its
+  end holds Edit, Send and Delete, shown while the row is pointed at or
+  focused, and at rest on a phone. Where the row under the composer runs
+  out of room, the entry shows its mark and the count alone, *7*, with
+  *7 Drafts* as its tip.
+- **Edit** puts the draft in the composer, removes it from the list and
+  closes the list; a composer holding a message first saves that one as a
+  draft, so nothing is lost. **Send** sends it as the composer would, by the
+  same choice of steer or queue while the agent works, and the message shows
+  in the transcript, with no toast. **Delete** removes it at once, with Undo
+  in a toast. After Send or Delete the list stays open for the next.
 - **Drafts belong to the conversation** and live on the server, so every
   page and device shows the same; archiving the conversation keeps them.
 
