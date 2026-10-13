@@ -183,6 +183,7 @@ const initials = computed(() =>
             v-model="query"
             class="shrink-0"
             :size="narrow ? 'lg' : 'md'"
+            search
             placeholder="Filter settings"
             aria-label="Filter settings"
             @keydown.enter="openFirstMatch"

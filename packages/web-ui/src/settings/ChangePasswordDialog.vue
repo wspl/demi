@@ -6,6 +6,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
+import { hiddenUsername } from '@demicodes/web-ui/ui/field-autofill'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import SettingsRow from './SettingsRow.vue'
 import {
@@ -34,6 +35,8 @@ const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   phase: ChangePasswordPhase
+  /** The account's email, which the password manager files the new password under. */
+  email: string
 }>()
 
 const emit = defineEmits<{
@@ -129,7 +132,8 @@ function submit() {
             <TextInput
               v-model="current"
               aria-label="Current password"
-              secret
+              masked="password"
+              autocomplete="current-password"
               focused
               class="w-48 max-w-full"
             />
@@ -141,7 +145,8 @@ function submit() {
             <TextInput
               v-model="next"
               aria-label="New password"
-              secret
+              masked="password"
+              autocomplete="new-password"
               class="w-48 max-w-full"
             />
           </SettingsRow>
@@ -149,10 +154,13 @@ function submit() {
             <TextInput
               v-model="confirm"
               aria-label="Confirm new password"
-              secret
+              masked="password"
+              autocomplete="new-password"
               class="w-48 max-w-full"
             />
           </SettingsRow>
+          <!-- Last in the card, so the card's row dividers skip it; it is out of the flow. -->
+          <input v-bind="hiddenUsername(email)" />
         </div>
         <InlineError v-if="phase.error" :message="phase.error" />
         <InlineError

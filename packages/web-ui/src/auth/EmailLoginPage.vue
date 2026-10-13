@@ -163,7 +163,7 @@ watch(
           ref="passwordField"
           v-model="password"
           size="lg"
-          secret
+          masked="password"
           autocomplete="current-password"
           name="password"
           :readonly="phase.busy"

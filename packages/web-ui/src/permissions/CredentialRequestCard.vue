@@ -75,7 +75,7 @@ function save(): void {
           <TextInput
             :id="`${formId}-${index}`"
             v-model="values[field.name]"
-            :secret="field.kind === 'secret'"
+            :masked="field.kind === 'secret' ? 'secret' : undefined"
             literal
             :disabled="deciding"
             @keydown.enter.prevent="save"

@@ -41,6 +41,7 @@ watch(
         </header>
         <TextInput
           v-model="query"
+          search
           placeholder="Search"
           aria-label="Search"
           focused
