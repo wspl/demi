@@ -1668,7 +1668,9 @@ work panel, including waking an attached Cloud. They do not read file contents;
 the selected path becomes a remote reference when the message is sent.
 
 `GET /api/conversations/:id/changes` lists the uncommitted changes of the
-conversation's execution directory as `{ root, repository, gitDir, head,
+conversation's execution directory, or of the directory `?directory=` names
+on its primary Host, as a child's Change view asks for its own
+([Working directory](../agent/subagents.md#working-directory)), as `{ root, repository, gitDir, head,
 files, truncated, watched }`, the runner's reply
 ([Runner](../execution/runner.md#working-tree)) plus `root`, the directory the
 paths are relative to. `gitDir` is the absolute path of the repository's git
