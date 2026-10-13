@@ -28,7 +28,7 @@ const props = defineProps<{
   working?: WorkToStop
 }>()
 
-const homes: Record<string, string> = { mac: '/Users/zan', studio: '/home/zan', build: '/home/ci' }
+const homes: Record<string, string> = { mac: '/Users/alex', studio: '/home/alex', build: '/home/ci' }
 const primaryId = ref(props.primaryId)
 const attachedIds = ref(props.attachedIds ?? [])
 const moveQuestion = useMoveQuestion()

@@ -77,7 +77,6 @@ async function submit(): Promise<void> {
         <TextArea
           v-model="draft"
           :rows="12"
-          placeholder="Reply in Chinese. Write commit messages in English."
           aria-label="Personal instructions"
           @keydown.meta.enter.prevent="submit"
           @keydown.ctrl.enter.prevent="submit"

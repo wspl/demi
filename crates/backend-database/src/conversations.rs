@@ -313,7 +313,7 @@ impl ConversationDb {
         // while the conversation's open migrates the database waits for that
         // migration, however long it takes, instead of migrating beside it
         // and giving up on its write lock after the busy timeout, which left
-        // the conversation listed without its facts (prod, 0.1.22).
+        // the conversation listed without its facts (0.1.22).
         // Only a read that finds the turn taken waits for it, which a test's
         // hold counts (`MigrationHold::until_reads_wait`).
         let point = self.stores.migration_point();

@@ -1065,7 +1065,7 @@ const attachmentBubble: UserContentBlock[] = [
   { type: 'text', text: '. The manifest on my laptop is ' },
   {
     type: 'reference',
-    reference: encodeRemoteReference('alex-mbp', '/Users/alex/Projects/demi/package.json'),
+    reference: encodeRemoteReference('alex-mbp', '/Users/alex/Projects/shop/package.json'),
   },
   { type: 'text', text: '.' },
 ]
@@ -1337,7 +1337,7 @@ onBeforeUnmount(() => {
             variant="idle · empty"
             wide
           >
-            <GalleryComposer placeholder="Ask Demi…" />
+            <GalleryComposer placeholder="Ask anything…" />
           </GallerySpecimen>
           <GallerySpecimen
             variant="narrow"
@@ -1345,7 +1345,7 @@ onBeforeUnmount(() => {
           >
             <!-- The frame keeps the dock's 12px around the composer, as the session does. -->
             <div class="max-w-full resize-x overflow-hidden p-3" style="width: 367px; min-width: 15.5rem">
-              <GalleryComposer placeholder="Ask Demi…" />
+              <GalleryComposer placeholder="Ask anything…" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen
@@ -1353,7 +1353,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               focused
             />
           </GallerySpecimen>
@@ -1362,7 +1362,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               draft="The login test in packages/web/src/auth.test.ts is failing after the session cookie rename."
             />
           </GallerySpecimen>
@@ -1371,7 +1371,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               draft="Fix the login test in packages/web/src/auth.test.ts."
               replaced="Fix the login bug before the release; the session cookie was renamed."
             />
@@ -1381,7 +1381,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :offline-host="{
                 name: 'Old Laptop',
                 start: demoDeviceStart('macos'),
@@ -1395,7 +1395,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :offline-host="{
                 name: 'Old Laptop',
                 start: demoDeviceStart('macos'),
@@ -1410,7 +1410,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :offline-host="{
                 name: 'Old Laptop',
                 start: demoDeviceStart('windows'),
@@ -1425,7 +1425,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               plugins-changed
             />
           </GallerySpecimen>
@@ -1434,7 +1434,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               draft="The login test in packages/web/src/auth.test.ts is failing after the session cookie rename.&#10;Keep the fix in that file."
             />
           </GallerySpecimen>
@@ -1443,7 +1443,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :draft="composerDrafts.long"
             />
           </GallerySpecimen>
@@ -1452,7 +1452,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :draft="composerDrafts.formatted"
             />
           </GallerySpecimen>
@@ -1461,7 +1461,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :draft="composerDrafts.ready"
               :attachments="[
                 {
@@ -1478,7 +1478,7 @@ onBeforeUnmount(() => {
                 {
                   id: 'ref',
                   host: 'alex-mbp',
-                  path: '/Users/alex/Projects/demi/package.json',
+                  path: '/Users/alex/Projects/shop/package.json',
                 },
               ]"
             />
@@ -1488,7 +1488,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :draft="composerDrafts.lines"
               :attachments="[
                 { id: 'before', name: 'before.png', src: demoImageUrl, phase: 'ready' },
@@ -1502,7 +1502,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :draft="composerDrafts.uploading"
               :attachments="[
                 {
@@ -1526,7 +1526,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :draft="composerDrafts.attaching"
               :attachments="[
                 { id: 'before', name: 'before.png', src: demoImageUrl, phase: 'attaching' },
@@ -1539,7 +1539,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :draft="composerDrafts.failed"
               :attachments="[
                 {
@@ -1562,7 +1562,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               draft="Drop a file between these words."
               dropping
             />
@@ -1590,7 +1590,7 @@ onBeforeUnmount(() => {
           >
             <GalleryOverlayWell>
               <GalleryComposer
-                placeholder="Ask Demi…"
+                placeholder="Ask anything…"
                 attach-open
               />
             </GalleryOverlayWell>
@@ -1600,7 +1600,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               running
               draft="Also add a case for the expired cookie."
             />
@@ -1610,7 +1610,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               running
             />
           </GallerySpecimen>
@@ -1619,7 +1619,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               service-tier-id="priority"
             />
           </GallerySpecimen>
@@ -1628,7 +1628,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               selected-provider-id="openai"
               selected-model-id="gpt-5"
             />
@@ -1638,7 +1638,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :usage="usageAt(0.75)"
             />
           </GallerySpecimen>
@@ -1647,7 +1647,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               draft="The login test in packages/web/src/auth.test.ts is failing after the session cookie rename."
               :providers="openaiOnlyProviders"
               selected-provider-id="anthropic"
@@ -1659,7 +1659,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :providers="offlineProviders"
             />
           </GallerySpecimen>
@@ -1676,7 +1676,7 @@ onBeforeUnmount(() => {
               >Break</Button>
             </div>
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :model-load="composerModelLoad"
               @retry-models="retryModels"
             />
@@ -1686,7 +1686,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               hold="Cloud is resetting."
             />
           </GallerySpecimen>
@@ -1704,7 +1704,7 @@ onBeforeUnmount(() => {
               >
             </div>
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               draft="Run the login test again."
               :hold="composerHeld ? 'Cloud is resetting.' : null"
             />
@@ -1714,7 +1714,7 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               archived
             />
           </GallerySpecimen>
@@ -1732,7 +1732,7 @@ onBeforeUnmount(() => {
               >
             </div>
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :archived="composerArchived"
               @restore="composerArchived = false"
             />
@@ -1747,27 +1747,27 @@ onBeforeUnmount(() => {
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="none saved · type, then Save for Later or ⌘S" wide>
             <GalleryComposer
-              placeholder="Ask Demi…"
-              draft="Check prod’s DNS next."
+              placeholder="Ask anything…"
+              draft="Check the server’s DNS next."
             />
           </GallerySpecimen>
           <GallerySpecimen variant="one saved · closed" wide>
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               :saved="twoSaved.slice(0, 1)"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="two saved · closed, with a message to save" wide>
             <GalleryComposer
-              placeholder="Ask Demi…"
-              draft="Check prod’s DNS next."
+              placeholder="Ask anything…"
+              draft="Check the server’s DNS next."
               :saved="twoSaved"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="seven saved · open, the composer risen" wide>
             <div class="flex min-h-[19rem] flex-col justify-end p-3">
               <GalleryComposer
-                placeholder="Ask Demi…"
+                placeholder="Ask anything…"
                 :saved="sevenSaved"
                 saved-open
               />
@@ -1775,7 +1775,7 @@ onBeforeUnmount(() => {
           </GallerySpecimen>
           <GallerySpecimen variant="running · Stop beside Save for Later and Send" wide>
             <GalleryComposer
-              placeholder="Ask Demi…"
+              placeholder="Ask anything…"
               running
               draft="Then check the IPv6 records too."
               :saved="twoSaved"
@@ -1784,8 +1784,8 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="narrow · open" wide>
             <div class="flex min-h-[19rem] max-w-full resize-x flex-col justify-end overflow-hidden p-3" style="width: 367px; min-width: 15.5rem">
               <GalleryComposer
-                placeholder="Ask Demi…"
-                draft="Check prod’s DNS next."
+                placeholder="Ask anything…"
+                draft="Check the server’s DNS next."
                 :saved="sevenSaved"
                 saved-open
               />
@@ -1876,7 +1876,7 @@ onBeforeUnmount(() => {
                   </template>
                   <!-- The composer's cards, such as the offline Host's, stand above the chips. -->
                   <GalleryComposer
-                    placeholder="Ask Demi…"
+                    placeholder="Ask anything…"
                     :offline-host="specimen.offline ? dockOfflineHost(specimen.host) : null"
                     @moved="(_host, name) => { specimen.host = name; specimen.offline = false }"
                   />
@@ -2896,7 +2896,7 @@ onBeforeUnmount(() => {
                 @scroll-to-bottom="turnList?.scrollToBottom()"
               >
                 <GalleryComposer
-                  placeholder="Ask Demi…"
+                  placeholder="Ask anything…"
                   :running="turnFlow.state.phase === 'running' || turnFlow.startingTurn.value"
                   :compacting="turnFlow.state.phase === 'compacting'"
                   :flow="turnFlow"
@@ -3173,7 +3173,7 @@ onBeforeUnmount(() => {
                     @open="coverOpen = !coverOpen; coverAgentId = firstRunningSubagentId(agents)"
                   />
                 </template>
-                <GalleryComposer placeholder="Ask Demi…" />
+                <GalleryComposer placeholder="Ask anything…" />
               </SessionDock>
             </template>
             <template #overDock>
@@ -3265,7 +3265,7 @@ onBeforeUnmount(() => {
               <!-- The composer stands in the dock's 12px, as the session's does. -->
               <div class="px-3 pb-3">
                 <GalleryComposer
-                  placeholder="Ask Demi…"
+                  placeholder="Ask anything…"
                   :providers="historyModelsLoaded ? undefined : []"
                   :models="historyModelsLoaded ? undefined : {}"
                   :model-load="historyModelsLoaded ? 'ready' : 'loading'"

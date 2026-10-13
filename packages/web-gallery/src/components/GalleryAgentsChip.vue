@@ -86,7 +86,7 @@ const createdAt = new Date(Date.now() - 60_000).toISOString()
               @open="toggleAgents"
             />
           </template>
-          <GalleryComposer placeholder="Ask Demi…" />
+          <GalleryComposer placeholder="Ask anything…" />
         </SessionDock>
       </template>
       <template #overDock>

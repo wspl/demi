@@ -11,7 +11,7 @@ export function demoCredentials(): SettingsCredential[] {
   return [
     {
       id: 'cred-github',
-      name: 'GitHub token for zan',
+      name: 'GitHub token for deploys',
       note: 'To push the release branches from the deploy script',
       fields: [{ name: 'token', label: 'Token', kind: 'secret', value: null }],
       keepUntil: null,
@@ -27,10 +27,10 @@ export function demoCredentials(): SettingsCredential[] {
     },
     {
       id: 'cred-linear',
-      name: 'Linear sign-in for zan',
+      name: 'Linear sign-in for alex',
       note: '',
       fields: [
-        { name: 'user', label: 'User name', kind: 'visible', value: 'zan@example.com' },
+        { name: 'user', label: 'User name', kind: 'visible', value: 'alex@example.com' },
         { name: 'password', label: 'Password', kind: 'secret', value: null },
       ],
       keepUntil: ahead(26 * 24 * 60 * 60_000),
@@ -43,7 +43,7 @@ export function demoCredentials(): SettingsCredential[] {
 export const DEMO_CREDENTIAL_VALUES: Record<string, Record<string, string>> = {
   'cred-github': { token: 'ghp_EXAMPLEEXAMPLEEXAMPLE' },
   'cred-google': { key: 'AIza-example-not-a-real-key' },
-  'cred-linear': { user: 'zan@example.com', password: 'correct horse battery staple' },
+  'cred-linear': { user: 'alex@example.com', password: 'correct horse battery staple' },
 }
 
 /** The Credentials section's state as a specimen holds it. */

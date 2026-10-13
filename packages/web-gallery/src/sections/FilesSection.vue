@@ -112,7 +112,7 @@ const workspaceProjects = ref<WorkspaceProject[]>([
     id: 'demi',
     name: 'demi',
     host: 'alex-mbp',
-    path: '/Users/alex/Projects/demi'
+    path: '/Users/alex/Projects/shop'
   },
   {
     id: 'assets',
@@ -214,7 +214,7 @@ const stateSources: Record<StateOption, {
     source: createMemoryFileSource(
       {
         platform: 'linux',
-        home: '/Users/zan',
+        home: '/Users/alex',
         root: laptop,
         latencyMs: 60_000
       }
@@ -224,7 +224,7 @@ const stateSources: Record<StateOption, {
   empty: {
     source: createMemoryFileSource({
       platform: 'linux',
-      home: '/Users/zan',
+      home: '/Users/alex',
       root: laptop
     }),
     path: '/Users/alex/Library/Preferences'
@@ -232,7 +232,7 @@ const stateSources: Record<StateOption, {
   locked: {
     source: createMemoryFileSource({
       platform: 'linux',
-      home: '/Users/zan',
+      home: '/Users/alex',
       root: laptop
     }),
     path: '/Users/alex/.ssh'
@@ -240,12 +240,12 @@ const stateSources: Record<StateOption, {
   missing: {
     source: createMemoryFileSource({
       platform: 'linux',
-      home: '/Users/zan',
+      home: '/Users/alex',
       root: laptop
     }),
     path: '/Users/alex/Projects/gone'
   },
-  offline: { source: hosts[2]!.source, path: '/home/zan' },
+  offline: { source: hosts[2]!.source, path: '/home/alex' },
   readonly: {
     source: (() => {
       const { createDirectory: _omit, ...rest } = createMemoryFileSource(
@@ -665,7 +665,7 @@ onMounted(() => {
             mode="file"
             title="Open File"
             :source="fileHost.source"
-            :initial-path="fileHostId === 'mac' ? '/Users/alex/Projects/demi' : undefined"
+            :initial-path="fileHostId === 'mac' ? '/Users/alex/Projects/shop' : undefined"
             :places="fileHost.places"
             :hosts="hosts"
             :host-id="fileHostId"

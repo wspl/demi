@@ -373,7 +373,7 @@ function beginLogin(p: SettingsProviderEntry) {
       }
       login.value.phase = {
         kind: 'done',
-        account: grok ? 'zan@example.com · SuperGrok' : 'zan@example.com · Plus',
+        account: grok ? 'alex@example.com · SuperGrok' : 'alex@example.com · Plus',
         // As in the product: an account added beside another is not switched to.
         active: login.value.provider.accounts.length === 0,
       }
@@ -404,7 +404,7 @@ function submitCode(code: string) {
       }
       return
     }
-    finishLogin('zan@example.com · max')
+    finishLogin('alex@example.com · max')
   }, 1500)
 }
 
@@ -433,7 +433,7 @@ function closeLogin() {
     }
     p.accounts.push({
       id: `a-${Date.now()}`,
-      label: 'zan@example.com',
+      label: 'alex@example.com',
       plan: 'Plus',
       active: true,
       quota: [

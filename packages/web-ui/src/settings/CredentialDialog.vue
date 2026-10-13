@@ -171,16 +171,14 @@ const keepLabel = computed(() => {
               v-model="name"
               :focused="!credential"
               class="w-64 max-w-full"
-              placeholder="GitHub token for zan"
               aria-label="Name"
               @blur="touch('name')"
             />
           </SettingsRow>
-          <SettingsRow label="Note">
+          <SettingsRow label="Note" description="Optional. Why an agent needs it.">
             <TextInput
               v-model="note"
               class="w-80 max-w-full"
-              placeholder="Why an agent needs it"
               aria-label="Note"
             />
           </SettingsRow>

@@ -271,7 +271,6 @@ function selectDevice(id: string, close: () => void): void {
               :disabled="pending"
               focused
               maxlength="64"
-              placeholder="My next idea"
             />
           </label>
           <template v-else>

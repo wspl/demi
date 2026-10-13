@@ -200,7 +200,6 @@ const canSave = computed(() => {
               :items="choices"
               :item-key="choiceKey"
               list-label="Models"
-              placeholder="Gemini 3.8 Flash"
               :focused="!chosen"
               class="w-80 max-w-full"
               @choose="choose"
@@ -220,7 +219,6 @@ const canSave = computed(() => {
           <SettingsRow v-if="editable && chosen" label="Model ID">
             <TextInput
               v-model="draft.id"
-              placeholder="model-id"
               literal
               class="w-64 max-w-full font-mono"
               :readonly="mode === 'edit'"
@@ -304,7 +302,6 @@ const canSave = computed(() => {
             <TextInput
               v-if="editable"
               :model-value="draft.fastTier ?? ''"
-              placeholder="fast"
               literal
               class="w-32"
               @update:model-value="(v) => (draft.fastTier = v.trim() || null)"

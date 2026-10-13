@@ -269,7 +269,7 @@ onMounted(async () => {
         </template>
         <template #composer>
           <GalleryComposer
-            placeholder="Ask Demi…"
+            placeholder="Ask anything…"
             :running="session.phase === 'running' || flow.startingTurn.value"
             :compacting="session.phase === 'compacting'"
             :usage="session.contextUsage ?? undefined"
@@ -301,7 +301,7 @@ onMounted(async () => {
           :is-open="passkeyOfferOpen"
           :overlay-store="appOverlayStore"
           :add="galleryPasskeyOffer('adds')"
-          email="zan@example.com"
+          email="alex@example.com"
           @answered="productWould('Remember the Answer on This Browser')"
           @close="passkeyOfferOpen = false"
         />
