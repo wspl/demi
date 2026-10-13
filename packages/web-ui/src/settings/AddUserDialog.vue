@@ -77,7 +77,7 @@ function submit(): void {
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Add User</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          They sign in with this email and password, and change the password in Settings › Account.
+          They sign in with this email and password, then choose a password of their own.
         </p>
       </header>
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">

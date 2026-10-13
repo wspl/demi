@@ -4,6 +4,8 @@ import { computed, ref, watch } from 'vue'
 import EmailLoginPage, { type EmailLoginPhase } from '@demicodes/web-ui/auth/EmailLoginPage.vue'
 import SetupPage, { type SetupPhase } from '@demicodes/web-ui/auth/SetupPage.vue'
 import HandoffPage, { type HandoffPagePhase } from '@demicodes/web-ui/auth/HandoffPage.vue'
+import ChoosePasswordPage from '@demicodes/web-ui/auth/ChoosePasswordPage.vue'
+import PasskeyOfferPage from '@demicodes/web-ui/auth/PasskeyOfferPage.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import StartingScreen from '@demicodes/web-ui/ui/StartingScreen.vue'
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
@@ -34,6 +36,10 @@ const anatomy: [string, string][] = [
   [
     'Phone handoff',
     'What a phone’s camera opens from a code another signed-in browser shows: it says it opens the page while the code is spent, then opens the page the code names, signed in: in the phone’s own session when it was signed in to the account. A code that expired or was used says so, with Sign In.'
+  ],
+  [
+    'Choose password',
+    'What an account sees before anything else at its first sign-in, and again after an administrator reset its password, by its password on a computer or by a sign-in code on a phone: Choose Your Password, a new password and its confirmation without the current one, and Choose Password. Nothing else of the product opens until it is chosen; Sign Out is the one other way out. A chosen password is followed by the passkey offer, Use Face ID next time?, with Add Passkey and Not Now, on a computer as on a phone. The specimen runs the whole flow.'
   ],
   [
     'Starting',
@@ -187,6 +193,46 @@ const handoffStates: { value: string; label: TitleText; phase: HandoffPagePhase 
 const handoffState = ref('expired')
 const handoffPhase = computed(() => handoffStates.find((entry) => entry.value === handoffState.value)!.phase)
 
+/** Choose Your Password, then the passkey offer: the page after a first sign-in of an account an administrator made. */
+type ChooseStep = 'password' | 'saving' | 'offer' | 'adding'
+const chooseStep = ref<ChooseStep>('password')
+const choosePassword = ref('')
+const chooseConfirmation = ref('')
+const chooseSteps: { value: 'password' | 'offer'; label: TitleText }[] = [
+  { value: 'password', label: 'Password' },
+  { value: 'offer', label: 'Passkey Offer' },
+]
+const chooseTab = computed({
+  get: () => (chooseStep.value === 'password' || chooseStep.value === 'saving' ? 'password' : 'offer'),
+  set: (value: 'password' | 'offer') => {
+    chooseStep.value = value
+  },
+})
+
+/** Choose Password saves after a beat, as the product's request does, then the offer follows. */
+async function chosePassword() {
+  chooseStep.value = 'saving'
+  await new Promise((resolve) => setTimeout(resolve, 600))
+  chooseStep.value = 'offer'
+}
+
+/** Add Passkey: the browser's prompt the product would open, then the chat. */
+async function chooseAddPasskey() {
+  chooseStep.value = 'adding'
+  await new Promise((resolve) => setTimeout(resolve, 900))
+  productWould('Ask the Browser to Save a Passkey and Open the Chat')
+  chooseStep.value = 'password'
+  choosePassword.value = ''
+  chooseConfirmation.value = ''
+}
+
+function chooseNotNow() {
+  productWould('Open the Chat')
+  chooseStep.value = 'password'
+  choosePassword.value = ''
+  chooseConfirmation.value = ''
+}
+
 function createAccount(name: string, address: string) {
   productWould(`Create the Master Account ${name} (${address})`)
   setupState.value = 'passkey'
@@ -271,6 +317,36 @@ function createAccount(name: string, address: string) {
       </div>
       <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
         <HandoffPage :phase="handoffPhase" @sign-in="productWould('Open the Sign-In Page')" />
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      v-else-if="view === 'choose'"
+      title="Choose Your Password"
+      note="The page of an account made by an administrator, or reset by one. Type a password and its confirmation, which are checked as they are typed, and Choose Password saves it after a beat and goes on to the passkey offer, where Add Passkey asks the browser and Not Now opens the chat. Sign Out leaves. Narrow the window to see it on a phone."
+    >
+      <div class="mb-3">
+        <Segmented v-model="chooseTab" :options="chooseSteps" />
+      </div>
+      <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
+        <ChoosePasswordPage
+          v-if="chooseStep === 'password' || chooseStep === 'saving'"
+          v-model:password="choosePassword"
+          v-model:confirmation="chooseConfirmation"
+          email="bo@example.com"
+          :busy="chooseStep === 'saving'"
+          @submit="chosePassword"
+          @sign-out="productWould('Sign Out and Open the Sign-In Page')"
+        />
+        <PasskeyOfferPage
+          v-else
+          title="Use Face ID next time?"
+          message="Sign in with Face ID or your password manager, without your password. You can add one later in Settings › Account."
+          skip="Not Now"
+          :busy="chooseStep === 'adding'"
+          @add="chooseAddPasskey"
+          @skip="chooseNotNow"
+        />
       </div>
     </GallerySection>
 

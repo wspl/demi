@@ -25,6 +25,7 @@ export const GALLERY_VIEWS: Record<string, readonly GalleryViewOption[]> = {
     { value: 'signin', label: 'Sign In' },
     { value: 'setup', label: 'Setup' },
     { value: 'handoff', label: 'Phone Handoff' },
+    { value: 'choose', label: 'Choose Password' },
     { value: 'starting', label: 'Starting' },
   ],
   '/surfaces': [

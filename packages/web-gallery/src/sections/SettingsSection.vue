@@ -123,7 +123,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Users',
-    'Under Workspace, only for the master and admins. One row per account: nickname with You on the user’s own and Disabled on a disabled one, then email, role and when it was last active. A row’s ··· menu has only what the user may do to that account: an admin has Reset Password…, Sign Out Everywhere… and Disable Account… on users and nothing on a peer, the master or their own row; the master also has Change Role… and nothing on their own. A disabled account has Enable Account, which asks nothing, in place of the last two. Add User… asks the email, the role and a first password, typed or made by Generate and copied.'
+    'Under Workspace, only for the master and admins. One row per account: nickname with You on the user’s own, Disabled on a disabled one and Hasn’t Chosen a Password on one still to choose its own (a new account, or one an administrator reset), then email, role and when it was last active. A row’s ··· menu has only what the user may do to that account: an admin has Reset Password…, Sign-In Code…, Sign Out Everywhere… and Disable Account… on users and nothing on a peer, the master or their own row; the master also has Change Role… and nothing on their own. A disabled account has Enable Account, which asks nothing, in place of the last three. Sign-In Code… shows the Hand Off to Your Phone dialog’s QR code for the account, after the administrator’s own confirmation. Add User… asks the email, the role and a first password, typed or made by Generate and copied, and ends in the same code beside the password.'
   ],
   [
     'Data',
@@ -312,7 +312,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Users"
-        note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width. Every control acts on its own specimen: Add User… adds a row (zan@example.com is taken, Lena and Joe show the empty and disabled looks), Change Role… moves a user to admin, Reset Password… closes after a beat, and Disable Account… and Sign Out Everywhere… toast what the product would do to the account’s sessions. As the admin, Ana, there is no Change Role…, and the master’s row, the other admin’s and her own have no menu."
+        note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width. Every control acts on its own specimen: Add User… adds a row (zan@example.com is taken, and the new row comes with the QR code in its dialog; Lena and Joe show the new-account and disabled looks), Change Role… moves a user to admin, Reset Password… marks the account as still to choose its password, Sign-In Code… asks for a password first (any but wrong confirms), and Disable Account… and Sign Out Everywhere… toast what the product would do to the account’s sessions. As the admin, Ana, there is no Change Role…, and the master’s row, the other admin’s and her own have no menu."
       >
         <GallerySpecimen variant="Master" wide>
           <div class="@container w-full max-w-2xl rounded-xl border border-line bg-surface-dialog p-6">

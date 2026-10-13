@@ -5,6 +5,7 @@ import Button from '../ui/Button.vue'
 import InlineError from '../ui/InlineError.vue'
 import TextInput from '../ui/TextInput.vue'
 import AuthPage from './AuthPage.vue'
+import PasskeyOfferPage from './PasskeyOfferPage.vue'
 import { isEmail } from './email'
 import {
   PASSWORD_HINT,
@@ -75,28 +76,16 @@ function submit() {
 </script>
 
 <template>
-  <AuthPage
+  <PasskeyOfferPage
     v-if="phase.passkey"
     title="Add a Passkey"
     message="Sign in next time with Touch ID, Face ID or your password manager, without your password. You can add one later in Settings › Account."
-  >
-    <div class="flex flex-col gap-4">
-      <!-- The line keeps its height with nothing to say, so a message never moves the buttons. -->
-      <div class="min-h-4">
-        <InlineError v-if="phase.passkey.error" :message="phase.passkey.error.message" :request-id="phase.passkey.error.requestId" />
-      </div>
-      <Button
-        size="lg"
-        variant="primary"
-        class="w-full"
-        :loading="phase.passkey.busy"
-        @click="emit('addPasskey')"
-      >
-        Add Passkey
-      </Button>
-      <Button size="lg" class="w-full" :disabled="phase.passkey.busy" @click="emit('skipPasskey')">Skip</Button>
-    </div>
-  </AuthPage>
+    skip="Skip"
+    :busy="phase.passkey.busy"
+    :error="phase.passkey.error"
+    @add="emit('addPasskey')"
+    @skip="emit('skipPasskey')"
+  />
   <AuthPage
     v-else-if="phase.taken"
     title="Set Up Demi"

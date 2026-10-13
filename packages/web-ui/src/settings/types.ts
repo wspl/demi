@@ -450,6 +450,8 @@ export interface SettingsUser {
   email: string
   role: UserRole
   disabled: boolean
+  /** The owner is still to choose its own password: the account is new, or an administrator reset its password. */
+  choosesPassword: boolean
   /** The latest activity of any of its sessions, as an ISO 8601 timestamp; null before it first signed in. */
   lastActiveAt: string | null
 }
