@@ -56,7 +56,7 @@ async fn thought_parts_stream_as_thinking_and_a_function_call_emits_its_signatur
                 input: json!({ "command": "ls" }),
             }),
             ProviderEvent::TextDelta("done".into()),
-            ProviderEvent::Response(usage),
+            ProviderEvent::Response(Some(usage)),
         ]
     );
 }

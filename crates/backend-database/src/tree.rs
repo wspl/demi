@@ -1415,7 +1415,7 @@ mod tests {
             id: block.try_into().unwrap(),
             created_at: Timestamp::UNIX_EPOCH,
             model: test_model(),
-            usage: TokenUsage::default(),
+            usage: Some(TokenUsage::default()),
         })
     }
 

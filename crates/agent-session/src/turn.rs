@@ -470,7 +470,7 @@ async fn read(
                 if completes_text {
                     complete_text(s);
                 }
-                if let ProviderEvent::Response(usage) = &event {
+                if let ProviderEvent::Response(Some(usage)) = &event {
                     recover |= s.config.compaction.reached(window, model, usage);
                 }
                 s.update(|core| core.apply_event(event, thinking_started));

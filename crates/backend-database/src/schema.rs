@@ -220,11 +220,12 @@ CREATE TABLE plugin_oauth_clients (
 /// Each conversation's database's. Its history holds the schema of each
 /// published release before the one that ships the current schema, and of
 /// each development build a server keeps data of (`upgrades.md` § A
-/// development build on a server); 0.1.22-dev.20261011T123543Z shipped the
-/// last of those. The schemas of transcript block formats 4 and 5 after it
-/// no server keeps, but development databases do, and the server's migrate
-/// through them, as they do through the one before a node said which agent
-/// it was forked from.
+/// development build on a server); the one of transcript block format 5 in
+/// which a node says which agent it was forked from is the last of those.
+/// The schemas of transcript block formats 4 and 5 before it no server
+/// keeps, but development databases do, and the server's migrate through
+/// them, as they do through the one before a node said which agent it was
+/// forked from.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -260,8 +261,22 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.added-instructions.sql"),
             migration: Migration::Sql(CONVERSATION_FROM_ADDED_INSTRUCTIONS),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.forked-from.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_BLOCK_FORMAT_5_FORKED),
+        },
     ],
 };
+
+/// From the conversation schema of transcript block format 5 in which a
+/// node says which agent it was forked from, which the server keeps data
+/// of, to format 6, where a `response` leaves out the usage its provider
+/// did not report (`claude-code.md` § Reading): every stored response
+/// carries one, which format 6 reads as it is. Responses whose usage summed
+/// a Claude Code run stay as recorded; the next response anchors the
+/// estimate in their place, and one above the window anchors nothing
+/// (`compaction.md` § Context estimate).
+const CONVERSATION_FROM_BLOCK_FORMAT_5_FORKED: &str = "";
 
 /// From the conversation schema in which a node's instructions are the
 /// ones its profile adds, before a node said which agent it was forked
@@ -1667,11 +1682,11 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 5.
+-- blocks.block: transcript block format 6.
 CREATE TABLE blocks (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx     INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 5
+  -- blocks.block: transcript block format 6
   block   TEXT NOT NULL,
   PRIMARY KEY (node_id, idx)
 ) STRICT;
@@ -2852,7 +2867,8 @@ mod tests {
     }
 
     /// The development builds' schemas are the ones their server's
-    /// databases record, and formats 4 and 5's, the subagent limits' and
+    /// databases record, the one with `forked_from` included, and formats
+    /// 4 and 5's, the subagent limits' and
     /// the one without Detect Title the ones development databases record.
     /// A server records the one with the plugins' secrets before read
     /// states.
@@ -2863,6 +2879,7 @@ mod tests {
             (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.20261011T123543Z.sql"), 845_924_528),
             (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.block-format-4.sql"), 2_090_642_600),
             (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.block-format-5.sql"), 830_873_636),
+            (&CONVERSATION, include_str!("schema/conversation-0.1.22-dev.forked-from.sql"), 712_991_662),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.20261011T123543Z.sql"), 388_363_661),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.subagent-limits.sql"), 491_070_162),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.no-detect-title.sql"), 1_079_978_983),

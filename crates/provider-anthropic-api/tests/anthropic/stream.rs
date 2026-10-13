@@ -80,12 +80,12 @@ async fn a_stream_maps_thinking_text_tool_use_and_usage() {
                 tool_name: "read_file".into(),
                 input: json!({ "path": "a.ts" }),
             }),
-            ProviderEvent::Response(TokenUsage {
+            ProviderEvent::Response(Some(TokenUsage {
                 input_tokens: 12,
                 output_tokens: 5,
                 cache_read_tokens: 2,
                 cache_write_tokens: 1,
-            }),
+            })),
         ]
     );
 }
@@ -171,7 +171,7 @@ async fn events_and_blocks_the_provider_does_not_map_are_skipped() {
         "data: {\"type\":\"message_stop\"}\n\n",
     )))
     .await;
-    assert_eq!(events, [ProviderEvent::Response(TokenUsage::default())]);
+    assert_eq!(events, [ProviderEvent::Response(Some(TokenUsage::default()))]);
 }
 
 #[tokio::test]
@@ -291,7 +291,7 @@ async fn a_complete_stop_reason_ends_the_run_with_its_response_and_any_other_fai
             events,
             [
                 ProviderEvent::TextDelta("done".into()),
-                ProviderEvent::Response(usage)
+                ProviderEvent::Response(Some(usage))
             ],
             "{reason:?}"
         );

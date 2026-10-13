@@ -105,12 +105,12 @@ pub mod event {
 
     /// A response whose usage is `input_tokens` in and `output_tokens` out.
     pub fn response(input_tokens: u64, output_tokens: u64) -> ProviderEvent {
-        ProviderEvent::Response(TokenUsage {
+        ProviderEvent::Response(Some(TokenUsage {
             input_tokens,
             output_tokens,
             cache_read_tokens: 0,
             cache_write_tokens: 0,
-        })
+        }))
     }
 
     /// A failure with a code and no diagnostics.

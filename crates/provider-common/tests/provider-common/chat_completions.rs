@@ -108,7 +108,7 @@ async fn a_stream_maps_split_text_tool_call_arguments_and_usage() {
                 partial_json: ":\"a.ts\"}".into(),
             },
             call("call-1", "read_file", json!({ "path": "a.ts" })),
-            ProviderEvent::Response(usage),
+            ProviderEvent::Response(Some(usage)),
         ]
     );
 }
@@ -129,7 +129,7 @@ async fn reasoning_content_is_thinking_that_starts_once() {
             ProviderEvent::ThinkingDelta("think ".into()),
             ProviderEvent::ThinkingDelta("more".into()),
             ProviderEvent::TextDelta("answer".into()),
-            ProviderEvent::Response(TokenUsage::default()),
+            ProviderEvent::Response(Some(TokenUsage::default())),
         ]
     );
 }
@@ -151,7 +151,7 @@ async fn tool_calls_assemble_by_index_and_flush_when_the_reply_is_complete() {
         [
             call("tool_call_0", "no_id", json!({})),
             call("call-2", "bad", json!("{")),
-            ProviderEvent::Response(TokenUsage::default()),
+            ProviderEvent::Response(Some(TokenUsage::default())),
         ]
     );
     // A vendor that omits `index` sends one call at a time, in order.

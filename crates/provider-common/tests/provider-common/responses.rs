@@ -138,7 +138,7 @@ async fn a_stream_maps_thinking_text_tool_calls_and_usage() {
         cache_read_tokens: 60,
         cache_write_tokens: 25,
     };
-    assert_eq!(response, &ProviderEvent::Response(usage));
+    assert_eq!(response, &ProviderEvent::Response(Some(usage)));
 }
 
 #[tokio::test]
@@ -177,7 +177,7 @@ async fn a_finished_items_text_is_emitted_only_when_no_delta_streamed_it() {
     );
     assert_eq!(
         events.last(),
-        Some(&ProviderEvent::Response(TokenUsage::default()))
+        Some(&ProviderEvent::Response(Some(TokenUsage::default())))
     );
 }
 

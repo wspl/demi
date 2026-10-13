@@ -503,7 +503,7 @@ impl Mapper {
             ResponsesEvent::Completed(completed) => {
                 let usage = completed.response.and_then(|response| response.usage);
                 let usage = usage.map(|usage| usage.token_usage()).unwrap_or_default();
-                out.push(ProviderEvent::Response(usage));
+                out.push(ProviderEvent::Response(Some(usage)));
                 true
             }
             ResponsesEvent::Failed(failed) => {

@@ -36,7 +36,7 @@ async fn a_request_refused_with_401_refreshes_once_for_its_principal_and_is_sent
         events,
         [
             ProviderEvent::TextDelta("ok".into()),
-            ProviderEvent::Response(TokenUsage::default())
+            ProviderEvent::Response(Some(TokenUsage::default()))
         ]
     );
 
@@ -89,7 +89,7 @@ async fn a_refused_token_that_another_refresher_replaced_meanwhile_is_not_refres
         drop(turn);
     };
     let (events, ()) = tokio::join!(run(runtime.as_mut(), inference_request()), other);
-    assert_eq!(events, [ProviderEvent::Response(TokenUsage::default())]);
+    assert_eq!(events, [ProviderEvent::Response(Some(TokenUsage::default()))]);
     let requests = vendor.requests();
     let paths: Vec<&str> = requests.iter().map(|request| request.uri.path()).collect();
     assert_eq!(paths, [CHAT, CHAT]);

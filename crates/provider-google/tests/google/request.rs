@@ -62,7 +62,7 @@ async fn a_run_streams_from_the_models_endpoint_with_the_key() {
         let mut request = inference_request();
         request.model_id = "gemini-3.6-flash".into();
         let events = run(runtime.as_mut(), request).await;
-        assert_eq!(events, [ProviderEvent::Response(TokenUsage::default())]);
+        assert_eq!(events, [ProviderEvent::Response(Some(TokenUsage::default()))]);
     }
     for sent in vendor.requests() {
         assert_eq!(
