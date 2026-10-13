@@ -155,6 +155,17 @@ why.
   it to a project, its messages saved for later (saving, editing, sending,
   deleting with Undo), switches, choices and fields that save themselves,
   the active account, enabling models.
+- **No click goes unanswered.** Every press of a control changes the
+  screen in the same frame: with its result, when it shows at once, or
+  with the control showing that it is working, when it waits. A button
+  that waits shows a spinner in place of its icon or beside its label and
+  keeps its size; a menu item that waits closes its menu and the row it
+  acts on shows the spinner; a row action shows it on that row. The
+  control stays pressable for what makes sense while it waits, such as
+  Cancel, and a second press of the same action does not send it twice.
+  This is one behavior of the controls themselves, written once in
+  `web-ui`: a control given an action that returns a promise shows that it
+  works until the promise settles, so no handler can forget it.
 - **Which wait, and show it in place.** An action waits for the backend's
   answer, showing its progress on the control that started it, when the
   user needs to know it really happened before going on:
