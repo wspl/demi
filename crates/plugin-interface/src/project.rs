@@ -21,7 +21,8 @@ pub fn root_reads(paths: HostPaths, ancestors: &[String]) -> Vec<HostRead> {
         .map(|directory| HostRead {
             path: paths.join(directory, ".git"),
             limit: 0,
-        })
+    within: None,
+})
         .collect()
 }
 

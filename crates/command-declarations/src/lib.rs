@@ -88,6 +88,11 @@ pub struct Group<B = Binding> {
         with = "unwrap_or_skip"
     )]
     pub index_entry: Option<String>,
+    /// What only the group's own `--help` shows after its summary, such as
+    /// the format of the files its commands read (`subagents.md`
+    /// § Workflows of a project); its parent's help lists the summary alone.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    pub details: Option<String>,
     /// The permission categories the group's leaves name.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub permissions: Vec<Category>,
@@ -471,6 +476,7 @@ impl Node<NativeOperation> {
                 name: group.name.clone(),
                 summary: group.summary.clone(),
                 index_entry: group.index_entry.clone(),
+                details: group.details.clone(),
                 permissions: group.permissions.clone(),
                 subcommands: group
                     .subcommands

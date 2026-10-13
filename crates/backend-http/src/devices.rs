@@ -22,6 +22,8 @@ use demi_web_api_protocol::files::{
     CreateDeviceDirectory, CreatedDirectory, DeviceDirectoryQuery, Directory,
 };
 use demi_web_api_protocol::ids::DeviceId;
+use demi_web_api_protocol::workflows::WorkflowsQuery;
+use demi_backend_user_shard::conversation::workflows::DeviceWorkflowsRefusal;
 
 use super::AppState;
 use super::body::JsonBody;
@@ -157,6 +159,41 @@ pub(super) async fn browse(
         .await??;
     let (directory, read_at) = listed;
     Ok(super::files::read_answer(&read_at, Json(directory)))
+}
+
+/// `GET /devices/:id/workflows?directory=`: the Workflow menu's list for a
+/// new conversation that works in `directory` of a paired device, before
+/// its first message gives it a record (`subagents.md` § Workflows of a
+/// project), with the Host's number before the read.
+pub(super) async fn workflows(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    query: Result<QueryParams<WorkflowsQuery>, ApiError>,
+) -> Result<axum::response::Response, ApiError> {
+    let device = owned_device(&state, &user.id, &id, Some(DeviceKind::User)).await?;
+    // A directory that is not an absolute path is the request's fault, as a
+    // body's would be (`web-api.md` § Workflows of a directory).
+    let QueryParams(query) = query.map_err(|error| ApiError::invalid_body(error.message().to_owned()))?;
+    let (workflows, read_at) = state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move {
+            shard
+                .device_workflows(&device.id, query.directory.as_str())
+                .await
+                .map_err(|refusal| match refusal {
+                    DeviceWorkflowsRefusal::Offline => ApiError::device_offline(),
+                    DeviceWorkflowsRefusal::NoDirectory => ApiError::new(
+                        StatusCode::NOT_FOUND,
+                        ErrorCode::FsNotFound,
+                        "No such directory on the device",
+                    ),
+                    DeviceWorkflowsRefusal::Host(error) => device_fs_error(error),
+                })
+        })
+        .await??;
+    Ok(super::files::read_answer(&read_at, Json(workflows)))
 }
 
 /// Makes a directory, with its parents, on a paired device.

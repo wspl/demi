@@ -37,6 +37,7 @@ pub mod subagents;
 pub mod text;
 pub mod usage;
 pub mod users;
+pub mod workflows;
 pub mod workspaces;
 
 /// The largest message a page sends on any of its WebSockets: the

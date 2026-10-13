@@ -65,7 +65,8 @@ impl ReadBlob for NoBlobs {
 /// users' credentials before passkeys, the one with passkeys before the
 /// signed-in browsers, the one with the signed-in browsers before the
 /// messages saved for later, and the one with them before administered
-/// accounts. The schemas with the subagent
+/// accounts, and the one with administered accounts before a conversation's
+/// workflow. The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
 /// and the server's migrate through them.
@@ -144,8 +145,20 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.saved-messages.sql"),
             migration: Migration::Sql(CONTROL_FROM_SAVED_MESSAGES),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.administered-accounts.sql"),
+            migration: Migration::Sql(CONTROL_FROM_ADMINISTERED_ACCOUNTS),
+        },
     ],
 };
+
+/// From the control schema with administered accounts to the one with a
+/// conversation's Workflow menu choice (`subagents.md` § Workflows of a
+/// project): every conversation uses Default, as a new one does.
+const CONTROL_FROM_ADMINISTERED_ACCOUNTS: &str = "
+ALTER TABLE conversations ADD COLUMN workflow_kind TEXT NOT NULL DEFAULT 'default' CHECK (workflow_kind IN ('default', 'none', 'workflow'));
+ALTER TABLE conversations ADD COLUMN workflow_id TEXT CHECK ((workflow_kind = 'workflow') = (workflow_id IS NOT NULL));
+";
 
 /// From the control schema with the messages saved for later to the one
 /// with administered accounts (`storage.md` § Control records): an account
@@ -1673,6 +1686,11 @@ CREATE TABLE conversations (
     OR (pending_kind = 'workspace' AND pending_id IS NOT NULL
       AND pending_workspace_id IS NOT NULL AND pending_device_id IS NULL AND pending_path IS NULL)
   ),
+  -- Its Workflow menu choice (subagents.md § Workflows of a project): the
+  -- user's settings, No Subagents, or the workflow whose file is
+  -- .demi/workflows/<workflow_id>.yaml.
+  workflow_kind TEXT NOT NULL DEFAULT 'default' CHECK (workflow_kind IN ('default', 'none', 'workflow')),
+  workflow_id   TEXT CHECK ((workflow_kind = 'workflow') = (workflow_id IS NOT NULL)),
   CHECK (
     (target_kind = 'cloud'
       AND target_device_id IS NULL AND target_workspace_id IS NULL)

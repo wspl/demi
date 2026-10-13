@@ -499,6 +499,7 @@ pub mod command_line {
                     name: DEMI_ROOT.into(),
                     summary: DEMI_SUMMARY.into(),
                     index_entry: None,
+                    details: None,
                     permissions: Vec::new(),
                     subcommands: demi,
                 }),

@@ -70,6 +70,7 @@ impl Shard {
             pinned: request.pinned.unwrap_or(false),
             target,
             model,
+            workflow: request.workflow.unwrap_or_default(),
         })
     }
 }

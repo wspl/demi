@@ -27,15 +27,17 @@ test('the card lists the newest instructions block, and nothing before the first
   expect(loadedInstructions([...blocks, context('instructions')])).toEqual([])
 })
 
-test('each file is named from the outermost file’s directory', () => {
+test('each file is named from the outermost file’s directory, and the workflow by its name with its file', () => {
   const rows = instructionRows([
     { kind: 'personal' },
     { kind: 'file', path: '/repo/AGENTS.md' },
     { kind: 'file', path: '/repo/web/AGENTS.md' },
+    { kind: 'workflow', name: 'Review Team', path: '/repo/.demi/workflows/review.yaml' },
   ])
   expect(rows.map(({ label, path }) => ({ label, path }))).toEqual([
     { label: 'Personal instructions', path: null },
     { label: 'AGENTS.md', path: '/repo/AGENTS.md' },
     { label: 'web/AGENTS.md', path: '/repo/web/AGENTS.md' },
+    { label: 'Workflow: Review Team', path: '/repo/.demi/workflows/review.yaml' },
   ])
 })

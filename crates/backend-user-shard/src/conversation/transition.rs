@@ -62,7 +62,11 @@ impl Shard {
             change,
             ConversationChange::Record(RecordChange::Pinned(_) | RecordChange::Archived(_))
         );
+        let chooses = matches!(change, ConversationChange::Record(RecordChange::Workflow(_)));
         let switched = self.apply_change(id, change).await?;
+        if chooses {
+            self.workflow_choice_changed(id);
+        }
         self.mark(Part::Conversation(id.clone()));
         if reorders {
             self.mark(Part::ConversationOrder);
@@ -275,6 +279,12 @@ impl Shard {
                 service_tier_id: patch.service_tier_id,
             };
             changes.push((settings_fields, ConversationChange::Settings(change)));
+        }
+        if let Some(workflow) = patch.workflow {
+            changes.push((
+                vec![PatchField::Workflow],
+                RecordChange::Workflow(workflow).into(),
+            ));
         }
         if let Some(target) = patch.target {
             changes.push((vec![PatchField::Target], ConversationChange::Target(target)));

@@ -25,26 +25,39 @@ export function loadedInstructions(
 /** One row of the context card's Instructions. */
 export interface InstructionRow {
   entry: InstructionEntry
-  /** What the row says: `Personal instructions`, or the file's path from the outermost file's directory. */
+  /**
+   * What the row says: `Personal instructions`; a project file's path from
+   * the outermost file's directory; or `Workflow: Review Team` for the
+   * conversation's workflow.
+   */
   label: string
-  /** The full path of a file; none for the personal instructions. */
+  /** The full path of a file, the workflow's included; none for the personal instructions. */
   path: string | null
 }
 
-/** The rows for `entries`, each file named from the directory of the outermost one, as `AGENTS.md` and `web/CLAUDE.md`. */
+/**
+ * The rows for `entries`, each project file named from the directory of
+ * the outermost one, as `AGENTS.md` and `web/CLAUDE.md`, and the workflow
+ * by its name.
+ */
 export function instructionRows(entries: readonly InstructionEntry[]): InstructionRow[] {
   let base: string | null = null
   for (const entry of entries) {
-    if (entry.kind !== 'personal') {
+    if (entry.kind === 'file') {
       base = parentPath(entry.path)
       break
     }
   }
   return entries.map((entry) => {
-    if (entry.kind === 'personal') {
-      return { entry, label: 'Personal instructions', path: null }
+    switch (entry.kind) {
+      case 'personal':
+        return { entry, label: 'Personal instructions', path: null }
+      case 'workflow':
+        return { entry, label: `Workflow: ${entry.name}`, path: entry.path }
+      case 'file': {
+        const label = base === null ? baseName(entry.path) : relativePath(base, entry.path)
+        return { entry, label, path: entry.path }
+      }
     }
-    const label = base === null ? baseName(entry.path) : relativePath(base, entry.path)
-    return { entry, label, path: entry.path }
   })
 }

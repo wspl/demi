@@ -99,6 +99,7 @@ impl Shard {
             target: record.target,
             context_version: record.context_version,
             model,
+            workflow: record.workflow,
             created_at: record.created_at,
             updated_at: record.updated_at,
             cwd,

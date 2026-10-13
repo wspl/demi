@@ -517,8 +517,9 @@ impl RemoteHost {
     /// Looks at several paths with one request (`runner.md` § Host
     /// operations): each answers what is there, in the order of `paths`.
     /// A path the Host could not read answers so; a failure that is not
-    /// about one path fails the look.
-    pub async fn look(&self, paths: &[LookAt]) -> Result<Vec<Look>, HostError> {
+    /// about one path fails the look. The Host's number before it looked
+    /// comes with the answers.
+    pub async fn look(&self, paths: &[LookAt]) -> Result<(Vec<Look>, ReadAt), HostError> {
         let link = self.link()?;
         let _lease = self.admit()?;
         let wire_paths: Vec<wire::LookPath> = paths
@@ -526,6 +527,7 @@ impl RemoteHost {
             .map(|wanted| wire::LookPath {
                 path: wanted.path.clone(),
                 limit: wanted.limit,
+                within: wanted.within.clone(),
             })
             .collect();
         let bound: u64 = paths.iter().map(|wanted| wanted.limit).sum();
@@ -553,14 +555,14 @@ impl RemoteHost {
                 .await?;
             (answer, Bytes::new())
         };
-        let Answer::Fs(FsResult::Look(looked), _) = answer else {
+        let Answer::Fs(FsResult::Look(looked), read_at) = answer else {
             return Err(mismatch());
         };
         if looked.len() != paths.len() {
             return Err(protocol("the runner answered another number of paths"));
         }
         let mut offset: usize = 0;
-        looked
+        let looks = looked
             .into_iter()
             .map(|looked| {
                 Ok(match looked {
@@ -582,12 +584,14 @@ impl RemoteHost {
                         Look::File { bytes: file, size }
                     }
                     wire::Looked::Other => Look::Other,
+                    wire::Looked::Link => Look::Link,
                     wire::Looked::Unreadable { code, message } => {
                         Look::Unreadable(HostError::failed(code, message))
                     }
                 })
             })
-            .collect()
+            .collect::<Result<_, HostError>>()?;
+        Ok((looks, read_at))
     }
 
     /// The uncommitted changes under `root` (`runner.md` § Working tree),
@@ -846,6 +850,9 @@ pub struct DirectoryFile {
 pub struct LookAt {
     pub path: String,
     pub limit: u64,
+    /// A directory below which no link is followed, as
+    /// [`wire::LookPath::within`] says.
+    pub within: Option<String>,
 }
 
 /// What a look found at one path. A symbolic link at the path is followed;
@@ -858,6 +865,8 @@ pub enum Look {
     File { bytes: Bytes, size: u64 },
     /// Neither a file nor a directory.
     Other,
+    /// A link below the directory the look named, not followed.
+    Link,
     /// The Host could not read it.
     Unreadable(HostError),
 }

@@ -333,6 +333,15 @@ pub enum InstructionEntry {
         #[garde(skip)]
         path: String,
     },
+    /// The instructions of the workflow the conversation chose
+    /// (`subagents.md` § Workflows of a project): its name, and its file's
+    /// path on the Host.
+    Workflow {
+        #[garde(skip)]
+        name: String,
+        #[garde(skip)]
+        path: String,
+    },
 }
 
 impl InstructionEntry {
@@ -352,6 +361,10 @@ impl InstructionEntry {
             Self::File { path } => (
                 format!("<project_instructions path=\"{}\">", crate::xml_escaped(path)),
                 "</project_instructions>",
+            ),
+            Self::Workflow { name, .. } => (
+                format!("<workflow name=\"{}\">", crate::xml_escaped(name)),
+                "</workflow>",
             ),
         }
     }
