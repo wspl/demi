@@ -12,6 +12,9 @@
 // stands, so a dialog or a menu is opened first, and one that floats over the
 // page is the only part checked, as it is the only part a person reaches.
 //
+// A list that keeps the focus and marks its active row with
+// `aria-activedescendant` is read on that row, where its ring shows.
+//
 // `demi.focusRings.of(locator)` reads the indicator an element shows now,
 // for one a state draws that a walk with Tab does not reach, such as the
 // outline of a selected capsule in a message.
