@@ -980,7 +980,6 @@ html[data-theme="light"] .file-pill {
 /* What stands at the row's left edge, such as the drafts' entry, level with
    the box's attach control the way the last control is with the send button. */
 .composer-below-start {
-  min-width: 0;
   margin-inline-end: auto;
   padding-inline-start: var(--composer-inset);
 }
