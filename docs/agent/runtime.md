@@ -1944,7 +1944,7 @@ open { from: 2999, edge: b_2999 } -> attach to the live tree
 | `clear_message_queue` | Remove every queued message | `queue` |
 | `abort` | Stop one thing ([Stop](#stop)) | `abort_result`, in request order |
 | `abort_subagents`, `abort_subagent { subagentId }` | Stop subagents ([Abort](subagents.md#abort)) | `subagent` frames |
-| `retry`, `resume`, `compact` | Run the action | `rejected` when the session is busy |
+| `retry`, `resume`, `compact` | Run the action; `compact` takes `node`, the root when absent, so a subagent's context card compacts that child | `rejected` when the session is busy |
 | `shell_write { commandId, stdin }` | Write stdin to a running command | `shell_write_result` |
 | `shell_abort { commandId }` | Stop a running command | None; the command's `shell_output` shows its end |
 | `sync_transcript { from, edge }` | Ask for a fresh transcript, from the page's blocks as `open` names them | `transcript_reset`, the subagent replay, `shell_output` for each live command, to this connection alone |
@@ -1979,7 +1979,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `transcript_reset` | `start`, the blocks from that index to the end, whole, the transcript's `length`, the version `{ epoch, revision }`, and `failures` ([Where a reset starts](#where-a-reset-starts)) |
 | `transcript_patch` | Patches, the new revision, and `failures` |
 | `phase` | `idle`, `running` or `compacting`, and `subagentId` when it is a live subagent's: a page opening the conversation receives one for the root and each live child, and a child's tail row reads its own, so a child idle beside a running command shows no Requesting row |
-| `context_usage` | The estimate of the root's next request in `tokens`, the `window` in use and `compactFrom`, the estimate from which `compact` is taken; both null for a model without a window. Right after the open handshake when the session can tell it without reading a blob ([Context estimate](compaction.md#context-estimate)) |
+| `context_usage` | `node`, the agent whose context it is, and the estimate of that node's next request in `tokens`, the `window` in use and `compactFrom`, the estimate from which `compact` is taken; both null for a model without a window. Right after the open handshake when the session can tell it without reading a blob ([Context estimate](compaction.md#context-estimate)) |
 | `queue` | The queued messages, each `{ id, content }` |
 | `pending_steers` | The complete list of pending steers |
 | `steer_result` | The steer id and an `outcome`: `{ status: "accepted" }` or `{ status: "rejected", reason }` |
