@@ -9,7 +9,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::tree;
 use demi_backend_host_access::root_of;
-use demi_backend_user_shard::conversation::{failure_facts, runs_on};
+use demi_backend_user_shard::conversation::{SubagentsError, failure_facts};
 use demi_conversation_socket_protocol::{index_u32, light};
 use demi_shared_types::{BlockId, CommandId};
 use demi_web_api_protocol::conversations::{
@@ -119,38 +119,25 @@ pub(super) async fn block(
 }
 
 /// `GET /conversations/:id/subagents`: every subagent the conversation has
-/// had, in the order they started.
+/// had, in the order they started, as its shard lists them
+/// (`subagents.md` § Protocol).
 pub(super) async fn subagents(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<Json<Subagents>, ApiError> {
-    let services = &state.services;
-    let record = owned(services, &user.id, &id).await?;
-    let nodes = services
-        .conversations
-        .read(&record.id, tree::subagents)
-        .await
-        .map_err(ApiError::conversation_unreadable)?
-        .unwrap_or_default();
-    let selections: Vec<_> = nodes.iter().map(|(_, model)| model.clone()).collect();
-    let models = runs_on(services, &user.id, &selections).await;
-    // Where each child works follows where the conversation works now
-    // (`subagents.md` § Working directory).
+    let record = owned(&state.services, &user.id, &id).await?;
     let conversation = record.id.clone();
-    let placement = state
+    let subagents = state
         .shards
         .of(&user.id)
-        .call(move |shard, _| async move { shard.placement(&conversation).await })
+        .call(move |shard, _| async move { shard.subagents(&conversation).await })
         .await?
-        .map_err(ApiError::from)?;
-    Ok(Json(Subagents {
-        subagents: nodes
-            .iter()
-            .zip(models)
-            .filter_map(|((node, _), model)| node.job(model, Some(&placement)))
-            .collect(),
-    }))
+        .map_err(|error| match error {
+            SubagentsError::Host(error) => ApiError::from(error),
+            SubagentsError::Unreadable(error) => ApiError::conversation_unreadable(error),
+        })?;
+    Ok(Json(Subagents { subagents }))
 }
 
 /// `GET /conversations/:id/commands/:commandId`: where the call that started

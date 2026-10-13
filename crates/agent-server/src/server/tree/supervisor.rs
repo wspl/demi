@@ -1367,6 +1367,24 @@ impl<H: HostResolver> Tree<H> {
             .collect()
     }
 
+    /// Every child as [`subagent_summaries`](Self::subagent_summaries)
+    /// lists it, each with the result of a completed round: what the
+    /// conversation's subagent list answers while the tree is live, so the
+    /// open's `subagents` frame never takes back a child the list showed
+    /// (`web-application.md` § Opening a conversation shows in two steps).
+    pub fn subagent_jobs(&self, placement: Option<&Placement>) -> Vec<SubagentJob> {
+        self.summaries
+            .borrow()
+            .values()
+            .map(|summary| {
+                summary
+                    .record
+                    .job(summary.runs_on.clone(), placement)
+                    .expect("a subagent's record has a child")
+            })
+            .collect()
+    }
+
     /// Keeps `record` as its child's summary now, with what its round runs
     /// on and, once it closed, its transcript's last revision.
     fn remember(&self, record: &NodeRecord, runs_on: &JobModel, revision: u64) {
