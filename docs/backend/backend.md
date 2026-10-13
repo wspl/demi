@@ -508,8 +508,12 @@ keeps the ID of its upgrade for its whole life: its open and end lines carry
 it ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)),
 and so does every `error` frame it sends.
 
-**One request, every line.** The ID is a field of the request's `tracing`
-span, so every event logged while the request is handled carries it, and
+**One request, every line.** Every request logs one line when it is
+answered, at `info`: its method, path, status, how long it took and its
+user, with the `code` of a JSON error, and at `warn` for a 5xx answer; a
+socket's line is its end line. So an ID the user copies always finds at
+least its request, a refused sign-in as much as a failed save. The ID is a
+field of the request's `tracing` span, so every event logged while the request is handled carries it, and
 work the request starts in another task is started inside the span: a
 session it opens, a Host operation it sends, a store write it waits for log
 under the same ID. Work that outlives the request, such as a turn a socket's
@@ -517,7 +521,8 @@ frame started, logs under the socket's ID with its own conversation and turn
 IDs.
 
 **The page's own errors.** A failure the page finds itself, a value it
-received that does not parse or a handler that throws, is reported with
+received that does not parse or a handler that throws, and the page's own
+diagnostics such as why it replaced a socket, is reported with
 `POST /api/page-errors { title, message, detail }`; the backend logs it as a
 warning under that request's ID and answers 204, and the page shows that ID
 with the error. A report carries what failed and where, never a value it
