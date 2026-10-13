@@ -636,7 +636,11 @@ draft's are ([Conversation drafts](#conversation-drafts)).
   page's UUID for the message the draft becomes, and moves the message into
   the conversation's draft, and the draft's text and files, when it holds
   any, into a message saved for later under that id, in one transaction,
-  and answers `{ draft }`. Sent again, it answers as the first did.
+  and answers `{ draft }`. Sent again, it answers as the first did when the
+  first made a message under that id; when the draft was empty, the message
+  is already in the draft and the edit answers 404 `saved_not_found`, which
+  the page reads as the list and the draft being as they are now, with no
+  error shown.
 - `DELETE /api/conversations/:id/saved/:messageId` removes one and answers
   204; Undo saves it again with `POST`, its uploads kept as the composer's
   are kept until saved ([Blob references](../backend/storage.md)).
