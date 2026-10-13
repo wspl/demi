@@ -30,6 +30,7 @@ export function assignableRoles(role: UserRole): Array<Exclude<UserRole, 'master
 export type UserAction =
   | 'resetPassword'
   | 'changeRole'
+  | 'signInCode'
   | 'signOutEverywhere'
   | 'disable'
   | 'enable'
@@ -37,8 +38,9 @@ export type UserAction =
 /**
  * What `viewer` may do to `target`, in menu order: nothing to themselves or
  * to a role not below theirs; only the master changes roles; a disabled
- * account is already signed out, so it offers Enable Account instead of
- * Sign Out Everywhere and Disable Account.
+ * account refuses every sign-in and has no session to end, so it offers
+ * Enable Account instead of Sign-In Code, Sign Out Everywhere and Disable
+ * Account.
  */
 export function userActions(viewer: SettingsUser, target: SettingsUser): UserAction[] {
   if (viewer.id === target.id || !outranks(viewer.role, target.role)) {
@@ -47,6 +49,6 @@ export function userActions(viewer: SettingsUser, target: SettingsUser): UserAct
   return [
     'resetPassword',
     ...(viewer.role === 'master' ? (['changeRole'] as const) : []),
-    ...(target.disabled ? (['enable'] as const) : (['signOutEverywhere', 'disable'] as const)),
+    ...(target.disabled ? (['enable'] as const) : (['signInCode', 'signOutEverywhere', 'disable'] as const)),
   ]
 }

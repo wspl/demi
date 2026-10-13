@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Ellipsis } from '@lucide/vue'
+import HandoffDialog from '../auth/HandoffDialog.vue'
+import { addedUserWording, signInCodeWording, type HandoffHost, type HandoffWording } from '../auth/handoff'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
+import CopyButton from '../ui/CopyButton.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
@@ -11,6 +14,7 @@ import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
 import Tag from '../ui/Tag.vue'
+import TextInput from '../ui/TextInput.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import AddUserDialog from './AddUserDialog.vue'
 import ChangeUserRoleDialog from './ChangeUserRoleDialog.vue'
@@ -29,7 +33,9 @@ import { ROLE_LABEL, assignableRoles, userActions, type UserAction } from './use
  * ··· menu offers what the user may do to that account and is absent where
  * they may do nothing (their own row, a peer or a higher role). Add User…
  * asks the email, the role and a first password; Reset Password… and Change
- * Role… ask for one thing; Sign Out Everywhere and Disable Account… ask
+ * Role… ask for one thing; Sign-In Code… shows a QR code that signs the
+ * account's phone in, in the Hand Off to Your Phone dialog, and Add User…
+ * ends in the same code beside the first password; Sign Out Everywhere and Disable Account… ask
  * first, saying what happens; Enable Account does not ask, since it only
  * undoes. The host carries each out and says itself a refusal it could not
  * hide.
@@ -49,6 +55,13 @@ const open = ref<Dialog | null>(null)
 /** The account a dialog is about, kept while the dialog closes. */
 const target = ref<SettingsUser | null>(null)
 const busy = ref(false)
+/**
+ * The sign-in code dialog's account: its host, its wording and, after Add
+ * User, the first password shown beside the code. It stays while the dialog
+ * closes; `signInOpen` shows it.
+ */
+const signIn = ref<{ host: HandoffHost; wording: HandoffWording; password: string | null } | null>(null)
+const signInOpen = ref(false)
 const addError = ref<Exclude<UserAddOutcome, { kind: 'added' }> | undefined>()
 
 function actionsOf(user: SettingsUser): UserAction[] {
@@ -89,6 +102,8 @@ async function add(user: SettingsNewUser): Promise<void> {
     const outcome = await props.host.add(user)
     if (outcome.kind === 'added') {
       open.value = null
+      const added = props.host.users.find((candidate) => candidate.id === outcome.id)
+      showSignInCode(outcome.id, addedUserWording(added?.nickname ?? user.email), user.password)
     } else {
       addError.value = outcome
     }
@@ -125,11 +140,18 @@ async function disableAccount(): Promise<void> {
   }
 }
 
+function showSignInCode(id: string, wording: HandoffWording, password: string | null): void {
+  signIn.value = { host: props.host.signInCode(id), wording, password }
+  signInOpen.value = true
+}
+
 function run(action: UserAction, user: SettingsUser): void {
   if (action === 'resetPassword') {
     ask('reset', user)
   } else if (action === 'changeRole') {
     ask('role', user)
+  } else if (action === 'signInCode') {
+    showSignInCode(user.id, signInCodeWording(user.nickname), null)
   } else if (action === 'signOutEverywhere') {
     ask('signOut', user)
   } else if (action === 'disable') {
@@ -142,6 +164,7 @@ function run(action: UserAction, user: SettingsUser): void {
 const ACTION_LABEL: Record<UserAction, string> = {
   resetPassword: 'Reset Password…',
   changeRole: 'Change Role…',
+  signInCode: 'Sign-In Code…',
   signOutEverywhere: 'Sign Out Everywhere…',
   disable: 'Disable Account…',
   enable: 'Enable Account',
@@ -235,6 +258,29 @@ function closeDialog(): void {
     @close="closeDialog"
     @submit="changeRole"
   />
+  <HandoffDialog
+    v-if="signIn"
+    :is-open="signInOpen"
+    :overlay-store="overlayStore"
+    :host="signIn.host"
+    :email="viewer?.email ?? ''"
+    :wording="signIn.wording"
+    @close="signInOpen = false"
+  >
+    <template v-if="signIn.password" #code-lead>
+      <p class="text-[13px] leading-5 text-fg-muted">
+        The account is ready. Give them this password, or have them scan the code.
+      </p>
+      <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
+        <SettingsRow label="Password">
+          <CopyButton :source="signIn.password" label="Copy password" />
+          <template #below>
+            <TextInput :model-value="signIn.password" aria-label="Password" literal readonly class="w-full font-mono" />
+          </template>
+        </SettingsRow>
+      </div>
+    </template>
+  </HandoffDialog>
   <ConfirmDialog
     :is-open="open === 'signOut'"
     :overlay-store="overlayStore"
