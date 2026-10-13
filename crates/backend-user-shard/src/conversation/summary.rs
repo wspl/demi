@@ -106,6 +106,8 @@ impl Shard {
             revision: facts.revision,
             last_turn: facts.last_turn.map(last_turn),
             draft_revision: record.draft_revision,
+            saved: record.saved,
+            saved_revision: record.saved_revision,
             panel_revision: record.panel_revision,
             hosts_revision: record.hosts_revision,
             plugin_revisions,

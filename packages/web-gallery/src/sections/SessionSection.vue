@@ -191,6 +191,7 @@ import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import GalleryAgentsChip from '../components/GalleryAgentsChip.vue'
 import GalleryCommandReports from '../components/GalleryCommandReports.vue'
 import GalleryComposer from '../components/GalleryComposer.vue'
+import { sevenSaved, twoSaved } from '../fixtures/saved'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GalleryContextLimit from '../components/GalleryContextLimit.vue'
 import GallerySection from '../components/GallerySection.vue'
@@ -1733,6 +1734,60 @@ onBeforeUnmount(() => {
               :archived="composerArchived"
               @restore="composerArchived = false"
             />
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Saved for Later"
+        note="A message saved for later is one the user keeps to send later, and nothing sends it but the user. It is not the conversation’s draft, the message the composer holds, which it leaves to be saved. While the message holds text or files, Save for Later (⌘S) stands left of Stop and Send; it keeps the whole message, its files included, and empties the composer. The entry under the composer, at the left of the model’s row, reads 1 Saved or 3 Saved and is absent while there is none. Pressed, it opens the list under the composer, which rises to make room: about four rows tall, the fifth half in view, scrolling within. A row shows the message’s first line and, when it has files, their count, and no time; pressing it edits the message. Edit, Send and Delete always stand at its end, after the count, on every width: quiet, and in the normal icon color while the pointer or the focus is on the row. In a narrow composer the entry keeps its mark and the count alone, with the whole label as its tip. Edit puts the message in the composer, takes it off the list and closes the list; a composer holding a message first saves that one for later, so nothing is lost. Send sends it as the composer would, steering or queueing while the agent works, and here a toast names what the product would do. Send and Delete keep the list open. Delete removes it at once, with Undo in a toast. Here the saved messages are the specimen’s own state; the product keeps them on the server, per conversation."
+      >
+        <div class="specimen-stack specimen-stack-loose">
+          <GallerySpecimen variant="none saved · type, then Save for Later or ⌘S" wide>
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              draft="Check prod’s DNS next."
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="one saved · closed" wide>
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              :saved="twoSaved.slice(0, 1)"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="two saved · closed, with a message to save" wide>
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              draft="Check prod’s DNS next."
+              :saved="twoSaved"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="seven saved · open, the composer risen" wide>
+            <div class="flex min-h-[19rem] flex-col justify-end p-3">
+              <GalleryComposer
+                placeholder="Ask Demi…"
+                :saved="sevenSaved"
+                saved-open
+              />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="running · Stop beside Save for Later and Send" wide>
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              running
+              draft="Then check the IPv6 records too."
+              :saved="twoSaved"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="narrow · open" wide>
+            <div class="flex min-h-[19rem] max-w-full resize-x flex-col justify-end overflow-hidden p-3" style="width: 367px; min-width: 15.5rem">
+              <GalleryComposer
+                placeholder="Ask Demi…"
+                draft="Check prod’s DNS next."
+                :saved="sevenSaved"
+                saved-open
+              />
+            </div>
           </GallerySpecimen>
         </div>
       </GallerySection>

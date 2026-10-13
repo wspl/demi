@@ -17,7 +17,7 @@ import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import type { SessionLoad } from '@demicodes/web-ui/agent/session-status'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import type { ConversationDraft, ConversationTarget, DeviceKind } from '../api/generated/web-api'
+import type { ConversationDraft, ConversationTarget, DeviceKind, SavedList } from '../api/generated/web-api'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { SavedDraft, SavedFile } from '../conversation/drafts'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
@@ -65,6 +65,12 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   draftBase: number | null
   /** Counts the drafts shown from outside, another page's or a restored one, which the editor then shows anew. */
   draftShown: number
+  /**
+   * The conversation's messages saved for later as the page last read them,
+   * with the list's revision (`web-api.md` § Messages saved for later); null
+   * until the conversation opens.
+   */
+  saved: SavedList | null
   /** Every file the composer carries, those of the message first, in its order. */
   files: ProductAttachment[]
   /** The files the message has, in the order of its capsules; the composer's document says so. */
