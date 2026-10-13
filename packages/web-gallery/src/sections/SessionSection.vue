@@ -1954,7 +1954,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Agents in a Message"
-        note="A reply links a subagent as agent:4, the number spawn printed: its mark, the robot with the dot of its state as its tab in the Agents window wears it, then the text. It is drawn in the text's own colors, not a web link's accent, as a mention in Slack or Linear reads as part of the sentence: the text in the prose's color at medium weight over a dotted underline in the faintest text color, 1px, 3px below the text, and the mark in the secondary text color. It starts with an icon, so, as a file's link, it keeps 0.2em of space on each side, inside its hover fill and outside its underline: in the Chinese sentence the character before the mark and the colon after the name do not touch it. It flows as words do: a long name wraps at the line's end like any text, its first line starting where the text before it ends, the mark staying with the first word, and the hover fill and the underline following each line it spans, in a narrow column and a table's cell alike. It is reached with Tab and opened with Return or Space, as a button is. Pointed at, it shows the hover fill behind both and shows what the agent is doing and what it runs on, on one line and nothing more: the link’s text already names it. A click opens the Agents window on that agent's tab, a finished one as Completed picks it, and a click when the window shows that tab leaves it as it is; stopping an agent there takes the dot off its mark, as a stopped conversation's row is settled. agent:0, the main agent, brings the main transcript into view. A number the conversation does not have is its text alone, which says so when pointed at."
+        note="A reply links a subagent as agent:4, the number spawn printed: its mark, the robot with the dot of its state as its tab in the Agents window wears it, then the text. It is drawn in the text's own colors, not a web link's accent, as a mention in Slack or Linear reads as part of the sentence: the text in the prose's color at medium weight over a dotted underline in the faintest text color, 1px, 3px below the text, and the mark in the secondary text color. It starts with an icon, so, as a file's link, it keeps 0.2em of space on each side, inside its hover fill and outside its underline: in the Chinese sentence the character before the mark and the colon after the name do not touch it. It flows as words do: a long name wraps at the line's end like any text, its first line starting where the text before it ends, the mark staying with the first word, and the hover fill and the underline following each line it spans, in a narrow column and a table's cell alike. It is reached with Tab and opened with Return or Space, as a button is. Pointed at, it shows the hover fill behind both and no tip: the link’s text already names the agent. A click opens the Agents window on that agent's tab, a finished one as Completed picks it, and a click when the window shows that tab leaves it as it is; stopping an agent there takes the dot off its mark, as a stopped conversation's row is settled. agent:0, the main agent, brings the main transcript into view. A number the conversation does not have is its text alone."
       >
         <GallerySpecimen variant="running, finished, failed, stopped, main, unknown" wide>
           <GalleryAgentLinks />
@@ -2072,7 +2072,7 @@ onBeforeUnmount(() => {
         </div>
       </GallerySection>
 
-      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts read as a command’s notice: what happened, then the agent by its description, underlined with dots, with Failed or Stopped after it when it went wrong. Pointed at, a subagent’s name shows the tip its link shows: what the agent is doing and what it runs on, on one line and nothing more. A click on the agent’s name opens the Agents window over the specimens on that agent’s tab, a finished one as Completed picks it, and marks the block the receipt came from: the call that sent the update, the finished agent’s last answer, the failed agent’s failure record; the stopped agent gave none, so its tab opens at its latest. Close (×) closes the window. In a child’s transcript, a message from the main agent reads Main agent sent a message, the main agent its subject, and its name brings the call that sent it into view in the main transcript. A notice row does not open, as no notice row does: no chevron, no body; what it would show is where the agent’s name leads, so the name is its one control, reached with Tab. On a narrow row the name gives way first, down to a few characters, then the words. The user’s decisions on permission requests, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed name no agent and say all there is in their words, the failed move why: Move failed: the project no longer exists. These rows have no human message controls.">
+      <GallerySection title="AgentReceiptBlock" note="Agent updates and completion receipts read as a command’s notice: what happened, then the agent by its description, underlined with dots, with Failed or Stopped after it when it went wrong. The name has no tip. A click on the agent’s name opens the Agents window over the specimens on that agent’s tab, a finished one as Completed picks it, and marks the block the receipt came from: the call that sent the update, the finished agent’s last answer, the failed agent’s failure record; the stopped agent gave none, so its tab opens at its latest. Close (×) closes the window. In a child’s transcript, a message from the main agent reads Main agent sent a message, the main agent its subject, and its name brings the call that sent it into view in the main transcript. A notice row does not open, as no notice row does: no chevron, no body; what it would show is where the agent’s name leads, so the name is its one control, reached with Tab. On a narrow row the name gives way first, down to a few characters, then the words. The user’s decisions on permission requests, a move the user told the agent of, and Demi’s notice that a move the agent asked for failed name no agent and say all there is in their words, the failed move why: Move failed: the project no longer exists. These rows have no human message controls.">
         <div class="gallery-frame gallery-block-frame bg-surface">
           <GalleryReceipts :agents="agents" @abort="sessionFlow.abortSubagents" @abort-agent="sessionFlow.abortSubagent">
             <div class="specimen-stack [--agent-pad-x:0px]">
@@ -2922,7 +2922,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="What an Agent Runs On"
-        note="Two groups say what a child is doing and what it runs on. On the left: the child's state dot, the one its tab wears, the state, Running, Finished, Stopped or Failed, how long the round has run, in the duration words of the reset times (42s, 16m 48s, 1h 5m) and counting with the page's clock while it runs, and Forked from agent N for a fork, a link to that agent: its mark, the tip and the click of a message's link, which opens the Agents window on its tab here. The round is not shown. On the right: the profile as a tag, none for the inherit profile; the model's name as the model menu shows it, pointed at naming the provider and the full name, and for the inherit profile Inherited from this conversation; the effort, or Thinking off; Fast when it is on. Where the room runs out, Forked from gives way first, then the model's name; the state and the time always stay (the last three specimens, by width). The Agents window shows it as a bar along its bottom edge, and the tips of an agent link and a receipt's name after the description, both groups on one line."
+        note="The Agents window's bar says what a child is doing and what it runs on in segments, as an editor's status bar does: each item stands in its own segment, told apart by spacing, never by dividers. A segment that acts when pressed, Forked from agent N and the context indicator, shows a hover background over its whole extent and the bar's full height, and Tab reaches it with a focus ring (one specimen pins that background); a segment that only explains, the state, the profile and the model, shows its tip and no background. Two groups say what a child is doing and what it runs on. On the left: the child's state dot, the one its tab wears, the state, Running, Finished, Stopped or Failed, how long the round has run, in the duration words of the reset times (42s, 16m 48s, 1h 5m) and counting with the page's clock while it runs, and Forked from agent N for a fork, a link to that agent: its mark and the click of a message's link, which opens the Agents window on its tab here, shown in its own segment. The round is not shown. On the right: the profile as a tag, none for the inherit profile; the model's name as the model menu shows it, pointed at naming the provider and the full name, and for the inherit profile Inherited from this conversation; the effort, or Thinking off; Fast when it is on. Where the room runs out, Forked from gives way first, then the model's name; the state and the time always stay (the last three specimens, by width). The Agents window shows it as a bar along its bottom edge (an ended child's bar has no context indicator: finished, stopped and failed show none)."
       >
         <GalleryReceipts :agents="agents" @abort="sessionFlow.abortSubagents" @abort-agent="sessionFlow.abortSubagent">
           <GallerySpecimen v-for="run in runLines" :key="run.id" :variant="runLineVariants[run.id] ?? run.name" wide>
@@ -2937,9 +2937,9 @@ onBeforeUnmount(() => {
               @refresh-limits="agentContext.refresh"
             />
           </GallerySpecimen>
-          <GallerySpecimen variant="room for everything · 40rem">
+          <GallerySpecimen variant="pressable segments pinned hovered · Forked from and the context indicator">
             <AgentStatusBar
-              class="w-[40rem]"
+              class="w-[46rem] [&_[data-acting]]:bg-hover"
               :run="runLines[2]!"
               :usage="runLines[2]!.contextUsage"
               v-bind="agentCompaction(runLines[2]!)"
@@ -2950,9 +2950,22 @@ onBeforeUnmount(() => {
               @refresh-limits="agentContext.refresh"
             />
           </GallerySpecimen>
-          <GallerySpecimen variant="narrower · Forked from gives way · 30rem">
+          <GallerySpecimen variant="room for everything · 46rem">
             <AgentStatusBar
-              class="w-[30rem]"
+              class="w-[46rem]"
+              :run="runLines[2]!"
+              :usage="runLines[2]!.contextUsage"
+              v-bind="agentCompaction(runLines[2]!)"
+              :instructions="[]"
+              :limits="agentContext.limits.value"
+              @compact="agentContext.compact"
+              @open-instruction="agentContext.openInstruction"
+              @refresh-limits="agentContext.refresh"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="narrower · Forked from gives way · 36rem">
+            <AgentStatusBar
+              class="w-[36rem]"
               :run="runLines[2]!"
               :usage="runLines[2]!.contextUsage"
               v-bind="agentCompaction(runLines[2]!)"

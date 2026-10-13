@@ -8,7 +8,7 @@ import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
 import { openMessageLink, pressMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'
 import { useMessageAgents } from '@demicodes/web-ui/agent/agent-links'
-import AgentLinkTip from '@demicodes/web-ui/agent/AgentLinkTip.vue'
+import AgentLinkMark from '@demicodes/web-ui/agent/AgentLinkMark.vue'
 import { attachmentDrag } from '@demicodes/web-ui/agent/message-input/copied-message'
 import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
@@ -146,7 +146,7 @@ watch(
     :size="picture.size"
     :caption="picture.caption"
   />
-  <AgentLinkTip
+  <AgentLinkMark
     v-for="(link, index) in agentLinks"
     :key="index"
     :element="link"
