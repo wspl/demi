@@ -75,13 +75,14 @@ Passkeys belong to the host name of the backend's public URL, such as
 `demi.example`: a backend reached at another name, or by an IP address,
 for which browsers make no passkeys, offers none.
 
-A signed-in browser hands its account to a phone by a code. For example, Ana
-works in a conversation on her laptop and wants to follow it from her phone:
-she presses the phone mark left of Settings at the sidebar's foot, confirms
-it is her with her password or a passkey, and a QR code appears. Her phone's
-camera reads it, the phone's browser opens the conversation she was on,
-signed in, and the laptop's dialog says *Safari on iPhone is signed in.*
-and closes. The phone mark stands only where the page is not itself on a
+Handoff carries what the user is doing from a signed-in browser to a phone,
+by a code, as Handoff carries work between a Mac and an iPhone. For example,
+Ana works in a conversation on her laptop and wants to follow it from her
+phone: she presses the phone mark left of Settings at the sidebar's foot,
+*Hand Off to Phone*, confirms it is her with her password or a passkey, and
+a QR code appears. Her phone's camera reads it, the phone's browser opens
+the conversation she was on, signed in, and the laptop's dialog says
+*Handed off to Safari on iPhone.* and closes. The phone mark stands only where the page is not itself on a
 phone.
 
 - **Confirming it is the user** takes the password, or a passkey when the
@@ -92,9 +93,12 @@ phone.
   shows, so the phone lands where the user was. It is good for ten minutes
   and once; a new code ends the one before. An expired code's dialog offers
   Show New Code, which asks nothing while the confirmation holds.
-- **The phone's sign-in is a session of its own,** as a password sign-in on
-  the phone would be: signing out on one leaves the other signed in. A
-  phone signed in to another account switches to this one.
+- **A phone already signed in keeps its session.** A browser signed in to
+  the account opens the page in the session it has, and no second session
+  of it is made. A browser not signed in gets a session of its own, as a
+  password sign-in on the phone would: signing out on one leaves the other
+  signed in. A browser signed in to another account signs that one out and
+  takes this one, so it holds one session, never two.
 
 Settings › Account lists the browsers signed in to the account: each by its
 browser and system, such as *Safari on iPhone*, or *Web Browser* when its
