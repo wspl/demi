@@ -131,13 +131,12 @@ why.
   slot, written once in `web-ui`; no action keeps its own copy of a value
   it is waiting for, its own rollback, or a flag that disables a control
   until an answer comes.
-- **What the page creates, it names.** A message saved for later, a
-  credential, a subagent profile, a provider entry, a forked conversation
-  and every other record the user creates gets its id from the page, a
-  random UUID, so the record stands in its list at once and the change that
-  creates it can be sent again without making two. The backend takes the
-  page's id and answers a second create with the same id and the same
-  content as the first.
+- **What the page creates, it names.** A record the page shows before the
+  backend answers, such as a message saved for later or a forked
+  conversation, gets its id from the page, a random UUID, so it stands in its
+  list at once and the change that creates it can be sent again without
+  making two. The backend takes the page's id and answers a second create
+  with the same id and the same content as the first.
 - **Changes to one thing go in order; changes to different things do not
   wait for each other.** The changes of one thing, such as one
   conversation, are sent one at a time, in the order the user made them, so
@@ -148,26 +147,34 @@ why.
   A change of several things, such as archiving a selection, waits for the
   changes on its way of each of them. A control is never disabled while an
   earlier change of the same thing is on its way.
-- **What it covers.** Every action whose result the page can tell:
-  archive and restore, pin and unpin, deletion once the user confirmed it,
-  renaming, reordering, marking read, a conversation's model, effort and
-  tier, moving it to a project, its messages saved for later (saving,
-  editing, sending, deleting), detaching a Host, the settings' switches and
-  fields, creating, editing and removing credentials, subagent profiles,
-  provider entries and their models, the active account, instructions,
-  renaming and removing passkeys, signing a browser out, removing a project
-  or a device, an administrator's role change, disabling and enabling, and a
-  plugin's switches and removals. A saved message sent shows in the
-  conversation at once as a message on its way, as one sent from the
-  composer does.
-- **What it does not.** An action whose result only the backend or another
-  machine can tell shows that it is in progress, in place: signing in and
-  changing the email or password, which the backend checks; a password, a
-  sign-in code or a pairing code the backend makes; a key a vendor must
-  accept, such as an Exa API key or a provider's Test; creating a project,
-  whose directory the Host must confirm; pairing a device; adding a skill
-  source, which the backend fetches; an upload's progress; moving a
-  conversation to another Host. Sending a message has its own states
+- **Which actions show at once.** Being able to tell the result is not
+  enough; an action shows at once when it is frequent, light and easily
+  taken back, as a switch in macOS's System Settings takes effect as it is
+  flipped: archive and restore with Undo, pin and unpin, renaming,
+  reordering, marking read, a conversation's model, effort and tier, moving
+  it to a project, its messages saved for later (saving, editing, sending,
+  deleting with Undo), switches, choices and fields that save themselves,
+  the active account, enabling models.
+- **Which wait, and show it in place.** An action waits for the backend's
+  answer, showing its progress on the control that started it, when the
+  user needs to know it really happened before going on:
+  - **it ends access**, signing a browser out, signing an account out
+    everywhere, disabling or enabling an account, changing a role, removing
+    a passkey, revoking a device, detaching a Host from a conversation;
+  - **it removes what other work depends on**, removing a provider entry, a
+    credential, a subagent profile or a project;
+  - **it is a form the user submits**: a dialog or sheet with Save or Add,
+    which keeps its fields until the backend took them and shows a refusal
+    beside them, such as adding or editing a credential, a subagent profile,
+    a provider entry or its models, or saving the instructions;
+  - **only the backend or another machine can tell its result**: signing in
+    and changing the email or password; a password, a sign-in code or a
+    pairing code the backend makes; a key a vendor must accept, such as an
+    Exa API key or a provider's Test; creating a project, whose directory
+    the Host must confirm; pairing a device; adding a skill source, which
+    the backend fetches; an upload's progress; moving a conversation to
+    another Host.
+  Sending a message has its own states
   ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)).
 
 ### Keyboard
