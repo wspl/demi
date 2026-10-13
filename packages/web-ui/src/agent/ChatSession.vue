@@ -26,7 +26,7 @@ import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
 import { useSessionPanels } from './useSessionPanels'
 import { provideLiveCalls } from './live-calls'
-import { callTerminal, dockTerminals } from './terminals'
+import { useCallTerminals, useDockTerminals } from './terminals'
 import { provideCommandRevealer } from './command-reports'
 import { provideOriginRevealer } from './agent-receipts'
 import { agentLinkWindow, findAgent, provideMessageAgents } from './agent-links'
@@ -54,7 +54,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
 import { dockChipsShown, resumeWaitsFor, sessionFailureNotice, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
-import { EMPTY_TRANSCRIPT, latestWindow } from '@demicodes/conversation-client'
+import { latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
 import { provideBlockReader, type BlockReader } from './whole-blocks'
 import type { PersistedScrollState } from '../composables/useBlockVirtualizer'
@@ -187,7 +187,8 @@ provideBlockReader(() => props.readBlock)
 // A running call shows its command's output under it; once the call
 // returned, a command that still runs is the dock's (`runtime.md`
 // § Rendering boundary).
-provideLiveCalls((toolUseId) => callTerminal(props.conversation.terminals, undefined, toolUseId))
+const commandOf = useCallTerminals(() => props.conversation.terminals)
+provideLiveCalls((toolUseId) => commandOf(undefined, toolUseId))
 // A report's title whose call the window shown does not hold asks the host where it lies.
 provideCommandRevealer((commandId) => {
   const find = props.revealCommand
@@ -195,13 +196,7 @@ provideCommandRevealer((commandId) => {
     find(commandId)
   })
 })
-const terminals = computed(() =>
-  dockTerminals(props.conversation.terminals, (subagentId) =>
-    latestBlocks(subagentId === undefined
-      ? props.conversation.history
-      : props.conversation.subagents.find((agent) => agent.id === subagentId)?.history ?? EMPTY_TRANSCRIPT),
-  ),
-)
+const terminals = useDockTerminals(() => props.conversation)
 /** The window of the transcript the list shows, and where it stands. */
 const shown = computed(() => shownWindow(props.conversation.history, props.conversation.shownAt))
 const shownEdges = computed(() => windowEdges(props.conversation.history, shown.value))
