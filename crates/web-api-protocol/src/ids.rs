@@ -85,6 +85,16 @@ demi_shared_types::id!(
 );
 
 demi_shared_types::id!(
+    /// A message saved for later's id, which the page chooses: a UUID. A save
+    /// sent again with the same id and content is the same save
+    /// (`web-api.md` § Messages saved for later).
+    SavedMessageId,
+    check = uuid,
+    error = NotUuid,
+    schema = { "type": "string", "pattern": UUID_PATTERN }
+);
+
+demi_shared_types::id!(
     /// A Cloud reset's id, which the page chooses: a UUID. A retry with the
     /// same id is the same reset (`managed-hosts.md` § System reset).
     OperationId,
