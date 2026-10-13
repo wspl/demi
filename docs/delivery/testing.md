@@ -28,7 +28,10 @@ backend's scenario suites in [Scenarios](scenarios.md).
 - A test never asserts a defect as correct behavior to prove something else.
   For example, to show that a cache hit does not read the cached file, do not
   plant corrupt bytes and expect them to be accepted; a performance property
-  is shown by measurement, not by a test.
+  is shown by measurement, not by a test. A fixed bug of complexity, work
+  that grew as the product of two sizes, is the exception: a test may count
+  the work deterministically, such as the reads of a reactive list, and
+  bound it by the sizes, never by time.
 - A test of a helper is not proof that the product works: the helper's test
   passes even when no entry point calls the helper. Prove the behavior through
   the entry point that users reach.
