@@ -3,10 +3,12 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+use demi_shared_types::RequestId;
+
 use crate::passkeys::PasskeyId;
 
-/// A JSON error answer: `{ code, message }`, and a plugin's own `reason`
-/// when a plugin refused the call.
+/// A JSON error answer: `{ code, message, requestId }`, and a plugin's own
+/// `reason` when a plugin refused the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ErrorBody {
     pub code: ErrorCode,
@@ -21,6 +23,9 @@ pub struct ErrorBody {
     /// the page tells the browser no account has.
     #[serde(default, rename = "credentialId", skip_serializing_if = "Option::is_none")]
     pub credential_id: Option<PasskeyId>,
+    /// The request the answer is of, as its `X-Request-Id` names it.
+    #[serde(rename = "requestId")]
+    pub request_id: RequestId,
 }
 
 /// Every error code the web app can see. A situation has one code on every

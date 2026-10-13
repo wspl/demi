@@ -226,6 +226,7 @@ impl<H: HostResolver> Connection<H> {
             message: error.to_string(),
             code: None,
             diagnostics: None,
+            request_id: None,
         });
     }
 
@@ -234,6 +235,7 @@ impl<H: HostResolver> Connection<H> {
             message: error.message,
             code: error.code,
             diagnostics: None,
+            request_id: None,
         });
     }
 

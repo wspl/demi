@@ -375,7 +375,7 @@ pub(super) async fn stream(
         user: user.clone(),
         expires_at: session.expires_at,
     };
-    Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
+    Ok(page_socket(upgrade, move |socket| async move {
         let adopted = state
             .shards
             .of(&user.id)

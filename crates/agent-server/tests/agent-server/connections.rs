@@ -632,6 +632,7 @@ async fn an_unknown_provider_leaves_the_connection_unattached() {
                 message: "Provider \"missing\" is not available".into(),
                 code: None,
                 diagnostics: None,
+                request_id: None,
             },
             rejected(ClientFrameKind::Send, "No session is open"),
         ]

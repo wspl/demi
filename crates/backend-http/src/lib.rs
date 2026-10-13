@@ -15,6 +15,7 @@ mod conversations;
 mod cookies;
 mod credentials;
 mod devices;
+mod diagnostics;
 mod direct;
 mod drafts;
 mod error;
@@ -36,6 +37,7 @@ mod plugins;
 mod provider_cli;
 mod providers;
 mod query;
+mod request_id;
 mod runner_socket;
 mod runners;
 mod saved;
@@ -62,6 +64,7 @@ use axum::http::Method;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post, put};
+use demi_backend_database::server_log::ServerLog;
 use demi_backend_runners::native;
 use hyper::body::Incoming;
 use axum::serve::{Listener as _, ListenerExt as _};
@@ -202,6 +205,8 @@ pub struct AppState {
     pub services: Arc<Services>,
     pub shards: Shards,
     pub site: Arc<Site>,
+    /// The server log, which administrators read.
+    pub log: ServerLog,
 }
 
 impl FromRef<AppState> for Arc<Services> {
@@ -295,6 +300,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/search", get(search::search))
         .route("/usage", get(usage::totals))
         .route("/usage/instance", get(usage::instance))
+        .route("/page-errors", post(diagnostics::report))
+        .route("/server/log", get(diagnostics::log))
         .route(
             "/conversations",
             get(conversations::list).post(conversations::create),
@@ -490,13 +497,12 @@ fn edge(app: Router<AppState>, closing: CancellationToken, state: AppState) -> R
             refuse_while_closing,
         ))
         .merge(pipes)
-        // A request's failure names its method and path, without the query,
-        // which can carry a file's path or a token.
         .layer(TraceLayer::new_for_http().make_span_with(
-            |request: &axum::http::Request<axum::body::Body>| {
-                tracing::info_span!("request", method = %request.method(), path = request.uri().path())
-            },
+            |request: &axum::http::Request<axum::body::Body>| request_id::span(request),
         ))
+        // Outermost, so every answer carries the request's ID, a refusal of
+        // the layers inside included.
+        .layer(middleware::from_fn(request_id::assign))
         .with_state(state)
 }
 
@@ -542,6 +548,7 @@ mod tests {
             services,
             shards: pool.shards(),
             site: Arc::default(),
+            log: ServerLog::of(data.path()),
         };
         let closing = CancellationToken::new();
         let app = router(state, closing.clone(), None);

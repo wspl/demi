@@ -7,6 +7,7 @@
 //!
 //! [`SessionRuntime::report`]: crate::SessionRuntime::report
 
+use tracing::Instrument as _;
 use std::{
     rc::{Rc, Weak},
     time::Duration,
@@ -122,7 +123,9 @@ pub(super) fn start_watch(s: &Rc<SessionShared>, command: &CommandId) {
     let Some(interval_ms) = s.read(|core| core.watched.get(command)) else {
         return;
     };
-    let task = tokio::task::spawn_local(watch(Rc::downgrade(s), command.clone(), interval_ms));
+    let task = tokio::task::spawn_local(
+        watch(Rc::downgrade(s), command.clone(), interval_ms).in_current_span(),
+    );
     s.update(|core| core.watched.set_task(command, AbortOnDropHandle::new(task)));
 }
 

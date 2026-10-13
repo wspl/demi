@@ -2000,6 +2000,7 @@ dependencies = [
  "tokio-rusqlite",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
  "uuid",
  "webauthn-rs",
 ]
@@ -2045,6 +2046,7 @@ dependencies = [
  "axum-extra",
  "bytes",
  "cookie",
+ "data-encoding",
  "demi-agent-store",
  "demi-backend-accounts",
  "demi-backend-blobs",
@@ -2075,6 +2077,7 @@ dependencies = [
  "mime",
  "object_store",
  "percent-encoding",
+ "rand 0.9.5",
  "rustix",
  "serde",
  "serde_json",

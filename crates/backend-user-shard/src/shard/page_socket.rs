@@ -9,26 +9,24 @@
 //! up (`backend.md` § Startup and shutdown).
 //!
 //! Each socket is logged here, and only here, once as it opens and once as it
-//! ends, under an id that ties the two lines, so that a drop a user saw can
-//! be traced afterwards (`web-application.md` § Liveness and reconnection).
+//! ends, under the request ID of its upgrade, which ties the two lines, so
+//! that a drop a user saw can be traced afterwards (`web-application.md`
+//! § Liveness and reconnection).
 //! The lines never carry what the socket carried.
 
 use std::net::IpAddr;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::task::{Context, Poll};
 
 use axum::body::Bytes;
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
+use demi_shared_types::RequestId;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt as _, Stream, StreamExt as _};
 use tokio::time::{Instant, Sleep};
 
 use crate::tuning::PageTuning;
-
-/// The id of the next page socket, unique within the backend's run.
-static NEXT_SOCKET: AtomicU64 = AtomicU64::new(1);
 
 /// What a page socket is for, as its log lines name it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +55,9 @@ impl PageSocketKind {
 #[derive(Debug, Clone)]
 pub struct PageSocketOrigin {
     pub kind: PageSocketKind,
+    /// The request ID of the socket's upgrade, which the socket keeps for
+    /// its whole life.
+    pub request: RequestId,
     pub user: UserId,
     /// The conversation the socket serves, when it serves one.
     pub conversation: Option<ConversationId>,
@@ -64,7 +65,7 @@ pub struct PageSocketOrigin {
     pub device: Option<DeviceId>,
     /// The user stream's name.
     pub stream: Option<String>,
-    /// The edge's request id, Cloudflare's `CF-Ray`, when a proxy passes it.
+    /// Cloudflare's request id, its `CF-Ray`, when a proxy passes it.
     pub ray: Option<String>,
     /// The client's address: the one a proxy passes in `CF-Connecting-IP`,
     /// else the connection's own peer; none for a local socket.
@@ -81,7 +82,6 @@ pub struct PageSocket {
     /// The messages it sent, heartbeats included.
     sent: u64,
     opened_at: Instant,
-    id: u64,
     origin: PageSocketOrigin,
 }
 
@@ -121,9 +121,8 @@ pub fn open_page_socket(
     tuning: PageTuning,
     origin: PageSocketOrigin,
 ) -> (PageSocket, PageStream) {
-    let id = NEXT_SOCKET.fetch_add(1, Ordering::Relaxed);
     tracing::info!(
-        socket = id,
+        request_id = %origin.request,
         kind = origin.kind.name(),
         user = %origin.user,
         conversation = origin.conversation.as_ref().map(tracing::field::display),
@@ -142,7 +141,6 @@ pub fn open_page_socket(
         sent_at: now,
         sent: 0,
         opened_at: now,
-        id,
         origin,
     };
     let stream = PageStream {
@@ -154,6 +152,11 @@ pub fn open_page_socket(
 }
 
 impl PageSocket {
+    /// The request ID of the socket's upgrade.
+    pub fn request(&self) -> &RequestId {
+        &self.origin.request
+    }
+
     /// Sends one JSON text message.
     pub async fn send(&mut self, text: String) -> Result<(), PageGone> {
         self.send_message(Message::Text(text.into())).await
@@ -210,7 +213,7 @@ impl PageSocket {
         macro_rules! ended {
             ($level:ident) => {
                 tracing::$level!(
-                    socket = self.id,
+                    request_id = %self.origin.request,
                     kind = self.origin.kind.name(),
                     user = %self.origin.user,
                     conversation = self.origin.conversation.as_ref().map(tracing::field::display),

@@ -14,6 +14,7 @@
 //! hears, are `PageSubscriptions`', which a direct channel's watch on the
 //! runner keeps too.
 
+use tracing::Instrument as _;
 use std::rc::Rc;
 use std::time::Instant;
 
@@ -124,7 +125,9 @@ impl dyn HostShard + '_ {
             to_page,
             ended,
         };
-        self.tasks().spawn_local(relay.run(from_page, released, open));
+        // The watch logs under its socket's request ID.
+        self.tasks()
+            .spawn_local(relay.run(from_page, released, open).in_current_span());
         FileWatchChannel {
             to_page: page_hears,
             from_page: page_says,

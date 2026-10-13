@@ -6,7 +6,8 @@
 use axum::Json;
 use axum::body::Bytes;
 use axum::extract::rejection::{BytesRejection, FailedToBufferBody};
-use axum::extract::ws::WebSocketUpgrade;
+use axum::extract::ws::{WebSocket, WebSocketUpgrade};
+use axum::response::Response;
 use axum::extract::{FromRequest, Request};
 use axum::http::StatusCode;
 use axum::http::header::CONTENT_LENGTH;
@@ -14,6 +15,7 @@ use demi_web_api_protocol::MAX_PAGE_MESSAGE_BYTES;
 use demi_web_api_protocol::error::{ErrorCode, problems};
 use garde::Validate;
 use serde::de::DeserializeOwned;
+use tracing::Instrument as _;
 
 use super::error::ApiError;
 
@@ -22,12 +24,21 @@ use super::error::ApiError;
 /// declared length before reading any.
 pub(super) const JSON_BODY_LIMIT: usize = 1024 * 1024;
 
-/// A page's WebSocket, which takes no message larger than
-/// [`MAX_PAGE_MESSAGE_BYTES`]; a larger one fails the socket.
-pub(super) fn page_socket(upgrade: WebSocketUpgrade) -> WebSocketUpgrade {
+/// Upgrades to a page's WebSocket, which takes no message larger than
+/// [`MAX_PAGE_MESSAGE_BYTES`]; a larger one fails the socket. `serve` runs
+/// in the upgrade request's span, so the socket's whole life logs under
+/// the request ID of its upgrade (`backend.md` § Request IDs and the server
+/// log).
+pub(super) fn page_socket<F, Fut>(upgrade: WebSocketUpgrade, serve: F) -> Response
+where
+    F: FnOnce(WebSocket) -> Fut + Send + 'static,
+    Fut: Future<Output = ()> + Send + 'static,
+{
+    let span = tracing::Span::current();
     upgrade
         .max_message_size(MAX_PAGE_MESSAGE_BYTES)
         .max_frame_size(MAX_PAGE_MESSAGE_BYTES)
+        .on_upgrade(move |socket| serve(socket).instrument(span))
 }
 
 /// A JSON body decoded into its request type and validated. The content type

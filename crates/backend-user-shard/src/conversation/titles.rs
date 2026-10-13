@@ -3,6 +3,7 @@
 //! turn uses, which writes the title only while it is still the one the
 //! request began from. An archive or the shard's close aborts it.
 
+use tracing::Instrument as _;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -80,6 +81,7 @@ impl Titles {
         let control = self.control.clone();
         let marks = self.marks.clone();
         let in_flight = self.in_flight.clone();
+        // The title logs under what asked for it, such as a socket's send.
         tasks.spawn_local(async move {
             if let Err(failure) =
                 generate(&providers, &control, &id, &selection, request, &cancel).await
@@ -88,7 +90,8 @@ impl Titles {
             }
             in_flight.borrow_mut().remove(&id);
             marks.mark(Part::Conversation(id));
-        });
+        }
+        .in_current_span());
     }
 
     /// Aborts the request of the conversation `id`, as its archive does.

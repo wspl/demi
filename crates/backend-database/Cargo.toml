@@ -47,6 +47,8 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-rusqlite = "0.8"
 tracing.workspace = true
+# The server log is a `tracing` layer over the spans' recorded fields.
+tracing-subscriber = { workspace = true, features = ["registry"] }
 uuid = { version = "1", features = ["v4"] }
 # The passkeys and their challenges the control store keeps
 # (`storage.md` § Passwords and credentials at rest), as `webauthn-rs`
