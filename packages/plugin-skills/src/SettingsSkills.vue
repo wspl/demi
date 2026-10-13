@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { GitBranch, RefreshCw, Trash2 } from '@lucide/vue'
-import type { Action, OverlayStore, SettingsRowStatus } from '@demicodes/plugin-sdk'
+import type { Action, OverlayStore, PageContext, SettingsRowStatus } from '@demicodes/plugin-sdk'
 import { Fold } from '@demicodes/plugin-sdk'
 import { FoldChevron } from '@demicodes/plugin-sdk'
 import { IconButton } from '@demicodes/plugin-sdk'
@@ -25,26 +25,27 @@ import type { AddSourceAnswer, SettingsSkill, SettingsSkillDraft, SettingsSkillS
  * its own status labels; the SKILL.md files that are not skills follow, with
  * why. The pack's switch is on when any skill is on; flipping it sets every
  * skill in the pack. Removing a source asks first, naming its skills, which
- * go with it.
+ * go with it. Each control's call is an operation of the page, named by
+ * the plugin's method and what it acts on: the control shows it working
+ * whenever it is drawn and takes no input meanwhile.
  */
 const SKILL_LIST_CAP = 6
 
 const props = defineProps<{
   sources: SettingsSkillSource[]
   overlayStore: OverlayStore
-  /** The sources with a change being saved. */
-  pending?: readonly string[]
+  /** The page's operation of a method on what a key names (`PageContext.operation`). */
+  operation: PageContext['operation']
   /** Adds a source; the dialog stays open until it is added. */
   addSource: (draft: SettingsSkillDraft) => Promise<AddSourceAnswer>
   /** Removes a source; Remove in the question works until it settles. */
   onRemove?: Action<[source: string]>
   /** Fetches a source again; its button works until it settles. */
   onUpdate?: Action<[source: string]>
-}>()
-
-const emit = defineEmits<{
-  switch: [source: string, skill: string, enabled: boolean]
-  switchSource: [source: string, enabled: boolean]
+  /** Turns one skill on or off; its switch works until it settles. */
+  onSwitch?: Action<[source: string, skill: string, enabled: boolean]>
+  /** Turns every skill of a source on or off; the source's switch works until it settles. */
+  onSwitchSource?: Action<[source: string, enabled: boolean]>
 }>()
 
 const addOpen = ref(false)
@@ -105,8 +106,9 @@ function pack(source: SettingsSkillSource) {
   }
 }
 
-function busy(source: SettingsSkillSource): boolean {
-  return props.pending?.includes(source.id) ?? false
+/** The skill's key among the operations: its source and its name. */
+function skillKey(source: SettingsSkillSource, skill: SettingsSkill): string {
+  return `${source.id}/${skill.name}`
 }
 
 function isOpen(id: string) {
@@ -145,11 +147,18 @@ const removedSkills = computed(() => {
   return [...names.slice(0, NAMED_SKILLS), `and ${names.length - NAMED_SKILLS} more`]
 })
 
+/** Remove confirmed: once it is done, the question closes, if it still asks about this source. */
 async function confirmRemove(): Promise<void> {
+  const source = removing.value
+  if (!source) {
+    return
+  }
   try {
-    await (removing.value ? props.onRemove?.(removing.value.id) : undefined)
+    await props.onRemove?.(source.id)
   } finally {
-    removeOpen.value = false
+    if (removing.value?.id === source.id) {
+      removeOpen.value = false
+    }
   }
 }
 </script>
@@ -194,9 +203,9 @@ async function confirmRemove(): Promise<void> {
               <Switch
                 :model-value="pack(source).checked"
                 size="sm"
-                :disabled="busy(source)"
+                :operation="operation('set_source_enabled', source.id)"
                 :aria-label="`Enable every skill in ${name(source)}`"
-                @update:model-value="(on) => emit('switchSource', source.id, on)"
+                @update:model-value="(on) => onSwitchSource?.(source.id, on)"
               />
             </template>
             <Tooltip content="Update">
@@ -206,6 +215,7 @@ async function confirmRemove(): Promise<void> {
                 spin-on-click
                 :spinning="source.fetching"
                 :disabled="source.fetching"
+                :operation="operation('update_source', source.id)"
                 aria-label="Update"
                 @click="onUpdate?.(source.id)"
               />
@@ -216,7 +226,7 @@ async function confirmRemove(): Promise<void> {
                 :icon="Trash2"
                 variant="danger"
                 aria-label="Remove"
-                :disabled="busy(source)"
+                :operation="operation('remove_source', source.id)"
                 @click="askRemove(source)"
               />
             </Tooltip>
@@ -248,9 +258,9 @@ async function confirmRemove(): Promise<void> {
               <Switch
                 :model-value="skill.enabled"
                 size="sm"
-                :disabled="busy(source)"
+                :operation="operation('set_enabled', skillKey(source, skill))"
                 :aria-label="`${skill.name} ${skill.enabled ? 'on' : 'off'}`"
-                @update:model-value="(on) => emit('switch', source.id, skill.name, on)"
+                @update:model-value="(on) => onSwitch?.(source.id, skill.name, on)"
               />
             </SettingsRow>
             <SettingsRow
@@ -286,6 +296,7 @@ async function confirmRemove(): Promise<void> {
       :title="`Remove “${removing ? name(removing) : ''}”?`"
       action="Remove"
       :goes="removedSkills"
+      :operation="removing ? operation('remove_source', removing.id) : undefined"
       @close="removeOpen = false"
       @confirm="confirmRemove"
     >

@@ -28,6 +28,7 @@ import type { SettingsNavGroup, SettingsNavItem } from '../settings/types'
 import type { SidebarEntry } from '../sidebar/types'
 import type { IntentName, IntentPayloads, IntentRequest } from './intents'
 import type { OpenUserStream } from './streams'
+import type { Operation } from '../ui/operations'
 import type { HeadlineText, SentenceText, TitleText } from '../ui/ui-text'
 
 /**
@@ -247,6 +248,14 @@ export interface PageContext {
   }
   readonly overlays: OverlayStore
   files(conversation: string): ConversationFileService
+  /**
+   * The page's operation of the plugin's `action` on what `key` names, such
+   * as `operation('set_source_enabled', source)` for a skill source's switch
+   * (`plugin-pages.md` § Calls and states). A control given it shows the
+   * call working whenever it is drawn, its component gone and drawn again
+   * included, and a press while it runs starts nothing.
+   */
+  operation(action: string, key: string): Operation
 }
 
 /** A kind's tab as the page's functions see it. */
@@ -545,6 +554,23 @@ function userStateRefusals(host: PageHost, plugin: string): UserStateRefusals {
   return refusals
 }
 
+/**
+ * Each page host's number, which keeps its plugins' operations its own: the
+ * product has one host, the gallery one for each specimen, which is a page
+ * of its own.
+ */
+const hostNumbers = new WeakMap<PageHost, number>()
+let hostsNumbered = 0
+
+function hostNumber(host: PageHost): number {
+  let number = hostNumbers.get(host)
+  if (number === undefined) {
+    number = ++hostsNumbered
+    hostNumbers.set(host, number)
+  }
+  return number
+}
+
 /** The context of `page` over `host`: its own plugin, and the panel tabs of its own kinds. */
 export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
   const own = (kind: string) => {
@@ -614,6 +640,7 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
     errors,
     overlays: host.overlays,
     files: (conversation) => host.files(conversation),
+    operation: (action, key) => ({ action, target: `plugin:${hostNumber(host)}:${page.plugin}:${key}` }),
   }
 }
 
