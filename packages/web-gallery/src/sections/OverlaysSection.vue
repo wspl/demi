@@ -35,7 +35,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { reactive, ref } from 'vue'
 import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
-import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
+import { useMoveQuestion, type WorkToStop } from '@demicodes/web-ui/hosts/move-question'
 import GalleryHostMenu from '../components/GalleryHostMenu.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
@@ -73,11 +73,15 @@ const menuDevices: HostDeviceOption[] = [
   { id: 'old', name: 'Old Laptop', state: 'offline' },
 ]
 const askedMove = useMoveQuestion()
-function askMove() {
+function askMove(stops?: WorkToStop) {
   void askedMove.ask(
-    { host: 'MacBook Pro', directory: '~/code/ledable-app', from: 'Cloud', fromCloud: true },
+    { host: 'MacBook Pro', directory: '~/code/ledable-app', from: 'Cloud', fromCloud: true, ...(stops ? { stops } : {}) },
     async (tell) => {
-      productWould(tell ? 'Move the Conversation and Tell the Agent' : 'Move the Conversation')
+      productWould(
+        stops
+          ? tell ? 'Stop the Agent, Move the Conversation and Tell the Agent' : 'Stop the Agent and Move the Conversation'
+          : tell ? 'Move the Conversation and Tell the Agent' : 'Move the Conversation',
+      )
       return true
     },
   )
@@ -517,14 +521,22 @@ function openSharedMenu(row: string, event: MouseEvent): void {
         <GallerySpecimen variant="host menu · in a project: a device opens its directory picker">
           <GalleryHostMenu :devices="menuDevices" primary-id="studio" in-project has-messages />
         </GallerySpecimen>
-        <GallerySpecimen variant="host menu · while the conversation works">
-          <GalleryHostMenu :devices="menuDevices" primary-id="mac" :attached-ids="['build']" locked />
+        <GallerySpecimen variant="host menu · while the agent works: choosing asks to stop it first">
+          <GalleryHostMenu
+            :devices="menuDevices"
+            primary-id="mac"
+            :attached-ids="['build']"
+            :working="{ agent: true, subagents: 0, commands: 2 }"
+          />
         </GallerySpecimen>
         <GallerySpecimen variant="host menu · a name longer than the button, whole on hover">
           <GalleryHostMenu :devices="menuDevices" primary-id="lab" />
         </GallerySpecimen>
         <GallerySpecimen variant="move dialog">
-          <Button @click="askMove">Move to MacBook Pro…</Button>
+          <div class="flex gap-2">
+            <Button @click="askMove()">Move to MacBook Pro…</Button>
+            <Button @click="askMove({ agent: true, subagents: 1, commands: 2 })">Move While the Agent Works…</Button>
+          </div>
           <MoveConversationDialog
             :is-open="askedMove.open.value"
             :overlay-store="appOverlayStore"

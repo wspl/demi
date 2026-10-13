@@ -7,7 +7,7 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import DeviceStartHint from '../devices/DeviceStartHint.vue'
 import type { DeviceStart } from '../devices/installation'
 import HostChoices from '../hosts/HostChoices.vue'
-import { MOVE_LOCKED } from '../hosts/move-question'
+import { MOVE_LOCK_REASON, type MoveLock } from '../hosts/move-question'
 import type { HostChoice, HostDeviceOption, HostMenuHost } from '../hosts/types'
 
 /**
@@ -29,8 +29,8 @@ defineProps<{
   devices: HostDeviceOption[]
   /** In a project: choosing a device opens its directory picker. */
   chooseDirectory?: boolean
-  /** The conversation cannot move now, as while its work runs or a change of it is under way. */
-  locked?: boolean
+  /** Why the conversation cannot move now: archived, or a move under way. */
+  locked?: MoveLock
 }>()
 const emit = defineEmits<{
   move: [host: HostChoice]
@@ -55,11 +55,11 @@ function choose(host: HostChoice): void {
         <Dropdown
           v-model:open="open"
           :overlay-store="appOverlayStore"
-          :disabled="locked"
-          :disabled-reason="MOVE_LOCKED"
+          :disabled="!!locked"
+          :disabled-reason="locked ? MOVE_LOCK_REASON[locked] : undefined"
         >
           <template #trigger>
-            <Button size="sm" :disabled="locked">Move to Another Host…</Button>
+            <Button size="sm" :disabled="!!locked">Move to Another Host…</Button>
           </template>
           <template #content>
             <Menu class="max-w-80">

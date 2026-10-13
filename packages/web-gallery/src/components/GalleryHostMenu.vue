@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
 import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
+import type { WorkToStop } from '@demicodes/web-ui/hosts/move-question'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { productWould } from '../product-would'
@@ -10,8 +11,8 @@ import { productWould } from '../product-would'
 /**
  * A conversation's host menu acting on the specimen's own conversation as
  * the product's header does (`product.md` § Where a conversation runs): a
- * conversation with messages asks before it moves, a new one moves at once,
- * one in a project opens the chosen device's directory picker, which the
+ * conversation with messages asks before it moves, one whose agent works
+ * asks to stop it first, a new one moves at once, one in a project opens the chosen device's directory picker, which the
  * gallery says in a toast, and Detach takes the device from Attached.
  */
 const props = defineProps<{
@@ -23,7 +24,8 @@ const props = defineProps<{
   inProject?: boolean
   /** The conversation has messages, so a move asks first. */
   hasMessages?: boolean
-  locked?: boolean
+  /** The agent works: a move asks to stop it first, naming what stops. */
+  working?: WorkToStop
 }>()
 
 const homes: Record<string, string> = { mac: '/Users/zan', studio: '/home/zan', build: '/home/ci' }
@@ -44,7 +46,7 @@ const attachedHosts = computed(() => attachedIds.value.map(host))
 async function moveTo(id: string | null) {
   const to = host(id)
   const from = primaryHost.value
-  if (props.hasMessages) {
+  if (props.hasMessages || props.working) {
     const home = id ? homes[id] : undefined
     await moveQuestion.ask(
       {
@@ -52,8 +54,12 @@ async function moveTo(id: string | null) {
         directory: home ? '~' : null,
         from: from.name,
         fromCloud: from.kind === 'cloud',
+        ...(props.working ? { stops: props.working } : {}),
       },
       async (tell) => {
+        if (props.working) {
+          productWould('Stop the Agent')
+        }
         if (tell) {
           productWould(`Tell the Agent It Moved to ${to.name}`)
         }
@@ -94,7 +100,6 @@ function detach(id: string) {
     :devices="devices"
     :attached-hosts="attachedHosts"
     :choose-directory="inProject"
-    :locked="locked"
     @choose="choose"
     @detach="detach"
     @connect="productWould('Add Device')"

@@ -17,6 +17,8 @@ import { savedPreview, type SavedRow } from '@demicodes/web-ui/agent/saved'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
+import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
+import { useMoveQuestion, type WorkToStop } from '@demicodes/web-ui/hosts/move-question'
 import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import {
@@ -91,6 +93,8 @@ const props = withDefaults(
      * moves the specimen's conversation, whose card then goes.
      */
     offlineHost?: OfflineHost | null
+    /** The agent works, so Move to Another Host… asks to stop it first, naming what stops. */
+    working?: WorkToStop
     /** Compacts the specimen's conversation; without it, a toast says what the product would do. */
     onCompact?: () => void
     /** Steers the specimen's running turn; without it, a toast says what the product would do. */
@@ -177,13 +181,26 @@ watch(() => !!props.offlineHost, () => {
   offlineHost.value = props.offlineHost ?? null
 })
 /** The card goes with the move, as the product's does, and a toast says where the product would run it. */
+const moveQuestion = useMoveQuestion()
 function moveHost(host: HostChoice) {
   const to = host.kind === 'cloud'
     ? 'Cloud'
     : offlineHost.value?.devices.find((device) => device.id === host.id)?.name
-  offlineHost.value = null
-  emit('moved', host, to ?? host.kind)
-  productWould(`Move the Conversation to ${to}`)
+  const from = offlineHost.value
+  const carryOut = async (tell: boolean) => {
+    offlineHost.value = null
+    emit('moved', host, to ?? host.kind)
+    productWould(`${props.working ? 'Stop the Agent and ' : ''}Move the Conversation to ${to}${tell ? ' and Tell the Agent' : ''}`)
+    return true
+  }
+  if (!props.working || !from || !to) {
+    void carryOut(false)
+    return
+  }
+  void moveQuestion.ask(
+    { host: to, directory: host.kind === 'cloud' ? null : '~', from: from.name, fromCloud: false, stops: props.working },
+    carryOut,
+  )
 }
 /** Counts the drafts shown from outside, here the restored ones. */
 const shown = ref(0)
@@ -234,6 +251,7 @@ const composerProps = computed(() => {
     flow: _flow,
     sendWhileRunning: _sendWhileRunning,
     offlineHost: _offlineHost,
+    working: _working,
     saved: _saved,
     savedOpen: _savedOpen,
     ...rest
@@ -690,5 +708,13 @@ onBeforeUnmount(() => {
     :overlay-store="appOverlayStore"
     :hosts="remoteHosts"
     @select="attachRemote"
+  />
+  <MoveConversationDialog
+    :is-open="moveQuestion.open.value"
+    :overlay-store="appOverlayStore"
+    :question="moveQuestion.question.value"
+    :busy="moveQuestion.busy.value"
+    @close="moveQuestion.cancel"
+    @move="moveQuestion.answer"
   />
 </template>

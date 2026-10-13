@@ -5,6 +5,9 @@ import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import SidebarAccount from '@demicodes/web-ui/sidebar/SidebarAccount.vue'
 import HostMenu from '@demicodes/web-ui/hosts/HostMenu.vue'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
+import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
+import { useMoveQuestion, workToStop } from '@demicodes/web-ui/hosts/move-question'
+import { homePath } from '@demicodes/web-ui/files/paths'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
@@ -66,18 +69,49 @@ const primaryHost = computed<HostMenuHost>(() => {
     : { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online' }
 })
 const attachedHosts = ref<HostMenuHost[]>([])
-const locked = computed(() => session.phase !== 'idle' || session.archived)
-async function selectFolder(deviceId: string, path: string): Promise<boolean> {
-  folder.value = {
-    deviceId,
-    path,
+// A move stays open while the agent works, as the product's: choosing asks to stop it first.
+const locked = computed(() => (session.archived ? 'archived' as const : undefined))
+const moveQuestion = useMoveQuestion()
+
+/**
+ * Moves the session to `path` on `deviceId`: at once while the agent is
+ * idle, otherwise once the user answers the question, which stops the agent,
+ * its subagents and its commands first.
+ */
+async function moveTo(deviceId: string, path: string): Promise<boolean> {
+  const host = hosts.find((candidate) => candidate.id === deviceId)
+  const stops = workToStop(session)
+  const move = async () => {
+    flow.abortSubagents()
+    for (const terminal of session.terminals) {
+      flow.abortTerminal(terminal.id)
+    }
+    flow.stop()
+    folder.value = { deviceId, path }
+    return true
   }
-  return true
+  if (!stops || !host) {
+    folder.value = { deviceId, path }
+    return true
+  }
+  return moveQuestion.ask(
+    {
+      host: host.label,
+      directory: homePath(path, host.source.home),
+      from: primaryHost.value.name,
+      fromCloud: primaryHost.value.kind === 'cloud',
+      stops,
+    },
+    move,
+  )
+}
+async function selectFolder(deviceId: string, path: string): Promise<boolean> {
+  return moveTo(deviceId, path)
 }
 function selectRecent(id: string): void {
   const recent = recentDirectories.value.find((entry) => entry.id === id)
   if (recent) {
-    folder.value = { deviceId: folder.value.deviceId, path: recent.path }
+    void moveTo(folder.value.deviceId, recent.path)
   }
 }
 /** A Host chosen in the host menu: a device moves the session to its home; the gallery has no Cloud to move to. */
@@ -88,7 +122,7 @@ function choose(chosen: { kind: 'cloud' } | { kind: 'device'; id: string }): voi
   }
   const host = hosts.find((candidate) => candidate.id === chosen.id)
   if (host) {
-    folder.value = { deviceId: host.id, path: host.source.home }
+    void moveTo(host.id, host.source.home)
   }
 }
 function detach(id: string): void {
@@ -132,7 +166,7 @@ function detach(id: string): void {
             :path="folder.path"
             :workspace-name="workspaceName"
             :device-id="folder.deviceId"
-            :locked="locked"
+            :locked="locked !== undefined"
             browse-enabled
             :recent-directories="recentDirectories"
             :selected-project-id="selectedRecent"
@@ -169,5 +203,13 @@ function detach(id: string): void {
         /></template>
       </ChatSession>
     </SidebarLayout>
+    <MoveConversationDialog
+      :is-open="moveQuestion.open.value"
+      :overlay-store="appOverlayStore"
+      :question="moveQuestion.question.value"
+      :busy="moveQuestion.busy.value"
+      @close="moveQuestion.cancel"
+      @move="moveQuestion.answer"
+    />
   </div>
 </template>
