@@ -591,6 +591,12 @@ message's row.
   same choice of steer or queue while the agent works, and the message shows
   in the transcript, with no toast. **Delete** removes it at once, with Undo
   in a toast. After Send or Delete the list stays open for the next.
+- **Nothing is lost on a refusal.** A save the server refuses, as when the
+  conversation already keeps 200, leaves its row in the list as *Not
+  Saved* in secondary red text, with Retry and Delete beside Edit; an edit
+  refused leaves the message in the list and what the composer held in a
+  *Not Saved* row the same way, so neither text is only on the page's
+  screen a moment and then gone.
 - **Saved messages belong to the conversation** and live on the server, so every
   page and device shows the same; archiving the conversation keeps them.
 

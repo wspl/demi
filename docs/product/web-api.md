@@ -612,7 +612,11 @@ lasts as long as its conversation, and a Fork starts with an empty one
 ## Messages saved for later
 
 A conversation keeps the messages its user saved for later
-([Saved for later](product.md#saved-for-later)), newest first. A saved
+([Saved for later](product.md#saved-for-later)), newest first. The saved
+messages and the draft are one piece of state to the page
+([Responding to the user](web-application.md#responding-to-the-user)): every
+answer of a route below and of the draft's `PUT` carries `revisions`,
+`{ draft, saved }`, the two revisions after it. A saved
 message is `{ id, text, files, savedAt }`, its `text` and `files` as a
 draft's are ([Conversation drafts](#conversation-drafts)).
 
@@ -632,20 +636,21 @@ draft's are ([Conversation drafts](#conversation-drafts)).
   one mark per file answers 400 `invalid_body`, a message over 256 KiB 413
   `too_large`, and a conversation with 200 saved messages 409
   `saved_full`.
-- `POST /api/conversations/:id/saved/:messageId/edit` takes `{ id }`, the
-  page's UUID for the message the draft becomes, and moves the message into
-  the conversation's draft, and the draft's text and files, when it holds
-  any, into a message saved for later under that id, in one transaction,
-  and answers `{ draft }`. Sent again, it answers as the first did when the
-  first made a message under that id; when the draft was empty, the message
-  is already in the draft and the edit answers 404 `saved_not_found`, which
-  the page reads as the list and the draft being as they are now, with no
-  error shown.
+- `POST /api/conversations/:id/saved/:messageId/edit` takes `{ op, id }`,
+  `op` the page's UUID for this edit and `id` its UUID for the message the
+  draft becomes, and moves the message into the conversation's draft, and
+  the draft's text and files, when it holds any, into a message saved for
+  later under `id`, in one transaction, and answers `{ draft, revisions }`.
+  The backend keeps the answer by `op` for a day, so the same edit sent
+  again answers as it first did, whatever happened since.
 - `DELETE /api/conversations/:id/saved/:messageId` removes one and answers
-  204; Undo saves it again with `POST`, its uploads kept as the composer's
+  `{ revisions }`, and a message already gone answers the same; Undo saves
+  it again with `POST` under a new id, its uploads kept as the composer's
   are kept until saved ([Blob references](../backend/storage.md)).
 - Sending one is the `send_saved` frame on the conversation socket, `{ id,
-  delivery }` with `delivery` the composer's choice: the session sends it as
+  turnId, delivery }` with `turnId` the page's UUID for this send, the id of
+  the message it becomes, never the saved message's, and `delivery` the
+  composer's choice: the session sends it as
   the composer would, and the message leaves the list when the session has
   accepted it, in the same step, so it is never both sent and kept, nor sent
   twice, and a send the session refuses leaves it on the list

@@ -131,12 +131,33 @@ why.
   slot, written once in `web-ui`; no action keeps its own copy of a value
   it is waiting for, its own rollback, or a flag that disables a control
   until an answer comes.
+- **An answer releases only what it carries.** A write's answer says the
+  revision of the slot it produced, and the change it answers leaves the
+  slot when the page holds a read of that revision or a later one, never
+  earlier: an answer that adds one item to a list is not the list, so it
+  releases its own change and no other, and a read the page asked for
+  before an answer landed, which may not include it, never removes a
+  change that landed. Two pieces of state the backend changes in one
+  transaction are one slot: a conversation's draft and its messages saved
+  for later are, since saving the composer's message and editing a saved
+  one change both at once.
+- **A refused change never loses what the user wrote.** Dropping a refused
+  change shows what the backend has, but text the user wrote is never
+  only in a change: a message whose save was refused stays in the list as
+  *Not Saved*, with Retry and Delete, and a composer message an edit was
+  moving into the list stays there the same way, whatever the user did
+  after. The user removes it; a refusal never does.
 - **What the page creates, it names.** A record the page shows before the
   backend answers, such as a message saved for later or a forked
   conversation, gets its id from the page, a random UUID, so it stands in its
   list at once and the change that creates it can be sent again without
   making two. The backend takes the page's id and answers a second create
-  with the same id and the same content as the first.
+  with the same id and the same content as the first. A write that creates
+  nothing, such as editing a saved message, carries an operation id the
+  same way, and the backend keeps each such answer for a day, so a write
+  sent again answers as it first did whatever happened since. A record that
+  comes back is a new one: Undo after Delete names a new id, never the
+  deleted one's.
 - **Changes to one thing go in order; changes to different things do not
   wait for each other.** The changes of one thing, such as one
   conversation, are sent one at a time, in the order the user made them, so
