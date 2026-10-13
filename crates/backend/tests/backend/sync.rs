@@ -18,6 +18,7 @@ use demi_shared_types::AuthState;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::cloud::{CloudState, CloudStatus, CloudVolumes};
 use demi_web_api_protocol::conversations::{ConversationStatus, ConversationSummary};
+use demi_web_api_protocol::devices::InstallCommands;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{ProviderDetails, ProviderReading, ProviderState};
 use demi_web_api_protocol::settings::{InstanceMode, Preferences, Theme};
@@ -148,6 +149,14 @@ async fn the_snapshot_is_the_users_product_state() {
             // The URL runners connect to: without a configured one, the
             // backend's own address.
             public_url: format!("{}/", backend.url),
+            // They fetch the installers from that URL over its scheme: a
+            // development backend serves plain HTTP, which a command that
+            // insists on HTTPS refuses.
+            install_commands: InstallCommands {
+                linux: format!("curl --proto '=http' -sSf '{}/install.sh' | sh", backend.url),
+                macos: format!("curl --proto '=http' -sSf '{}/install.sh' | sh", backend.url),
+                windows: format!("irm '{}/install.ps1' | iex", backend.url),
+            },
             // A test's backend names no STUN server and has no runner
             // releases.
             stun_urls: Vec::new(),
@@ -225,6 +234,30 @@ async fn the_snapshot_is_the_users_product_state() {
         .unwrap();
     let installer = reqwest::get(installer).await.unwrap();
     assert_eq!(installer.status(), StatusCode::SERVICE_UNAVAILABLE);
+    backend.close().await;
+}
+
+/// A backend whose public URL is HTTPS, under a path, has its install
+/// commands fetch the installers from that URL's origin, over HTTPS and
+/// TLS 1.2 or newer only.
+// Under a second: one backend.
+#[tokio::test]
+async fn the_install_commands_of_an_https_backend_insist_on_https() {
+    let mut harness = Harness::new();
+    harness.public_url = Some("https://demi.example.com/api/runner".parse().unwrap());
+    let (backend, master) = harness.start_set_up().await;
+    let mut page = backend.sync(&master).await;
+    let state = page.snapshot().await;
+    assert_eq!(
+        state.install_commands,
+        InstallCommands {
+            linux: "curl --proto '=https' --tlsv1.2 -sSf 'https://demi.example.com/install.sh' | sh"
+                .into(),
+            macos: "curl --proto '=https' --tlsv1.2 -sSf 'https://demi.example.com/install.sh' | sh"
+                .into(),
+            windows: "irm 'https://demi.example.com/install.ps1' | iex".into(),
+        }
+    );
     backend.close().await;
 }
 

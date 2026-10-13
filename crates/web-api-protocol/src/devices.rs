@@ -94,6 +94,17 @@ pub struct DeviceDto {
     pub start_command: Option<String>,
 }
 
+/// The commands that install and start the runner on a computer of each
+/// system, which the Add Device dialog and `demi host install-command` show
+/// as they are (`web-api.md` § Workspaces, devices, and attached hosts).
+/// They hold no credential.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct InstallCommands {
+    pub linux: String,
+    pub macos: String,
+    pub windows: String,
+}
+
 /// `GET /devices`: the caller's paired devices, oldest first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Devices {

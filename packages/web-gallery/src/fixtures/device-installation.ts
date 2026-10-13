@@ -1,11 +1,19 @@
-import { deviceInstallationAt, type DeviceStart, type DeviceSystem } from '@demicodes/web-ui/devices/installation'
+import type { DeviceInstallCommands, DeviceStart, DeviceSystem } from '@demicodes/web-ui/devices/installation'
 import type { DeviceReport } from '@demicodes/web-ui/devices/report'
 
-/** Proposed installer endpoints for the visual prototype, not published downloads. */
-export const demoDeviceInstallation = deviceInstallationAt('https://demi.example.com')
+/** The install commands the demo backend composes, for the visual prototype, not published downloads. */
+export const demoInstallCommands: DeviceInstallCommands = {
+  linux: "curl --proto '=https' --tlsv1.2 -sSf 'https://demi.example.com/install.sh' | sh",
+  macos: "curl --proto '=https' --tlsv1.2 -sSf 'https://demi.example.com/install.sh' | sh",
+  windows: "irm 'https://demi.example.com/install.ps1' | iex",
+}
 
-/** A development backend's installers, which it serves over plain HTTP. */
-export const developmentDeviceInstallation = deviceInstallationAt('http://192.168.5.2:3271')
+/** A development backend's install commands, which fetch its installers over plain HTTP. */
+export const developmentInstallCommands: DeviceInstallCommands = {
+  linux: "curl --proto '=http' -sSf 'http://192.168.5.2:3271/install.sh' | sh",
+  macos: "curl --proto '=http' -sSf 'http://192.168.5.2:3271/install.sh' | sh",
+  windows: "irm 'http://192.168.5.2:3271/install.ps1' | iex",
+}
 
 /** The installation the demo backend's installers make: the SHA-256 of its URL. */
 const demoInstallationId = '748c25663f69ee8fdc3510acd09c38e08112c001195c9340fe2aadec220081ce'

@@ -8,7 +8,7 @@ import CloudSettings from '../cloud/CloudSettings.vue'
 import type { CloudState } from '../cloud/types'
 import DevicePairingDialog from '../devices/DevicePairingDialog.vue'
 import { connectedVia, type DeviceRoute } from '../devices/direct'
-import type { DeviceInstallation } from '../devices/installation'
+import type { DeviceInstallCommands } from '../devices/installation'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
 import DeviceIcon from '../devices/DeviceIcon.vue'
 import { DEVICE_STATE_LABEL } from '../devices/state'
@@ -43,8 +43,8 @@ const props = defineProps<{
   /** The user's projects, each on a device; a revoked device's go with it. */
   projects?: readonly { deviceId: string; name: string }[]
   overlayStore: OverlayStore
-  /** Null until the host knows where its backend serves the installers. */
-  installation: DeviceInstallation | null
+  /** The backend's install commands; null until the host has them. */
+  installCommands: DeviceInstallCommands | null
   claimDevice: (code: string, signal?: AbortSignal) => Promise<PairingResult>
 }>()
 const emit = defineEmits<{
@@ -156,10 +156,10 @@ const pageProjects = computed(() =>
       </AsyncRegion>
     </SettingsGroup>
     <DevicePairingDialog
-      v-if="installation"
+      v-if="installCommands"
       :is-open="isOpen"
       :overlay-store="overlayStore"
-      :installation="installation"
+      :install-commands="installCommands"
       :phase="phase"
       @close="close"
       @next="phase = { kind: 'code' }"

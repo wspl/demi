@@ -18,7 +18,7 @@ import type { WorkspaceHostChoice } from '@demicodes/web-ui/hosts/workspace'
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { createGalleryFileHosts } from '../fixtures/files'
-import { demoDeviceInstallation } from '../fixtures/device-installation'
+import { demoInstallCommands } from '../fixtures/device-installation'
 import { productWould } from '../product-would'
 import GalleryDialogFrame from './GalleryDialogFrame.vue'
 import GallerySection from './GallerySection.vue'
@@ -143,7 +143,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
             <DevicePairingDialog
               :is-open="open"
               :overlay-store="appOverlayStore"
-              :installation="demoDeviceInstallation"
+              :install-commands="demoInstallCommands"
               :phase="pairingShown"
               @close="close"
               @next="pairingShown = { kind: 'code' }"
