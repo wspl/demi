@@ -4,6 +4,8 @@ import { useElementSize } from '@vueuse/core'
 import { ChevronRight } from '@lucide/vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { disabledTooltip } from '../ui/disabled'
+import { provideRowWork } from '../ui/pending-action'
+import RowSpinner from '../ui/RowSpinner.vue'
 import Tag from '../ui/Tag.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
@@ -71,6 +73,11 @@ const { height: rowHeight } = useElementSize(rowElement, undefined, { box: 'bord
 const emit = defineEmits<{
   click: []
 }>()
+
+// The row works while an icon button or a menu item inside it, its ··· menu's
+// included, waits for its action (`provideRowWork`): a spinner stands in the
+// accessory's place, or before the controls where there is none.
+const working = provideRowWork()
 </script>
 
 <template>
@@ -152,6 +159,7 @@ const emit = defineEmits<{
         disabled ? 'pointer-events-none' : '',
       ]"
       >
+        <RowSpinner v-if="working && !accessory" />
         <slot />
       </div>
       <div v-if="below" class="order-last min-w-0 basis-full" :class="faded ? 'opacity-60' : ''">
@@ -161,13 +169,16 @@ const emit = defineEmits<{
     <!-- A square as tall as the row: its mark is as far from the row's end as from its top and bottom. -->
     <div
       v-if="accessory"
-      class="flex shrink-0 items-center justify-center text-fg-subtle"
+      class="relative flex shrink-0 items-center justify-center text-fg-subtle"
       :class="faded ? 'opacity-60' : ''"
       :style="{ width: `${rowHeight}px` }"
     >
-      <slot name="accessory">
-        <ChevronRight :size="ICON_PX.in28" aria-hidden="true" />
-      </slot>
+      <span class="flex" :class="working ? 'invisible' : ''">
+        <slot name="accessory">
+          <ChevronRight :size="ICON_PX.in28" aria-hidden="true" />
+        </slot>
+      </span>
+      <RowSpinner v-if="working" class="absolute" />
     </div>
     </div>
   </Tooltip>

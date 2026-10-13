@@ -26,7 +26,6 @@ const emit = defineEmits<{
 }>()
 
 const origin = ref('')
-const busy = ref(false)
 const refusal = ref<string | null>(null)
 
 watch(() => props.isOpen, (open) => {
@@ -41,21 +40,16 @@ watch(origin, () => {
   refusal.value = null
 })
 
-const canAdd = computed(() => !busy.value && origin.value.trim().length > 0)
+const canAdd = computed(() => origin.value.trim().length > 0)
 
 async function submit() {
   if (!canAdd.value)
     return
-  busy.value = true
-  try {
-    const answer = await props.addSource({ origin: origin.value.trim() })
-    if (answer.kind === 'added') {
-      emit('close')
-    } else if (answer.kind === 'refused') {
-      refusal.value = answer.message
-    }
-  } finally {
-    busy.value = false
+  const answer = await props.addSource({ origin: origin.value.trim() })
+  if (answer.kind === 'added') {
+    emit('close')
+  } else if (answer.kind === 'refused') {
+    refusal.value = answer.message
   }
 }
 </script>
@@ -85,7 +79,6 @@ async function submit() {
             placeholder="owner/repository"
             aria-label="Repository"
             literal
-            :readonly="busy"
           />
         </SettingsRow>
       </div>
@@ -98,8 +91,7 @@ async function submit() {
       <Button @click="emit('close')">Cancel</Button>
       <Button
         variant="primary"
-        :disabled="!canAdd && !busy"
-        :loading="busy"
+        :disabled="!canAdd"
         @click="submit"
       >Add Source</Button>
     </template>

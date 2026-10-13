@@ -36,7 +36,6 @@ const renaming = ref<SettingsPasskey | null>(null)
 const renameOpen = ref(false)
 const removing = ref<SettingsPasskey | null>(null)
 const removeOpen = ref(false)
-const removeBusy = ref(false)
 
 function rename(passkey: SettingsPasskey): void {
   renaming.value = passkey
@@ -50,14 +49,12 @@ function askRemove(passkey: SettingsPasskey): void {
 
 async function remove(): Promise<void> {
   const passkey = removing.value
-  if (!passkey || removeBusy.value) {
+  if (!passkey) {
     return
   }
-  removeBusy.value = true
   try {
     await props.host.remove(passkey.id)
   } finally {
-    removeBusy.value = false
     removeOpen.value = false
   }
 }
@@ -113,7 +110,6 @@ const empty = computed(() => props.host.passkeys.length === 0)
     :overlay-store="overlayStore"
     :title="`Remove the passkey “${removing?.name ?? ''}”?`"
     action="Remove"
-    :busy="removeBusy"
     @close="removeOpen = false"
     @confirm="remove"
   >

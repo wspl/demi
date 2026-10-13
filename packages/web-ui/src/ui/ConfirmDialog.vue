@@ -2,6 +2,7 @@
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from './Button.vue'
 import Dialog from './Dialog.vue'
+import type { Action } from './pending-action'
 import type { HeadlineText, TitleText } from './ui-text'
 
 /**
@@ -11,8 +12,9 @@ import type { HeadlineText, TitleText } from './ui-text'
  * what happens, and `goes` names what goes with it, one line each. Cancel is the
  * safe answer, the default button, and closes; the action is the danger
  * button, which takes a click (Dialog). Nothing the user
- * set up disappears on one click (`product.md`). While the host carries the
- * action out, `busy` keeps the dialog open with its action loading.
+ * set up disappears on one click (`product.md`). The action is the caller's
+ * `onConfirm`, which returns the promise of the work: the danger button shows
+ * it until it settles, and the caller closes the dialog then.
  */
 defineProps<{
   isOpen: boolean
@@ -22,12 +24,11 @@ defineProps<{
   action: TitleText
   /** What goes with it, named one per line; content, not UI text. */
   goes?: readonly string[]
-  busy?: boolean
+  onConfirm?: Action
 }>()
 
 const emit = defineEmits<{
   close: []
-  confirm: []
 }>()
 </script>
 
@@ -55,8 +56,8 @@ const emit = defineEmits<{
     </div>
     <template #footer>
       <!-- Cancel is the default, last: Return and the opening focus never destroy (Dialog). -->
-      <Button variant="danger" :loading="busy" @click="emit('confirm')">{{ action }}</Button>
-      <Button :disabled="busy" variant="primary" @click="emit('close')">Cancel</Button>
+      <Button variant="danger" @click="onConfirm?.()">{{ action }}</Button>
+      <Button variant="primary" @click="emit('close')">Cancel</Button>
     </template>
   </Dialog>
 </template>

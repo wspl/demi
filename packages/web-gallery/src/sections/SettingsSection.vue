@@ -18,6 +18,7 @@ import { SETTINGS_SECTIONS, withUsersSection } from '@demicodes/web-ui/settings/
 import GallerySettingsProviders from '../components/GallerySettingsProviders.vue'
 import { createSettingsState, gallerySessions, incompleteProviders, mockProviders } from '../fixtures/settings'
 import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
+import { slow } from '../fixtures/slow'
 import { PLUGIN_PAGES } from '../generated/pages'
 import { providePageHost, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { useGalleryView } from '../gallery-views'
@@ -223,7 +224,8 @@ function pinnedCredentialEditor(id: string | null) {
 const newCredentialEditor = pinnedCredentialEditor(null)
 const editedCredentialEditor = pinnedCredentialEditor('cred-linear')
 
-function savedCredential(editor: ReturnType<typeof pinnedCredentialEditor>, draft: SettingsCredentialDraft) {
+async function savedCredential(editor: ReturnType<typeof pinnedCredentialEditor>, draft: SettingsCredentialDraft) {
+  await slow()
   editor.open.value = false
   productWould(`The product would save the credential ${draft.name}`)
 }
@@ -236,7 +238,8 @@ function deletedCredential(editor: ReturnType<typeof pinnedCredentialEditor>) {
 const inheritEditor = pinnedEditor(null)
 const ownEditor = pinnedEditor('explore')
 
-function saved(editor: ReturnType<typeof pinnedEditor>, draft: SettingsSubagentDraft) {
+async function saved(editor: ReturnType<typeof pinnedEditor>, draft: SettingsSubagentDraft) {
+  await slow()
   editor.open.value = false
   productWould(`The product would save the profile ${draft.name}`)
 }
@@ -565,7 +568,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Web Search · Every State"
-        note="Each state, pinned: nothing connected, so searches go anonymously; signed in with an email; signed in where Exa names none, with a key saved, which searches use; a key saved while Exa’s rate limit kept it from being checked, which the next search decides; a key Exa refused, the typed key kept in the field; and a row waiting for its call. Every control acts on its own specimen’s state, and Sign In says what the product would open."
+        note="Each state, pinned: nothing connected, so searches go anonymously; signed in with an email; signed in where Exa names none, with a key saved, which searches use; a key saved while Exa’s rate limit kept it from being checked, which the next search decides; a key Exa refused, the typed key kept in the field; and a key typed for Exa to check, whose Save works until Exa answers. Every control acts on its own specimen’s state, and Sign In says what the product would open."
       >
         <GallerySpecimen variant="Not Connected" wide>
           <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
@@ -598,12 +601,12 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             />
           </div>
         </GallerySpecimen>
-        <GallerySpecimen variant="Checking a Key" wide>
+        <GallerySpecimen variant="Checking a Key · Press Save" wide>
           <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
             <GalleryWebSearchShowcase
               :state="{ account: { email: 'alex@example.com' }, key: null, inUse: 'account' }"
               draft="b81c0f2e-55aa-4c3e-9d21-7f3a"
-              :pending="['key']"
+              slow
             />
           </div>
         </GallerySpecimen>

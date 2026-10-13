@@ -4,6 +4,7 @@ import { blockUnavailableButtonEvent, pressOnKey } from './button-events'
 import { useButtonIconSpin } from './button-icon-spin'
 import type { Component } from 'vue'
 import { disabledTooltip } from './disabled'
+import { usePendingAction } from './pending-action'
 import { ICON_PX } from './icon-metrics'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
 import CornerDot from './CornerDot.vue'
@@ -16,7 +17,7 @@ const attrs = useAttrs()
 const restAttrs = computed(() => {
   const next: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(attrs)) {
-    if (key !== 'class') {
+    if (key !== 'class' && key !== 'onClick') {
       next[key] = value
     }
   }
@@ -31,6 +32,11 @@ const props = withDefaults(
     variant?: 'default' | 'solid' | 'ghost' | 'danger' | 'accent'
     circle?: boolean
     disabled?: boolean
+    /**
+     * Shows the spinner for work the caller's state owns. A press whose
+     * handler returns a promise shows it by itself until it settles, so a
+     * handler keeps no flag for that (`pending-action.ts`).
+     */
     loading?: boolean
     /** Why it is disabled, as a tooltip; only read while `disabled`. */
     disabledReason?: SentenceText
@@ -57,11 +63,20 @@ const tooltipContent = computed(() =>
 const emit = defineEmits<{ spinEnd: [] }>()
 // The icon's own box turns, not the dot on its corner.
 const glyph = ref<HTMLElement | null>(null)
-const { rotating, onClick } = useButtonIconSpin(
+const { rotating, onClick: spinOnPress } = useButtonIconSpin(
   () => glyph.value ? [glyph.value] : [],
   props,
   () => emit('spinEnd'),
 )
+// A press whose handler returns a promise works until it settles; a second press meanwhile does nothing.
+const { pending, showsWork, press } = usePendingAction(true)
+const working = computed(() => props.loading === true || (pending.value && showsWork))
+const unavailable = computed(() => props.disabled === true || props.loading === true || pending.value)
+
+function onClick(event: MouseEvent): void {
+  spinOnPress()
+  press(attrs.onClick, event)
+}
 
 /** The tip that says why it cannot act, for a control the user just tried. */
 const tip = ref<InstanceType<typeof Tooltip> | null>(null)
@@ -100,17 +115,17 @@ const glyphPx = computed(() => {
       v-bind="restAttrs"
       :data-spinning="rotating || undefined"
       @click="onClick"
-      @click.capture="blockUnavailableButtonEvent($event, disabled || loading)"
+      @click.capture="blockUnavailableButtonEvent($event, unavailable)"
       @keydown.capture="
-        blockUnavailableButtonEvent($event, disabled || loading)
+        blockUnavailableButtonEvent($event, unavailable)
       "
       @keydown="pressOnKey"
       @keyup="pressOnKey"
       role="button"
-      :tabindex="disabled || loading ? undefined : 0"
+      :tabindex="unavailable ? undefined : 0"
       class="inline-flex shrink-0 cursor-default items-center justify-center transition-[color,background-color,box-shadow] duration-200 ease-out"
-      :aria-disabled="disabled || loading || undefined"
-      :aria-busy="loading || undefined"
+      :aria-disabled="unavailable || undefined"
+      :aria-busy="working || undefined"
       :data-pressed="!disabled && pressed ? true : undefined"
       :class="[
         circle ? 'rounded-full' : 'rounded-md',
@@ -140,7 +155,7 @@ const glyphPx = computed(() => {
                   : 'btn text-fg-body',
       ]"
     >
-      <IndeterminateSpinner v-if="loading" :size="glyphPx" />
+      <IndeterminateSpinner v-if="working" :size="glyphPx" />
       <span v-else class="relative flex">
         <span ref="glyph" class="flex">
           <component
