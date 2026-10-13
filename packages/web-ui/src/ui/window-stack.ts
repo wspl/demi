@@ -7,9 +7,10 @@ import { onBeforeUnmount, shallowRef, watch, type ShallowRef } from 'vue'
  * outside every window closes the newest alone, as Escape does, and the
  * press still does what it does there; a second press closes the next. A
  * press in a window closes nothing, nor does one on a place marked with
- * `KEEPS_WINDOWS`: the composer and its chips, where the user types beside
- * a window, and the controls that open a window, such as a thumbnail that
- * shows its picture in the viewer in place of the one it shows.
+ * `KEEPS_WINDOWS`: the controls that open or change a window, such as the
+ * dock's Agents and Running chips and a thumbnail that shows its picture in
+ * the viewer in place of the one it shows. The composer and the dock's empty space are outside:
+ * a press there closes the newest window and puts the caret in the message.
  */
 
 /** The attribute of a place where a press keeps the session's windows open. */
