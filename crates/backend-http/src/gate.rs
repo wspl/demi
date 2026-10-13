@@ -204,6 +204,7 @@ pub(super) async fn session(
     tracing::Span::current().record("user_id", tracing::field::display(&session.user.id));
     if session.active {
         services.sync.mark(&session.user.id, Part::Sessions);
+        services.sync.mark_everyone(&Part::Users);
     }
     if session.user.chooses_password && !opens_before_password_choice(request.method(), request.uri().path()) {
         return ApiError::password_choice_required().into_response();

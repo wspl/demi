@@ -96,6 +96,11 @@ impl ControlService {
                 "DELETE FROM web_sessions WHERE expires_at <= ?1",
                 [now.as_millisecond()],
             )?;
+            // A sign-in is the account's activity, which outlives the session.
+            transaction.execute(
+                "UPDATE users SET last_active_at = ?1 WHERE id = ?2",
+                params![now.as_millisecond(), session.user.as_str()],
+            )?;
             transaction.execute(
                 "INSERT INTO web_sessions
                    (token_hash, id, user_id, expires_at, name, created_at, last_active_at, verified_at, handoff_id, issued_by)
@@ -182,6 +187,11 @@ impl ControlService {
                 transaction.execute(
                     "UPDATE web_sessions SET last_active_at = ?1 WHERE token_hash = ?2",
                     params![now.as_millisecond(), token.as_str()],
+                )?;
+                // The account keeps it after its sessions end.
+                transaction.execute(
+                    "UPDATE users SET last_active_at = ?1 WHERE id = ?2",
+                    params![now.as_millisecond(), user.id.as_str()],
                 )?;
             }
             transaction.commit()?;

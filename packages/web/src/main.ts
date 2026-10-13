@@ -97,7 +97,7 @@ followDirect()
 /** A page signed out, or of a Demi without accounts, follows no state; one whose check failed keeps the channel for its Retry. */
 function stopUnlessSignedIn(): void {
   const { status } = session.current
-  if (status === 'signedOut' || status === 'setupNeeded' || status === 'choosingPassword') {
+  if (status === 'signedOut' || status === 'setupNeeded') {
     product.stop()
   }
 }
@@ -133,6 +133,17 @@ const stopExpiry = onSessionExpired(() => {
   conversations.saveDrafts()
   void settleSession()
 })
+// A page waiting on Choose Your Password goes on by itself once another page
+// of the account chose it: its channel says so (`web-api.md` § Account API).
+const stopChoice = watch(
+  () => product.account?.choosesPassword,
+  (choosing) => {
+    const { current } = session
+    if (choosing === false && current.status === 'choosingPassword' && current.user.choosesPassword) {
+      session.finishChoosing()
+    }
+  },
+)
 /**
  * A session the page's requests or channel found ended: the identity says
  * whether it ended (signed out) or its account must choose a password first
@@ -271,6 +282,7 @@ if (import.meta.hot) {
     stopIdentity()
     stopRetry()
     stopExpiry()
+    stopChoice()
     stopAppearance()
     stopTheme()
     stopLocale()

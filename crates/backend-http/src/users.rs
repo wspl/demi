@@ -65,6 +65,7 @@ pub(super) async fn create(
                 "An account has that email",
             )
         })?;
+    services.sync.mark_everyone(&Part::Users);
     Ok((
         StatusCode::CREATED,
         Json(CreatedUser {
@@ -126,6 +127,7 @@ pub(super) async fn new_first_password(
         .await?;
     let tokens = services.control.session_tokens(target.user.id.clone()).await?;
     end_sessions(&services, &target.user.id, &tokens);
+    services.sync.mark_everyone(&Part::Users);
     Ok(Json(NewFirstPassword {
         password: FirstPassword::new(password.expose().to_owned()),
     }))
@@ -151,6 +153,7 @@ pub(super) async fn change(
             }
             services.control.set_role(target.user.id.clone(), role).await?;
             services.sync.mark(&target.user.id, Part::User);
+            services.sync.mark_everyone(&Part::Users);
         }
         (None, Some(disabled)) => {
             let ended = services
@@ -158,6 +161,7 @@ pub(super) async fn change(
                 .set_disabled(target.user.id.clone(), disabled)
                 .await?;
             end_sessions(services, &target.user.id, &ended);
+            services.sync.mark_everyone(&Part::Users);
             if disabled {
                 let user = target.user.id.clone();
                 state

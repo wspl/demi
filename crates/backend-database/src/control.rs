@@ -147,13 +147,12 @@ impl ControlService {
         .await
     }
 
-    /// Every account, in the order they were created, each with the latest
-    /// activity of any of its sessions.
+    /// Every account, in the order they were created, each with when it was
+    /// last active.
     pub async fn users(&self) -> Result<Vec<ListedUser>, StorageError> {
         self.call(|connection, _| {
             let mut statement = connection.prepare_cached(&format!(
-                "SELECT {USER_COLUMNS},
-                        (SELECT max(w.last_active_at) FROM web_sessions w WHERE w.user_id = users.id) AS active_at
+                "SELECT {USER_COLUMNS}, users.last_active_at
                  FROM users ORDER BY users.created_at, users.rowid"
             ))?;
             let mut rows = statement.query([])?;
@@ -162,7 +161,7 @@ impl ControlService {
                 users.push(ListedUser {
                     user: user_row(row)?,
                     last_active_at: row
-                        .get::<_, Option<i64>>("active_at")?
+                        .get::<_, Option<i64>>("last_active_at")?
                         .map(|millisecond| decode("web_sessions", "last_active_at", Timestamp::from_millisecond(millisecond)))
                         .transpose()?,
                 });
