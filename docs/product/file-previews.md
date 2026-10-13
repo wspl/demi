@@ -437,17 +437,16 @@ it was, not dimmed, so the user can go on reading and typing beside it.
   bar. A picture whose window would be wider than 60% of the page or, title
   bar included, taller than 70% of it opens scaled down, keeping its proportions, to the largest size within
   both; a picture smaller than 320 × 240 sits centred in a window of that
-  size. The first picture opens the window centred over the conversation;
-  another picture opened while it shows resizes the window about its centre,
-  kept within the page. A size the user dragged lasts while that picture
+  size. Every picture opens the window at its own size centred on the page,
+  the first one and each picture shown after it, by a click or a step. A size the user dragged lasts while that picture
   shows; a video opens at its frame's size by the same rule. A picture
   whose size is not known yet opens the window at the largest size and
-  takes its own size about the window's centre once it loads, unless the
-  user has moved the window by then.
+  takes its own size centred on the page once it loads, unless the user has
+  moved the window by then.
 - **One viewer.** Opening another picture or video shows it in the same
   window, in place of the one it showed.
-- **Previous and next.** The left and right arrow keys, while the focus is
-  in the viewer, show the picture or video before or after this one in the
+- **Previous and next.** The arrow keys, left and up for the previous and
+  right and down for the next, while the focus is in the viewer, show the picture or video before or after this one in the
   transcript it was opened from, the conversation's or a subagent's: the
   images messages show, the user's attached images and the media tools
   returned, in the order they stand, from the oldest to the newest. At the
