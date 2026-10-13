@@ -171,7 +171,7 @@ that reads a Host does not make the others wait. Each source is given the text o
 own context blocks that the model receives, the ones from the last
 `compaction_boundary` on, oldest first, with the node's working directory, how
 its Host writes paths (`HostPaths`: joining, a path's last name, the
-directories up to the root, so `C:\Users\zan\app` walks up to `C:\` on
+directories up to the root, so `C:\Users\alex\app` walks up to `C:\` on
 Windows; [Windows paths](../execution/runner.md#windows-paths)) and the id of
 its current input turn, and answers new text or nothing. Each
 answer becomes one block, tagged with its source. The blocks are appended

@@ -10,9 +10,9 @@ model receives, and what the card lists. The context blocks themselves are the
 
 ## What the model receives
 
-For example, the user writes "Reply in Chinese; write commit messages in
-English." in Settings › Instructions, and opens a conversation on their Mac in
-`~/Projects/demi/packages/web`, inside the git repository `~/Projects/demi`.
+For example, the user writes "Keep answers brief. Run the tests before you
+finish." in Settings › Instructions, and opens a conversation on their Mac in
+`~/Projects/shop/packages/web`, inside the git repository `~/Projects/shop`.
 The repository has `AGENTS.md` at its root, `CLAUDE.md` beside it as a
 symbolic link to it, and `packages/web/AGENTS.md`. Before the first request
 of the root node, the model receives:
@@ -25,14 +25,14 @@ user's messages come first, then a file nearer the working directory over
 one further up, then the personal instructions.
 
 <personal_instructions>
-Reply in Chinese; write commit messages in English.
+Keep answers brief. Run the tests before you finish.
 </personal_instructions>
 
-<project_instructions path="/Users/alex/Projects/demi/AGENTS.md">
+<project_instructions path="/Users/alex/Projects/shop/AGENTS.md">
 …the file's text…
 </project_instructions>
 
-<project_instructions path="/Users/alex/Projects/demi/packages/web/AGENTS.md">
+<project_instructions path="/Users/alex/Projects/shop/packages/web/AGENTS.md">
 …the file's text…
 </project_instructions>
 ```
