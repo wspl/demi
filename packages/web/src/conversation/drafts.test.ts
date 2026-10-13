@@ -29,6 +29,7 @@ test('a saved edit keeps its operation, its files and the separate composer draf
     model: { providerId: 'provider', modelId: 'model', thinkingEffort: null, serviceTierId: null },
     files: [],
     scroll: null,
+    notSaved: [],
   }
   expect(draftSchema.parse(structuredClone(value))).toEqual(value)
   expect(() => draftSchema.parse({ ...value, messageEdit: { phase: 'sending', request: {} } })).toThrow()

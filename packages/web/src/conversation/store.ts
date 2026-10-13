@@ -18,7 +18,7 @@ import { reportError, shownError, type ReportErrorOptions } from '@demicodes/web
 import { ConversationSocketError } from '@demicodes/web-ui/transport/conversation-socket'
 import { CONVERSATION_UNREADABLE, transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
-import { Slot, type SlotChange, type SlotWrite } from '@demicodes/web-ui/infra/slot'
+import { Slot } from '@demicodes/web-ui/infra/slot'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused, type Refusal } from '@demicodes/web-ui/sidebar/refused-toast'
 import { forkConversation } from '../api/message-fork'
@@ -56,7 +56,6 @@ import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
 import { loadDraft } from '../api/drafts'
-import { deleteSaved as deleteSavedRequest, loadSaved, postSaved } from '../api/saved'
 import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   attachedHostsSchema,
@@ -69,7 +68,6 @@ import {
   type AttachedHosts,
   type ConversationBatch,
   type ConversationDraft,
-  type SavedMessage,
   type ConversationPatch,
   type ConversationStatus,
   type ConversationSummary,
@@ -91,7 +89,7 @@ import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
 import type { Conversation, PendingSend, ProductAttachment } from '../state/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
-import { createDraftSync, hasUnsavedDraft, heldDraft, namedFile } from './draft-sync'
+import { composerWriting, createRecordSync, newRecord, type Writing } from './record'
 import { createHistoryReads } from './history'
 import { findCallBlock, shellCallOf } from './terminals'
 import { EMPTY_TRANSCRIPT, addPage, heldBlocks } from '@demicodes/web-ui/transport/protocol'
@@ -189,8 +187,9 @@ export const useConversations = defineStore('conversations', () => {
     report('Could Not Upload the Attachment', error),
   )
   const { uploadInComposer, addFiles, removeFile, releaseSpare, arrangeFiles, retryFile } = uploads
-  const draftSync = createDraftSync({
-    apply: showDraft,
+  const recordSync = createRecordSync({
+    show: showWriting,
+    persist: persistConversation,
     report,
   })
   let lifetime = new AbortController()
@@ -425,12 +424,9 @@ export const useConversations = defineStore('conversations', () => {
       workflow: record.workflow,
       lastError: null,
       draft: '',
-      savedDraft: null,
-      draftBase: null,
       draftShown: 0,
-      // The list stands empty until the conversation opens and reads it;
-      // a read for the revision 0 is not worth starting.
-      saved: askedAt(new Slot<SavedMessage[]>([]), 0),
+      record: newRecord(),
+      notSaved: [],
       files: [],
       attachmentIds: [],
       pendingSends: [],
@@ -461,7 +457,7 @@ export const useConversations = defineStore('conversations', () => {
     if (!conversation.archived) {
       void Promise.resolve(archiving.get(conversation.id)).then(() => {
         if (!conversation.archived) {
-          draftSync.changed(conversation)
+          recordSync.changed(conversation)
         }
       })
     }
@@ -532,14 +528,14 @@ export const useConversations = defineStore('conversations', () => {
         if (!cached?.runtime?.connected) {
           current.status = summaryStatus(record.status)
         }
-        // Another page saved the draft since this one read it.
-        if (current.savedDraft && record.draftRevision > current.savedDraft.revision) {
-          void draftSync.read(current).catch((error) => report('Could Not Read the Draft', error))
+        // Another page changed the draft or the messages saved for later
+        // since this one read them; a conversation whose draft was never
+        // read, or that was not opened, reads them when it opens.
+        if (current.record.revision('draft') >= 0 && current.record.ask(record.draftRevision, 'draft')) {
+          void recordSync.readDraft(current).catch((error) => report('Could Not Read the Draft', error))
         }
-        // A page changed the messages saved for later since this one read
-        // them; a conversation not opened reads them when it opens.
-        if (cache.get(current.id) && current.saved.ask(record.savedRevision)) {
-          void readSaved(current).catch((error) => report('Could Not Read the Saved Messages', error))
+        if (cache.get(current.id) && current.record.ask(record.savedRevision, 'saved')) {
+          void recordSync.readSaved(current).catch((error) => report('Could Not Read the Saved Messages', error))
         }
         // Another page or a host's shell changed the hosts since this one
         // read them; a conversation not opened reads them when it opens.
@@ -569,7 +565,7 @@ export const useConversations = defineStore('conversations', () => {
     const local = conversation.persistence !== 'synced'
     // The web browser keeps the composer's text only while the backend does not
     // have it: a new conversation's, or a change not yet confirmed.
-    const unsaved = local || hasUnsavedDraft(conversation)
+    const unsaved = local || recordSync.unsaved(conversation)
     const sending = sendingFileIds(conversation)
     const files = [
       ...(unsaved ? messageFiles(conversation) : []),
@@ -595,8 +591,9 @@ export const useConversations = defineStore('conversations', () => {
                 updatedAt: conversation.updatedAt,
               },
             },
-      base: !local && unsaved ? conversation.draftBase ?? 0 : null,
+      base: !local && unsaved ? recordSync.base(conversation) : null,
       text: unsaved ? conversation.draft : '',
+      notSaved: conversation.notSaved.map((row) => structuredClone(toRaw(row))),
       // A conversation with a record holds its model settings there.
       model: local ? { ...conversation.model } : null,
       // And its Workflow menu choice; Default goes unwritten.
@@ -629,6 +626,13 @@ export const useConversations = defineStore('conversations', () => {
    * copy of it would replace that.
    */
   function saveDrafts(): void {
+    // What a composer holds is its draft's change from the first keystroke,
+    // restored from this web browser's storage or not.
+    for (const item of items.value) {
+      if (item.persistence === 'synced') {
+        recordSync.changed(item)
+      }
+    }
     const userId = session.user?.id ?? product.snapshot?.user.id
     if (!userId) {
       return
@@ -636,16 +640,10 @@ export const useConversations = defineStore('conversations', () => {
     const changed = items.value
       .filter((item) => restored.has(item.id))
       .map((item) => ({
-        conversation: item,
         id: item.id,
         draft: persisted(item),
       }))
       .filter((entry) => changedDraft(entry.id, entry.draft))
-    for (const entry of changed) {
-      if (entry.conversation.persistence === 'synced') {
-        draftSync.changed(entry.conversation)
-      }
-    }
     const current = lifetime
     // IndexedDB serializes readwrite transactions; issue them now, including on pagehide.
     for (const entry of changed) {
@@ -678,9 +676,9 @@ export const useConversations = defineStore('conversations', () => {
       return
     }
     for (const item of items.value) {
-      if (restored.has(item.id) && (item.persistence !== 'synced' || hasUnsavedDraft(item))) {
+      if (restored.has(item.id) && (item.persistence !== 'synced' || recordSync.unsaved(item))) {
         writeLastWords(userId, item.id, {
-          base: item.persistence === 'synced' ? item.draftBase ?? 0 : null,
+          base: item.persistence === 'synced' ? recordSync.base(item) : null,
           text: item.draft,
           attachmentIds: [...item.attachmentIds],
         })
@@ -834,8 +832,15 @@ export const useConversations = defineStore('conversations', () => {
         // The composer's text is here only when the backend does not have
         // it; a synced conversation's composer shows the backend's draft
         // otherwise, once read.
+        recordSync.restore(conversation, draft.base)
+        conversation.notSaved = draft.notSaved
+        // A message on its way from the list keeps it out of the list.
+        for (const pending of conversation.pendingSends) {
+          if (pending.saved) {
+            recordSync.hideSent(conversation, pending.saved, pending.id)
+          }
+        }
         conversation.draft = draft.text
-        conversation.draftBase = draft.base
         conversation.files = draft.files.map(savedAttachment)
         // The files of the message, in the order of its capsules; the rest
         // are those of the sends not yet accepted.
@@ -848,8 +853,8 @@ export const useConversations = defineStore('conversations', () => {
       // record, whose last writes may not have made it.
       const words = takeLastWords(session.user.id, conversation.id)
       if (words) {
+        recordSync.restore(conversation, words.base)
         conversation.draft = words.text
-        conversation.draftBase = words.base
         conversation.attachmentIds = words.attachmentIds.filter((id) =>
           conversation.files.some((file) => file.id === id),
         )
@@ -948,13 +953,14 @@ export const useConversations = defineStore('conversations', () => {
     return carried ?? { ...composerRemoteAttachment({ host, path: file.path }), deviceId: file.deviceId }
   }
 
-  /** Shows a draft from outside, another page's or a restored one, in the conversation's composer. */
-  function showDraft(conversation: Conversation, draft: ConversationDraft): void {
-    const files = draft.files.map((file) => draftAttachment(conversation, file))
-    conversation.draft = draft.text
+  /** Shows `writing` in the conversation's composer, from outside: another page's draft, a restored one, or what the slot shows. */
+  function showWriting(conversation: Conversation, writing: Writing): void {
+    const files = writing.files.map((file) => draftAttachment(conversation, file))
+    conversation.draft = writing.text
     uploads.showFiles(conversation, files)
     conversation.draftShown += 1
   }
+
 
   /** Where a conversation's edit is kept while it is sent, and the session it is sent to. */
   function editHost(conversation: Conversation): MessageEditHost {
@@ -1257,18 +1263,22 @@ export const useConversations = defineStore('conversations', () => {
   ): Promise<{ hosts: Promise<void> }> {
     const reads = earlyReads.get(conversation.id) ?? openingReads(conversation.id, signal)
     earlyReads.delete(conversation.id)
-    const hostsRevision = conversation.attachedHosts.requested
+    const hostsRevision = conversation.attachedHosts.requested()
     const hostsSince = conversation.attachedHosts.now()
     // Taken after this web browser's own copy; a submission it confirms
     // clears the draft after it, so the transcript waits for it.
-    const draftRead = draftRestored.then(() => draftSync.read(conversation, reads.draft))
+    // The reads count as those of the revisions the summary names now.
+    const summary = product.snapshot?.conversations.find((record) => record.id === conversation.id)
+    conversation.record.ask(summary?.draftRevision ?? 0, 'draft')
+    conversation.record.ask(summary?.savedRevision ?? 0, 'saved')
+    const draftRead = draftRestored.then(() => recordSync.readDraft(conversation, reads.draft))
     // The composer's entry shows the list once read; nothing waits for it.
-    void readSaved(conversation).catch((error) => report('Could Not Read the Saved Messages', error))
+    void recordSync.readSaved(conversation).catch((error) => report('Could Not Read the Saved Messages', error))
     const hostsRead = reads.hosts.then((answer) => {
       signal.throwIfAborted()
       // A summary that raised the revision meanwhile started a newer read,
       // which this one then gives way to.
-      conversation.attachedHosts.replace(answer.hosts, { revision: hostsRevision, since: hostsSince })
+      conversation.attachedHosts.replace(answer.hosts, { revisions: { '': hostsRevision }, since: hostsSince })
     })
     hostsRead.catch(() => {})
     const [page, listed] = await Promise.all([reads.transcript, reads.subagents, draftRead])
@@ -1308,13 +1318,13 @@ export const useConversations = defineStore('conversations', () => {
    * answer that a later read overtook is dropped.
    */
   async function readHosts(conversation: Conversation): Promise<void> {
-    const revision = conversation.attachedHosts.requested
+    const revision = conversation.attachedHosts.requested()
     const since = conversation.attachedHosts.now()
     const response = await apiRequest(`/conversations/${encodeURIComponent(conversation.id)}/hosts`, {
       signal: lifetime.signal,
     })
     const answer = await readResponse(response, attachedHostsSchema)
-    conversation.attachedHosts.replace(answer.hosts, { revision, since })
+    conversation.attachedHosts.replace(answer.hosts, { revisions: { '': revision }, since })
   }
 
   async function runtimeFor(
@@ -1920,7 +1930,7 @@ export const useConversations = defineStore('conversations', () => {
         },
       )
       // The answer says the device is detached.
-      conversation.attachedHosts.answered('', sentAt, {
+      conversation.attachedHosts.answered([''], sentAt, {
         value: (hosts) => hosts.filter((host) => host.deviceId !== deviceId),
       })
     } catch (error) {
@@ -2051,295 +2061,137 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Reads the conversation's messages saved for later (`web-api.md`
-   * § Messages saved for later): as it opens, and whenever its summary's
-   * revision of them is ahead; an answer older than the list the page
-   * holds is dropped.
-   */
-  async function readSaved(conversation: Conversation): Promise<void> {
-    const since = conversation.saved.now()
-    const list = await loadSaved(conversation.id, lifetime.signal)
-    conversation.saved.replace(list.messages, { revision: list.revision, since })
-  }
-
-  /**
-   * How the writes that change the conversation's saved messages, and its
-   * draft with them, wait for each other and for the draft's own: they are
-   * one thing in the backend.
-   */
-  function savedOrder(conversation: Conversation, changesDraft = false) {
-    return <T>(operation: () => Promise<T>) => draftSync.ordered(conversation, operation, changesDraft)
-  }
-
-  /**
-   * Reports a write of the saved messages that failed, and reads the list
-   * after a write whose answer could not be applied: the summary of the write
-   * may have come first, and the list read then predates it.
-   */
-  function afterSavedWrite(conversation: Conversation, ended: SlotWrite): void {
-    if (ended === 'waiting') {
-      void readSaved(conversation).catch((error) => report('Could Not Read the Saved Messages', error))
-    }
-  }
-
-  /** The row of the list for a message the composer holds, as the backend will keep it. */
-  function savedRow(id: string, text: string, files: ProductAttachment[]): SavedMessage {
-    return {
-      id,
-      text,
-      files: files.map((file): DraftFile => isComposerFile(file)
-        ? {
-            type: 'upload',
-            ref: file.upload!.id,
-            fileName: file.name,
-            mediaType: file.upload!.mediaType,
-            sha256: file.upload!.sha256,
-            ...(file.snippet ? { snippet: file.snippet } : {}),
-          }
-        : { type: 'remote_file', deviceId: file.deviceId, path: file.path }),
-      savedAt: new Date().toISOString(),
-    }
-  }
-
-  /** `list` with `message` at the top, unless the list holds it already. */
-  function withSaved(list: SavedMessage[], message: SavedMessage): SavedMessage[] {
-    return list.some((each) => each.id === message.id) ? list : [message, ...list]
-  }
-
-  /**
    * Save for Later (`product.md` § Saved for later): the composer's message,
-   * its files included, leaves the composer at once and stands at the top of
-   * the list, and is kept by the backend, which empties the draft with it.
-   * Its files are uploaded first. A save the backend refuses takes the row
-   * away and puts the message back into the composer while it is still
-   * empty.
+   * its files included, stands at the top of the list and leaves the
+   * composer at once, under the id the page gives it, once its files are
+   * uploaded; the backend keeps it and empties the draft with it.
    */
   async function saveForLater(conversation: Conversation): Promise<void> {
-    const files = messageFiles(conversation)
     if (
       conversation.archived ||
-      files.some((file) => isComposerFile(file) && file.phase === 'failed') ||
+      messageFiles(conversation).some((file) => isComposerFile(file) && file.phase === 'failed') ||
       isEmptyMessage(conversation.draft, conversation.attachmentIds.length)
     ) {
       return
     }
-    const text = conversation.draft
-    const fileIds = conversation.attachmentIds
-    const held = heldDraft(conversation)
-    const id = crypto.randomUUID()
-    conversation.draft = ''
-    conversation.attachmentIds = []
-    const undo = (error: unknown) => {
-      if (isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
-        refill(conversation, text, fileIds)
-      }
-      report('Could Not Save the Message', error)
-    }
-    let shown: SlotChange<SavedMessage[]>
-    let named: ClientContent[]
     try {
-      named = await Promise.all(files.map(async (file): Promise<ClientContent> => {
-        if (!isComposerFile(file)) {
-          return { type: 'remote_file', deviceId: file.deviceId, path: file.path }
-        }
-        const upload = await uploads.uploaded(file)
-        return { type: 'upload', ref: upload.id, fileName: file.name }
-      }))
-      // The row stands where the backend will put it, before the request.
-      const row = savedRow(id, text, files)
-      shown = conversation.saved.change((list) => withSaved(list, row))
+      await uploaded(conversation)
     } catch (error) {
-      undo(error)
+      report('Could Not Save the Message', error)
       return
     }
-    const ended = await conversation.saved.write(shown, savedOrder(conversation, true), async () => {
-      await persistConversation(conversation)
-      const message = await draftSync.saveForLaterNow(conversation, id, { content: { text, files: named }, base: held.base ?? 0 })
-      return { value: (list) => withSaved(list, message) }
-    }, undo)
-    if (ended !== 'refused') {
-      for (const fileId of fileIds) {
-        removeFile(conversation, fileId)
-      }
-      afterSavedWrite(conversation, ended)
-    }
+    await recordSync.saveForLater(conversation, crypto.randomUUID(), composerWriting(conversation).writing)
+  }
+
+  /** Resolves once every file of the composer's message is uploaded; rejects when one cannot be. */
+  async function uploaded(conversation: Conversation): Promise<void> {
+    await Promise.all(messageFiles(conversation).flatMap((file) => isComposerFile(file) ? [uploads.uploaded(file)] : []))
   }
 
   /**
-   * Edit on a saved message: it goes into the composer and leaves the list at
-   * once; a message the composer holds is saved for later in its place, its
-   * files uploaded first, so it is kept whole. A refusal brings the row back
-   * and the composer as it was, unless the user changed it since.
+   * Edit on a message of the list: it goes into the composer and leaves the
+   * list at once; a message the composer holds is saved for later in its
+   * place, its files uploaded first, so it is kept whole. A message not
+   * saved goes into the composer the same way, the composer's message saved
+   * for later first.
    */
   async function editSaved(conversation: Conversation, id: string): Promise<void> {
-    const row = conversation.saved.shown.value?.find((message) => message.id === id)
-    if (conversation.archived || !row) {
+    if (conversation.archived) {
       return
     }
     try {
-      await Promise.all(messageFiles(conversation).flatMap((file) => isComposerFile(file) ? [uploads.uploaded(file)] : []))
+      await uploaded(conversation)
     } catch (error) {
       report('Could Not Edit the Message', error)
       return
     }
-    // What the composer holds goes to the list under the id the page names.
-    const held = heldDraft(conversation)
-    const composerFiles = messageFiles(conversation)
-    const becomes = crypto.randomUUID()
-    const kept = isEmptyMessage(conversation.draft, conversation.attachmentIds.length)
-      ? null
-      : savedRow(becomes, conversation.draft, composerFiles)
-    const shown = conversation.saved.change((list) => {
-      const rest = list.filter((message) => message.id !== id)
-      return kept ? [kept, ...rest] : rest
-    })
-    const written = conversation.saved.write(shown, savedOrder(conversation, true), async () => {
-      await draftSync.editSavedNow(conversation, id, becomes, held)
-      return { value: (list) => {
-        const rest = list.filter((message) => message.id !== id)
-        return kept ? withSaved(rest, kept) : rest
-      } }
-    }, (error) => {
-      giveBackEdit(conversation, row, kept)
-      report('Could Not Edit the Message', error)
-    })
-    showEdited(conversation, row)
-    afterSavedWrite(conversation, await written)
-  }
-
-  /** The saved message `row` is in the composer, in the place of what it held. */
-  function showEdited(conversation: Conversation, row: SavedMessage): void {
-    showDraft(conversation, { revision: conversation.savedDraft?.revision ?? 0, text: row.text, files: row.files, replaced: null })
+    const notSaved = conversation.notSaved.find((row) => row.id === id)
+    const message = conversation.record.shown.value?.saved.find((each) => each.id === id)
+    if (notSaved) {
+      if (!isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
+        void recordSync.saveForLater(conversation, crypto.randomUUID(), composerWriting(conversation).writing)
+      }
+      conversation.notSaved = conversation.notSaved.filter((row) => row !== notSaved)
+      showWriting(conversation, notSaved)
+    } else if (message) {
+      void recordSync.edit(conversation, message)
+    } else {
+      return
+    }
     if (conversation.id === product.activeConversationId) {
       composerFocusRequests.value += 1
     }
   }
 
   /**
-   * The edit was refused: the composer holds what it held before, unless the
-   * user changed it since, when it stays as they left it.
+   * Send on a saved message: it goes the way the composer chose, `way`, as a
+   * turn of its own, and shows in the conversation at once as a message on
+   * its way, as one sent from the composer does, which leaves the list. The
+   * page keeps where it came from, so a send interrupted by a reload goes
+   * again from the list with the same turn; one another page sent or
+   * deleted first is gone, and nothing is sent.
    */
-  function giveBackEdit(conversation: Conversation, row: SavedMessage, kept: SavedMessage | null): void {
-    const shows = conversation.draft === row.text && conversation.attachmentIds.length === row.files.length
-    if (shows) {
-      showDraft(conversation, {
-        revision: conversation.savedDraft?.revision ?? 0,
-        text: kept?.text ?? '',
-        files: kept?.files ?? [],
-        replaced: null,
-      })
-    }
-  }
-
-  /**
-   * Send on a saved message: it goes the way the composer chose, `way`, and
-   * leaves the list at once, standing in the conversation as a message on its
-   * way, as one sent from the composer does. One another page sent or
-   * deleted first is gone already, and nothing is sent; a send the session
-   * refuses brings the row back.
-   */
-  async function sendSaved(conversation: Conversation, id: string, way: SendWay): Promise<void> {
-    const row = conversation.saved.shown.value?.find((message) => message.id === id)
-    if (conversation.archived || !row) {
+  function sendSaved(conversation: Conversation, id: string, way: SendWay): void {
+    const message = conversation.record.shown.value?.saved.find((each) => each.id === id)
+    if (conversation.archived || !message) {
       return
     }
-    // The message is the turn's, under the id it was saved with.
-    const files = row.files.map((file) => draftAttachment(conversation, file))
+    const files = message.files.map((file) => draftAttachment(conversation, file))
     conversation.files = [
       ...conversation.files,
       ...files.filter((file) => !conversation.files.some((held) => held.id === file.id)),
     ]
-    conversation.pendingSends = [
-      ...conversation.pendingSends,
-      { id: row.id, way, text: row.text, fileIds: files.map((file) => file.id), error: null },
-    ]
-    saveDrafts()
-    const shown = conversation.saved.change((list) => list.filter((message) => message.id !== id))
-    const gone = (list: SavedMessage[]) => list.filter((message) => message.id !== id)
-    let runtime: ConversationRuntime
-    try {
-      runtime = await runtimeFor(conversation)
-    } catch (error) {
-      shown.drop()
-      dropSubmission(conversation, id)
-      report('Could Not Send the Message', error)
-      return
-    }
-    const ended = await conversation.saved.write(shown, savedOrder(conversation), async () => {
-      // One another page sent or deleted first was gone, and is.
-      const sent = await runtime.sendSaved(id, way === 'send' ? 'message' : way)
-      if (sent) {
-        clearSubmission(conversation, id)
-      } else {
-        dropSubmission(conversation, id)
-      }
-      return { value: gone }
-    }, (error) => {
-      // The backend keeps a message whose send failed.
-      dropSubmission(conversation, id)
-      report('Could Not Send the Message', error)
-    })
-    afterSavedWrite(conversation, ended)
+    const pending = addPendingSend(conversation, way, message.text, files.map((file) => file.id), id)
+    recordSync.hideSent(conversation, id, pending.id)
+    void deliverInOrder(conversation, pending)
   }
 
   /**
-   * Delete on a saved message: it goes at once, and the toast's Undo saves it
-   * again, under its own id, behind the delete. A refusal brings the row back
-   * and the toast goes.
+   * Delete on a message of the list: it goes at once, and the toast's Undo
+   * saves it again, under a new id. A message not saved goes from this page
+   * alone. A refused deletion brings the message back, and the toast goes.
    */
   async function deleteSaved(conversation: Conversation, id: string): Promise<void> {
-    const message = conversation.saved.shown.value?.find((each) => each.id === id)
+    const notSaved = conversation.notSaved.find((row) => row.id === id)
+    if (notSaved) {
+      conversation.notSaved = conversation.notSaved.filter((row) => row !== notSaved)
+      showDeleted(() => {
+        conversation.notSaved = [notSaved, ...conversation.notSaved.filter((row) => row.id !== id)]
+      })
+      return
+    }
+    const message = conversation.record.shown.value?.saved.find((each) => each.id === id)
     if (conversation.archived || !message) {
       return
     }
-    const shown = conversation.saved.change((list) => list.filter((each) => each.id !== id))
-    const toast = showToast({
-      title: 'Saved Message Deleted',
-      tone: 'neutral',
-      action: { label: 'Undo', run: () => void undoDeleteSaved(conversation, message) },
-    })
-    const ended = await conversation.saved.write(shown, savedOrder(conversation), async () => {
-      try {
-        await deleteSavedRequest(conversation.id, id, lifetime.signal)
-      } catch (error) {
-        // One another page deleted first is gone, and is.
-        if (!(error instanceof ApiError && error.code === 'saved_not_found')) {
-          throw error
-        }
-      }
-      return { value: (list) => list.filter((each) => each.id !== id) }
-    }, (error) => {
+    const ended = recordSync.remove(conversation, id)
+    const toast = showDeleted(() => void recordSync.resave(conversation, crypto.randomUUID(), message))
+    if (await ended === 'refused') {
       dismissToast(toast)
-      report('Could Not Delete the Message', error)
-    })
-    afterSavedWrite(conversation, ended)
+    }
   }
 
-  /**
-   * Undo of a deletion: the page's copy of the message stands at the top of
-   * the list at once and is saved again under its id, the draft left as it
-   * is.
-   */
-  async function undoDeleteSaved(conversation: Conversation, message: SavedMessage): Promise<void> {
-    const shown = conversation.saved.change((list) => withSaved(list, message))
-    const ended = await conversation.saved.write(shown, savedOrder(conversation), async () => {
-      const saved = await postSaved(
-        conversation.id,
-        { id: message.id, text: message.text, files: message.files.map(namedFile) },
-        lifetime.signal,
-      )
-      return { value: (list) => withSaved(list, saved) }
-    }, (error) => report('Could Not Restore the Message', error))
-    afterSavedWrite(conversation, ended)
+  /** The toast a deletion shows, whose Undo runs `undo`. */
+  function showDeleted(undo: () => void): string {
+    return showToast({ title: 'Saved Message Deleted', tone: 'neutral', action: { label: 'Undo', run: undo } })
+  }
+
+  /** Retry on a message not saved: it is saved again under its own id, and stands as saving meanwhile. */
+  function retrySaved(conversation: Conversation, id: string): void {
+    const row = conversation.notSaved.find((each) => each.id === id)
+    if (conversation.archived || !row) {
+      return
+    }
+    void recordSync.resave(conversation, row.id, row)
   }
 
   /** Holds a message as sent and not yet confirmed, after those still on their way; answers it as the conversation holds it. */
-  function addPendingSend(conversation: Conversation, way: SendWay, text: string, fileIds: string[]): PendingSend {
+  function addPendingSend(conversation: Conversation, way: SendWay, text: string, fileIds: string[], saved?: string): PendingSend {
     if (conversation.persistence === 'draft') {
       conversation.persistence = 'pending'
     }
     const id = crypto.randomUUID()
-    conversation.pendingSends = [...conversation.pendingSends, { id, way, text, fileIds, error: null }]
+    conversation.pendingSends = [...conversation.pendingSends, { id, way, text, fileIds, error: null, ...(saved ? { saved } : {}) }]
     return conversation.pendingSends.find((pending) => pending.id === id)!
   }
 
@@ -2392,6 +2244,10 @@ export const useConversations = defineStore('conversations', () => {
     // failed delivery.
     const current = () => conversation.pendingSends.some((each) => each.id === pending.id)
     try {
+      if (pending.saved) {
+        await deliverSaved(conversation, pending, pending.saved, way)
+        return
+      }
       if (files.length !== pending.fileIds.length || files.length !== markCount(pending.text)) {
         throw new Error('A file of this message is no longer on this page. Copy its text, attach the file again and send it anew.')
       }
@@ -2417,7 +2273,11 @@ export const useConversations = defineStore('conversations', () => {
         // A message not delivered is no steer or queued message to act on.
         wishes.delete(pending.id)
         stopRemoving(conversation, pending.id)
-        if (wish === 'recall' && isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
+        if (wish === 'recall' && pending.saved) {
+          // One from the list the user took back meanwhile is listed again.
+          dropSubmission(conversation, pending.id)
+          recordSync.unsend(conversation, pending.id)
+        } else if (wish === 'recall' && isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
           // One the user took back meanwhile goes back into the empty
           // composer as it was, its files with it.
           conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== pending.id)
@@ -2432,6 +2292,24 @@ export const useConversations = defineStore('conversations', () => {
     if (!signal.aborted) {
       saveDrafts()
     }
+  }
+
+  /**
+   * Delivers a message from the list, `saved`, as the turn `pending.id`: the
+   * backend sends it and takes it off the list. One gone from the list,
+   * which another page sent or deleted, is sent by nobody, and its row here
+   * goes too.
+   */
+  async function deliverSaved(conversation: Conversation, pending: PendingSend, saved: string, way: 'message' | 'steer'): Promise<void> {
+    const runtime = await runtimeFor(conversation)
+    const delivery = way === 'steer' ? 'steer' : pending.way === 'queue' ? 'queue' : 'message'
+    if (await runtime.sendSaved(saved, pending.id, delivery)) {
+      clearSubmission(conversation, pending.id)
+    } else {
+      dropSubmission(conversation, pending.id)
+    }
+    recordSync.sent(conversation, pending.id)
+    saveDrafts()
   }
 
   /** A sent message waits for a file's upload, which closing the page would stop. */
@@ -2513,7 +2391,7 @@ export const useConversations = defineStore('conversations', () => {
     // Once no message is on its way, the backend has accepted them all: the
     // draft they were written in goes too, everywhere, and a change another
     // page made meanwhile stays to restore.
-    void draftSync.save(conversation).catch((error) => report('Could Not Clear the Draft', error))
+    void recordSync.save(conversation).catch((error) => report('Could Not Clear the Draft', error))
     return true
   }
 
@@ -2808,7 +2686,7 @@ export const useConversations = defineStore('conversations', () => {
     madeHere.clear()
     deliveries = new SerialQueue()
     wishes.clear()
-    draftSync.stop()
+    recordSync.stop()
     lifetime.abort()
     lifetime = new AbortController()
     uploads.dispose(items.value)
@@ -2872,15 +2750,16 @@ export const useConversations = defineStore('conversations', () => {
     saveDrafts,
     keepLastWords,
     /** Saves the drafts that wait for typing to pause: when the page is hidden, or, with `keepalive`, closes. */
-    flushDrafts: (keepalive = false) => draftSync.flush(items.value, keepalive),
+    flushDrafts: (keepalive = false) => recordSync.flush(items.value, keepalive),
     saveForLater,
     editSaved,
     sendSaved,
     deleteSaved,
+    retrySaved,
     restoreReplaced: (conversation: Conversation) =>
-      void draftSync.act(conversation, 'restore').catch((error) => report('Could Not Restore the Draft', error)),
+      void recordSync.act(conversation, 'restore').catch((error) => report('Could Not Restore the Draft', error)),
     dismissReplaced: (conversation: Conversation) =>
-      void draftSync.act(conversation, 'dismiss').catch((error) => report('Could Not Dismiss the Draft', error)),
+      void recordSync.act(conversation, 'dismiss').catch((error) => report('Could Not Dismiss the Draft', error)),
     initialize,
     stopAll,
     abortSubagents: (conversation: Conversation) =>

@@ -572,6 +572,58 @@ test('a message whose socket is lost before the session confirmed it waits for t
   }
 })
 
+test('a saved message whose socket is lost before the session took it goes again as the same turn once the conversation is open, unless the session holds it', async () => {
+  const sockets = playSockets()
+  const current = state()
+  const runtime = new ConversationRuntime({
+    state: current,
+    connect: (signal) => connectConversationClient('ws://fixture', signal),
+  })
+  jest.useFakeTimers()
+  const random = spyOn(Math, 'random').mockReturnValue(0)
+  try {
+    const opening = runtime.connect()
+    const lost = sockets.last()
+    lost.open()
+    await turn()
+    lost.receive({ type: 'opened' })
+    await opening
+    const sending = runtime.sendSaved('saved', 'turn', 'message')
+    await turn()
+    expect(lost.sent.at(-1)).toEqual({ type: 'send_saved', id: 'saved', turnId: 'turn', delivery: 'message' })
+    lost.end()
+    await turn()
+    expect(current.lastError).toBeNull()
+    jest.advanceTimersByTime(1000)
+    await turn()
+    const next = sockets.last()
+    next.open()
+    await turn()
+    next.receive({ type: 'opened' })
+    await turn()
+    expect(next.sent).toEqual([{ type: 'open' }, { type: 'send_saved', id: 'saved', turnId: 'turn', delivery: 'message' }])
+    next.receive({
+      type: 'transcript_reset',
+      start: 0,
+      length: 1,
+      version: { epoch: 'epoch', revision: 1 },
+      blocks: [userBlock('block', 'turn', 'Check the DNS')],
+    })
+    expect(await sending).toBe(true)
+
+    // The session holds it already, as when the first send reached it: nothing goes again.
+    const held = sockets.last()
+    const sent = held.sent.length
+    expect(await runtime.sendSaved('saved', 'turn', 'message')).toBe(true)
+    expect(held.sent).toHaveLength(sent)
+  } finally {
+    random.mockRestore()
+    jest.useRealTimers()
+    runtime.dispose()
+    sockets.restore()
+  }
+})
+
 test('a page back from sleep breaks a conversation socket silent past the watch and opens the conversation again at once', async () => {
   const sockets = playSockets()
   const current = state()

@@ -1,149 +1,106 @@
 import { expect, test } from 'bun:test'
-import { SerialQueue, deferred } from '@demicodes/utils'
 import { Slot } from '../slot'
+
+// The release rule of every slot the page reads (`web-application.md`
+// § Responding to the user). Each test is a few synchronous steps.
 
 /** A list slot that holds `read` as its first value, as a page that read it. */
 function listOf(read: string[], revision?: number): Slot<string[]> {
   const slot = new Slot<string[]>()
-  slot.replace(read, revision === undefined ? {} : { revision })
+  slot.replace(read, revision === undefined ? {} : { revisions: { '': revision } })
   return slot
 }
 
-/** Lets the promises that are ready run. */
-async function settled(): Promise<void> {
-  for (let turn = 0; turn < 10; turn++) {
-    await Promise.resolve()
-  }
-}
+const add = (item: string) => (list: string[]) => list.includes(item) ? list : [item, ...list]
 
-const add = (item: string) => (list: string[]) => [item, ...list]
-
-test('a change shows over the value read at once, in the order it was made, and leaves with its answer applied', () => {
+test('a change shows over the value read at once, in the order made, and leaves with its answer applied', () => {
   const slot = listOf(['a'])
   const first = slot.change(add('b'))
   const second = slot.change(add('c'))
   expect(slot.shown.value).toEqual(['c', 'b', 'a'])
   first.send()
   second.send()
-  // The answer tells the list as the write left it.
   expect(first.land({ value: (read) => ['b', ...read] })).toBe(true)
   expect(slot.read.value).toEqual(['b', 'a'])
   expect(slot.shown.value).toEqual(['c', 'b', 'a'])
-  second.land()
-  expect(slot.shown.value).toEqual(['c', 'b', 'a'])
+  expect(second.land()).toBe(true)
   expect(slot.read.value).toEqual(['c', 'b', 'a'])
 })
 
-test('a value read between a write and its answer is not overwritten by the answer; the change stays until the next value read', () => {
+test('an answer that adds one item releases its own change at the revision it names, and no other', () => {
+  const slot = listOf([], 1)
+  const a = slot.change(add('a'))
+  const b = slot.change(add('b'))
+  a.send()
+  expect(a.land({ revisions: { '': 2 } })).toBe(false)
+  b.send()
+  expect(b.land({ revisions: { '': 3 } })).toBe(false)
+  // A read asked for before B's answer holds A only: A leaves, B stays.
+  slot.replace(['a'], { revisions: { '': 2 } })
+  expect(slot.pending()).toEqual([b])
+  expect(slot.shown.value).toEqual(['b', 'a'])
+  // An older read changes nothing, and never takes B away.
+  expect(slot.replace([], { revisions: { '': 1 } })).toBe(false)
+  expect(slot.shown.value).toEqual(['b', 'a'])
+  slot.replace(['b', 'a'], { revisions: { '': 3 } })
+  expect(slot.pending()).toEqual([])
+  expect(slot.shown.value).toEqual(['b', 'a'])
+})
+
+test('an answer taken as the value releases only its own change; one that waits after a read stays until a read asked for after its answer', () => {
+  const slot = listOf(['x'])
+  const a = slot.change(add('a'))
+  a.send()
+  // Another page's change reaches the slot between A's write and its answer.
+  slot.replace(['y', 'x'])
+  expect(a.land()).toBe(false)
+  const b = slot.change(add('b'))
+  b.send()
+  // B's answer is the list as the backend had it then, which may not hold A.
+  expect(b.land({ value: (read) => ['b', ...read] })).toBe(true)
+  expect(slot.pending()).toEqual([a])
+  expect(slot.shown.value).toEqual(['a', 'b', 'y', 'x'])
+  // A read asked for before A landed may not hold it: A stays.
+  const early = a.landedAt! - 1
+  slot.replace(['b', 'y', 'x'], { since: early })
+  expect(slot.shown.value).toEqual(['a', 'b', 'y', 'x'])
+  slot.replace(['a', 'b', 'y', 'x'], { since: slot.now() })
+  expect(slot.pending()).toEqual([])
+})
+
+test('a removal the value read already holds leaves once answered', () => {
+  const slot = listOf(['a', 'b'])
+  const gone = slot.change((list) => list.includes('a') ? list.filter((item) => item !== 'a') : list)
+  gone.send()
+  slot.replace(['b'])
+  expect(gone.land({ revisions: undefined, value: undefined })).toBe(true)
+  expect(slot.shown.value).toEqual(['b'])
+})
+
+test('a change of one part waits for that part, not for the reads of another', () => {
+  const slot = new Slot<{ a: number; b: number }>()
+  slot.replace({ a: 0, b: 0 }, { revisions: { a: 0, b: 0 } })
+  const change = slot.change((value) => ({ ...value, a: 1 }), { parts: ['a'] })
+  change.send()
+  expect(change.land({ revisions: { a: 1, b: 0 } })).toBe(false)
+  slot.receive('b', (read) => ({ ...read, b: 7 }), { revision: 1 })
+  expect(slot.pending()).toEqual([change])
+  slot.receive('a', (read) => ({ ...read, a: 1 }), { revision: 1 })
+  expect(slot.pending()).toEqual([])
+  expect(slot.shown.value).toEqual({ a: 1, b: 7 })
+})
+
+test('a refused change leaves at once and the slot shows what the backend has', () => {
   const slot = listOf(['a'])
   const change = slot.change(add('b'))
   change.send()
-  // Another page's change reached the slot first, a value that may predate the write.
-  slot.replace(['x', 'a'])
-  expect(change.land()).toBe(false)
-  expect(slot.read.value).toEqual(['x', 'a'])
-  expect(slot.shown.value).toEqual(['b', 'x', 'a'])
-  // The next value read after the answer holds the write.
-  slot.replace(['b', 'x', 'a'])
-  expect(slot.shown.value).toEqual(['b', 'x', 'a'])
-})
-
-test('a read that went out before the answer landed does not release the change; one that went out after does', () => {
-  const slot = listOf(['a'])
-  const change = slot.change(add('b'))
-  change.send()
-  const early = slot.now()
-  slot.replace(['a'], { since: early })
-  change.land()
-  // The early read answers late: it may not hold the write.
-  slot.replace(['a'], { since: early })
-  expect(slot.shown.value).toEqual(['b', 'a'])
-  const late = slot.now()
-  slot.replace(['b', 'a'], { since: late })
-  expect(slot.shown.value).toEqual(['b', 'a'])
-  expect(slot.read.value).toEqual(['b', 'a'])
-})
-
-test('a read of the revision already held, requested after the change landed, releases it', () => {
-  const slot = listOf(['a'], 3)
-  const change = slot.change(add('b'))
-  change.send()
-  // The summary of the write came first and its read was taken: the list holds the write, at revision 4.
-  slot.replace(['b', 'a'], { revision: 4 })
-  expect(change.land()).toBe(false)
-  expect(slot.shown.value).toEqual(['b', 'b', 'a'])
-  // A read requested after the answer holds the same revision: the change is in it.
-  slot.replace(['b', 'a'], { revision: 4, since: slot.now() })
-  expect(slot.shown.value).toEqual(['b', 'a'])
-})
-
-test('an answer that names a revision releases the change with the value of that revision, or at once when it is held', () => {
-  const slot = listOf(['a'], 4)
-  const change = slot.change(add('b'))
-  change.send()
-  slot.replace(['x', 'a'], { revision: 5 })
-  expect(change.land({ revision: 6 })).toBe(false)
-  // A value older than the answer's revision does not release it, nor is an older read taken.
-  expect(slot.replace(['older'], { revision: 5 })).toBe(false)
-  expect(slot.shown.value).toEqual(['b', 'x', 'a'])
-  slot.replace(['b', 'x', 'a'], { revision: 6 })
-  expect(slot.shown.value).toEqual(['b', 'x', 'a'])
-
-  const held = slot.change(add('c'))
-  held.send()
-  expect(held.land({ revision: 6 })).toBe(true)
-  expect(slot.shown.value).toEqual(['b', 'x', 'a'])
-})
-
-test('a refused change leaves, the slot shows what the backend has, and the refusal is told', async () => {
-  const slot = listOf(['a'])
-  const queue = new SerialQueue()
-  const told: unknown[] = []
-  const change = slot.change(add('b'))
-  expect(slot.shown.value).toEqual(['b', 'a'])
-  const ended = await slot.write(change, (operation) => queue.run('list', operation), async () => {
-    throw new Error('refused')
-  }, (error) => void told.push(error))
-  expect(ended).toBe('refused')
-  expect(told).toEqual([new Error('refused')])
+  change.drop()
   expect(slot.shown.value).toEqual(['a'])
 })
 
-test('the writes of one thing go one at a time in order, and those of different things side by side', async () => {
+test('a change not sent yet shows each revision of it', () => {
   const slot = listOf([])
-  const queue = new SerialQueue()
-  const sent: string[] = []
-  const answers = new Map<string, ReturnType<typeof deferred>>()
-  const write = (item: string, key: string) => slot.write(slot.change(add(item)), (operation) => queue.run(key, operation), () => {
-    sent.push(item)
-    const answer = deferred()
-    answers.set(item, answer)
-    return answer.promise
-  }, () => {})
-  const one = write('one', 'x')
-  const two = write('two', 'x')
-  const other = write('other', 'y')
-  await settled()
-  // The second write of x waits for the first; y does not.
-  expect(sent).toEqual(['one', 'other'])
-  expect(slot.shown.value).toEqual(['other', 'two', 'one'])
-  answers.get('one')!.resolve(undefined)
-  await one
-  await settled()
-  expect(sent).toEqual(['one', 'other', 'two'])
-  answers.get('two')!.resolve(undefined)
-  answers.get('other')!.resolve(undefined)
-  expect(await Promise.all([two, other])).toEqual(['landed', 'landed'])
-  expect(slot.read.value).toEqual(['other', 'two', 'one'])
-})
-
-test('changes of one part wait for that part, not for the reads of another', () => {
-  const slot = new Slot<{ a: number; b: number }>()
-  slot.replace({ a: 0, b: 0 })
-  const change = slot.change((value) => ({ ...value, a: value.a + 1 }), 'a')
-  change.send()
-  // A value of b says nothing of a's write.
-  slot.receive('b', (read) => ({ ...read, b: 7 }))
-  expect(change.land()).toBe(true)
-  expect(slot.read.value).toEqual({ a: 1, b: 7 })
+  const typing = slot.change(() => ['F'])
+  typing.revise(() => ['Fi'])
+  expect(slot.shown.value).toEqual(['Fi'])
 })
