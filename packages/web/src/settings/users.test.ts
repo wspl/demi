@@ -47,14 +47,14 @@ afterEach(() => {
   globalThis.fetch = realFetch
 })
 
-test('the list names an account by its email until it has a nickname, and says who has not chosen a password', async () => {
+test('the list keeps an account’s nickname, empty until it has one, and says who has not chosen a password', async () => {
   answers['GET /api/users'] = [[200, { users: [{ ...master, lastActiveAt: '2026-10-13T08:00:00.000Z' }, { ...bo, lastActiveAt: null }] }]]
   const users = useUserSettings()
   await users.load()
   expect(users.status).toBe('ready')
   expect(users.users.map((user) => [user.nickname, user.choosesPassword, user.lastActiveAt])).toEqual([
     ['Zan', false, '2026-10-13T08:00:00.000Z'],
-    ['bo@example.test', true, null],
+    ['', true, null],
   ])
   expect(users.host?.viewerId).toBe('zan')
 })

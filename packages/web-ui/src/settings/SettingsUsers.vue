@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { Ellipsis } from '@lucide/vue'
+import { accountDisplayName } from '../auth/account-display'
 import HandoffDialog from '../auth/HandoffDialog.vue'
 import { signInCodeWording, userReadyWording, type HandoffHost, type HandoffWording } from '../auth/handoff'
 import VerifyDialog from '../auth/VerifyDialog.vue'
@@ -109,6 +110,11 @@ async function confirmed<T extends { kind: string }>(
   return outcome as Exclude<T, { kind: 'needsVerification' }>
 }
 
+/** The account by its nickname, or by its email until it has one. */
+function nameOf(user: SettingsUser): string {
+  return accountDisplayName(user.nickname, user.email)
+}
+
 function actionsOf(user: SettingsUser): UserAction[] {
   return viewer.value ? userActions(viewer.value, user) : []
 }
@@ -178,7 +184,7 @@ async function resetPassword(): Promise<void> {
     if (outcome?.kind === 'made') {
       ready.value = {
         host: props.host.signInCode(user.id),
-        wording: userReadyWording('Reset Password', user.nickname),
+        wording: userReadyWording('Reset Password', nameOf(user)),
         account: { id: user.id, email: user.email },
         lead: `${user.email} has a new password.`,
         password: outcome.password,
@@ -229,7 +235,7 @@ async function disableAccount(): Promise<void> {
 function showSignInCode(user: SettingsUser): void {
   ready.value = {
     host: props.host.signInCode(user.id),
-    wording: signInCodeWording(user.nickname),
+    wording: signInCodeWording(nameOf(user)),
     account: null,
     lead: '',
     password: null,
@@ -262,7 +268,7 @@ const ACTION_LABEL: Record<UserAction, string> = {
   enable: 'Enable Account',
 }
 
-const targetName = computed(() => target.value?.nickname ?? '')
+const targetName = computed(() => (target.value ? nameOf(target.value) : ''))
 
 function closeDialog(): void {
   if (!busy.value) {
@@ -277,7 +283,7 @@ function closeDialog(): void {
       <template #actions>
         <Button size="sm" @click="openAdd">Add User…</Button>
       </template>
-      <SettingsRow v-for="user in host.users" :key="user.id" :label="user.nickname" :muted="user.disabled">
+      <SettingsRow v-for="user in host.users" :key="user.id" :label="nameOf(user)" :muted="user.disabled">
         <template v-if="user.id === host.viewerId || user.disabled || user.choosesPassword" #tags>
           <Tag v-if="user.id === host.viewerId">You</Tag>
           <Tag v-if="user.disabled" tone="warning">Disabled</Tag>
@@ -286,8 +292,10 @@ function closeDialog(): void {
         <template #description>
           <!-- On a narrow page the email has a line of its own, so no separator dangles at a line's end. -->
           <div class="flex flex-wrap gap-x-1.5">
-            <span class="basis-full break-all @md:basis-auto">{{ user.email }}</span>
-            <span aria-hidden="true" class="hidden @md:inline">·</span>
+            <template v-if="user.nickname.trim()">
+              <span class="basis-full break-all @md:basis-auto">{{ user.email }}</span>
+              <span aria-hidden="true" class="hidden @md:inline">·</span>
+            </template>
             <span>{{ ROLE_LABEL[user.role] }}</span>
             <span aria-hidden="true">·</span>
             <span v-if="user.lastActiveAt">Active <RelativeTime :timestamp="user.lastActiveAt" /></span>
@@ -302,7 +310,7 @@ function closeDialog(): void {
                   :icon="Ellipsis"
                   size="sm"
                   variant="ghost"
-                  :aria-label="`Actions for ${user.nickname}`"
+                  :aria-label="`Actions for ${nameOf(user)}`"
                   :pressed="isOpen"
                 />
               </Tooltip>

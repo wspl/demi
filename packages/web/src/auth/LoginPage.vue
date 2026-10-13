@@ -64,7 +64,10 @@ async function submit(address: string, secret: string): Promise<void> {
     const wait = error instanceof ApiError && error.code === 'too_many_attempts' ? error.retryAfterSeconds : null
     phase.value = {
       reason: phase.value.reason,
-      error: formError(error, { invalid_credentials: 'The email or password is incorrect.' }),
+      error: formError(error, {
+        invalid_credentials: 'The email or password is incorrect.',
+        account_disabled: 'This account is disabled. Ask your administrator.',
+      }),
       ...(wait === null ? {} : { lockedUntil: Date.now() + wait * 1000 }),
     }
   } finally {
