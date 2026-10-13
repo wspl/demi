@@ -1280,7 +1280,7 @@ borrows the protocol's vendor's catalog. For example, Alex adds a compatible
 Anthropic Messages entry at `https://proxy.example/v1`: its Models list is
 empty until he adds `claude-sonnet-4-6` with Add Model. An entry stays the
 kind it was added as: a vendor entry's endpoint is never edited, and a
-compatible entry's endpoint and protocol always can be.
+compatible entry's endpoint always can be; its protocol stays.
 
 Red marks a failure only: a key the vendor refused, an endpoint that did
 not answer, a catalog that could not be read. An entry just added has failed

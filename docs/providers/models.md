@@ -157,21 +157,21 @@ and [picker visibility](https://github.com/openai/codex/blob/3dc1e2a58406dc69db5
 ### A provider is in the list from the start
 
 Adding a provider asks only what kind it is: a vendor from the list, or a
-custom endpoint of a family. The entry joins the providers list at once,
+compatible API of a protocol, which also asks its endpoint. The entry joins the providers list at once,
 selected, named after its vendor or family, and its page shows what it still
 needs, as Mail adds an account that waits for its password. For example, the
 user adds Google: *Google* stands in the list with a yellow dot, and on its
-page the API key field is red with *Required* under it.
+page the API key field waits, empty, for the key.
 
 An entry that cannot infer yet is **incomplete**: an API-key entry without a
 key, an entry whose catalog is its configured list while the list is empty,
 or a subscription entry without an account. An address is never missing: an
 entry without one uses its family's default endpoint
 ([Endpoints](providers.md#endpoints)). The page knows whether a key is saved
-from the entry's `hasApiKey`, and shows the masked key only then. Each field it lacks is red with *Required* under it in red, as a form
-marks a field it cannot do without; an empty model list shows *Add at least
-one model* under Add Model, and a subscription shows *Sign in required* under
-its Sign In row.
+from the entry's `hasApiKey`, and shows the masked key only then. What it
+lacks is shown plainly, never in red, since nothing failed
+([Models & providers](../product/product.md#models--providers)): an empty key
+field, *No models yet* with Add Model, and a subscription's Sign In row.
 
 An incomplete entry wears the yellow dot in the providers list, the same
 needs-you yellow the sidebar uses, and its models show in the model menu
