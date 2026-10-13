@@ -41,6 +41,7 @@ function refusedRemoval(steer: boolean): RemovalRefusedError {
 
 export type RuntimeState = Pick<
   ConversationState,
+  | 'id'
   | 'history'
   | 'phase'
   | 'queue'
@@ -329,8 +330,9 @@ export class ConversationRuntime {
     this.options.state.pendingAction = null
   }
 
-  async compact(): Promise<void> {
-    await (await this.ensureOpen()).compact()
+  /** Compacts the context of `node`, a live subagent, or the root's when absent. */
+  async compact(node?: string): Promise<void> {
+    await (await this.ensureOpen()).compact(node)
   }
 
   async connect(): Promise<void> {
@@ -516,7 +518,11 @@ export class ConversationRuntime {
         state.queue = event.queue
         break
       case 'context_usage':
-        state.contextUsage = event.usage
+        // A subagent's usage belongs to its record, which the host keeps;
+        // the root's node is the conversation's id.
+        if (event.node === state.id) {
+          state.contextUsage = event.usage
+        }
         break
       case 'pending_steers':
         state.pendingSteers = event.pendingSteers

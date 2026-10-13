@@ -28,7 +28,7 @@ import { TestSocket } from '@demicodes/web-ui/transport/__tests__/test-socket'
 /** The latest page of an empty transcript, as the backend answers it. */
 const EMPTY_PAGE = { start: 0, length: 0, blocks: [], instructions: [], summaries: [] }
 // What a child without a profile runs on, in the jobs below.
-const RUNS_ON = { provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false }
+const RUNS_ON = { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false }
 
 const realFetch = globalThis.fetch
 const FIRST = '00000000-0000-4000-8000-000000000001'
@@ -604,6 +604,7 @@ test('restored running children keep an idle parent active in the sidebar', () =
     pendingCalls: [],
     history: EMPTY_TRANSCRIPT,
     failures: {},
+    contextUsage: null,
   }]
   updateLiveStatus(conversation)
   expect(conversation.status).toBe('active')
@@ -2833,4 +2834,26 @@ test('a page that closes while typing leaves its text to the next page, which ta
     kept.mockRestore()
     signOut()
   }
+})
+
+// A child's context card shows the child's own context (`subagents.md`
+// § What an agent runs on): its usage lands on its record and leaves the
+// root's, which the runtime keeps for the composer, alone.
+test('a child\'s usage frame sets its own record\'s usage', () => {
+  const conversation = useConversations().items[0]!
+  conversation.contextUsage = null
+  applyConversationEvent(conversation, {
+    type: 'subagent',
+    event: 'started',
+    job: {
+      subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Serve',
+      profile: null, model: RUNS_ON, round: 1, forkedFrom: null, phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
+    },
+  })
+  const usage = { tokens: 60_000, window: 100_000, compactFrom: 50_000, rows: [] }
+  applyConversationEvent(conversation, { type: 'context_usage', node: 'child', usage })
+  expect(conversation.subagents.find((agent) => agent.id === 'child')!.contextUsage).toEqual(usage)
+  applyConversationEvent(conversation, { type: 'context_usage', node: conversation.id, usage: { ...usage, tokens: 1_000 } })
+  expect(conversation.subagents.find((agent) => agent.id === 'child')!.contextUsage).toEqual(usage)
+  expect(conversation.contextUsage).toBeNull()
 })

@@ -67,6 +67,8 @@ type ActionCommand = 'send' | 'retry' | 'resume' | 'compact'
 interface ActionWaiter {
   command: ActionCommand
   messageId: string | null
+  /** The subagent whose action it is, whose phase it follows; null for the root's. */
+  node: string | null
   status: 'sent' | 'queued' | 'running'
   resolve: () => void
   reject: (error: Error) => void
@@ -119,6 +121,8 @@ export class ConversationClient {
   private asked: number | undefined
   /** Each subagent transcript's revision, for the same patch rule as the root's. */
   private readonly subagentRevisions = new Map<string, number>()
+  /** Each live subagent's phase, which a compact of that child follows. */
+  private readonly subagentPhases = new Map<string, SessionPhase>()
   private phase: SessionPhase | null = null
   private queue: QueuedMessage[] = []
   private pending: PendingSteer[] = []
@@ -283,8 +287,14 @@ export class ConversationClient {
     return this.action('resume', null, { type: 'resume' })
   }
 
-  compact(): Promise<void> {
-    return this.action('compact', null, { type: 'compact' })
+  /**
+   * Compacts the context of `node`, a live subagent, or the root's when
+   * absent; resolves when that agent's compaction ends.
+   */
+  compact(node?: string): Promise<void> {
+    return node === undefined
+      ? this.action('compact', null, { type: 'compact' })
+      : this.action('compact', null, { type: 'compact', node }, node)
   }
 
   /** Stops one thing; answers what it stopped, in request order. */
@@ -453,12 +463,12 @@ export class ConversationClient {
     }
   }
 
-  private action(command: ActionCommand, messageId: string | null, frame: ClientFrame): Promise<void> {
+  private action(command: ActionCommand, messageId: string | null, frame: ClientFrame, node: string | null = null): Promise<void> {
     if (this.disconnected) {
       return Promise.reject(new Error('Agent connection closed'))
     }
     return new Promise((resolve, reject) => {
-      this.actionWaiters.push({ command, messageId, status: 'sent', resolve, reject })
+      this.actionWaiters.push({ command, messageId, node, status: 'sent', resolve, reject })
       this.sendFrame(frame)
     })
   }
@@ -558,15 +568,19 @@ export class ConversationClient {
         this.patchTranscript(frame)
         return
       case 'phase': {
-        // A subagent's phase belongs to its record, which the host keeps.
+        // A subagent's phase belongs to its record, which the host keeps;
+        // only a compact of that child follows it.
         if (frame.subagentId !== undefined) {
+          const previous = this.subagentPhases.get(frame.subagentId) ?? null
+          this.subagentPhases.set(frame.subagentId, frame.phase)
           this.emit(frame)
+          this.followPhase(frame.subagentId, previous, frame.phase)
           return
         }
         const previous = this.phase
         this.phase = frame.phase
         this.emit(frame)
-        this.followPhase(previous, frame.phase)
+        this.followPhase(null, previous, frame.phase)
         return
       }
       case 'queue':
@@ -631,7 +645,8 @@ export class ConversationClient {
         this.emit(frame)
         // A turn that failed is a transcript record; the wait learns it by the error's type.
         const error = new SessionError(frame)
-        const active = this.actionWaiters.find((waiter) => waiter.status === 'running')
+        // A child's failure is a record in its transcript, never an `error` frame.
+        const active = this.actionWaiters.find((waiter) => waiter.node === null && waiter.status === 'running')
         if (active) {
           this.settleAction(active, () => active.reject(error))
         } else {
@@ -647,6 +662,7 @@ export class ConversationClient {
         this.writtenTurns.clear()
         this.writtenSteers.clear()
         this.subagentRevisions.clear()
+        this.subagentPhases.clear()
         this.phase = null
         this.queue = []
         this.pending = []
@@ -662,9 +678,19 @@ export class ConversationClient {
       case 'shell_output':
       case 'shell_write_result':
       case 'retry_scheduled':
-      case 'subagent':
       case 'context_usage':
         this.emit(frame)
+        return
+      case 'subagent':
+        this.emit(frame)
+        // A closed child runs nothing more: what waited on it has ended.
+        if (frame.event === 'closed') {
+          const node = frame.job.subagentId
+          this.subagentPhases.delete(node)
+          for (const waiter of this.actionWaiters.filter((candidate) => candidate.node === node)) {
+            this.settleAction(waiter, () => waiter.resolve())
+          }
+        }
         return
       // A heartbeat only shows that the socket is alive
       // (`runtime.md` § Order and delivery); it changes nothing here.
@@ -777,17 +803,18 @@ export class ConversationClient {
    * session leaves `idle`, and at `idle` every action the session took has
    * ended.
    */
-  private followPhase(previous: SessionPhase | null, phase: SessionPhase): void {
+  private followPhase(node: string | null, previous: SessionPhase | null, phase: SessionPhase): void {
+    const own = this.actionWaiters.filter((waiter) => waiter.node === node)
     if (phase !== 'idle') {
       if (previous === 'idle' || previous === null) {
-        const next = this.actionWaiters.find((waiter) => waiter.command !== 'send' && waiter.status === 'sent')
+        const next = own.find((waiter) => waiter.command !== 'send' && waiter.status === 'sent')
         if (next) {
           next.status = 'running'
         }
       }
       return
     }
-    for (const waiter of this.actionWaiters.filter((candidate) => candidate.status !== 'sent')) {
+    for (const waiter of own.filter((candidate) => candidate.status !== 'sent')) {
       this.settleAction(waiter, () => waiter.resolve())
     }
   }
@@ -803,7 +830,7 @@ export class ConversationClient {
     const waiting = this.actionWaiters.filter((waiter) => waiter.command === 'send' && waiter.status !== 'running')
     for (const waiter of waiting) {
       if (waiter.messageId !== null && written.has(waiter.messageId)) {
-        const ended = this.actionWaiters.filter((candidate) => candidate.status === 'running')
+        const ended = this.actionWaiters.filter((candidate) => candidate.node === null && candidate.status === 'running')
         for (const previous of ended) {
           this.settleAction(previous, () => previous.resolve())
         }

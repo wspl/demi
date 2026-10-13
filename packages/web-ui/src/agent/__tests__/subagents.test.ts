@@ -19,7 +19,7 @@ function agent(
   return {
     number: 1,
     profile: null,
-    model: { provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false },
+    model: { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false },
     round: 1,
     forkedFrom: null,
     startedAt: '2026-09-09T00:00:00.000Z',
@@ -28,6 +28,7 @@ function agent(
     pendingCalls: [],
     waitingSince: null,
     failures: {},
+    contextUsage: null,
     ...partial,
   }
 }
@@ -99,7 +100,7 @@ test.each([
   { scenario: 'thinking turned off', effort: 'off', words: 'Thinking off' },
   { scenario: 'a model without a thinking setting', effort: null, words: null },
 ])('a child on $scenario names its effort as the model menu does', ({ effort, words }) => {
-  const model = { provider: 'Anthropic', model: 'Sonnet 5.5', effort, fast: false }
+  const model = { providerId: 'anthropic', provider: 'Anthropic', model: 'Sonnet 5.5', effort, fast: false }
   expect(runEffortWords(model)).toBe(words)
 })
 
