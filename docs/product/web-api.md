@@ -741,6 +741,25 @@ would renew a saved credential with other fields; 409 `credential_removed`
 for an allowance of a credential removed since, which the request lists with
 `removed: true` and which only a deny decides.
 
+## Workflows of a directory
+
+`GET /api/conversations/:id/workflows` answers the workflows of the
+conversation's working directory, and `GET
+/api/devices/:deviceId/workflows?directory=<absolute path>` those of a
+directory on a device the user owns, for a new conversation before its
+record exists ([Workflows of a project](../agent/subagents.md#workflows-of-a-project)).
+Both answer `{ directory, unavailable, workflows, watch }`: the directory
+the workflows were found in, or null; `unavailable`, the reason the whole
+directory cannot be used, such as a link, or null; each workflow as
+`{ id, name, path, unavailable }`; and `watch`, the folders the page follows
+on its file watch to learn of a change. The answer carries the Host's read
+number in `X-Demi-Read-At`, as file reads do. The device route wakes
+nothing and answers 409 `device_offline` while the device's runner is not
+connected; another Host error answers 400 `fs_error`. `POST
+/api/conversations` takes an optional `workflow`, the new conversation's
+choice, absent for Default, and the conversation's PATCH takes `workflow` to
+change it.
+
 ## Device log
 
 `GET /api/devices/:id/log` returns lines of the

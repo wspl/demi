@@ -622,7 +622,7 @@ next spawn on its agents can start `explore` and `reviewer`.
 - **The menu** is the conversation's choice, kept with the conversation as
   its model is, a new conversation's included before its first message,
   which keeps the choice it was given and sends it with the conversation's
-  creation. A new conversation whose target names a device and a
+  creation. A fork starts with Default, as it starts with no draft. A new conversation whose target names a device and a
   directory reads that directory's workflows through the device, as the
   folder dialog reads its folders, and follows them on the device's file
   watch; one with no directory yet, or whose device is offline, offers
