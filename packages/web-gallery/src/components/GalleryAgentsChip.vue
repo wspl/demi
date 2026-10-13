@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import { Play } from '@lucide/vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
+import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import AssistantTextBlock from '@demicodes/web-ui/agent/blocks/AssistantTextBlock.vue'
+import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { agentLinkWindow, findAgent, provideMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
@@ -71,6 +74,11 @@ const createdAt = new Date(Date.now() - 60_000).toISOString()
       <template #dock>
         <SessionDock>
           <template #chips>
+            <!-- Resume is no window's control: a press on it closes the newest window and resumes. -->
+            <SessionDockChip @click="productWould('Resume the Turn')">
+              <Play :size="ICON_PX.in28" />
+              Resume
+            </SessionDockChip>
             <AgentsChip
               :agents="agents"
               :open="agentsOpen"

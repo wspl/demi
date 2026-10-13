@@ -29,8 +29,8 @@ import { useBackClose } from '../overlay/back-close'
  * It stands in the page's stack of windows with what it opens, such as the
  * media viewer (`product.md`, the dock's chips under § Recovering an
  * unfinished turn; `window-stack.ts`): while it is the newest, a press
- * outside every window closes it, though not one in the composer or on its
- * chips. It also closes by its chip, its close control, or Escape while the
+ * outside every window, the composer and the dock's empty space included,
+ * closes it, though not one on its chip. It also closes by its chip, its close control, or Escape while the
  * focus is in it; the panel takes the focus from a click in it. Escape
  * leaves it open when something in it used the key, a menu is open, or a
  * newer window, such as the media viewer, stands in front of it and takes
