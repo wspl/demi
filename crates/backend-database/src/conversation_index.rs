@@ -40,6 +40,10 @@ pub struct ConversationRecord {
     pub updated_at: Timestamp,
     /// The revision of the conversation's draft, 0 before its first save.
     pub draft_revision: u64,
+    /// How many messages the conversation keeps saved for later.
+    pub saved: u64,
+    /// The revision of that list, 0 before its first change.
+    pub saved_revision: u64,
     /// The revision of the conversation's work panel, 0 before its first
     /// change.
     pub panel_revision: u64,
@@ -212,6 +216,8 @@ const SIDEBAR_ORDER: &str = "pinned DESC, sort_order, id";
 const CONVERSATION_COLUMNS: &str = "id, user_id, title, archived, pinned, read_revision, target_kind, target_device_id,
      target_path, target_workspace_id, context_version, model, created_at, updated_at, hosts_revision,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
+     COALESCE((SELECT saved_revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS saved_revision,
+     (SELECT count(*) FROM saved_messages WHERE conversation_id = conversations.id) AS saved,
      COALESCE((SELECT revision FROM conversation_panels WHERE conversation_id = conversations.id), 0) AS panel_revision,
      (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL) AS permission_requests,
      (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL AND NOT read) AS unread_permission_requests";
@@ -694,6 +700,16 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
             "conversation_drafts",
             "revision",
             u64::try_from(row.get::<_, i64>("draft_revision")?),
+        )?,
+        saved: decode(
+            "saved_messages",
+            "id",
+            u64::try_from(row.get::<_, i64>("saved")?),
+        )?,
+        saved_revision: decode(
+            "conversation_drafts",
+            "saved_revision",
+            u64::try_from(row.get::<_, i64>("saved_revision")?),
         )?,
         panel_revision: decode(
             "conversation_panels",

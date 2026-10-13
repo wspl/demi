@@ -10,6 +10,7 @@ import {
   type ProviderErrorDiagnostics,
   type QueuedMessage,
   type RemoveOutcome,
+  type SavedDelivery,
   type ServerFrame,
   type SessionPhase,
   type TranscriptVersion,
@@ -37,6 +38,14 @@ export class SteerRejectedError extends Error {
   constructor(message: string) {
     super(message)
     this.name = 'SteerRejectedError'
+  }
+}
+
+/** A correlated refusal: the message saved for later is no longer on the list, as another page sent or removed it. */
+export class SavedGoneError extends Error {
+  constructor() {
+    super('The message is no longer saved for later')
+    this.name = 'SavedGoneError'
   }
 }
 
@@ -175,6 +184,38 @@ export class ConversationClient {
           return { resolve: undefined }
         }
         return this.failure(event, 'send')
+      },
+      'Message confirmation timed out',
+    )
+  }
+
+  /**
+   * Sends the message saved for later `id` the way the composer chose
+   * (`web-api.md` § Messages saved for later), its id the turn's or the
+   * steer's; resolves once the session holds it: in the transcript or the
+   * queue, or accepted as a steer. A steer the session refuses rejects with
+   * `SteerRejectedError`, and a message the list no longer holds with
+   * `SavedGoneError`.
+   */
+  sendSaved(id: string, delivery: SavedDelivery): Promise<void> {
+    return this.request(
+      { type: 'send_saved', id, delivery },
+      (event) => {
+        if (event.type === 'steer_result' && event.steerId === id) {
+          return event.outcome.status === 'accepted'
+            ? { resolve: undefined }
+            : { reject: new SteerRejectedError(event.outcome.reason) }
+        }
+        const written = (event.type === 'transcript_reset' || event.type === 'transcript_patch')
+          && this.writtenTurns.has(id)
+        const queued = event.type === 'queue' && event.queue.some((message) => message.id === id)
+        if (delivery !== 'steer' && (written || queued)) {
+          return { resolve: undefined }
+        }
+        if (event.type === 'rejected' && event.command === 'send_saved') {
+          return { reject: new SavedGoneError() }
+        }
+        return this.failure(event, 'send_saved')
       },
       'Message confirmation timed out',
     )

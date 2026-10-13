@@ -64,6 +64,11 @@ pub struct ConversationSlot {
     /// selection the record holds (`web-api.md` § Sidebar mutations, read
     /// state and page synchronization).
     pub settings: SerialGate,
+    /// Orders the sends of the conversation's messages saved for later: one
+    /// is read, handed to the session and taken off the list before the
+    /// next is read, so two pages never send it twice (`web-api.md`
+    /// § Messages saved for later).
+    pub saved: SerialGate,
     /// The admissions its running shell jobs hold, each with its job's
     /// device.
     jobs: RefCell<Vec<Rc<JobAdmission>>>,
@@ -141,6 +146,7 @@ impl Conversations {
                     streams: ActivityGate::new(),
                     transfers: TransferSet::new(),
                     settings: SerialGate::new(),
+                    saved: SerialGate::new(),
                     jobs: RefCell::default(),
                 })
             })

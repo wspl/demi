@@ -5,7 +5,8 @@ import { isComposerFile } from '@demicodes/web-ui/agent/message-input/attachment
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { ApiError } from '../api/client'
 import { changeReplacedDraft, loadDraft, saveDraft } from '../api/drafts'
-import type { ConversationDraft, DraftFile, ReplacedAction } from '../api/generated/web-api'
+import { editSaved as editSavedRequest, saveFromDraft } from '../api/saved'
+import type { ConversationDraft, DraftFile, ReplacedAction, SavedMessage } from '../api/generated/web-api'
 import type { Conversation, ProductAttachment } from '../state/types'
 
 // A conversation's draft kept by the backend and followed by every page
@@ -60,8 +61,8 @@ function fileContent(file: ProductAttachment): ClientContent | null {
   return file.upload ? { type: 'upload', ref: file.upload.id, fileName: file.name } : null
 }
 
-/** A draft's file as a save names it. */
-function namedFile(file: DraftFile): ClientContent {
+/** A draft's file, or a saved message's, as a save names it. */
+export function namedFile(file: DraftFile): ClientContent {
   return file.type === 'upload'
     ? { type: 'upload', ref: file.ref, fileName: file.fileName }
     : { type: 'remote_file', deviceId: file.deviceId, path: file.path }
@@ -258,6 +259,46 @@ export function createDraftSync(options: {
   }
 
   /**
+   * Saves the composer's message for later (`web-api.md` § Messages saved
+   * for later), after the conversation's requests before it: `content`, as
+   * the composer held it, built on the revision `base`. The backend empties
+   * the draft with it, which the page takes as a draft it read; a change
+   * typed since stays to be saved. Answers the saved message.
+   */
+  function saveForLater(conversation: Conversation, content: DraftContent, base: number): Promise<SavedMessage> {
+    const signal = lifetime.signal
+    clearTimer(conversation.id)
+    return queue.run(conversation.id, async () => {
+      const { message, draft } = await saveFromDraft(conversation.id, { base, ...content }, signal)
+      signal.throwIfAborted()
+      receive(conversation, draft)
+      schedule(conversation, DRAFT_SAVE_DELAY_MS)
+      return message
+    })
+  }
+
+  /**
+   * Puts the message saved for later `id` in the composer, after the
+   * conversation's requests before it and a save of what the composer
+   * holds, which the backend keeps for later in its place.
+   */
+  function editSaved(conversation: Conversation, id: string): Promise<void> {
+    const signal = lifetime.signal
+    clearTimer(conversation.id)
+    return queue.run(conversation.id, async () => {
+      await saveNow(conversation)
+      if (needsSave(conversation)) {
+        throw new Error('The message in the composer is not saved yet. Try again in a moment.')
+      }
+      const draft = await editSavedRequest(conversation.id, id, signal)
+      signal.throwIfAborted()
+      conversation.savedDraft = draft
+      conversation.draftBase = draft.revision
+      options.apply(conversation, draft)
+    })
+  }
+
+  /**
    * Saves every draft whose save waits for typing to pause: when the page is
    * hidden, or, with `keepalive`, when it closes. A save on close is sent at
    * once and never after another save of the conversation still in flight,
@@ -289,5 +330,5 @@ export function createDraftSync(options: {
     refused.clear()
   }
 
-  return { changed, save, read, act, flush, stop }
+  return { changed, save, read, act, saveForLater, editSaved, flush, stop }
 }
