@@ -15,7 +15,7 @@ use demi_backend_host_access::conversation_of;
 use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_plugin_interface::project;
 use demi_plugin_interface::{HostFile, HostRead};
-use demi_shared_types::{INSTRUCTIONS_SOURCE, InstructionEntry, TurnId, WorkflowChoice, xml_escaped};
+use demi_shared_types::{INSTRUCTIONS_SOURCE, InstructionEntry, TurnId, WorkflowChoice};
 use demi_web_api_protocol::ids::ConversationId;
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
@@ -49,19 +49,22 @@ struct Search {
     files: Vec<ProjectFile>,
 }
 
-/// A workflow's name and instructions, which the root reads while the
-/// conversation uses it.
+/// A workflow's name, file and instructions, which the root reads while
+/// the conversation uses it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct WorkflowText {
     name: String,
+    path: String,
     instructions: String,
 }
 
-/// The last read of a conversation's workflows and the input turn it ran
-/// in: each workflow that reads and has instructions, by id.
+/// The last read of the workflow a conversation chose: the input turn and
+/// the workflow it was for, and its instructions, none when it has none or
+/// cannot be used.
 struct WorkflowRead {
     turn: TurnId,
-    texts: Vec<(String, WorkflowText)>,
+    id: String,
+    text: Option<WorkflowText>,
 }
 
 /// The product's instructions source, asked after the execution context.
@@ -81,10 +84,10 @@ impl Instructions {
     }
 
     /// The instructions of the workflow `id` the conversation chose, none
-    /// when it has none or does not read: the workflows are read at the
-    /// first request of each input turn that needs them, as the project
-    /// files are, and what the last read found is used while a read cannot
-    /// run.
+    /// when it has none or cannot be used: read at the first request of
+    /// each input turn, as the project files are, and at once for a new
+    /// choice, so the next request carries them; what the last read found
+    /// is used while a read cannot run.
     async fn workflow_text(
         &self,
         shard: &Shard,
@@ -96,24 +99,26 @@ impl Instructions {
             .workflows
             .borrow()
             .get(conversation)
-            .is_some_and(|read| read.turn == *turn);
+            .is_some_and(|read| read.turn == *turn && read.id == id);
         if !current {
             // The request ends with the provider request it serves, which
             // drops this future.
             match shard.project_workflows(conversation, &CancellationToken::new()).await {
                 Ok(found) => {
-                    let texts = found
+                    let text = found
                         .files
                         .into_iter()
-                        .filter_map(|file| {
+                        .find(|file| file.id == id)
+                        .filter(|_| found.unavailable.is_none())
+                        .and_then(|file| {
                             let workflow = file.read.ok()?;
                             let instructions = workflow.instructions.filter(|text| !text.trim().is_empty())?;
-                            Some((file.id, WorkflowText { name: workflow.name, instructions }))
-                        })
-                        .collect();
+                            Some(WorkflowText { name: workflow.name, path: file.path, instructions })
+                        });
                     let read = WorkflowRead {
                         turn: turn.clone(),
-                        texts,
+                        id: id.to_owned(),
+                        text,
                     };
                     self.workflows.borrow_mut().insert(conversation.clone(), read);
                 }
@@ -126,11 +131,10 @@ impl Instructions {
         }
         self.workflows
             .borrow()
-            .get(conversation)?
-            .texts
-            .iter()
-            .find(|(listed, _)| listed == id)
-            .map(|(_, text)| text.clone())
+            .get(conversation)
+            .filter(|read| read.id == id)?
+            .text
+            .clone()
     }
 
     /// The project files for a node in `cwd`: searched at the first request
@@ -342,17 +346,17 @@ fn render(
         };
         (entry, file.text.as_str())
     });
-    for (entry, body) in personal.into_iter().chain(files) {
+    let workflow = workflow.map(|workflow| {
+        let entry = InstructionEntry::Workflow {
+            name: workflow.name.clone(),
+            path: workflow.path.clone(),
+        };
+        (entry, workflow.instructions.trim_end())
+    });
+    for (entry, body) in personal.into_iter().chain(files).chain(workflow) {
         text.push_str("\n\n");
         text.push_str(&entry.section(body));
         instructions.push(entry);
-    }
-    if let Some(workflow) = workflow {
-        text.push_str(&format!(
-            "\n\n<workflow name=\"{}\">\n{}\n</workflow>",
-            xml_escaped(&workflow.name),
-            workflow.instructions.trim_end()
-        ));
     }
     Some(ContextAnswer { text, instructions })
 }

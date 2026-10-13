@@ -403,6 +403,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/devices/{id}/fs",
             get(devices::browse).post(devices::make_directory),
         )
+        .route("/devices/{id}/workflows", get(devices::workflows))
         .route("/devices/{id}/log", get(devices::log))
         .route("/devices/{id}/direct", get(direct::open))
         .route("/devices/{id}/fs/watch", get(file_watch::open_device))

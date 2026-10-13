@@ -16,6 +16,7 @@ use serde_json::json;
 
 use crate::conversations::{FIRST, anthropic_at, create, transcript};
 use crate::support::{Harness, Session, TestBackend};
+use crate::support::eventually;
 use crate::work::{Driven, say, shell, switch};
 
 const REVIEW: &str = "name: Review Team
@@ -93,6 +94,7 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
                 { "kind": "folder_names", "path": path(&web.join(".demi")) },
                 { "kind": "folder_details", "path": path(&workflows) },
             ],
+            "unavailable": null,
         })
     );
 
@@ -142,6 +144,21 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
         turn.first_request()
     );
     let review = path(&workflows.join("review.yaml"));
+    // The card lists the workflow after the project's files, with its file.
+    let newest: Vec<InstructionEntry> = transcript(&backend, &master, FIRST)
+        .await
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Context(context) if context.source == INSTRUCTIONS_SOURCE => Some(context.instructions.clone()),
+            _ => None,
+        })
+        .next_back()
+        .unwrap();
+    assert_eq!(
+        newest.last(),
+        Some(&InstructionEntry::Workflow { name: "Review Team".into(), path: review.clone() })
+    );
     let unavailable = format!(
         "profile \"slow\" is unavailable: no provider entry of the user's offers model \"nowhere-model\"; change the profile's model in {review}, or ask the user to add a provider that offers it"
     );
@@ -162,5 +179,174 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
         "{}",
         turn.received[0]
     );
+    backend.close().await;
+}
+
+const DOCS: &str = "name: Docs Review
+instructions: |
+  DOCS STEPS ONE
+profiles: []
+";
+
+/// The Workflow menu's list of the conversation `FIRST`.
+async fn menu(backend: &TestBackend, master: &Session) -> serde_json::Value {
+    let listed = backend
+        .get(&format!("/api/conversations/{FIRST}/workflows"), Some(master))
+        .await;
+    assert_eq!(listed.status, StatusCode::OK);
+    serde_json::to_value(listed.json::<ConversationWorkflows>()).unwrap()
+}
+
+// A few seconds: a real runner on a paired device answers the reads, and
+// three turns run a shell job each.
+#[tokio::test]
+async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_its_instructions_at_once() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
+    create(&backend, &master, FIRST).await;
+    let path = |path: &std::path::Path| path.to_str().unwrap().to_owned();
+
+    // `repo/.demi/workflows` holds review.yaml, docs.yaml, and linked.yaml,
+    // a link to a workflow outside the project.
+    let home = alpha.runner.home_dir().to_owned();
+    let repo = home.join("repo");
+    let workflows = repo.join(".demi/workflows");
+    std::fs::create_dir_all(repo.join(".git")).unwrap();
+    std::fs::create_dir_all(&workflows).unwrap();
+    std::fs::create_dir_all(home.join("elsewhere/deep")).unwrap();
+    std::fs::write(workflows.join("review.yaml"), REVIEW).unwrap();
+    std::fs::write(workflows.join("docs.yaml"), DOCS).unwrap();
+    std::fs::write(home.join("elsewhere/linked.yaml"), DOCS).unwrap();
+    std::os::unix::fs::symlink(home.join("elsewhere/linked.yaml"), workflows.join("linked.yaml")).unwrap();
+    // `repo/deep` is a link whose `..` is `elsewhere`, not `repo`.
+    std::os::unix::fs::symlink(home.join("elsewhere/deep"), repo.join("deep")).unwrap();
+    std::fs::write(home.join("elsewhere/outside.yaml"), "name: [\n").unwrap();
+    std::fs::write(repo.join("outside.yaml"), DOCS).unwrap();
+    switch(&backend, &master, FIRST, &alpha, &repo).await;
+
+    let listed = menu(&backend, &master).await;
+    assert_eq!(
+        listed["workflows"],
+        json!([
+            { "id": "docs", "name": "Docs Review", "error": null },
+            { "id": "linked", "name": null, "error": "Workflows are files of the project, not links." },
+            { "id": "review", "name": "Review Team", "error": null },
+        ])
+    );
+
+    // Chosen, the linked workflow refuses spawns with that reason.
+    choose(&backend, &master, json!({ "type": "workflow", "id": "linked" })).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
+    let turn = work
+        .turn(vec![
+            shell(
+                "t1",
+                "demi agent spawn <<< 'Think'; demi agent workflows check deep/../outside.yaml",
+                15_000,
+            ),
+            say("refused"),
+        ])
+        .await;
+    let received = &turn.received[0];
+    assert!(
+        received.contains("this conversation's workflow \"linked\" is unavailable: Workflows are files of the project, not links."),
+        "{received}"
+    );
+    // The Host follows `deep` before `..`: the file it reads is
+    // `elsewhere/outside.yaml`, which does not parse, not `repo/outside.yaml`.
+    assert!(
+        received.contains("demi agent workflows check: deep/../outside.yaml does not read: error: line 1 column 7"),
+        "{received}"
+    );
+
+    // Docs Review chosen at the turn's start; mid-turn, Review Team's
+    // instructions change and the user chooses it: the next request carries
+    // Review Team's instructions as the file is now.
+    choose(&backend, &master, json!({ "type": "workflow", "id": "docs" })).await;
+    let started = repo.join("started");
+    let go = repo.join("go");
+    let before = work
+        .start(vec![
+            shell("t2", "touch started; while [ ! -e go ]; do sleep 0.05; done", 60_000),
+            say("done"),
+        ])
+        .await;
+    eventually("the command started", || {
+        let exists = started.exists();
+        async move { exists }
+    })
+    .await;
+    std::fs::write(workflows.join("review.yaml"), REVIEW.replace("REVIEW STEPS", "REVIEW STEPS TWO")).unwrap();
+    choose(&backend, &master, json!({ "type": "workflow", "id": "review" })).await;
+    std::fs::write(&go, "").unwrap();
+    work.socket.until_idle().await;
+    let turn = work.observe(before);
+    assert_eq!(turn.requests.len(), 2);
+    let first = turn.requests[0]["messages"].to_string();
+    let second = turn.requests[1]["messages"].to_string();
+    assert!(first.contains("DOCS STEPS ONE"), "{first}");
+    assert!(second.contains("REVIEW STEPS TWO"), "{second}");
+
+    // `.demi/workflows` itself a link: nothing in it is read, and the menu
+    // says why.
+    std::fs::remove_dir_all(&workflows).unwrap();
+    std::fs::create_dir_all(home.join("shared-workflows")).unwrap();
+    std::fs::write(home.join("shared-workflows/review.yaml"), REVIEW).unwrap();
+    std::os::unix::fs::symlink(home.join("shared-workflows"), &workflows).unwrap();
+    let listed = menu(&backend, &master).await;
+    assert_eq!(listed["directory"], json!(path(&workflows)));
+    assert_eq!(listed["unavailable"], json!("Workflows are files of the project, not links."));
+    assert_eq!(listed["workflows"], json!([]));
+    assert_eq!(listed["watch"], json!([{ "kind": "folder_names", "path": path(&repo.join(".demi")) }]));
+    backend.close().await;
+}
+
+// About a second: a real runner on a paired device answers the reads.
+#[tokio::test]
+async fn a_new_conversation_lists_its_directorys_workflows_and_keeps_the_choice_it_was_given() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let repo = alpha.runner.home_dir().join("repo");
+    std::fs::create_dir_all(repo.join(".git")).unwrap();
+    std::fs::create_dir_all(repo.join(".demi/workflows")).unwrap();
+    std::fs::write(repo.join(".demi/workflows/review.yaml"), REVIEW).unwrap();
+    let directory = repo.to_str().unwrap().to_owned();
+
+    // Before its first message, through the device.
+    let listed = backend
+        .get(
+            &format!(
+                "/api/devices/{}/workflows?{}",
+                alpha.id(),
+                url::form_urlencoded::Serializer::new(String::new()).append_pair("directory", &directory).finish()
+            ),
+            Some(&master),
+        )
+        .await;
+    assert_eq!(listed.status, StatusCode::OK);
+    assert!(listed.headers.contains_key("x-demi-read-at"));
+    let listed = listed.json::<ConversationWorkflows>();
+    assert_eq!(listed.workflows.len(), 1);
+    assert_eq!(listed.workflows[0].name.as_deref(), Some("Review Team"));
+
+    // Its first send makes it with the choice.
+    let created = backend
+        .post(
+            "/api/conversations",
+            Some(&master),
+            json!({
+                "id": FIRST,
+                "target": { "kind": "device", "deviceId": alpha.id(), "path": directory },
+                "workflow": { "type": "workflow", "id": "review" },
+            }),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    let created = created.json::<demi_web_api_protocol::conversations::CreatedConversation>();
+    assert_eq!(created.conversation.workflow, WorkflowChoice::Workflow { id: "review".into() });
     backend.close().await;
 }

@@ -1,7 +1,9 @@
 //! A conversation's Workflow menu (`subagents.md` § Workflows of a
 //! project, `product.md` § A conversation's workflow): `GET
 //! /conversations/:id/workflows` lists the workflows of its working
-//! directory with what the page watches to hear of a change.
+//! directory with what the page watches to hear of a change, and `GET
+//! /devices/:id/workflows?directory=` those of a new conversation's
+//! directory before its first message.
 
 use demi_runner_protocol::files::SubscriptionKind;
 use schemars::JsonSchema;
@@ -18,6 +20,11 @@ pub struct ConversationWorkflows {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub directory: Option<String>,
+    /// Why that directory cannot be used: it is a symbolic link, which is
+    /// never followed; null while it can.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub unavailable: Option<String>,
     pub workflows: Vec<MenuWorkflow>,
     /// The page's file watch subscriptions whose change means the list may
     /// have changed: the workflows directory's details, and the names of
@@ -48,4 +55,12 @@ pub struct MenuWorkflow {
 pub struct WatchSubject {
     pub kind: SubscriptionKind,
     pub path: String,
+}
+
+/// `?directory=` of `GET /devices/:id/workflows`: the absolute directory a
+/// new conversation works in.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkflowsQuery {
+    pub directory: String,
 }

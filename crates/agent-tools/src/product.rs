@@ -169,6 +169,8 @@ pub struct WorkflowListing {
     /// The directory that holds them, `.demi/workflows` of the nearest
     /// directory that has one; null when none has.
     pub directory: Option<String>,
+    /// Why that directory cannot be used, a link; null while it can.
+    pub unavailable: Option<String>,
     /// By id.
     pub workflows: Vec<ListedWorkflow>,
 }

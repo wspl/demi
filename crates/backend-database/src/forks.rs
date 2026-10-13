@@ -5,7 +5,7 @@
 //! committed in its own database. Publication is the public conversation
 //! row; a reservation without one stays hidden.
 
-use demi_shared_types::{BlockId, ModelSelection, Timestamp};
+use demi_shared_types::{BlockId, ModelSelection, Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -155,6 +155,8 @@ impl ControlService {
                     pinned: false,
                     target: &metadata.target,
                     model: metadata.model.as_ref(),
+                    // A Fork is a new conversation, which starts with Default.
+                    workflow: &WorkflowChoice::Default,
                     at: metadata.created_at,
                 },
             )?;
