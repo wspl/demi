@@ -76,7 +76,7 @@ Each route authenticates its caller in one of these ways
 
 | Routes | Authentication |
 |---|---|
-| `GET/POST /setup`, `POST /auth/login`, `POST /auth/passkey/options`, `POST /auth/passkey` | None; a successful setup, login or passkey sign-in sets the session cookie |
+| `GET/POST /setup`, `POST /auth/login`, `POST /auth/passkey/options`, `POST /auth/passkey`, `POST /auth/handoff` | None; a successful setup, login, passkey sign-in or handoff sets the session cookie |
 | `WS /sync` | The session cookie, which the route checks without renewing the session |
 | Every other path under `/api`, unknown paths included, except the runner transport | The session cookie, which the session gate checks |
 | The runner transport, `WS /runner` and the pipes at `/pipes/:id` | A runner's device token; an unpaired runner's socket waits without one until a user claims its code |
@@ -759,6 +759,26 @@ Passkeys ([User system](product.md#user-system),
   it too. The setup
   page adds the new account's first passkey with the password just entered,
   through the same routes, after `POST /api/setup` has signed it in.
+Verification, handoff codes and sessions ([Authentication and ownership](../backend/backend.md#authentication-and-ownership)):
+
+- `POST /api/auth/verify` takes `{ password }` and answers 204, or 401
+  `invalid_credentials`; `POST /api/auth/verify/passkey/options` and
+  `POST /api/auth/verify/passkey` verify with a passkey of the account as
+  sign-in does, answering 204, or 401 `unknown_passkey` for another
+  account's. Each marks the session verified now.
+- `POST /api/auth/handoff/code` takes `{ to }`, a path of the product, and
+  answers `{ id, url, expiresAt }`; a session not verified in the last five
+  minutes answers 403 `verification_required`, a `to` that is not a path of
+  the product 400 `invalid_body`. It ends the account's earlier code.
+- `POST /api/auth/handoff` is public, takes `{ code }`, and signs in as
+  `POST /api/auth/login` does, answering `{ to }`; a code that is unknown,
+  expired or spent answers 401 `handoff_expired`.
+- `GET /api/auth/sessions` returns `{ sessions }`, each `{ id, name,
+  createdAt, lastActiveAt, current, handoffId }`, newest first;
+  `DELETE /api/auth/sessions/:id` signs another session out and answers
+  204, the current one answering 409 `current_session` (Sign Out ends it),
+  an id the account has no session of 404 `session_not_found`. The
+  synchronization channel's `sessions` part carries the list.
 - `PATCH /api/auth/me` takes `{ nickname }` (1–80 characters after trimming).
 - `PUT /api/auth/password` takes `{ current, next }` and checks the current password.
 - `POST /api/auth/email` takes `{ email, password }`, checks the current password,
@@ -1322,6 +1342,7 @@ later one is the current value of one part of it that changed:
 | `subagents` | `subagents`, the user's [Subagent switch and profiles](#subagents) | The switch is turned on or off; a profile is created, changed, enabled, disabled or deleted |
 | `instructions` | `instructions`, the user's [personal instructions](#instructions) | The user saves them |
 | `passkeys` | `passkeys`, the user's passkeys as `GET /api/auth/passkeys` lists them | The user adds, renames or removes one, or one signs in |
+| `sessions` | `sessions`, as `GET /api/auth/sessions` lists them, `current` for the receiving session | A session starts, ends or is signed out, or its last activity is written |
 | `plugin` | `plugin`, the plugin's id, and `state`, its user state | The plugin marks its user state changed ([The page](../architecture/plugins.md#the-page)) |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
 
