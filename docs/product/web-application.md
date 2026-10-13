@@ -489,26 +489,26 @@ rule; a session that refuses to open, answering `open` with an `error` or a
 
 #### What a reopened socket brings back
 
-A socket that opens again reconciles everything the page holds from it, by
-one rule: the page names what it holds that the server cannot know, the
-server answers for each item, as it is now, unchanged or gone, and the page
-keeps nothing of that socket's state that the answer does not speak to. A
-page that was away therefore shows what happened while it was away, never
-what it last saw. For example, a laptop sleeps while a subagent works; the
+A socket that opens again brings the state it feeds as it is now, whole,
+and the page replaces its copy with it: nothing of the socket's state from
+before the drop stays, and the page asks nothing about what it held. Only
+what is too large to send each time, a transcript, comes by its version: the
+snapshot names each one's revision, and the page reads again the ones it
+shows that moved. For example, a laptop sleeps while a subagent works; the
 subagent finishes during the sleep; when the lid opens, the conversation
-reopens and the subagent shows as finished, with its last messages, not as
-running where it was when the network dropped.
+reopens, its snapshot lists the subagent as finished, and the page shows it
+so, reading its last page because its window is open.
 
-| Socket | What the page names | What the answer holds |
+| Socket | The snapshot | Read by version |
 | --- | --- | --- |
-| The synchronization channel | Nothing: its snapshot is the whole state | The snapshot, which replaces the page's copy; the summaries' revisions say which conversation-scoped parts to read again ([Page synchronization](web-api.md#page-synchronization)) |
-| A conversation | The root's blocks it holds, `from` and `edge`; the subagents it holds as running; the highest subagent number it knows; the commands it holds as running | The root's transcript from there and its state; for each subagent it held or that runs now, its state and its latest page, finished ones as finished; the subagents numbered above what it knew, so one that started and finished in between appears; for each command it held, its output and end, or gone; every node's context use, or none ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)) |
-| The file watch | Each subscription, with the version of the file it shows | Live again; a shown file is read again with its version, and the Host answers unchanged or the new contents ([File watch](web-api.md#file-watch)) |
-| A live view | Nothing: its `state` is the whole state | The tabs and the watched tab's controls, which replace the page's, its downloads included |
-| A device's signaling socket | Nothing | Nothing: the backend closes the device's end of the direct channel when the socket drops, so the page leaves the direct path at the drop and uses the relay until a new channel is made |
+| The synchronization channel | The product state | The conversation-scoped parts whose revisions the summaries carry ([Page synchronization](web-api.md#page-synchronization)) |
+| A conversation | The root's state, every subagent's summary, every running command, every node's context use ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)) | The root's transcript from the blocks the page holds, `from` and `edge`; a subagent's transcript, by the revision its summary carries, when the page shows it |
+| The file watch | Each subscription live again | A shown file, by its version: the Host answers unchanged or the new contents ([File watch](web-api.md#file-watch)) |
+| A live view | Its `state`, tabs and the watched tab's controls and downloads | The picture: a new key frame |
+| A device's signaling socket | Nothing: the backend closes the device's end of the direct channel when the socket drops, so the page leaves the direct path at the drop and uses the relay until a new channel is made | Nothing |
 
-Until the answer arrives, the conversation shows that it is connecting and
-what it shows is the page's copy; the answer replaces it in one change.
+Until the snapshot arrives, the conversation shows that it is connecting and
+what it shows is the page's copy; the snapshot replaces it in one change.
 
 A page that comes back does not wait. Its timers stop while its computer
 sleeps, so the 75-second watch counts only the time the page was awake, and a
