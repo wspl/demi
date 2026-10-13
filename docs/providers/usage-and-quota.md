@@ -182,7 +182,7 @@ the two never differ. Settings show every account's
 windows, and the context indicator's card shows, under the context's rows,
 the windows of the account the conversation's model runs on, under a line
 naming the account by the label Settings shows for it, *Usage limits ·
-zan@example.com*, so a user with two accounts of one provider sees which one
+alex@example.com*, so a user with two accounts of one provider sees which one
 the limits are; the line is *Usage limits* alone for an account without a
 label, and a long label gives way at its end. The card does not name the
 plan, which Settings shows beside the account. A model on an API key has no
