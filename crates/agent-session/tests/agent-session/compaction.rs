@@ -1814,6 +1814,43 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_summarizes_wha
     );
 }
 
+// One turn of two scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_response_that_reports_more_input_than_the_models_window_compacts_nothing() {
+    // 1,100 tokens of input cannot be one request's in a window of 1,000,
+    // as when a provider sums the calls of its run: the round goes on
+    // without a pass, where its usage would otherwise be over the threshold
+    // of 500.
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![
+            event::tool_call("call-1", "count", json!({})),
+            ProviderEvent::Response(TokenUsage {
+                input_tokens: 100,
+                output_tokens: 1,
+                cache_read_tokens: 600,
+                cache_write_tokens: 400,
+            }),
+        ]),
+        answer("continued"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (count, runs) = counted("count", "counted");
+    let session = small_session(&provider, vec![count], &store).await;
+
+    session
+        .send(text("use the tool"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    assert_eq!(runs.get(), 1);
+    assert_eq!(provider.remaining(), 0);
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        ["user", "tool_call:completed", "response", "text", "response"]
+    );
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_pass_with_nothing_to_summarize_but_the_last_summary_sends_no_request() {
     let provider = ScriptedRuntime::new([
