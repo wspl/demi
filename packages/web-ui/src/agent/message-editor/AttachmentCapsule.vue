@@ -27,7 +27,7 @@ const props = defineProps<{
   capsule: MessageCapsule
   /** How far the file is on its way, while the composer still carries it. */
   transfer?: MessageTransfer
-  /** The editor holds it as its selection. */
+  /** The editor holds it as its selection, which it shows by a fill, never by the focus ring. */
   selected?: boolean
 }>()
 
@@ -106,10 +106,9 @@ const preview = computed<
     <span
       ref="pill"
       class="message-capsule mx-1 inline-flex h-full min-w-0 max-w-full select-none items-center gap-1 pl-[var(--capsule-inset)] pr-1.5 font-normal not-italic leading-none no-underline shadow-[var(--shadow-btn)]"
-      :class="[
-        failed ? 'bg-tint-danger text-on-danger' : 'bg-btn text-fg-body',
-        selected ? 'focus-ring-shown' : '',
-      ]"
+      :class="failed
+        ? selected ? 'bg-tint-danger-strong text-on-danger' : 'bg-tint-danger text-on-danger'
+        : selected ? 'bg-tint-accent text-fg-emphasis' : 'bg-btn text-fg-body'"
       :data-phase="transfer?.phase"
       :aria-label="caption"
       :aria-busy="busy ? true : undefined"

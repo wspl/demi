@@ -1300,8 +1300,18 @@ html[data-theme="light"] .file-pill {
   transition: text-decoration-color 0.15s;
 }
 
-.markdown-body a:hover {
+.markdown-body a:is(:hover, :focus-visible) {
   text-decoration-color: currentColor;
+}
+
+/* A link in running text draws no ring: a ring would box a word in a sentence.
+   Focused from the keyboard, it takes its pointed-at look instead (the rules
+   above and below), as a link does in a browser's reading view
+   (`docs/product/web-application.md` § Keyboard). A link around a picture or a
+   video is a tile, not text, and keeps the ring. `demi.focusRings` reads a
+   text link's look as its indicator. */
+:is(.markdown-body a:not(:has(> :is(img, video))), .agent-link):focus-visible {
+  outline: none;
 }
 
 /* A link that starts with an icon, a file's or an agent's mark
@@ -1342,7 +1352,7 @@ html[data-theme="light"] .file-pill {
   transition: background-color 0.15s;
 }
 
-.agent-link:hover {
+.agent-link:is(:hover, :focus-visible) {
   @apply bg-hover;
 }
 
@@ -1350,9 +1360,10 @@ html[data-theme="light"] .file-pill {
    that (`:focus-visible`): a click leaves none (`docs/product/web-application.md`
    § Keyboard). It is the rule for every element, so a control a primitive makes
    focusable and one built by hand look alike; a control that draws its own
-   state instead says `outline-none`. `.focus-ring-shown` draws the same ring for
-   what a state selects instead of focuses, such as a capsule the editor has
-   selected.
+   state instead says `outline-none`. `.focus-ring-shown` draws the same ring on
+   the active row of a list that holds the focus by `aria-activedescendant`,
+   where the focus itself cannot be: never for a selection, which has its own
+   selected look.
 
    A ring is 2px wide, 1px off its control, so it reaches 3px past it. A box
    that clips (overflow other than visible, `contain: paint`) cuts what reaches
