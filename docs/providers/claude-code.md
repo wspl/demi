@@ -345,15 +345,17 @@ thinking setting.
 - the account's access token on a file descriptor, the process's private
   configuration directory, and an environment with the CLI's
   updater and its automatic compaction turned off (Demi compacts the
-  conversation itself), its telemetry off (`DISABLE_TELEMETRY=1`), which in a
-  Cloud sandbox halved the CLI's start, 1.5–2.0 s to 0.8–0.9 s, and cut its
-  `initialize` from about 640 ms to 185 ms natively, with the stream, the
-  `rate_limit_event` lines, the usage and the session mirror unchanged, an MCP tool-output limit of one million tokens so the
+  conversation itself), an MCP tool-output limit of one million tokens so the
   CLI does not cut a result Demi sends, `CLAUDECODE` unset so the CLI never
   treats itself as running inside another Claude Code session,
   `CLAUDE_CODE_PROJECT_DIR_NAME` naming the session's directory, and
   `CLAUDE_CODE_RESUME_INTERRUPTED_TURN=1`, so a session that ends with input
   not yet answered is answered at once.
+
+  The CLI's telemetry stays on. Turning it off (`DISABLE_TELEMETRY=1`)
+  halved the CLI's start in a Cloud sandbox, but CLI 2.1.296 then reports
+  each call's `iterations` empty, and Demi read the turn's sum as the last
+  call's usage and compacted after every response.
 
 When the request offers tools, the provider first sends the CLI an `initialize`
 control request that declares one SDK MCP server, and waits for its success,

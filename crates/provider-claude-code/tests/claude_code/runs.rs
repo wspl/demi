@@ -168,7 +168,6 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
         ),
         ("DISABLE_AUTOUPDATER".to_owned(), Some("1".to_owned())),
         ("DISABLE_AUTO_COMPACT".to_owned(), Some("1".to_owned())),
-        ("DISABLE_TELEMETRY".to_owned(), Some("1".to_owned())),
         (
             "MAX_MCP_OUTPUT_TOKENS".to_owned(),
             Some("1000000".to_owned()),
