@@ -1103,12 +1103,16 @@ it shows it ([Conversation history](../product/web-api.md#conversation-history))
 sync replays the live children the same way.
 
 A page that opens again after its connection dropped names in its `open`
-the children it holds as live, `live: [subagentId]`. For each of them that
-no longer runs, the handshake sends `subagent` with `closed` and its final
+the children it holds as running and the highest subagent number it knows
+(`held`, [Client frames](runtime.md#client-frames)). For each child it held
+that no longer runs, and for each numbered above what it knew that has
+already ended, the handshake sends `subagent` with `closed` and its final
 job, then `subagent_transcript_reset` with its latest page, so a child that
-ended while the page was away shows as it ended, as the root's transcript
-catches up from the edge the page held. A child the page never held is
-learned from the list as on a first open. The web app's two frames for
+ended while the page was away shows as it ended. Every command the page
+held as running is answered by its `shell_output`, its end included, or by
+`shell_gone` when the conversation no longer has it, and every node's
+`context_usage` is sent, with no usage when it cannot be computed without
+reading a blob, so no figure from before stays. The web app's two frames for
 stopping children are described in [Abort](#abort).
 
 ## Sequence

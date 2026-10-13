@@ -1941,7 +1941,7 @@ open { from: 2999, edge: b_2999 } -> attach to the live tree
 
 | Frame | Meaning | Answer |
 | --- | --- | --- |
-| `open { from, edge }` | Attach this connection to the conversation's tree, restoring the tree when it is not live, with the model selection the conversation's record holds; `from` and `edge` name the root's blocks the page holds ([Where a reset starts](#where-a-reset-starts)) | `opened`, then the snapshot frames |
+| `open { from, edge, held }` | Attach this connection to the conversation's tree, restoring the tree when it is not live, with the model selection the conversation's record holds; `from` and `edge` name the root's blocks the page holds ([Where a reset starts](#where-a-reset-starts)); `held`, on a reopen, what else it holds: `subagents`, the ids it holds as running, `knownUpTo`, the highest subagent number it knows, and `commands`, the command ids it holds as running ([What a reopened socket brings back](../product/web-application.md#what-a-reopened-socket-brings-back)) | `opened`, then the snapshot frames, which answer for everything `held` names |
 | `send { messageId, content }` | Submit a message ([Input](#input)) | Transcript, phase and queue frames |
 | `edit_and_send { request }` | Replace a user message and its suffix ([Message editing](message-editing.md)) | `edit_result` at durable acceptance |
 | `steer { steerId, content }` | Add input to the running turn | `steer_result` |
@@ -1995,6 +1995,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `edit_result` | The operation id and an `outcome`: `{ status: "accepted", turnId }` or `{ status: "rejected", reason }` |
 | `abort_result` | What was stopped, and whether another `abort` would stop more |
 | `shell_output` | A command's live view ([Live output](#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `commandId`, the `toolUseId` of the `shell` call that started it, the `tail` and `chars` of the pages' view, and `runningMs` |
+| `shell_gone` | `commandId`: a command the page named as running in `open`'s `held` that the conversation no longer has; the page drops it from its running list |
 | `shell_write_result` | The command id |
 | `remove_result` | The steer's or queued message's id and an `outcome`: `removed`, or `gone_on` when the turn had already taken it or the session never held it |
 | `pending_calls` | The calls the model is writing, each `{ toolUseId, toolName, description }`, `description` null until written, and `subagentId` when they are a subagent's ([Calls being written](#calls-being-written)) |
