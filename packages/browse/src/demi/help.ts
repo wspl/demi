@@ -27,6 +27,7 @@ what it returns, then the page's state; a call ends after ten minutes unless
     demi.shot(name, { page, element, region, pad, zoom, full, now })   save a PNG at the page's real size, of page (such as demi.webkit()'s) or the slot's; answers its path
     demi.timeline(action, [0, 100, 1500], { region, name })      frames painted those ms after the action
     demi.frames(probe)                   run probe in the page at every frame it draws; .stop() answers what each read, with when
+    demi.focusRings({ root, name, shots })   Tab through the page and focus what Tab skips; report each focus indicator an ancestor clips or an element covers, with px per side, and photograph it
     demi.pixel(x, y)                     the colour at a point
     demi.net.latency(ms) .bandwidth(kbps | null) .offline() .unreachable() .online() .cut(pattern) .reset() .status()
     demi.ime(text, { into, commit })     compose text through an input method, in the order of into's engine; commit 'enter' | 'escape' | 'none'

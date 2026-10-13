@@ -3,6 +3,7 @@
 import type { Tool } from '../tool'
 import { down, type DownArgument } from './down'
 import { emulate } from './emulate'
+import { focusRings } from './focus-rings'
 import { frames } from './frames'
 import { gallery } from './gallery'
 import { grant } from './grant'
@@ -29,6 +30,7 @@ export function createDemi(tool: Tool) {
     shot: (name?: string, options?: Parameters<typeof shot>[2]) => shot(tool, name, options),
     timeline: (action: () => unknown, moments: number[], options?: Parameters<typeof timeline>[3]) => timeline(tool, action, moments, options),
     frames: <T>(probe: () => T) => frames(tool, probe),
+    focusRings: (options?: Parameters<typeof focusRings>[1]) => focusRings(tool, options),
     pixel: (x: number, y: number) => pixel(tool, x, y),
     net: net(tool),
     ime: (text: string, options?: Parameters<typeof ime>[2]) => ime(tool, text, options),
