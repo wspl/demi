@@ -69,6 +69,7 @@ const shown = computed(() => {
       <template #header>
         <TextInput
           v-model="query"
+          search
           placeholder="Search archived"
           aria-label="Search archived conversations"
         >

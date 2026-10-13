@@ -118,6 +118,7 @@ const emptyLabel = computed(() =>
       <div class="shrink-0 p-3 pr-12">
         <TextInput
           v-model="query"
+          search
           placeholder="Search conversations"
           aria-label="Search conversations"
           role="combobox"

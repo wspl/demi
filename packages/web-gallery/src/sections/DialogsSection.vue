@@ -313,6 +313,7 @@ const resetPhases: {
                 :is-open="open"
                 :overlay-store="appOverlayStore"
                 :phase="item.phase"
+                email="zan@example.com"
                 @close="close"
                 @submit="productWould('Change the Password')"
               />
@@ -326,6 +327,7 @@ const resetPhases: {
                   :is-open="open"
                   :overlay-store="appOverlayStore"
                   :phase="{ kind: 'form' }"
+                  email="zan@example.com"
                   @close="close"
                   @submit="productWould('Change the Password')"
                 />

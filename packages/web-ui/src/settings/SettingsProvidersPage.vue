@@ -737,7 +737,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     :model-value="selected.apiKey"
                     aria-label="API key"
                     @commit="emit('change', selected, { apiKey: $event })"
-                    secret
+                    masked="secret"
                     trim
                     :stored="selected.keyConfigured"
                     :placeholder="selected.keyConfigured ? 'Enter a new key to replace' : 'Paste your API key'"
@@ -929,6 +929,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                 <TextInput
                   size="sm"
                   v-model="modelFilter"
+                  search
                   placeholder="Filter models"
                   bare
                   class="min-w-0 flex-1"

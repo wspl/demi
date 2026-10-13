@@ -5,6 +5,7 @@ import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
 import InlineError from '../ui/InlineError.vue'
 import TextInput from '../ui/TextInput.vue'
+import { hiddenUsername } from '../ui/field-autofill'
 import SettingsRow from './SettingsRow.vue'
 import type { PasskeyAddOutcome } from './types'
 
@@ -19,6 +20,8 @@ import type { PasskeyAddOutcome } from './types'
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
+  /** The account's email, which the password manager files the password under. */
+  email: string
   add: (password: string) => Promise<PasskeyAddOutcome>
 }>()
 
@@ -103,7 +106,7 @@ async function submit(): Promise<void> {
           <TextInput
             v-model="password"
             aria-label="Password"
-            secret
+            masked="password"
             focused
             autocomplete="current-password"
             :invalid="passwordProblem !== null"
@@ -112,6 +115,8 @@ async function submit(): Promise<void> {
             @keydown.enter="submit"
           />
         </SettingsRow>
+        <!-- Last in the card, so the card's row dividers skip it; it is out of the flow. -->
+        <input v-bind="hiddenUsername(email)" />
       </form>
       <InlineError v-if="error" :message="error" />
     </div>
