@@ -2,6 +2,9 @@
 import { computed } from 'vue'
 import type { Block } from '@demicodes/protocol'
 import { provideTranscript } from '@demicodes/web-ui/agent/edit-selection'
+import { useMediaAddress } from '@demicodes/web-ui/agent/media-source'
+import { transcriptPictures } from '@demicodes/web-ui/agent/transcript-pictures'
+import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { storedRequests } from '@demicodes/web-ui/files/request-changes'
 import { useGalleryTranscripts } from '../fixtures/transcripts'
 
@@ -12,7 +15,14 @@ import { useGalleryTranscripts } from '../fixtures/transcripts'
  */
 const props = defineProps<{ blocks: Block[] }>()
 const requests = computed(() => storedRequests(props.blocks))
-provideTranscript({ node: null, requests: () => requests.value, directory: () => null })
+const files = useMessageFiles()
+const address = useMediaAddress()
+provideTranscript({
+  node: null,
+  requests: () => requests.value,
+  directory: () => null,
+  pictures: () => transcriptPictures(props.blocks, { node: null, files, address }),
+})
 useGalleryTranscripts(() => ({ blocks: props.blocks, subagents: [] }))
 </script>
 

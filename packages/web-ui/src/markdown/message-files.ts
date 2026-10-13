@@ -1,5 +1,6 @@
 import { inject, provide, type InjectionKey } from 'vue'
-import type { MediaViewerState } from '../files/media-viewer'
+import { transcriptRowOf, type MediaSequence, type MediaViewerState } from '../files/media-viewer'
+import { messagePicture } from './media-run'
 import type { MessageAgents } from '../agent/agent-links'
 import type { MessageFiles } from './types'
 
@@ -21,15 +22,18 @@ export function useMessageFiles(): () => MessageFiles | undefined {
 
 /**
  * A click on a message's file link opens the file, at its line when it
- * names one; one on an attachment's image or video, or its link, shows it
- * large in `viewer`, where a video plays; one on an agent's link opens the
- * agent in the Agents window; any other click is the page's.
+ * names one; one on an image the message shows, or on an attachment's image
+ * or video or its link, shows it large in `viewer`, where a video plays, and
+ * `among` gives the media of the transcript it stands in; an image inside a
+ * link follows the link; one on an agent's link opens the agent in the
+ * Agents window; any other click is the page's.
  */
 export function openMessageLink(
   event: MouseEvent,
   files: MessageFiles | undefined,
   viewer: MediaViewerState,
   agents: MessageAgents | undefined,
+  among?: MediaSequence,
 ): void {
   const target = event.target instanceof Element ? event.target : null
   const agent = target?.closest('[data-agent-link][role="button"]')
@@ -41,13 +45,19 @@ export function openMessageLink(
   const image = target?.closest('a[data-attachment-image]')
   if (image) {
     event.preventDefault()
-    viewer.show({ kind: 'image', src: image.getAttribute('href') ?? '', name: image.getAttribute('data-attachment-image') ?? '', from: image })
+    viewer.show({ kind: 'image', src: image.getAttribute('href') ?? '', name: image.getAttribute('data-attachment-image') ?? '', row: transcriptRowOf(image) }, among)
     return
   }
   const video = target?.closest('a[data-attachment-video]')
   if (video) {
     event.preventDefault()
-    viewer.show({ kind: 'video', src: video.getAttribute('href') ?? '', name: video.getAttribute('data-attachment-video') ?? '', from: video })
+    viewer.show({ kind: 'video', src: video.getAttribute('href') ?? '', name: video.getAttribute('data-attachment-video') ?? '', row: transcriptRowOf(video) }, among)
+    return
+  }
+  if (target instanceof HTMLImageElement && !target.closest('a')) {
+    event.preventDefault()
+    const { kind, src, size, caption } = messagePicture(target)
+    viewer.show({ kind, src, name: caption || 'image', size, row: transcriptRowOf(target) }, among)
     return
   }
   const link = target?.closest('a[data-file-link]')

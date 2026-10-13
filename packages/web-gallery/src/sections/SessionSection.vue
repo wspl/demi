@@ -152,6 +152,7 @@ import {
   twelveScreenshotsTool,
   rowPictureSamples,
   screenshotRunBlocks,
+  viewerTranscriptBlocks,
   shellTool,
   returnedShellTool,
   returnedFailingShellTool,
@@ -944,6 +945,8 @@ const lookBlocks = commandLookBlocks()
 // A run that viewed screenshots, folded with them under its row, and a report that carried some.
 const viewedBlocks = viewedMediaBlocks()
 const screenshotRun = screenshotRunBlocks()
+// A transcript whose pictures the media viewer steps through with the arrow keys.
+const viewerTranscript = viewerTranscriptBlocks()
 const writingSpecimens = [
   { variant: 'being written, with its description', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: 'Write the categorizer' }] },
   { variant: 'without a description yet', calls: [{ toolUseId: 'writing-1', toolName: 'shell', description: null }] },
@@ -2366,6 +2369,21 @@ onBeforeUnmount(() => {
             <GallerySpecimen variant="shell · twelve screenshots · narrow" wide>
               <div class="w-[420px]">
                 <ToolCallBlock :block="twelveScreenshotsTool" />
+              </div>
+            </GallerySpecimen>
+            <GallerySpecimen variant="pictures of a transcript · the viewer steps through them with the arrow keys" wide>
+              <div class="h-[30rem]">
+                <AgentMessageList
+                  class="h-full"
+                  conversation-id="gallery-viewer-transcript"
+                  :blocks="viewerTranscript"
+                  :pending-steers="[]"
+                  :queue="[]"
+                  phase="idle"
+                  :bottom-offset="0"
+                  :persisted-scroll-state="undefined"
+                  read-only
+                />
               </div>
             </GallerySpecimen>
             <GallerySpecimen variant="a run, folded, with twelve screenshots" wide>
