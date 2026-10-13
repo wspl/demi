@@ -1048,7 +1048,8 @@ session's inference transcript is only its own transcript frames.
 
 | Server frame | Fields | Sent |
 | --- | --- | --- |
-| `subagent` | `event` (`started`, `changed`, `closed` or `gone`), `job`, or for `gone` only the `subagentId` | When a child starts (spawn, resume, or restore), when its record changes, as when it moves to another directory, and when it closes |
+| `subagent` | `event` (`started`, `changed` or `closed`), `job` | When a child starts (spawn, resume, or restore), when its record changes, as when it moves to another directory, and when it closes |
+| `subagent_gone` | `subagentId` | On a reopen, for a child the page held that the store no longer has; the page drops it |
 | `subagent_transcript_reset` | `subagentId`, `start`, `blocks` from that index on, `length`, `revision`, optional `failures` | After `started`, and for every live child when a page opens the conversation or syncs its transcript; it starts at the child's latest page ([Where a reset starts](runtime.md#where-a-reset-starts)) |
 | `subagent_transcript_patch` | `subagentId`, `patches`, `revision`, optional `failures` | When a child's transcript changes |
 
@@ -1109,7 +1110,7 @@ that no longer runs, and for each numbered above what it knew that has
 already ended, the handshake sends `subagent` with `closed` and its final
 job, then `subagent_transcript_reset` with its latest page, so a child that
 ended while the page was away shows as it ended; a held child the store no
-longer has is answered by `subagent` with `gone`, and the page drops it.
+longer has is answered by `subagent_gone`, and the page drops it.
 The handshake reads the store's ended children before it attaches and does
 not read them again: a child that starts or ends after that read reaches
 the page by the ordinary `subagent` frames that follow the attach, and a
