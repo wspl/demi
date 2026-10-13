@@ -414,6 +414,25 @@ Requesting and goes once the list answers. A list that fails to load ends
 that message as undelivered with the list's own failure, *Couldn't load the
 models: …*, and Retry.
 
+**Opening a conversation shows in two steps, each one change.** First, when
+its history and its agents have both been read, the transcript and
+everything that names its agents appear together: the messages, the agent
+links in them, the dock's Agents chip, the Agents window and its Completed
+menu; until then the pane says it loads and none of them shows. Then, when
+the session opens, what only the live session knows joins them: the turn's
+phase, running commands, the Running and Resume chips, the context use.
+Until that second step, the conversation's status, in the sidebar's dot
+included, stays what its summary says; the page never computes a status
+from a phase it has not heard. A first opening that fails to connect is
+still an opening, not a reconnection: it shows the first step if its
+history was read, says that it connects, and never shows the second step's
+parts from before. The agents list the history read returns is the live
+tree's own when the conversation runs, the same list the session's
+`subagents` frame then sends, so the second step never takes back an agent
+the first showed ([Protocol](../agent/subagents.md#protocol)). A
+conversation that opens no session, archived or with no model, stops at the
+first step.
+
 The conversation store uses the shared `ConversationCache` to retain opened
 state, initialization, and runtimes for the signed-in page lifetime. Switching
 conversations reuses healthy connections; inactive cached sessions still receive
