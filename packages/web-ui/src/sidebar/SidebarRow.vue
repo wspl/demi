@@ -61,7 +61,7 @@ const rowClass = computed(() => [
     : props.menuOpen
       ? 'bg-hover text-fg'
       : 'text-fg-body hover:bg-hover hover:text-fg',
-  props.focused ? 'ring-1 ring-inset ring-line-focus' : '',
+  props.focused ? 'focus-ring-shown' : '',
 ])
 </script>
 

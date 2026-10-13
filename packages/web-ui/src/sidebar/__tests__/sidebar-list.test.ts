@@ -44,3 +44,32 @@ test('rows that leave the list leave a wider selection, which keeps the rest', (
   list.prune()
   expect(list.selectedIds.value).toEqual(['a'])
 })
+
+test('Tab into the list with no row active rests on the selected conversation, else the first row', () => {
+  const entries = ref(rows('a', 'b', 'c'))
+  const list = listOf(entries, 'b')
+  list.focusedId.value = null
+  list.onFocus()
+  const focused = (): string | null => list.focusedId.value
+  expect(focused()).toBe('b')
+  expect(list.keyboardNav.value).toBe(true)
+  // Nothing selected and nothing open: the first row. The selection stays as it was.
+  const bare = useSidebarList(entries, ref<string | null>(null), {
+    open: () => {},
+    toggleFold: () => {},
+    fold: () => {},
+    rename: () => {},
+    togglePin: () => {},
+  })
+  bare.onFocus()
+  expect(bare.focusedId.value).toBe('a')
+  expect(bare.selectedIds.value).toEqual([])
+})
+
+test('Tab into the list keeps the active row the keys had moved to', () => {
+  const entries = ref(rows('a', 'b', 'c'))
+  const list = listOf(entries, 'a')
+  list.focusedId.value = 'c'
+  list.onFocus()
+  expect(list.focusedId.value).toBe('c')
+})

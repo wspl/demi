@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, useId, watch } from 'vue'
 import { Archive, FolderPlus, Search, Settings, Smartphone, SquarePen } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
@@ -9,6 +9,7 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
+import { focusedByKeyboard } from '@demicodes/web-ui/ui/active-row'
 import { FOLD_MS } from '@demicodes/web-ui/ui/fold'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { copyConversationId } from '../agent/copy-conversation-id'
@@ -320,6 +321,25 @@ function openProjectMenu(project: SidebarProject, event: MouseEvent): void {
   projectMenu.open(event, listRef.value)
 }
 
+// The list's active row, named for `aria-activedescendant`: the row wears the ring, the list keeps the focus.
+const listId = useId()
+const rowId = (id: string): string => `${listId}-${id}`
+
+function onListFocus(event: FocusEvent): void {
+  if (focusedByKeyboard(event))
+    list.onFocus()
+}
+
+// Focus that leaves the list takes the ring with it, except into a menu opened on a row: the ring marks its target.
+function onListFocusout(event: FocusEvent): void {
+  const next = event.relatedTarget
+  if (next instanceof Node && listRef.value?.contains(next))
+    return
+  if (rowMenu.isOpen.value || projectMenu.isOpen.value)
+    return
+  list.keyboardNav.value = false
+}
+
 function onListPointerDown() {
   list.keyboardNav.value = false
   drag.pointerDown()
@@ -501,7 +521,10 @@ function selectProjectConversations(project: SidebarProject): void {
         tabindex="0"
         role="listbox"
         aria-multiselectable="true"
+        :aria-activedescendant="list.focusedId.value ? rowId(list.focusedId.value) : undefined"
         :aria-busy="listStatus === 'loading' || undefined"
+        @focus="onListFocus"
+        @focusout="onListFocusout"
         @keydown="onListKeydown"
         @pointerdown="onListPointerDown"
         @click.capture="drag.click"
@@ -591,6 +614,7 @@ function selectProjectConversations(project: SidebarProject): void {
             <Fold v-else :open="!entry.hidden">
               <SidebarProjectHeader
                 v-if="entry.kind === 'project'"
+                :id="rowId(entry.id)"
                 :project="projectById.get(entry.id)!"
                 :namesake="namesakes.has(entry.id)"
                 :collapsed="isFolded(entry.id)"
@@ -602,6 +626,7 @@ function selectProjectConversations(project: SidebarProject): void {
               />
               <SidebarRow
                 v-else
+                :id="rowId(entry.id)"
                 :conversation="byId.get(entry.id)!"
                 :open="entry.id === activeId"
                 :selected="list.isSelected(entry.id)"

@@ -1,4 +1,5 @@
 import { computed, ref, type Ref } from 'vue'
+import { activeRow } from '../ui/active-row'
 import {
   conversationIds,
   conversationIdsBetween,
@@ -19,7 +20,7 @@ export interface SidebarListActions {
  * Selection, focus, and keys for the list: click selects and opens, ⌘/Ctrl-click toggles, Shift-click
  * ranges over rows; arrows move the focus and the selection with it, Shift+arrows extend, Space toggles,
  * Enter opens (or folds a project), ←/→ fold and unfold, ⌘A selects all, Esc collapses the selection to
- * the open conversation, F2 renames, ⌘⇧P pins. Focus shows only after keyboard use.
+ * the open conversation, F2 renames, ⌘⇧P pins. Focus shows only after keyboard use: Tab into the list or a key in it.
  */
 export function useSidebarList(
   entries: Ref<ListEntry[]>,
@@ -206,6 +207,21 @@ export function useSidebarList(
   }
 
   /**
+   * The list took focus from the keyboard: with no row active, the active row is the selected
+   * conversation's, else the first, and it shows the ring. Only the focus moves; Tab never
+   * selects or opens.
+   */
+  function onFocus(): void {
+    focusedId.value = activeRow(
+      entries.value.map((entry) => entry.id),
+      focusedId.value,
+      selectedIds.value[0],
+      openId.value
+    )
+    keyboardNav.value = focusedId.value !== null
+  }
+
+  /**
    * Rows that left the list leave the selection too. A selection left empty
    * collapses to the open conversation once it is listed: a page that loads
    * opens its conversation before the list arrives, and a list that is
@@ -238,6 +254,7 @@ export function useSidebarList(
     onRowContextMenu,
     onProjectClick,
     onKeydown,
+    onFocus,
     prune,
   }
 }
