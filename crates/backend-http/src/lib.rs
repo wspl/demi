@@ -28,6 +28,7 @@ mod instructions;
 mod listener;
 mod models;
 mod oauth;
+mod passkeys;
 mod page_client;
 mod panel;
 mod permissions;
@@ -217,7 +218,8 @@ impl FromRef<AppState> for Shards {
 /// every route the session cookie authenticates, refuse a request that could
 /// act from a page other than the product's before anything else.
 /// Every `/api` path, unknown paths included, passes the session gate,
-/// except those outside `session_api`: the entrances, setup and login, the
+/// except those outside `session_api`: the entrances, setup, login and the
+/// passkey sign-in, the
 /// routes that authenticate with device credentials instead, and the
 /// synchronization channel, which checks the session without renewing it.
 /// The pipes stay outside the 503 of a closing backend, whose shutdown needs
@@ -229,6 +231,12 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/auth/password", put(auth::change_password))
         .route("/auth/email", post(auth::start_email_change))
         .route("/auth/email/confirm", post(auth::confirm_email_change))
+        .route("/auth/passkeys", get(passkeys::list).post(passkeys::add))
+        .route("/auth/passkeys/options", post(passkeys::add_options))
+        .route(
+            "/auth/passkeys/{id}",
+            patch(passkeys::rename).delete(passkeys::remove),
+        )
         .route("/settings", get(settings::settings))
         .route(
             "/settings/preferences",
@@ -402,6 +410,8 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
     let web_app_routes = Router::new()
         .route("/api/setup", get(auth::setup_status).post(auth::setup))
         .route("/api/auth/login", post(auth::login))
+        .route("/api/auth/passkey/options", post(passkeys::sign_in_options))
+        .route("/api/auth/passkey", post(passkeys::sign_in))
         .route("/api/sync", get(sync::channel))
         .method_not_allowed_fallback(no_route)
         .nest("/api", session_api)

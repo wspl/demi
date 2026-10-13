@@ -378,3 +378,35 @@ export interface SettingsCredentialDraft {
   keep: CredentialKeep | null
   fields: SettingsCredentialDraftField[]
 }
+
+/** A passkey of the account, as Settings › Account lists it (`product.md` § User system). */
+export interface SettingsPasskey {
+  id: string
+  /** The password manager's name, the browser and system that added it, or the user's own. */
+  name: string
+  /** Backed up by a password manager that syncs it; otherwise on one device only. */
+  synced: boolean
+  createdAt: string
+  lastUsedAt: string | null
+}
+
+/**
+ * How adding a passkey ended: added; refused for the password, said under
+ * its field; the browser's prompt dismissed, which says nothing; or failed,
+ * said under the dialog's fields.
+ */
+export type PasskeyAddOutcome =
+  | { kind: 'added' }
+  | { kind: 'wrongPassword'; message: string }
+  | { kind: 'dismissed' }
+  | { kind: 'failed'; message: string }
+
+/** The account's passkeys and what the host does with them, for Settings › Account. */
+export interface SettingsPasskeyHost {
+  passkeys: readonly SettingsPasskey[]
+  add: (password: string) => Promise<PasskeyAddOutcome>
+  /** Renames the passkey; a refusal the host says itself. */
+  rename: (id: string, name: string) => Promise<void>
+  /** Removes the passkey; a refusal the host says itself. */
+  remove: (id: string) => Promise<void>
+}

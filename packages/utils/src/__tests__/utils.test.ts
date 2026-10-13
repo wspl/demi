@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { baseName, clientPlatform, countOf, countUnlessOne, delay, formatSpan, keepComposition, pluralize, sliceHead, titleCase, truncate } from '../index'
+import { base64urlDecode, base64urlEncode, baseName, clientPlatform, countOf, countUnlessOne, delay, formatSpan, keepComposition, pluralize, sliceHead, titleCase, truncate } from '../index'
 
 test('an aborted delay ends at once instead of after its time', async () => {
   const stop = new AbortController()
@@ -95,4 +95,16 @@ test('a count keeps the casing and the irregular plural its caller gives', () =>
   expect(countOf(2, 'copy', 'copies')).toBe('2 copies')
   expect(pluralize(2, 'This project goes', 'These projects go')).toBe('These projects go')
   expect(pluralize(1, 'This project goes', 'These projects go')).toBe('This project goes')
+})
+
+test('base64url carries every byte both ways, without padding, as WebAuthn writes binary values', () => {
+  const bytes = new Uint8Array([0, 0xfb, 0xff, 0x3e, 0x3f, 0x80])
+  const text = base64urlEncode(bytes)
+  expect(text).toBe('APv_Pj-A')
+  expect([...base64urlDecode(text)]).toEqual([...bytes])
+  // Four bytes take two characters of padding, which the encoding leaves
+  // out and the decoding takes either way.
+  expect(base64urlEncode(new Uint8Array([0xfb, 0xff, 0x3e, 0x3f]))).toBe('-_8-Pw')
+  expect([...base64urlDecode('-_8-Pw==')]).toEqual([0xfb, 0xff, 0x3e, 0x3f])
+  expect([...base64urlDecode('-_8-Pw')]).toEqual([0xfb, 0xff, 0x3e, 0x3f])
 })
