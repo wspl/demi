@@ -748,12 +748,16 @@ and its log is read when it runs again, since the log outlives a restart.
 with `Retry-After`, the seconds until it takes the address again.
 The users routes are an administrator's: a user answers 403 `forbidden`.
 `GET /api/users` returns `{ users }`, every account in the order they were
-created. `POST /api/users` takes `{ email, password, role }` with role `admin`
-or `user`, creates an account of a role the caller outranks and returns
-`{ user }` with 201; a role the caller does not outrank answers 403
-`forbidden`, and an address an account has answers 409 `email_taken`.
+created. `POST /api/users` takes `{ email, role }` with role `admin`
+or `user`, creates an account of a role the caller outranks with a first
+password the server makes, and returns `{ user, password }` with 201; a role
+the caller does not outrank answers 403 `forbidden`, an address an account
+has 409 `email_taken`, and a session not verified in the last five minutes
+403 `verification_required`. `POST /api/users/:id/password` makes a new
+first password for a lower-ranked account, the account's earlier one
+stopping, and answers `{ password }`, with the same verification.
 `PATCH /api/users/:id` changes a lower-ranked account with one of
-`{ password }`, `{ role }` or `{ disabled }` and answers 204: a role the
+`{ role }` or `{ disabled }` and answers 204: a role the
 caller does not outrank answers 403 `forbidden`, and disabling ends the
 account's sessions and runner connections at once. `POST
 /api/users/:id/sign-out` ends every session of a lower-ranked account and
@@ -769,7 +773,7 @@ way it signs in.
 Setup creates the only master account and answers 404 `already_set_up` after
 setup is complete. HTTP validation trims and lowercases addresses; storage
 uniqueness and lookups are case-insensitive. A password being set, at setup,
-for a new account, by a reset or as the `next` password, has 8 to 1024
+as the `next` password, has 8 to 1024
 characters; a password checked against the account's, at login, as the
 `current` password or to start an email change, only has to be nonempty, so
 a wrong one answers 401 `invalid_credentials` rather than a validation error.
