@@ -2,17 +2,17 @@ import { computed, watch } from 'vue'
 import { shownError } from '@demicodes/web-ui/infra/errors'
 import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import type { PasskeyAddOutcome, SettingsPasskey } from '@demicodes/web-ui/settings/types'
+import type { PasskeyAddOutcome, PasskeyOfferOutcome, SettingsPasskey } from '@demicodes/web-ui/settings/types'
 import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
 import {
   creationChallengeSchema,
   passkeyAnswerSchema,
   type NewPasskey,
   type PasskeyDto,
-  type PasskeyPassword,
   type PasskeyPatch,
 } from '../api/generated/web-api'
 import { useProduct, type Answer } from '../state/product'
+import { verifyWithPassword } from './handoff'
 import { browserHasPasskeys, createPasskey, signalAccount, signalUnknownPasskey } from './webauthn'
 
 /** The answer that leaves the passkeys as `next` makes them of those the page last read. */
@@ -25,27 +25,37 @@ function passkeysAnswer(next: (current: PasskeyDto[]) => PasskeyDto[]): Answer {
 }
 
 /**
- * Adds a passkey to the signed-in account (`web-api.md` § Account API):
- * the password first, which the backend checks, then the browser's prompt,
- * then the new credential, which the backend checks and names. Settings ›
- * Account and setup's passkey step both add one this way.
+ * Adds a passkey to the signed-in account (`web-api.md` § Account API): the
+ * session verified first, with the password when one is given, which the
+ * backend checks, else as the last five minutes' sign-in left it; then the
+ * browser's prompt, then the new credential, which the backend checks and
+ * names. Settings › Account and setup's passkey step add one with the
+ * password, the offer after a sign-in without.
  */
-export async function addPasskey(password: string): Promise<PasskeyAddOutcome> {
+export function addPasskey(password: string): Promise<PasskeyAddOutcome>
+export function addPasskey(password: string | null): Promise<PasskeyOfferOutcome>
+export async function addPasskey(password: string | null): Promise<PasskeyOfferOutcome> {
+  if (password !== null) {
+    const verified = await verifyWithPassword(password)
+    if (verified.kind !== 'verified') {
+      return verified
+    }
+  }
   let challenge
   try {
-    const response = await apiRequest('/auth/passkeys/options', {
-      method: 'POST',
-      ...jsonBody({ password } satisfies PasskeyPassword),
-    })
+    const response = await apiRequest('/auth/passkeys/options', { method: 'POST' })
     challenge = await readResponse(response, creationChallengeSchema)
   } catch (error) {
-    if (error instanceof ApiError && error.code === 'invalid_credentials') {
-      return { kind: 'wrongPassword', message: 'That is not your password.' }
+    if (error instanceof ApiError && error.code === 'verification_required') {
+      return { kind: 'needsPassword' }
     }
     return { kind: 'failed', ...shownError(error) }
   }
   try {
     const credential = await createPasskey(challenge.options)
+    if (credential === 'held') {
+      return { kind: 'held', message: 'This password manager has a passkey for your account already.' }
+    }
     if (!credential) {
       return { kind: 'dismissed' }
     }

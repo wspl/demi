@@ -25,6 +25,8 @@ import type { HeadlineText } from './ui-text'
  * keeping its content inside the device's safe area. Smaller sizes stay
  * floating panels. The scrim, not the viewport, is measured, so a catalog
  * host of phone width shows the same.
+ * A flow that the whole screen should hold on a phone, such as a wizard, sets
+ * `fillNarrow`: its panel then fills the scrim there whatever its size.
  * Inline (a catalog host provides `overlayInlineKey`): the panel renders in flow at its
  * own size, with no scrim and no centering.
  * Focus: a dialog over the page takes the focus when it opens, keeps Tab inside
@@ -71,6 +73,8 @@ const props = defineProps<{
    * panel's top edge): the control is raised on an opaque fill, so nothing shows through it.
    */
   closeOverContent?: boolean
+  /** Where the scrim is narrow, fill it whatever the size, as an xl or full panel does. */
+  fillNarrow?: boolean
   /** False when the slot owns a body scroller beneath a fixed header. */
   scrollContent?: boolean
   /** Stack on whatever dialog is open instead of replacing it, for a dialog mounted at the app root but opened from inside another. */
@@ -109,7 +113,7 @@ provide(dialogNestingKey, true)
 provideLayerElevation()
 
 // A shell or a viewer is a page of its own: on a narrow screen it takes the whole window.
-const fillsWhenNarrow = computed(() => props.size === 'xl' || props.size === 'full')
+const fillsWhenNarrow = computed(() => props.fillNarrow || props.size === 'xl' || props.size === 'full')
 
 const pinned = usePinnedOpen(() => props.isOpen, container)
 const id = useOverlay(

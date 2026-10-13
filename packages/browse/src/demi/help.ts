@@ -21,7 +21,8 @@ what it returns, then the page's state; a call ends after ten minutes unless
   cdp       a DevTools protocol session on the page
   keep      an object whose properties outlive the call, for a later call
   demi      the project's helpers:
-    demi.up(...servers)                  start backend, web, gallery (backend and web by default), sign in
+    demi.up(...servers, { publicHost })  start backend, web, gallery (backend and web by default), sign in;
+                                         publicHost 'localhost' lets a page at localhost make passkeys
     demi.down(...servers)                stop those, or all and the browser; demi.down({ wipe: true }) also removes the data and the runner
     demi.stop()                          close the browser
     demi.shot(name, { page, element, region, pad, zoom, full, now })   save a PNG at the page's real size, of page (such as demi.webkit()'s) or the slot's; answers its path
