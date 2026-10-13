@@ -20,6 +20,7 @@ import {
 import { provideLayerElevation } from '../overlay/layerElevation'
 import { inSheetKey } from './sheet-context'
 import { useAutofocus } from './autofocus'
+import { focusByPage } from './focus-by-page'
 import { ICON_PX } from './icon-metrics'
 import { NO_AUTOFILL } from './field-autofill'
 import { NO_RESULTS, type HeadlineText, type PlaceholderText } from './ui-text'
@@ -201,7 +202,7 @@ watch(inputRef, (el) => {
   filterQuery.value = props.initialQuery ?? ''
   focusedIndex.value = -1
   if (props.autofocus)
-    autofocus({ focus: () => el.focus({ preventScroll: true }) })
+    autofocus(el, { preventScroll: true })
 })
 
 watch(panelRef, (el) => {
@@ -211,7 +212,7 @@ watch(panelRef, (el) => {
   if (props.items == null && (nested || el.contains(document.activeElement)))
     return
   focusedIndex.value = -1
-  autofocus({ focus: () => el.focus({ preventScroll: true }) })
+  autofocus(el, { preventScroll: true })
 })
 
 // A submenu the keys entered takes them at its first row.
@@ -235,7 +236,8 @@ function handleSelect(id: string) {
 
 function handleClear() {
   filterQuery.value = ''
-  inputRef.value?.focus({ preventScroll: true })
+  if (inputRef.value)
+    focusByPage(inputRef.value, { preventScroll: true })
 }
 
 /** The keys of a menu whose rows are its slot's (the component comment says which). */

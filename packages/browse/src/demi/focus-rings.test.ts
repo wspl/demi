@@ -144,6 +144,34 @@ test.skipIf(!existsSync(chromium.executablePath()))(
   },
 )
 
+const WITH_LINKS = `
+<style>
+  a { outline: none; text-decoration: underline; text-decoration-color: gray; margin-right: 24px; }
+  a.shown:focus-visible { text-decoration-color: black; }
+</style>
+<a href="#" class="shown">Looks</a>
+<a href="#" class="plain">Plain</a>`
+
+test.skipIf(!existsSync(chromium.executablePath()))(
+  'focus rings: a link in text has the look the keyboard gives it as its indicator; one that does not change is listed',
+  async () => {
+    const tool: Tool = {
+      slot,
+      browser,
+      network: () => Promise.reject(new Error('focusRings needs no network')),
+      print: () => undefined,
+      env: {},
+      wrote: () => undefined,
+      release: () => undefined,
+      endServer: () => undefined,
+    }
+    const page = await browser.page()
+    await page.setContent(WITH_LINKS)
+    const report = await focusRings(tool, { shots: false })
+    expect([report.checked, report.offenders.length, report.withoutIndicator]).toEqual([1, 0, ['a Plain']])
+  },
+)
+
 const WITH_LISTS = `
 <style>
   [role=listbox] { outline: none; margin-bottom: 24px; }

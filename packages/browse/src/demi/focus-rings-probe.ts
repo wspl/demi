@@ -51,6 +51,14 @@ export function ringProbe(): RingProbe {
   let list: Element[] = []
   let scope: Element | null = null
   const baseline = new WeakMap<Element, string>()
+  /** A link's unfocused underline and fill, to tell the look the keyboard's focus gives it. */
+  const linkBaseline = new WeakMap<Element, string>()
+  const linkLook = (element: Element): string => {
+    const style = getComputedStyle(element)
+    return `${style.textDecorationColor} ${style.textDecorationLine} ${style.backgroundColor} ${style.color}`
+  }
+  /** A link in running text draws no ring: its indicator is the look it takes when focused, as when pointed at. */
+  const TEXT_LINK = 'a[href], .agent-link'
   const read = new WeakSet<Element>()
 
   const describe = (element: Element): string => {
@@ -323,8 +331,11 @@ export function ringProbe(): RingProbe {
     const line = element.matches('[data-resize-handle]') ? element.querySelector('[data-resize-line]') : null
     if (line) return readLine(element, line)
     const { parts, sides, bands } = readIndicator(element)
-    if (parts.length === 0) return 'none'
     const rect = element.getBoundingClientRect()
+    if (parts.length === 0) {
+      if (!element.matches(TEXT_LINK) || linkLook(element) === linkBaseline.get(element)) return 'none'
+      return { element: describe(element), indicator: 'link look', box: { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }, findings: [] }
+    }
     const box = { left: rect.left - sides.left, top: rect.top - sides.top, right: rect.right + sides.right, bottom: rect.bottom + sides.bottom }
     const clipped = clippers(element, box)
     const findings = [...clipped.findings, ...covers(element, clipped.region, bands)]
@@ -352,7 +363,10 @@ export function ringProbe(): RingProbe {
         const disabled = (element as HTMLButtonElement).disabled === true || element.closest('fieldset:disabled') !== null
         return !disabled && shown(element) && !element.closest('[inert]')
       }) : []
-      for (const element of list) baseline.set(element, getComputedStyle(element).boxShadow)
+      for (const element of list) {
+        baseline.set(element, getComputedStyle(element).boxShadow)
+        linkBaseline.set(element, linkLook(element))
+      }
       return { count: list.length, layer }
     },
     async focusCandidate(index) {
