@@ -2182,21 +2182,23 @@ export const useConversations = defineStore('conversations', () => {
       report('Could Not Edit the Message', error)
       return
     }
-    // What the composer holds goes to the list, which the page shows with an
-    // id of its own until the list is read again.
+    // What the composer holds goes to the list under the id the page names.
     const held = heldDraft(conversation)
     const composerFiles = messageFiles(conversation)
+    const becomes = crypto.randomUUID()
     const kept = isEmptyMessage(conversation.draft, conversation.attachmentIds.length)
       ? null
-      : savedRow(crypto.randomUUID(), conversation.draft, composerFiles)
+      : savedRow(becomes, conversation.draft, composerFiles)
     const shown = conversation.saved.change((list) => {
       const rest = list.filter((message) => message.id !== id)
       return kept ? [kept, ...rest] : rest
     })
     const written = conversation.saved.write(shown, savedOrder(conversation, true), async () => {
-      await draftSync.editSavedNow(conversation, id, held)
-      // The list the backend keeps has the composer's message under an id of its own.
-      return kept ? {} : { value: (list) => list.filter((message) => message.id !== id) }
+      await draftSync.editSavedNow(conversation, id, becomes, held)
+      return { value: (list) => {
+        const rest = list.filter((message) => message.id !== id)
+        return kept ? withSaved(rest, kept) : rest
+      } }
     }, (error) => {
       giveBackEdit(conversation, row, kept)
       report('Could Not Edit the Message', error)
