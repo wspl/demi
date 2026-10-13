@@ -210,7 +210,7 @@ watch(() => props.path, () => {
             :aria-label="index < fit.collapsed ? crumb.name : undefined"
             :aria-expanded="mode === 'browse' ? menuCrumb?.path === crumb.path : undefined"
             tabindex="0"
-            class="focus-ring transition-colors duration-200 ease-out"
+            class="transition-colors duration-200 ease-out"
             :class="[
               CRUMB_LAYOUT,
               index === crumbs.length - 1 ? 'text-fg-emphasis' : 'text-fg-muted',

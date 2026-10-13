@@ -108,7 +108,7 @@ const preview = computed<
       class="message-capsule mx-1 inline-flex h-full min-w-0 max-w-full select-none items-center gap-1 pl-[var(--capsule-inset)] pr-1.5 font-normal not-italic leading-none no-underline shadow-[var(--shadow-btn)]"
       :class="[
         failed ? 'bg-tint-danger text-on-danger' : 'bg-btn text-fg-body',
-        selected ? 'outline outline-2 outline-line-focus' : '',
+        selected ? 'focus-ring-shown' : '',
       ]"
       :data-phase="transfer?.phase"
       :aria-label="caption"

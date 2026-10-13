@@ -36,7 +36,7 @@ const emit = defineEmits<{
     role="button"
     :aria-pressed="selected"
     tabindex="0"
-    class="focus-ring group flex h-8 cursor-default select-none items-center gap-2 rounded-md px-1 transition-colors duration-200 ease-out"
+    class="group flex h-8 cursor-default select-none items-center gap-2 rounded-md px-1 transition-colors duration-200 ease-out"
     :class="[
       selected ? 'hover:bg-hover @md:bg-active' : 'hover:bg-hover',
       muted ? 'opacity-60' : '',

@@ -132,7 +132,7 @@ function choose(clicked: T | undefined) {
         :aria-checked="model === option.value"
         :aria-label="iconOnly ? option.label : undefined"
         :tabindex="disabled ? undefined : index === selectedIndex ? 0 : -1"
-        class="focus-ring relative z-10 inline-flex cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-colors duration-200 ease-out"
+        class="relative z-10 inline-flex cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-colors duration-200 ease-out"
         :class="[
           iconOnly
             ? (size === 'sm' ? 'size-5' : 'size-6')

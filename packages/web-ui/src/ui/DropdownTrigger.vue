@@ -51,7 +51,7 @@ withDefaults(defineProps<{
     :tabindex="disabled ? undefined : 0"
     @keydown="pressOnKey"
     @keyup="pressOnKey"
-    class="focus-ring flex w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
+    class="flex w-full cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome text-fg transition-colors duration-200 ease-out"
     :class="[
       size === 'sm' ? 'h-6' : 'h-7',
       disabled
@@ -73,7 +73,7 @@ withDefaults(defineProps<{
     :tabindex="disabled ? undefined : 0"
     @keydown="pressOnKey"
     @keyup="pressOnKey"
-    class="focus-ring inline-flex cursor-default select-none items-center gap-0.5 rounded-md text-chrome transition-colors duration-200 ease-out"
+    class="inline-flex cursor-default select-none items-center gap-0.5 rounded-md text-chrome transition-colors duration-200 ease-out"
     :class="[
       size === 'sm' ? 'h-6 pl-1.5 pr-0.5 text-[12px]' : 'h-7 pl-2 pr-1',
       disabled
