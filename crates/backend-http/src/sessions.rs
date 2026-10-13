@@ -12,13 +12,14 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
 use demi_backend_accounts::passkeys;
-use demi_backend_accounts::sessions::{PhoneSession, SignOut};
+use demi_backend_accounts::sessions::{PhoneSession, SignOut, Spend};
 use demi_backend_page_sync::Part;
 use demi_backend_user_shard::services::Services;
 use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::ids::UserId;
 use demi_web_api_protocol::passkeys::{PasskeySignIn, SignInChallenge};
 use demi_web_api_protocol::sessions::{
-    HandoffAnswer, HandoffCode, HandoffRequest, HandoffSpend, SessionId, SessionList,
+    HandoffAnswer, HandoffCode, HandoffRequest, HandoffSpend, ProductPath, SessionId, SessionList,
     VerifyPassword,
 };
 
@@ -118,16 +119,26 @@ pub(super) async fn make_code(
     JsonBody(request): JsonBody<HandoffRequest>,
 ) -> Result<Json<HandoffCode>, ApiError> {
     require_verification(&services, &session)?;
+    Ok(Json(make_handoff(&services, &user.id, None, request.to).await?))
+}
+
+/// A code for `user` that opens `to`, which an administrator `issued_by`
+/// makes as a sign-in code; the caller checked the session's verification.
+pub(super) async fn make_handoff(
+    services: &Services,
+    user: &UserId,
+    issued_by: Option<&UserId>,
+    to: ProductPath,
+) -> Result<HandoffCode, ApiError> {
     let public = services
         .public_url
         .get()
         .expect("the backend listens before it serves a request")
         .url();
-    let code = services
+    Ok(services
         .sessions
-        .make_handoff(&user.id, request.to, public)
-        .await?;
-    Ok(Json(code))
+        .make_handoff(user, issued_by, to, public)
+        .await?)
 }
 
 /// `POST /auth/handoff`: spends a code and opens its account in the
@@ -142,18 +153,23 @@ pub(super) async fn spend_code(
     JsonBody(request): JsonBody<HandoffSpend>,
 ) -> Result<Response, ApiError> {
     let current = jar.get(SESSION_COOKIE).map(|cookie| cookie.value());
-    let Some(handed) = services
+    let handed = match services
         .sessions
         .spend_handoff(&request.code, current, user_agent(&headers))
         .await?
-    else {
-        return Err(ApiError::new(
-            StatusCode::UNAUTHORIZED,
-            ErrorCode::HandoffExpired,
-            "This code has expired. Show a new one on your other device.",
-        ));
+    {
+        Spend::Opened(handed) => handed,
+        Spend::Disabled => return Err(ApiError::account_disabled()),
+        Spend::Unknown => {
+            return Err(ApiError::new(
+                StatusCode::UNAUTHORIZED,
+                ErrorCode::HandoffExpired,
+                "This code has expired. Show a new one on your other device.",
+            ));
+        }
     };
     services.sync.mark(&handed.user, Part::Sessions);
+    services.sync.mark_everyone(&Part::Users);
     let answer = Json(HandoffAnswer { to: handed.to });
     match handed.session {
         PhoneSession::Kept => Ok(answer.into_response()),

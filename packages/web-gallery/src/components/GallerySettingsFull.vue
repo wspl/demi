@@ -32,6 +32,7 @@ import type { PasskeyAddOutcome, SettingsPasskeyHost, SettingsSessionHost } from
 import GallerySettingsProviders from './GallerySettingsProviders.vue'
 import GalleryInstructions from './GalleryInstructions.vue'
 import GalleryCredentials from './GalleryCredentials.vue'
+import GalleryUsers from './GalleryUsers.vue'
 import GallerySubagents from './GallerySubagents.vue'
 
 /** One page of the full mock, chosen by the dialog's tab. All state lives in the fixture; timers stand in for the server. */
@@ -348,6 +349,8 @@ function resetShortcuts() {
   />
 
   <GalleryCredentials v-else-if="tab === 'credentials'" :state="s.credentials" />
+
+  <GalleryUsers v-else-if="tab === 'users'" :state="s.users" />
 
   <GalleryInstructions v-else-if="tab === 'instructions'" v-model="s.instructions" />
 

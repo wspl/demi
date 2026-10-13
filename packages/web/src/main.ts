@@ -131,12 +131,37 @@ const stopExpiry = onSessionExpired(() => {
     return
   }
   conversations.saveDrafts()
-  session.current = {
-    status: 'signedOut',
-    reason: 'expired',
-  }
-  void router.replace(signInAddress(router.currentRoute.value.fullPath, 'expired'))
+  void settleSession()
 })
+// A page waiting on Choose Your Password goes on by itself once another page
+// of the account chose it: its channel says so (`web-api.md` § Account API).
+const stopChoice = watch(
+  () => product.account?.choosesPassword,
+  (choosing) => {
+    const { current } = session
+    if (choosing === false && current.status === 'choosingPassword' && current.user.choosesPassword) {
+      session.finishChoosing()
+    }
+  },
+)
+/**
+ * A session the page's requests or channel found ended: the identity says
+ * whether it ended (signed out) or its account must choose a password first
+ * (the wizard asks); a session still alive follows the state again.
+ */
+async function settleSession(): Promise<void> {
+  try {
+    await session.restore()
+  } catch {
+    session.current = { status: 'signedOut', reason: 'expired' }
+  }
+  const { status } = session.current
+  if (status === 'signedOut') {
+    void router.replace(signInAddress(router.currentRoute.value.fullPath, 'expired'))
+  } else if (status === 'signedIn') {
+    product.reconnect()
+  }
+}
 // A first check the backend failed shows its failure, whose Retry checks
 // again: what the retry finds decides the page's pages as the first check would.
 const stopRetry = watch(
@@ -169,7 +194,7 @@ router.beforeEach(async (to) => {
   if (status === 'setupNeeded' || status === 'passkeyStep') {
     return to.path === '/setup' ? true : '/setup'
   }
-  if (status === 'signedIn') {
+  if (status === 'signedIn' || status === 'choosingPassword') {
     // Signing in goes on to the page that was opened signed out.
     return to.path === '/login' || to.path === '/setup' ? returnAddress(to.query) : true
   }
@@ -257,6 +282,7 @@ if (import.meta.hot) {
     stopIdentity()
     stopRetry()
     stopExpiry()
+    stopChoice()
     stopAppearance()
     stopTheme()
     stopLocale()

@@ -37,6 +37,9 @@ pub struct SessionDto {
     pub current: bool,
     /// The handoff code that made it, if one did.
     pub handoff_id: Option<HandoffId>,
+    /// The nickname of the administrator whose sign-in code made it, if one
+    /// did: their email while they have no nickname.
+    pub issued_by: Option<String>,
 }
 
 /// `GET /auth/sessions`: the account's sessions, newest first.

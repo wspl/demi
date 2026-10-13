@@ -15,6 +15,8 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
       nickname: 'Test',
       role: 'master',
       createdAt: '2026-09-10T00:00:00.000Z',
+      disabled: false,
+      choosesPassword: false,
     },
     mode: 'shared',
     preferences: { appearance: {}, shortcuts: {} },

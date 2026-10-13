@@ -296,7 +296,10 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             delete(accounts::remove),
         )
         .route("/users", get(users::list).post(users::create))
-        .route("/users/{id}", patch(users::reset_password))
+        .route("/users/{id}", patch(users::change))
+        .route("/users/{id}/password", post(users::new_first_password))
+        .route("/users/{id}/sign-out", post(users::sign_out))
+        .route("/users/{id}/sign-in-code", post(users::sign_in_code))
         .route("/search", get(search::search))
         .route("/usage", get(usage::totals))
         .route("/usage/instance", get(usage::instance))
