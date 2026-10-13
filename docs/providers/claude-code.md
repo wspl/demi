@@ -461,8 +461,10 @@ become reasoning and text events. The model's `tool_use` blocks become tool
 calls, named without the `mcp__<server>__` prefix the CLI gives tools it
 reaches over MCP. The `result` line ends the request: the run ends with a
 response carrying the usage of the run's last call to the vendor, which is
-the vendor's own count from that call's last streamed `message_delta` (its
-input, cache read, cache write and final output tokens), or with an error when the CLI reports one, shown as
+the vendor's own count for that call as the Messages API streams it: the
+call's last `message_delta` (its final output tokens, and its input, cache
+read and cache write when it repeats them), each count it leaves out taken
+from the same call's `message_start`, never from another call; or with an error when the CLI reports one, shown as
 the CLI worded it. The `result` line's `usage` adds up every call of the run
 and is never read: the context is what one call reads, and a run of nine
 calls of 120K reports 1.1M there. A run whose stream holds no
