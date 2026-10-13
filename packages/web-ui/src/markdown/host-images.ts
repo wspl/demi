@@ -7,7 +7,7 @@ import { messageImageTargets } from './render'
 import type { MessageFiles } from './types'
 
 /** The absolute paths of the Host images `content` names, in order. */
-function hostImagePaths(content: string, files: MessageFiles | undefined): string[] {
+export function hostImagePaths(content: string, files: MessageFiles | undefined): string[] {
   const paths: string[] = []
   for (const target of messageImageTargets(content)) {
     const image = messageImage(target, files)
@@ -31,12 +31,4 @@ export function useHostImagesAt(
 ): ComputedRef<ReadonlyMap<string, HostImage>> {
   const shown = useShowings(contents, paths, (kept, path) => kept.showDescription(path))
   return computed(() => new Map([...shown.value].map(([path, entry]) => [path, hostImage(entry, contents(), path)])))
-}
-
-/** What shows of each Host image a message's `content` names, by its path. */
-export function useHostImages(
-  content: () => string,
-  files: () => MessageFiles | undefined,
-): ComputedRef<ReadonlyMap<string, HostImage>> {
-  return useHostImagesAt(() => files()?.contents, () => hostImagePaths(content(), files()))
 }

@@ -5,7 +5,7 @@ import { keptContents } from '../../files/kept-source'
 import { createMediaViewer, useMediumSource } from '../../files/media-viewer'
 import { SimulatedWatch } from '../../files/memory-source'
 import { WatchChannel } from '../../files/watch-channel'
-import { useHostImages } from '../host-images'
+import { hostImagePaths, useHostImagesAt } from '../host-images'
 import { messageMedia } from '../render'
 import type { MessageFiles } from '../types'
 
@@ -62,7 +62,7 @@ const app = createApp({})
 /** Shows a message naming the image, as a reply on screen does, until its scope stops. */
 function message(files: MessageFiles) {
   const scope = effectScope()
-  const images = app.runWithContext(() => scope.run(() => useHostImages(() => `The new rows:\n\n![row hover](${PATH})`, () => files))!)
+  const images = app.runWithContext(() => scope.run(() => useHostImagesAt(() => files.contents, () => hostImagePaths(`The new rows:\n\n![row hover](${PATH})`, files)))!)
   return { src: () => images.value.get(PATH), stop: () => scope.stop() }
 }
 
