@@ -7,7 +7,6 @@ import { DOCUMENT_RENDER_BYTES, frontMatterAsCode, imageTarget, linkTarget, rend
 const place: DocumentPlace = {
   path: '/work/docs/guide/README.md',
   root: '/work',
-  imageUrl: (path) => `/raw?path=${encodeURIComponent(path)}`,
 }
 
 test('a link leads to a heading, a web page or a Host path, and to nothing else', () => {
@@ -24,9 +23,9 @@ test('a link leads to a heading, a web page or a Host path, and to nothing else'
 })
 
 test('an image loads from the web or from the Host, and from nowhere else', () => {
-  expect(imageTarget('logo.png', place)).toBe(`/raw?path=${encodeURIComponent('/work/docs/guide/logo.png')}`)
-  expect(imageTarget('/assets/logo.svg', place)).toBe(`/raw?path=${encodeURIComponent('/work/assets/logo.svg')}`)
-  expect(imageTarget('https://img.shields.io/badge.svg', place)).toBe('https://img.shields.io/badge.svg')
+  expect(imageTarget('logo.png', place)).toEqual({ path: '/work/docs/guide/logo.png' })
+  expect(imageTarget('/assets/logo.svg', place)).toEqual({ path: '/work/assets/logo.svg' })
+  expect(imageTarget('https://img.shields.io/badge.svg', place)).toEqual({ url: 'https://img.shields.io/badge.svg' })
   for (const dropped of ['data:image/png;base64,AAAA', 'javascript:x', '#top'])
     expect(imageTarget(dropped, place)).toBeNull()
 })

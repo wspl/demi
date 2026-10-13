@@ -229,8 +229,6 @@ const labels = computed(() => mode.value === 'conversation'
 const place = computed<DocumentPlace>(() => ({
   path: absolutePath.value,
   root: props.root,
-  // Relative images load as the Host has them now.
-  imageUrl: (path) => props.contents?.url(path) ?? '',
 }))
 
 type State =
@@ -466,11 +464,11 @@ function pick(path: string): void {
         v-bind="labels"
       >
         <template v-if="hasBefore" #before>
-          <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.original" :place="place" @open="opens !== false && emit('open', $event)" />
+          <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.original" :place="place" :contents="contents" @open="opens !== false && emit('open', $event)" />
           <ImagePreview v-else :src="svgImageUrl(state.sides.original)" :name="baseName(committedPath)" />
         </template>
         <template v-if="hasAfter" #after>
-          <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.modified" :place="place" @open="opens !== false && emit('open', $event)" />
+          <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.modified" :place="place" :contents="contents" @open="opens !== false && emit('open', $event)" />
           <ImagePreview v-else :src="svgImageUrl(state.sides.modified)" :name="baseName(absolutePath)" />
         </template>
       </PreviewPair>
