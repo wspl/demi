@@ -27,6 +27,53 @@ fn usage(input: u64, output: u64) -> ProviderEvent {
     })
 }
 
+/// A turn in which the model called two tools and then answered, as Claude
+/// Code 2.1.296 printed it, with the tools named so that the request offers
+/// neither and the CLI answers them itself. Its result's `usage` sums the
+/// turn's three calls; with telemetry on, its `iterations` lists the last
+/// call, and with `DISABLE_TELEMETRY` it lists none. Either way the
+/// response carries the last call's usage, from its `message_delta`.
+// Two runs of a recorded stream: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_turn_of_several_calls_reports_its_last_calls_usage_never_their_sum() {
+    for (stream, last) in [
+        (
+            include_str!("fixtures/two-tool-calls.jsonl"),
+            TokenUsage {
+                input_tokens: 2,
+                output_tokens: 3,
+                cache_read_tokens: 4_744,
+                cache_write_tokens: 127,
+            },
+        ),
+        (
+            include_str!("fixtures/two-tool-calls-without-telemetry.jsonl"),
+            TokenUsage {
+                input_tokens: 2,
+                output_tokens: 3,
+                cache_read_tokens: 23_349,
+                cache_write_tokens: 13_950,
+            },
+        ),
+    ] {
+        let provider = provider().await;
+        let (placement, mut starts) = ScriptedPlacement::new();
+        let mut runtime = runtime_of(&provider, &placement);
+        let (events, _cli) = tokio::join!(
+            all_events(runtime.run(request_without_tools(vec![user("hi")]))),
+            async {
+                let cli = starts.next().await;
+                for line in stream.lines() {
+                    cli.say_text(&format!("{line}\n"));
+                }
+                cli
+            }
+        );
+        assert_eq!(events.last(), Some(&ProviderEvent::Response(last)), "{events:?}");
+        assert!(!events.iter().any(|event| matches!(event, ProviderEvent::Error(_))));
+    }
+}
+
 fn text(text: &str) -> ProviderEvent {
     ProviderEvent::TextDelta(text.into())
 }
@@ -91,14 +138,18 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
         cli.text("hel");
         cli.text("lo");
         cli.say(json!({
-            "type": "result",
-            "usage": {
-                "input_tokens": 10,
-                "output_tokens": 2,
-                "cache_read_input_tokens": 7,
-                "cache_creation_input_tokens": 3,
+            "type": "stream_event",
+            "event": {
+                "type": "message_delta",
+                "usage": {
+                    "input_tokens": 10,
+                    "output_tokens": 2,
+                    "cache_read_input_tokens": 7,
+                    "cache_creation_input_tokens": 3,
+                },
             },
         }));
+        cli.say(json!({ "type": "result", "usage": { "input_tokens": 10, "output_tokens": 2 } }));
         cli
     });
     let cached = ProviderEvent::Response(TokenUsage {
@@ -286,19 +337,7 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
         let mut cli = starts.next().await;
         cli.initialized().await;
         cli.text("one");
-        // The last iteration is the last API call's usage, not the turn's
-        // total.
-        cli.say(json!({
-            "type": "result",
-            "usage": {
-                "input_tokens": 30,
-                "output_tokens": 300,
-                "iterations": [
-                    { "input_tokens": 10, "output_tokens": 100, "type": "message" },
-                    { "input_tokens": 20, "output_tokens": 200, "type": "message" },
-                ],
-            },
-        }));
+        cli.result(20, 200);
         cli
     });
     assert_eq!(events, [text("one"), usage(20, 200)]);
@@ -635,7 +674,7 @@ async fn the_clis_error_ends_the_turn_and_keeps_the_process_while_a_broken_line_
         all_events(runtime.run(request_without_tools(items))),
         async {
             assert_eq!(cli.read().await, user_line("smaller"));
-            cli.say_text("{\"type\": \"result\", \"usage\": {\"input_tokens\": \"many\"}}\n");
+            cli.say_text("{\"type\": \"stream_event\", \"event\": {\"type\": \"message_delta\", \"usage\": {\"input_tokens\": \"many\"}}}\n");
         }
     );
     let broken = failure(&events[0]);
