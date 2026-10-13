@@ -477,7 +477,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   - the vendor-wire building blocks every HTTP provider decodes with:
     server-sent events, the two-step decode of payloads tagged by `type`, and
     the OpenAI-shaped Responses and Chat Completions formats with their stream
-    mappers;
+    mappers, and one call's token counts in the Anthropic Messages stream
+    (`wire::messages`), which the Anthropic API and Claude Code providers
+    share; and a response's event, which logs a usage the vendor did not
+    send (`ProviderEvent::response`);
   - OAuth device flows (`provider_common::oauth`); the credential pool contract
     (`CredentialPool`, `AccountDocument`) with one refresh at a time per
     account (`RefreshGates`), the one refresh protocol of every family
