@@ -487,6 +487,29 @@ when the backend restarts while the conversation opens, follows the same
 rule; a session that refuses to open, answering `open` with an `error` or a
 `rejected`, shows the conversation as failed instead.
 
+#### What a reopened socket brings back
+
+A socket that opens again reconciles everything the page holds from it, by
+one rule: the page names what it holds that the server cannot know, the
+server answers for each item, as it is now, unchanged or gone, and the page
+keeps nothing of that socket's state that the answer does not speak to. A
+page that was away therefore shows what happened while it was away, never
+what it last saw. For example, a laptop sleeps while a subagent works; the
+subagent finishes during the sleep; when the lid opens, the conversation
+reopens and the subagent shows as finished, with its last messages, not as
+running where it was when the network dropped.
+
+| Socket | What the page names | What the answer holds |
+| --- | --- | --- |
+| The synchronization channel | Nothing: its snapshot is the whole state | The snapshot, which replaces the page's copy; the summaries' revisions say which conversation-scoped parts to read again ([Page synchronization](web-api.md#page-synchronization)) |
+| A conversation | The root's blocks it holds, `from` and `edge`; the subagents it holds as running; the highest subagent number it knows; the commands it holds as running | The root's transcript from there and its state; for each subagent it held or that runs now, its state and its latest page, finished ones as finished; the subagents numbered above what it knew, so one that started and finished in between appears; for each command it held, its output and end, or gone; every node's context use, or none ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)) |
+| The file watch | Each subscription, with the version of the file it shows | Live again; a shown file is read again with its version, and the Host answers unchanged or the new contents ([File watch](web-api.md#file-watch)) |
+| A live view | Nothing: its `state` is the whole state | The tabs and the watched tab's controls, which replace the page's, its downloads included |
+| A device's signaling socket | Nothing | Nothing: the backend closes the device's end of the direct channel when the socket drops, so the page leaves the direct path at the drop and uses the relay until a new channel is made |
+
+Until the answer arrives, the conversation shows that it is connecting and
+what it shows is the page's copy; the answer replaces it in one change.
+
 A page that comes back does not wait. Its timers stop while its computer
 sleeps, so the 75-second watch counts only the time the page was awake, and a
 wait that began before the sleep still has the rest of its time to run. So
