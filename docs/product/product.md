@@ -455,7 +455,11 @@ message's row.
 - **The entry** under the composer, at the left of the model's row, reads
   *1 Saved*, *3 Saved*, and is absent while there is none. Pressed, it
   opens the list under the composer, which rises to make room: about four
-  rows tall, scrolling within. Each row shows the message's first line and,
+  rows tall, scrolling within. Opening and closing animate, 150 ms, the
+  composer gliding up as the list unrolls beneath it, and not at all with
+  reduced motion. The transcript above takes its new height once, at the
+  start, and the motion moves only what is drawn, never the layout, so a
+  long transcript costs nothing while it plays. Each row shows the message's first line and,
   when it has attachments, their count; pressing the row edits it, and its
   end holds Edit, Send and Delete, always shown, in a quiet color that
   darkens when the row is pointed at, since the row holds nothing else
