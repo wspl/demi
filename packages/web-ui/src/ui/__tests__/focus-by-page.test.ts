@@ -51,3 +51,21 @@ test('a field the page focuses on opening takes the focus without a ring', () =>
   autofocus(panel, { preventScroll: true })
   expect(focused).toEqual([{ id: 'panel', options: { preventScroll: true, focusVisible: false } }])
 })
+
+test('a surface behind a dialog never takes the focus from it, one in the dialog does', () => {
+  const dialog = document.createElement('div')
+  dialog.setAttribute('role', 'dialog')
+  document.body.append(dialog)
+  const inside = document.createElement('button')
+  dialog.append(inside)
+  const autofocus = useAutofocus()
+  inside.focus()
+  // The composer's late focus, behind the dialog that opened first.
+  autofocus(opener)
+  expect(document.activeElement).toBe(inside)
+  // A field of the dialog itself, or of one stacked on it, is not behind it.
+  const field = document.createElement('input')
+  dialog.append(field)
+  autofocus(field)
+  expect(document.activeElement).toBe(field)
+})

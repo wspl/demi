@@ -114,7 +114,7 @@ const passkeyOffers: { variant: string; add: ReturnType<typeof galleryPasskeyOff
   [
     ['Adds · the browser saves the passkey, and the wizard closes', 'adds'],
     ['Stale sign-in · Add Passkey asks for the password; wrong is refused', 'needsPassword'],
-    ['Already has one · the password manager holds a passkey of the account', 'held'],
+    ['Passkey Ready · the password manager holds a passkey of the account', 'held'],
     ['Fails · the backend could not verify it', 'fails'],
   ] as [string, PasskeyOfferScript][]
 ).map(([variant, script]) => ({ variant, add: galleryPasskeyOffer(script) }))
