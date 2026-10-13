@@ -73,7 +73,8 @@ declares an `agent` group of its own, since the plugin host refuses the name
 `demi` root, "Demi agent runtime commands.", that contains only `agent`.
 
 ```text
-demi agent spawn [--profile <name>] [--description <title>] < task-brief.txt
+demi agent spawn [--profile <name>] [--description <title>] [--cwd <dir>] < task-brief.txt
+demi agent cwd [<dir>]
 demi agent abort <id>...
 demi agent resume <id> < message.txt
 demi agent fork <id> [--profile <name>] [--description <title>] < message.txt
@@ -964,8 +965,8 @@ The role is a node option, not a depth. Every child has its parent's commands.
   ([How a conversation uses a device](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)).
   A model switch changes the root's selection only; a child keeps its own.
 - The transcript starts empty.
-- A node's commands start in the conversation's working directory, as every
-  node's do ([Running shell tools](runtime.md#running-shell-tools)). Every node reaches its Host through the
+- A node's commands start in its own working directory
+  ([Working directory](#working-directory)). Every node reaches its Host through the
   conversation's host access, because the execution target belongs to the
   conversation ([Resolve a target](../execution/sessions-and-targets.md#resolve-a-target)).
 - The user's two [limits](#limits) bound the tree: the live subagents of
@@ -976,6 +977,42 @@ The role is a node option, not a depth. Every child has its parent's commands.
   ([The whole output](runtime.md#the-whole-output)).
 - Dispose detaches the subtree without closing it: checkpoints are saved, and
   the next open restores the subtree. Abort closes it.
+
+### Working directory
+
+Every node has a working directory on the primary Host, where its `shell`
+calls start ([Running shell tools](runtime.md#running-shell-tools)) and
+against which everything it writes with a relative path is read. For
+example, the root works in `~/Projects/demi` and spawns a child with
+`--cwd ../demi-slots/2`; the child's commands start in
+`~/Projects/demi-slots/2`, and `crates/lib.rs` in its answer opens that
+checkout's file, not the root's.
+
+- **The root's is the conversation's.** It is the directory the conversation
+  targets, which places it in a project, and only moving the conversation
+  changes it (`demi conversation move`,
+  [Conversation commands](../execution/sessions-and-targets.md#attached-hosts)).
+- **A child's starts as its parent's,** the parent's at the spawn or fork,
+  or the directory `--cwd` names, read against the parent's. Changing a
+  parent's later changes no child's.
+- **`demi agent cwd <dir>`** changes the calling child's directory, read
+  against its current one, from its next `shell` call on; the directory must
+  exist on the primary Host, or the command is refused and nothing changes.
+  It appends a `context` block naming the new directory, which the next
+  request carries, so a compaction keeps it. Without an argument it prints
+  the node's directory. Called by the root, a change is refused with
+  *The main agent works in the conversation's directory; move the
+  conversation with `demi conversation move` to work elsewhere.*
+- **Attached Hosts are not affected.** A command on an attached Host starts
+  in that Host's starting directory, whatever the node's directory is.
+- **It is kept with the node,** so a reopened conversation restores it and a
+  resumed child works where it left off.
+
+The page reads every relative path a node wrote against that node's
+directory at the time it wrote it, so a child's file links, file changes and
+media open what the child meant
+([Files named in messages](../product/file-previews.md#files-named-in-messages)), and the work
+panel's File and Change views carry the directory they were opened for.
 
 ### Creation command ownership
 
@@ -1163,6 +1200,9 @@ doing and what it runs on:
   *16m 48s*, *1h 5m*), following the clock while it runs; and *Forked from
   agent N* for a fork, a link to that agent ([Linking an
   agent](#linking-an-agent)). The round is not shown.
+- **Where it works**, after the state: a folder mark and the directory's
+  own name, `2` for `~/Projects/demi-slots/2`, its tip the whole path; pressed, the work panel's File view shows that directory's
+  tree.
 - **What it runs on**, on the right: the profile as a tag, none for the
   inherit profile; the model's name as the model menu shows it, its tip
   naming the provider entry and the name, and for the inherit profile
@@ -1173,7 +1213,11 @@ Where the room runs out, *Forked from agent N* gives way first, then the
 model's name; the state and time always stay.
 
 - **The Agents window** shows it as a status bar along the window's bottom
-  edge, for the tab it shows, with the composer's context indicator after the
+  edge, for the tab it shows, made of segments as an editor's status bar is:
+  each item stands in its own segment, and a segment that acts when pressed,
+  the folder and the context indicator, shows a hover background over its
+  whole extent, while one that only explains, such as the state, the
+  profile or the model, shows its tip and no background, with the composer's context indicator after the
   model and effort: the child's own context, and on click the same context
   card, filled from the child's session ([Context card](compaction.md#what-fills-the-context)),
   whose Compact compacts the child and whose usage limits are those of the
