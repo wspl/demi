@@ -44,7 +44,10 @@ shows as any edit does.
   `%TEMP%` on Windows, as the operating system defines them, as Time Machine
   and Spotlight pass them over, and the conversation's scratch directory
   ([Scratch directory](runner.md#scratch-directory)), where the agent keeps
-  what only it needs. The runner records its edits as any others,
+  what only it needs. A path inside the working directory of the agent that
+  wrote it is never temporary, even when that directory is itself in a
+  temporary directory, as a development runner's can be: the agent's own
+  work always shows. The runner records its edits as any others,
   so a later `mv /tmp/page.ts.new src/page.ts` still carries them to
   `src/page.ts`, and marks each path it reports, in `files` and as a
   rename's `to`, `temporary` when it is in one of them. A file whose path
@@ -322,7 +325,8 @@ parent's own commands changed.
   The pills show with their counts the moment the block does. A pill opens
   its file at the first of the run's calls that changed it. The pills take
   at most two lines; the files that do not fit fold into a last pill, *+12
-  Files*, which opens the Change view on the call or run, as a pill does,
+  Files*, which opens the Change view on the call or run at the first file
+it holds, as a pill does,
   where every file is listed, so a call that removed sixty screenshots
   reads as a few pills and a count.
 - **The Change view.** A pill opens the `edit` intent, which the work panel's
