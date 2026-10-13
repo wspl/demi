@@ -71,6 +71,9 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
         ProviderRefusal::LoginFamily(_)
         | ProviderRefusal::SubscriptionOnly
         | ProviderRefusal::OwnModels(_) => (StatusCode::BAD_REQUEST, ErrorCode::SubscriptionOnly),
+        ProviderRefusal::VendorEndpoint(_) | ProviderRefusal::CompatibleEndpoint(_) => {
+            (StatusCode::BAD_REQUEST, ErrorCode::EndpointKind)
+        }
         ProviderRefusal::CatalogUnavailable(_) => {
             (StatusCode::SERVICE_UNAVAILABLE, ErrorCode::CatalogUnavailable)
         }
@@ -85,7 +88,10 @@ pub(super) async fn list(
     let owner = services.vault.owner_for(&user.id).await?;
     let entries = services.vault.entries(owner).await?;
     Ok(Json(Providers {
-        providers: entries.iter().map(ProviderEntry::dto).collect(),
+        providers: entries
+            .iter()
+            .map(|entry| services.assembly.provider_dto(entry))
+            .collect(),
     }))
 }
 
@@ -139,7 +145,7 @@ pub(super) async fn create(
     Ok((
         StatusCode::CREATED,
         Json(ProviderAnswer {
-            provider: entry.dto(),
+            provider: services.assembly.provider_dto(&entry),
         }),
     ))
 }
@@ -157,7 +163,7 @@ pub(super) async fn update(
         .await
         .map_err(refused)?;
     Ok(Json(ProviderAnswer {
-        provider: updated.dto(),
+        provider: services.assembly.provider_dto(&updated),
     }))
 }
 

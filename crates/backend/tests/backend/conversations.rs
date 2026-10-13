@@ -470,9 +470,16 @@ pub(crate) async fn anthropic_at(
     vendor: &MockVendor,
     prefix: &str,
 ) -> String {
+    // A compatible entry lists only the models it is given: Opus 4.8, with
+    // the facts Anthropic's own list states.
     let body = json!({
         "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
-        "baseUrl": vendor.url(&format!("{prefix}/v1"))
+        "baseUrl": vendor.url(&format!("{prefix}/v1")),
+        "models": [{
+            "id": "claude-opus-4-8", "displayName": "Claude Opus 4.8", "contextWindow": 1_000_000,
+            "outputLimit": 128_000, "thinkingEfforts": ["low", "medium", "high", "xhigh", "max"],
+            "acceptedExtensions": ["png", "jpg", "jpeg", "gif", "webp", "pdf"], "fastTier": null
+        }]
     });
     entry(backend, master, body).await
 }
@@ -2189,7 +2196,7 @@ async fn on_deepseek(vendor: &MockVendor) -> (Harness, TestBackend, Session, Soc
     let catalog = json!({
         "deepseek": {
             "id": "deepseek", "name": "DeepSeek", "npm": "@ai-sdk/openai-compatible",
-            "api": "https://api.deepseek.com", "models": {}
+            "api": vendor.url("/v1"), "models": {}
         }
     });
     vendor.respond_at(
@@ -2202,7 +2209,7 @@ async fn on_deepseek(vendor: &MockVendor) -> (Harness, TestBackend, Session, Soc
     let (backend, master) = harness.start_set_up().await;
     let body = json!({
         "source": "vendor", "vendorId": "deepseek", "label": "DeepSeek", "apiKey": "fake-key",
-        "baseUrl": vendor.url("/v1"), "models": [configured(8_000)]
+        "models": [configured(8_000)]
     });
     let provider = entry(&backend, &master, body).await;
     create(&backend, &master, FIRST).await;

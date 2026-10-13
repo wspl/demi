@@ -14,7 +14,8 @@ use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
 use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
 use demi_shared_types::Clock;
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
-use demi_web_api_protocol::providers::SETUP_MESSAGE;
+use demi_web_api_protocol::providers::{ProviderDto, SETUP_MESSAGE};
+use demi_web_api_protocol::text::EndpointUrl;
 
 use super::catalog_cache::ModelCatalogCache;
 use super::families::{
@@ -252,6 +253,18 @@ impl ProviderAssembly {
     pub async fn close(&self) {
         self.catalogs.close().await;
         self.quotas.close().await;
+    }
+
+    /// The entry as the web app sees it, with the endpoint its requests go
+    /// to: its own, else its family's default.
+    pub fn provider_dto(&self, entry: &ProviderEntry) -> ProviderDto {
+        let default = self
+            .families
+            .get(&entry.family)
+            .and_then(|family| family.default_endpoint())
+            // A family's default is a constant that parses.
+            .map(|url| EndpointUrl::try_from(url.to_owned()).expect("a default endpoint parses"));
+        entry.dto(default)
     }
 
     pub fn family(&self, name: &str) -> Result<&Arc<dyn ProviderFamily>, AssemblyError> {

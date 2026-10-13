@@ -38,7 +38,8 @@ beforeEach(async () => {
         label: 'API',
         wireApi: 'responses',
         vendorId: null,
-        baseUrl: null,
+        compatible: false,
+        endpoint: null,
         hasApiKey: true,
         models: null,
         createdAt: '2026-09-10T00:00:00.000Z',
@@ -83,7 +84,8 @@ beforeEach(async () => {
         label: body.source === 'vendor' ? 'Google' : 'OpenAI',
         wireApi: null,
         vendorId: body.source === 'vendor' ? String(body.vendorId) : null,
-        baseUrl: null,
+        compatible: false,
+        endpoint: null,
         hasApiKey: false,
         models: body.source === 'custom' ? [] : null,
         createdAt: '2026-09-11T00:00:00.000Z',
@@ -159,18 +161,52 @@ test('adding a vendor asks only its kind: the entry joins the list at once, sele
   expect(listed()).toEqual(['codex', 'configured', 'created'])
 })
 
-test('adding an endpoint of a family names the family and its wire and nothing else', async () => {
+test('adding a compatible API sends its family, its wire, its endpoint and the label, and the key only when given', async () => {
   const settings = useProviderSettings()
-  settings.addEndpoint('openai-chat')
+  settings.addCompatible({ wireApi: 'openai-chat', label: 'Lab', baseUrl: 'http://lab.example/v1', apiKey: '' })
   await waitFor(() => created.length === 1)
-  expect(created).toEqual([{ source: 'custom', providerType: 'openai', wireApi: 'chat-completions' }])
+  expect(created).toEqual([
+    { source: 'custom', providerType: 'openai', wireApi: 'chat-completions', label: 'Lab', baseUrl: 'http://lab.example/v1' },
+  ])
   nextId = 'second'
-  settings.addEndpoint('anthropic-messages')
+  settings.addCompatible({ wireApi: 'anthropic-messages', label: 'Proxy', baseUrl: 'https://proxy.example/v1', apiKey: 'sk-1' })
   await waitFor(() => created.length === 2)
-  expect(created[1]).toEqual({ source: 'custom', providerType: 'anthropic' })
+  expect(created[1]).toEqual({
+    source: 'custom', providerType: 'anthropic', label: 'Proxy', baseUrl: 'https://proxy.example/v1', apiKey: 'sk-1',
+  })
 })
 
-test('an incomplete entry is in the setup state and names what it lacks, from its availability; a complete one is not', async () => {
+test('the page shows an entry’s kind and effective endpoint as the read model says them, and a compatible API’s list is its own', async () => {
+  const settings = useProviderSettings()
+  const entry = (id: string, vendorId: string | null, compatible: boolean, endpoint: string) => ({
+    id,
+    kind: 'api_key' as const,
+    providerType: 'anthropic',
+    label: id,
+    wireApi: null,
+    vendorId,
+    compatible,
+    endpoint,
+    hasApiKey: true,
+    models: null,
+    createdAt: '2026-09-10T00:00:00.000Z',
+    details: { type: 'failed' as const, message: 'Not read in this test' },
+  })
+  state.providers.push(
+    entry('proxy', null, true, 'https://proxy.example/v1'),
+    entry('anthropic', 'anthropic', false, 'https://api.anthropic.com/v1'),
+  )
+  channels.last().send({ type: 'providers', providers: state.providers })
+  await waitFor(() => settings.providers.some((provider) => provider.id === 'anthropic'))
+  const shown = (id: string) => {
+    const provider = settings.providers.find((candidate) => candidate.id === id)!
+    return [provider.compatible, provider.modelSource, provider.baseUrl]
+  }
+  expect(shown('proxy')).toEqual([true, 'manual', 'https://proxy.example/v1'])
+  expect(shown('anthropic')).toEqual([false, 'catalog', 'https://api.anthropic.com/v1'])
+})
+
+test('an incomplete entry is in the setup state, from its availability; a complete one is not', async () => {
   const settings = useProviderSettings()
   catalogProviders = [{
     providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
@@ -181,7 +217,7 @@ test('an incomplete entry is in the setup state and names what it lacks, from it
   await useProduct().loadModels(true)
   await waitFor(() => settings.providers.find((entry) => entry.id === 'configured')?.state === 'setup')
   const entry = settings.providers.find((candidate) => candidate.id === 'configured')!
-  expect(entry.missing).toEqual(['apiKey', 'models'])
+  expect(entry.state).toBe('setup')
   // The model menu lists its models dimmed, with the backend's sentence as the reason.
   expect(useResources().providerInfos).toEqual([
     { id: 'configured', label: 'API', isAvailable: false, setupReason: 'Finish setting up this provider in Settings' },
@@ -190,7 +226,6 @@ test('an incomplete entry is in the setup state and names what it lacks, from it
   catalogProviders = [{ ...(catalogProviders[0] as object), availability: { type: 'available' } }]
   await useProduct().loadModels(true)
   await waitFor(() => settings.providers.find((candidate) => candidate.id === 'configured')?.state !== 'setup')
-  expect(settings.providers.find((candidate) => candidate.id === 'configured')?.missing).toBeUndefined()
 })
 
 test('the Add Model search asks for the entry and fills a draft the way the dialog shows it', async () => {

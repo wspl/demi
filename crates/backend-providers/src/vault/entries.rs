@@ -118,6 +118,19 @@ pub struct ApiKeyConfig {
     pub models: Option<ConfiguredModels>,
 }
 
+impl ApiKeyConfig {
+    /// Whether the entry is a **compatible entry** (`providers.md` §
+    /// Endpoints): an endpoint the user gave, on no models.dev vendor. A
+    /// vendor entry, of the family's own vendor or of a models.dev vendor,
+    /// uses its vendor's endpoint and lists its vendor's catalog; a
+    /// compatible entry lists only the models the user configures. An entry
+    /// added from a models.dev vendor keeps a copy of the vendor's endpoint
+    /// and stays a vendor entry.
+    pub fn is_compatible(&self) -> bool {
+        self.vendor_id.is_none() && self.base_url.is_some()
+    }
+}
+
 impl ProviderEntry {
     pub fn kind(&self) -> CredentialKind {
         match self.credential {
@@ -128,15 +141,19 @@ impl ProviderEntry {
 
     /// What the entry lacks to infer, in the order the page lists it
     /// (`models.md` § A provider is in the list from the start): an API-key
-    /// entry's key, a model when its configured list is empty, and a
-    /// subscription's account. An address is never missing: an entry
+    /// entry's key, a model when its catalog is its configured list and the
+    /// list is empty (a compatible entry's always is), and a subscription's
+    /// account. An address is never missing: an entry
     /// without one uses its family's default. Empty for a complete entry.
     pub fn missing(&self) -> Vec<SetupPart> {
         match &self.credential {
             EntryCredential::ApiKey(config) => [
                 (config.api_key.is_none(), SetupPart::ApiKey),
                 (
-                    config.models.as_ref().is_some_and(|models| models.0.is_empty()),
+                    config
+                        .models
+                        .as_ref()
+                        .map_or(config.is_compatible(), |models| models.0.is_empty()),
                     SetupPart::Models,
                 ),
             ]
@@ -158,8 +175,10 @@ impl ProviderEntry {
         }
     }
 
-    /// The entry as the web app sees it: never its key.
-    pub fn dto(&self) -> ProviderDto {
+    /// The entry as the web app sees it: never its key. `default_endpoint` is
+    /// its family's default base URL, which an API-key entry that stores no
+    /// endpoint goes to.
+    pub fn dto(&self, default_endpoint: Option<EndpointUrl>) -> ProviderDto {
         let config = match &self.credential {
             EntryCredential::ApiKey(config) => Some(config),
             EntryCredential::Subscription { .. } => None,
@@ -171,7 +190,8 @@ impl ProviderEntry {
             label: self.label.clone(),
             wire_api: config.and_then(|config| config.wire_api),
             vendor_id: config.and_then(|config| config.vendor_id.clone()),
-            base_url: config.and_then(|config| config.base_url.clone()),
+            compatible: config.is_some_and(ApiKeyConfig::is_compatible),
+            endpoint: config.and_then(|config| config.base_url.clone().or(default_endpoint)),
             has_api_key: config.is_some_and(|config| config.api_key.is_some()),
             models: config.and_then(|config| config.models.clone()),
             created_at: self.created_at,
