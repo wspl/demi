@@ -634,6 +634,39 @@ export function screenshotRunBlocks(): Block[] {
   ]
 }
 
+/**
+ * A transcript with the pictures the media viewer steps through, in the
+ * order they stand: the user's attached screenshot, three screenshots a
+ * call viewed, and a reply's two images of the workspace and an attachment.
+ */
+export function viewerTranscriptBlocks(): Block[] {
+  const shots = { ...screenshotsTool, id: 'viewer-shots', toolUseId: 'viewer-shots', createdAt: iso(585_000) }
+  return [
+    {
+      type: 'user', id: 'viewer-ask', turnId: 'viewer-turn', createdAt: iso(600_000), model: demoModel,
+      content: [
+        { type: 'text', text: 'The sign-in page looks wrong, as in ' },
+        { type: 'image', source: { type: 'ref', ref: galleryBlobs.screenshot, mediaType: 'image/png', width: 480, height: 300 } },
+        {
+          type: 'attachment',
+          name: 'login-fail.png',
+          path: '/home/demi/.demi/attachments/demo/login-fail.png',
+          mediaType: 'image/png',
+          sizeBytes: 48211,
+          sha256: galleryBlobs.screenshot,
+        },
+        { type: 'text', text: '. Compare it with the other tabs.' },
+      ],
+      preamble: null,
+    },
+    ...inRun(shots),
+    {
+      type: 'text', id: 'viewer-answer', createdAt: iso(580_000), model: demoModel,
+      text: 'The tabs differ only in the button. The test pattern and the whole page, from the workspace:\n\n![The test pattern](assets/photo.png)\n![The whole page](assets/page-full.png)\n\nAnd the timeline of the steps:\n\n![The timeline of the steps](attachment:a5)',
+    },
+  ]
+}
+
 /** A capture of a whole page: taller than a thumbnail's proportions, so the thumbnail keeps its top. */
 export const fullPageTool = viewedCall(
   {
