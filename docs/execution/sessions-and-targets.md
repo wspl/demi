@@ -193,7 +193,10 @@ Attached hosts: none. `demi host list` shows every host this conversation can re
 
 Every block names the primary Host this way: its name, its operating system
 and release as its runner last reported them with the architecture, the
-directory its shells start in, and that the standard utilities are GNU's
+directory its shells start in, that files only the agent needs, such as a
+screenshot it checks or a probe script, go in `$DEMI_SCRATCH`, which shows as
+no change and lasts as long as the conversation
+([Scratch directory](runner.md#scratch-directory)), and that the standard utilities are GNU's
 ([Standard utilities](runner.md#standard-utilities)). On macOS it adds where
 the system's own are: `Standard utilities (sed, grep, cp, ls, find, …) are
 GNU's on every host; macOS's own are in /usr/bin.` On Windows it says what the
