@@ -29,7 +29,8 @@ import { ROLE_LABEL, assignableRoles, userActions, type UserAction } from './use
  * Settings › Users (`product.md` § User system), which only the master and
  * admins see, as macOS's Users & Groups or a GitHub organization's People: one
  * row per account with its nickname and email, its role and when it was last
- * active, *Disabled* on a disabled one and *You* on the user's own. A row's
+ * active, *Disabled* on a disabled one, *Hasn’t Chosen a Password* on one still
+ * to choose its own (new, or reset by an administrator) and *You* on the user's own. A row's
  * ··· menu offers what the user may do to that account and is absent where
  * they may do nothing (their own row, a peer or a higher role). Add User…
  * asks the email, the role and a first password; Reset Password… and Change
@@ -60,7 +61,7 @@ const busy = ref(false)
  * User, the first password shown beside the code. It stays while the dialog
  * closes; `signInOpen` shows it.
  */
-const signIn = ref<{ host: HandoffHost; wording: HandoffWording; password: string | null } | null>(null)
+const signIn = ref<{ host: HandoffHost; wording: HandoffWording; name: string; password: string | null } | null>(null)
 const signInOpen = ref(false)
 const addError = ref<Exclude<UserAddOutcome, { kind: 'added' }> | undefined>()
 
@@ -103,7 +104,8 @@ async function add(user: SettingsNewUser): Promise<void> {
     if (outcome.kind === 'added') {
       open.value = null
       const added = props.host.users.find((candidate) => candidate.id === outcome.id)
-      showSignInCode(outcome.id, addedUserWording(added?.nickname ?? user.email), user.password)
+      const name = added?.nickname ?? user.email
+      showSignInCode({ id: outcome.id, nickname: name }, addedUserWording(name), user.password)
     } else {
       addError.value = outcome
     }
@@ -140,8 +142,8 @@ async function disableAccount(): Promise<void> {
   }
 }
 
-function showSignInCode(id: string, wording: HandoffWording, password: string | null): void {
-  signIn.value = { host: props.host.signInCode(id), wording, password }
+function showSignInCode(user: { id: string; nickname: string }, wording: HandoffWording, password: string | null): void {
+  signIn.value = { host: props.host.signInCode(user.id), wording, name: user.nickname, password }
   signInOpen.value = true
 }
 
@@ -151,7 +153,7 @@ function run(action: UserAction, user: SettingsUser): void {
   } else if (action === 'changeRole') {
     ask('role', user)
   } else if (action === 'signInCode') {
-    showSignInCode(user.id, signInCodeWording(user.nickname), null)
+    showSignInCode(user, signInCodeWording(user.nickname), null)
   } else if (action === 'signOutEverywhere') {
     ask('signOut', user)
   } else if (action === 'disable') {
@@ -186,21 +188,23 @@ function closeDialog(): void {
         <Button size="sm" @click="openAdd">Add User…</Button>
       </template>
       <SettingsRow v-for="user in host.users" :key="user.id" :label="user.nickname" :muted="user.disabled">
-        <template v-if="user.id === host.viewerId || user.disabled" #tags>
+        <template v-if="user.id === host.viewerId || user.disabled || user.choosesPassword" #tags>
           <Tag v-if="user.id === host.viewerId">You</Tag>
           <Tag v-if="user.disabled" tone="warning">Disabled</Tag>
+          <Tag v-if="user.choosesPassword">Hasn’t Chosen a Password</Tag>
         </template>
         <template #description>
+          <!-- On a narrow page the email has a line of its own, so no separator dangles at a line's end. -->
           <div class="flex flex-wrap gap-x-1.5">
-            <span class="break-all">{{ user.email }}</span>
-            <span aria-hidden="true">·</span>
+            <span class="basis-full break-all @md:basis-auto">{{ user.email }}</span>
+            <span aria-hidden="true" class="hidden @md:inline">·</span>
             <span>{{ ROLE_LABEL[user.role] }}</span>
             <span aria-hidden="true">·</span>
             <span v-if="user.lastActiveAt">Active <RelativeTime :timestamp="user.lastActiveAt" /></span>
             <span v-else>Not signed in yet</span>
           </div>
         </template>
-        <template v-if="actionsOf(user).length" #default>
+        <template v-if="actionsOf(user).length" #accessory>
           <Dropdown :overlay-store="overlayStore">
             <template #trigger="{ isOpen }">
               <Tooltip content="Actions">
@@ -269,7 +273,7 @@ function closeDialog(): void {
   >
     <template v-if="signIn.password" #code-lead>
       <p class="text-[13px] leading-5 text-fg-muted">
-        The account is ready. Give them this password, or have them scan the code.
+        {{ signIn.name }}’s account is ready. Give them this password, or have them scan the code.
       </p>
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
         <SettingsRow label="Password">

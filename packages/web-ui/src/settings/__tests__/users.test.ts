@@ -5,7 +5,7 @@ import { assignableRoles, userActions } from '../users'
 
 // Cost: pure functions; under a millisecond.
 function account(id: string, role: UserRole, disabled = false): SettingsUser {
-  return { id, nickname: id, email: `${id}@example.com`, role, disabled, lastActiveAt: null }
+  return { id, nickname: id, email: `${id}@example.com`, role, disabled, choosesPassword: false, lastActiveAt: null }
 }
 
 const master = account('zan', 'master')
