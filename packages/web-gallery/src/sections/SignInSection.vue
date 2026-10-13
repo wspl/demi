@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { correction, requestFailure } from '../fixtures/request-failures'
 import { computed, ref, watch } from 'vue'
 import EmailLoginPage, { type EmailLoginPhase } from '@demicodes/web-ui/auth/EmailLoginPage.vue'
 import SetupPage, { type SetupPhase } from '@demicodes/web-ui/auth/SetupPage.vue'
@@ -50,14 +51,14 @@ const states: {
   {
     value: 'error',
     label: 'Wrong Password',
-    phase: { error: 'Wrong email or password' }
+    phase: { error: correction('Wrong email or password') }
   },
   {
     value: 'locked',
     label: 'Locked',
     // The lock's end is set when the state is shown, a minute on.
     phase: {
-      error: 'Too many failed sign-ins. Try again in a minute.'
+      error: requestFailure('Too many failed sign-ins. Try again in a minute.')
     }
   },
   { value: 'expired', label: 'Session Ended', phase: { reason: 'expired' } },
@@ -65,7 +66,7 @@ const states: {
   {
     value: 'passkey-error',
     label: 'Unknown Passkey',
-    phase: { passkeyError: 'This passkey is no longer on any account. Sign in with your password.' },
+    phase: { passkeyError: requestFailure('This passkey is no longer on any account. Sign in with your password.') },
   },
 ]
 
@@ -141,7 +142,8 @@ const setupStates: {
   {
     value: 'error',
     label: 'Error',
-    phase: { error: 'Couldn’t reach Demi. Check the connection and try again.' },
+    // No answer came, so no request names it.
+    phase: { error: { message: 'Couldn’t reach Demi. Check the connection and try again.', requestId: null } },
   },
   { value: 'taken', label: 'Set Up Already', phase: { taken: true } },
   { value: 'passkey', label: 'Add a Passkey', phase: { passkey: {} } },
@@ -149,7 +151,7 @@ const setupStates: {
   {
     value: 'passkey-error',
     label: 'Passkey Failed',
-    phase: { passkey: { error: 'The passkey could not be verified' } },
+    phase: { passkey: { error: requestFailure('The passkey could not be verified') } },
   },
 ]
 
@@ -180,7 +182,7 @@ function showSetupState(value: string) {
 const handoffStates: { value: string; label: TitleText; phase: HandoffPagePhase }[] = [
   { value: 'opening', label: 'Opening', phase: { kind: 'opening' } },
   { value: 'expired', label: 'Expired', phase: { kind: 'expired' } },
-  { value: 'failed', label: 'Failed', phase: { kind: 'failed', message: 'Couldn’t reach Demi. Check the connection and try again.' } },
+  { value: 'failed', label: 'Failed', phase: { kind: 'failed', message: 'Couldn’t reach Demi. Check the connection and try again.', requestId: null } },
 ]
 const handoffState = ref('expired')
 const handoffPhase = computed(() => handoffStates.find((entry) => entry.value === handoffState.value)!.phase)
@@ -294,7 +296,7 @@ function createAccount(name: string, address: string) {
             <StartingScreen
               class="h-full"
               :connecting="false"
-              failure="The session store could not be read: database is locked"
+              :failure="requestFailure('The session store could not be read: database is locked')"
               :on-retry="checkAgain"
             />
           </div>

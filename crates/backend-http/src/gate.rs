@@ -169,9 +169,7 @@ impl<S: Send + Sync> FromRequestParts<S> for AdminUser {
     async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, ApiError> {
         let AuthUser(user) = AuthUser::from_request_parts(parts, state).await?;
         if !user.role.outranks(Role::User) {
-            return Err(ApiError::forbidden(
-                "Account administration is for administrators",
-            ));
+            return Err(ApiError::forbidden("Only an administrator may do this"));
         }
         Ok(Self(user))
     }
@@ -202,6 +200,8 @@ pub(super) async fn session(
         }
         Err(error) => return ApiError::from(error).into_response(),
     };
+    // Every line of the request names its caller.
+    tracing::Span::current().record("user_id", tracing::field::display(&session.user.id));
     if session.active {
         services.sync.mark(&session.user.id, Part::Sessions);
     }

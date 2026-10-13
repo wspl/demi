@@ -7,7 +7,7 @@
  * (`WatchChannel`); this module opens their connections and reads what they
  * bring against its schema.
  */
-import { z } from 'zod'
+import { schemaRefusal } from '@demicodes/protocol'
 import type { HostFiles } from '@demicodes/web-ui/files/file-cache'
 import { WatchChannel, type WatchLink, type WatchLinkHandlers, type WatchRequest } from '@demicodes/web-ui/files/watch-channel'
 import { reportError } from '@demicodes/web-ui/infra/errors'
@@ -43,7 +43,7 @@ export function watchReceiver(handlers: WatchLinkHandlers, close: () => void): (
     }
     const parsed = fileWatchMessageSchema.safeParse(value)
     if (!parsed.success) {
-      reportError('Could not read a message of the file watch.', z.prettifyError(parsed.error))
+      reportError('Could not read a message of the file watch.', schemaRefusal(parsed.error))
       ended = true
       close()
       handlers.closed()

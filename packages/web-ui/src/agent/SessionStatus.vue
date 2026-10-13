@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed } from 'vue'
 import { MessageSquareDashed, MessageSquareOff } from '@lucide/vue'
 import RegionStatus from '../ui/RegionStatus.vue'
@@ -13,8 +14,8 @@ import { sessionStatusCopy, type SessionStatusKind } from './session-status'
  */
 const props = defineProps<{
   kind: SessionStatusKind
-  /** A failed restore names the reason under the label. */
-  detail?: string | null
+  /** A failed restore names the reason under the label, with the request it came from. */
+  detail?: ShownError | null
 }>()
 
 const emit = defineEmits<{
@@ -33,7 +34,8 @@ const status = computed(() => (props.kind === 'loading' || props.kind === 'faile
     :icon="kind === 'empty' || kind === 'none' ? MessageSquareDashed : kind === 'missing' ? MessageSquareOff : undefined"
     :label="copy.label"
     :loading-label="sessionStatusCopy('loading').label"
-    :detail="detail"
+    :detail="detail?.message"
+    :request-id="detail?.requestId"
     :action="copy.action === 'create' ? 'Start a Conversation' : undefined"
     :on-retry="copy.action === 'retry' ? () => emit('retry') : undefined"
     @action="emit('create')"

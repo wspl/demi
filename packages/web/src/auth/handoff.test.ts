@@ -45,16 +45,16 @@ const code = { id: 'handoff-1', url: 'https://demi.example/handoff#c0de', expire
 test('a code for the page the user is on asks to confirm first when the backend refuses it', async () => {
   const sent = serve({
     'POST /api/auth/handoff/code': [
-      [{ code: 'verification_required', message: 'Confirm it is you first' }, 403],
+      [{ requestId: 'req_test000000000001', code: 'verification_required', message: 'Confirm it is you first' }, 403],
       [code, 200],
     ],
     'POST /api/auth/verify': [
-      [{ code: 'invalid_credentials', message: 'Wrong password' }, 401],
+      [{ requestId: 'req_test000000000001', code: 'invalid_credentials', message: 'Wrong password' }, 401],
       [null, 204],
     ],
   })
   expect(await makeHandoffCode('/chat/7f3a')).toEqual({ kind: 'verify' })
-  expect(await verifyWithPassword('wrong')).toEqual({ kind: 'wrongPassword', message: 'Wrong password' })
+  expect(await verifyWithPassword('wrong')).toEqual({ kind: 'wrongPassword', message: 'That is not your password.' })
   expect(await verifyWithPassword('right')).toEqual({ kind: 'verified' })
   // The code expires ten minutes after its answer arrives, on the page's clock.
   const before = Date.now()
@@ -73,7 +73,7 @@ test('the phone goes to the page the code opens, or learns the code expired', as
   const sent = serve({
     'POST /api/auth/handoff': [
       [{ to: '/chat/7f3a' }, 200],
-      [{ code: 'handoff_expired', message: 'This code has expired.' }, 401],
+      [{ requestId: 'req_test000000000001', code: 'handoff_expired', message: 'This code has expired.' }, 401],
     ],
   })
   expect(await spendHandoffCode('c0de')).toEqual({ kind: 'handedOff', to: '/chat/7f3a' })

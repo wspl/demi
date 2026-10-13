@@ -8,6 +8,7 @@
 //! part a `Range` asks for (`web-api.md` § File text and working tree
 //! changes).
 
+use tracing::Instrument as _;
 use std::cell::{Cell, RefCell};
 use std::future::Future;
 use std::rc::Rc;
@@ -225,6 +226,7 @@ impl dyn HostShard + '_ {
     ) -> Lease {
         let (lease, released) = Lease::new(open.ended.clone());
         let ended = open.ended.clone();
+        // The transfer logs under the request that opened it.
         self.tasks().spawn_local(async move {
             tokio::select! {
                 () = work => {}
@@ -233,7 +235,8 @@ impl dyn HostShard + '_ {
             }
             drop(admitted);
             drop(open);
-        });
+        }
+        .in_current_span());
         lease
     }
 }

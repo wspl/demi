@@ -168,6 +168,12 @@ crate::id!(
     /// is recognized.
     OperationId
 );
+crate::id!(
+    /// An HTTP request to the backend, a WebSocket's upgrade included, which
+    /// the backend names as it arrives: `req_` and 16 random lowercase
+    /// base-32 characters (`backend.md` § Request IDs and the server log).
+    RequestId
+);
 
 /// A sequence of the numbers the model knows a conversation's things by
 /// (`runtime.md` § Identifiers the model sees): each is given once, in order,

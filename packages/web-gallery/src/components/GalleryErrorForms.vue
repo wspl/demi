@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { correction, requestFailure } from '../fixtures/request-failures'
 import { ref } from 'vue'
 import EmailLoginPage from '@demicodes/web-ui/auth/EmailLoginPage.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
@@ -34,31 +35,31 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * what the product would send, and the phase stays, since the point here is
  * the failure.
  */
-const login = { error: 'The email or password is incorrect.', reason: 'expired' as const }
+const login = { error: correction('The email or password is incorrect.'), reason: 'expired' as const }
 const email: ChangeEmailPhase = {
   kind: 'form',
   currentEmail: 'preview@example.test',
-  error: 'This email address is already in use.',
+  error: correction('This email address is already in use.'),
 }
 const verification: ChangeEmailPhase = {
   kind: 'verify',
   email: 'new@example.test',
-  error: 'The verification code expired. Request another code.',
+  error: correction('The verification code expired. Request another code.'),
 }
 const password: ChangePasswordPhase = {
   kind: 'form',
-  error: 'The current password is incorrect.',
+  error: correction('The current password is incorrect.'),
 }
 const emailDraft = ref({ email: 'existing@example.test', password: 'preview-only', code: '' })
 const verificationDraft = ref({ email: 'new@example.test', password: '', code: '123456' })
 const passwordDraft = ref({ current: 'wrong-password', next: 'new-preview-password', confirm: 'new-preview-password' })
 const providerLogin: ProviderLoginPhase = {
   kind: 'failed',
-  message: 'The provider sign-in request expired. Try signing in again.',
+  ...requestFailure('The provider sign-in request expired. Try signing in again.'),
 }
 const pairing: PairingPhase = {
   kind: 'code',
-  error: 'This code is unavailable. Keep the runner open and paste its latest code.',
+  error: correction('This code is unavailable. Keep the runner open and paste its latest code.'),
 }
 /** Back and Next move the pairing specimen as the product's do; Open puts the failure back. */
 const pairingShown = ref<PairingPhase>(pairing)
@@ -163,7 +164,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               ]"
               :source-for="() => hosts[0]!.source"
               :last-host="failedProjectHost"
-              message="Could not create the project. The selected device is offline."
+              :message="requestFailure('Could not create the project. The selected device is offline.')"
               @choose="failedProjectHost = $event"
               @close="close"
               @create="(draft) => productWould(draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name}` : `Set Up the Project at ${draft.path}`)"
@@ -187,7 +188,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
                 extensions: ['.png'],
                 fastTier: null,
               }"
-              error="The provider rejected this model ID. Check the ID against the provider’s catalog."
+              :error="correction('The provider rejected this model ID. Check the ID against the provider’s catalog.')"
               @close="close"
               @save="(saved) => productWould(`Save ${saved.name || saved.id}`)"
             />

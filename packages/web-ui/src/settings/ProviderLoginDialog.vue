@@ -177,7 +177,7 @@ function submitCode(): void {
         {{ phase.account }}
       </div>
 
-      <InlineError v-else :message="phase.message" />
+      <InlineError v-else :message="phase.message" :request-id="phase.requestId" />
     </div>
     <template #footer>
       <Button

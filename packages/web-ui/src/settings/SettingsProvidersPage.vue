@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formError, type ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
 import { countUnlessOne, upperFirst } from '@demicodes/utils'
 import { showToast } from '../infra/toast'
@@ -95,7 +96,7 @@ const props = defineProps<{
   refreshing?: string | null
   refreshingUsage?: Record<string, Record<string, SettingsQuotaRefresh>>
   /** The vendor's words for each account's last manual usage refresh that failed, by provider and account. */
-  usageFailures?: Record<string, Record<string, string>>
+  usageFailures?: Record<string, Record<string, ShownError>>
 }>()
 
 const emit = defineEmits<{
@@ -436,10 +437,8 @@ async function saveModel(draft: SettingsModelDraft) {
     editor.status = { kind: 'idle' }
     editor.open = false
   } catch (error) {
-    editor.status = {
-      kind: 'failed',
-      message: error instanceof Error ? error.message : String(error),
-    }
+    // A refused field of the model is the user's to correct in the dialog.
+    editor.status = { kind: 'failed', ...formError(error, { invalid_body: null }) }
   }
 }
 function accountPending(
@@ -1100,9 +1099,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
       :overlay-store="overlayStore"
       :mode="modelEditor.mode"
       :pending="modelEditor.status.kind === 'saving'"
-      :error="
-        modelEditor.status.kind === 'failed' ? modelEditor.status.message : null
-      "
+      :error="modelEditor.status.kind === 'failed' ? modelEditor.status : null"
       :model="modelEditor.model"
       :search="dialogSearch"
       @close="modelEditor.open = false"

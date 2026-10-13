@@ -78,6 +78,9 @@ pub(crate) struct Socket {
     /// The frames of the last message not read yet: a message carries a
     /// frame, or an array of the frames the backend had ready at once.
     unread: VecDeque<ServerFrame>,
+    /// The request ID of the socket's upgrade, from its answer's
+    /// `X-Request-Id`.
+    pub(crate) request_id: String,
 }
 
 impl Socket {
@@ -118,10 +121,11 @@ impl Socket {
         headers.insert("cookie", session.cookie.parse().unwrap());
         headers.insert("origin", origin.parse().unwrap());
         match tokio_tungstenite::connect_async(request).await {
-            Ok((socket, _)) => Ok(Self {
+            Ok((socket, response)) => Ok(Self {
                 socket,
                 patience: Duration::from_secs(10),
                 unread: VecDeque::new(),
+                request_id: response.headers()["x-request-id"].to_str().unwrap().to_owned(),
             }),
             Err(tungstenite::Error::Http(response)) => {
                 let body = response.body().as_deref().unwrap_or_default();
@@ -1331,10 +1335,18 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
     socket
         .send_text(json!({ "type": "send", "messageId": "m1" }).to_string())
         .await;
-    let ServerFrame::Error { code, .. } = socket.frame().await else {
+    let ServerFrame::Error {
+        code, request_id, ..
+    } = socket.frame().await
+    else {
         panic!("an invalid frame is answered with an error");
     };
     assert_eq!(code.as_deref(), Some("invalid_frame"));
+    // The refusal names the socket's upgrade, which the page shows.
+    assert_eq!(
+        request_id.as_ref().map(|id| id.as_str()),
+        Some(socket.request_id.as_str())
+    );
     // A conversation without a model opens no tree.
     socket.send(&ClientFrame::Open { from: None, edge: None }).await;
     let ServerFrame::Error { code, .. } = socket.frame().await else {
@@ -1611,7 +1623,8 @@ async fn the_conversation_socket_opens_only_from_a_page_of_the_product() {
 
 /// The backend logs each conversation socket as it opens, with where it
 /// came from as a proxy in front of it passes that, and as it ends, with
-/// why, under one id (`web-application.md` § Liveness and reconnection):
+/// why, under the request ID of its upgrade (`web-application.md`
+/// § Liveness and reconnection):
 /// here one the page closed, and one whose connection broke without a close.
 #[tokio::test]
 async fn a_conversation_sockets_open_and_end_are_logged_with_why_it_ended() {
@@ -1634,7 +1647,8 @@ async fn a_conversation_sockets_open_and_end_are_logged_with_why_it_ended() {
         headers.insert("cf-ray", "8c1f2a3b4d5e6f70-AMS".parse().unwrap());
         headers.insert("cf-connecting-ip", "203.0.113.7".parse().unwrap());
         headers.insert("user-agent", "Mozilla/5.0 (a test page)".parse().unwrap());
-        tokio_tungstenite::connect_async(request).await.unwrap().0
+        let (socket, response) = tokio_tungstenite::connect_async(request).await.unwrap();
+        (socket, response.headers()["x-request-id"].to_str().unwrap().to_owned())
     };
     let log = || std::fs::read_to_string(&path).unwrap();
     // The ids of the sockets opened so far, in the order they opened.
@@ -1652,7 +1666,7 @@ async fn a_conversation_sockets_open_and_end_are_logged_with_why_it_ended() {
                 ] {
                     assert!(line.contains(wanted), "{wanted} in {line}");
                 }
-                let id = line.split("socket=").nth(1).unwrap();
+                let id = line.split("request_id=").nth(1).unwrap();
                 id.split(' ').next().unwrap().to_owned()
             })
             .collect::<Vec<_>>()
@@ -1661,18 +1675,18 @@ async fn a_conversation_sockets_open_and_end_are_logged_with_why_it_ended() {
         log()
             .lines()
             .find(|line| {
-                line.contains("a page socket ended") && line.contains(&format!("socket={id} "))
+                line.contains("a page socket ended") && line.contains(&format!("request_id={id} "))
             })
             .map(str::to_owned)
     };
 
-    let mut left = connect().await;
+    let (mut left, left_id) = connect().await;
     let frame = tungstenite::protocol::CloseFrame {
         code: CloseCode::Away,
         reason: "page_left".into(),
     };
     left.close(Some(frame)).await.unwrap();
-    let broken = connect().await;
+    let (broken, broken_id) = connect().await;
     // The connection goes without a close frame, as a laptop's network does.
     drop(broken);
     // One reading of the log for both questions: the second socket's
@@ -1684,6 +1698,8 @@ async fn a_conversation_sockets_open_and_end_are_logged_with_why_it_ended() {
     })
     .await;
     let ids = opened();
+    // Each socket's lines carry the ID its upgrade answered with.
+    assert_eq!(ids, [left_id, broken_id]);
     let left = ended(&ids[0]).unwrap();
     for wanted in [
         "INFO",

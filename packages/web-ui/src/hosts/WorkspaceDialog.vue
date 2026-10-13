@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed, ref, useId, watch } from 'vue'
 import { FolderOpen, Plus, X } from '@lucide/vue'
 import { hostIcon } from './icons'
@@ -49,7 +50,7 @@ const props = defineProps<{
   /** The user's last choice, which the form opens on; absent the first time. */
   lastHost?: WorkspaceHostChoice
   /** What went wrong with the last Create, shown under the form. */
-  message?: string
+  message?: ShownError | null
   /** The file browser's tree for a device. */
   sourceFor: (deviceId: string) => FileBrowserSource
   placesFor?: (deviceId: string) => FileBrowserPlaceGroup[]
@@ -362,7 +363,7 @@ function selectDevice(id: string, close: () => void): void {
               }}</span>
             </div>
           </template>
-          <InlineError v-if="message" :message="message" />
+          <InlineError v-if="message" :message="message.message" :request-id="message.requestId" />
         </div>
       </AsyncRegion>
     </template>

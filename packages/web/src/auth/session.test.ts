@@ -40,7 +40,7 @@ function serve(answers: Record<string, [unknown, number]>): unknown[] {
   return sent
 }
 
-const signedOut: [unknown, number] = [{ code: 'unauthenticated', message: 'Sign in first' }, 401]
+const signedOut: [unknown, number] = [{ requestId: 'req_test000000000001', code: 'unauthenticated', message: 'Sign in first' }, 401]
 
 describe('cookie session', () => {
   test('restores the server identity and uses same-origin credentials', async () => {
@@ -63,7 +63,7 @@ describe('cookie session', () => {
     expect(session.current).toEqual({ status: 'signedOut', reason: undefined })
     respond({ user })
     await session.signIn(user.email, 'secret', new AbortController().signal)
-    respond({ code: 'unauthenticated', message: 'Sign in first' }, 401)
+    respond({ requestId: 'req_test000000000001', code: 'unauthenticated', message: 'Sign in first' }, 401)
     await session.restore()
     expect(session.current).toEqual({ status: 'signedOut', reason: 'expired' })
   })
@@ -98,7 +98,7 @@ describe('cookie session', () => {
     await session.restore()
     expect(session.current).toEqual({ status: 'setupNeeded' })
     serve({
-      'POST /api/setup': [{ code: 'already_set_up', message: 'Demi is set up already' }, 404],
+      'POST /api/setup': [{ requestId: 'req_test000000000001', code: 'already_set_up', message: 'Demi is set up already' }, 404],
     })
     await expect(session.setUp(
       user.nickname, user.email, 'correct horse', new AbortController().signal,
@@ -115,6 +115,7 @@ describe('cookie session', () => {
         password: 'secret',
       })
       return Response.json({
+        requestId: 'req_test000000000001',
         code: 'too_many_attempts',
         message: 'Try again in a minute',
       }, { status: 429 })
@@ -149,7 +150,7 @@ describe('cookie session', () => {
     const session = useSession()
     respond({ user })
     await session.restore()
-    respond({ code: 'unavailable', message: 'Unavailable' }, 503)
+    respond({ requestId: 'req_test000000000001', code: 'unavailable', message: 'Unavailable' }, 503)
     await expect(session.signOut()).rejects.toBeInstanceOf(ApiError)
     expect(session.user).toEqual(user)
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -167,9 +168,9 @@ describe('cookie session', () => {
   // synchronization); only a 401 signs the page out.
   test('a first check the backend fails shows the failure, and its Retry signs in', async () => {
     const session = useSession()
-    respond({ code: 'internal_error', message: 'The session store could not be read' }, 500)
+    respond({ requestId: 'req_test000000000001', code: 'internal_error', message: 'The session store could not be read' }, 500)
     await session.restore()
-    expect(session.current).toEqual({ status: 'failed', error: 'The session store could not be read' })
+    expect(session.current).toEqual({ status: 'failed', error: { message: 'The session store could not be read', requestId: 'req_test000000000001' } })
     respond({ user })
     await session.restore()
     expect(session.user).toEqual(user)
@@ -177,7 +178,7 @@ describe('cookie session', () => {
 
   test('a Retry the backend answers with 401 goes to sign in', async () => {
     const session = useSession()
-    respond({ code: 'internal_error', message: 'The session store could not be read' }, 500)
+    respond({ requestId: 'req_test000000000001', code: 'internal_error', message: 'The session store could not be read' }, 500)
     await session.restore()
     serve({ 'GET /api/auth/me': signedOut, 'GET /api/setup': [{ needed: false }, 200] })
     await session.restore()
@@ -188,7 +189,7 @@ describe('cookie session', () => {
     const session = useSession()
     respond({ user })
     await session.restore()
-    respond({ code: 'unavailable', message: 'Unavailable' }, 503)
+    respond({ requestId: 'req_test000000000001', code: 'unavailable', message: 'Unavailable' }, 503)
     await expect(session.restore()).rejects.toBeInstanceOf(ApiError)
     expect(session.user).toEqual(user)
   })

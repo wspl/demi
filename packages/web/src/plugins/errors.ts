@@ -3,15 +3,17 @@ import { ApiError, UnreadableResponse } from '../api/client'
 
 /** A refusal the backend answered, as a page sees it: the plugin's reason, or the backend's code, and the answer's status. */
 function refusal(error: ApiError): PluginCallError {
-  return new PluginCallError(error.reason ?? error.code ?? `status_${error.status}`, error.message, {
-    type: 'status',
-    status: error.statusLine,
-  })
+  return new PluginCallError(
+    error.reason ?? error.code ?? `status_${error.status}`,
+    error.message,
+    { type: 'status', status: error.statusLine },
+    { requestId: error.requestId },
+  )
 }
 
 /** An answer the page could not read, as a page sees it. */
 function unreadable(error: UnreadableResponse): PluginCallError {
-  return new PluginCallError('unreadable_answer', error.message, { type: 'unreadable' })
+  return new PluginCallError('unreadable_answer', error.message, { type: 'unreadable' }, { detail: error.detail })
 }
 
 /**

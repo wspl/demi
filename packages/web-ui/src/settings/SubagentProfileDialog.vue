@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
 import { TriangleAlert, Zap } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -48,7 +49,8 @@ const props = defineProps<{
    */
   catalogModels: Record<string, ModelInfo[]>
   pending?: boolean
-  error?: string | null
+  /** Why the last save failed, with the request it came from. */
+  error?: ShownError | null
 }>()
 
 const emit = defineEmits<{
@@ -224,7 +226,7 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
 
         <InlineError v-if="missing" :message="missing" />
       </ScrollArea>
-      <InlineError v-if="error" class="px-5 pt-3" :message="error" />
+      <InlineError v-if="error" class="px-5 pt-3" :message="error.message" :request-id="error.requestId" />
     </div>
     <template v-if="mode === 'edit'" #footer-leading>
       <Button variant="danger" :disabled="pending" @click="emit('delete')">Delete</Button>

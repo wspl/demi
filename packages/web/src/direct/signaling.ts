@@ -9,7 +9,7 @@
  * backend closes the peer too when the user turns a plugin on or off, which
  * the socket says so that the page offers again at once.
  */
-import { z } from 'zod'
+import { schemaRefusal } from '@demicodes/protocol'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import {
   openSocket,
@@ -154,7 +154,7 @@ export class DeviceSignaling implements PeerSignaling {
     const parsed = directMessageSchema.safeParse(value)
     if (!parsed.success) {
       // What did not read is for a developer; the socket starts again.
-      reportError('Could not read a message of the direct channel.', z.prettifyError(parsed.error))
+      reportError('Could not read a message of the direct channel.', schemaRefusal(parsed.error))
       socket.close()
       return
     }

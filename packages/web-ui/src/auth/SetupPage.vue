@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed } from 'vue'
 import Button from '../ui/Button.vue'
 import InlineError from '../ui/InlineError.vue'
@@ -25,13 +26,13 @@ import {
  */
 export type SetupPhase = {
   busy?: boolean
-  error?: string
+  error?: ShownError
   /** The master account exists already: only signing in is left. */
   taken?: boolean
   /** The account is made and signed in: the optional passkey step. */
   passkey?: {
     busy?: boolean
-    error?: string
+    error?: ShownError
   }
 }
 
@@ -82,7 +83,7 @@ function submit() {
     <div class="flex flex-col gap-4">
       <!-- The line keeps its height with nothing to say, so a message never moves the buttons. -->
       <div class="min-h-4">
-        <InlineError v-if="phase.passkey.error" :message="phase.passkey.error" />
+        <InlineError v-if="phase.passkey.error" :message="phase.passkey.error.message" :request-id="phase.passkey.error.requestId" />
       </div>
       <Button
         size="lg"
@@ -167,7 +168,7 @@ function submit() {
           @keydown.enter="submit"
         />
       </label>
-      <InlineError v-if="phase.error" :message="phase.error" />
+      <InlineError v-if="phase.error" :message="phase.error.message" :request-id="phase.error.requestId" />
       <InlineError v-else-if="tooShort" :message="PASSWORD_TOO_SHORT" />
       <InlineError v-else-if="mismatch" :message="PASSWORDS_DIFFER" />
       <Button

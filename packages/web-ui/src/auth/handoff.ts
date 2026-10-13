@@ -1,3 +1,5 @@
+import type { ShownError } from '../infra/errors'
+
 /**
  * Handing off to a phone by a QR code (`product.md` § User system): what
  * the dialog shows of a code, and what its host does for it.
@@ -23,7 +25,7 @@ export interface HandoffCodeView {
 export type HandoffStart =
   | { kind: 'code'; code: HandoffCodeView }
   | { kind: 'verify' }
-  | { kind: 'failed'; message: string }
+  | ({ kind: 'failed' } & ShownError)
 
 /**
  * How confirming it is the user ended: confirmed; the password refused,
@@ -34,7 +36,7 @@ export type HandoffVerifyOutcome =
   | { kind: 'verified' }
   | { kind: 'wrongPassword'; message: string }
   | { kind: 'dismissed' }
-  | { kind: 'failed'; message: string }
+  | ({ kind: 'failed' } & ShownError)
 
 /** What the dialog's host does: the backend's side of every step. */
 export interface HandoffHost {

@@ -788,6 +788,7 @@ impl<H: HostResolver> Tree<H> {
                 message: error.to_string(),
                 code: None,
                 diagnostics: None,
+                request_id: None,
             });
         }
         self.sink.close_all();
@@ -805,6 +806,7 @@ impl<H: HostResolver> Tree<H> {
             message,
             code: None,
             diagnostics: None,
+            request_id: None,
         });
     }
 }
@@ -855,6 +857,7 @@ fn frame_of(root: &NodeId, event: &SessionEvent) -> Option<ServerFrame> {
             message: report.message.clone(),
             code: report.code.clone(),
             diagnostics: report.diagnostics.clone(),
+            request_id: None,
         },
         SessionEvent::ActionFailed { .. } => return None,
     })

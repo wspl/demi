@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { ref } from 'vue'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
 import type { WorkspaceDraft } from '@demicodes/web-ui/hosts/workspace'
@@ -14,14 +15,14 @@ const resources = useResources()
 const product = useProduct()
 const preferences = usePreferences()
 const navigation = useConversationNavigation()
-const message = ref('')
+const message = ref<ShownError | null>(null)
 const pending = ref(false)
 const deviceById = (id: string) =>
   resources.devices.find((device) => device.id === id) ?? null
 
 function close() {
   resources.targetOpen = false
-  message.value = ''
+  message.value = null
 }
 
 async function create(draft: WorkspaceDraft) {
@@ -29,7 +30,7 @@ async function create(draft: WorkspaceDraft) {
     return
   }
   pending.value = true
-  message.value = ''
+  message.value = null
   try {
     await navigation.createProject(
       draft.kind === 'cloud'
@@ -46,7 +47,7 @@ async function create(draft: WorkspaceDraft) {
     )
     close()
   } catch (error) {
-    message.value = error instanceof Error ? error.message : String(error)
+    message.value = shownError(error)
   } finally {
     pending.value = false
   }

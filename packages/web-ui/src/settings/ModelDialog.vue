@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
 import { upperFirst } from '@demicodes/utils'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -33,7 +34,8 @@ import { formatTokens } from '../ui/token-count'
  */
 const props = defineProps<{
   pending?: boolean
-  error?: string | null
+  /** Why the last save failed, with the request it came from. */
+  error?: ShownError | null
   isOpen: boolean
   overlayStore: OverlayStore
   mode: 'create' | 'edit' | 'view'
@@ -373,7 +375,7 @@ const canSave = computed(() => {
           </div>
         </div>
       </ScrollArea>
-      <InlineError v-if="error" class="px-5 pt-3" :message="error" />
+      <InlineError v-if="error" class="px-5 pt-3" :message="error.message" :request-id="error.requestId" />
     </div>
     <template v-if="editable" #footer>
       <Button @click="emit('close')">Cancel</Button>

@@ -49,7 +49,7 @@ pub(super) async fn channel(
         user: session.user,
         expires_at: session.expires_at,
     };
-    Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
+    Ok(page_socket(upgrade, move |socket| async move {
         let user = session.user.id.clone();
         let origin = client.origin(PageSocketKind::Sync, user.clone());
         let adopted = state

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requestIdOf, type ShownError } from '../infra/errors'
 import {
   computed,
   h,
@@ -114,7 +115,7 @@ const loading = computed(() => listing.entry.value?.answer == null && listing.en
 const failure = computed(() => failureShown(listing.entry.value))
 const sort = ref<FileBrowserSort>(DEFAULT_SORT)
 const selected = ref<string | null>(null)
-const error = ref<string | null>(null)
+const error = ref<ShownError | null>(null)
 const folderCreation = ref<'idle' | 'naming' | 'saving'>('idle')
 const list = ref<InstanceType<typeof FileBrowserList>>()
 let pending: AbortController | null = null
@@ -304,8 +305,10 @@ async function createFolder(folderName: string) {
     if (controller.signal.aborted) {
       return
     }
-    error.value =
-      toFailure(err).message ?? `${folderName} could not be created.`
+    error.value = {
+      message: toFailure(err).message ?? `${folderName} could not be created.`,
+      requestId: requestIdOf(err),
+    }
     return
   } finally {
     if (pending === controller) {
@@ -549,7 +552,7 @@ onBeforeUnmount(() => pending?.abort())
           class="flex min-w-0 flex-1 items-center gap-2 text-chrome"
           role="status"
         >
-          <InlineError v-if="error" class="min-w-0 flex-1" :message="error" />
+          <InlineError v-if="error" class="min-w-0 flex-1" :message="error.message" :request-id="error.requestId" />
           <template v-else>
             <span class="shrink-0 text-fg-subtle">{{ status.lead }}</span>
             <span
