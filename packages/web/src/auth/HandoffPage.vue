@@ -10,10 +10,11 @@ import { spendHandoffCode } from './handoff'
  * never sends to a server. The page takes it off the address, so the
  * history keeps no code, spends it, and loads the page it opens, signed in:
  * a load, since the phone may have been signed out, or in to another
- * account, whose state the page held.
+ * account, whose state the page held. A phone signed in to the account
+ * keeps its session.
  */
 const router = useRouter()
-const phase = ref<HandoffPagePhase>({ kind: 'signingIn' })
+const phase = ref<HandoffPagePhase>({ kind: 'opening' })
 
 onMounted(async () => {
   const code = window.location.hash.slice(1)
@@ -24,7 +25,7 @@ onMounted(async () => {
   }
   const spent = await spendHandoffCode(code)
   switch (spent.kind) {
-    case 'signedIn':
+    case 'handedOff':
       window.location.replace(spent.to)
       break
     case 'expired':
