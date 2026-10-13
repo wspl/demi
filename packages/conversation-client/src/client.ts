@@ -14,6 +14,7 @@ import {
   type ServerFrame,
   type SessionPhase,
   type TranscriptVersion,
+  schemaRefusal,
 } from '@demicodes/protocol'
 import { asError, createId } from '@demicodes/utils'
 import type { ConversationClientListener, ClientSessionEvent, ServerFrameOf } from './events'
@@ -53,12 +54,15 @@ export class SavedGoneError extends Error {
 export class SessionError extends Error {
   readonly code: string | null
   readonly diagnostics: ProviderErrorDiagnostics | undefined
+  /** The request ID of the socket that sent the frame, which the page shows with the error. */
+  readonly requestId: string | null
 
   constructor(frame: ServerFrameOf<'error'>) {
     super(frame.message)
     this.name = 'SessionError'
     this.code = frame.code ?? null
     this.diagnostics = frame.diagnostics
+    this.requestId = frame.requestId ?? null
   }
 }
 
@@ -574,9 +578,7 @@ export class ConversationClient {
   private receive(frame: unknown): void {
     const parsed = serverFrameSchema.safeParse(frame)
     if (!parsed.success) {
-      const issue = parsed.error.issues[0]
-      const where = issue ? `: ${issue.path.join('.')} ${issue.message}` : ''
-      this.disconnect(new Error(`Invalid server frame${where}`))
+      this.disconnect(new Error(`Invalid server frame:\n${schemaRefusal(parsed.error)}`))
       return
     }
     this.handle(parsed.data)

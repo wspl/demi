@@ -2,16 +2,19 @@
 //! names every request as it arrives, a WebSocket's upgrade included, and
 //! never takes a name from the client. The ID is a field of the request's
 //! `tracing` span, every response carries it in `X-Request-Id`, and every
-//! JSON error carries it as `requestId`.
+//! JSON error carries it as `requestId`. Every request logs one line as it
+//! is answered, so that an ID a user copies always finds its request.
 
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use axum::extract::Request;
-use axum::http::{HeaderName, HeaderValue};
+use axum::http::{HeaderName, HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
 use data_encoding::{Encoding, Specification};
 use demi_shared_types::RequestId;
+use demi_web_api_protocol::error::ErrorCode;
 
 /// The header every response names its request in.
 const X_REQUEST_ID: HeaderName = HeaderName::from_static("x-request-id");
@@ -82,4 +85,22 @@ pub(crate) fn span<B>(request: &axum::http::Request<B>) -> tracing::Span {
         cf_ray = ray,
         user_id = tracing::field::Empty,
     )
+}
+
+/// The line a request logs as it is answered, in its span: the status, how
+/// long it took and the `code` of a JSON error, at `info`, and at `warn` for
+/// a 5xx answer. An upgrade's answer logs nothing: its socket's end line is
+/// its line.
+pub(crate) fn answered<B>(response: &axum::http::Response<B>, took: Duration, _: &tracing::Span) {
+    let status = response.status();
+    if status == StatusCode::SWITCHING_PROTOCOLS {
+        return;
+    }
+    let code = response.extensions().get::<ErrorCode>().map(tracing::field::display);
+    let duration_ms = u64::try_from(took.as_millis()).unwrap_or(u64::MAX);
+    if status.is_server_error() {
+        tracing::warn!(status = status.as_u16(), duration_ms, code, "a request was answered");
+    } else {
+        tracing::info!(status = status.as_u16(), duration_ms, code, "a request was answered");
+    }
 }

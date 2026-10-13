@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shownError } from '@demicodes/web-ui/infra/errors'
 import { onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import SetupForm, { type SetupPhase } from '@demicodes/web-ui/auth/SetupPage.vue'
@@ -62,7 +63,7 @@ async function submit(nickname: string, address: string, secret: string): Promis
       return
     }
     phase.value = {
-      error: error instanceof Error ? error.message : 'Setup failed.',
+      error: shownError(error),
     }
   } finally {
     if (request === controller) {
@@ -85,8 +86,10 @@ async function addFirstPasskey(): Promise<void> {
       phase.value = { passkey: {} }
       return
     case 'wrongPassword':
+      phase.value = { passkey: { error: { message: outcome.message, requestId: null } } }
+      return
     case 'failed':
-      phase.value = { passkey: { error: outcome.message } }
+      phase.value = { passkey: { error: outcome } }
       return
   }
 }

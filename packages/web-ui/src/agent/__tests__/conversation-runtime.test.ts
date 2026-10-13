@@ -80,7 +80,7 @@ for (const failure of ['none', 'before-confirmation', 'before-reconciliation'] a
       version: { epoch: 'epoch', revision: 1 },
       blocks: failure === 'before-reconciliation' ? [] : [userBlock('target', 'old-turn', 'old')],
     })
-    current.lastError = failure === 'before-reconciliation' ? 'generation failed' : 'old turn failed'
+    current.lastError = { message: failure === 'before-reconciliation' ? 'generation failed' : 'old turn failed', requestId: null }
     const pending = runtime.editAndSend({
       operationId: 'edit', targetBlockId: 'target', version: { epoch: 'epoch', revision: 1 },
       content: [{ type: 'text', text: 'new' }],
@@ -95,7 +95,7 @@ for (const failure of ['none', 'before-confirmation', 'before-reconciliation'] a
       if (failure === 'none') {
         expect(current.lastError).toBeNull()
       } else {
-        expect(current.lastError).toBe('generation failed')
+        expect(current.lastError).toEqual({ message: 'generation failed', requestId: null })
       }
     } finally {
       runtime.dispose()
@@ -414,7 +414,7 @@ test('a failure the session reported is over once another tab starts the next ac
     h.receive({ type: 'phase', phase: 'running' })
     h.receive({ type: 'error', message: 'The provider failed', code: 'provider_error' })
     h.receive({ type: 'phase', phase: 'idle' })
-    expect(current.lastError).toBe('The provider failed')
+    expect(current.lastError).toEqual({ message: 'The provider failed', requestId: null })
     // Another tab sends: this tab hears only the session start the next action.
     h.receive({ type: 'phase', phase: 'running' })
     expect(current.lastError).toBeNull()
@@ -657,12 +657,13 @@ test('a session that refuses to open is a failure told once', async () => {
     state: current,
     connect: async () => {
       connects += 1
-      return clientHarness({ type: 'error', message: refusal, code: 'model_not_selected' }).client
+      return clientHarness({ type: 'error', message: refusal, code: 'model_not_selected', requestId: 'req_socket0000000001' }).client
     },
   })
   await expect(runtime.connect()).rejects.toThrow(refusal)
   expect(current.load).toBe('failed')
-  expect(current.lastError).toBe(refusal)
+  // The refusal names the socket's request, which the page shows with it.
+  expect(current.lastError).toEqual({ message: refusal, requestId: 'req_socket0000000001' })
   expect(connects).toBe(1)
   runtime.dispose()
 })

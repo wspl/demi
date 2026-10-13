@@ -77,11 +77,11 @@ beforeEach(() => {
     }
     if (path === '/api/plugins/skills/calls/fetch_source') {
       // The backend's own answer, though its status is one a proxy also gives.
-      return Response.json({ code: 'catalog_unavailable', message: 'The source could not be fetched' }, { status: 503 })
+      return Response.json({ requestId: 'req_test000000000001', code: 'catalog_unavailable', message: 'The source could not be fetched' }, { status: 503 })
     }
     if (path === '/api/plugins/skills/calls/check_source') {
       // As over HTTP/2, whose answers carry no reason phrase.
-      return Response.json({ code: 'plugin_failed', message: 'The plugin failed' }, { status: 500 })
+      return Response.json({ requestId: 'req_test000000000001', code: 'plugin_failed', message: 'The plugin failed' }, { status: 500 })
     }
     if (path === '/api/plugins/skills/calls/list_sources') {
       // A proxy's page in place of the backend's JSON.
@@ -89,7 +89,7 @@ beforeEach(() => {
     }
     if (path === '/api/plugins/skills/calls/remove_source') {
       return Response.json(
-        { code: 'plugin_refused', reason: 'source_not_found', message: 'No skill source "src_2"' },
+        { requestId: 'req_test000000000001', code: 'plugin_refused', reason: 'source_not_found', message: 'No skill source "src_2"' },
         { status: 409, statusText: 'Conflict' },
       )
     }

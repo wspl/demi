@@ -31,6 +31,8 @@ export interface Toast {
   message?: SentenceText
   tone: ToastTone
   action?: ToastAction
+  /** The request a failure came from, which the toast names under its message. */
+  requestId?: string | null
 }
 
 /** How long a toast that is not a failure stays while the pointer is not over the toasts. */
@@ -70,6 +72,7 @@ export function showToast(input: {
   message?: SentenceText
   tone: ToastTone
   action?: ToastAction
+  requestId?: string | null
 }): string {
   const id = createId()
   toasts.push({
@@ -78,6 +81,7 @@ export function showToast(input: {
     message: input.message,
     tone: input.tone,
     action: input.action,
+    requestId: input.requestId ?? null,
   })
   if (input.tone !== 'danger') {
     const durationMs = input.action ? ACTION_TOAST_DURATION_MS : TOAST_DURATION_MS
@@ -101,6 +105,17 @@ export function updateToast(id: string, input: { title: HeadlineText; message?: 
     toast.title = input.title
     toast.message = input.message
     toast.action = input.action
+  }
+}
+
+/**
+ * Names the request a toast still shown is about, as once the report of the
+ * page's own failure is in. A toast closed meanwhile stays closed.
+ */
+export function showToastRequestId(id: string, requestId: string): void {
+  const toast = toasts.find((candidate) => candidate.id === id)
+  if (toast) {
+    toast.requestId = requestId
   }
 }
 

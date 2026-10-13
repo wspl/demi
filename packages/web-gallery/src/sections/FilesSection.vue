@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { requestFailure } from '../fixtures/request-failures'
+import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import FileBrowser from '@demicodes/web-ui/files/FileBrowser.vue'
@@ -119,7 +121,7 @@ const workspaceProjects = ref<WorkspaceProject[]>([
     path: '/srv/renderfarm'
   },
 ])
-const workspaceMessage = ref('')
+const workspaceMessage = ref<ShownError | null>(null)
 /** The kind and device chosen last, which the product keeps as a preference. */
 const workspaceLastHost = ref<WorkspaceHostChoice>()
 const workspaceKey = ref(0)
@@ -149,10 +151,10 @@ function createWorkspace(draft: WorkspaceDraft) {
     ? draft.name
     : baseName(draft.path) || 'Workspace'
   if (workspaceProjects.value.some((project) => project.name === name)) {
-    workspaceMessage.value = `A project called ${name} already exists.`
+    workspaceMessage.value = requestFailure(`A project called ${name} already exists.`)
     return
   }
-  workspaceMessage.value = ''
+  workspaceMessage.value = null
   const host = draft.kind === 'cloud'
     ? 'Cloud'
     : workspaceDevices.value.find((device) => device.id === draft.deviceId)?.name ??

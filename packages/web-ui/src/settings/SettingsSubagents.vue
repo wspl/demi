@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shownError, type ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import { TriangleAlert } from '@lucide/vue'
 import type { ContextLimitChange } from '../agent/context-limit'
@@ -76,7 +77,7 @@ interface Editor {
   id: string | null
   draft: SettingsSubagentDraft
   open: boolean
-  status: { kind: 'idle' | 'saving' } | { kind: 'failed'; message: string }
+  status: { kind: 'idle' | 'saving' } | ({ kind: 'failed' } & ShownError)
 }
 
 const editor = ref<Editor | null>(null)
@@ -120,7 +121,7 @@ function open(profile: SettingsSubagentProfile | null): void {
 }
 
 function failed(error: unknown): Editor['status'] {
-  return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+  return { kind: 'failed', ...shownError(error) }
 }
 
 async function save(draft: SettingsSubagentDraft): Promise<void> {
@@ -274,7 +275,7 @@ const empty = computed(() => props.profiles.length === 0)
       :models="models"
       :catalog-models="catalogModels"
       :pending="editor.status.kind === 'saving'"
-      :error="editor.status.kind === 'failed' ? editor.status.message : null"
+      :error="editor.status.kind === 'failed' ? editor.status : null"
       @close="editor.open = false"
       @save="save"
       @delete="deleteOpen = true"

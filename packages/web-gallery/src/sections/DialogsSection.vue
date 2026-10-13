@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { requestFailure } from '../fixtures/request-failures'
+import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import { ref } from 'vue'
 import { countOf } from '@demicodes/utils'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -152,7 +154,7 @@ const claudePhases: { variant: string; phase: ProviderLoginPhase }[] = [
   { variant: 'Claude Code · done', phase: { kind: 'done', account: 'zan@example.com · max', active: true } },
   {
     variant: 'Claude Code · failed',
-    phase: { kind: 'failed', message: 'Login failed: the authorization code has expired.' },
+    phase: { kind: 'failed', ...requestFailure('Login failed: the authorization code has expired.') },
   },
 ]
 const codexPhases: { variant: string; phase: ProviderLoginPhase }[] = [
@@ -207,7 +209,7 @@ const modelEditors: {
   pending: boolean
   /** Whether the dialog searches models.dev as the product's does. */
   search?: boolean
-  error?: string
+  error?: ShownError
 }[] = [
   { variant: 'view', mode: 'view', model, pending: false },
   { variant: 'add · empty', mode: 'create', model: emptyModel, pending: false, search: true },
@@ -219,7 +221,7 @@ const modelEditors: {
     model: matchedModel,
     pending: false,
     search: true,
-    error: 'The model gemini-3.8-flash is already in Google’s list.',
+    error: requestFailure('The model gemini-3.8-flash is already in Google’s list.'),
   },
   { variant: 'edit', mode: 'edit', model, pending: false },
   { variant: 'edit · saving', mode: 'edit', model, pending: true },
@@ -278,7 +280,7 @@ const resetPhases: {
   variant: string
   phase: CloudState['phase']
   submitted: boolean
-  error: string | null
+  error: ShownError | null
   busy: boolean
 }[] = [
   { variant: 'confirm', phase: null, submitted: false, error: null, busy: false },
@@ -289,7 +291,8 @@ const resetPhases: {
     variant: 'failed',
     phase: 'failed',
     submitted: true,
-    error: 'The system image could not be fetched. Your home files remain saved.',
+    // The Cloud's own record of the failure, which no request answered.
+    error: { message: 'The system image could not be fetched. Your home files remain saved.', requestId: null },
     busy: false,
   },
 ]

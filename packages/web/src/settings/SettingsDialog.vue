@@ -17,7 +17,7 @@ import { PageScope, settingsPage, withPluginSections } from '@demicodes/web-ui/p
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import { reportError, shownError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   emailChangeStartedSchema,
@@ -198,7 +198,7 @@ async function submitEmail(email: string, password: string): Promise<void> {
       emailPhase.value = {
         ...previous,
         busy: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: shownError(error),
       }
     }
   } finally {
@@ -261,7 +261,7 @@ async function verifyEmail(code: string): Promise<void> {
       emailPhase.value = {
         ...previous,
         busy: false,
-        error: error instanceof Error ? error.message : String(error),
+        error: shownError(error),
       }
     }
   } finally {
@@ -311,7 +311,7 @@ async function submitPassword(current: string, next: string): Promise<void> {
       }
       passwordPhase.value = {
         kind: 'form',
-        error: error instanceof Error ? error.message : String(error),
+        error: shownError(error),
       }
     }
   } finally {

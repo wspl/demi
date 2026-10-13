@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RequestIdLine from './RequestIdLine.vue'
 import { computed, type Component } from 'vue'
 import { CircleX } from '@lucide/vue'
 import Button from './Button.vue'
@@ -28,6 +29,8 @@ const props = withDefaults(
     label: SentenceText
     /** The reason under a failure's label, in the caller's words (an upstream message). */
     detail?: string | null
+    /** The request the failure came from, named under the reason. */
+    requestId?: string | null
     /** What the loading pane says while a Retry runs. */
     loadingLabel?: SentenceText
     /** A note's single action; omitted notes offer nothing. */
@@ -43,6 +46,7 @@ const props = withDefaults(
   }>(),
   {
     detail: null,
+    requestId: null,
     loadingLabel: 'Loading…',
   },
 )
@@ -78,6 +82,7 @@ function retry(): void {
     >
       {{ detail }}
     </p>
+    <RequestIdLine v-if="requestId && shown === 'failed'" class="text-fg-subtle" :request-id="requestId" />
     <Button v-if="shown === 'failed' && onRetry" size="sm" class="mt-1" @click="retry">Retry</Button>
     <Button v-else-if="shown === 'note' && action" size="sm" class="mt-1" @click="$emit('action')">{{
       action

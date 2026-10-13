@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requestFailure } from '../fixtures/request-failures'
 import { demoInstallCommands, demoDeviceReport } from '../fixtures/device-installation'
 import { DEMO_RUNNER_RELEASE, galleryDevices, useGalleryDevices } from '../fixtures/devices'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
@@ -204,7 +205,7 @@ function submitEmail(email: string, password: string) {
   if (password === 'wrong') {
     emailPhase.value = {
       ...emailPhase.value,
-      error: 'That is not your current password.'
+      error: requestFailure('That is not your current password.')
     }
     return
   }
@@ -223,7 +224,7 @@ function verifyEmail(code: string) {
       emailPhase.value = {
         kind: 'verify',
         email,
-        error: 'That code is not right. Check the newest message.'
+        error: requestFailure('That code is not right. Check the newest message.')
       }
       return
     }
@@ -247,7 +248,7 @@ function submitPassword(current: string) {
     if (current === 'wrong') {
       passwordPhase.value = {
         kind: 'form',
-        error: 'That is not your current password.'
+        error: requestFailure('That is not your current password.')
       }
       return
     }
@@ -371,7 +372,7 @@ function resetShortcuts() {
     v-else-if="tab === 'devices'"
     :cloud="cloud"
     :reset-pending="reset.status === 'pending'"
-    :reset-error="reset.status === 'failed' ? reset.message : null"
+    :reset-error="reset.status === 'failed' ? requestFailure(reset.message) : null"
     @reset-cloud="resetCloud"
     :devices="devices.devices.value"
     :shown="devices.shown.value"

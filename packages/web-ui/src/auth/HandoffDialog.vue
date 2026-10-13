@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { CircleCheck } from '@lucide/vue'
 import QRCode from 'qrcode'
@@ -41,14 +42,14 @@ type Step =
   | { kind: 'starting' }
   | { kind: 'verify' }
   | { kind: 'code'; code: HandoffCodeView; svg: string }
-  | { kind: 'failed'; message: string }
+  | ({ kind: 'failed' } & ShownError)
 
 const step = ref<Step>({ kind: 'starting' })
 const password = ref('')
 /** What is wrong with the password, said under it; null when nothing is. */
 const passwordProblem = ref<string | null>(null)
 /** A failure of the confirmation, said under its fields. */
-const verifyError = ref<string | null>(null)
+const verifyError = ref<ShownError | null>(null)
 const busy = ref<'password' | 'passkey' | null>(null)
 const now = ref(Date.now())
 let ticking: ReturnType<typeof setInterval> | null = null
@@ -96,7 +97,7 @@ async function start(): Promise<void> {
       step.value = { kind: 'verify' }
       break
     case 'failed':
-      step.value = { kind: 'failed', message: started.message }
+      step.value = started
       break
   }
 }
@@ -131,7 +132,7 @@ async function verified(outcome: HandoffVerifyOutcome): Promise<void> {
     case 'dismissed':
       break
     case 'failed':
-      verifyError.value = outcome.message
+      verifyError.value = outcome
       break
   }
 }
@@ -232,7 +233,7 @@ watch(handedOffTo, (name) => {
           </SettingsRow>
           <input v-bind="hiddenUsername(email)" />
         </form>
-        <InlineError v-if="verifyError" :message="verifyError" />
+        <InlineError v-if="verifyError" :message="verifyError.message" :request-id="verifyError.requestId" />
       </template>
       <div v-else-if="step.kind === 'code'" class="flex flex-col items-center gap-3 pb-1">
         <!-- The QR library's own SVG of the code: paths only, never the URL's text. -->
@@ -257,7 +258,7 @@ watch(handedOffTo, (name) => {
           <p v-else class="select-none text-center text-[13px] leading-5 text-fg-muted">This code has expired.</p>
         </template>
       </div>
-      <InlineError v-else :message="step.message" />
+      <InlineError v-else :message="step.message" :request-id="step.requestId" />
     </div>
     <template #footer>
       <template v-if="step.kind === 'verify'">

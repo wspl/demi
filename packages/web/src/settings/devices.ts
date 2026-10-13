@@ -3,7 +3,7 @@ import { useSession } from '../auth/session'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { SerialQueue } from '@demicodes/utils'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import { reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
 import { cloudDeviceIn } from '../state/hosts'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
@@ -27,10 +27,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
   const writes = new SerialQueue()
   const reset = ref<
     | { status: 'idle' | 'pending' }
-    | {
-        status: 'failed'
-        message: string
-      }
+    | ({ status: 'failed' } & ShownError)
   >({ status: 'idle' })
   // The product state carries the Cloud's status; there is none only before
   // the channel's first snapshot arrives. Its device, and what its runner
@@ -153,7 +150,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         }
         reset.value = {
           status: 'failed',
-          message: refused ? error.message : 'The reset could not start. Check your connection and try again.',
+          ...shownError(error, refused ? error.message : 'The reset could not start. Check your connection and try again.'),
         }
       }
     }

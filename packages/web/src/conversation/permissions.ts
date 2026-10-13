@@ -1,6 +1,6 @@
 import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import { reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import {
   afterDecision,
   type CredentialAnswer,
@@ -22,7 +22,7 @@ export interface PermissionsState {
   /** A decision of this page is on its way. */
   deciding: boolean
   /** What the backend refused the last credential answer for, shown in the card; null while none was. */
-  error: string | null
+  error: ShownError | null
 }
 
 function category(answer: PermissionCategory): PermissionRequestView['categories'][number] {
@@ -182,7 +182,7 @@ export const usePermissions = defineStore('permissions', () => {
         }
         // The values do not suit the request: said under the form, which keeps what was typed.
         if (error.code === 'invalid_answer' || error.code === 'credential_fields_differ') {
-          state.error = error.message
+          state.error = shownError(error)
           return
         }
       }

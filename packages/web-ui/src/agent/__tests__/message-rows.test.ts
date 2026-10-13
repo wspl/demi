@@ -348,7 +348,7 @@ const transitions: { name: string; blocks: Block[]; phase?: MessageRowsSource['p
     from: 'failed',
     changes: [
       ['failed', (state) => {
-        state.failure = { label: 'The conversation could not be opened.', retry: true }
+        state.failure = { label: 'The conversation could not be opened.', retry: true, requestId: null }
         state.load = 'failed'
       }],
       ['opened again', (state) => {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { ref, watch } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
@@ -32,7 +33,7 @@ const emit = defineEmits<{
 const password = ref('')
 /** What is wrong with the password, said under it; null when nothing is. */
 const passwordProblem = ref<string | null>(null)
-const error = ref<string | null>(null)
+const error = ref<ShownError | null>(null)
 const busy = ref(false)
 
 watch(
@@ -71,7 +72,7 @@ async function submit(): Promise<void> {
       case 'dismissed':
         break
       case 'failed':
-        error.value = outcome.message
+        error.value = outcome
         break
     }
   } finally {
@@ -118,7 +119,7 @@ async function submit(): Promise<void> {
         <!-- Last in the card, so the card's row dividers skip it; it is out of the flow. -->
         <input v-bind="hiddenUsername(email)" />
       </form>
-      <InlineError v-if="error" :message="error" />
+      <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
     </div>
     <template #footer>
       <Button :disabled="busy" @click="emit('close')">Cancel</Button>

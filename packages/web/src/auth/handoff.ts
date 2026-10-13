@@ -1,4 +1,5 @@
 import { computed } from 'vue'
+import { shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import type { HandoffHost, HandoffStart, HandoffVerifyOutcome } from '@demicodes/web-ui/auth/handoff'
@@ -15,11 +16,6 @@ import {
 } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
 import { browserHasPasskeys, signWithPasskey } from './webauthn'
-
-/** A failure as the dialog says it. */
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
 
 /**
  * A code that opens `to`, the page the user is on, on a phone
@@ -39,7 +35,7 @@ export async function makeHandoffCode(to: string): Promise<HandoffStart> {
     if (error instanceof ApiError && error.code === 'verification_required') {
       return { kind: 'verify' }
     }
-    return { kind: 'failed', message: message(error) }
+    return { kind: 'failed', ...shownError(error) }
   }
 }
 
@@ -52,7 +48,7 @@ export async function verifyWithPassword(password: string): Promise<HandoffVerif
     if (error instanceof ApiError && error.code === 'invalid_credentials') {
       return { kind: 'wrongPassword', message: error.message }
     }
-    return { kind: 'failed', message: message(error) }
+    return { kind: 'failed', ...shownError(error) }
   }
 }
 
@@ -73,7 +69,7 @@ export async function verifyWithPasskey(): Promise<HandoffVerifyOutcome> {
     })
     return { kind: 'verified' }
   } catch (error) {
-    return { kind: 'failed', message: message(error) }
+    return { kind: 'failed', ...shownError(error) }
   }
 }
 
@@ -85,7 +81,7 @@ export async function verifyWithPasskey(): Promise<HandoffVerifyOutcome> {
 export type HandoffSpent =
   | { kind: 'handedOff'; to: string }
   | { kind: 'expired' }
-  | { kind: 'failed'; message: string }
+  | ({ kind: 'failed' } & ShownError)
 
 /** Spends the code a phone's page read from its address (`web-api.md` § Account API). */
 export async function spendHandoffCode(code: string): Promise<HandoffSpent> {
@@ -99,7 +95,7 @@ export async function spendHandoffCode(code: string): Promise<HandoffSpent> {
     if (error instanceof ApiError && error.code === 'handoff_expired') {
       return { kind: 'expired' }
     }
-    return { kind: 'failed', message: message(error) }
+    return { kind: 'failed', ...shownError(error) }
   }
 }
 
