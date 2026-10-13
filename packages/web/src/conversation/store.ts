@@ -1078,7 +1078,7 @@ export const useConversations = defineStore('conversations', () => {
       }
       // Share global model discovery, but render history before it completes.
       // Model load errors belong to the composer, not transcript restoration.
-      const modelsLoaded = product.loadModels().catch(() => {})
+      void product.loadModels().catch(() => {})
       let hostsRead: Promise<void> = Promise.resolve()
       if (madeHere.delete(conversation.id)) {
         // Its record is what the page created: no transcript yet, the hosts
@@ -1096,7 +1096,11 @@ export const useConversations = defineStore('conversations', () => {
           conversation.load = 'ready'
         }
       }
-      await modelsLoaded
+      // The session starts with a model of the catalog that answers for the
+      // providers as they are now: a change of them while the conversation
+      // opens, which empties the catalog or replaces its load, is waited
+      // for, so a message sent meanwhile goes once it has answered.
+      await product.catalogAnswered(signal)
       signal.throwIfAborted()
       const made = early
       early = null
@@ -1284,8 +1288,12 @@ export const useConversations = defineStore('conversations', () => {
     }
     const runtime = cache.get(conversation.id)?.runtime
     if (!runtime) {
+      // A model list that failed is why no model could be picked
+      // (`web-application.md` § Model discovery).
+      const failure = product.catalogFailure
       throw new Error(
-        conversation.lastError ?? 'No available model for this conversation.',
+        conversation.lastError ??
+          (failure === null ? 'No available model for this conversation.' : `Couldn’t load the models: ${failure}`),
       )
     }
     return runtime

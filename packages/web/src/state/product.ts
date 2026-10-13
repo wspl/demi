@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { browserOnline, openSocket, reconnectNow, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { connectionProblem } from '@demicodes/web-ui/transport/connection'
+import { asError } from '@demicodes/utils'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse, waitForBackendWith } from '../api/client'
 import {
   modelCatalogSchema,
@@ -240,13 +241,15 @@ export const useProduct = defineStore('product', () => {
   const load = ref<'loading' | 'ready' | 'failed'>('loading')
   const modelSnapshot = ref<{ key: string; providers: CatalogProvider[]; checkedAt: number } | null>(null)
   const vendors = ref<VendorCatalog | null>(null)
-  const modelError = ref<{ key: string; retryAt: number } | null>(null)
+  const modelError = ref<{ key: string; retryAt: number; message: string } | null>(null)
   const vendorError = ref<string | null>(null)
   const vendorLoad = computed(() =>
     vendors.value !== null ? 'ready' : vendorError.value ? 'failed' : 'loading',
   )
   const catalogLoad = computed(() => modelSnapshot.value?.key === catalogKey.value
     ? 'ready' : modelError.value?.key === catalogKey.value ? 'failed' : 'loading')
+  /** Why the model list failed to load for the providers the page holds; null unless it failed. */
+  const catalogFailure = computed(() => catalogLoad.value === 'failed' ? modelError.value?.message ?? null : null)
   const activeConversationId = ref<string | null>(null)
   /**
    * The backend closed the channel because it shuts down, and has not
@@ -544,6 +547,21 @@ export const useProduct = defineStore('product', () => {
    * rejects when `signal` aborts first.
    */
   function until(check: (state: ProductState) => boolean, signal: AbortSignal): Promise<void> {
+    return holds(() => snapshot.value !== null && check(snapshot.value), signal)
+  }
+
+  /**
+   * Resolves once the model catalog has answered for the providers the page
+   * holds, loaded or failed. A change of the providers meanwhile loads the
+   * catalog again (`providersChanged`), and this waits for that load, not
+   * the one it replaced. Rejects when `signal` aborts first.
+   */
+  function catalogAnswered(signal: AbortSignal): Promise<void> {
+    return holds(() => catalogLoad.value !== 'loading', signal)
+  }
+
+  /** Resolves once `condition` holds, as the state it reads changes; rejects when `signal` aborts first. */
+  function holds(condition: () => boolean, signal: AbortSignal): Promise<void> {
     return new Promise((resolve, reject) => {
       if (signal.aborted) {
         reject(signal.reason)
@@ -559,12 +577,12 @@ export const useProduct = defineStore('product', () => {
         signal.removeEventListener('abort', aborted)
         resolve()
       }
-      if (snapshot.value && check(snapshot.value)) {
+      if (condition()) {
         found()
         return
       }
-      stop = watch(snapshot, (state) => {
-        if (state && check(state)) {
+      stop = watch(condition, (held) => {
+        if (held) {
           found()
         }
       })
@@ -648,6 +666,7 @@ export const useProduct = defineStore('product', () => {
           modelError.value = {
             key,
             retryAt: Date.now() + 60_000,
+            message: asError(cause).message,
           }
         }
         throw cause
@@ -769,11 +788,13 @@ export const useProduct = defineStore('product', () => {
     vendors,
     vendorLoad,
     catalogLoad,
+    catalogFailure,
     activeConversationId,
     sent,
     answered,
     change,
     until,
+    catalogAnswered,
     connecting,
     loadModels,
     reloadModels,
