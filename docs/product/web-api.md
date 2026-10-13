@@ -607,6 +607,39 @@ archived conversation reads its draft and refuses the other operations with
 lasts as long as its conversation, and a Fork starts with an empty one
 ([Conversation Fork](../agent/conversation-fork.md)).
 
+## Messages saved for later
+
+A conversation keeps the messages its user saved for later
+([Saved for later](product.md#saved-for-later)), newest first. A saved
+message is `{ id, text, files, savedAt }`, its `text` and `files` as a
+draft's are ([Conversation drafts](#conversation-drafts)).
+
+- `GET /api/conversations/:id/saved` answers `{ revision, messages }`.
+- `POST /api/conversations/:id/saved` takes `{ text, files }`, as a draft's
+  `PUT` names them, saves them as a message for later and empties the
+  conversation's draft in the same transaction, so the message is never in
+  both places; it answers `{ message }` with 201. A text without exactly
+  one mark per file answers 400 `invalid_body`, a message over 256 KiB 413
+  `too_large`, and a conversation with 200 saved messages 409
+  `saved_full`.
+- `POST /api/conversations/:id/saved/:messageId/edit` moves the message into
+  the conversation's draft, and the draft's text and files, when it holds
+  any, into a message saved for later, in one transaction, and answers
+  `{ draft }`.
+- `DELETE /api/conversations/:id/saved/:messageId` removes one and answers
+  204; Undo saves it again with `POST`, its uploads kept as the composer's
+  are kept until saved ([Blob references](../backend/storage.md)).
+- Sending one is the `send_saved` frame on the conversation socket, `{ id,
+  delivery }` with `delivery` the composer's choice: the session sends it as
+  the composer would and removes it, in one step, so it is never both sent
+  and kept, nor sent twice ([Client frames](../agent/runtime.md#client-frames)).
+- An id the conversation has no saved message of answers 404
+  `saved_not_found`.
+
+The conversation's summary carries `saved`, the count, and `savedRevision`,
+which every change raises; a page that shows the conversation reads the list
+again when the revision it holds is behind.
+
 ## Conversation permissions
 
 A conversation's [permission requests](../agent/permissions.md) reach a page

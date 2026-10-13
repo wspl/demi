@@ -1945,6 +1945,7 @@ open { from: 2999, edge: b_2999 } -> attach to the live tree
 | `send { messageId, content }` | Submit a message ([Input](#input)) | Transcript, phase and queue frames |
 | `edit_and_send { request }` | Replace a user message and its suffix ([Message editing](message-editing.md)) | `edit_result` at durable acceptance |
 | `steer { steerId, content }` | Add input to the running turn | `steer_result` |
+| `send_saved { id, delivery }` | Send a message saved for later as the composer would, `delivery` `message`, `steer` or `queue`, and remove it from the list in the same step ([Messages saved for later](../product/web-api.md#messages-saved-for-later)) | The frames of that delivery; `rejected` with `saved_not_found` when it is gone |
 | `cancel_pending_steer { steerId }` | Withdraw a pending steer | `remove_result`, after the `pending_steers` list |
 | `steer_now { steerId }` | Deliver a pending steer now ([Send now](#send-now)) | None; the transcript and the `pending_steers` list |
 | `dequeue_message { messageId }` | Remove a queued message | `remove_result`, after `queue` |
