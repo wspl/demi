@@ -9,6 +9,7 @@ import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { parseArgs } from 'node:util'
 import { HELP } from './demi/help'
+import { parseCallLimit } from './limit'
 import { replySchema, type Request } from './protocol'
 import { currentSlot, slotPaths } from './slot'
 
@@ -101,19 +102,13 @@ function callerEnv(): Record<string, string> {
   return env
 }
 
-/** `--limit` in milliseconds: seconds, or minutes with an `m`. */
+/** `--limit` in milliseconds, before any server starts; a limit it refuses ends the call here. */
 function limitOf(text: string): number {
-  const limit = /^(\d+(?:\.\d+)?)(s|m)?$/.exec(text)
-  if (!limit) {
-    fail(`--limit takes seconds or minutes, such as 90 or 15m, not ${text}`)
+  try {
+    return parseCallLimit(text)
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error))
   }
-  const ms = Math.round(Number(limit[1]) * (limit[2] === 'm' ? 60_000 : 1_000))
-  // A timer fires at once for a delay beyond 2^31 - 1 ms, which would end
-  // the call as it starts with "ran into its time limit".
-  if (ms > 2 ** 31 - 1) {
-    fail(`--limit takes at most 24 days, not ${text}; it counts seconds, or minutes with an m`)
-  }
-  return ms
 }
 
 function fail(message: string): never {
