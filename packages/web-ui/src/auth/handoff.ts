@@ -1,6 +1,6 @@
 /**
- * Signing in on a phone by a QR code (`product.md` § User system): what the
- * dialog shows of a code, and what its host does for it.
+ * Handing off to a phone by a QR code (`product.md` § User system): what
+ * the dialog shows of a code, and what its host does for it.
  */
 
 /** A code as the dialog shows it: its id, the URL its QR code holds, and when it expires. */
@@ -43,8 +43,11 @@ export interface HandoffHost {
   verifyPassword: (password: string) => Promise<HandoffVerifyOutcome>
   /** Present when the account has a passkey and the server offers them. */
   verifyPasskey?: () => Promise<HandoffVerifyOutcome>
-  /** The browser the code `id` signed in, by its name, once one has; null until then. */
-  signedInWith: (id: string) => string | null
+  /**
+   * The browser the code `id` was handed off to, by its name, once one has
+   * spent it, in a new session or in its own; null until then.
+   */
+  handedOffTo: (id: string) => string | null
 }
 
 /** The time left until `deadline`, at `now`, both on the page's clock, as the dialog says it: `9:05`; null once it passed. */

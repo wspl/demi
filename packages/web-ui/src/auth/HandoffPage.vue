@@ -6,13 +6,13 @@ import InlineError from '../ui/InlineError.vue'
 
 /**
  * The page a phone's camera opens from a handoff code (`product.md` § User
- * system): it signs in while the host spends the code, then the host goes
- * on to the page the code opens. A code that expired or was used says so,
- * with Sign In, which the host opens the sign-in page for; another failure
- * says what failed.
+ * system): it says it opens the page while the host spends the code, then
+ * the host goes on to the page the code opens, signed in to its account.
+ * A code that expired or was used says so, with Sign In, which the host
+ * opens the sign-in page for; another failure says what failed.
  */
 export type HandoffPagePhase =
-  | { kind: 'signingIn' }
+  | { kind: 'opening' }
   | { kind: 'expired' }
   | { kind: 'failed'; message: string }
 
@@ -27,18 +27,18 @@ const emit = defineEmits<{
 
 <template>
   <AuthPage
-    v-if="phase.kind === 'signingIn'"
-    title="Signing In"
+    v-if="phase.kind === 'opening'"
+    title="Handing Off"
     message="Opening the page from your other device."
   >
     <div class="flex items-center gap-2 text-[13px] text-fg-muted" role="status">
       <IndeterminateSpinner />
-      Signing in…
+      Opening…
     </div>
   </AuthPage>
   <AuthPage
     v-else
-    title="Couldn’t Sign In"
+    title="Couldn’t Hand Off"
     :message="
       phase.kind === 'expired'
         ? 'This code has expired or was already used. Show a new code on your other device, or sign in here.'

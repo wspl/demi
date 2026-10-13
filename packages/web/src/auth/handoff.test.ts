@@ -76,7 +76,7 @@ test('the phone goes to the page the code opens, or learns the code expired', as
       [{ code: 'handoff_expired', message: 'This code has expired.' }, 401],
     ],
   })
-  expect(await spendHandoffCode('c0de')).toEqual({ kind: 'signedIn', to: '/chat/7f3a' })
+  expect(await spendHandoffCode('c0de')).toEqual({ kind: 'handedOff', to: '/chat/7f3a' })
   expect(await spendHandoffCode('c0de')).toEqual({ kind: 'expired' })
   expect(sent).toEqual([{ code: 'c0de' }, { code: 'c0de' }])
 })
@@ -94,10 +94,10 @@ test('the dialog learns of the phone from the session its code made', () => {
   product.start()
   channels.last().connect(productState({ sessions: [laptop] }))
   const host = useSessions().handoffHost(() => '/chat/7f3a')
-  expect(host.signedInWith('handoff-1')).toBeNull()
+  expect(host.handedOffTo('handoff-1')).toBeNull()
   const phone = { ...laptop, id: 'session-2', name: 'Safari on iPhone', current: false, handoffId: 'handoff-1' }
   channels.last().send({ type: 'sessions', sessions: [phone, laptop] })
-  expect(host.signedInWith('handoff-1')).toBe('Safari on iPhone')
+  expect(host.handedOffTo('handoff-1')).toBe('Safari on iPhone')
   expect(useSessions().sessions.map((session) => [session.name, session.current])).toEqual([
     ['Safari on iPhone', false],
     ['Safari on macOS', true],

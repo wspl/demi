@@ -6,7 +6,8 @@
 //! password or passkey in the last five minutes, its sign-in included,
 //! makes handoff codes, each
 //! 256 random bits, kept as their SHA-256 for ten minutes and spent once,
-//! which sign a phone in to the account as a session of its own.
+//! which open the account on a phone: in the phone's own session of the
+//! account when it has one, else in a new session.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -55,12 +56,31 @@ pub struct OpenedSession {
     pub expires_at: Timestamp,
 }
 
-/// A handoff code just spent: the phone's new session, its account, and the
+/// A handoff code just spent: the phone's session, its account, and the
 /// page it opens.
 pub struct HandedOff {
-    pub session: OpenedSession,
+    pub session: PhoneSession,
     pub user: UserId,
     pub to: ProductPath,
+}
+
+/// The session a handoff code opens its account in on the phone.
+pub enum PhoneSession {
+    /// The phone's own session of the account, which now carries the code.
+    Kept,
+    /// A new session, made by the code; `ended` is the session of another
+    /// account the phone held, which it replaces.
+    Opened {
+        session: OpenedSession,
+        ended: Option<EndedSession>,
+    },
+}
+
+/// A session that ended, by its account and its token's hash, whose pages'
+/// channels end with it.
+pub struct EndedSession {
+    pub user: UserId,
+    pub token: TokenHash,
 }
 
 /// How signing out another session went.
@@ -201,22 +221,48 @@ impl WebSessions {
         })
     }
 
-    /// Spends the handoff `code` and signs its account in from the browser
-    /// `user_agent` names; `None` when the code is unknown, expired or
-    /// spent.
+    /// Spends the handoff `code` from the browser `user_agent` names, whose
+    /// cookie holds the session token `current`, if any: a live session of
+    /// the code's account is kept and carries the code; any other is ended
+    /// and the account signed in anew. `None` when the code is unknown,
+    /// expired or spent.
     pub async fn spend_handoff(
         &self,
         code: &str,
+        current: Option<&str>,
         user_agent: Option<&str>,
     ) -> Result<Option<HandedOff>, StorageError> {
         let Some(spent) = self.control.spend_handoff_code(TokenHash::of(code)).await? else {
             return Ok(None);
         };
+        let mut ended = None;
+        if let Some(token) = current.map(TokenHash::of) {
+            match self.check(&token).await? {
+                Some(held) if held.user.id == spent.user => {
+                    self.control
+                        .record_handoff_on_web_session(token, spent.id)
+                        .await?;
+                    return Ok(Some(HandedOff {
+                        session: PhoneSession::Kept,
+                        user: spent.user,
+                        to: spent.to,
+                    }));
+                }
+                Some(held) => {
+                    self.control.close_web_session(token.clone()).await?;
+                    ended = Some(EndedSession {
+                        user: held.user.id,
+                        token,
+                    });
+                }
+                None => {}
+            }
+        }
         let session = self
             .open_made_by(spent.user.clone(), user_agent, Some(spent.id))
             .await?;
         Ok(Some(HandedOff {
-            session,
+            session: PhoneSession::Opened { session, ended },
             user: spent.user,
             to: spent.to,
         }))

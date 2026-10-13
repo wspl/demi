@@ -2,26 +2,26 @@ import { ref } from 'vue'
 import type { HandoffCodeView, HandoffHost } from '@demicodes/web-ui/auth/handoff'
 import { productWould } from '../product-would'
 
-/** How a specimen's dialog opens: on the confirmation, on a code, on an expired code, or with the phone signed in. */
-export type HandoffSpecimenStart = 'verify' | 'code' | 'expired' | 'signedIn'
+/** How a specimen's dialog opens: on the confirmation, on a code, on an expired code, or handed off to the phone. */
+export type HandoffSpecimenStart = 'verify' | 'code' | 'expired' | 'handedOff'
 
-/** The name the stand-in phone signs in with. */
+/** The browser of the stand-in phone the code is handed off to. */
 const PHONE = 'Safari on iPhone'
 
 /**
- * A host of Sign In on Your Phone as the product's would answer, for one
+ * A host of Hand Off to Your Phone as the product's would answer, for one
  * specimen: the password `wrong` is refused, any other confirms, as Use
  * Passkey does after the browser's prompt would have been answered; a code
  * lasts ten minutes, and the confirmation five, so asking again within them
- * shows a code at once. `phoneSignsIn` stands in for the phone's camera.
+ * shows a code at once. `phoneScans` stands in for the phone's camera.
  */
-export function galleryHandoff(start: HandoffSpecimenStart): { host: HandoffHost; phoneSignsIn: () => void } {
+export function galleryHandoff(start: HandoffSpecimenStart): { host: HandoffHost; phoneScans: () => void } {
   /** When the specimen's confirmation holds until; the pinned code states start confirmed. */
   let verifiedUntil = start === 'verify' ? 0 : Date.now() + 5 * 60_000
   let first = true
   let codes = 0
-  const signedIn = ref<string | null>(null)
-  const signedInCode = ref<string | null>(null)
+  const handedOff = ref<string | null>(null)
+  const handedOffCode = ref<string | null>(null)
 
   function code(lifetimeMs: number): HandoffCodeView {
     codes += 1
@@ -45,10 +45,10 @@ export function galleryHandoff(start: HandoffSpecimenStart): { host: HandoffHost
         return { kind: 'code', code: code(-1000) }
       }
       const made = code(10 * 60_000)
-      signedIn.value = null
-      if (opening && start === 'signedIn') {
-        signedInCode.value = made.id
-        signedIn.value = PHONE
+      handedOff.value = null
+      if (opening && start === 'handedOff') {
+        handedOffCode.value = made.id
+        handedOff.value = PHONE
       }
       return { kind: 'code', code: made }
     },
@@ -66,13 +66,13 @@ export function galleryHandoff(start: HandoffSpecimenStart): { host: HandoffHost
       verifiedUntil = Date.now() + 5 * 60_000
       return { kind: 'verified' }
     },
-    signedInWith: (id) => (signedInCode.value === id ? signedIn.value : null),
+    handedOffTo: (id) => (handedOffCode.value === id ? handedOff.value : null),
   }
 
-  function phoneSignsIn(): void {
-    signedInCode.value = `handoff-${codes}`
-    signedIn.value = PHONE
+  function phoneScans(): void {
+    handedOffCode.value = `handoff-${codes}`
+    handedOff.value = PHONE
   }
 
-  return { host, phoneSignsIn }
+  return { host, phoneScans }
 }
