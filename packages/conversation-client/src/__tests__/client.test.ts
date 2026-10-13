@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { ClientFrame } from '@demicodes/protocol'
-import { EditRejectedError, SessionError } from '../client'
+import { ActionOutlivedError, EditRejectedError, SessionError } from '../client'
 import { createdAt, harness, pendingSteer, settle, text, user } from './harness'
 
 function sentOfType<Type extends ClientFrame['type']>(sent: ClientFrame[], type: Type): Extract<ClientFrame, { type: Type }> {
@@ -117,6 +117,22 @@ for (const ending of ['rejected', 'disconnected'] as const) {
     expect(error instanceof EditRejectedError).toBe(ending === 'rejected')
   })
 }
+
+// A connection that ends while the session runs an action it took leaves the
+// wait for the action's end, not a refusal; one the session has not answered
+// yet stays uncertain, and fails with the connection's own error.
+test('a connection that ends fails the wait of an action the session took apart from one it has not answered', async () => {
+  const h = harness()
+  const answered = h.client.resume().catch((error: unknown) => error)
+  h.receive({ type: 'phase', phase: 'running' })
+  const unanswered = h.client.compact().catch((error: unknown) => error)
+  const lost = new Error('The agent socket went silent')
+  h.client.disconnect(lost)
+  const outlived = await answered
+  expect(outlived).toBeInstanceOf(ActionOutlivedError)
+  expect((outlived as ActionOutlivedError).cause).toBe(lost)
+  expect(await unanswered).toBe(lost)
+})
 
 test('a queued send ends when the next message runs or the session is idle, and one leaving the queue ends without running', async () => {
   const h = harness()
