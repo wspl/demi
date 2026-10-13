@@ -16,7 +16,7 @@ import HelpPopover from '@demicodes/web-ui/ui/HelpPopover.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import type { WindowRect } from '@demicodes/web-ui/ui/floating-window'
 import { KEEPS_WINDOWS } from '@demicodes/web-ui/ui/window-stack'
-import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
+import { useMediaViewer, type ShownMedium } from '@demicodes/web-ui/files/media-viewer'
 import { galleryBlobSize, galleryBlobUrl, galleryBlobs } from '../fixtures/blobs'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import DropdownTrigger from '@demicodes/web-ui/ui/DropdownTrigger.vue'
@@ -142,13 +142,24 @@ function showPreviewed(picture: (typeof previewPictures)[number]): void {
 }
 
 function showPicture(picture: (typeof viewerPictures)[number]): void {
+  mediaViewer.show(shownPicture(picture))
+}
+
+function shownPicture(picture: (typeof viewerPictures)[number]): ShownMedium {
   const size = galleryBlobSize(picture.blob)
-  mediaViewer.show({
+  return {
     kind: 'image',
     src: galleryBlobUrl(picture.blob, 'image/png'),
     name: picture.name,
     size: size.width && size.height ? { width: size.width, height: size.height } : null,
-  })
+  }
+}
+
+/** The first three pictures as a transcript's, which the arrow keys and, on a phone, a swipe step through. */
+const transcriptViewerPictures = viewerPictures.slice(0, 3).map(shownPicture)
+
+function showTranscriptPictures(): void {
+  mediaViewer.show(transcriptViewerPictures[0]!, () => transcriptViewerPictures)
 }
 const inlineDialogOpen = ref(true)
 // Layers: a dialog, the model menu opened from it, and that menu's submenu, all pinned open.
@@ -1254,11 +1265,14 @@ function openSharedMenu(row: string, event: MouseEvent): void {
 
       <GallerySection
         title="Media Viewer"
-        note="The page’s one viewer, the floating window above showing a picture (file-previews.md § The media viewer). The window opens at the picture’s actual size in device pixels: on a display of two device pixels per page pixel a 2880 × 1800 screenshot is 1440 × 900 page pixels large, and a window opens that large plus its title bar when the page allows, otherwise scaled down to fit 60% of the page’s width and 70% of its height; a picture smaller than 320 × 240 sits centred in a window of that size, never enlarged. The first picture opens centred over the conversation; another opened while the window shows resizes it about its centre; a size you drag lasts while that picture shows. The title bar gives the pixel size and the zoom, 480 × 300 · 100%, where 100% is the actual size. The wheel, and a pinch on a trackpad, zoom it about the pointer, so the spot under it stays under it, from the fitted size, or the actual size when smaller, up to 800%. While it is larger than the window, a drag moves it with the grab hand, and it never leaves an empty band on a side that still has pixels. A click without a drag toggles the fitted and the actual size about the clicked spot. Resizing the window keeps a fitted picture fitted and a zoomed one at its zoom. The buttons are the viewer’s controls, so a press on one does not close it, while a press anywhere else outside the window does."
+        note="The page’s one viewer, the floating window above showing a picture (file-previews.md § The media viewer). The window opens at the picture’s actual size in device pixels: on a display of two device pixels per page pixel a 2880 × 1800 screenshot is 1440 × 900 page pixels large, and a window opens that large plus its title bar when the page allows, otherwise scaled down to fit 60% of the page’s width and 70% of its height; a picture smaller than 320 × 240 sits centred in a window of that size, never enlarged. The first picture opens centred over the conversation; another opened while the window shows resizes it about its centre; a size you drag lasts while that picture shows. The title bar gives the pixel size and the zoom, 480 × 300 · 100%, where 100% is the actual size. The wheel, and a pinch on a trackpad, zoom it about the pointer, so the spot under it stays under it, from the fitted size, or the actual size when smaller, up to 800%. While it is larger than the window, a drag moves it with the grab hand, and it never leaves an empty band on a side that still has pixels. A click without a drag toggles the fitted and the actual size about the clicked spot. Resizing the window keeps a fitted picture fitted and a zoomed one at its zoom. Opened among a transcript’s pictures, as the three-pictures specimen is, the arrow keys step through them and the title bar counts them; on a phone, where the viewer fills the screen, a finger swiped left shows the next picture and one swiped right the previous, the picture following the finger and settling or springing back, and stopping at the first and the last. A zoomed picture is moved by the drag instead of swiped. The buttons are the viewer’s controls, so a press on one does not close it, while a press anywhere else outside the window does."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen v-for="picture in viewerPictures" :key="picture.name" :variant="picture.variant">
             <Button size="md" v-bind="{ [KEEPS_WINDOWS]: '' }" @click="showPicture(picture)">Open {{ picture.name }}</Button>
+          </GallerySpecimen>
+          <GallerySpecimen variant="three pictures of a transcript: arrow keys step, on a phone a swipe">
+            <Button size="md" v-bind="{ [KEEPS_WINDOWS]: '' }" @click="showTranscriptPictures">Open the three pictures</Button>
           </GallerySpecimen>
         </div>
       </GallerySection>
