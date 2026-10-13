@@ -117,15 +117,27 @@ in another tab, the row would come back where it was and a toast would say
 why.
 
 - **The page's state is what it last read, with its own changes on top.**
-  The page keeps each change it sent and has not seen land, and shows the
-  product state it last read with those changes applied, as it shows the
-  work panel's tabs ([Work panel](#work-panel)). A change leaves the list
-  when its answer is applied, or, when the synchronization channel brought
-  a newer value of what it changed before the answer came, with that part's
-  next value from the channel. A refused change leaves the list, the page
-  shows what the backend has, and the refusal is reported as any failed
-  write is. One mechanism serves every such action; no action keeps its own
-  copy of a value it is waiting for.
+  Every piece of state the page reads from the backend is a *slot*: the
+  value it last read, the revision that value carries, and the changes the
+  page sent and has not seen land. The page shows the value with those
+  changes applied. The product state's parts are slots, and so are the
+  state of one conversation that is not its transcript: its messages saved
+  for later, its draft, its attached Hosts and its work panel's tabs; so is
+  a plugin's state, which a plugin page changes through the same call. A
+  change leaves its slot when its answer is applied, or, when a newer value
+  of the slot arrived before the answer, with that next value. A refused
+  change leaves the slot, the page shows what the backend has, and the
+  refusal is reported as any failed write is. One mechanism serves every
+  slot, written once in `web-ui`; no action keeps its own copy of a value
+  it is waiting for, its own rollback, or a flag that disables a control
+  until an answer comes.
+- **What the page creates, it names.** A message saved for later, a
+  credential, a subagent profile, a provider entry, a forked conversation
+  and every other record the user creates gets its id from the page, a
+  random UUID, so the record stands in its list at once and the change that
+  creates it can be sent again without making two. The backend takes the
+  page's id and answers a second create with the same id and the same
+  content as the first.
 - **Changes to one thing go in order; changes to different things do not
   wait for each other.** The changes of one thing, such as one
   conversation, are sent one at a time, in the order the user made them, so
@@ -136,15 +148,26 @@ why.
   A change of several things, such as archiving a selection, waits for the
   changes on its way of each of them. A control is never disabled while an
   earlier change of the same thing is on its way.
-- **What it covers.** Archive and restore, pin and unpin, deletion once the
-  user confirmed it, renaming, reordering, marking read, and the switches and
-  fields of the settings: plugins, subagents, a device's settings,
-  preferences.
+- **What it covers.** Every action whose result the page can tell:
+  archive and restore, pin and unpin, deletion once the user confirmed it,
+  renaming, reordering, marking read, a conversation's model, effort and
+  tier, moving it to a project, its messages saved for later (saving,
+  editing, sending, deleting), detaching a Host, the settings' switches and
+  fields, creating, editing and removing credentials, subagent profiles,
+  provider entries and their models, the active account, instructions,
+  renaming and removing passkeys, signing a browser out, removing a project
+  or a device, an administrator's role change, disabling and enabling, and a
+  plugin's switches and removals. A saved message sent shows in the
+  conversation at once as a message on its way, as one sent from the
+  composer does.
 - **What it does not.** An action whose result only the backend or another
-  machine can tell shows that it is in progress: signing in and changing the
-  email or password, which the backend checks; creating a project, whose
-  directory the Host must confirm; pairing a device; moving a conversation
-  to another Host. Sending a message has its own states
+  machine can tell shows that it is in progress, in place: signing in and
+  changing the email or password, which the backend checks; a password, a
+  sign-in code or a pairing code the backend makes; a key a vendor must
+  accept, such as an Exa API key or a provider's Test; creating a project,
+  whose directory the Host must confirm; pairing a device; adding a skill
+  source, which the backend fetches; an upload's progress; moving a
+  conversation to another Host. Sending a message has its own states
   ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)).
 
 ### Keyboard
