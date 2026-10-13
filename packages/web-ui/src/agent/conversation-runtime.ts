@@ -1,6 +1,7 @@
 import { shallowRef, triggerRef } from 'vue'
 import { shownError } from '../infra/errors'
 import {
+  ActionOutlivedError,
   SavedGoneError,
   SessionError,
   SteerRejectedError,
@@ -14,7 +15,7 @@ import {
 import { asError, createId, deferred } from '@demicodes/utils'
 import type { ClientContent, EditRequest, SavedDelivery, TranscriptVersion } from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
-import { waitToReconnect } from '../transport/liveness'
+import { pendingReturnCheck, waitToReconnect } from '../transport/liveness'
 import { hasAcceptedSubmission, isWritten } from './submission'
 import type { ConversationState } from './types'
 
@@ -25,6 +26,23 @@ import type { ConversationState } from './types'
  */
 export function isRecordedTurnFailure(error: unknown): boolean {
   return error instanceof SessionError
+}
+
+/**
+ * Waits for the end of an action the session runs (a retry, a resume or a
+ * compaction). A connection that ends meanwhile, as when the page slept
+ * through the turn, fails nothing: the session had taken the action, and the
+ * next connection's snapshot shows how it went
+ * (`web-application.md` § What a reopened socket brings back).
+ */
+async function untilEndedOrLost(ended: Promise<void>): Promise<void> {
+  try {
+    await ended
+  } catch (error) {
+    if (!(error instanceof ActionOutlivedError)) {
+      throw error
+    }
+  }
 }
 
 /**
@@ -334,7 +352,7 @@ export class ConversationRuntime {
 
   async retry(): Promise<void> {
     this.options.state.lastError = null
-    await (await this.ensureOpen()).retry()
+    await untilEndedOrLost((await this.ensureOpen()).retry())
   }
 
   /**
@@ -346,7 +364,7 @@ export class ConversationRuntime {
     state.lastError = null
     state.pendingAction = 'resume'
     try {
-      await (await this.ensureOpen()).resume()
+      await untilEndedOrLost((await this.ensureOpen()).resume())
     } catch (error) {
       this.settlePendingAction()
       throw error
@@ -359,7 +377,7 @@ export class ConversationRuntime {
 
   /** Compacts the context of `node`, a live subagent, or the root's when absent. */
   async compact(node?: string): Promise<void> {
-    await (await this.ensureOpen()).compact(node)
+    await untilEndedOrLost((await this.ensureOpen()).compact(node))
   }
 
   async connect(): Promise<void> {
@@ -397,7 +415,17 @@ export class ConversationRuntime {
     this.opening = null
   }
 
-  private ensureOpen(): Promise<ConversationClient> {
+  private async ensureOpen(): Promise<ConversationClient> {
+    // A request made as the page returns waits for the return's check, which
+    // replaces a broken socket before anything is sent on it.
+    const check = pendingReturnCheck()
+    if (check !== null) {
+      await check
+    }
+    return this.ensureOpenNow()
+  }
+
+  private ensureOpenNow(): Promise<ConversationClient> {
     if (this.disposed) {
       return Promise.reject(new Error('Conversation view was disposed'))
     }

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, jest, spyOn, test } from 'bun:test'
+import { afterEach, beforeEach, expect, jest, setSystemTime, spyOn, test } from 'bun:test'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ClientContent, ServerFrame } from '@demicodes/protocol'
 import { ConversationRuntime, RemovalRefusedError } from '@demicodes/web-ui/agent/conversation-runtime'
@@ -6,7 +6,7 @@ import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
 import { rowKey } from '@demicodes/web-ui/agent/row-key'
 import { toasts } from '@demicodes/web-ui/infra/toast'
 import { CONVERSATION_UNREADABLE } from '@demicodes/web-ui/agent/session-status'
-import { pageReturned } from '@demicodes/web-ui/transport/liveness'
+import { pageReturned, reconnectNow } from '@demicodes/web-ui/transport/liveness'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick, toRaw, watch } from 'vue'
 import { useConversations } from './store'
@@ -2212,6 +2212,80 @@ test('a conversation that opens again after its socket dropped shows what ended 
   expect(toRaw(conversation.terminals).map((terminal) => [terminal.id, terminal.phase])).toEqual([['cmd-1', 'exited']])
   expect(conversation.contextUsage).toBeNull()
   expect(conversation.status).not.toBe('active')
+})
+
+// Production: a phone started a Resume, the turn ran on, the phone slept
+// through it, and on return the dead socket's silence rejected the Resume's
+// wait with a toast "The conversation did not accept the request.", though
+// the session had taken it. A connection lost while the session ran an
+// action is the Connecting state, then the reopened snapshot
+// (`web-application.md` § What a reopened socket brings back), never a
+// refusal. Cost: two openings, no wait.
+test('a page that returns from sleep after a Resume started shows no refusal and opens the conversation again', async () => {
+  const { conversation, sockets } = await openWithSession(FIRST)
+  const store = useConversations()
+  store.start(conversation)
+  await waitFor(() => sockets[0]!.sent.some((frame) => frame.type === 'resume'), () => 'no resume sent')
+  // The session takes the action: it leaves idle.
+  sockets[0]!.receive({ type: 'phase', phase: 'running' })
+  const before = toasts.length
+  // The phone sleeps past the 75 seconds the socket may stay silent; on
+  // return the page finds the socket broken and replaces it.
+  setSystemTime(new Date(Date.now() + 80_000))
+  try {
+    await pageReturned()
+    await waitFor(
+      () => sockets[1]?.sent.length === 1 && conversation.load === 'ready',
+      () => `it did not open again: ${sockets.length} sockets`,
+    )
+  } finally {
+    setSystemTime()
+  }
+  expect(sockets[0]!.closed).toBe(true)
+  expect(toasts.slice(before).map((toast) => toast.title)).toEqual([])
+})
+
+// `web-application.md` § A request the drop interrupts: a Stop the session
+// had not answered when the socket dropped is neither refused nor sent
+// again; the toast says the connection was lost. Cost: one opening.
+test('a Stop whose socket drops before the session answers it shows Connection Lost and is not sent again', async () => {
+  const { conversation, sockets } = await openWithSession(FIRST)
+  const store = useConversations()
+  sockets[0]!.receive({ type: 'phase', phase: 'running' })
+  const before = toasts.length
+  const stopping = store.stop(conversation)
+  await waitFor(() => sockets[0]!.sent.some((frame) => frame.type === 'abort'), () => 'no abort sent')
+  sockets[0]!.end()
+  expect(await stopping).toBe(false)
+  expect(toasts.slice(before)).toMatchObject([{
+    title: 'Connection Lost',
+    message: 'Demi may not have received your request. Check the conversation once it reconnects.',
+  }])
+  reconnectNow()
+  await waitFor(() => sockets[1]?.sent.some((frame) => frame.type === 'open') === true, () => 'it did not reopen')
+  expect(sockets.flatMap((socket) => socket.sent).filter((frame) => frame.type === 'abort')).toHaveLength(1)
+})
+
+// The same section: a request made as the page returns waits for the
+// return's check, so it never goes on the socket the check is about to
+// replace. Cost: two openings, no wait.
+test('a Stop pressed as the page returns goes on the new socket, never on the one the return finds dead', async () => {
+  const { conversation, sockets } = await openWithSession(FIRST)
+  const store = useConversations()
+  sockets[0]!.receive({ type: 'phase', phase: 'running' })
+  setSystemTime(new Date(Date.now() + 80_000))
+  try {
+    const returned = pageReturned()
+    const stopping = store.stop(conversation)
+    await returned
+    await waitFor(() => sockets[1]?.sent.some((frame) => frame.type === 'abort') === true, () => 'no abort on the new socket')
+    expect(sockets[1]!.sent.map((frame) => frame.type)).toEqual(['open', 'abort'])
+    sockets[1]!.receive({ type: 'abort_result', result: { target: null, canAbortAgain: false } })
+    expect(await stopping).toBe(true)
+  } finally {
+    setSystemTime()
+  }
+  expect(sockets[0]!.sent.filter((frame) => frame.type === 'abort')).toEqual([])
 })
 
 // A reload while the agent waits for the model, with a steer waiting: the
