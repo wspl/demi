@@ -399,7 +399,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 
 - **Owns:** the named gates that serialize work across awaits: `ActivityGate`
   (demand and maintenance leases, reservations and its `GateState` snapshot),
-  `ActivityHub`, `SerialGate` and `KeyedSerialGate`.
+  `ActivityHub`, `SerialGate` and `KeyedSerialGate`; and `RateWindow`, how
+  many times each key acted in the last minute, which the pairing claims and
+  the page's error reports limit by.
 - **Public boundary:** the types above. Their semantics are in
   [Locks](concurrency.md#locks). Its `testing` feature adds
   `ActivityGate::waiting`, how many entrants wait behind a reservation, so a
@@ -1010,7 +1012,9 @@ demi-backend (executable: configuration, composition)
   commands' outputs, the schemas and their migrations, and
   the encodings of stored values; and the record types it stores, among them
   the hashes and policies of sessions and challenges, a conversation's target
-  and settings changes, and catalog records, which the domains above use.
+  and settings changes, and catalog records, which the domains above use;
+  and the [server log](../backend/backend.md#request-ids-and-the-server-log),
+  its database, its writer thread and the `tracing` layer that feeds it.
 - **Public boundary:** the stores and their records. Its `testing` feature
   opens a control database with a test key and runs raw statements behind the
   service's back, for tests of what the service must refuse, and holds the
