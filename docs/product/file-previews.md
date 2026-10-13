@@ -164,9 +164,13 @@ renders `x^2` as math.
 
 A reply that streams renders a block at a time, so the work of each update
 is the reply's last block, not the whole reply. The reply's source splits
-into top-level blocks where a blank line ends one outside a code fence or a
-math block; every block before the last is settled, rendered once, sanitized
-once and kept in the page unchanged, together with the files and images it
+into the top-level blocks the Markdown renderer's own block parser finds,
+and a block is settled once the next block's first line is complete and the
+parser keeps it apart: until then the next block may still join it, as a
+second item joins a numbered list. A display math block not yet closed, or
+a raw HTML block, keeps itself and everything after it unsettled, since
+only what follows decides what it holds. A settled block is rendered once,
+sanitized once and kept in the page unchanged, together with the files and images it
 names, and only the last block renders again as text arrives. A settled
 block is never rendered again while the reply streams, so its elements stay
 the same nodes and the page lays out only what changed. When the reply
