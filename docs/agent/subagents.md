@@ -1108,7 +1108,9 @@ Every open, a first one or one after the connection dropped, sends
 its number, description, profile, phase, when it started and ended, and the
 revision of its transcript, never its result or its transcript. The page
 takes the list whole, so a child that finished or started while the page
-was away shows as it is, and reads a child's transcript and result when it
+was away shows as it is; the list the page reads when it opens the
+conversation, which an archived conversation or one with no model shows
+alone, is its first copy until the frame replaces it, and reads a child's transcript and result when it
 shows them, again when the revision moved. The open also sends every running
 command's `shell_output`, and the page's list of running commands is those,
 and every node's `context_usage`, with no usage when it cannot be computed
