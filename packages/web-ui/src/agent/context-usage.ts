@@ -3,6 +3,7 @@ import { useLocalStorage } from '@vueuse/core'
 import type { ContextRowKind, ContextUsage } from '@demicodes/protocol'
 import type { SettingsQuotaWindow } from '../settings/types'
 import { formatPercent } from '../ui/percent'
+import { formatTokens } from '../ui/token-count'
 
 /** How full the context is, from 0 to 1 of its window, full at most; null without a window. */
 export function contextRatio(usage: ContextUsage | null): number | null {
@@ -69,6 +70,16 @@ export function contextFilled(usage: ContextUsage): number {
     .filter((row) => row.kind !== 'compactionBuffer' && row.kind !== 'freeSpace')
     .reduce((sum, row) => sum + row.tokens, 0)
   return Math.max(usage.tokens, filled)
+}
+
+/**
+ * The figure the context card's header shows and the ring's tip repeats:
+ * what fills the context against the window and its share, such as
+ * `139K / 1M (13%)`; the filled tokens alone while the model has no window.
+ */
+export function contextFigure(usage: ContextUsage): string {
+  const filled = formatTokens(contextFilled(usage))
+  return usage.window ? `${filled} / ${formatTokens(usage.window)} (${contextPercent(usage)})` : filled
 }
 
 /** The rows that stand after what the request carries, in this order. */
