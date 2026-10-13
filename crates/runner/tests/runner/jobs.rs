@@ -461,11 +461,17 @@ async fn a_job_writes_in_its_scratch_directory_as_temporary_and_in_its_working_d
 /// the backend's welcome no longer names, a deleted one's, and keeps those
 /// of the conversations it names, and anything under `scratch` that is no
 /// directory (`runner.md` § Scratch directory). About a second: the runner
-/// starts twice.
+/// starts twice and runs two jobs.
 #[tokio::test]
 async fn a_reconnect_removes_the_scratch_directory_of_a_deleted_conversation_only() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let mut host = Host::start(BTreeMap::new()).await.online().await;
+        // The first welcome names neither conversation, and its cleanup
+        // would remove what the test makes next; the runner routes its
+        // messages in order and cleans up before it starts a job, so a job's
+        // exit says that cleanup is over.
+        start_job(&mut host, "before", "true").await;
+        reported(&mut host, "before").await;
         let root = host.state().join("scratch");
         for conversation in ["kept", "deleted"] {
             std::fs::create_dir_all(root.join(conversation)).unwrap();
