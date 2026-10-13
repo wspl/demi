@@ -14,7 +14,7 @@ import Tooltip from '../ui/Tooltip.vue'
 import { isTextCut } from '../ui/truncation'
 import { hostGlyph } from '../devices/device-glyphs'
 import HostChoices from './HostChoices.vue'
-import { MOVE_LOCKED } from './move-question'
+import { MOVE_LOCK_REASON, type MoveLock } from './move-question'
 import type { HostChoice, HostDeviceOption, HostMenuHost } from './types'
 
 /**
@@ -36,8 +36,8 @@ const props = defineProps<{
   attachedHosts: HostMenuHost[]
   /** In a project: choosing a Host opens its directory picker. */
   chooseDirectory?: boolean
-  /** The conversation's work runs, or it is archived: nothing here can change it. */
-  locked?: boolean
+  /** The conversation is archived or being changed: nothing here can move it. Work that runs does not lock it. */
+  locked?: MoveLock
   pending?: boolean
 }>()
 const emit = defineEmits<{
@@ -123,7 +123,7 @@ function connect() {
             :primary-host="primaryHost"
             :devices="devices"
             :choose-directory="chooseDirectory"
-            :locked="locked ? MOVE_LOCKED : undefined"
+            :locked="locked ? MOVE_LOCK_REASON[locked] : undefined"
             @choose="choose"
           />
           <MenuItem label="Add Device…" :icon="Plus" @select="connect" />
@@ -135,8 +135,8 @@ function connect() {
             :icon="hostGlyph(host)"
             :label="host.name"
             :faded="host.kind === 'device' && host.state !== 'online'"
-            :disabled="locked"
-            :disabled-reason="MOVE_LOCKED"
+            :disabled="!!locked"
+            :disabled-reason="locked ? MOVE_LOCK_REASON[locked] : undefined"
             @select="chooseAttached(host)"
           >
             <template #actions>
@@ -146,7 +146,7 @@ function connect() {
                   variant="ghost"
                   size="xs"
                   aria-label="Detach"
-                  :disabled="locked"
+                  :disabled="!!locked"
                   @click.stop="detach(host.id)"
                 />
               </Tooltip>

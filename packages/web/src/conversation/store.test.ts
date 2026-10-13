@@ -1350,6 +1350,71 @@ test('a draft moves without telling anyone and is created where it moved; a conv
   }
 })
 
+// `product.md` § Where a conversation runs: moving a conversation whose agent
+// works stops its work first, and the move goes out once the session says it
+// is idle, since the backend refuses a move while its tree is busy.
+test('moving a conversation whose agent works stops its work and sends the move only once the session is idle', async () => {
+  const store = useConversations()
+  const conversation = store.items.find((item) => item.id === FIRST)!
+  const onLaptop = { kind: 'device' as const, deviceId: 'laptop', path: '/Users/ada/work' }
+  const stopped: string[] = []
+  const restoreFetch = answerOpening(FIRST)
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const abort = spyOn(ConversationRuntime.prototype, 'abort').mockImplementation(async () => {
+    stopped.push('turn')
+  })
+  const abortTerminal = spyOn(ConversationRuntime.prototype, 'abortTerminal').mockImplementation(async (id) => {
+    stopped.push(`command ${id}`)
+  })
+  try {
+    await chooseStubModel(conversation)
+    await store.activate(FIRST)
+    conversation.phase = 'running'
+    conversation.terminals.push({ id: 'build', title: 'Build', phase: 'running', startedAt: '2026-09-09T00:00:00.000Z', output: '' })
+    const moving = store.switchTargetAfterStop(conversation, onLaptop, true)
+    await waitFor(() => stopped.length === 2, () => `stopped: ${stopped.join(', ')}`)
+    expect(stopped.toSorted()).toEqual(['command build', 'turn'])
+    expect(batchBodies()).toEqual([])
+    // The session's own phase change, which the page hears as the stop lands.
+    conversation.phase = 'idle'
+    // The command's job holds the conversation until its runner says it ended.
+    await nextTick()
+    expect(batchBodies()).toEqual([])
+    conversation.terminals[0]!.phase = 'aborted'
+    expect(await moving).toBe(true)
+    expect(batchBodies()).toEqual([{ items: [{ id: FIRST, patch: { target: onLaptop, notifyAgent: true } }] }])
+  } finally {
+    abortTerminal.mockRestore()
+    abort.mockRestore()
+    connect.mockRestore()
+    restoreFetch()
+  }
+})
+
+test('a conversation whose turn ended meanwhile moves at once, and one whose stop is refused does not move', async () => {
+  const store = useConversations()
+  const conversation = store.items.find((item) => item.id === FIRST)!
+  const onLaptop = { kind: 'device' as const, deviceId: 'laptop', path: '/Users/ada/work' }
+  const restoreFetch = answerOpening(FIRST)
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const abort = spyOn(ConversationRuntime.prototype, 'abort').mockRejectedValue(new Error('Agent connection closed'))
+  try {
+    await chooseStubModel(conversation)
+    expect(await store.switchTargetAfterStop(conversation, onLaptop, false)).toBe(true)
+    expect(abort).not.toHaveBeenCalled()
+    expect(batchBodies()).toEqual([{ items: [{ id: FIRST, patch: { target: onLaptop } }] }])
+
+    conversation.phase = 'running'
+    expect(await store.switchTargetAfterStop(conversation, { kind: 'cloud' }, false)).toBe(false)
+    expect(batchBodies()).toHaveLength(1)
+  } finally {
+    conversation.phase = 'idle'
+    abort.mockRestore()
+    connect.mockRestore()
+    restoreFetch()
+  }
+})
+
 test('a detach shows the hosts without the one it removed, with no read', async () => {
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!

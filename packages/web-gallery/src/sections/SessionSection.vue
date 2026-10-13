@@ -1389,7 +1389,7 @@ onBeforeUnmount(() => {
             />
           </GallerySpecimen>
           <GallerySpecimen
-            variant="primary Host offline while its work runs · the move waits for the work to end"
+            variant="primary Host offline while its work runs · Move to Another Host… asks to stop the agent first"
             wide
           >
             <GalleryComposer
@@ -1399,8 +1399,8 @@ onBeforeUnmount(() => {
                 start: demoDeviceStart('macos'),
                 primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
                 devices: offlineMenuDevices,
-                locked: true,
               }"
+              :working="{ agent: true, subagents: 0, commands: 1 }"
             />
           </GallerySpecimen>
           <GallerySpecimen
