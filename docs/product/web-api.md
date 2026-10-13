@@ -752,10 +752,15 @@ created. `POST /api/users` takes `{ email, password, role }` with role `admin`
 or `user`, creates an account of a role the caller outranks and returns
 `{ user }` with 201; a role the caller does not outrank answers 403
 `forbidden`, and an address an account has answers 409 `email_taken`.
-`PATCH /api/users/:id` resets a lower-ranked account with `{ password }` and
-answers 204; an id that names no account answers 404 `user_not_found` and an
+`PATCH /api/users/:id` changes a lower-ranked account with one of
+`{ password }`, `{ role }` or `{ disabled }` and answers 204: a role the
+caller does not outrank answers 403 `forbidden`, and disabling ends the
+account's sessions and runner connections at once. `POST
+/api/users/:id/sign-out` ends every session of a lower-ranked account and
+answers 204. An id that names no account answers 404 `user_not_found` and an
 account the caller does not outrank 403 `forbidden`, both before the body is
-checked.
+checked. A disabled account's sign-in answers 403 `account_disabled`, by any
+way it signs in.
 Setup creates the only master account and answers 404 `already_set_up` after
 setup is complete. HTTP validation trims and lowercases addresses; storage
 uniqueness and lookups are case-insensitive. A password being set, at setup,
@@ -763,8 +768,9 @@ for a new account, by a reset or as the `next` password, has 8 to 1024
 characters; a password checked against the account's, at login, as the
 `current` password or to start an email change, only has to be nonempty, so
 a wrong one answers 401 `invalid_credentials` rather than a validation error.
-User responses expose `id`, `email`, `nickname`, `role` and `createdAt`, never
-the password hash.
+User responses expose `id`, `email`, `nickname`, `role`, `createdAt`,
+`disabled` and `lastActiveAt`, the latest activity of any of its sessions,
+never the password hash.
 
 Passkeys ([User system](product.md#user-system),
 [Authentication and ownership](../backend/backend.md#authentication-and-ownership)):
