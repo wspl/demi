@@ -71,6 +71,9 @@ async function submit(): Promise<void> {
         break
       case 'dismissed':
         break
+      case 'held':
+        error.value = { message: outcome.message, requestId: null }
+        break
       case 'failed':
         error.value = outcome
         break
