@@ -2123,7 +2123,7 @@ connection B --+                    +--> B's outbox: events, and B's replies
 ```
 
 - A page that opens a conversation without a copy of it shows it in two
-  steps ([Opening a conversation](../product/web-application.md#conversations)):
+  steps ([Opening a conversation](../product/web-application.md#backend-communication)):
   the transcript with its agents once both are read, then the phase, the
   queue, the pending steers, the wait and the running commands together
   once its handshake is applied, so a reload never draws a moment without
