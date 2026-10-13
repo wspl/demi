@@ -12,7 +12,10 @@
 //! provider the user may no longer use (`provider_not_found`), and one that
 //! storage failed to prepare (`frame_delivery_failed`); a message that is not
 //! JSON closes the socket. An `open` takes the conversation's settings order,
-//! so the tree opens with the model selection the record holds.
+//! so the tree opens with the model selection the record holds. A
+//! `send_saved` becomes the `send` or `steer` of the message saved for later
+//! it names, which leaves the list as the session takes it; one the list no
+//! longer holds is answered with a `rejected` frame (`saved_not_found`).
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
@@ -25,11 +28,13 @@ use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
 use demi_conversation_socket_protocol::{
-    ClientContent, ClientFrame, EditOutcome, FrameError, RemoveOutcome, ServerFrame,
-    TranscriptPatch, decode_client_frame,
+    ClientContent, ClientFrame, ClientFrameKind, EditOutcome, FrameError, RemoveOutcome,
+    SavedDelivery, ServerFrame, TranscriptPatch, decode_client_frame,
 };
 use demi_shared_gates::{GateLease, Purpose};
-use demi_shared_types::{Block, UserContentBlock};
+use demi_shared_types::{Block, BlockId, TurnId, UserContentBlock};
+use demi_web_api_protocol::drafts::{ATTACHMENT_MARK, DraftFile};
+use demi_web_api_protocol::saved::SavedMessage;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
 use futures_util::{StreamExt as _, TryStreamExt as _};
@@ -322,6 +327,30 @@ impl Shard {
                 )]);
             }
         };
+        // A message saved for later goes as the frame the composer would
+        // send, with its id, one at a time; it leaves the list once the
+        // session takes it, and stays when the session refuses it.
+        let (frame, saved, _sending) = match frame {
+            ClientFrame::SendSaved { id, delivery } => {
+                let sending = self.conversations().slot(conversation).saved.acquire().await;
+                match self
+                    .services()
+                    .control
+                    .saved_message(conversation.clone(), id.clone())
+                    .await
+                {
+                    Ok(Some(message)) => (sent_saved(message, delivery), Some(id), Some(sending)),
+                    Ok(None) => return Handled::Replies(vec![saved_gone()]),
+                    Err(error) => {
+                        return Handled::Replies(vec![refusal(
+                            ErrorCode::FrameDeliveryFailed,
+                            error.to_string(),
+                        )]);
+                    }
+                }
+            }
+            frame => (frame, None, None),
+        };
         // The frame is handled under the conversation's file gate, which a
         // transition holding the conversation makes it wait for, never
         // refuse (`sessions-and-targets.md` § How a conversation uses a
@@ -375,7 +404,10 @@ impl Shard {
                 Handled::Replies(Vec::new())
             }
             Ok(Prepared::Deliver) => {
-                connection.handle(frame).await;
+                let taken = connection.handle(frame).await;
+                if let (true, Some(id)) = (taken, saved) {
+                    self.take_saved(conversation, id).await;
+                }
                 Handled::Replies(Vec::new())
             }
             Ok(Prepared::Refused(code, message)) => {
@@ -459,6 +491,22 @@ impl Shard {
             _ => {}
         }
         Ok(Prepared::Deliver)
+    }
+
+    /// Takes the saved message `id`, which the session took, off the
+    /// conversation's list. One removed meanwhile is gone already. A
+    /// failure leaves it listed though sent; it is logged, since the send
+    /// it follows has happened and has its own answer.
+    async fn take_saved(&self, conversation: &ConversationId, id: String) {
+        match self.services().control.take_saved(conversation.clone(), id).await {
+            Ok(true) => self.mark(Part::Conversation(conversation.clone())),
+            Ok(false) => {}
+            Err(error) => tracing::error!(
+                %conversation,
+                error = &error as &dyn std::error::Error,
+                "a sent message saved for later stayed on its list"
+            ),
+        }
     }
 
     /// Sends one server frame, presented as the page receives it; false when
@@ -606,6 +654,58 @@ fn refused_frame(frame: ClientFrame, code: ErrorCode, message: String) -> Server
             outcome: RemoveOutcome::GoneOn,
         },
         _ => refusal(code, message),
+    }
+}
+
+/// The answer to a `send_saved` whose message the list no longer holds.
+fn saved_gone() -> ServerFrame {
+    ServerFrame::Rejected {
+        command: ClientFrameKind::SendSaved,
+        reason: ErrorCode::SavedNotFound.to_string(),
+    }
+}
+
+/// The frame the composer would send for a saved message: a message, which
+/// waits in the queue while a turn runs, or a steer, with the saved
+/// message's id as the turn's or the steer's. Its text is split at the marks
+/// where its files stand, as the page joins a message's content, without the
+/// blank space at its ends.
+fn sent_saved(message: SavedMessage, delivery: SavedDelivery) -> ClientFrame {
+    let mut files = message.files.into_iter().map(|file| match file {
+        DraftFile::Upload {
+            r#ref, file_name, ..
+        } => ClientContent::Upload {
+            r#ref: r#ref.into_string(),
+            file_name,
+        },
+        DraftFile::RemoteFile { device_id, path } => ClientContent::RemoteFile { device_id, path },
+    });
+    let parts: Vec<&str> = message.text.split(ATTACHMENT_MARK).collect();
+    let last = parts.len() - 1;
+    let mut content = Vec::new();
+    for (index, part) in parts.into_iter().enumerate() {
+        let part = if index == 0 { part.trim_start() } else { part };
+        let part = if index == last { part.trim_end() } else { part };
+        if !part.trim().is_empty() {
+            content.push(ClientContent::Text {
+                text: part.to_owned(),
+            });
+        }
+        if index < last {
+            content.extend(files.next());
+        }
+    }
+    // Files without a mark follow the text.
+    content.extend(files);
+    match delivery {
+        SavedDelivery::Message | SavedDelivery::Queue => ClientFrame::Send {
+            message_id: TurnId::try_from(message.id).expect("a saved message's id is not empty"),
+            content,
+        },
+        SavedDelivery::Steer => ClientFrame::Steer {
+            steer_id: BlockId::try_from(message.id).expect("a saved message's id is not empty"),
+            content,
+        },
     }
 }
 

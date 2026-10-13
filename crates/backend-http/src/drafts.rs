@@ -44,23 +44,7 @@ pub(super) async fn save(
 ) -> Result<Json<DraftAnswer>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
     let JsonBody(save) = body?;
-    let marks = save
-        .text
-        .chars()
-        .filter(|char| *char == ATTACHMENT_MARK)
-        .count();
-    if marks != save.files.len() {
-        return Err(ApiError::invalid_body(format!(
-            "text: holds {marks} attachment marks for {} files",
-            save.files.len()
-        )));
-    }
-    let files = save
-        .files
-        .into_iter()
-        .enumerate()
-        .map(|(index, file)| staged(index, file))
-        .collect::<Result<Vec<_>, _>>()?;
+    let files = staged_files(&save.text, save.files)?;
     let saved = services
         .control
         .save_draft(
@@ -92,6 +76,26 @@ pub(super) async fn replaced(
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Conversation(record.id));
     Ok(Json(DraftAnswer { draft: changed }))
+}
+
+/// A draft's files as storage takes them, when `text` holds one mark per
+/// file; a message saved for later names its files the same way.
+pub(super) fn staged_files(
+    text: &str,
+    files: Vec<ClientContent>,
+) -> Result<Vec<StagedFile>, ApiError> {
+    let marks = text.chars().filter(|char| *char == ATTACHMENT_MARK).count();
+    if marks != files.len() {
+        return Err(ApiError::invalid_body(format!(
+            "text: holds {marks} attachment marks for {} files",
+            files.len()
+        )));
+    }
+    files
+        .into_iter()
+        .enumerate()
+        .map(|(index, file)| staged(index, file))
+        .collect()
 }
 
 /// A draft's file as storage takes it: an upload or a file on a paired

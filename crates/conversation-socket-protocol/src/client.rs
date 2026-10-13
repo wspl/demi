@@ -48,6 +48,16 @@ pub enum ClientFrame {
         #[garde(dive)]
         content: Vec<ClientContent>,
     },
+    /// Send a message saved for later as the composer would, and remove it
+    /// from the list in the same step (`web-api.md` § Messages saved for
+    /// later). The backend handles it; the message's id becomes its turn's
+    /// or its steer's.
+    SendSaved {
+        #[garde(length(min = 1))]
+        id: String,
+        #[garde(skip)]
+        delivery: SavedDelivery,
+    },
     CancelPendingSteer {
         #[garde(skip)]
         steer_id: BlockId,
@@ -120,6 +130,7 @@ pub enum ClientFrameKind {
     Send,
     EditAndSend,
     Steer,
+    SendSaved,
     CancelPendingSteer,
     SteerNow,
     DequeueMessage,
@@ -147,6 +158,7 @@ impl ClientFrame {
             Self::Send { .. } => ClientFrameKind::Send,
             Self::EditAndSend { .. } => ClientFrameKind::EditAndSend,
             Self::Steer { .. } => ClientFrameKind::Steer,
+            Self::SendSaved { .. } => ClientFrameKind::SendSaved,
             Self::CancelPendingSteer { .. } => ClientFrameKind::CancelPendingSteer,
             Self::SteerNow { .. } => ClientFrameKind::SteerNow,
             Self::DequeueMessage { .. } => ClientFrameKind::DequeueMessage,
@@ -201,6 +213,17 @@ impl ClientFrame {
             Err(report)
         }
     }
+}
+
+/// How a message saved for later goes, the composer's choice: as the next
+/// message while nothing runs, otherwise as a steer of the running turn or
+/// into the queue (`product.md` § Steer or queue).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SavedDelivery {
+    Message,
+    Steer,
+    Queue,
 }
 
 /// A replacement of a user message and everything after it (`message-editing.md`).

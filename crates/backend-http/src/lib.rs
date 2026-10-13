@@ -38,6 +38,7 @@ mod providers;
 mod query;
 mod runner_socket;
 mod runners;
+mod saved;
 mod search;
 mod sessions;
 mod settings;
@@ -329,6 +330,16 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(drafts::read).put(drafts::save),
         )
         .route("/conversations/{id}/draft/replaced", post(drafts::replaced))
+        .route(
+            "/conversations/{id}/saved",
+            get(saved::list).post(saved::save),
+        )
+        .route("/conversations/{id}/saved/from-draft", post(saved::from_draft))
+        .route(
+            "/conversations/{id}/saved/{message}",
+            delete(saved::remove),
+        )
+        .route("/conversations/{id}/saved/{message}/edit", post(saved::edit))
         .route(
             "/conversations/{id}/permissions",
             get(permissions::read),
