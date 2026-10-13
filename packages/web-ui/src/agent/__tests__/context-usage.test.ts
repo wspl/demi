@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { ContextUsage } from '@demicodes/protocol'
-import { compactionRefusal, contextCardRows, contextFigure, contextPercent, contextRatio, untilCompaction } from '../context-usage'
+import { compactionRefusal, contextCardRows, contextFigure, contextPercent, contextTip, contextRatio, untilCompaction } from '../context-usage'
 
 const WINDOW = 100_000
 
@@ -79,7 +79,13 @@ test('the meter shows the estimate in whole percent of the window, rounded down,
   expect(contextRatio(usage(130_000))).toBe(1)
 })
 
-test('the ring\'s tip is the figure of the card header: filled against the window and its share, the filled alone without a window', () => {
+test('the card header\'s figure is the filled against the window and its share, the filled alone without a window', () => {
   expect(contextFigure({ tokens: 139_000, window: 1_000_000, compactFrom: 500_000, rows: [] })).toBe('139K / 1M (13%)')
   expect(contextFigure({ tokens: 12_000, window: null, compactFrom: null, rows: [] })).toBe('12K')
+})
+
+test('the ring\'s tip is the header\'s figure under the word Context, and none without a usage or a window', () => {
+  expect(contextTip({ tokens: 139_000, window: 1_000_000, compactFrom: 500_000, rows: [] })).toBe('Context 139K / 1M (13%)')
+  expect(contextTip({ tokens: 12_000, window: null, compactFrom: null, rows: [] })).toBeUndefined()
+  expect(contextTip(null)).toBeUndefined()
 })

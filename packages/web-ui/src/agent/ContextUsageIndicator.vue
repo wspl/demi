@@ -23,6 +23,7 @@ import {
   compactionRefusal,
   contextCardRows,
   contextFigure,
+  contextTip,
   contextFilled,
   contextPercent,
   contextRatio,
@@ -37,7 +38,7 @@ import { instructionRows } from './instructions'
  * the backend estimates it. A click on it opens a card, on a phone a sheet
  * (`compaction.md` § What fills the context), as the model selector's does;
  * a click outside, another click on the ring or Escape closes it, and
- * resting the pointer on the ring opens nothing but its tip, the figure the
+ * resting the pointer on the ring opens nothing but its tip, Context and the figure the
  * card's header shows. The card
  * holds the estimate against the window, a header that opens and closes the list of rows, a
  * bar of what fills the context, the rows largest first while the list is
@@ -140,8 +141,8 @@ const blockedReason = computed(() => props.unavailableReason ?? compactionRefusa
 /** While compacting the card holds no Compact; it has details while anything else is left to show. */
 const hasDetails = computed(() => !props.isCompacting || rows.value.length > 0 || props.limits != null || instructionList.value.length > 0)
 
-/** The ring's tip is the card header's figure; without a usage or a window the ring has none. */
-const tip = computed(() => (props.usage?.window ? contextFigure(props.usage) : undefined))
+/** The ring's tip is Context and the card header's figure; without a usage or a window the ring has none. */
+const tip = computed(() => contextTip(props.usage ?? null))
 /** The ring's name for a screen reader, which the tip does not carry. */
 const label = computed(() => (percent.value == null ? 'Context window' : `Context window, ${percent.value} used`))
 
