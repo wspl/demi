@@ -4003,6 +4003,35 @@ test('a saved message the session took leaves the list for good once read', asyn
   }
 })
 
+// A Send pressed on the row of a save still on its way.
+test('a message sent from the list while its save is on its way goes once the save is answered, not before', async () => {
+  const signOut = signIn()
+  const { store, first } = await openWithSaved([])
+  const restore = await withStubModel(first)
+  const held = holdWrites()
+  const send = spyOn(ConversationRuntime.prototype, 'sendSaved').mockResolvedValue(true)
+  try {
+    first.draft = 'Check prod’s DNS next'
+    const saving = store.saveForLater(first)
+    await until(() => held.waiting.length === 1, 'the save reaches the backend')
+    const id = first.record.shown.value!.saved[0]!.id
+    store.sendSaved(first, id, 'send')
+    expect([listed(first), first.pendingSends.map(({ text }) => text)]).toEqual([[], ['Check prod’s DNS next']])
+    await settle()
+    expect(send).not.toHaveBeenCalled()
+    await held.waiting[0]!.pass()
+    await saving
+    await until(() => send.mock.calls.length === 1, 'the send goes once the save is answered')
+    expect(send.mock.calls[0]![0]).toBe(id)
+    await until(() => first.pendingSends.length === 0, 'the session holds it')
+  } finally {
+    send.mockRestore()
+    held.restore()
+    restore()
+    signOut()
+  }
+})
+
 // The reviewer's second finding: a reload during a saved send, then Retry.
 test('a saved send interrupted by a reload goes again from the list as the same turn on Retry, never as a new message', async () => {
   let signOut = signIn()
