@@ -460,9 +460,15 @@ What the CLI prints after that is read as the new request's.
 become reasoning and text events. The model's `tool_use` blocks become tool
 calls, named without the `mcp__<server>__` prefix the CLI gives tools it
 reaches over MCP. The `result` line ends the request: the run ends with a
-response carrying the usage of the CLI's last API call (the result's own usage
-when it lists no calls), or with an error when the CLI reports one, shown as
-the CLI worded it. For a call the vendor refused, the CLI first prints a made-up
+response carrying the usage of the run's last call to the vendor, which is
+the vendor's own count from that call's last streamed `message_delta` (its
+input, cache read, cache write and final output tokens), or with an error when the CLI reports one, shown as
+the CLI worded it. The `result` line's `usage` adds up every call of the run
+and is never read: the context is what one call reads, and a run of nine
+calls of 120K reports 1.1M there. A run whose stream holds no
+`message_delta` usage gives a response without usage, which triggers
+nothing and anchors no estimate, and the backend logs an error naming the
+CLI; no other figure stands in for it. For a call the vendor refused, the CLI first prints a made-up
 `assistant` line that carries `error` and whose text repeats the failure; that
 line gives no events, so the failure shows once. When the `result` names the
 vendor's HTTP status (`api_error_status`), the failure's code comes from that
