@@ -805,6 +805,24 @@ export const binaryStdoutTool = toolCall({
   view: shellView({ commandId: 'cmd-printed', chunks: [{ stream: 'stdout', text: binaryLine(5_883) }] }),
 })
 
+/**
+ * Pills of one name and one count are equally wide; this many fill the two
+ * lines of the 360px (phone) specimen exactly, so all show and none is
+ * counted.
+ */
+const EXACT_FIT = 6
+
+/** A call that removed screenshots, rewrote some pages and added a few files, seventy in all. */
+function seventyFiles(id: string): ToolCallBlock {
+  return fileChangeCase(id, 'Clean up the screenshots', Array.from({ length: 70 }, (_, i) => {
+    if (i % 7 === 0)
+      return editedFile({ path: `packages/web/src/pages/Page${i}.vue`, kind: 'added', added: 12 + i, removed: 0 })
+    if (i % 7 === 1)
+      return editedFile({ path: `packages/web/src/pages/Page${i}.vue`, kind: 'modified', added: i, removed: i % 5 + 1 })
+    return uncopiedFile({ path: `out/screenshots/login-${i}.png`, kind: 'deleted', added: 0, removed: 0 })
+  }))
+}
+
 function fileChangeCase(
   id: string,
   description: string,
@@ -825,7 +843,7 @@ function fileChangeCase(
 }
 
 /** One shell call per way a command can touch files, from the common single edit to the overflow. */
-export const fileChangeCases: { variant: string, block: ToolCallBlock }[] = [
+export const fileChangeCases: { variant: string, width?: number, block: ToolCallBlock }[] = [
   {
     variant: 'one edit',
     block: fileChangeCase('one', 'Fix the cookie assertion', [
@@ -873,12 +891,31 @@ export const fileChangeCases: { variant: string, block: ToolCallBlock }[] = [
     ]),
   },
   {
-    variant: 'more than three rows',
+    variant: 'forty files, two lines and the rest counted',
     block: fileChangeCase('many', 'Rename the prop across every widget', Array.from({ length: 40 }, (_, i) => editedFile({
       path: `packages/web/src/components/Widget${i + 1}.vue`,
       kind: i % 9 === 0 ? 'added' : 'modified',
       added: i + 1,
       removed: i % 3,
+    }))),
+  },
+  {
+    variant: 'seventy files, added, modified and removed',
+    block: seventyFiles('seventy'),
+  },
+  {
+    variant: 'seventy files · phone width',
+    width: 360,
+    block: seventyFiles('seventy-phone'),
+  },
+  {
+    variant: 'fits in two lines exactly · phone width',
+    width: 360,
+    block: fileChangeCase('exact', 'Rename the cookie in the auth modules', Array.from({ length: EXACT_FIT }, (_, i) => editedFile({
+      path: `${String.fromCharCode(97 + i)}/auth.ts`,
+      kind: 'modified',
+      added: 1,
+      removed: 1,
     }))),
   },
   {
@@ -933,7 +970,7 @@ export function changesDemoBlocks(): Block[] {
   const loginInRun = { ...loginTest!, lines: { added: 3, removed: 3 }, edits: [...loginTest!.edits, ...twice!.edits] }
   const firstRun = [loginInRun, session!, ...listed('contents unavailable')]
   const [mixedTest, mixedSession, ...mixedRest] = listed('a few, mixed')
-  const secondRun = [...listed('more than three rows'), mixedTest!, mixedSession!, ...mixedRest, ...listed('long names'), ...listed('append only, not new')]
+  const secondRun = [...listed('forty files, two lines and the rest counted'), mixedTest!, mixedSession!, ...mixedRest, ...listed('long names'), ...listed('append only, not new')]
   const thirdRun = listedFiles(snapshotDiff)
   // The request lists the login test and the session helper once, where
   // its first run put them, with the second run's edits of them.
@@ -973,7 +1010,7 @@ export function changesDemoBlocks(): Block[] {
     ),
     text('changes-text-1', 150_000, 'The helper now writes `session`. Sweeping the widgets next; each one reads the cookie name from a prop.'),
     ...inRun(
-      caseBlock('more than three rows'),
+      caseBlock('forty files, two lines and the rest counted'),
       caseBlock('a few, mixed'),
       caseBlock('no files'),
       caseBlock('long names'),

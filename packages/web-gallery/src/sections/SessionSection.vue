@@ -2713,7 +2713,7 @@ onBeforeUnmount(() => {
       </div>
       <GallerySection
         title="Changed Files"
-        note="A shell call lists the files it touched under its row: icon, name and line counts as pills that wrap. A new file carries a green dot. Pick a file to show it in its request’s changes at that call’s first edit. Past three rows the rest fold into +N files. The row folds the command and output on its own; the pills do not move."
+        note="A shell call lists the files it touched under its row: icon, name and line counts as pills that wrap. A new file carries a green plus, a removed one is struck through. Pick a file to show it in its request’s changes at that call’s first edit. The pills take at most two lines; the files that do not fit fold into a last pill, +N Files, which opens the request’s changes, where every file is listed. Resize the page to see it fold again. The row folds the command and output on its own; the pills do not move."
       >
         <div class="gallery-frame gallery-block-frame bg-surface">
           <div class="specimen-stack [--agent-pad-x:0px]">
@@ -2723,13 +2723,15 @@ onBeforeUnmount(() => {
               :variant="item.variant"
               wide
             >
-              <GalleryTranscript :blocks="standaloneRequest(item.block)">
-                <ToolShellBlock
-                  v-model:open="changeCaseOpen[item.block.id]"
-                  :block="item.block"
-                  :input="parseToolInput(item.block.input)"
-                />
-              </GalleryTranscript>
+              <div :style="{ width: item.width ? `${item.width}px` : undefined, maxWidth: '100%' }">
+                <GalleryTranscript :blocks="standaloneRequest(item.block)">
+                  <ToolShellBlock
+                    v-model:open="changeCaseOpen[item.block.id]"
+                    :block="item.block"
+                    :input="parseToolInput(item.block.input)"
+                  />
+                </GalleryTranscript>
+              </div>
             </GallerySpecimen>
           </div>
         </div>

@@ -14,23 +14,31 @@ import type { ChangeFile } from '../../files/changes'
  * line counts. A new file carries a green plus at its icon's lower right
  * corner, as a file added in an editor's tree does; a deleted file is
  * struck through; a renamed file names its old path in the tooltip.
- * Collapsed, the pills stop after `maxRows` rows and a "+N files" pill at
- * the end of the last row shows the rest; "Show Less" folds them again.
+ * The pills take at most two lines; the files that do not fit fold into a
+ * last pill, "+N Files", which asks for the call's whole list (`openRest`)
+ * where a pill asks for its file.
  */
 const props = withDefaults(
   defineProps<{
     files: ChangeFile[]
-    maxRows?: number
     /**
      * Which pills open their file's edit, all or each by its path; any
      * other only names its file.
      */
     selectable?: boolean | ((path: string) => boolean)
+    /**
+     * Whether the "+N Files" pill opens the files it names, by their paths;
+     * without it, it only counts them.
+     */
+    restSelectable?: (paths: readonly string[]) => boolean
   }>(),
-  { maxRows: 3, selectable: true },
+  { selectable: true, restSelectable: undefined },
 )
 
-const emit = defineEmits<{ select: [path: string] }>()
+const emit = defineEmits<{ select: [path: string]; openRest: [paths: string[]] }>()
+
+/** The most lines the pills take. */
+const MAX_ROWS = 2
 
 function opens(path: string): boolean {
   return typeof props.selectable === 'function' ? props.selectable(path) : props.selectable
@@ -39,7 +47,6 @@ function opens(path: string): boolean {
 const container = ref<HTMLElement>()
 /** The pills in the order of `files`, which `measure` lays out and each tip points at. */
 const pillEls = ref<HTMLElement[]>([])
-const expanded = ref(false)
 
 /** The "+N Files" button's width beside its text: its side paddings (`px-2`). */
 const MORE_PADDING_PX = 16
@@ -48,7 +55,6 @@ const MORE_PADDING_PX = 16
 const fitCount = useFitMore({
   items: () => props.files,
   box: () => container.value,
-  enabled: () => !expanded.value,
   measure: () => {
     const box = container.value
     const first = pillEls.value[0]
@@ -62,14 +68,14 @@ const fitCount = useFitMore({
       // A pill wider than the line shrinks to it, truncating its name.
       widths: pillEls.value.map((pill) => Math.min(pill.offsetWidth, room)),
       gap: parseFloat(style.columnGap),
-      rows: props.maxRows,
+      rows: MAX_ROWS,
       countWidth: (rest) => Math.ceil(textWidth(`+${rest} Files`, font)) + MORE_PADDING_PX,
     }
   },
 })
 
-const visibleCount = computed(() => expanded.value ? props.files.length : fitCount.value)
-const hidden = computed(() => props.files.length - visibleCount.value)
+const hiddenPaths = computed(() => props.files.slice(fitCount.value).map((file) => file.path))
+const opensRest = computed(() => props.restSelectable?.(hiddenPaths.value) ?? false)
 </script>
 
 <template>
@@ -81,7 +87,7 @@ const hidden = computed(() => props.files.length - visibleCount.value)
       <component
         :is="opens(file.path) ? 'button' : 'span'"
         :type="opens(file.path) ? 'button' : undefined"
-        v-show="index < visibleCount"
+        v-show="index < fitCount"
         ref="pillEls"
         class="file-pill group/pill inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full pl-1.5 pr-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out"
         :class="opens(file.path) ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
@@ -105,11 +111,13 @@ const hidden = computed(() => props.files.length - visibleCount.value)
       <!-- The whole path, and where a renamed file came from. -->
       <Tooltip :trigger="pillEls[index]" :content="file.from ? `${file.from} → ${file.path}` : file.path" />
     </template>
-    <button
-      v-if="hidden > 0 || expanded"
-      type="button"
-      class="file-pill btn inline-flex h-[22px] cursor-default select-none items-center rounded-full px-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out hover:text-fg-body"
-      @click="expanded = !expanded"
-    >{{ expanded ? 'Show Less' : `+${hidden} Files` }}</button>
+    <component
+      :is="opensRest ? 'button' : 'span'"
+      :type="opensRest ? 'button' : undefined"
+      v-if="hiddenPaths.length > 0"
+      class="file-pill inline-flex h-[22px] select-none items-center rounded-full px-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out"
+      :class="opensRest ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
+      @click="opensRest && emit('openRest', hiddenPaths)"
+    >+{{ hiddenPaths.length }} Files</component>
   </div>
 </template>
