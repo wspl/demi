@@ -1,6 +1,7 @@
-// `demi.shot` of a `demi.webkit()` page beside the slot's Chromium page,
-// each started in a temporary slot: about 2 s, the two browsers' starts. No
-// cheaper test shows which engine's picture a shot holds.
+// `demi.shot` of the slot's Chromium page and of a `demi.webkit()` page
+// beside it, each started in a temporary slot: about 3 s, the two browsers'
+// starts and a transition of 300 ms. No cheaper test shows which engine's
+// picture a shot holds, or when the page's transitions let it be taken.
 import { afterAll, expect, test } from 'bun:test'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -49,6 +50,21 @@ function firstPixel(page: Page, path: string): Promise<number[]> {
     return [...canvas.getContext('2d')!.getImageData(0, 0, 1, 1).data.slice(0, 3)]
   }, [...readFileSync(path)])
 }
+
+test.skipIf(!existsSync(chromium.executablePath()))(
+  'a shot right after a click shows where a transition the click starts a frame later ends',
+  async () => {
+    const slotPage = await browser.page()
+    // As Vue's Transition does, the drawer gets its final class two frames after the click.
+    await slotPage.setContent(`<body style="margin: 0">
+<div id="drawer" style="position: fixed; inset: 0; background: #f00; transition: background-color 300ms linear"></div>
+<button style="position: fixed; right: 0; bottom: 0" onclick="requestAnimationFrame(() => requestAnimationFrame(() => { drawer.style.backgroundColor = '#00f' }))">Open</button>
+</body>`)
+    await slotPage.getByRole('button', { name: 'Open' }).click()
+    const path = await shot(tool, join(root, 'drawer'))
+    expect(await firstPixel(slotPage, path)).toEqual([0, 0, 255])
+  },
+)
 
 test.skipIf(!existsSync(chromium.executablePath()) || !existsSync(webkit.executablePath()))(
   'a shot of a WebKit page shows that page at the slot\'s pixel ratio, whether named by page or by element',
