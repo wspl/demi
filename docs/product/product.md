@@ -59,9 +59,15 @@ wizard ([Responding to the user](web-application.md#responding-to-the-user)), a 
 confirmation, without the current one, and nothing else of the product
 opens until it is chosen; every session of the account asks the same,
 and Sign Out is the one other way out. A password chosen there is then
-followed by the passkey offer, *Use Face ID next time?*, on a computer
+followed by the passkey offer, *Use a passkey next time?*, on a computer
 as on a phone. An account that already chose its password and signs in by
 a code is offered the passkey alone.
+
+The offer names the way the device unlocks, from the browser's system:
+*Sign in with Face ID or Touch ID instead of your password.* on an iPhone
+or iPad, *Touch ID* on a Mac, *Windows Hello* on Windows, *your
+fingerprint, face or screen lock* on Android, and *your device's screen
+lock* elsewhere; its symbol is a passkey's key, the same on every device.
 
 Administrators manage accounts in Settings › Users, which only the master
 and admins see, as macOS's Users & Groups or a GitHub organization's
@@ -161,7 +167,7 @@ phone.
   password chooses it first ([Administrators manage accounts](#user-system)).
   A sign-in by a code counts as the phone's confirmation, as a password sign-in does, so for five minutes
   the phone adds a passkey without asking the password again. The page the
-  code opens offers it once on that browser, as a one-step wizard, *Use Face ID next time?* with
+  code opens offers it once on that browser, as a one-step wizard, *Use a passkey next time?* with
   Add Passkey and Not Now, and not again on that browser whichever is
   pressed; a phone whose password manager already holds a passkey of the
   account answers so, and the page says *This phone already has a passkey
