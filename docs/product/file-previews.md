@@ -186,7 +186,11 @@ relative images load as the Host has them now.
 ## Files named in messages
 
 A message, the agent's or the user's, can name files on the conversation's
-Host. For example, the agent's reply contains an image and a link:
+Host. A user's message, in the composer and as a sent bubble, shows every
+image it names as an attachment capsule, as a file the user attached, never
+as a picture in its text: the user's message is text and attachments. What
+follows of pictures in text is the agent's. For example, the agent's reply
+contains an image and a link:
 
 ```markdown
 ![Weekly load](out/chart.png)
@@ -390,9 +394,10 @@ it, as a link preview does, so a glance needs no window:
 ```
 
 - **Which pictures.** Every picture the page shows smaller than this card
-  would: a call's, a notice's and a run's in their rows, a picture in a message,
-  and an image or video capsule in a sent message. Every picture in a message is a tile smaller than the card, so
-  each has one.
+  would: a call's, a notice's and a run's in their rows, a picture in the agent's
+  message, and an image or video capsule in a user's sent message. Every
+  picture in the agent's message is a tile smaller than the card, so each
+  has one.
 - **The card.** The picture at its own size on the screen, its pixels shown
   one to one: its pixel size divided by the screen's pixel ratio, as a
   browser shows an image at 100%. A picture larger than 70% of the page's
