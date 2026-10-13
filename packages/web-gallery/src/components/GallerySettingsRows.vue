@@ -135,7 +135,7 @@ function refreshUsage(): void {
     <SettingsRow label="Export" description="A copy of every conversation, sent by email.">
       <Button size="sm" @click="productWould('Request an Export')">Request Export</Button>
     </SettingsRow>
-    <SettingsRow label="zan@example.com">
+    <SettingsRow label="alex@example.com">
       <template #tags><Tag>Max 5×</Tag></template>
       <Tooltip content="Refresh usage">
         <IconButton size="sm" :icon="RefreshCw" aria-label="Refresh usage" spin-on-click @click="refreshUsage" />

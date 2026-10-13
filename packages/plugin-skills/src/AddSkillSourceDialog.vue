@@ -77,12 +77,12 @@ async function submit() {
       <div
         class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
       >
-        <SettingsRow label="Repository" description="owner/repo or a Git URL.">
+        <SettingsRow label="Repository" description="owner/repository or a Git URL.">
           <TextInput
             v-model="origin"
             focused
             class="w-72 max-w-full"
-            placeholder="vercel-labs/agent-skills"
+            placeholder="owner/repository"
             aria-label="Repository"
             literal
             :readonly="busy"
