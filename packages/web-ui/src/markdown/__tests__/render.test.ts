@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { renderMarkdown } from '../render'
+import { messageMedia, renderMarkdown } from '../render'
 import type { AttachmentLookup, MessageFiles } from '../types'
 import type { MessageAgents } from '../../agent/agent-links'
 
@@ -46,9 +46,10 @@ test('an image loads from the web, as a data URL, or from the Host; anything els
     '![chart](out/chart.png) and ![logo](https://example.com/l.png) and ![dot](data:image/png;base64,AAAA) and ![mail](mailto:a@b.c)',
     { files },
   )
-  // A click shows the image whole: a Host file in the File view, a web image in a new tab.
-  expect(html).toContain(`<a href="/work/out/chart.png" data-file-link><img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" /></a>`)
-  expect(html).toContain('<a href="https://example.com/l.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/l.png" alt="logo" /></a>')
+  // A click on any of them shows it large in the media viewer, so none is wrapped in a link.
+  expect(html).toContain(`<img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" />`)
+  expect(html).toContain('<img src="https://example.com/l.png" alt="logo" />')
+  expect(html).not.toContain('<a ')
   // Each stands on its own line, the words between them on theirs.
   expect(html).toContain('<p>and</p>\n<p class="media-lone"><img src="data:image/png;base64,AAAA" alt="dot" /></p>\n<p>and mail</p>')
 })
@@ -72,7 +73,7 @@ test('without a Host, paths stay text and Host images show their alt text', () =
   const html = renderMarkdown('[plot](scripts/plot.py) ![chart](out/chart.png) ![logo](https://example.com/l.png)')
   expect(html).not.toContain('data-file-link')
   // A Host image's alt text is words; the web image stands on its own line.
-  expect(html).toBe('<p>plot chart</p>\n<p class="media-lone"><a href="https://example.com/l.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/l.png" alt="logo" /></a></p>\n')
+  expect(html).toBe('<p>plot chart</p>\n<p class="media-lone"><img src="https://example.com/l.png" alt="logo" /></p>\n')
 })
 
 test('emphasis beside CJK text formats as a CJK writer means it', () => {
@@ -202,7 +203,7 @@ test('an attachment shows its text while the page asks for it, when asking faile
 // § Files named in messages): a run is one row, each image an item of it.
 
 const shot = (n: number) => `![shot ${n}](https://example.com/${n}.png)`
-const item = (n: number) => `<a href="https://example.com/${n}.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/${n}.png" alt="shot ${n}" /></a>`
+const item = (n: number) => `<img src="https://example.com/${n}.png" alt="shot ${n}" />`
 
 test('images with only white space between them in one paragraph are one run', () => {
   expect(renderMarkdown(`${shot(1)} ${shot(2)}\n${shot(3)}`, { files }))
@@ -226,7 +227,7 @@ test('text, a list or a heading between images ends the run', () => {
   expect(html).toContain(`<p class="media-lone">${item(7)}</p>`)
 })
 
-const lone = (n: number) => `<p class="media-lone"><a href="https://example.com/${n}.png" target="_blank" rel="noopener noreferrer"><img src="https://example.com/${n}.png" alt="shot ${n}" /></a></p>\n`
+const lone = (n: number) => `<p class="media-lone"><img src="https://example.com/${n}.png" alt="shot ${n}" /></p>\n`
 
 test('a lone image stands on a line of its own, even in a paragraph of words', () => {
   expect(renderMarkdown(`Here it is:\n\n${shot(1)}\n\nThat is all.`, { files }))
@@ -271,4 +272,27 @@ test('math renders on its own, beside Chinese text, and as a display', () => {
   expect(beside).toStartWith('<p>面积为<span class="katex">')
   expect(beside).toEndWith('</span>平方米</p>\n')
   expect(renderMarkdown('$$\\sum_i x_i$$')).toContain('<span class="katex-display">')
+})
+
+// The pictures a message shows that open in the media viewer, in order.
+
+test('a message\'s pictures are its images that load and its attachments that are images or videos, in order', () => {
+  const markdown = [
+    '![chart](out/chart.png) and ![logo](https://example.com/l.png)',
+    '![The flow](attachment:a2)',
+    '![mail](mailto:a@b.c) ![report](attachment:a3) ![soon](attachment:a4) ![gone](attachment:a9)',
+    '`![code](not-an-image.png)`',
+    '![](attachment:a1)',
+  ].join('\n\n')
+  expect(messageMedia(markdown, withAttachments)).toEqual([
+    { kind: 'image', src: `/raw?path=${encodeURIComponent('/work/out/chart.png')}`, name: 'chart' },
+    { kind: 'image', src: 'https://example.com/l.png', name: 'logo' },
+    { kind: 'video', src: '/blobs/2?type=video%2Fmp4', name: 'flow.mp4', size: { width: 1280, height: 720 } },
+    { kind: 'image', src: '/blobs/1?type=image%2Fpng', name: 'login.png', size: { width: 480, height: 300 } },
+  ])
+})
+
+test('an image inside a link follows the link and is not among a message\'s pictures', () => {
+  expect(messageMedia('[![build](https://example.com/badge.svg)](https://example.com/ci) ![chart](out/chart.png)', files))
+    .toEqual([{ kind: 'image', src: `/raw?path=${encodeURIComponent('/work/out/chart.png')}`, name: 'chart' }])
 })

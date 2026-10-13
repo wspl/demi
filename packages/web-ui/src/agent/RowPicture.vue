@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ImageOff } from '@lucide/vue'
-import { useMediaViewer } from '../files/media-viewer'
+import { transcriptRowOf, useMediaViewer } from '../files/media-viewer'
+import { useTranscript } from './edit-selection'
 import { dropSource } from '../files/preview'
 import { declaredSize, loadedSize, type PixelSize } from '../files/thumbnail'
 import PicturePreview from '../ui/PicturePreview.vue'
@@ -25,6 +26,7 @@ const props = defineProps<{ picture: ToolPicture }>()
 
 const src = useMediaUrl(() => props.picture.source)
 const viewer = useMediaViewer()
+const transcript = useTranscript()
 const failed = ref(false)
 const element = ref<HTMLImageElement | HTMLVideoElement | null>(null)
 /** The size its reference carries, known before its bytes arrive. */
@@ -43,10 +45,10 @@ function onLoaded(): void {
     loaded.value = loadedSize(element.value)
 }
 
-/** Opens it in the page's viewer, whose window first opens over this picture's pane. */
+/** Opens it in the page's viewer, which steps through the media of the transcript it stands in. */
 function openLarge(event: MouseEvent): void {
-  const from = event.currentTarget instanceof Element ? event.currentTarget : null
-  viewer.show({ kind: props.picture.kind, src: src.value, name: props.picture.name, size: known.value, from })
+  const row = event.currentTarget instanceof Element ? transcriptRowOf(event.currentTarget) : undefined
+  viewer.show({ kind: props.picture.kind, src: src.value, name: props.picture.name, size: known.value, row }, transcript?.pictures)
 }
 
 onBeforeUnmount(() => {

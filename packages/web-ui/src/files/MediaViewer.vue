@@ -53,6 +53,27 @@ watch(() => props.viewer.shown.value, (shown, previous) => {
     floating.value?.activate()
 })
 
+/** What the title bar tells of the medium: its place among the transcript's, its pixel size and an image's zoom, *3 of 12 · 1280 × 720 · 50%*. */
+function details(withZoom: boolean): string {
+  const place = props.viewer.position.value
+  return [
+    place ? `${place.at} of ${place.of}` : null,
+    size.value ? `${size.value.width} × ${size.value.height}` : null,
+    withZoom && size.value && zoom.value !== null ? formatZoom(zoom.value) : null,
+  ].filter((part) => part !== null).join(' · ')
+}
+
+/** The arrow keys step to the medium before (left, up) or after (right, down); a video's player keeps its own. */
+function onKeydown(event: KeyboardEvent): void {
+  const direction = { ArrowLeft: -1, ArrowUp: -1, ArrowRight: 1, ArrowDown: 1 }[event.key]
+  if (direction === undefined || event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
+    return
+  if (event.target instanceof HTMLVideoElement)
+    return
+  event.preventDefault()
+  props.viewer.step(direction === -1 ? -1 : 1)
+}
+
 function onSize(width: number, height: number): void {
   size.value = { width, height }
   props.viewer.measured({ width, height })
@@ -101,7 +122,7 @@ function onSize(width: number, height: number): void {
         <ReuseMedium :flush="false" />
       </div>
       <div class="h-6 shrink-0 px-3 text-center text-[11px] tabular-nums text-fg-muted">
-        {{ size ? `${size.width} × ${size.height}` : '' }}
+        {{ details(false) }}
       </div>
     </div>
   </Dialog>
@@ -114,9 +135,10 @@ function onSize(width: number, height: number): void {
     :overlay-store="appOverlayStore"
     @update:rect="viewer.place($event)"
     @close="viewer.close()"
+    @keydown="onKeydown"
   >
     <template #title>{{ medium?.name }}</template>
-    <template v-if="size" #trailing>{{ size.width }} × {{ size.height }}{{ zoom === null ? '' : ` · ${formatZoom(zoom)}` }}</template>
+    <template v-if="details(true)" #trailing>{{ details(true) }}</template>
     <ReuseMedium flush />
   </FloatingWindow>
 </template>

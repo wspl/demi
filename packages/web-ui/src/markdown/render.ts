@@ -12,6 +12,7 @@ import { escapeHtml } from './html'
 import { mathExtensions } from './math'
 import { scrollingTable } from './table'
 import { declaredSize, type PixelSize } from '../files/thumbnail'
+import type { ShownMedium } from '../files/media-viewer'
 
 // Parsing is synchronous, so the renderers read the options of the parse in flight instead of
 // building a Marked instance (and re-registering KaTeX) per call.
@@ -193,19 +194,6 @@ function attachmentTarget(
 }
 
 /**
- * Where an image loads from, and the link a click on it follows to show it
- * whole. Null shows its alt text.
- */
-function imageSource(target: string): { src: string; link: string | null } | null {
-  const image = messageImage(target, activeOptions?.files)
-  if (!image)
-    return null
-  if (!image.opens)
-    return { src: image.src, link: null }
-  return { src: image.src, link: 'web' in image.opens ? webLink(image.opens.web) : fileLink({ path: image.opens.file, line: null }, false) }
-}
-
-/**
  * An attachment an image names: an image that a click shows large, a video's
  * first frame that a click plays large, each a tile whose box its record's
  * size gives before its bytes arrive, and any other file as a link that
@@ -277,12 +265,11 @@ const messageRenderer: RendererObject = {
     const attachment = attachmentId(token.href)
     if (attachment !== null)
       return attachmentTarget(attachment, escapeHtml(token.text), (found) => attachmentMedium(found, token))
-    const source = imageSource(token.href)
+    const source = messageImage(token.href, activeOptions?.files)
     if (source === null)
       return escapeHtml(token.text)
     const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
-    const image = `<img src="${escapeHtml(source.src)}" alt="${escapeHtml(token.text)}"${title} />`
-    return openLinks > 0 || source.link === null ? image : `${source.link}${image}</a>`
+    return `<img src="${escapeHtml(source.src)}" alt="${escapeHtml(token.text)}"${title} />`
   },
 }
 
@@ -472,6 +459,44 @@ export function messageCodeSpans(src: string): string[] {
       spans.push(token.text)
   })
   return spans
+}
+
+/**
+ * The pictures a message shows that open in the media viewer, in order:
+ * each image that loads and each attachment that is an image or a video,
+ * named and sized as a click on it names and sizes it. An image inside a
+ * link follows the link and is not among them; neither is one still being
+ * asked for, or one that shows its alt text.
+ */
+export function messageMedia(src: string, files: MessageFiles | undefined): ShownMedium[] {
+  if (!src.includes('!['))
+    return []
+  const tokens = agentMarked.lexer(src)
+  const linked = new Set<Token>()
+  agentMarked.walkTokens(tokens, (token) => {
+    if (token.type === 'link')
+      agentMarked.walkTokens(token.tokens ?? [], (inside) => void linked.add(inside))
+  })
+  const media: ShownMedium[] = []
+  agentMarked.walkTokens(tokens, (token) => {
+    if (token.type !== 'image' || linked.has(token))
+      return
+    const id = attachmentId(token.href)
+    if (id === null) {
+      const image = messageImage(token.href, files)
+      if (image)
+        media.push({ kind: 'image', src: image.src, name: token.text || 'image' })
+      return
+    }
+    const lookup = files?.attachment?.(id)
+    if (lookup?.state !== 'found')
+      return
+    const { attachment } = lookup
+    const kind = attachment.mediaType.startsWith('image/') ? 'image' : attachment.mediaType.startsWith('video/') ? 'video' : null
+    if (kind)
+      media.push({ kind, src: attachment.url, name: attachment.name, size: declaredSize(attachment) })
+  })
+  return media
 }
 
 /** An agent's message: GitHub Flavored Markdown with math. */

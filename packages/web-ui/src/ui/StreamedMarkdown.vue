@@ -8,6 +8,7 @@ import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
 import { openMessageLink, pressMessageLink, useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'
 import { useMessageAgents } from '@demicodes/web-ui/agent/agent-links'
+import { useTranscript } from '@demicodes/web-ui/agent/edit-selection'
 import AgentLinkMark from '@demicodes/web-ui/agent/AgentLinkMark.vue'
 import { attachmentDrag } from '@demicodes/web-ui/agent/message-input/copied-message'
 import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
@@ -48,6 +49,7 @@ const visible = computed(() => (props.streaming ? settled(shown.value) : shown.v
 const renderVersion = useMarkdownRenderVersion()
 const agents = useMessageAgents()
 const viewer = useMediaViewer()
+const transcript = useTranscript()
 // The files the reply's inline code names, asked about once it is complete.
 const codeFiles = computed(() => replyCodeFiles(props.content, props.streaming, files()))
 
@@ -125,7 +127,7 @@ watch(
     :class="streaming ? 'is-streaming' : ''"
     :aria-busy="streaming || undefined"
     v-html="renderedMarkdown"
-    @click="openMessageLink($event, files(), viewer, agents())"
+    @click="openMessageLink($event, files(), viewer, agents(), transcript?.pictures)"
     @dragstart="attachmentDrag"
     @keydown="pressMessageLink"
     @load.capture="onMediumLoad"

@@ -1,4 +1,5 @@
 import { inject, provide, type InjectionKey } from 'vue'
+import type { MediaSequence } from '../files/media-viewer'
 import type { RequestEditSelection, TranscriptRequests } from '../files/request-changes'
 
 /**
@@ -33,6 +34,8 @@ export interface TranscriptContext {
    * agent, whose directory is the conversation's.
    */
   directory(blockId: string): string | null
+  /** The images and videos the transcript shows, in order, which the media viewer steps through. */
+  pictures: MediaSequence
 }
 const transcriptKey: InjectionKey<TranscriptContext> = Symbol('transcript')
 
