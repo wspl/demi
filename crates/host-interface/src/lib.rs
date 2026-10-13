@@ -48,7 +48,7 @@ pub use host::{
     SpawnErrorKind, SpawnRequest, WhenExists, WriteOptions,
 };
 pub use media::CommandMedium;
-pub use paths::HostPaths;
+pub use paths::{HostPaths, relative_to};
 pub use output::{
     Backward, Forward, Missing, OutputRecord, OutputText, Piece, Seen, Streams, WholeOutput,
     binary_line,

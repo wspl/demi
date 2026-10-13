@@ -4,7 +4,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     rc::Rc,
     sync::Arc,
     time::Duration,
@@ -16,7 +16,7 @@ use demi_agent_server::{
     AgentServer, ServerConfig, ServerDeps,
     testing::{ScriptedProviders, TestClient},
 };
-use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
+use demi_agent_store::{AgentTreeStore, Placement, testing::MemoryTreeStore};
 use demi_agent_tools::{
     ContextAnswer, ContextSource, EnvironmentScope, HostResolver, NodeContext,
     ShellEnvironmentFactory, SubagentSettings, SubagentSource, Toolset,
@@ -102,8 +102,16 @@ impl Default for TestProduct {
     }
 }
 
+/// No Host: the conversation's directory is `/workspace`.
 impl HostResolver for TestProduct {
     type Host = NoHost;
+
+    async fn placement(&self, _context: NodeContext<'_>) -> Result<Placement, HostError> {
+        Ok(Placement {
+            device: None,
+            directory: "/workspace".to_owned(),
+        })
+    }
 }
 
 impl SubagentSource for TestProduct {
@@ -168,9 +176,10 @@ impl RpcHandler for Hello {
 }
 
 /// The provider of every node of a tree: the root's requests are answered
-/// from the root's script, a child's from the script whose key its first
-/// user message contains, in order. A run beyond its script panics: the
-/// test did not script it.
+/// from the root's script, a child's from the script whose key the first
+/// user message of its first request contains, in order, from then on by
+/// its session, whatever a compaction made of that message. A run beyond
+/// its script panics: the test did not script it.
 #[derive(Clone, Default)]
 pub struct Model(Rc<RefCell<Scripts>>);
 
@@ -178,6 +187,8 @@ pub struct Model(Rc<RefCell<Scripts>>);
 struct Scripts {
     root: VecDeque<Turn>,
     children: Vec<(String, VecDeque<Turn>)>,
+    /// The key of each child's script, by the child's session.
+    claimed: HashMap<String, String>,
     requests: Vec<InferenceRequest>,
 }
 
@@ -205,10 +216,14 @@ impl Model {
 
     /// The requests of the node whose brief contains `key`.
     pub fn requests_of(&self, key: &str) -> Vec<InferenceRequest> {
-        self.requests()
-            .into_iter()
-            .filter(|request| request.session_id != conversation().as_str())
-            .filter(|request| brief(request).contains(key))
+        let scripts = self.0.borrow();
+        scripts
+            .requests
+            .iter()
+            .filter(|request| {
+                scripts.claimed.get(&request.session_id).map(String::as_str) == Some(key)
+            })
+            .cloned()
             .collect()
     }
 
@@ -276,11 +291,27 @@ impl ProviderRuntime for Model {
             if request.session_id == conversation().as_str() {
                 scripts.root.pop_front()
             } else {
-                let text = brief(&request);
-                scripts
-                    .children
+                let Scripts {
+                    children, claimed, ..
+                } = &mut *scripts;
+                let key = match claimed.get(&request.session_id) {
+                    Some(key) => Some(key.clone()),
+                    None => {
+                        let text = brief(&request);
+                        let key = children
+                            .iter()
+                            .map(|(key, _)| key)
+                            .find(|key| text.contains(key.as_str()))
+                            .cloned();
+                        if let Some(key) = &key {
+                            claimed.insert(request.session_id.clone(), key.clone());
+                        }
+                        key
+                    }
+                };
+                children
                     .iter_mut()
-                    .find(|(key, _)| text.contains(key.as_str()))
+                    .find(|(known, _)| Some(known) == key.as_ref())
                     .and_then(|(_, queue)| queue.pop_front())
             }
         };
@@ -628,7 +659,7 @@ impl Fixture {
     }
 
     pub fn client(&self) -> TestClient<TestProduct> {
-        TestClient::connect(&self.server, &conversation(), "/workspace")
+        TestClient::connect(&self.server, &conversation())
     }
 
     /// A client that opened the conversation and read its handshake.
@@ -809,14 +840,34 @@ impl Host for ScriptedHost {
     }
 }
 
-/// Where the nodes' shell tools run: the scripted Host.
-pub struct LiveHosts;
+/// Where the nodes' shell tools run: the scripted Host, where the
+/// conversation works in `/workspace` until the test moves it, as a change
+/// of its target in the store does.
+#[derive(Default)]
+pub struct LiveHosts {
+    moved: RefCell<Option<String>>,
+}
+
+impl LiveHosts {
+    /// The conversation works in `directory` of the scripted Host from now
+    /// on.
+    pub fn move_to(&self, directory: &str) {
+        self.moved.replace(Some(directory.to_owned()));
+    }
+}
 
 impl HostResolver for LiveHosts {
     type Host = ScriptedHost;
 
     async fn host(&self, _context: NodeContext<'_>) -> Result<Rc<ScriptedHost>, HostError> {
         Ok(Rc::new(ScriptedHost))
+    }
+
+    async fn placement(&self, _context: NodeContext<'_>) -> Result<Placement, HostError> {
+        Ok(Placement {
+            device: Some("scripted".to_owned()),
+            directory: self.moved.borrow().clone().unwrap_or_else(|| "/workspace".to_owned()),
+        })
     }
 }
 
@@ -826,6 +877,9 @@ impl HostResolver for LiveHosts {
 /// stopping: it ends when the test says (`runner.md` § Cancellation and
 /// completion).
 pub struct ScriptedShell {
+    /// The directory each of its jobs started in, in order; none for one
+    /// that starts where the Host starts its work.
+    pub started_in: RefCell<Vec<Option<String>>>,
     feed: Rc<dyn PageFeed>,
     command: RefCell<Option<Rc<RefCell<CommandRecord>>>>,
     /// Changes when the command ends.
@@ -873,6 +927,7 @@ impl ShellEnvironment for ScriptedShell {
         request: ExecRequest,
         _cancel: CancellationToken,
     ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
+        self.started_in.borrow_mut().push(request.cwd.clone());
         let command = CommandId::try_from("1").unwrap();
         let record = Rc::new(RefCell::new(CommandRecord::new(
             command.clone(),
@@ -1028,6 +1083,16 @@ pub fn scripted_host_server(
     shells: Rc<ScriptedShells>,
     store: Rc<MemoryTreeStore>,
 ) -> Rc<AgentServer<LiveHosts>> {
+    scripted_host_server_in(providers, shells, store, Rc::default())
+}
+
+/// [`scripted_host_server`], whose conversation works where `hosts` says.
+pub fn scripted_host_server_in(
+    providers: Rc<ScriptedProviders>,
+    shells: Rc<ScriptedShells>,
+    store: Rc<MemoryTreeStore>,
+    hosts: Rc<LiveHosts>,
+) -> Rc<AgentServer<LiveHosts>> {
     AgentServer::new(ServerDeps {
         toolsets: Rc::new(Toolset {
             commands: Rc::new(CommandSet::new()),
@@ -1041,7 +1106,7 @@ pub fn scripted_host_server(
         }),
         instructions: Rc::from("system prompt"),
         guide: Rc::from("harness guide"),
-        hosts: Rc::new(LiveHosts),
+        hosts,
         context: Rc::new([]),
         providers,
         shells,
@@ -1072,6 +1137,7 @@ impl ShellEnvironmentFactory<ScriptedHost> for ScriptedShells {
         _host: Rc<ScriptedHost>,
     ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>> {
         let shell = Rc::new(ScriptedShell {
+            started_in: RefCell::default(),
             feed: scope.feed.clone(),
             command: RefCell::default(),
             ends: watch::Sender::new(()),

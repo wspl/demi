@@ -19,7 +19,7 @@ use std::{
 
 use bytes::Bytes;
 use demi_agent_session::{Continuation, ModelSwitch, SessionEvent, Settle, Status, Subscription};
-use demi_agent_store::{AgentTreeStore, NodeRecord, StoreError};
+use demi_agent_store::{Placement, AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_output};
 use demi_agent_transcript::IdSource;
 use demi_conversation_socket_protocol::{ServerFrame, index_u32, reset_start};
@@ -254,7 +254,6 @@ impl<H: HostResolver> Tree<H> {
     pub(crate) async fn open(
         server: &Rc<AgentServer<H>>,
         root: &NodeId,
-        cwd: &str,
     ) -> Result<(Rc<Self>, Option<Continuation>), OpenError> {
         let deps = &server.deps;
         let toolset = deps.toolsets.current().await.map_err(OpenError::Toolset)?;
@@ -268,7 +267,6 @@ impl<H: HostResolver> Tree<H> {
             .map_err(AssembleError::from)?;
         let origin = stored.unwrap_or_else(|| Origin::New {
             record: NodeRecord::root(root.clone(), deps.clock.now()),
-            cwd: cwd.to_owned(),
             model: model.clone(),
             first_message: None,
         });
@@ -612,6 +610,7 @@ impl<H: HostResolver> Tree<H> {
         outbox: Rc<Outbox>,
         from: Option<u32>,
         edge: Option<&BlockId>,
+        placement: Option<&Placement>,
     ) {
         self.sink.attach(Attachment {
             connection,
@@ -642,7 +641,7 @@ impl<H: HostResolver> Tree<H> {
         ];
         for frame in root
             .into_iter()
-            .chain(self.replay())
+            .chain(self.replay(placement))
             .chain(self.live_commands())
         {
             // A frame the fresh outbox refuses belongs to a socket that is
@@ -658,9 +657,10 @@ impl<H: HostResolver> Tree<H> {
         &self,
         from: Option<u32>,
         edge: Option<&BlockId>,
+        placement: Option<&Placement>,
     ) -> Vec<ServerFrame> {
         std::iter::once(self.root_reset(from, edge))
-            .chain(self.replay())
+            .chain(self.replay(placement))
             .chain(self.live_commands())
             .collect()
     }

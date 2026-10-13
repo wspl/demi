@@ -474,6 +474,7 @@ pub(super) async fn run_pass(
                             source: EXECUTION_SOURCE.to_owned(),
                             text,
                             instructions: Vec::new(),
+                            cwd: None,
                         });
                     }
                     // The media before the new boundary are no longer
@@ -650,7 +651,7 @@ async fn ask_copy(
 
 /// A session copy of `window` (`compaction.md` § Session copy): the
 /// session's id, which its requests carry so that the vendor keeps them with
-/// the session's, the session's model, working directory, retry policy,
+/// the session's, the session's model, retry policy,
 /// system prompt and tools, a fresh runtime of the same provider, the bytes
 /// the session holds for the window's media. It sends one request and runs
 /// no tool, never compacts, saves nowhere, and runs inside the session's
@@ -658,7 +659,6 @@ async fn ask_copy(
 fn session_copy(s: &Rc<SessionShared>, window: Vec<Block>, media: HeldMedia) -> AgentSession {
     let parts = s.read(|core| CoreParts {
         id: core.id.clone(),
-        cwd: core.cwd.clone(),
         model: core.model.clone(),
         provider: core
             .provider

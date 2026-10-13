@@ -140,9 +140,8 @@ impl Shard {
         let committed = match change {
             ConversationChange::Target(to) => {
                 let switched = host.switch_target(&record, to, None).await;
-                // A deadline of the old binding never releases the new one.
                 if switched.is_ok() {
-                    self.restart_idle(&record.id);
+                    self.switched(&record.id).await;
                 }
                 switched.map(Some)
             }
@@ -169,6 +168,16 @@ impl Shard {
         };
         drop(hold);
         committed
+    }
+
+    /// What follows a switch the conversation `id` made, under its hold: its
+    /// idle watch starts again, since a deadline of the old binding never
+    /// releases the new one, and the pages hear that every child works in
+    /// the conversation's new directory (`subagents.md` § Working
+    /// directory).
+    pub(crate) async fn switched(&self, id: &ConversationId) {
+        self.restart_idle(id);
+        self.agent().placement_changed(&root_of(id)).await;
     }
 
     /// The paired device a switch of `record` leaves while its runner is not

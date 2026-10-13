@@ -298,7 +298,7 @@ async fn a_fork_has_none_of_its_sources_running_commands() {
     providers.provide_runtime("stub", model.clone());
     let store = MemoryTreeStore::new();
     let server = scripted_host_server(providers, Rc::new(ScriptedShells::default()), store.clone());
-    let mut page = demi_agent_server::testing::TestClient::connect(&server, &conversation(), "/workspace");
+    let mut page = demi_agent_server::testing::TestClient::connect(&server, &conversation());
     page.send(crate::support::open()).await;
     let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task serve" })).await;
     let source = named_node(&store, &spawned);
@@ -368,7 +368,11 @@ async fn a_fork_onto_a_smaller_window_compacts_with_the_sources_model_first() {
     let text = request_text(&asked[0]);
     assert!(text.contains("Summary: the card reads a stale cache."), "{text}");
     assert!(!text.contains(&long), "{text}");
-    assert!(text.ends_with("Fix it."), "{text}");
+    // The message comes last, then where the fork works.
+    assert!(
+        text.ends_with("Fix it.\nYour working directory is /workspace: your shell calls start there on the primary Host, and the relative paths you write are read against it. `demi agent cwd <dir>` changes it."),
+        "{text}"
+    );
     // The source's own history is as it was.
     let kept = fixture.store.session_store(&source).load().await.unwrap().unwrap();
     assert!(!kept.transcript.iter().any(|block| matches!(block, Block::CompactionBoundary(_))));

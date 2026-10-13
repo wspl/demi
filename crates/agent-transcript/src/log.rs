@@ -105,6 +105,7 @@ impl TranscriptLog {
         source: String,
         text: String,
         instructions: Vec<InstructionEntry>,
+        cwd: Option<String>,
     ) {
         let (id, created_at) = self.stamp();
         self.append(Block::Context(ContextBlock {
@@ -115,6 +116,7 @@ impl TranscriptLog {
             source,
             text,
             instructions,
+            cwd,
             entries: Vec::new(),
         }));
     }

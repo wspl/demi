@@ -26,7 +26,8 @@ use crate::shard::provider_commands::providers_group;
 use demi_backend_host_access::{HostShard, conversation_of};
 use demi_backend_plugins::ContextAsk;
 use demi_backend_remote_host::RemoteHost;
-use demi_host_interface::HostError;
+use demi_agent_store::Placement;
+use demi_host_interface::{HostError, HostErrorKind};
 use demi_plugin_interface::{EXECUTION_SOURCE, PluginId};
 use demi_shared_types::TurnId;
 use demi_backend_database::StorageError;
@@ -218,6 +219,18 @@ impl HostResolver for ShardHosts {
             .conversation_host(&conversation_of(context.root))
             .await
     }
+
+    /// The conversation's target, read without reaching the Host.
+    async fn placement(&self, context: NodeContext<'_>) -> Result<Placement, HostError> {
+        let shard = self
+            .shard
+            .upgrade()
+            .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
+        shard
+            .placement(&conversation_of(context.root))
+            .await
+            .map_err(|error| HostError::new(HostErrorKind::Failed { code: None }, error.to_string()))
+    }
 }
 
 /// The context source that announces a change of the conversation's
@@ -277,10 +290,14 @@ impl ContextSource for PluginContext {
                 .host_paths(&conversation)
                 .await
                 .map_err(|error| format!("the plugin {} was not asked: {error}", self.plugin))?;
+            let cwd = shard
+                .node_directory(node)
+                .await
+                .map_err(|error| format!("the plugin {} was not asked: {error}", self.plugin))?;
             let asked = ContextAsk {
                 conversation,
                 node: node.node.clone(),
-                cwd: node.cwd.to_owned(),
+                cwd,
                 paths,
                 turn: turn.clone(),
                 seen: seen.iter().map(|text| (*text).to_owned()).collect(),

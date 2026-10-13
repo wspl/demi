@@ -10,7 +10,7 @@ use demi_agent_server::{
 };
 use demi_agent_store::{
     RunningCommand,
-    AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord,
+    AgentTreeStore, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement,
     testing::{MemoryTreeStore, test_model, text},
 };
 use demi_conversation_socket_protocol::{
@@ -22,7 +22,7 @@ use demi_provider_common::{
 };
 use demi_agent_tools::{Profile, ProfileModel, SubagentSettings};
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, Block, BlockId, CommandId, CompletionId, CompletionOutcome, NodeId,
+    AgentMessage, AgentMessageEvent, Block, BlockId, CommandId, CompletionId, CompletionOutcome, EXECUTION_SOURCE, NodeId,
     QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
 };
 use demi_host_interface::Seen;
@@ -31,8 +31,9 @@ use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
 use crate::support::{
-    AGENT_CALL, CommandRun, Fixture, Gate, Model, ScriptedShells, TestProduct, agent, agent_call, conversation,
-    held, is_idle, is_pending_steers, listed_model, named_node, open, request_text, scripted_host_server, send,
+    AGENT_CALL, CommandRun, Fixture, Gate, LiveHosts, Model, ScriptedShells, TestProduct, agent, agent_call, conversation,
+    held, is_idle, is_pending_steers, listed_model, named_node, open, request_text, scripted_host_server,
+    scripted_host_server_in, send,
     shell_command, texts, until,
 };
 
@@ -252,7 +253,8 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
         .expect("the parent wrote the receipt");
     assert!(closed < receipt, "{frames:#?}");
 
-    // The child was asked with its preamble and its brief alone.
+    // The child was asked with its preamble and its brief, then where it
+    // works.
     let asked = model.requests_of("Read notes.md");
     assert_eq!(asked.len(), 1);
     assert_eq!(asked[0].session_id, child.as_str());
@@ -260,11 +262,19 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
     assert!(
         asked[0]
             .system_prompt
-            .contains("Operations: spawn, send, abort, resume, fork, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete\n")
+            .contains("Operations: spawn, cwd, send, abort, resume, fork, list, show, profiles list, profiles show, profiles create, profiles edit, profiles delete\n")
     );
-    let [InferenceItem::UserMessage { content }] = &*asked[0].items else {
+    let [
+        InferenceItem::UserMessage { content },
+        InferenceItem::UserMessage { content: directory },
+    ] = &*asked[0].items
+    else {
         panic!("{:?}", asked[0].items)
     };
+    assert!(
+        texts(directory).starts_with("Your working directory is /workspace: "),
+        "{directory:?}"
+    );
     let [UserPart::Text(preamble), UserPart::Text(first)] = content.as_slice() else {
         panic!("{content:?}")
     };
@@ -303,10 +313,7 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
         record.delivered,
         "the parent's save marked the round delivered"
     );
-    assert_eq!(
-        fixture.store.checkpoint(&child).unwrap().state.cwd,
-        "/workspace"
-    );
+    assert_eq!(record.cwd.map(|own| own.cwd).as_deref(), Some("/workspace"));
     let receipts = root_receipts(&fixture);
     assert_eq!(receipts.len(), 1);
     assert_eq!(
@@ -506,7 +513,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
     );
     let live = |number: u64, name: &str, execution: &str, activity: &str| {
         format!(
-            "{number}  running  up 0s  last-event 0s ago  profile=(inherit)  \"{name}\"  execution={execution}  activity={activity}"
+            "{number}  running  up 0s  last-event 0s ago  profile=(inherit)  \"{name}\"  .  execution={execution}  activity={activity}"
         )
     };
     assert_eq!(
@@ -520,7 +527,9 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
                 live(4, "gamma", "provider_streaming", "streaming")
             ),
             format!("├─● {}", live(3, "beta", "provider_streaming", "streaming")),
-            "└─○ 1  archived (completed 0s ago)  \"delta\"".to_owned(),
+            // Each child's directory follows its description: the
+            // conversation's own here.
+            "└─○ 1  archived (completed 0s ago)  \"delta\"  .".to_owned(),
         ]
         .join("\n")
             + "\n"
@@ -562,6 +571,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             "execution: provider_streaming (for 0s)".into(),
             "last-event: 0s ago".into(),
             "activity: streaming".into(),
+            "cwd: /workspace".into(),
             "last assistant text: (none yet)".into(),
         ]
         .join("\n")
@@ -584,6 +594,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             "parent: 0",
             "description: delta",
             "phase: archived (completed 0s ago)",
+            "cwd: /workspace",
             "result:",
             "delta done",
         ]
@@ -600,6 +611,7 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             "phase": "completed",
             "closedAgoMs": 0,
             "result": "delta done",
+            "cwd": "/workspace",
         })
     );
 
@@ -793,7 +805,7 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     let shells = Rc::new(ScriptedShells::default());
     let store = MemoryTreeStore::new();
     let server = scripted_host_server(providers, shells.clone(), store.clone());
-    let mut page = TestClient::connect(&server, &conversation(), "/workspace");
+    let mut page = TestClient::connect(&server, &conversation());
     page.send(open()).await;
     page.next_until(is_pending_steers).await;
     let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task serve" })).await;
@@ -805,7 +817,7 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     let frames = page.received();
     assert!(frames.iter().any(is_child_phase(&child, SessionPhase::Running)), "{frames:?}");
     assert!(frames.iter().any(is_child_phase(&child, SessionPhase::Idle)), "{frames:?}");
-    let mut opening = TestClient::connect(&server, &conversation(), "/workspace");
+    let mut opening = TestClient::connect(&server, &conversation());
     opening.send(open()).await;
     let handshake = opening.received();
     assert!(handshake.iter().any(is_child_phase(&child, SessionPhase::Idle)), "{handshake:?}");
@@ -859,7 +871,7 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     );
 
     // A page that opens now finds it stopping in its handshake.
-    let mut second = TestClient::connect(&server, &conversation(), "/workspace");
+    let mut second = TestClient::connect(&server, &conversation());
     second.send(open()).await;
     let handshake = second.received();
     assert!(handshake.iter().any(is_child_command(&child, true)), "{handshake:?}");
@@ -908,7 +920,7 @@ async fn restore_takes_up_the_commands_closed_children_left_stopping() {
     providers.provide_runtime("stub", Model::default());
     let shells = Rc::new(ScriptedShells::default());
     let server = scripted_host_server(providers, shells.clone(), store.clone());
-    let mut page = TestClient::connect(&server, &conversation(), "/workspace");
+    let mut page = TestClient::connect(&server, &conversation());
     page.send(open()).await;
     let stopped = NodeId::try_from("stopped").unwrap();
     let nested = NodeId::try_from("nested").unwrap();
@@ -925,7 +937,7 @@ async fn restore_takes_up_the_commands_closed_children_left_stopping() {
     }
     page.next_until(is_child_command(&stopped, false)).await;
     page.next_until(is_child_command(&nested, false)).await;
-    let mut later = TestClient::connect(&server, &conversation(), "/workspace");
+    let mut later = TestClient::connect(&server, &conversation());
     later.send(open()).await;
     let handshake = later.received();
     assert!(
@@ -942,7 +954,6 @@ pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> Check
             agent_inputs: Vec::new(),
             reports: Vec::new(),
             intervals: Vec::new(),
-            cwd: "/workspace".into(),
             model: test_model(),
             edits: Vec::new(),
         },
@@ -971,6 +982,13 @@ pub(crate) fn child_record(
         closed: None,
         delivered: false,
         forked_from: None,
+        cwd: Some(ChildDirectory {
+            cwd: "/workspace".into(),
+            under: Placement {
+                device: None,
+                directory: "/workspace".into(),
+            },
+        }),
     }
 }
 
@@ -1212,7 +1230,7 @@ async fn a_detached_tree_with_a_live_child_is_not_evicted_and_one_without_is() {
     let listed = agent(&fixture.server, &root(), "list", json!({})).await;
     assert_eq!(
         listed.stdout,
-        "● 0  (root session) ← you\n└─○ 1  archived (completed 0s ago)  (no description)\n"
+        "● 0  (root session) ← you\n└─○ 1  archived (completed 0s ago)  (no description)  .\n"
     );
     assert_eq!(root_receipts(&fixture).len(), 1);
 }
@@ -1446,7 +1464,7 @@ async fn a_grandchild_completes_into_its_parent_which_then_completes_into_the_wo
 /// The execution context the product gives each node once.
 const ON_THE_CLOUD: &str = "The conversation now runs on the Cloud.";
 
-/// How many `context` blocks the node's stored transcript holds.
+/// How many execution context blocks the node's stored transcript holds.
 fn contexts(fixture: &Fixture, node: &NodeId) -> usize {
     fixture
         .store
@@ -1454,7 +1472,7 @@ fn contexts(fixture: &Fixture, node: &NodeId) -> usize {
         .unwrap()
         .transcript
         .iter()
-        .filter(|block| matches!(block, Block::Context(_)))
+        .filter(|block| matches!(block, Block::Context(context) if context.source == EXECUTION_SOURCE))
         .count()
 }
 
@@ -1661,4 +1679,70 @@ async fn a_stop_of_the_parent_leaves_its_child_running_and_the_childs_completion
     client.next_until(is_idle).await;
     assert_eq!(root_receipts(&fixture).len(), 1);
     assert!(model.is_done());
+}
+
+/// A child works in its own directory only while the conversation works
+/// where it did when that was set: once the conversation's target is
+/// another, which the test changes in its store without a word to the
+/// tree, the child's next job starts in the conversation's directory, its
+/// next request tells it so, and its record is as it was. A page that hears
+/// of the move learns where the child works.
+// One tree, a child kept live by the command it left running, on a paused
+// clock, which the command's quiet start-up waits on: a few milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_child_works_in_the_conversations_directory_once_the_conversation_moved_with_no_write() {
+    let model = Model::default();
+    let resident = |id: &str| {
+        Turn::Events(vec![event::tool_call(
+            id,
+            "shell",
+            json!({"script": "serve", "description": "Serve", "intervalMs": null}),
+        )])
+    };
+    model.child(
+        "task stay",
+        [
+            resident("c1"),
+            said("serving"),
+            resident("c2"),
+            said("serving again"),
+        ],
+    );
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide_runtime("stub", model.clone());
+    let store = MemoryTreeStore::new();
+    let shells = Rc::new(ScriptedShells::default());
+    let hosts = Rc::new(LiveHosts::default());
+    let server = scripted_host_server_in(providers, shells.clone(), store.clone(), hosts.clone());
+    let mut page = TestClient::connect(&server, &root());
+    page.send(open()).await;
+    page.next_until(is_pending_steers).await;
+    let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task stay" })).await;
+    let child = named_node(&store, &spawned);
+    let session = server.node(&root(), &child).expect("the child is live").session().clone();
+    while !(model.requests_of("task stay").len() == 2 && session.phase() == SessionPhase::Idle) {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let stored = store.record(&child).expect("the child is stored").cwd;
+
+    hosts.move_to("/elsewhere");
+    let number = store.record(&child).expect("the child is stored").number;
+    agent(&server, &root(), "send", json!({"id": number.to_string(), "message": "Again."})).await;
+    while model.requests_of("task stay").len() < 4 {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let started: Vec<Option<String>> = shells.0.borrow().iter().flat_map(|shell| shell.started_in.borrow().clone()).collect();
+    assert_eq!(started, [Some("/workspace".to_owned()), Some("/elsewhere".to_owned())]);
+    let asked = request_text(&model.requests_of("task stay")[2]);
+    assert!(asked.contains("Your working directory is /elsewhere: "), "{asked}");
+    assert_eq!(store.record(&child).expect("the child is stored").cwd, stored);
+
+    server.placement_changed(&root()).await;
+    let frames = page
+        .next_until(|frame| matches!(frame, ServerFrame::Subagent { event: SubagentEvent::Changed, .. }))
+        .await;
+    let Some(ServerFrame::Subagent { job, .. }) = frames.last() else {
+        unreachable!();
+    };
+    assert_eq!(job.cwd, "/elsewhere");
 }
