@@ -101,7 +101,7 @@ pub trait AgentTreeStore {
     fn set_cwd<'a>(
         &'a self,
         id: &'a NodeId,
-        cwd: &'a str,
+        cwd: &'a ChildDirectory,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
     /// Marks the completion of the node's round `round` delivered, when it
@@ -243,18 +243,50 @@ pub struct NodeRecord {
     pub delivered: bool,
     /// The number of the agent it was forked from; none for one not forked.
     pub forked_from: Option<u64>,
-    /// A child's working directory on the primary Host, where its `shell`
-    /// calls start (`subagents.md` § Working directory); none for the root,
-    /// whose directory is always the conversation's.
-    pub cwd: Option<String>,
+    /// A child's own working directory and where the conversation worked
+    /// when it was set (`subagents.md` § Working directory); none for the
+    /// root, whose directory is always the conversation's.
+    pub cwd: Option<ChildDirectory>,
+}
+
+/// Where a conversation works: its primary Host's device, none for a Cloud
+/// not made yet, and its directory there.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Placement {
+    pub device: Option<String>,
+    pub directory: String,
+}
+
+/// A child's own working directory, and the conversation's placement it was
+/// set under (`subagents.md` § Working directory).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChildDirectory {
+    pub cwd: String,
+    pub under: Placement,
+}
+
+impl ChildDirectory {
+    /// Where the child works while the conversation works at `now`: its own
+    /// directory while the conversation is where it was when the directory
+    /// was set, and the conversation's directory once it moved, which no
+    /// write to the child follows.
+    pub fn effective<'a>(&'a self, now: &'a Placement) -> &'a str {
+        if self.under == *now {
+            &self.cwd
+        } else {
+            &now.directory
+        }
+    }
 }
 
 impl NodeRecord {
     /// A child as the `subagent` frames and the conversation's transcript
     /// route describe it (`subagents.md` § Protocol): running on `model`
     /// while it is live, else as it closed, with the result of a completed
-    /// round. The root, which no node spawned, has none.
-    pub fn job(&self, model: JobModel) -> Option<SubagentJob> {
+    /// round, working where the conversation's placement `now` puts it;
+    /// with `now` unknown, in its own directory. The root, which no node
+    /// spawned, has none.
+    pub fn job(&self, model: JobModel, now: Option<&Placement>) -> Option<SubagentJob> {
         let parent = self.parent.clone()?;
         let result = match self.closed.as_ref().map(|close| &close.phase) {
             Some(ClosePhase::Completed { result }) => Some(result.clone()),
@@ -276,7 +308,10 @@ impl NodeRecord {
             started_at: self.started_at,
             ended_at: self.closed.as_ref().map(|close| close.at),
             result,
-            cwd: self.cwd.clone().expect("a child's record names its directory"),
+            cwd: {
+                let own = self.cwd.as_ref().expect("a child's record names its directory");
+                now.map_or(own.cwd.as_str(), |now| own.effective(now)).to_owned()
+            },
         })
     }
 

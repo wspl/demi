@@ -26,6 +26,7 @@ use crate::shard::provider_commands::providers_group;
 use demi_backend_host_access::{HostShard, conversation_of};
 use demi_backend_plugins::ContextAsk;
 use demi_backend_remote_host::RemoteHost;
+use demi_agent_store::Placement;
 use demi_host_interface::{HostError, HostErrorKind};
 use demi_plugin_interface::{EXECUTION_SOURCE, PluginId};
 use demi_shared_types::TurnId;
@@ -219,15 +220,14 @@ impl HostResolver for ShardHosts {
             .await
     }
 
-    /// The conversation's directory for the root is its target's, read
-    /// without reaching the Host.
-    async fn directory(&self, context: NodeContext<'_>) -> Result<String, HostError> {
+    /// The conversation's target, read without reaching the Host.
+    async fn placement(&self, context: NodeContext<'_>) -> Result<Placement, HostError> {
         let shard = self
             .shard
             .upgrade()
             .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
         shard
-            .node_directory(context)
+            .placement(&conversation_of(context.root))
             .await
             .map_err(|error| HostError::new(HostErrorKind::Failed { code: None }, error.to_string()))
     }

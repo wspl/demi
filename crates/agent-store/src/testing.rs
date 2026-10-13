@@ -17,7 +17,7 @@ use demi_shared_types::{
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
-    AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, NodeClose, NodeRecord,
+    AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, NodeClose, NodeRecord,
     RunningCommand,
     SessionStore, StoreError, StoredCommand, media::BlobStore,
 };
@@ -437,12 +437,12 @@ impl AgentTreeStore for MemoryTreeStore {
     fn set_cwd<'a>(
         &'a self,
         id: &'a NodeId,
-        cwd: &'a str,
+        cwd: &'a ChildDirectory,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
             let mut stored = self.stored.borrow_mut();
             let node = stored.nodes.get_mut(id).ok_or_else(|| missing(id))?;
-            node.record.cwd = Some(cwd.to_owned());
+            node.record.cwd = Some(cwd.clone());
             Ok(())
         })
     }
@@ -609,8 +609,8 @@ pub mod store_contract {
 
     use super::{test_model, text};
     use crate::{
-        AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord,
-        PendingAgentInput,
+        AgentTreeStore, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, NodeClose,
+        NodeRecord, PendingAgentInput, Placement,
     };
 
     fn id(value: &str) -> NodeId {
@@ -633,7 +633,18 @@ pub mod store_contract {
             closed: None,
             delivered: false,
             forked_from: None,
-            cwd: parent.map(|_| "/work".to_owned()),
+            cwd: parent.map(|_| directory("/work")),
+        }
+    }
+
+    /// `cwd`, set while the conversation worked in `/work` on `laptop`.
+    fn directory(cwd: &str) -> ChildDirectory {
+        ChildDirectory {
+            cwd: cwd.to_owned(),
+            under: Placement {
+                device: Some("laptop".to_owned()),
+                directory: "/work".to_owned(),
+            },
         }
     }
 
@@ -790,11 +801,12 @@ pub mod store_contract {
         assert_eq!(loaded.transcript.len(), 1);
         // A child's changed directory is its record's from then on.
         store
-            .set_cwd(&id("child"), "/work/app")
+            .set_cwd(&id("child"), &directory("/work/app"))
             .await
             .expect("the change commits");
         let moved = stored(store, "child").await.expect("the child is stored");
-        assert_eq!(moved.cwd.as_deref(), Some("/work/app"));
+        assert_eq!(moved.cwd, Some(directory("/work/app")));
+        assert_eq!(stored(store, "root").await.expect("the root is stored").cwd, None);
         let again = store
             .create_node(
                 record("child", Some("root"), 2),

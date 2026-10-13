@@ -524,6 +524,70 @@ async fn a_child_works_in_its_own_directory_which_it_changes_and_keeps_and_the_r
     backend.close().await;
 }
 
+// Several seconds: a parent and its child run six shell jobs on a real
+// device, across a switch of the conversation's directory.
+#[tokio::test]
+async fn a_move_of_the_conversation_puts_its_children_in_its_new_directory_and_list_and_show_name_them() {
+    let scripts = Arc::new(Scripts::default());
+    let (_harness, backend, master, paired, root, _provider) = tree(&scripts).await;
+    std::fs::create_dir(format!("{root}/app")).unwrap();
+    let moved = format!("{root}/../moved");
+    std::fs::create_dir(&moved).unwrap();
+    let moved = std::fs::canonicalize(&moved).unwrap().to_str().unwrap().to_owned();
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+
+    scripts.child(vec![
+        shell("c1", "echo \"before=$(pwd)\""),
+        say("here"),
+        // Its next round, after the conversation moved.
+        shell("c2", "echo \"after=$(pwd)\""),
+        say("there"),
+    ]);
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t1", "demi agent spawn --cwd app --description mover <<< 'Say where you are'"),
+            say("dispatched"),
+            say("received"),
+            // `list` names the archived child's directory against the
+            // conversation's, `show` whole.
+            shell("t2", "demi agent list; demi agent show 1"),
+            say("listed"),
+        ],
+    );
+    socket.chat("m1", "Delegate").await;
+    socket.until_idle().await;
+    socket.chat("m2", "List them").await;
+    let listed = last_asked(&scripts, |session| session == FIRST);
+    assert!(listed.contains("\\\"mover\\\"  app"), "{listed}");
+    assert!(listed.contains(&format!("cwd: {root}/app")), "{listed}");
+
+    // The user moves the conversation to another directory of the device.
+    let target = json!({ "target": { "kind": "device", "deviceId": paired.id(), "path": moved } });
+    let switched = backend.patch(&format!("/api/conversations/{FIRST}"), &master, target).await;
+    assert_eq!(switched.status, StatusCode::OK, "{}", String::from_utf8_lossy(&switched.body));
+
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t3", "demi agent resume 1 <<< 'Where are you now?'"),
+            say("resumed"),
+            say("received again"),
+        ],
+    );
+    socket.chat("m3", "Ask again").await;
+    socket.until_idle().await;
+
+    let children = scripts.asked(|session| session != FIRST);
+    let last = children.last().unwrap();
+    assert!(last.contains(&format!("before={root}/app")), "{last}");
+    assert!(last.contains(&format!("after={moved}")), "{last}");
+    // The resumed child was told where it works now.
+    assert!(last.contains(&format!("Your working directory is {moved}: ")), "{last}");
+    backend.close().await;
+}
+
 // Over two seconds: the parent's and the child's shell jobs run on a real
 // device, the child's until the Fork is taken.
 #[tokio::test]

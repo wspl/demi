@@ -17,7 +17,7 @@ use demi_agent_session::{
     ToolInvocation,
 };
 use demi_agent_store::{
-    AgentTreeStore, Checkpoint, CheckpointUpdate, NodeRecord, RunningCommand, StoreError,
+    AgentTreeStore, Checkpoint, CheckpointUpdate, ChildDirectory, NodeRecord, Placement, RunningCommand, StoreError,
     StoredCommand, StoredOutput,
     media::store_result,
 };
@@ -83,32 +83,31 @@ impl<H: HostResolver> Node<H> {
         &self.session
     }
 
-    /// A child's own working directory; none for the root, whose directory
-    /// is the conversation's.
-    fn cwd(&self) -> Option<String> {
-        self.runtime.cwd()
+    /// Where the conversation works now.
+    pub(crate) async fn placement(&self) -> Result<Placement, HostError> {
+        self.runtime.placement().await
     }
 
-    /// The node's working directory on the primary Host: a child's own, the
-    /// conversation's for the root (`subagents.md` § Working directory).
-    pub(crate) async fn directory(&self) -> Result<String, HostError> {
-        let cwd = self.cwd();
-        let context = self.runtime.context_in(cwd.as_deref());
-        self.runtime.hosts.directory(context).await
+    /// The node's working directory while the conversation works at `now`:
+    /// a child's own while the conversation is where it was when that was
+    /// set, the conversation's otherwise, and always the conversation's for
+    /// the root (`subagents.md` § Working directory).
+    pub(crate) fn directory_at(&self, now: &Placement) -> String {
+        self.runtime.directory_at(now)
     }
 
-    /// The conversation's primary Host now, through its host access.
-    pub(crate) async fn host(&self) -> Result<Rc<H::Host>, HostError> {
-        let cwd = self.cwd();
-        self.runtime.hosts.host(self.runtime.context_in(cwd.as_deref())).await
-    }
-
-    /// `dir` read against the node's working directory, when that names a
-    /// directory on the primary Host, which the host access reaches; why
-    /// it does not otherwise (`subagents.md` § Working directory).
-    pub(crate) async fn existing_directory(&self, dir: &str) -> Result<String, String> {
-        let base = self.directory().await.map_err(|error| error.to_string())?;
-        let host = self.host().await.map_err(|error| error.to_string())?;
+    /// `dir` read against the node's working directory while the
+    /// conversation works at `now`, when that names a directory on the
+    /// primary Host, which the host access reaches; why it does not
+    /// otherwise (`subagents.md` § Working directory).
+    pub(crate) async fn existing_directory(&self, dir: &str, now: &Placement) -> Result<String, String> {
+        let base = self.directory_at(now);
+        let host = self
+            .runtime
+            .hosts
+            .host(self.runtime.context_in(Some(&base)))
+            .await
+            .map_err(|error| error.to_string())?;
         let path = host.identity().paths.resolve(&base, dir);
         match host.fs().stat(&path).await {
             Ok(stat) if stat.kind == FileKind::Directory => Ok(path),
@@ -120,11 +119,13 @@ impl<H: HostResolver> Node<H> {
         }
     }
 
-    /// Moves the child to `cwd`, a directory on the primary Host, from its
-    /// next `shell` call on: recorded, then the node's.
-    pub(crate) async fn set_cwd(&self, cwd: String) -> Result<(), StoreError> {
-        self.runtime.store.set_cwd(&self.runtime.node, &cwd).await?;
-        self.runtime.record.borrow_mut().cwd = Some(cwd);
+    /// Moves the child to `cwd`, a directory on the primary Host, set while
+    /// the conversation works at `under`, from its next `shell` call on:
+    /// recorded, then the node's.
+    pub(crate) async fn set_cwd(&self, cwd: String, under: Placement) -> Result<(), StoreError> {
+        let own = ChildDirectory { cwd, under };
+        self.runtime.store.set_cwd(&self.runtime.node, &own).await?;
+        self.runtime.record.borrow_mut().cwd = Some(own);
         Ok(())
     }
 
@@ -442,7 +443,7 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
 
 /// The child's directory as its record holds it now.
 impl<H: HostResolver> Directory for NodeRuntime<H> {
-    fn cwd(&self) -> Option<String> {
+    fn own(&self) -> Option<ChildDirectory> {
         self.record.borrow().cwd.clone()
     }
 }
@@ -478,9 +479,30 @@ fn working_directory(cwd: Option<String>, seen: &[SeenContext<'_>]) -> Option<Ne
 }
 
 impl<H: HostResolver> NodeRuntime<H> {
-    /// A child's own working directory; none for the root.
-    fn cwd(&self) -> Option<String> {
-        Directory::cwd(self)
+    /// Where the conversation works now, read through its resolver.
+    async fn placement(&self) -> Result<Placement, HostError> {
+        self.hosts.placement(self.context_in(None)).await
+    }
+
+    /// The node's working directory while the conversation works at `now`.
+    fn directory_at(&self, now: &Placement) -> String {
+        match &self.record.borrow().cwd {
+            Some(own) => own.effective(now).to_owned(),
+            None => now.directory.clone(),
+        }
+    }
+
+    /// A child's working directory now; none for the root, and none, with
+    /// the failure logged, when where the conversation works cannot be read.
+    async fn child_directory(&self) -> Option<String> {
+        self.record.borrow().cwd.as_ref()?;
+        match self.placement().await {
+            Ok(now) => Some(self.directory_at(&now)),
+            Err(error) => {
+                tracing::warn!(node = %self.node, %error, "where the conversation works could not be read");
+                None
+            }
+        }
     }
 
     /// Takes up the commands the node ran that the conversation records
@@ -675,7 +697,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         turn: &'a TurnId,
     ) -> LocalBoxFuture<'a, Vec<NewContext>> {
         Box::pin(async move {
-            let cwd = self.cwd();
+            let cwd = self.child_directory().await;
             let node = self.context_in(cwd.as_deref());
             let asked = self.context.iter().map(|source| async move {
                 let name = source.name();

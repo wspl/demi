@@ -394,6 +394,7 @@
       "description": "Runs the tests",
       "profile": "research",
       "model": {
+        "providerId": "anthropic",
         "provider": "Anthropic",
         "model": "Claude Sonnet 5.5",
         "effort": "medium",
