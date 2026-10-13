@@ -554,11 +554,13 @@ conversation, the category `agent.profiles`, *Change Subagent Profiles*:
 can use." ([Categories](permissions.md#categories)). `profiles list` and
 `profiles show` are reads and need none.
 
-### Subagent sets of a project
+### Workflows of a project
 
-A project can keep sets of subagent profiles in its repository, so a team
-shares how its work is split and each conversation picks one. For example,
-`~/app` holds `.demi/subagents/review.yaml`:
+A project can keep **workflows** in its repository: each a group of
+subagent profiles with guidance on how to split the work between them and
+limits, so a team shares how its work is split and each conversation picks
+one. For example,
+`~/app` holds `.demi/workflows/review.yaml`:
 
 ```yaml
 name: Review Team
@@ -581,17 +583,17 @@ profiles:
       Review the diff for bugs and missed cases; change nothing.
 ```
 
-In a conversation on `~/app/web`, the Subagents menu at the composer's lower
-left offers **Default**, **Off** and **Review Team**. Alex picks Review Team:
+In a conversation on `~/app/web`, the Workflow menu at the composer's lower
+left offers **Default**, **No Subagents** and **Review Team**. Alex picks Review Team:
 from the next spawn on, the conversation's agents see `explore` and
 `reviewer` with the guidance above them, and no more than four run at once.
 
-- **Where.** The set files are `.demi/subagents/*.yaml` of the nearest
-  directory that has a `.demi/subagents/` directory, searched from the
+- **Where.** The workflow files are `.demi/workflows/*.yaml` of the nearest
+  directory that has a `.demi/workflows/` directory, searched from the
   conversation's working directory up to the root of its git repository as
   [instruction files](instructions.md#which-files-are-read) are. A file's
   name without `.yaml` is its id; `name` is what the menu shows.
-- **A set** holds `name` (1 to 60 characters), `guidance` (optional, up to
+- **A workflow** holds `name` (1 to 60 characters), `guidance` (optional, up to
   65,536 characters), `maxSubagents` and `maxDepth` (optional, as the
   [limits](#limits) are), and `profiles`, a map of profile names to
   profiles. A profile has the fields of a user's profile
@@ -604,28 +606,28 @@ from the next spawn on, the conversation's agents see `explore` and
   profile's missing model does.
 - **The menu** is the conversation's choice, kept with the conversation as
   its model is. **Default**, which a new conversation starts with, applies
-  the user's Subagents settings. **Off** turns subagents off for this
-  conversation, as the settings' switch does for all of them. **A set**
-  applies the set in place of the user's profiles and limits, for this
-  conversation only, whatever the settings' switch is. The set's limits
-  never go above the user's: each is the lower of the set's and the
-  settings'. A conversation whose working directory has no sets offers
-  Default and Off only; one whose chosen set is gone, renamed or no longer
+  the user's Subagents settings. **No Subagents** turns subagents off for this
+  conversation, as the settings' switch does for all of them. **A workflow**
+  applies it in place of the user's profiles and limits, for this
+  conversation only, whatever the settings' switch is. The workflow's limits
+  never go above the user's: each is the lower of the workflow's and the
+  settings'. A conversation whose working directory has no workflows offers
+  Default and No Subagents only; one whose chosen workflow is gone, renamed or no longer
   reads shows it as unavailable, with why, and its spawns fail with that
   reason until the user picks another.
 - **Nothing applies by itself.** A repository is often someone else's, and
-  a set only applies when the user picks it in a conversation, never
+  a workflow only applies when the user picks it in a conversation, never
   because a repository holds it, so cloning a project changes nothing about
   how its conversations spawn.
-- **Each spawn reads the set as the file is then.** The Host reads the set
-  file at each spawn and at each `demi agent profiles list`, as a spawn
+- **Each spawn reads the workflow as the file is then.** The Host reads the
+  workflow file at each spawn and at each `demi agent profiles list`, as a spawn
   reads the settings at that moment ([Limits](#limits)); the menu lists the
-  sets from the conversation's [file watch](../product/web-api.md#file-watch),
-  so a set added, changed or removed shows at once, with no polling. A file
+  workflows from the conversation's [file watch](../product/web-api.md#file-watch),
+  so a workflow added, changed or removed shows at once, with no polling. A file
   that does not parse is listed as unavailable with the parse error.
-- **What the model sees.** With a set chosen, `demi agent profiles list`
-  shows the set's name and guidance, then its profiles as it shows the
-  user's ([What the model sees](#what-the-model-sees)); with Off, the line
+- **What the model sees.** With a workflow chosen, `demi agent profiles list`
+  shows the workflow's name and guidance, then its profiles as it shows the
+  user's ([What the model sees](#what-the-model-sees)); with No Subagents, the line
   that subagents are turned off for this conversation.
 
 ### Limits
