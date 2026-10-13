@@ -12,6 +12,7 @@ import {
   setThemeChoice,
 } from '@demicodes/web-ui/theme/appTheme'
 import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
+import { reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
 import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/back-close'
 import { useConversations } from './conversation/store'
 import { closeDraftStorage } from './conversation/drafts'
@@ -22,6 +23,7 @@ import { startRawBridge } from './direct/raw-bridge'
 import { usePreferences } from './state/preferences'
 import { useNotifications } from './state/notifications'
 import { onSessionExpired } from './api/client'
+import { sendPageErrorReport } from './api/page-errors'
 import { useSession } from './auth/session'
 import ChatPage from './conversation/ChatPage.vue'
 import LoginPage from './auth/LoginPage.vue'
@@ -78,6 +80,9 @@ const conversations = useConversations(pinia)
 const session = useSession(pinia)
 const product = useProduct(pinia)
 const startup = new AbortController()
+// A failure the page finds itself goes to the backend's log, which the error
+// then names (`backend.md` § Request IDs and the server log).
+const stopReports = reportPageErrorsWith(sendPageErrorReport)
 // The synchronization channel starts beside the session check
 // (`web-application.md` § Requests for one action); a page the check finds
 // signed out has no channel.
@@ -248,6 +253,7 @@ app.mount('#app')
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
     startup.abort()
+    stopReports()
     stopIdentity()
     stopRetry()
     stopExpiry()

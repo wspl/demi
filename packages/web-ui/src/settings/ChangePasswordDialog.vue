@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed, watch } from 'vue'
 import { Check } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -27,7 +28,7 @@ export type ChangePasswordPhase =
   | {
       kind: 'form'
       busy?: boolean
-      error?: string
+      error?: ShownError
     }
   | { kind: 'done' }
 
@@ -162,7 +163,7 @@ function submit() {
           <!-- Last in the card, so the card's row dividers skip it; it is out of the flow. -->
           <input v-bind="hiddenUsername(email)" />
         </div>
-        <InlineError v-if="phase.error" :message="phase.error" />
+        <InlineError v-if="phase.error" :message="phase.error.message" :request-id="phase.error.requestId" />
         <InlineError
           v-else-if="tooShort"
           :message="PASSWORD_TOO_SHORT"

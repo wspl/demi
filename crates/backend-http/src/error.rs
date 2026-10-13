@@ -282,6 +282,8 @@ impl IntoResponse for ApiError {
             request_id: request_id::current().unwrap_or_else(request_id::generate),
         };
         let mut response = (self.status, Json(body)).into_response();
+        // The request's answered line names the code.
+        response.extensions_mut().insert(self.code);
         let headers = response.headers_mut();
         if let Some(seconds) = self.retry_after {
             headers.insert(axum::http::header::RETRY_AFTER, seconds.into());

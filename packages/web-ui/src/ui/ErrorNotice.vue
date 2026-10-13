@@ -5,6 +5,7 @@ import Button from './Button.vue'
 import Fold from './Fold.vue'
 import FoldChevron from './FoldChevron.vue'
 import CopyButton from './CopyButton.vue'
+import RequestIdLine from './RequestIdLine.vue'
 import ScrollArea from './ScrollArea.vue'
 import { ICON_PX } from './icon-metrics'
 import type { SentenceText, TitleText } from './ui-text'
@@ -31,12 +32,15 @@ withDefaults(
     action?: TitleText
     /** What the copy control puts on the clipboard; no control without it. */
     copyText?: string | null
+    /** The request the failure came from, named under the message. */
+    requestId?: string | null
   }>(),
   {
     detail: null,
     raw: null,
     facts: () => [],
     copyText: null,
+    requestId: null,
   },
 )
 defineEmits<{ action: [] }>()
@@ -68,6 +72,11 @@ const rawOpen = ref(false)
         >
           {{ facts.join(' · ') }}
         </p>
+        <RequestIdLine
+          v-if="requestId"
+          class="mt-0.5 text-on-danger-muted"
+          :request-id="requestId"
+        />
         <template v-if="raw">
           <button
             type="button"

@@ -1,10 +1,15 @@
 import { z } from 'zod'
+import { schemaRefusal } from '@demicodes/protocol'
 import { httpStatusLine } from '@demicodes/utils'
 import { errorBodySchema, type ErrorCode } from './generated/web-api'
 
+/** The header every answer of the backend names its request in. */
+export const REQUEST_ID_HEADER = 'X-Request-Id'
+
 /**
- * A request the backend refused, with its `{ code, message }`; `code` is null
- * when something in front of the backend answered instead.
+ * A request the backend refused, with its `{ code, message, requestId }`;
+ * `code` is null when something in front of the backend answered instead,
+ * and `requestId` too unless the answer still named its request.
  */
 export class ApiError extends Error {
   readonly status: number
@@ -23,6 +28,8 @@ export class ApiError extends Error {
   readonly headers: Headers
   /** With `unknown_passkey`, the passkey no account has. */
   readonly credentialId: string | null
+  /** The request the backend named in its answer, which the page shows with the error. */
+  readonly requestId: string | null
 
   constructor(
     status: number,
@@ -33,6 +40,7 @@ export class ApiError extends Error {
     headers: Headers = new Headers(),
     statusText = '',
     credentialId: string | null = null,
+    requestId: string | null = headers.get(REQUEST_ID_HEADER),
   ) {
     super(message)
     this.name = 'ApiError'
@@ -43,8 +51,10 @@ export class ApiError extends Error {
     this.retryAfterSeconds = retryAfterSeconds
     this.headers = headers
     this.credentialId = credentialId
+    this.requestId = requestId
   }
 }
+
 
 let expired: (() => void) | null = null
 
@@ -72,31 +82,49 @@ export async function readResponse<T>(
   response: Response,
   schema: z.ZodType<T>,
 ): Promise<T> {
+  const requestId = response.headers.get(REQUEST_ID_HEADER)
   let body: unknown
   try {
     body = await response.json()
   } catch (error) {
     if (error instanceof SyntaxError) {
-      throw new UnreadableResponse('Invalid server response: not JSON')
+      throw new UnreadableResponse('Invalid server response: not JSON', `${answerOf(requestId)} is not JSON`)
     }
     // The body could not be read whole, as when the connection broke.
     throw error
   }
   const parsed = schema.safeParse(body)
   if (!parsed.success) {
-    throw invalidResponse(parsed.error)
+    throw invalidResponse(parsed.error, requestId)
   }
   return parsed.data
 }
 
-/** An answer of the backend's that the page could not read: a body that is not JSON, or does not match its schema. */
+/**
+ * An answer of the backend's that the page could not read: a body that is
+ * not JSON, or does not match its schema. It is the page's own failure, so
+ * it names no request; `detail` says what did not read, and of which
+ * answer, never what the answer held.
+ */
 export class UnreadableResponse extends Error {
   override readonly name = 'UnreadableResponse'
+
+  constructor(message: string, readonly detail: string) {
+    super(message)
+  }
 }
 
-/** An answer, body or headers, that does not match its schema. */
-export function invalidResponse(error: z.ZodError): UnreadableResponse {
-  return new UnreadableResponse(`Invalid server response: ${error.issues[0]?.message ?? 'unknown shape'}`)
+/** The answer of the request `requestId`, in a detail's words. */
+function answerOf(requestId: string | null): string {
+  return requestId ? `The answer of ${requestId}` : 'The answer'
+}
+
+/** An answer, body or headers, of the request `requestId` that does not match its schema. */
+export function invalidResponse(error: z.ZodError, requestId: string | null = null): UnreadableResponse {
+  const refusal = schemaRefusal(error)
+  // The first line names the first issue: `✖ Invalid input: expected string, received number`.
+  const first = refusal.split('\n')[0]?.replace(/^✖ /, '') || 'unknown shape'
+  return new UnreadableResponse(`Invalid server response: ${first}`, `${answerOf(requestId)} does not read:\n${refusal}`)
 }
 
 /** What a proxy in front of the backend answers while no backend runs behind it, as while it restarts. */
@@ -272,6 +300,7 @@ export function apiError(status: number, text: string, headers: Headers = new He
     headers,
     statusText,
     parsed.success ? parsed.data.credentialId ?? null : null,
+    parsed.success ? parsed.data.requestId : headers.get(REQUEST_ID_HEADER),
   )
 }
 

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { schemaRefusal } from '@demicodes/protocol'
 import { conversationSummarySchema } from '../api/generated/web-api'
 import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
 import { modelSettingsSchema } from '@demicodes/web-ui/agent/model-selection'
@@ -136,7 +137,7 @@ export class UnreadableDraftError extends Error {
 /** The record `value` as a draft, or why it is unreadable. */
 function decodeDraft(value: unknown): SavedDraft | UnreadableDraftError {
   const draft = draftSchema.safeParse(value)
-  return draft.success ? draft.data : new UnreadableDraftError(z.prettifyError(draft.error))
+  return draft.success ? draft.data : new UnreadableDraftError(schemaRefusal(draft.error))
 }
 
 let database: IDBDatabase | null = null

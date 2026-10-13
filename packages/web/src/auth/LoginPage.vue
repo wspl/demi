@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shownError } from '@demicodes/web-ui/infra/errors'
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import EmailLoginPage, {
@@ -63,7 +64,7 @@ async function submit(address: string, secret: string): Promise<void> {
     const wait = error instanceof ApiError && error.code === 'too_many_attempts' ? error.retryAfterSeconds : null
     phase.value = {
       reason: phase.value.reason,
-      error: error instanceof Error ? error.message : 'Sign-in failed.',
+      error: shownError(error),
       ...(wait === null ? {} : { lockedUntil: Date.now() + wait * 1000 }),
     }
   } finally {
@@ -77,7 +78,7 @@ async function submit(address: string, secret: string): Promise<void> {
 function passkeyFailed(error: unknown): void {
   phase.value = {
     reason: phase.value.reason,
-    passkeyError: error instanceof Error ? error.message : 'Sign-in failed.',
+    passkeyError: shownError(error),
   }
 }
 

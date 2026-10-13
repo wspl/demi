@@ -41,6 +41,8 @@ export interface FileBrowserFailure {
 export interface AnswerFacts {
   version?: string | null
   readAt?: ReadAt | null
+  /** The request the Host's refusal answered. */
+  requestId?: string | null
 }
 
 export class FileBrowserError extends Error {
@@ -49,6 +51,8 @@ export class FileBrowserError extends Error {
   readonly version: string | null
   /** The Host's number before it read; null when it named none. */
   readonly readAt: ReadAt | null
+  /** The request that was refused, which the page shows with the failure. */
+  readonly requestId: string | null
 
   constructor(kind: FileBrowserFailure['kind'], message?: SentenceText, facts: AnswerFacts = {}) {
     super(message ?? kind)
@@ -56,6 +60,7 @@ export class FileBrowserError extends Error {
     this.kind = kind
     this.version = facts.version ?? null
     this.readAt = facts.readAt ?? null
+    this.requestId = facts.requestId ?? null
   }
 }
 

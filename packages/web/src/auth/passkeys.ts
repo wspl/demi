@@ -1,4 +1,5 @@
 import { computed, watch } from 'vue'
+import { shownError } from '@demicodes/web-ui/infra/errors'
 import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import type { PasskeyAddOutcome, SettingsPasskey } from '@demicodes/web-ui/settings/types'
@@ -41,7 +42,7 @@ export async function addPasskey(password: string): Promise<PasskeyAddOutcome> {
     if (error instanceof ApiError && error.code === 'invalid_credentials') {
       return { kind: 'wrongPassword', message: error.message }
     }
-    return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+    return { kind: 'failed', ...shownError(error) }
   }
   try {
     const credential = await createPasskey(challenge.options)
@@ -58,7 +59,7 @@ export async function addPasskey(password: string): Promise<PasskeyAddOutcome> {
     product.answered(at, passkeysAnswer((current) => [...current, passkey]))
     return { kind: 'added' }
   } catch (error) {
-    return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+    return { kind: 'failed', ...shownError(error) }
   }
 }
 

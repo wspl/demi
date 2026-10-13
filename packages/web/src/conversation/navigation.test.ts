@@ -41,7 +41,7 @@ beforeEach(async () => {
       return Response.json({ workspace: PROJECT }, { status: 201 })
     }
     if (path === '/api/conversations' && method === 'POST') {
-      return Response.json({ code: 'internal_error', message: 'Not saved' }, { status: 503 })
+      return Response.json({ requestId: 'req_test000000000001', code: 'internal_error', message: 'Not saved' }, { status: 503 })
     }
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [] })

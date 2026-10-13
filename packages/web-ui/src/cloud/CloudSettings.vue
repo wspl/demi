@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import type { CloudState } from './types'
 import { formatBytes } from '../files/format'
@@ -11,7 +12,7 @@ import CloudResetDialog from './CloudResetDialog.vue'
 const props = defineProps<{
   cloud: CloudState
   resetPending?: boolean
-  resetError?: string | null
+  resetError?: ShownError | null
   overlayStore: OverlayStore
 }>()
 const emit = defineEmits<{
@@ -30,7 +31,13 @@ const operationId = ref('')
  */
 const own = computed(() => submitted.value && props.cloud.operationId === operationId.value)
 const phase = computed(() => (own.value ? props.cloud.phase : null))
-const error = computed(() => props.resetError || (own.value ? props.cloud.error : null))
+const error = computed<ShownError | null>(() => {
+  if (props.resetError) {
+    return props.resetError
+  }
+  // The Cloud's own record of the failure, which no request answered.
+  return own.value && props.cloud.error ? { message: props.cloud.error, requestId: null } : null
+})
 const busy = computed(
   () =>
     props.resetPending ||

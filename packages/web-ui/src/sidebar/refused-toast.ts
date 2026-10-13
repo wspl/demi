@@ -2,10 +2,12 @@ import { sliceHead, upperFirst } from '@demicodes/utils'
 import { showToast } from '../infra/toast'
 import type { HeadlineText, SentenceText, TitleText } from '../ui/ui-text'
 
-/** A conversation the backend refused to change, by its title, and the backend's reasons. */
+/** A conversation the backend refused to change, by its title, and the backend's reasons, with the request that refused. */
 export interface Refusal {
   title: string
   reasons: readonly string[]
+  /** The request that refused; none when the page knows of none. */
+  requestId?: string | null
 }
 
 /** How long a conversation's name may be in a refusal, so the headline stays about one line. */
@@ -51,7 +53,17 @@ export function refusedText(action: TitleText, refusals: readonly Refusal[]): { 
   }
 }
 
-/** Says in a failure toast that the backend refused to `action` the conversations `refusals` lists. */
+/**
+ * Says in a failure toast that the backend refused to `action` the
+ * conversations `refusals` lists, naming the request that refused when one
+ * request refused them all.
+ */
 export function showRefused(action: TitleText, refusals: readonly Refusal[]): string {
-  return showToast({ ...refusedText(action, refusals), tone: 'danger' })
+  const requests = new Set(refusals.map((refusal) => refusal.requestId ?? null))
+  const [requestId] = requests
+  return showToast({
+    ...refusedText(action, refusals),
+    tone: 'danger',
+    requestId: requests.size === 1 ? requestId : null,
+  })
 }

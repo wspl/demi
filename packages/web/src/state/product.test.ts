@@ -36,7 +36,7 @@ beforeEach(() => {
     }
     if (path === '/api/auth/me') {
       sessionReads++
-      return Response.json({ code: 'unauthenticated', message: 'Sign in' }, { status: 401 })
+      return Response.json({ requestId: 'req_test000000000001', code: 'unauthenticated', message: 'Sign in' }, { status: 401 })
     }
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
