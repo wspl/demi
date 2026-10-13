@@ -58,7 +58,7 @@ pub(super) async fn open(
     let tuning = state.services.pages;
     // An upgrade that never completes drops the channel, which ends the
     // watch.
-    Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
+    Ok(page_socket(upgrade, move |socket| async move {
         let (to_page, from_page) = open_page_socket(socket, tuning, origin);
         relay(to_page, from_page, channel, request_of::<ConversationWatchRequest>).await;
     }))
@@ -95,7 +95,7 @@ pub(super) async fn open_device(
         .call(move |shard, _| async move { shard.host_shard().open_device_watch(&device) })
         .await?;
     let tuning = state.services.pages;
-    Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
+    Ok(page_socket(upgrade, move |socket| async move {
         let (to_page, from_page) = open_page_socket(socket, tuning, origin);
         match opened {
             OpenedWatch::Watching(channel) => {

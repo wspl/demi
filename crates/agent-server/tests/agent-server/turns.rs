@@ -205,6 +205,7 @@ async fn a_provider_failure_reaches_the_page_once_with_its_code_and_the_queued_m
             message,
             code,
             diagnostics,
+            ..
         } = errors[0]
         else {
             unreachable!()

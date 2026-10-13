@@ -14,6 +14,7 @@ pub mod cloud;
 pub mod conversations;
 pub mod credentials;
 pub mod devices;
+pub mod diagnostics;
 pub mod drafts;
 pub mod error;
 pub mod files;

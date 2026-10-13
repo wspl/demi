@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use demi_shared_types::{
     Block, BlockId, CommandId, ContextUsage, MAX_SAFE_INTEGER, NodeId, Nullable, OperationId, PendingCall, PendingSteer,
-    ProviderErrorDiagnostics, ProviderFailureFacts, QueuedMessage, SessionPhase,
+    ProviderErrorDiagnostics, ProviderFailureFacts, QueuedMessage, RequestId, SessionPhase,
     Timestamp, TurnId,
 };
 use schemars::JsonSchema;
@@ -238,6 +238,17 @@ pub enum ServerFrame {
         #[schemars(with = "ProviderErrorDiagnostics")]
         #[garde(dive)]
         diagnostics: Option<ProviderErrorDiagnostics>,
+        /// The request ID of the socket's upgrade, which the socket gives
+        /// every `error` frame it sends (`backend.md` § Request IDs and the
+        /// server log); the agent's frames leave it to the socket.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[schemars(with = "String")]
+        #[garde(skip)]
+        request_id: Option<RequestId>,
     },
     /// A subagent started or closed.
     Subagent {

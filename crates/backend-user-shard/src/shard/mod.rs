@@ -52,6 +52,7 @@ use sha2::{Digest, Sha256};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tracing::Instrument as _;
 
 use crate::conversation::claude_cli::ClaudeCli;
 use crate::conversation::pending::PendingWatches;
@@ -416,6 +417,7 @@ impl ShardRef<'_> {
             cancel,
             answer,
             while_closing,
+            span: tracing::Span::current(),
         };
         self.queue
             .send(Message::Call(Box::new(job)))
@@ -437,6 +439,7 @@ impl ShardRef<'_> {
         let job = AdoptJob {
             user: self.user.clone(),
             work,
+            span: tracing::Span::current(),
         };
         self.queue
             .send(Message::Call(Box::new(job)))
@@ -466,6 +469,8 @@ struct CallJob<F, T> {
     cancel: CancellationToken,
     answer: oneshot::Sender<Result<T, ShardUnavailable>>,
     while_closing: bool,
+    /// The caller's span, such as its request's, which the work logs in.
+    span: tracing::Span,
 }
 
 impl<F, Fut, T> Job for CallJob<F, T>
@@ -487,10 +492,11 @@ where
             work,
             cancel,
             answer,
+            span,
             ..
         } = *self;
         Box::pin(async move {
-            let value = work(shard, cancel).await;
+            let value = work(shard, cancel).instrument(span).await;
             // A requester that went away reads no answer; the call ran to
             // completion all the same.
             let _ = answer.send(Ok(value));
@@ -506,6 +512,9 @@ where
 struct AdoptJob<F> {
     user: UserId,
     work: F,
+    /// The adopter's span, such as a socket's upgrade request's, which the
+    /// work logs in for its whole life.
+    span: tracing::Span,
 }
 
 impl<F, Fut> Job for AdoptJob<F>
@@ -522,11 +531,11 @@ where
     }
 
     fn run(self: Box<Self>, shard: Rc<Shard>) -> LocalBoxFuture<'static, ()> {
-        let work = self.work;
+        let AdoptJob { work, span, .. } = *self;
         Box::pin(async move {
             // The work belongs to the shard, whose close waits for it.
             let tasks = shard.tasks.clone();
-            tasks.spawn_local(work(shard));
+            tasks.spawn_local(work(shard).instrument(span));
         })
     }
 

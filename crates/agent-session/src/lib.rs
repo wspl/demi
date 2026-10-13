@@ -29,6 +29,7 @@ pub mod testing {
     pub use crate::compaction::COMPACTION_SUMMARY_INSTRUCTION;
 }
 
+use tracing::Instrument as _;
 use std::{
     cell::RefCell,
     collections::HashSet,
@@ -648,13 +649,20 @@ impl AgentSession {
             worker: RefCell::new(None),
             persister: RefCell::new(None),
         });
-        let worker =
-            tokio::task::spawn_local(worker::run(Rc::downgrade(&shared), shared.work.clone()));
-        let persister = tokio::task::spawn_local(persist::run(
-            Rc::downgrade(&shared),
-            shared.persist_wake.clone(),
-            deps.config.persist_interval,
-        ));
+        // The session's work logs where its start was asked, such as a
+        // socket's frame or a request (`backend.md` § Request IDs and the
+        // server log).
+        let worker = tokio::task::spawn_local(
+            worker::run(Rc::downgrade(&shared), shared.work.clone()).in_current_span(),
+        );
+        let persister = tokio::task::spawn_local(
+            persist::run(
+                Rc::downgrade(&shared),
+                shared.persist_wake.clone(),
+                deps.config.persist_interval,
+            )
+            .in_current_span(),
+        );
         *shared.worker.borrow_mut() = Some(AbortOnDropHandle::new(worker));
         *shared.persister.borrow_mut() = Some(AbortOnDropHandle::new(persister));
         Self { shared }

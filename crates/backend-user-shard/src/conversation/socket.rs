@@ -112,6 +112,7 @@ fn refusal(code: ErrorCode, message: impl Into<String>) -> ServerFrame {
         message: message.into(),
         code: Some(code.to_string()),
         diagnostics: None,
+        request_id: None,
     }
 }
 
@@ -517,11 +518,15 @@ impl Shard {
 
     /// Sends `frames` as one message: a frame alone as itself, several as
     /// a JSON array of them in order, which the page applies as one change
-    /// (`product.md` § Following the agent's work).
+    /// (`product.md` § Following the agent's work). Every `error` frame
+    /// carries the request ID of the socket's upgrade.
     async fn send_frames(&self, page: &mut PageSocket, frames: Vec<ServerFrame>) -> bool {
         let mut texts = Vec::with_capacity(frames.len());
         for frame in frames {
-            let frame = self.present(frame).await;
+            let mut frame = self.present(frame).await;
+            if let ServerFrame::Error { request_id, .. } = &mut frame {
+                *request_id = Some(page.request().clone());
+            }
             let Some(text) = serialize(frame).await else {
                 return false;
             };
