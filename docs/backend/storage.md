@@ -132,7 +132,7 @@ input, which the multi-worker control service also relies on
 - **Identity:** `users` stores case-insensitively unique email, nickname,
   password hash, role, and creation time. A partial unique index admits one
   master, so two concurrent setups cannot both create one. `web_sessions`
-  stores a hash of the session token, user identity, expiry, the browser
+  stores an id, a hash of the session token, user identity, expiry, the browser
   and system it signed in from, when it signed in, when it was last active
   (written at most once an hour), when it was last verified, and the
   handoff code that made it, if one did; a login deletes expired sessions.

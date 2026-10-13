@@ -767,7 +767,8 @@ Verification, handoff codes and sessions ([Authentication and ownership](../back
   sign-in does, answering 204, or 401 `unknown_passkey` for another
   account's. Each marks the session verified now.
 - `POST /api/auth/handoff/code` takes `{ to }`, a path of the product, and
-  answers `{ id, url, expiresAt }`; a session not verified in the last five
+  answers `{ id, url, expiresInMs }`, the page counting the time left from
+  the answer's arrival, never comparing the server's clock with its own; a session not verified in the last five
   minutes answers 403 `verification_required`, a `to` that is not a path of
   the product 400 `invalid_body`. It ends the account's earlier code.
 - `POST /api/auth/handoff` is public, takes `{ code }`, and signs in as

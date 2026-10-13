@@ -80,12 +80,13 @@ works in a conversation on her laptop and wants to follow it from her phone:
 she presses the phone mark left of Settings at the sidebar's foot, confirms
 it is her with her password or a passkey, and a QR code appears. Her phone's
 camera reads it, the phone's browser opens the conversation she was on,
-signed in, and the laptop's dialog says *Signed in on iPhone · Safari* and
-closes.
+signed in, and the laptop's dialog says *Safari on iPhone is signed in.*
+and closes. The phone mark stands only where the page is not itself on a
+phone.
 
 - **Confirming it is the user** takes the password, or a passkey when the
   account has one and the backend offers them, and holds for five minutes
-  on that browser, so a second code in that time asks nothing; a browser
+  on that browser, a sign-in counting as one, so a second code in that time asks nothing; a browser
   left signed in cannot hand the account on without its owner.
 - **The code** opens the backend's public URL with the page the laptop
   shows, so the phone lands where the user was. It is good for ten minutes
@@ -96,7 +97,8 @@ closes.
   phone signed in to another account switches to this one.
 
 Settings › Account lists the browsers signed in to the account: each by its
-browser and system, such as *Safari on iPhone*, when it signed in and was
+browser and system, such as *Safari on iPhone*, or *Web Browser* when its
+browser cannot be told, when it signed in and was
 last active, the one the user is reading marked *This Browser*. Sign Out
 beside another ends that session at once, its open pages included, so a
 code photographed off the screen and used by someone else is undone there.
