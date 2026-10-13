@@ -315,6 +315,7 @@ function resetShortcuts() {
     v-model:email-open="emailOpen"
     v-model:password-open="passwordOpen"
     :overlay-store="appOverlayStore"
+    account-id="alex"
     :email="s.account.email"
     email-verified
     :password-changed="s.account.passwordChanged"

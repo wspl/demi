@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
-import { accountDisplayName, accountInitial } from '../auth/account-display'
+import { accountDisplayName } from '../auth/account-display'
+import Avatar from '../ui/Avatar.vue'
 import { ChevronLeft, Search } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -137,9 +138,6 @@ onBeforeUnmount(() => finding?.abort())
 const displayName = computed(() =>
   accountDisplayName(props.account?.name ?? '', props.account?.email)
 )
-const initials = computed(() =>
-  accountInitial(props.account?.name ?? '', props.account?.email)
-)
 </script>
 
 <template>
@@ -172,11 +170,7 @@ const initials = computed(() =>
             v-if="account"
             class="flex h-9 shrink-0 select-none items-center gap-2 px-1.5"
           >
-            <span
-              class="flex size-6 shrink-0 items-center justify-center rounded-full bg-tint-accent text-[11px] font-medium text-on-accent"
-            >
-              {{ initials }}
-            </span>
+            <Avatar :account-id="account.id" :name="account.name" :email="account.email" :size="24" />
             <span class="min-w-0 truncate text-chrome text-fg">{{ displayName }}</span>
           </div>
           <TextInput

@@ -196,6 +196,7 @@ watch(
   { immediate: true },
 )
 const account = computed(() => ({
+  id: resources.userId,
   name: resources.username,
   email: resources.email,
 }))
