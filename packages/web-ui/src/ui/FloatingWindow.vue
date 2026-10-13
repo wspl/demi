@@ -4,6 +4,7 @@ import { X } from '@lucide/vue'
 import { useWindowSize } from '@vueuse/core'
 import { useEscapeClose } from '../composables/useEscapeClose'
 import IconButton from './IconButton.vue'
+import { focusByPage } from './focus-by-page'
 import { startPointerDrag } from './pointer-drag'
 import {
   clampWindowRect,
@@ -110,7 +111,8 @@ function drag(event: PointerEvent, cursor: string, next: (start: WindowRect, dx:
     return
   // No text selection starts under the press; the window takes the focus as a click in it would.
   event.preventDefault()
-  panel.value?.focus({ preventScroll: true })
+  if (panel.value)
+    focusByPage(panel.value, { preventScroll: true })
   const start = shown.value
   stopDrag = startPointerDrag(event, {
     cursor,
@@ -154,7 +156,8 @@ const focusReturn = useFocusReturn((active) => panel.value?.contains(active) ===
 function activate(): void {
   stacked.raise()
   focusReturn.open()
-  panel.value?.focus({ preventScroll: true })
+  if (panel.value)
+    focusByPage(panel.value, { preventScroll: true })
 }
 
 // The panel shows on each opening, the first included, which mounts the window open;

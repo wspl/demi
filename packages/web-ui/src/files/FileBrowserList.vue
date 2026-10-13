@@ -11,6 +11,7 @@ import {
 } from '@lucide/vue'
 import { useTypeSelect } from '../composables/useTypeSelect'
 import { focusedByKeyboard } from '../ui/active-row'
+import { focusByPage } from '../ui/focus-by-page'
 import HighlightText from '../ui/HighlightText.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
@@ -249,7 +250,8 @@ const failureCopy = computed<{ icon: Component; title: HeadlineText } | null>(()
 
 defineExpose({
   focus() {
-    listEl.value?.focus({ preventScroll: true })
+    if (listEl.value)
+      focusByPage(listEl.value, { preventScroll: true })
   },
 })
 </script>
