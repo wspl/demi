@@ -152,6 +152,52 @@ fn header<'a>(answer: &'a Answer, name: &str) -> Option<&'a str> {
         .map(|value| value.to_str().unwrap())
 }
 
+// Under a minute: two repositories on a paired device's runner.
+#[tokio::test]
+async fn the_changes_routes_read_the_directory_the_request_names_and_the_conversations_without_one() {
+    let device = OnDevice::start().await;
+    // A child works in another checkout, a sibling of the conversation's directory with a file of the same name.
+    let other = device.paired.runner.home_dir().join("other");
+    std::fs::create_dir_all(&other).unwrap();
+    let other_root = other.to_str().unwrap().to_owned();
+    for (directory, original) in [(&device.root, "main\n"), (&other, "other\n")] {
+        git(directory, &["init", "-q", "-b", "main"]);
+        std::fs::write(directory.join("a.txt"), original).unwrap();
+        git(directory, &["add", "."]);
+        git(directory, &["commit", "-q", "-m", "first"]);
+    }
+    std::fs::write(device.root.join("a.txt"), "main edited\n").unwrap();
+    std::fs::write(other.join("a.txt"), "other edited\n").unwrap();
+    std::fs::write(other.join("only-here.txt"), "new\n").unwrap();
+    let directory = query(&[("directory", &other_root)]);
+
+    // The list: the directory the request names, else the conversation's.
+    let conversation: Value = device.get("/changes").await.json();
+    assert_eq!(conversation["root"], json!(device.root.to_str().unwrap()));
+    assert_eq!(
+        conversation["files"].as_array().unwrap().iter().map(|file| &file["path"]).collect::<Vec<_>>(),
+        [&json!("a.txt")]
+    );
+    let named: Value = device.get(&format!("/changes?{directory}")).await.json();
+    assert_eq!(named["root"], json!(other_root));
+    assert_eq!(
+        named["files"].as_array().unwrap().iter().map(|file| &file["path"]).collect::<Vec<_>>(),
+        [&json!("a.txt"), &json!("only-here.txt")]
+    );
+
+    // A file's two sides and its committed bytes come from the same directory.
+    let sides = device.get(&format!("/changes/file?{}", query(&[("path", "a.txt"), ("directory", &other_root)]))).await;
+    assert_eq!(sides.json::<Value>(), json!({ "original": "other\n", "modified": "other edited\n" }));
+    let committed = device.get(&format!("/changes/raw?{}", query(&[("path", "a.txt"), ("directory", &other_root)]))).await;
+    assert_eq!(&committed.body[..], b"other\n");
+    let mine = device.get("/changes/file?path=a.txt").await;
+    assert_eq!(mine.json::<Value>(), json!({ "original": "main\n", "modified": "main edited\n" }));
+
+    // A directory that is not absolute is a malformed query.
+    let relative = device.get("/changes?directory=other").await;
+    assert_eq!(relative.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery));
+}
+
 // Several seconds: a listing over the runner's message limit needs about 21,000
 // files in one directory.
 #[tokio::test]

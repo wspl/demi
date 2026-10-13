@@ -75,8 +75,12 @@ export interface ConversationFileService {
   readonly workspace: { source: FileBrowserSource; root: string; name?: string } | null
   /** Where the conversation's work runs, which a retained edit's paths are relative to. */
   readonly root: string | null
-  /** The working tree's uncommitted changes. */
-  readonly changes: ChangeSetSource
+  /**
+   * The uncommitted changes of the working tree under `directory`, on the
+   * conversation's Host; the conversation's own without one
+   * (`file-previews.md` § The File view's bars).
+   */
+  changes(directory?: string): ChangeSetSource
   /** The two sides of one retained edit, by the blobs that hold them. */
   readonly edit: ReadCallChange
   /**
@@ -87,11 +91,13 @@ export interface ConversationFileService {
    */
   request(node: string | null, request: string): TranscriptRequest | null
   /**
-   * The calling component shows the working tree: the service follows the
-   * Host's reports for it and keeps `changes` current until the component's
-   * scope ends (`plugin-pages.md` § What the service keeps).
+   * The calling component shows the working tree under the directory
+   * `directory()` names, read at each change, the conversation's when it
+   * names none: the service follows the Host's reports for it and keeps
+   * `changes` of it current until the component's scope ends
+   * (`plugin-pages.md` § What the service keeps).
    */
-  showChanges(): void
+  showChanges(directory?: () => string | undefined): void
 }
 
 /** Opening intents (`plugin-pages.md` § Intents). */

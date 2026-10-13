@@ -9,7 +9,7 @@ const presentation = ref<'diff' | 'preview'>('diff')
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { ChangeView, joinPath, treeLayout, usePage } from '@demicodes/plugin-sdk'
-import { changePath, goBack, goForward, holdShownChange, showChange, showEdit, type ChangeData } from './data'
+import { changePath, goBack, goForward, holdShownChange, showChange, showEdit, viewDirectory, type ChangeData } from './data'
 import { useChangeSources } from './sources'
 
 /**
@@ -28,7 +28,7 @@ const emit = defineEmits<{ update: [data: ChangeData] }>()
 
 const page = usePage()
 const files = page.files(props.conversation)
-files.showChanges()
+files.showChanges(() => viewDirectory(props.data))
 const intents = page.intents
 
 const changes = useChangeSources(files, () => props.data)
@@ -36,7 +36,9 @@ const changes = useChangeSources(files, () => props.data)
 // the view is given it as a value, which changes only with the answer.
 const opens = computed(() => intents.canOpen('file'))
 const selected = computed(() => changePath(props.data, props.data.mode, changes.value.uncommitted.files))
-const root = computed(() => files.workspace?.root ?? files.root ?? '/')
+// The view shows the directory it was opened for: the one its agent worked in, the conversation's without one.
+const viewRoot = computed(() => viewDirectory(props.data))
+const root = computed(() => viewRoot.value ?? files.workspace?.root ?? files.root ?? '/')
 
 // The first listed file, shown while the user has picked none, stays shown:
 // a file the agent or a build changes later may list before it.
@@ -49,7 +51,7 @@ watch(selected, () => {
 /** A changed file opens in whatever shows files, by its absolute path. */
 function open(path: string): void {
   const absolute = path.startsWith('/') ? path : joinPath(root.value, path)
-  intents.open(props.conversation, { intent: 'file', payload: { path: absolute } })
+  intents.open(props.conversation, { intent: 'file', payload: viewRoot.value === undefined ? { path: absolute } : { path: absolute, root: viewRoot.value } })
 }
 </script>
 
@@ -63,7 +65,7 @@ function open(path: string): void {
     :changes="changes"
     :edit="data.request?.edit ?? null"
     :root="root"
-    :root-name="files.workspace?.name"
+    :root-name="viewRoot === undefined ? files.workspace?.name : undefined"
     :contents="files.workspace?.source.contents"
     :can-back="data.back.length > 0"
     :can-forward="data.forward.length > 0"

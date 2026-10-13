@@ -10,7 +10,7 @@ function agent(id: string, number: number, phase: SubagentRecord['phase']): Suba
   return {
     id, number, name: `Agent ${id}`, phase, sessionPhase: 'idle', startedAt: '2026-09-09T00:00:00.000Z',
     profile: null, model: { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false }, round: 1, forkedFrom: null,
-    history: EMPTY_TRANSCRIPT, pendingCalls: [], waitingSince: null, failures: {}, contextUsage: null,
+    history: EMPTY_TRANSCRIPT, pendingCalls: [], waitingSince: null, failures: {}, contextUsage: null, cwd: '/work',
   }
 }
 

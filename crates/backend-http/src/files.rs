@@ -23,7 +23,7 @@ use demi_runner_protocol::files::protected_path;
 use demi_shared_types::preview_media_type;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
-    ChangeSides, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryQuery,
+    AbsolutePath, ChangeSides, ChangesQuery, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryQuery,
     ExistingFiles, FileExistence, FileQuery, FileText, RawFileQuery, RemoveQuery, TreeFileQuery,
     UploadQuery, WorkingTreeChanges,
 };
@@ -407,24 +407,29 @@ pub(super) async fn upload(
     }
 }
 
-/// The working tree's uncommitted changes under the conversation's
-/// directory.
+/// The working tree's root a request names, or the conversation's execution
+/// directory (`web-api.md` § File text and working tree changes).
+fn tree_root(host: &ConversationHost, directory: Option<AbsolutePath>) -> String {
+    directory.map_or_else(|| host.root.clone(), |directory| directory.as_str().to_owned())
+}
+
+/// The working tree's uncommitted changes under the directory the request
+/// names, or the conversation's.
 pub(super) async fn changes(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     headers: HeaderMap,
     Path(id): Path<String>,
+    QueryParams(ChangesQuery { directory }): QueryParams<ChangesQuery>,
 ) -> Result<Response, ApiError> {
     let (changes, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
+        let root = tree_root(host, directory);
         let (changes, read_at) = host
             .host
-            .git_changes(&host.root)
+            .git_changes(&root)
             .await
             .map_err(ApiError::working_tree)?;
-        let changes = WorkingTreeChanges {
-            root: host.root.clone(),
-            changes,
-        };
+        let changes = WorkingTreeChanges { root, changes };
         Ok((changes, read_at))
     })
     .await?;
@@ -438,14 +443,15 @@ pub(super) async fn changed_file(
     AuthUser(user): AuthUser,
     headers: HeaderMap,
     Path(id): Path<String>,
-    QueryParams(TreeFileQuery { path }): QueryParams<TreeFileQuery>,
+    QueryParams(TreeFileQuery { path, directory }): QueryParams<TreeFileQuery>,
 ) -> Result<Response, ApiError> {
     let (sides, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
         // The two sides do not wait for each other (`runner.md` § Host
         // operations).
-        let working = format!("{}/{}", host.root, path.as_str());
+        let root = tree_root(host, directory);
+        let working = format!("{root}/{}", path.as_str());
         let (committed, working) = tokio::join!(
-            host.host.git_show(&host.root, path.as_str()),
+            host.host.git_show(&root, path.as_str()),
             read_working_side(&host.host, &working),
         );
         // The answer holds what both reads hold from the earlier one on.
@@ -526,12 +532,12 @@ pub(super) async fn committed(
     method: Method,
     headers: HeaderMap,
     Path(id): Path<String>,
-    QueryParams(CommittedFileQuery { path, download }): QueryParams<CommittedFileQuery>,
+    QueryParams(CommittedFileQuery { path, directory, download }): QueryParams<CommittedFileQuery>,
 ) -> Result<Response, ApiError> {
     let tree_path = path.as_str().to_owned();
     let (bytes, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
         host.host
-            .git_show(&host.root, &tree_path)
+            .git_show(&tree_root(host, directory), &tree_path)
             .await
             .map_err(ApiError::working_tree)
     })
