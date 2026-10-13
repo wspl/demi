@@ -1852,7 +1852,11 @@ starts again.
   message, Retry, Resume), and after each step or input that the turn sends
   on, before the request is built, since building it can read the Host and
   run a preamble hook. A failed attempt whose output is dropped starts it
-  again. The agent's retries of the same request continue it
+  again. Within a request, the end of the text the model wrote last starts
+  it again when nothing else shows yet, as when a call follows whose title
+  is not written: the page says Requesting there, and the server holds when
+  that began, in the same update as the event that ended the text. The
+  agent's retries of the same request continue it
   ([Retries](failures-and-recovery.md#retries)): the clock runs on across
   them.
 - **When it ends.** The first output of the model ends it: reasoning, with
@@ -2115,6 +2119,12 @@ connection A --+                    +--> A's outbox: events, and A's replies
 connection B --+                    +--> B's outbox: events, and B's replies
 ```
 
+- A page that opens a conversation without a copy of it shows the
+  transcript, the phase, the pending steers and the wait together, once its
+  handshake is applied, so a reload never draws a moment without the
+  steers or with a clock at 0s. When the conversation opens no session, as
+  an archived one or one without a usable model, or the model list has not
+  answered when the transcript arrives, it shows the transcript at once.
 - A tree has any number of attached connections. `open` attaches its
   connection without detaching another, and the connection receives its own
   handshake ([Order and delivery](#order-and-delivery)), then every event of
