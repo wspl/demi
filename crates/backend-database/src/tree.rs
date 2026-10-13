@@ -125,8 +125,8 @@ impl AgentTreeStore for SqliteTreeStore {
                     transaction.execute(
                         "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at,
                            can_spawn, closed_phase, closed_at, result, failure, delivered, state, block_count,
-                           output_revision, forked_from)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, 0, ?16)",
+                           output_revision, forked_from, cwd)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, 0, ?16, ?17)",
                         params![
                             record.id.as_str(),
                             integer(record.number),
@@ -144,6 +144,7 @@ impl AgentTreeStore for SqliteTreeStore {
                             record.delivered,
                             to_json(&initial.state),
                             record.forked_from.map(integer),
+                            record.cwd,
                         ],
                     )?;
                     if let Err(refused) = write_checkpoint(&transaction, &record.id, &initial, &completions)? {
@@ -228,6 +229,32 @@ impl AgentTreeStore for SqliteTreeStore {
                 .await
                 .map_err(store_error)?;
             if !found {
+                return Err(missing(id));
+            }
+            (self.saved)(id);
+            Ok(())
+        })
+    }
+
+    fn set_cwd<'a>(
+        &'a self,
+        id: &'a NodeId,
+        cwd: &'a str,
+    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+        let node = id.clone();
+        let cwd = cwd.to_owned();
+        Box::pin(async move {
+            let changed = self
+                .db
+                .call(move |connection| {
+                    Ok(connection.execute(
+                        "UPDATE nodes SET cwd = ?2 WHERE id = ?1 AND parent_id IS NOT NULL",
+                        params![node.as_str(), cwd],
+                    )?)
+                })
+                .await
+                .map_err(store_error)?;
+            if changed == 0 {
                 return Err(missing(id));
             }
             (self.saved)(id);
@@ -589,7 +616,7 @@ fn node_state(
 
 const NODE_COLUMNS: &str =
     "id, number, parent_id, description, profile, instructions, round, started_at, can_spawn,
-     closed_phase, closed_at, result, failure, delivered, forked_from";
+     closed_phase, closed_at, result, failure, delivered, forked_from, cwd";
 
 fn node_by_id(connection: &Connection, id: &NodeId) -> Result<Option<NodeRecord>, StorageError> {
     let mut statement =
@@ -647,6 +674,16 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
             })
         }
     };
+    // A child works in a directory of its own; the root in the
+    // conversation's, which no row holds.
+    let cwd: Option<String> = row.get("cwd")?;
+    if cwd.is_some() != parent.is_some() {
+        return Err(StorageError::Corrupt {
+            table: TABLE,
+            column: "cwd",
+            reason: "a child has a working directory, and the root none".into(),
+        });
+    }
     Ok(NodeRecord {
         id: decode(TABLE, "id", NodeId::try_from(row.get::<_, String>("id")?))?,
         number: decode(TABLE, "number", u64::try_from(row.get::<_, i64>("number")?))?,
@@ -665,6 +702,7 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
             .get::<_, Option<i64>>("forked_from")?
             .map(|number| decode(TABLE, "forked_from", u64::try_from(number)))
             .transpose()?,
+        cwd,
     })
 }
 
@@ -1363,6 +1401,7 @@ mod tests {
             closed: None,
             delivered: false,
             forked_from: None,
+            cwd: parent.map(|_| "/w".to_owned()),
         }
     }
 
@@ -1373,7 +1412,6 @@ mod tests {
             agent_inputs: Vec::new(),
             reports: Vec::new(),
             intervals: Vec::new(),
-            cwd: "/w".into(),
             model: test_model(),
             edits: Vec::new(),
         }

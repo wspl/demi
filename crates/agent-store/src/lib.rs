@@ -96,6 +96,14 @@ pub trait AgentTreeStore {
         message: QueuedMessage,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
+    /// Changes the child `id`'s working directory to `cwd`, as `demi agent
+    /// cwd` asks (`subagents.md` § Working directory).
+    fn set_cwd<'a>(
+        &'a self,
+        id: &'a NodeId,
+        cwd: &'a str,
+    ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
+
     /// Marks the completion of the node's round `round` delivered, when it
     /// reached its parent by a path the parent's checkpoint cannot show. A
     /// completion of an earlier round marks nothing.
@@ -235,6 +243,10 @@ pub struct NodeRecord {
     pub delivered: bool,
     /// The number of the agent it was forked from; none for one not forked.
     pub forked_from: Option<u64>,
+    /// A child's working directory on the primary Host, where its `shell`
+    /// calls start (`subagents.md` § Working directory); none for the root,
+    /// whose directory is always the conversation's.
+    pub cwd: Option<String>,
 }
 
 impl NodeRecord {
@@ -264,6 +276,7 @@ impl NodeRecord {
             started_at: self.started_at,
             ended_at: self.closed.as_ref().map(|close| close.at),
             result,
+            cwd: self.cwd.clone().expect("a child's record names its directory"),
         })
     }
 
@@ -283,6 +296,7 @@ impl NodeRecord {
             closed: None,
             delivered: false,
             forked_from: None,
+            cwd: None,
         }
     }
 }
@@ -343,8 +357,6 @@ pub struct CheckpointState {
     /// how often it reports (`runtime.md` § Command reports).
     #[garde(dive)]
     pub intervals: Vec<CommandInterval>,
-    #[garde(length(min = 1))]
-    pub cwd: String,
     #[garde(dive)]
     pub model: ModelSelection,
     /// The receipts of the accepted edits.

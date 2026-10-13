@@ -253,8 +253,10 @@ pub struct NodeContext<'a> {
     /// The conversation's root node. Every node of a tree runs on the
     /// conversation's execution target, which belongs to the root.
     pub root: &'a NodeId,
-    /// The node's working directory.
-    pub cwd: &'a str,
+    /// The node's own working directory, a child's; none for the root,
+    /// whose directory is the conversation's (`subagents.md` § Working
+    /// directory), which [`HostResolver::directory`] answers.
+    pub cwd: Option<&'a str>,
 }
 
 /// Where a conversation's nodes run. Its futures run on the user's shard, so
@@ -279,6 +281,16 @@ pub trait HostResolver: 'static {
             HostErrorKind::Unavailable,
             "this agent runs no shell tools",
         ))
+    }
+
+    /// The node's working directory on the primary Host: a child's own, and
+    /// for the root the conversation's, where the Host starts its work
+    /// ([`Host::default_cwd`]; `subagents.md` § Working directory).
+    async fn directory(&self, context: NodeContext<'_>) -> Result<String, HostError> {
+        match context.cwd {
+            Some(cwd) => Ok(cwd.to_owned()),
+            None => Ok(self.host(context).await?.default_cwd().to_owned()),
+        }
     }
 }
 

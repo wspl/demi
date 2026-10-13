@@ -179,6 +179,7 @@ impl SessionRuntime for TestRuntime {
             source: "execution".into(),
             text: text.into(),
             instructions: Vec::new(),
+            cwd: None,
         });
         let news: Vec<NewContext> = execution
             .into_iter()
@@ -547,7 +548,6 @@ async fn start_with(
     };
     let init = SessionInit {
         id: root(),
-        cwd: "/workspace".to_owned(),
         model: test_model(),
         runtime: provider,
     };
@@ -1486,7 +1486,6 @@ async fn saves_run_one_at_a_time_even_when_a_scheduled_save_meets_a_flush() {
     };
     let init = SessionInit {
         id: root(),
-        cwd: "/workspace".to_owned(),
         model: test_model(),
         runtime: Box::new(provider.clone()),
     };

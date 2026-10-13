@@ -434,6 +434,19 @@ impl AgentTreeStore for MemoryTreeStore {
         })
     }
 
+    fn set_cwd<'a>(
+        &'a self,
+        id: &'a NodeId,
+        cwd: &'a str,
+    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+        Box::pin(async move {
+            let mut stored = self.stored.borrow_mut();
+            let node = stored.nodes.get_mut(id).ok_or_else(|| missing(id))?;
+            node.record.cwd = Some(cwd.to_owned());
+            Ok(())
+        })
+    }
+
     fn mark_delivered<'a>(
         &'a self,
         id: &'a NodeId,
@@ -604,7 +617,8 @@ pub mod store_contract {
         NodeId::try_from(value).expect("a test node id is not empty")
     }
 
-    /// A node in its first round, agent `number` of the conversation.
+    /// A node in its first round, agent `number` of the conversation; a
+    /// child works in `/work`.
     fn record(node: &str, parent: Option<&str>, number: u64) -> NodeRecord {
         NodeRecord {
             id: id(node),
@@ -619,6 +633,7 @@ pub mod store_contract {
             closed: None,
             delivered: false,
             forked_from: None,
+            cwd: parent.map(|_| "/work".to_owned()),
         }
     }
 
@@ -630,7 +645,6 @@ pub mod store_contract {
                 agent_inputs: Vec::new(),
                 reports: Vec::new(),
                 intervals: Vec::new(),
-                cwd: "/w".into(),
                 model: test_model(),
                 edits: Vec::new(),
             },
@@ -774,6 +788,13 @@ pub mod store_contract {
             .expect("the node has a checkpoint");
         assert!(loaded.state.queue.is_empty());
         assert_eq!(loaded.transcript.len(), 1);
+        // A child's changed directory is its record's from then on.
+        store
+            .set_cwd(&id("child"), "/work/app")
+            .await
+            .expect("the change commits");
+        let moved = stored(store, "child").await.expect("the child is stored");
+        assert_eq!(moved.cwd.as_deref(), Some("/work/app"));
         let again = store
             .create_node(
                 record("child", Some("root"), 2),

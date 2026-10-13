@@ -64,7 +64,6 @@ thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
-typed-path = "0.12"
 url = "2"
 uuid = { version = "1", features = ["v4"] }
 

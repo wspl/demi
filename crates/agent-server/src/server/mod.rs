@@ -226,18 +226,16 @@ impl<H: HostResolver> AgentServer<H> {
         })
     }
 
-    /// A connection for a socket of the conversation `root`, whose tree works
-    /// in `cwd` when it is created, whose frames' files `resolver` resolves,
-    /// and the receiving end of its outbox.
+    /// A connection for a socket of the conversation `root`, whose frames'
+    /// files `resolver` resolves, and the receiving end of its outbox.
     pub fn connect(
         self: &Rc<Self>,
         root: NodeId,
-        cwd: String,
         resolver: Rc<dyn ContentResolver>,
     ) -> (Connection<H>, FrameRx) {
         let id = self.next_connection.get();
         self.next_connection.set(id + 1);
-        Connection::new(self.clone(), id, root, cwd, resolver)
+        Connection::new(self.clone(), id, root, resolver)
     }
 
     /// The commands a root node starts from when the product's are
@@ -256,14 +254,14 @@ impl<H: HostResolver> AgentServer<H> {
         self.trees.borrow().get(root).cloned()
     }
 
-    /// Restores the conversation `root`'s tree, working in `cwd`, with no
-    /// connection attached, as an `open` does: it continues as a restored
-    /// tree does, and once it is quiescent the idle rule evicts it. A tree
-    /// that is live already is left as it is.
-    pub async fn restore(self: &Rc<Self>, root: &NodeId, cwd: &str) -> Result<(), RestoreError> {
+    /// Restores the conversation `root`'s tree with no connection attached,
+    /// as an `open` does: it continues as a restored tree does, and once it
+    /// is quiescent the idle rule evicts it. A tree that is live already is
+    /// left as it is.
+    pub async fn restore(self: &Rc<Self>, root: &NodeId) -> Result<(), RestoreError> {
         let _turn = self.opening.acquire(root.clone()).await;
         let (tree, continuation) = self
-            .live_or_open(root, cwd)
+            .live_or_open(root)
             .await
             .map_err(|error| RestoreError::Open(error.to_string()))?;
         if let Some(continuation) = continuation {
@@ -288,17 +286,16 @@ impl<H: HostResolver> AgentServer<H> {
     }
 
     /// The conversation `root`'s live tree, or its tree opened from the store
-    /// in `cwd` with what the restored tree does next, which the caller hands
-    /// to [`Tree::continue_restored`] once it attached what it attaches. The
+    /// with what the restored tree does next, which the caller hands to
+    /// [`Tree::continue_restored`] once it attached what it attaches. The
     /// caller holds the root's opening order.
     async fn live_or_open(
         self: &Rc<Self>,
         root: &NodeId,
-        cwd: &str,
     ) -> Result<(Rc<Tree<H>>, Option<Continuation>), OpenError> {
         match self.tree(root) {
             Some(tree) => Ok((tree, None)),
-            None => Tree::open(self, root, cwd).await,
+            None => Tree::open(self, root).await,
         }
     }
 

@@ -4,7 +4,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     rc::Rc,
     sync::Arc,
     time::Duration,
@@ -102,8 +102,13 @@ impl Default for TestProduct {
     }
 }
 
+/// No Host: the conversation's directory is `/workspace`.
 impl HostResolver for TestProduct {
     type Host = NoHost;
+
+    async fn directory(&self, context: NodeContext<'_>) -> Result<String, HostError> {
+        Ok(context.cwd.unwrap_or("/workspace").to_owned())
+    }
 }
 
 impl SubagentSource for TestProduct {
@@ -168,9 +173,10 @@ impl RpcHandler for Hello {
 }
 
 /// The provider of every node of a tree: the root's requests are answered
-/// from the root's script, a child's from the script whose key its first
-/// user message contains, in order. A run beyond its script panics: the
-/// test did not script it.
+/// from the root's script, a child's from the script whose key the first
+/// user message of its first request contains, in order, from then on by
+/// its session, whatever a compaction made of that message. A run beyond
+/// its script panics: the test did not script it.
 #[derive(Clone, Default)]
 pub struct Model(Rc<RefCell<Scripts>>);
 
@@ -178,6 +184,8 @@ pub struct Model(Rc<RefCell<Scripts>>);
 struct Scripts {
     root: VecDeque<Turn>,
     children: Vec<(String, VecDeque<Turn>)>,
+    /// The key of each child's script, by the child's session.
+    claimed: HashMap<String, String>,
     requests: Vec<InferenceRequest>,
 }
 
@@ -205,10 +213,14 @@ impl Model {
 
     /// The requests of the node whose brief contains `key`.
     pub fn requests_of(&self, key: &str) -> Vec<InferenceRequest> {
-        self.requests()
-            .into_iter()
-            .filter(|request| request.session_id != conversation().as_str())
-            .filter(|request| brief(request).contains(key))
+        let scripts = self.0.borrow();
+        scripts
+            .requests
+            .iter()
+            .filter(|request| {
+                scripts.claimed.get(&request.session_id).map(String::as_str) == Some(key)
+            })
+            .cloned()
             .collect()
     }
 
@@ -276,11 +288,27 @@ impl ProviderRuntime for Model {
             if request.session_id == conversation().as_str() {
                 scripts.root.pop_front()
             } else {
-                let text = brief(&request);
-                scripts
-                    .children
+                let Scripts {
+                    children, claimed, ..
+                } = &mut *scripts;
+                let key = match claimed.get(&request.session_id) {
+                    Some(key) => Some(key.clone()),
+                    None => {
+                        let text = brief(&request);
+                        let key = children
+                            .iter()
+                            .map(|(key, _)| key)
+                            .find(|key| text.contains(key.as_str()))
+                            .cloned();
+                        if let Some(key) = &key {
+                            claimed.insert(request.session_id.clone(), key.clone());
+                        }
+                        key
+                    }
+                };
+                children
                     .iter_mut()
-                    .find(|(key, _)| text.contains(key.as_str()))
+                    .find(|(known, _)| Some(known) == key.as_ref())
                     .and_then(|(_, queue)| queue.pop_front())
             }
         };
@@ -628,7 +656,7 @@ impl Fixture {
     }
 
     pub fn client(&self) -> TestClient<TestProduct> {
-        TestClient::connect(&self.server, &conversation(), "/workspace")
+        TestClient::connect(&self.server, &conversation())
     }
 
     /// A client that opened the conversation and read its handshake.

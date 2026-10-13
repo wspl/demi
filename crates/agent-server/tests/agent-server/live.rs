@@ -71,7 +71,7 @@ async fn serving() -> (
     providers.provide("stub", &script);
     let shells = Rc::new(ScriptedShells::default());
     let server = scripted_host_server(providers, shells.clone(), MemoryTreeStore::new());
-    let mut first = TestClient::connect(&server, &conversation(), "/workspace");
+    let mut first = TestClient::connect(&server, &conversation());
     first.send(open()).await;
     first.next_until(is_pending_steers).await;
     first.send(send("m1", "Serve.")).await;
@@ -101,7 +101,7 @@ async fn output_that_waited_or_came_while_no_page_was_attached_never_reaches_the
 
     // The next page finds the command as it is now in its handshake, and
     // nothing of what waited or came while no page was attached follows.
-    let mut second = TestClient::connect(&server, &conversation(), "/workspace");
+    let mut second = TestClient::connect(&server, &conversation());
     second.send(open()).await;
     let handshake = second.received();
     assert_eq!(tails(&handshake), ["one\ntwo\nthree\n"], "{handshake:?}");

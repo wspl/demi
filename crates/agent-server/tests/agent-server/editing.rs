@@ -479,7 +479,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
     // does not hold.
     let elsewhere = blobs.put(B64Bytes::new(b"GIF89a".to_vec())).await.unwrap();
     let mut client =
-        TestClient::connect_with(&fixture.server, &conversation(), "/workspace", files);
+        TestClient::connect_with(&fixture.server, &conversation(), files);
     client.send(open()).await;
     client.received();
     let upload = |reference: &str, file_name: &str| ClientContent::Upload {
@@ -684,7 +684,7 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
     assert_eq!((record.parent, record.closed), (None, None));
 
     // The destination opens idle with the prefix, and continues on its own.
-    let mut forked = TestClient::connect(&fixture.server, &destination, "/workspace");
+    let mut forked = TestClient::connect(&fixture.server, &destination);
     forked.send(open()).await;
     let handshake = forked.received();
     let Some(ServerFrame::TranscriptReset { blocks: seeded, .. }) = handshake.get(1) else {
