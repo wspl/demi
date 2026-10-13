@@ -2077,7 +2077,9 @@ whether the page holds them or not.
   full, the server closes that connection with close code 4001 `lagged`, and
   the tree's other attachments go on as before; the client reconnects and
   adopts the running tree. A backend that shuts down closes its conversation
-  sockets with 1001 `backend_closing` before it disposes the trees.
+  sockets with 1001 `backend_closing` before it disposes the trees. A
+  session that is signed out, logs out or expires closes its conversation
+  sockets with 4002 `session_ended`, and the page goes to sign-in.
 - The backend sends a `heartbeat` on a connection it has sent nothing else
   on for 30 seconds, whether the connection is attached or not. The socket
   sends it, not the tree: it does not go through the outbox and changes

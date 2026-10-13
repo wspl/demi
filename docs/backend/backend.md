@@ -217,14 +217,16 @@ laptop page                        backend                         phone
 - **`to` is a path of the product,** checked when the code is made and
   again when it is spent, so a code never sends a phone to another site.
 - **Verification belongs to the session,** the time the user last proved
-  it was them on it, by password or passkey; making a code needs one in
+  it was them on it, by password or passkey, a sign-in included; making a code needs one in
   the last five minutes. A passkey that verifies must be one of the
   session's own account.
 - **The laptop learns of the spending from the account's sessions,** the
   sync channel's `sessions` part, whose new session names the code that
   made it; it never asks.
 - **Signing a session out** deletes it and closes its synchronization
-  channel and conversation sockets as an expired session's are closed.
+  channel and its conversation sockets with `session_ended`; a session that
+  expires closes them the same way at its expiry, which its sockets hold
+  from their open, and logging out does too.
 
 Setup, login, passkey sign-in and spending a handoff code are public entrances. Runner and pipe routes use device
 credentials instead of the session cookie. Public installer downloads carry no
