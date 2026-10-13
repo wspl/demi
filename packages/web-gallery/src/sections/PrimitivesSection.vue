@@ -767,7 +767,6 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
           <GallerySpecimen variant="empty">
             <TokenInput
               v-model="noTokens"
-              placeholder="128"
               class="w-32"
             />
           </GallerySpecimen>

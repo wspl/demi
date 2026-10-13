@@ -244,7 +244,6 @@ const canSave = computed(() => {
             <TokenInput
               v-if="editable"
               v-model="draft.contextWindow"
-              placeholder="128"
               class="w-32"
             />
             <span v-else class="text-chrome tabular-nums text-fg">{{
@@ -260,7 +259,6 @@ const canSave = computed(() => {
             <TokenInput
               v-if="editable"
               v-model="draft.outputLimit"
-              placeholder="8"
               class="w-32"
             />
             <span v-else class="text-chrome tabular-nums text-fg">{{
