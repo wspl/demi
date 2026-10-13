@@ -117,24 +117,13 @@ impl Shard {
         if self.is_closing() {
             return;
         }
-        let cwd = match self.host_shard().resolve_target(&conversation).await {
-            Ok(target) => target.path().to_owned(),
-            Err(error) => {
-                tracing::error!(
-                    conversation = %conversation.id,
-                    error = &error as &dyn std::error::Error,
-                    "the conversation's target does not resolve"
-                );
-                return;
-            }
-        };
         let id = conversation.id;
         let resolver = Rc::new(ConversationFiles {
             shard: Rc::downgrade(&self),
             conversation: id.clone(),
             host: RefCell::new(None),
         });
-        let (connection, mut frames) = self.agent().connect(root_of(&id), cwd, resolver.clone());
+        let (connection, mut frames) = self.agent().connect(root_of(&id), resolver.clone());
         let (mut page, mut stream) = open_page_socket(socket, self.services().pages, origin);
         let mut handling: Option<LocalBoxFuture<'_, Handled>> = None;
         let relay = async {
@@ -233,20 +222,13 @@ impl Shard {
     /// already is left as it is.
     pub(crate) async fn restore_tree(&self, conversation: &ConversationId) -> Result<(), String> {
         let services = self.services();
-        let record = services
+        services
             .control
             .conversation(conversation.clone())
             .await
             .map_err(|error| error.to_string())?
             .filter(|record| record.owner == *self.user())
             .ok_or("the conversation is gone")?;
-        let cwd = self
-            .host_shard()
-            .resolve_target(&record)
-            .await
-            .map_err(|error| error.to_string())?
-            .path()
-            .to_owned();
         let slot = self.conversations().slot(conversation);
         let _files = slot.file_gate().enter(Purpose::Demand).await;
         let _settings = slot.settings.acquire().await;
@@ -266,7 +248,7 @@ impl Shard {
             Err(error) => return Err(error.to_string()),
         }
         self.agent()
-            .restore(&root_of(conversation), &cwd)
+            .restore(&root_of(conversation))
             .await
             .map_err(|error| error.to_string())
     }

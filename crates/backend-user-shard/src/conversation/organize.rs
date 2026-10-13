@@ -24,7 +24,6 @@ use demi_web_api_protocol::workspaces::WORKSPACE_NAME_MAX;
 use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
 use serde::Deserialize;
-use typed_path::Utf8TypedPath;
 
 use crate::shard::Shard;
 
@@ -324,15 +323,6 @@ async fn pend(
     }
 }
 
-/// `directory` on the Host whose shell is in `cwd`: as it is when it is
-/// absolute, otherwise under `cwd`, in the Host's own spelling of paths.
-fn on_host(cwd: &str, directory: &str) -> String {
-    Utf8TypedPath::derive(cwd)
-        .join(directory)
-        .normalize()
-        .into_string()
-}
-
 async fn create_project(
     shard: Rc<Shard>,
     call: Call<CreateProjectArgs>,
@@ -357,7 +347,8 @@ async fn create_project(
             "run it on this conversation's primary Host, not through `demi host shell`",
         ));
     }
-    let path = on_host(&invocation.cwd, args.directory.as_deref().unwrap_or("."));
+    let paths = shard.host_paths(&conversation).await.map_err(failed)?;
+    let path = paths.resolve(&invocation.cwd, args.directory.as_deref().unwrap_or("."));
     let control = &shard.services().control;
     let workspace = control
         .create_workspace(

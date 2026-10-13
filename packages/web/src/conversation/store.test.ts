@@ -396,7 +396,7 @@ test('sidebar stays active until the last running child closes after its parent 
     number: 1,
     parentSessionId: conversation.id,
     description: 'First child',
-    profile: null, model: RUNS_ON, round: 1, forkedFrom: null,
+    profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
     phase: 'running' as const,
     startedAt: '2026-09-13T00:00:00.000Z',
     endedAt: null,
@@ -433,7 +433,7 @@ test('a resumed child\'s record takes its new round\'s start, end and model', ()
   const conversation = useConversations().items[0]!
   const job = {
     subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Look',
-    profile: 'research', model: RUNS_ON, round: 1, forkedFrom: null,
+    profile: 'research', model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
     phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
   }
   applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
@@ -458,7 +458,7 @@ test('a live child\'s phase frames set its own phase, not the root\'s', () => {
     event: 'started',
     job: {
       subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Serve',
-      profile: null, model: RUNS_ON, round: 1, forkedFrom: null, phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
+      profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work', phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
     },
   })
   const child = () => conversation.subagents.find((agent) => agent.id === 'child')!
@@ -508,7 +508,7 @@ test('a command\'s live frames build what the page shows of it, until its end', 
 
   // A subagent's command takes its call from the child's transcript; a call without a description is titled by its script.
   const job = {
-    subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Child', profile: null, model: RUNS_ON, round: 1, forkedFrom: null,
+    subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Child', profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
     phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
   }
   applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
@@ -569,7 +569,7 @@ test('a child keeps the failure facts of its transcript, which resets and patche
     number: 1,
     parentSessionId: conversation.id,
     description: 'Child',
-    profile: null, model: RUNS_ON, round: 1, forkedFrom: null,
+    profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
     phase: 'running' as const,
     startedAt: '2026-09-13T00:00:00.000Z',
     endedAt: null,
@@ -2883,7 +2883,7 @@ test('a child\'s usage frame sets its own record\'s usage', () => {
     event: 'started',
     job: {
       subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Serve',
-      profile: null, model: RUNS_ON, round: 1, forkedFrom: null, phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
+      profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work', phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
     },
   })
   const usage = { tokens: 60_000, window: 100_000, compactFrom: 50_000, rows: [] }

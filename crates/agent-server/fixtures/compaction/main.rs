@@ -95,7 +95,6 @@ const TURN_TIMEOUT: Duration = Duration::from_secs(1_800);
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Fixture {
-    cwd: String,
     built_tokens: u64,
     generations: u32,
     blocks: Vec<Block>,
@@ -433,7 +432,6 @@ struct Conversation {
     server: Rc<AgentServer<NoHosts>>,
     client: TestClient<NoHosts>,
     root: NodeId,
-    cwd: String,
     /// The model the conversation's next request uses.
     model: ModelSelection,
     /// The copies the checks were asked on so far.
@@ -467,7 +465,7 @@ impl Conversation {
         let store = MemoryTreeStore::new();
         let block_count = fixture.blocks.len();
         let initial = CheckpointUpdate {
-            state: idle_state(&fixture.cwd, model),
+            state: idle_state(model),
             changed_blocks: fixture.blocks.into_iter().enumerate().collect(),
             block_count,
         };
@@ -500,12 +498,11 @@ impl Conversation {
             // No product shows the conversations' statuses.
             status_changed: Rc::new(|_| {}),
         });
-        let client = open_client(&server, &root, &fixture.cwd).await;
+        let client = open_client(&server, &root).await;
         Ok(Self {
             server,
             client,
             root,
-            cwd: fixture.cwd,
             model: current,
             copies: 0,
             copy_errors: 0,
@@ -578,14 +575,14 @@ impl Conversation {
         let copy = NodeId::try_from(format!("{}-check-{}", self.root, self.copies))
             .expect("the id is not empty");
         let seed = Checkpoint {
-            state: idle_state(&self.cwd, self.model.clone()),
+            state: idle_state(self.model.clone()),
             transcript: self.blocks(),
         };
         self.server
             .initialize_fork(&copy, seed)
             .await
             .expect("an idle copy is stored");
-        let mut client = open_client(&self.server, &copy, &self.cwd).await;
+        let mut client = open_client(&self.server, &copy).await;
         let turn = send(&self.server, &mut client, &copy, text).await;
         let blocks = blocks_of(&self.server, &copy);
         self.copy_errors += count(&blocks, |block| matches!(block, Block::Error(_)));
@@ -697,9 +694,8 @@ impl Conversation {
 async fn open_client(
     server: &Rc<AgentServer<NoHosts>>,
     root: &NodeId,
-    cwd: &str,
 ) -> TestClient<NoHosts> {
-    let mut client = TestClient::connect(server, root, cwd).with_hang_guard(TURN_TIMEOUT);
+    let mut client = TestClient::connect(server, root).with_hang_guard(TURN_TIMEOUT);
     client
         .send(ClientFrame::Open {
             from: None,
@@ -712,15 +708,14 @@ async fn open_client(
     client
 }
 
-/// An idle session's state in `cwd` with `model`, with nothing waiting.
-fn idle_state(cwd: &str, model: ModelSelection) -> CheckpointState {
+/// An idle session's state with `model`, with nothing waiting.
+fn idle_state(model: ModelSelection) -> CheckpointState {
     CheckpointState {
         phase: SessionPhase::Idle,
         queue: Vec::new(),
         agent_inputs: Vec::new(),
         reports: Vec::new(),
         intervals: Vec::new(),
-        cwd: cwd.to_owned(),
         model,
         edits: Vec::new(),
     }

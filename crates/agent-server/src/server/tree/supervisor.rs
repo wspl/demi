@@ -14,7 +14,7 @@ use demi_agent_session::{
     AgentMessageError, AgentSession, Execution, ForkError, ModelSwitch, SessionEvent, Settle,
     Subscription,
 };
-use demi_agent_store::{Checkpoint, ClosePhase, NodeClose, NodeRecord};
+use demi_agent_store::{Checkpoint, ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement};
 use demi_agent_transcript::{CutError, ForkEnd, last_answer, last_failure};
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
@@ -28,7 +28,7 @@ use demi_shared_types::{
     ModelSelection, NodeId, QueuedMessage, Sender, Sequence, ToolCallBlock, ToolCallStatus, TurnId,
     UserContentBlock,
 };
-use demi_host_interface::ShellEnvironment;
+use demi_host_interface::{ShellEnvironment, relative_to};
 use futures_util::future::{LocalBoxFuture, join_all};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -49,6 +49,9 @@ const RESULT_MAX_BYTES: usize = 32 * 1024;
 /// The most recent tool calls `show` lists.
 const SHOW_RECENT_TOOLS: usize = 8;
 const INHERIT_LABEL: &str = "(inherit)";
+/// Why the root's directory does not change (`subagents.md` § Working
+/// directory).
+const ROOT_CWD: &str = "The main agent works in the conversation's directory; move the conversation with `demi conversation move` to work elsewhere.";
 const OWNER_CLOSING: &str = "owner session is closing";
 
 /// A live child: its node, and what its supervision keeps about it.
@@ -80,12 +83,8 @@ impl<H: HostResolver> Child<H> {
         self.node.id()
     }
 
-    fn parent(&self) -> &NodeId {
-        self.node
-            .record()
-            .parent
-            .as_ref()
-            .expect("a child's record names its parent")
+    fn parent(&self) -> NodeId {
+        self.node.parent().expect("a child's record names its parent")
     }
 
     /// Its place among its siblings: spawn order, its number's.
@@ -93,10 +92,11 @@ impl<H: HostResolver> Child<H> {
         self.node.record().number
     }
 
-    /// Its job, as `record`, its record now or as it closed, describes it.
-    fn job(&self, record: &NodeRecord) -> SubagentJob {
+    /// Its job, as `record`, its record now or as it closed, describes it,
+    /// while the conversation works at `now`.
+    fn job(&self, record: &NodeRecord, now: Option<&Placement>) -> SubagentJob {
         record
-            .job(self.runs_on.clone())
+            .job(self.runs_on.clone(), now)
             .expect("a child has a job")
     }
 
@@ -112,6 +112,9 @@ pub(crate) enum StartInput {
         prompt: String,
         profile_name: Option<String>,
         description: String,
+        /// `--cwd`, read against the caller's directory; none for the
+        /// caller's own.
+        cwd: Option<String>,
     },
     Resume {
         id: NodeId,
@@ -186,7 +189,7 @@ impl<H: HostResolver> Tree<H> {
             .children
             .borrow()
             .values()
-            .filter(|child| child.parent() == owner)
+            .filter(|child| &child.parent() == owner)
             .cloned()
             .collect();
         children.sort_by_key(|child| child.rank());
@@ -211,7 +214,7 @@ impl<H: HostResolver> Tree<H> {
     /// Whether `child` is a live child of `owner`.
     pub(crate) fn is_child_of(&self, child: &NodeId, owner: &NodeId) -> bool {
         self.child(child)
-            .is_some_and(|child| child.parent() == owner)
+            .is_some_and(|child| &child.parent() == owner)
     }
 
     /// The node that owns a start: the caller, live and not closing.
@@ -311,7 +314,11 @@ impl<H: HostResolver> Tree<H> {
                     prompt,
                     profile_name,
                     description,
-                } => tree.spawn(&owner, prompt, profile_name, description).await,
+                    cwd,
+                } => {
+                    tree.spawn(&owner, prompt, profile_name, description, cwd)
+                        .await
+                }
                 StartInput::Resume { id, message } => tree.reopen(&owner, id, message).await,
                 StartInput::Fork {
                     source,
@@ -331,7 +338,8 @@ impl<H: HostResolver> Tree<H> {
 
     /// Spawns a child of `owner` with the next agent number and `prompt`
     /// queued, under the user's current subagent settings and the profile
-    /// `profile_name`, none for the inherit profile. A check that fails
+    /// `profile_name`, none for the inherit profile, working in `owner`'s
+    /// directory or the one `cwd` names against it. A check that fails
     /// creates nothing. Answers its number.
     async fn spawn(
         self: &Rc<Self>,
@@ -339,6 +347,7 @@ impl<H: HostResolver> Tree<H> {
         prompt: String,
         profile_name: Option<String>,
         description: String,
+        cwd: Option<String>,
     ) -> Result<u64, String> {
         if !owner.record().can_spawn_subagents {
             return Err("this session may not spawn subagents".to_owned());
@@ -347,6 +356,11 @@ impl<H: HostResolver> Tree<H> {
         let setup = self
             .spawn_setup(&server, owner, profile_name.as_deref())
             .await?;
+        let now = owner.placement().await.map_err(|error| error.to_string())?;
+        let cwd = match cwd {
+            Some(dir) => owner.existing_directory(&dir, &now).await?,
+            None => owner.directory_at(&now),
+        };
         self.check_depth(owner, setup.limits).await?;
         let slot = self.reserve_live(setup.limits)?;
         let runtime = self
@@ -371,10 +385,10 @@ impl<H: HostResolver> Tree<H> {
             closed: None,
             delivered: false,
             forked_from: None,
+            cwd: Some(ChildDirectory { cwd, under: now }),
         };
         let origin = Origin::New {
             record,
-            cwd: owner.cwd().to_owned(),
             model: setup.model,
             first_message: Some(self.text_message(prompt)),
         };
@@ -414,6 +428,12 @@ impl<H: HostResolver> Tree<H> {
             .spawn_setup(&server, owner, profile_name.as_deref())
             .await?;
         let mut seed = self.fork_seed(&source).await?;
+        // A fork starts where its parent works, as a spawn does.
+        let now = owner.placement().await.map_err(|error| error.to_string())?;
+        let cwd = ChildDirectory {
+            cwd: owner.directory_at(&now),
+            under: now,
+        };
         self.check_depth(owner, setup.limits).await?;
         let slot = self.reserve_live(setup.limits)?;
         // The child starts on the source's model, which compacts what the
@@ -460,6 +480,7 @@ impl<H: HostResolver> Tree<H> {
             closed: None,
             delivered: false,
             forked_from: Some(source.number),
+            cwd: Some(cwd),
         };
         seed.state.queue.push(self.text_message(message));
         let origin = Origin::Forked {
@@ -659,7 +680,8 @@ impl<H: HostResolver> Tree<H> {
             // assembled is not closing; its runtime is closed all the same.
             refused.discard().await;
         }
-        let child = self.attach_child(assembled.node, runs_on);
+        let placement = self.placement().await;
+        let child = self.attach_child(assembled.node, runs_on, placement.as_ref());
         drop(slot);
         let id = child.id().clone();
         if let Some(continuation) = assembled.continuation
@@ -675,9 +697,73 @@ impl<H: HostResolver> Tree<H> {
         Ok(id)
     }
 
-    /// Registers a new live child, sends its `started` frame and its
-    /// transcript, and forwards its session's changes from then on.
-    fn attach_child(&self, node: Node<H>, runs_on: JobModel) -> Rc<Child<H>> {
+    /// The conversation works elsewhere now: each live child's page hears
+    /// where the child works, which its record and the new placement give
+    /// (`subagents.md` § Working directory).
+    pub(crate) async fn placement_changed(&self) {
+        let now = self.placement().await;
+        let children: Vec<Rc<Child<H>>> = self.children.borrow().values().cloned().collect();
+        for child in children {
+            self.sink.emit(ServerFrame::Subagent {
+                event: SubagentEvent::Changed,
+                job: child.job(&child.node.record(), now.as_ref()),
+            });
+        }
+    }
+
+    /// Where the conversation works now; none, with the failure logged,
+    /// when it cannot be read, and a child's frame then names its own
+    /// directory.
+    pub(crate) async fn placement(&self) -> Option<Placement> {
+        match self.root.placement().await {
+            Ok(now) => Some(now),
+            Err(error) => {
+                tracing::warn!(root = %self.root.id(), %error, "where the conversation works could not be read");
+                None
+            }
+        }
+    }
+
+    /// The working directory of the live agent `caller`: a child's own, the
+    /// conversation's for the root.
+    pub(crate) async fn directory_of(&self, caller: &NodeId) -> Result<String, String> {
+        let node = self
+            .live_agent(caller)
+            .ok_or("this session is not in the agent directory")?;
+        let now = node.placement().await.map_err(|error| error.to_string())?;
+        Ok(node.directory_at(&now))
+    }
+
+    /// Moves the live child `caller` to `dir`, read against its directory,
+    /// from its next `shell` call on, and tells the pages; the root works
+    /// in the conversation's directory, and a directory the primary Host
+    /// does not have changes nothing (`subagents.md` § Working directory).
+    /// Answers the new directory.
+    pub(crate) async fn change_cwd(&self, caller: &NodeId, dir: &str) -> Result<String, String> {
+        if caller == self.root.id() {
+            return Err(ROOT_CWD.to_owned());
+        }
+        let child = self
+            .child(caller)
+            .ok_or("this session is not in the agent directory")?;
+        let now = child.node.placement().await.map_err(|error| error.to_string())?;
+        let cwd = child.node.existing_directory(dir, &now).await?;
+        child
+            .node
+            .set_cwd(cwd.clone(), now.clone())
+            .await
+            .map_err(|error| error.to_string())?;
+        self.sink.emit(ServerFrame::Subagent {
+            event: SubagentEvent::Changed,
+            job: child.job(&child.node.record(), Some(&now)),
+        });
+        Ok(cwd)
+    }
+
+    /// Registers a new live child, sends its `started` frame, where it works
+    /// while the conversation works at `placement`, and its transcript, and
+    /// forwards its session's changes from then on.
+    fn attach_child(&self, node: Node<H>, runs_on: JobModel, placement: Option<&Placement>) -> Rc<Child<H>> {
         let node = Rc::new(node);
         let now = self.clock.now().as_millisecond();
         let child = Rc::new_cyclic(|child: &Weak<Child<H>>| {
@@ -753,7 +839,7 @@ impl<H: HostResolver> Tree<H> {
             .borrow_mut()
             .insert(child.id().clone(), child.clone());
         self.bump();
-        for frame in child_frames(&child) {
+        for frame in child_frames(&child, placement) {
             self.sink.emit(frame);
         }
         child
@@ -886,9 +972,10 @@ impl<H: HostResolver> Tree<H> {
             closed: Some(close.clone()),
             ..record
         };
+        let placement = self.placement().await;
         self.sink.emit(ServerFrame::Subagent {
             event: SubagentEvent::Closed,
-            job: closed.job(runs_on).expect("a child has a job"),
+            job: closed.job(runs_on, placement.as_ref()).expect("a child has a job"),
         });
         let origin = self.stored_origin(&closed.id, &close.phase).await;
         self.deliver(owner, &closed, &close, origin).await;
@@ -1014,7 +1101,7 @@ impl<H: HostResolver> Tree<H> {
     /// goes to its parent, whose save marks it delivered.
     async fn close(self: &Rc<Self>, child: &Rc<Child<H>>, kind: CloseKind) {
         let record = child.node.record().clone();
-        let owner = self.node(child.parent());
+        let owner = self.node(&child.parent());
         let _lease = match &owner {
             Some(owner) => Some(owner.lifecycle().enter(Purpose::Maintenance).await),
             None => None,
@@ -1074,9 +1161,10 @@ impl<H: HostResolver> Tree<H> {
                     closed: Some(close.clone()),
                     ..record.clone()
                 };
+                let placement = self.placement().await;
                 self.sink.emit(ServerFrame::Subagent {
                     event: SubagentEvent::Closed,
-                    job: child.job(&closed),
+                    job: child.job(&closed, placement.as_ref()),
                 });
                 if let Some(owner) = &owner {
                     self.deliver(owner, &record, &close, origin).await;
@@ -1228,10 +1316,11 @@ impl<H: HostResolver> Tree<H> {
 
     /// Each live child's `started` frame and transcript, depth first in
     /// spawn order: what a connection that attaches or syncs receives.
-    pub(super) fn replay(&self) -> Vec<ServerFrame> {
+    /// Each works where the conversation's placement `placement` puts it.
+    pub(super) fn replay(&self, placement: Option<&Placement>) -> Vec<ServerFrame> {
         self.descendants()
             .iter()
-            .flat_map(|child| child_frames(child))
+            .flat_map(|child| child_frames(child, placement))
             .collect()
     }
 
@@ -1254,18 +1343,22 @@ impl<H: HostResolver> Tree<H> {
     /// children after its live ones (`subagents.md` § `demi agent list`).
     pub(crate) async fn listing(&self) -> Result<Listing, String> {
         let now = self.clock.now().as_millisecond();
-        let root = self.list_node(self.root.id().clone(), None, now).await?;
+        let placement = self.root.placement().await.map_err(|error| error.to_string())?;
+        let root = self
+            .list_node(self.root.id().clone(), None, &placement, now)
+            .await?;
         Ok(Listing { root })
     }
 
     /// The node `id` with its children: the root when `child` is none, else
     /// that live child with its parent's number.
-    fn list_node(
-        &self,
+    fn list_node<'a>(
+        &'a self,
         id: NodeId,
         child: Option<(Rc<Child<H>>, u64)>,
+        placement: &'a Placement,
         now: i64,
-    ) -> LocalBoxFuture<'_, Result<ListNode, String>> {
+    ) -> LocalBoxFuture<'a, Result<ListNode, String>> {
         Box::pin(async move {
             let number = match &child {
                 Some((child, _)) => child.node.record().number,
@@ -1274,7 +1367,10 @@ impl<H: HostResolver> Tree<H> {
             let mut children = Vec::new();
             for live in self.children_of(&id) {
                 let live_id = live.id().clone();
-                children.push(self.list_node(live_id, Some((live, number)), now).await?);
+                children.push(
+                    self.list_node(live_id, Some((live, number)), placement, now)
+                        .await?,
+                );
             }
             let mut archived: Vec<NodeRecord> = self
                 .store
@@ -1299,6 +1395,7 @@ impl<H: HostResolver> Tree<H> {
                     parent: Some(number),
                     description: record.description.clone(),
                     profile: record.profile.clone(),
+                    place: record.cwd.as_ref().map(|own| place(placement, own)),
                     id: record.id,
                 });
             }
@@ -1314,7 +1411,11 @@ impl<H: HostResolver> Tree<H> {
                         profile: record.profile.clone(),
                         phase: JobPhase::Running,
                         closed_ago_ms: None,
-                        line: Some(list_line(&self.snapshot(&child, parent, now))),
+                        place: Some(place(placement, record.cwd.as_ref().expect("a child's record names its directory"))),
+                        line: Some(list_line(
+                            &self.snapshot(&child, parent, now, placement),
+                            &place(placement, record.cwd.as_ref().expect("a child's record names its directory")),
+                        )),
                         children,
                     }
                 }
@@ -1327,6 +1428,7 @@ impl<H: HostResolver> Tree<H> {
                     profile: None,
                     phase: JobPhase::Running,
                     closed_ago_ms: None,
+                    place: None,
                     line: None,
                     children,
                 },
@@ -1340,11 +1442,12 @@ impl<H: HostResolver> Tree<H> {
     /// number no child of the tree has.
     pub(crate) async fn show(&self, number: u64) -> Result<Option<(ShownAgent, String)>, String> {
         let now = self.clock.now().as_millisecond();
+        let placement = self.root.placement().await.map_err(|error| error.to_string())?;
         if let Some(child) = self.child_numbered(number) {
-            let Some(parent) = self.node(child.parent()) else {
+            let Some(parent) = self.node(&child.parent()) else {
                 return Ok(None);
             };
-            let snapshot = self.snapshot(&child, parent.record().number, now);
+            let snapshot = self.snapshot(&child, parent.record().number, now, &placement);
             let text = show_text(&snapshot);
             return Ok(Some((ShownAgent::Live(snapshot), text)));
         }
@@ -1367,6 +1470,12 @@ impl<H: HostResolver> Tree<H> {
             closed_ago_ms: age(now, close.at.as_millisecond()),
             result,
             failure,
+            cwd: record
+                .cwd
+                .as_ref()
+                .expect("a child's record names its directory")
+                .effective(&placement)
+                .to_owned(),
         };
         let text = archived_text(&archived);
         Ok(Some((ShownAgent::Archived(archived), text)))
@@ -1397,7 +1506,7 @@ impl<H: HostResolver> Tree<H> {
     /// The live child of `owner` the model knows by `number`.
     pub(crate) fn live_child_of(&self, owner: &NodeId, number: u64) -> Option<NodeId> {
         self.child_numbered(number)
-            .filter(|child| child.parent() == owner)
+            .filter(|child| &child.parent() == owner)
             .map(|child| child.id().clone())
     }
 
@@ -1540,13 +1649,13 @@ async fn stop_all(session: &AgentSession) {
 
 /// A child's `started` frame, its transcript, its phase, the calls it is
 /// writing and its wait for the model.
-fn child_frames<H: HostResolver>(child: &Child<H>) -> [ServerFrame; 5] {
+fn child_frames<H: HostResolver>(child: &Child<H>, placement: Option<&Placement>) -> [ServerFrame; 5] {
     let session = child.node.session();
     let transcript = session.transcript();
     [
         ServerFrame::Subagent {
             event: SubagentEvent::Started,
-            job: child.job(child.node.record()),
+            job: child.job(&child.node.record(), placement),
         },
         {
             // The page holds none of a child's blocks until it shows it
@@ -1784,6 +1893,9 @@ struct ListNode {
     profile: Option<String>,
     phase: JobPhase,
     closed_ago_ms: Option<u64>,
+    /// A child's working directory as the listing names it
+    /// ([`place`]); none for the root.
+    place: Option<String>,
     /// A live child's status line.
     line: Option<String>,
     children: Vec<ListNode>,
@@ -1813,6 +1925,9 @@ pub(crate) struct TreeEntry {
     profile: Option<String>,
     phase: JobPhase,
     closed_ago_ms: Option<u64>,
+    /// A child's working directory, relative to the conversation's when
+    /// inside it; null for the root.
+    cwd: Option<String>,
     #[serde(rename = "self")]
     is_caller: bool,
 }
@@ -1838,6 +1953,7 @@ impl Listing {
                 profile: node.profile.clone(),
                 phase: node.phase,
                 closed_ago_ms: node.closed_ago_ms,
+                cwd: node.place.clone(),
                 is_caller: &node.id == caller,
             });
             stack.extend(node.children.iter().rev());
@@ -1862,10 +1978,11 @@ fn render_node(
                 .map(|ago| format!(" {} ago", duration(ago)))
                 .unwrap_or_default();
             format!(
-                "○ {}  archived ({}{ago})  {}",
+                "○ {}  archived ({}{ago})  {}  {}",
                 node.number,
                 node.phase,
-                quoted(&node.description)
+                quoted(&node.description),
+                node.place.as_deref().expect("a child has a directory")
             )
         }
         EntryKind::Live => format!(
@@ -1904,7 +2021,8 @@ fn quoted(description: &str) -> String {
 }
 
 /// A live child's line in `demi agent list`, from its snapshot.
-fn list_line(snapshot: &AgentSnapshot) -> String {
+/// `place` is where the listing says it works.
+fn list_line(snapshot: &AgentSnapshot, place: &str) -> String {
     [
         snapshot.subagent_id.to_string(),
         snapshot.phase.to_string(),
@@ -1915,6 +2033,7 @@ fn list_line(snapshot: &AgentSnapshot) -> String {
             snapshot.profile.as_deref().unwrap_or(INHERIT_LABEL)
         ),
         quoted(&snapshot.description),
+        place.to_owned(),
         format!("execution={}", snapshot.execution.as_str()),
         format!("activity={}", snapshot.activity),
     ]
@@ -1940,6 +2059,8 @@ pub(crate) struct AgentSnapshot {
     tools: Vec<ToolSnapshot>,
     last_assistant_text: String,
     last_assistant_text_ago_ms: Option<u64>,
+    /// Its working directory on the primary Host.
+    cwd: String,
 }
 
 /// `demi agent show --json`'s agent: a live child's snapshot, or what an
@@ -1966,6 +2087,8 @@ pub(crate) struct ArchivedSnapshot {
     result: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     failure: Option<String>,
+    /// Its working directory on the primary Host as it closed.
+    cwd: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
@@ -1980,12 +2103,13 @@ struct ToolSnapshot {
 impl<H: HostResolver> Tree<H> {
     /// `child`'s snapshot; `parent` is its parent's number. An idle child
     /// whose own children still run waits, as one whose commands do.
-    fn snapshot(&self, child: &Child<H>, parent: u64, now: i64) -> AgentSnapshot {
+    /// It works where `placement`, the conversation's now, puts it.
+    fn snapshot(&self, child: &Child<H>, parent: u64, now: i64, placement: &Placement) -> AgentSnapshot {
         let execution = match child.node.session().execution() {
             Execution::Idle if !self.children_of(child.id()).is_empty() => Execution::Waiting,
             execution => execution,
         };
-        snapshot(child, parent, now, execution)
+        snapshot(child, parent, now, execution, placement)
     }
 }
 
@@ -1995,6 +2119,7 @@ fn snapshot<H: HostResolver>(
     parent: u64,
     now: i64,
     execution: Execution,
+    placement: &Placement,
 ) -> AgentSnapshot {
     let record = child.node.record();
     let session = child.node.session();
@@ -2033,6 +2158,12 @@ fn snapshot<H: HostResolver>(
         last_assistant_text: bounded(session.last_answer().as_ref().map_or("", |(_, text)| text))
             .to_owned(),
         last_assistant_text_ago_ms: telemetry.last_text_at.map(|at| age(now, at)),
+        cwd: record
+            .cwd
+            .as_ref()
+            .expect("a child's record names its directory")
+            .effective(placement)
+            .to_owned(),
     }
 }
 
@@ -2055,6 +2186,7 @@ fn show_text(snapshot: &AgentSnapshot) -> String {
         ),
         format!("last-event: {} ago", duration(snapshot.last_event_ms)),
         format!("activity: {}", snapshot.activity),
+        format!("cwd: {}", snapshot.cwd),
     ];
     if !snapshot.tools.is_empty() {
         lines.push(format!(
@@ -2100,6 +2232,7 @@ fn archived_text(archived: &ArchivedSnapshot) -> String {
             archived.phase,
             duration(archived.closed_ago_ms)
         ),
+        format!("cwd: {}", archived.cwd),
     ];
     match (&archived.result, &archived.failure) {
         (Some(result), _) if result.is_empty() => lines.push("result: (none)".to_owned()),
@@ -2114,6 +2247,14 @@ fn archived_text(archived: &ArchivedSnapshot) -> String {
         (None, None) => {}
     }
     format!("{}\n", lines.join("\n"))
+}
+
+/// A child's working directory as `list` names it while the conversation
+/// works at `placement`: relative to the conversation's directory when
+/// inside it, `.` for that directory itself, else whole.
+fn place(placement: &Placement, own: &ChildDirectory) -> String {
+    let cwd = own.effective(placement);
+    relative_to(&placement.directory, cwd).unwrap_or_else(|| cwd.to_owned())
 }
 
 /// A description as `show` prints it.

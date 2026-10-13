@@ -29,7 +29,7 @@ use demi_agent_session::{
     CallCommand, StartedCommand, StepOutcomes, ToolEffect, ToolFailure, ToolInvocation,
     ToolOutcome, WindowEnd,
 };
-use demi_agent_store::{AgentTreeStore, RunningCommand};
+use demi_agent_store::{AgentTreeStore, ChildDirectory, RunningCommand};
 use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, HostErrorKind, JobCaller, Numbers,
     PageFeed, ShellEnvironment, ShellError, TakenUp,
@@ -107,11 +107,27 @@ pub trait ShellEnvironmentFactory<H> {
     ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>>;
 }
 
+/// A node's own working directory as its `shell` calls read it when each
+/// starts (`subagents.md` § Working directory): `demi agent cwd` changes it
+/// while a call of the node runs, from the next start on.
+pub trait Directory {
+    /// A child's own directory and where the conversation worked when it
+    /// was set; none for the root, whose jobs start in the conversation's.
+    fn own(&self) -> Option<ChildDirectory>;
+}
+
+/// A directory that does not change, such as a closed node's.
+impl Directory for Option<ChildDirectory> {
+    fn own(&self) -> Option<ChildDirectory> {
+        self.clone()
+    }
+}
+
 /// The tool's name.
 const SHELL: &str = "shell";
 
 /// What the `shell` tool does, as the model is told.
-const SHELL_DESCRIPTION: &str = "Start a shell script in the conversation's working directory and watch it as intervalMs says. Watching is not a deadline: a command still running when the call returns keeps running, the result carries its commandId, and the command reports to you as its interval says until it ends. Completed short output is returned directly. The shell calls of one response run at the same time.";
+const SHELL_DESCRIPTION: &str = "Start a shell script in your working directory and watch it as intervalMs says. Watching is not a deadline: a command still running when the call returns keeps running, the result carries its commandId, and the command reports to you as its interval says until it ends. Completed short output is returned directly. The shell calls of one response run at the same time.";
 
 /// The definitions the model receives, made once: the `shell` tool alone.
 pub fn definitions() -> Arc<[ToolDefinition]> {
@@ -143,7 +159,11 @@ pub struct ShellAccess<'a, H: HostResolver> {
     pub hosts: &'a H,
     pub shells: &'a dyn ShellEnvironmentFactory<H::Host>,
     pub environments: &'a Environments,
-    pub context: NodeContext<'a>,
+    pub node: &'a NodeId,
+    /// The conversation's root node.
+    pub root: &'a NodeId,
+    /// Where the node's jobs start, read as each starts.
+    pub directory: &'a dyn Directory,
     /// The node's agent number.
     pub agent: u64,
     pub commands: &'a Rc<CommandSet>,
@@ -172,15 +192,21 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     async fn environment(
         &self,
         handle: Handle<'_>,
+        cwd: Option<&str>,
     ) -> Result<(Rc<environments::Slot>, Rc<dyn ShellEnvironment>), CallError> {
+        let context = NodeContext {
+            node: self.node,
+            root: self.root,
+            cwd,
+        };
         let host = self
             .hosts
-            .host(self.context)
+            .host(context)
             .await
             .map_err(|error| CallError::Failed(error.to_string()))?;
         let scope = EnvironmentScope {
-            root: self.context.root,
-            node: self.context.node,
+            root: self.root,
+            node: self.node,
             agent: self.agent,
             commands: self.commands,
             feed: self.feed,
@@ -191,6 +217,27 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             .resolve(key, handle, self.shells.create(scope, host))
             .await
             .map_err(CallError::Failed)
+    }
+
+    /// Where a child's next job starts: its own directory while the
+    /// conversation works where it did when that was set, the
+    /// conversation's otherwise; none for the root, whose jobs start where
+    /// the Host starts its work.
+    async fn cwd(&self) -> Result<Option<String>, CallError> {
+        let Some(own) = self.directory.own() else {
+            return Ok(None);
+        };
+        let context = NodeContext {
+            node: self.node,
+            root: self.root,
+            cwd: None,
+        };
+        let now = self
+            .hosts
+            .placement(context)
+            .await
+            .map_err(|error| CallError::Failed(error.to_string()))?;
+        Ok(Some(own.effective(&now).to_owned()))
     }
 
     /// Runs one step of a round (`runtime.md` § Dispatch and failures):
@@ -239,14 +286,16 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             }
             None => (None, None),
         };
-        let (slot, environment) = self.environment(Handle::None).await?;
+        let cwd = self.cwd().await?;
+        let (slot, environment) = self.environment(Handle::None, cwd.as_deref()).await?;
         if let Some(suppressed) = slot.repeated(&input.script) {
             return Ok(suppressed);
         }
         let request = ExecRequest {
             script: input.script,
+            cwd,
             caller: JobCaller {
-                node: self.context.node.clone(),
+                node: self.node.clone(),
                 tool_use_id: call.tool_use_id,
             },
             title: input.description.0.clone(),
@@ -329,12 +378,13 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// environment for the conversation's current Host
     /// (`sessions-and-targets.md` § Recovery and persistence).
     pub async fn adopt(&self, running: &RunningCommand, ran: Duration) -> Result<(), CallError> {
-        let (_, environment) = self.environment(Handle::None).await?;
+        let cwd = self.cwd().await?;
+        let (_, environment) = self.environment(Handle::None, cwd.as_deref()).await?;
         environment.adopt(TakenUp {
             command: running.command.clone(),
             job: running.job.clone(),
             caller: JobCaller {
-                node: self.context.node.clone(),
+                node: self.node.clone(),
                 tool_use_id: running.tool_use_id.clone(),
             },
             title: running.title.clone(),
@@ -347,7 +397,8 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// Writes `stdin` to a running command of the current Host, as a page's
     /// input does.
     pub async fn write(&self, command: &CommandId, stdin: String) -> Result<(), CallError> {
-        let (_, environment) = self.environment(Handle::Command(command)).await?;
+        let cwd = self.cwd().await?;
+        let (_, environment) = self.environment(Handle::Command(command), cwd.as_deref()).await?;
         environment.write(command, Bytes::from(stdin)).await?;
         Ok(())
     }
@@ -355,7 +406,8 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// Stops a running command of the current Host, as a page's stop does:
     /// its end's report says the user stopped it.
     pub async fn abort(&self, command: &CommandId) -> Result<(), CallError> {
-        let (_, environment) = self.environment(Handle::Command(command)).await?;
+        let cwd = self.cwd().await?;
+        let (_, environment) = self.environment(Handle::Command(command), cwd.as_deref()).await?;
         self.environments.stopped_by(command, Stopper::User);
         environment.abort(command).await?;
         Ok(())

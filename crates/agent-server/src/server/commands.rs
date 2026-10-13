@@ -2,7 +2,8 @@
 //! its declarations, and the handlers that run each call against the live
 //! tree of the invoking job's conversation. Lifecycle (`spawn`, `fork`,
 //! `abort`, `resume`) acts on the caller's own children; communication and
-//! reads reach any live agent of the tree.
+//! reads reach any live agent of the tree; `cwd` reads or moves the
+//! caller's own working directory.
 
 use std::rc::{Rc, Weak};
 
@@ -55,7 +56,19 @@ struct SpawnArgs {
     profile: Option<String>,
     /// Short UI title distinguishing concurrent children.
     description: Option<String>,
+    /// The child's working directory, read against yours; yours when omitted.
+    cwd: Option<String>,
 }
+
+/// The input of `demi agent cwd`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct CwdArgs {
+    /// The directory to work in from your next shell call on, read against your current one.
+    dir: Option<String>,
+}
+
+const CWD_SUMMARY: &str = "Print your working directory, where your shell calls start, or change it to a directory of the primary Host.";
 
 /// The input of `demi agent send`.
 #[derive(Deserialize, JsonSchema)]
@@ -205,6 +218,12 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
         );
     }
     group = group.leaf(
+        LeafBuilder::rpc("cwd", CWD_SUMMARY)
+            .input::<CwdArgs>()
+            .positionals(["dir"])
+            .bind(TypedRpc::new(verb(server.clone(), cwd))),
+    );
+    group = group.leaf(
         LeafBuilder::rpc("send", SEND_SUMMARY)
             .input::<SendArgs>()
             .positionals(["id"])
@@ -326,9 +345,23 @@ async fn spawn<H: HostResolver>(
         prompt: prompt.to_owned(),
         profile_name: call.args.profile,
         description: call.args.description.unwrap_or_default(),
+        cwd: call.args.cwd,
     };
     match call.tree.start(&call.caller, input).await {
         Ok(child) => started(&port, call.json, child).await,
+        Err(error) => fail(&error),
+    }
+}
+
+/// Prints the caller's directory, or moves the caller to `dir`
+/// (`subagents.md` § Working directory).
+async fn cwd<H: HostResolver>(call: Invoked<H, CwdArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let changed = match &call.args.dir {
+        Some(dir) => call.tree.change_cwd(&call.caller, dir).await,
+        None => call.tree.directory_of(&call.caller).await,
+    };
+    match changed {
+        Ok(cwd) => out(&port, format!("{cwd}\n")).await,
         Err(error) => fail(&error),
     }
 }

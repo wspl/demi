@@ -229,13 +229,15 @@ pub struct SeenContext<'a> {
     pub text: &'a str,
 }
 
-/// What one context source answered: a new block's source and text, and
-/// for the instructions source what the text holds.
+/// What one context source answered: a new block's source and text, for
+/// the instructions source what the text holds, and for the working
+/// directory source the directory it names.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewContext {
     pub source: String,
     pub text: String,
     pub instructions: Vec<InstructionEntry>,
+    pub cwd: Option<String>,
 }
 
 /// One call of a tool.

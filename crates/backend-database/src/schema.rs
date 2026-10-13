@@ -254,7 +254,8 @@ CREATE TABLE plugin_oauth_clients (
 /// The schemas of transcript block formats 4 and 5 before it no server
 /// keeps, but development databases do, and the server's migrate through
 /// them, as they do through the one before a node said which agent it was
-/// forked from.
+/// forked from and through the one of transcript block format 6 before a
+/// child's row kept its working directory.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -294,8 +295,57 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.forked-from.sql"),
             migration: Migration::Code(relist_blocks),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.block-format-6.sql"),
+            migration: Migration::Code(nodes_with_their_directories),
+        },
     ],
 };
+
+/// From the conversation schema of transcript block format 6, whose
+/// checkpoint state (format 2) kept the node's working directory, to the
+/// one in which a child's row keeps it with where the conversation worked
+/// when it was set (`subagents.md` § Working directory), checkpoint state
+/// format 3: each child's directory moves from its state into its row, and
+/// the root's goes, since the root works in the conversation's directory.
+/// Where the conversation worked then is not in this database, and no
+/// device is recorded: a child of that schema worked in the conversation's
+/// directory, and it does again, since no device the conversation runs on
+/// now is none. Format 6, which no server has kept, now also lets a
+/// `context` block name a directory, which no stored block does, so the
+/// blocks are as they were. Each state is decoded and checked as format 3
+/// before it is written back.
+fn nodes_with_their_directories(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    transaction.execute_batch(
+        "ALTER TABLE nodes ADD COLUMN cwd TEXT CHECK (cwd <> '');
+         ALTER TABLE nodes ADD COLUMN cwd_device TEXT;
+         ALTER TABLE nodes ADD COLUMN cwd_under TEXT CHECK (cwd_under <> '');",
+    )?;
+    let states = transaction
+        .prepare("SELECT id, parent_id IS NOT NULL, state FROM nodes")?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?, row.get::<_, String>(2)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update =
+        transaction.prepare("UPDATE nodes SET state = ?2, cwd = ?3, cwd_under = ?3 WHERE id = ?1")?;
+    for (id, child, state) in states {
+        let mut fields: serde_json::Map<String, serde_json::Value> =
+            decode("nodes", "state", serde_json::from_str(&state)).map_err(corrupt)?;
+        // The root's goes whatever it was; a child's is its row's now.
+        let cwd = match (fields.remove("cwd"), child) {
+            (_, false) => None,
+            (Some(serde_json::Value::String(cwd)), true) => Some(cwd),
+            (_, true) => {
+                let reason = format!("the state of the child {id} names no working directory");
+                return Err(corrupt(std::io::Error::other(reason)));
+            }
+        };
+        let state: CheckpointState = json("nodes", "state", &to_json(&fields)).map_err(corrupt)?;
+        update.execute(rusqlite::params![id, to_json(&state), cwd])?;
+    }
+    Ok(())
+}
 
 /// From the conversation schema in which a node's instructions are the
 /// ones its profile adds, before a node said which agent it was forked
@@ -738,11 +788,11 @@ fn corrupt(error: impl std::error::Error + Send + Sync + 'static) -> rusqlite::E
     rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(error))
 }
 
-/// From 0.1.21's checkpoint states (checkpoint state format 2): the yield
+/// From 0.1.21's checkpoint states to checkpoint state format 2: the yield
 /// wakeups a node saved go, none of them to fire, and the state keeps the
 /// command reports and the commands' intervals, none for a node 0.1.21
-/// saved. Each state is decoded and checked as the format it becomes before
-/// it is written back.
+/// saved. Format 2 is not the current one: the migration to format 3
+/// ([`nodes_with_their_directories`]) decodes and checks each state.
 fn states_without_wakeups(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     let states = transaction
         .prepare("SELECT id, state FROM nodes")?
@@ -755,8 +805,7 @@ fn states_without_wakeups(transaction: &Transaction<'_>) -> rusqlite::Result<()>
         fields.remove("wakeups");
         fields.insert("reports".to_owned(), serde_json::json!([]));
         fields.insert("intervals".to_owned(), serde_json::json!([]));
-        let state: CheckpointState = json("nodes", "state", &to_json(&fields)).map_err(corrupt)?;
-        update.execute(rusqlite::params![id, to_json(&state)])?;
+        update.execute(rusqlite::params![id, to_json(&fields)])?;
     }
     Ok(())
 }
@@ -1713,13 +1762,23 @@ CREATE TABLE nodes (
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
   -- The session's checkpoint state as JSON, with whether a Stop holds its
   -- waiting input until the user's next action.
-  -- nodes.state: checkpoint state format 2
+  -- nodes.state: checkpoint state format 3
   state            TEXT NOT NULL,
   block_count      INTEGER NOT NULL CHECK (block_count >= 0),
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
   -- The number of the agent the node was forked from; null for one that
   -- was not forked.
   forked_from      INTEGER CHECK (forked_from >= 1),
+  -- A child's own working directory on the primary Host, and where the
+  -- conversation worked when it was set: the primary Host's device, null
+  -- for a Cloud not made yet, and the conversation's directory then. The
+  -- child works there while the conversation still does, and in the
+  -- conversation's directory otherwise. All null for the root, which works
+  -- in the conversation's. Their reader refuses a row that sets some of
+  -- them only, since a migration adds no table CHECK.
+  cwd              TEXT CHECK (cwd <> ''),
+  cwd_device       TEXT,
+  cwd_under        TEXT CHECK (cwd_under <> ''),
   CHECK ((closed_phase IS NULL) = (closed_at IS NULL)),
   CHECK (result IS NULL OR closed_phase = 'completed'),
   CHECK (failure IS NULL OR closed_phase = 'error')
@@ -2171,6 +2230,44 @@ mod tests {
             .unwrap();
         let refused = CONVERSATION.apply(&mut corrupt, &corrupt_path, &NoBlobs);
         assert!(matches!(refused, Err(StorageError::Migration { .. })), "{refused:?}");
+    }
+
+    /// A child's working directory moves from its checkpoint state into its
+    /// row, and the root's goes, since the root works in the conversation's
+    /// directory; each state reads as the current format.
+    #[test]
+    fn a_childs_directory_moves_from_its_state_into_its_row() {
+        use crate::columns::json;
+
+        let shipped = include_str!("schema/conversation-0.1.22-dev.forked-from.sql");
+        let insert = "INSERT INTO nodes (id, number, parent_id, description, round, started_at, can_spawn,
+                        delivered, state, block_count, output_revision)
+                      VALUES (?1, ?2, ?3, '', 1, 0, 1, 0, ?4, 0, 0)";
+        let state = |cwd: &str| {
+            serde_json::json!({
+                "phase": "idle", "queue": [], "agentInputs": [], "reports": [], "intervals": [],
+                "cwd": cwd, "model": demi_agent_store::testing::test_model(), "edits": []
+            })
+            .to_string()
+        };
+        let (_directory, path, mut connection) = database(shipped);
+        connection
+            .execute(insert, rusqlite::params!["root", 0, None::<String>, state("/work")])
+            .unwrap();
+        connection
+            .execute(insert, rusqlite::params!["child", 1, "root", state("/work/app")])
+            .unwrap();
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+        for (id, cwd) in [("root", None), ("child", Some("/work/app"))] {
+            let (state, kept): (String, Option<String>) = connection
+                .query_row("SELECT state, cwd FROM nodes WHERE id = ?1", [id], |row| {
+                    Ok((row.get(0)?, row.get(1)?))
+                })
+                .unwrap();
+            assert_eq!(kept.as_deref(), cwd, "{id}");
+            json::<CheckpointState>("nodes", "state", &state).unwrap();
+        }
     }
 
     /// 0.1.21's shell sequence goes with its row; a stored `shell_exec`

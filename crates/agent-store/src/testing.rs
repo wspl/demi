@@ -17,7 +17,7 @@ use demi_shared_types::{
 use futures_util::future::LocalBoxFuture;
 
 use crate::{
-    AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, NodeClose, NodeRecord,
+    AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, NodeClose, NodeRecord,
     RunningCommand,
     SessionStore, StoreError, StoredCommand, media::BlobStore,
 };
@@ -434,6 +434,19 @@ impl AgentTreeStore for MemoryTreeStore {
         })
     }
 
+    fn set_cwd<'a>(
+        &'a self,
+        id: &'a NodeId,
+        cwd: &'a ChildDirectory,
+    ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
+        Box::pin(async move {
+            let mut stored = self.stored.borrow_mut();
+            let node = stored.nodes.get_mut(id).ok_or_else(|| missing(id))?;
+            node.record.cwd = Some(cwd.clone());
+            Ok(())
+        })
+    }
+
     fn mark_delivered<'a>(
         &'a self,
         id: &'a NodeId,
@@ -596,15 +609,16 @@ pub mod store_contract {
 
     use super::{test_model, text};
     use crate::{
-        AgentTreeStore, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord,
-        PendingAgentInput,
+        AgentTreeStore, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, NodeClose,
+        NodeRecord, PendingAgentInput, Placement,
     };
 
     fn id(value: &str) -> NodeId {
         NodeId::try_from(value).expect("a test node id is not empty")
     }
 
-    /// A node in its first round, agent `number` of the conversation.
+    /// A node in its first round, agent `number` of the conversation; a
+    /// child works in `/work`.
     fn record(node: &str, parent: Option<&str>, number: u64) -> NodeRecord {
         NodeRecord {
             id: id(node),
@@ -619,6 +633,18 @@ pub mod store_contract {
             closed: None,
             delivered: false,
             forked_from: None,
+            cwd: parent.map(|_| directory("/work")),
+        }
+    }
+
+    /// `cwd`, set while the conversation worked in `/work` on `laptop`.
+    fn directory(cwd: &str) -> ChildDirectory {
+        ChildDirectory {
+            cwd: cwd.to_owned(),
+            under: Placement {
+                device: Some("laptop".to_owned()),
+                directory: "/work".to_owned(),
+            },
         }
     }
 
@@ -630,7 +656,6 @@ pub mod store_contract {
                 agent_inputs: Vec::new(),
                 reports: Vec::new(),
                 intervals: Vec::new(),
-                cwd: "/w".into(),
                 model: test_model(),
                 edits: Vec::new(),
             },
@@ -774,6 +799,14 @@ pub mod store_contract {
             .expect("the node has a checkpoint");
         assert!(loaded.state.queue.is_empty());
         assert_eq!(loaded.transcript.len(), 1);
+        // A child's changed directory is its record's from then on.
+        store
+            .set_cwd(&id("child"), &directory("/work/app"))
+            .await
+            .expect("the change commits");
+        let moved = stored(store, "child").await.expect("the child is stored");
+        assert_eq!(moved.cwd, Some(directory("/work/app")));
+        assert_eq!(stored(store, "root").await.expect("the root is stored").cwd, None);
         let again = store
             .create_node(
                 record("child", Some("root"), 2),
