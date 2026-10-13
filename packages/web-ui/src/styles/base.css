@@ -1794,6 +1794,11 @@ html[data-theme="light"] .file-pill {
   display: block;
 }
 
+/* An image of its own, not inside a link, opens in the media viewer. */
+.markdown-body :where(.media-lone, .media-run) > img {
+  cursor: zoom-in;
+}
+
 /* A tile's box keeps its picture's proportions; the cover only takes up the
    rounding of its pixels. */
 .markdown-body :where(.media-lone, .media-run) :is(img, video) {
