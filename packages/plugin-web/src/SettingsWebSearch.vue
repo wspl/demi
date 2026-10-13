@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
+  type Action,
   Button,
   InlineError,
   SettingsGroup,
@@ -19,17 +20,13 @@ import type { InUse, WebState } from './generated/plugin'
 const props = defineProps<{
   /** The plugin's state; null until it arrives, shown as nothing connected. */
   state: WebState | null
-  /** The rows with a call in flight: `account`, `key`. */
-  pending: readonly string[]
   /** Why the key typed was not saved, under the field. */
   keyProblem?: SentenceText
-}>()
-
-const emit = defineEmits<{
-  signIn: []
-  signOut: []
-  saveKey: [key: string]
-  removeKey: []
+  /** What each button does; it returns the call's promise, and the button works until it settles. */
+  onSignIn?: Action
+  onSignOut?: Action
+  onSaveKey?: Action<[key: string]>
+  onRemoveKey?: Action
 }>()
 
 /** The key being typed, kept by the caller so a refusal leaves it in the field. */
@@ -43,12 +40,11 @@ const IN_USE: Record<InUse, SentenceText> = {
 
 const account = computed(() => props.state?.account ?? null)
 const key = computed(() => props.state?.key ?? null)
-const accountPending = computed(() => props.pending.includes('account'))
-const keyPending = computed(() => props.pending.includes('key'))
+const saveButton = ref<InstanceType<typeof Button> | null>(null)
 
-function save(): void {
-  if (keyDraft.value && !keyPending.value) {
-    emit('saveKey', keyDraft.value)
+function save(): unknown {
+  if (keyDraft.value) {
+    return props.onSaveKey?.(keyDraft.value)
   }
 }
 </script>
@@ -63,17 +59,13 @@ function save(): void {
         <Button
           v-if="account"
           size="sm"
-          :loading="accountPending"
-          :disabled="accountPending"
-          @click="emit('signOut')"
+          @click="onSignOut?.()"
           >Sign Out</Button
         >
         <Button
           v-else
           size="sm"
-          :loading="accountPending"
-          :disabled="accountPending"
-          @click="emit('signIn')"
+          @click="onSignIn?.()"
           >Sign In</Button
         >
       </SettingsRow>
@@ -91,9 +83,7 @@ function save(): void {
           <span class="font-mono text-chrome text-fg-muted">••••{{ key.lastFour }}</span>
           <Button
             size="sm"
-            :loading="keyPending"
-            :disabled="keyPending"
-            @click="emit('removeKey')"
+            @click="onRemoveKey?.()"
             >Remove</Button
           >
         </template>
@@ -106,13 +96,12 @@ function save(): void {
             placeholder="Exa API key"
             aria-label="Exa API key"
             class="w-48 max-w-full"
-            :disabled="keyPending"
-            @keydown.enter="save"
+            @keydown.enter="saveButton?.press()"
           />
           <Button
+            ref="saveButton"
             size="sm"
-            :loading="keyPending"
-            :disabled="!keyDraft || keyPending"
+            :disabled="!keyDraft"
             @click="save"
             >Save</Button
           >

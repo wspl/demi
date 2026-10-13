@@ -41,6 +41,7 @@ import AddProviderDialog from './AddProviderDialog.vue'
 import ModelDialog from './ModelDialog.vue'
 import { endpointProblem } from './provider-defaults'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
+import type { Action } from '../ui/pending-action'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsListItem from './SettingsListItem.vue'
 import SettingsPage from './SettingsPage.vue'
@@ -96,6 +97,15 @@ const props = defineProps<{
   refreshingUsage?: Record<string, Record<string, SettingsQuotaRefresh>>
   /** The vendor's words for each account's last manual usage refresh that failed, by provider and account. */
   usageFailures?: Record<string, Record<string, ShownError>>
+  /**
+   * What each question's Remove carries out, as the dialog's button shows it
+   * until the promise settles: an entry, one of its accounts, one of its models.
+   */
+  onRemove?: Action<[id: string]>
+  onRemoveAccount?: Action<[provider: SettingsProviderEntry, accountId: string]>
+  onRemoveModel?: Action<[provider: SettingsProviderEntry, model: SettingsProviderModel]>
+  /** Installs the CLI on the user's Cloud again; Install works until the backend took it. */
+  onInstallCli?: Action<[provider: SettingsProviderEntry]>
 }>()
 
 const emit = defineEmits<{
@@ -114,7 +124,6 @@ const emit = defineEmits<{
   ]
   add: [vendor: SettingsVendor]
   addCompatible: [draft: SettingsCompatibleDraft]
-  remove: [id: string]
   signIn: [provider: SettingsProviderEntry]
   /** Test the provider; a subscription names the account to test with. */
   test: [provider: SettingsProviderEntry, accountId?: string]
@@ -123,11 +132,7 @@ const emit = defineEmits<{
   refreshUsage: [provider: SettingsProviderEntry, accountId: string, automatic?: boolean]
   /** Read the CLI's newest version and the machines again. */
   checkCli: [provider: SettingsProviderEntry]
-  /** Install the CLI on the user's Cloud again. */
-  installCli: [provider: SettingsProviderEntry]
   activateAccount: [provider: SettingsProviderEntry, accountId: string]
-  removeAccount: [provider: SettingsProviderEntry, accountId: string]
-  removeModel: [provider: SettingsProviderEntry, model: SettingsProviderModel]
 }>()
 
 const selectedId = defineModel<string | null>('selectedId', { default: null })
@@ -215,7 +220,7 @@ const confirming = ref<{
   title: string
   action: TitleText
   body: string[]
-  run: () => void
+  run: () => unknown
 } | null>(null)
 const confirmOpen = ref(false)
 
@@ -224,9 +229,12 @@ function ask(question: NonNullable<typeof confirming.value>): void {
   confirmOpen.value = true
 }
 
-function confirm(): void {
-  confirming.value?.run()
-  confirmOpen.value = false
+async function confirm(): Promise<void> {
+  try {
+    await confirming.value?.run()
+  } finally {
+    confirmOpen.value = false
+  }
 }
 
 function askRemoveProvider(provider: SettingsProviderEntry): void {
@@ -239,7 +247,7 @@ function askRemoveProvider(provider: SettingsProviderEntry): void {
         : `Its API key and its ${countUnlessOne(provider.models.length, 'model')} go with it.`,
       'Conversations that use one of its models keep their history, and their next message needs another model.',
     ],
-    run: () => emit('remove', provider.id),
+    run: () => props.onRemove?.(provider.id),
   })
 }
 
@@ -262,7 +270,7 @@ function askRemoveAccount(
     title: `Remove the account “${account.label}”?`,
     action: 'Remove',
     body: [effect, 'Demi forgets its sign-in. You can add it again with Add Account.'],
-    run: () => emit('removeAccount', provider, account.id),
+    run: () => props.onRemoveAccount?.(provider, account.id),
   })
 }
 
@@ -271,7 +279,7 @@ function askRemoveModel(provider: SettingsProviderEntry, model: SettingsProvider
     title: `Remove the model “${model.name || model.id}”?`,
     action: 'Remove',
     body: [`It leaves ${provider.name}’s model list and the model menus. You can add it again with its ID.`],
-    run: () => emit('removeModel', provider, model),
+    run: () => props.onRemoveModel?.(provider, model),
   })
 }
 
@@ -375,19 +383,15 @@ function openModel(
   if (!selected.value) {
     return
   }
-  if (
-    modelEditor.value &&
-    (modelEditor.value.status.kind === 'saving' ||
-      (modelEditor.value.status.kind === 'failed' &&
-        modelEditor.value.providerId === selected.value.id))
-  ) {
+  // A refused model opens again as the user left it, to correct.
+  if (modelEditor.value?.error && modelEditor.value.providerId === selected.value.id) {
     modelEditor.value.open = true
     return
   }
   modelEditor.value = {
     providerId: selected.value.id,
     open: true,
-    status: { kind: 'idle' },
+    error: null,
     mode,
     original: m,
     model: m
@@ -409,24 +413,23 @@ async function saveModel(draft: SettingsModelDraft) {
   const provider = props.providers.find(
     (entry) => entry.id === editor?.providerId,
   )
-  if (!editor || !provider || editor.status.kind === 'saving') {
+  if (!editor || !provider) {
     return
   }
   editor.model = draft
-  editor.status = { kind: 'saving' }
+  editor.error = null
   try {
     await props.saveModel(provider, draft, editor.original)
-    editor.status = { kind: 'idle' }
     editor.open = false
   } catch (error) {
     // A refused field of the model is the user's to correct in the dialog.
-    editor.status = { kind: 'failed', ...formError(error, { invalid_body: null }) }
+    editor.error = formError(error, { invalid_body: null })
   }
 }
 function accountPending(
   providerId: string,
   accountId: string,
-  action: 'activate' | 'remove' | 'test' | 'usage',
+  action: 'remove' | 'test' | 'usage',
 ): boolean {
   const operation = props.operations?.[providerId]
   return (
@@ -609,13 +612,7 @@ const compatibleOpen = ref(false)
                   <Button
                     size="sm"
                     v-if="!account.active"
-                    :loading="
-                      accountPending(selected.id, account.id, 'activate')
-                    "
-                    :disabled="
-                      !!operations?.[selected.id] &&
-                      !accountPending(selected.id, account.id, 'activate')
-                    "
+                    :disabled="!!operations?.[selected.id]"
                     @click="emit('activateAccount', selected, account.id)"
                     >Activate</Button
                   >
@@ -835,8 +832,8 @@ const compatibleOpen = ref(false)
                 <Button
                   v-else
                   size="sm"
-                  :disabled="!!operations?.[selected.id]"
-                  @click="emit('installCli', selected)"
+                  :disabled="!!operations?.[selected.id] && operations[selected.id]?.kind !== 'cli'"
+                  @click="onInstallCli?.(selected)"
                   >Install</Button
                 >
               </SettingsRow>
@@ -1080,8 +1077,7 @@ const compatibleOpen = ref(false)
       :is-open="modelEditor.open"
       :overlay-store="overlayStore"
       :mode="modelEditor.mode"
-      :pending="modelEditor.status.kind === 'saving'"
-      :error="modelEditor.status.kind === 'failed' ? modelEditor.status : null"
+      :error="modelEditor.error"
       :model="modelEditor.model"
       :search="dialogSearch"
       @close="modelEditor.open = false"

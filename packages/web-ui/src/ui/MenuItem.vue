@@ -6,6 +6,8 @@ import type { Component } from 'vue'
 import { Check, ChevronRight } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import HighlightText from './HighlightText.vue'
+import IndeterminateSpinner from './IndeterminateSpinner.vue'
+import { usePendingAction, type Action } from './pending-action'
 import Popover from './Popover.vue'
 import { inSheetKey } from './sheet-context'
 import Tooltip from './Tooltip.vue'
@@ -61,13 +63,19 @@ const props = defineProps<{
    * so the one lit row is the one a key takes.
    */
   pointerless?: boolean
+  /**
+   * What choosing the row does; it may return a promise. An action row closes
+   * its menu at once, and the row the menu belongs to works until the promise
+   * settles (`provideRowWork`); a choice row, which keeps the menu open,
+   * shows the spinner in its own check gutter. A second choice meanwhile
+   * does nothing.
+   */
+  onSelect?: Action
 }>()
 
-const emit = defineEmits<{
-  select: []
-}>()
 
 const slots = useSlots()
+const { pending, showsWork, press } = usePendingAction(true)
 const isChoice = computed(() => props.choice === true)
 const isDisabled = computed(() => props.disabled === true)
 const tooltipContent = computed(() => disabledTooltip(isDisabled.value, props.disabledReason) ?? props.hint)
@@ -179,7 +187,7 @@ function handleClick(event: MouseEvent) {
     openSubmenu()
     return
   }
-  emit('select')
+  press(props.onSelect)
   if (
     shouldDismissMenuTree({
       isChoice: isChoice.value,
@@ -275,8 +283,9 @@ const toneClass = computed(() => {
             v-if="isChoice"
             class="flex size-3.5 shrink-0 items-center justify-center"
           >
+            <IndeterminateSpinner v-if="pending && showsWork" :size="14" class="text-fg-muted" />
             <Check
-              v-if="isSelected"
+              v-else-if="isSelected"
               :size="ICON_PX.in28"
               class="text-fg-body"
             />

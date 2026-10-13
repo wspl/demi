@@ -6,6 +6,7 @@ import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
 import type { WorkToStop } from '@demicodes/web-ui/hosts/move-question'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
+import { slow } from '../fixtures/slow'
 import { productWould } from '../product-would'
 
 /**
@@ -89,7 +90,8 @@ function choose(chosen: { kind: 'cloud' } | { kind: 'device'; id: string }) {
   void moveTo(chosen.id)
 }
 
-function detach(id: string) {
+async function detach(id: string) {
+  await slow()
   attachedIds.value = attachedIds.value.filter((attached) => attached !== id)
 }
 </script>

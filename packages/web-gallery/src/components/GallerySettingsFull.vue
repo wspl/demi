@@ -34,6 +34,7 @@ import GalleryInstructions from './GalleryInstructions.vue'
 import GalleryCredentials from './GalleryCredentials.vue'
 import GalleryUsers from './GalleryUsers.vue'
 import GallerySubagents from './GallerySubagents.vue'
+import { slow } from '../fixtures/slow'
 
 /** One page of the full mock, chosen by the dialog's tab. All state lives in the fixture; timers stand in for the server. */
 const props = defineProps<{
@@ -56,20 +57,17 @@ const cloud = ref<CloudState>(
     report: demoDeviceReport('linux', DEMO_RUNNER_RELEASE),
   }
 )
-// The request is pending until the server accepts it; every second request is refused, so the failed state has a page.
-const reset = ref<{ status: 'idle' | 'pending' } | { status: 'failed'; message: string }>({ status: 'idle' })
+// The request waits until the server accepts it; every second request is refused, so the failed state has a page.
+const resetFailure = ref<string | null>(null)
 let resetRequests = 0
 async function resetCloud(operationId: string) {
-  if (reset.value.status === 'pending')
-    return
-  reset.value = { status: 'pending' }
+  resetFailure.value = null
   resetRequests += 1
   await new Promise(resolve => setTimeout(resolve, 600))
   if (resetRequests % 2 === 0) {
-    reset.value = { status: 'failed', message: 'The Cloud host is not taking resets right now. Try again in a minute.' }
+    resetFailure.value = 'The Cloud host is not taking resets right now. Try again in a minute.'
     return
   }
-  reset.value = { status: 'idle' }
   // Accepted: the Cloud's status names this reset from now on, as the product's snapshot does.
   cloud.value.operationId = operationId
   cloud.value.state = 'resetting'
@@ -178,18 +176,10 @@ async function askBrowser(): Promise<NotificationPermission> {
   return notifications.permission
 }
 
-// The field shows the new name at once and waits a beat, as the product's save does.
-const nameSaving = ref(false)
-let nameTimer = 0
+// The field shows the new name at once, as the product's save does.
 function rename(name: string) {
   s.value.account.name = name
-  nameSaving.value = true
-  window.clearTimeout(nameTimer)
-  nameTimer = window.setTimeout(() => {
-    nameSaving.value = false
-  }, 600)
 }
-onBeforeUnmount(() => window.clearTimeout(nameTimer))
 
 // Email: the code goes out after a beat; 000000 is the one code that is wrong.
 const emailOpen = ref(false)
@@ -274,7 +264,8 @@ function restoreArchived(id: string) {
 /** The paired devices, whose controls act on them as the product's do. */
 const devices = useGalleryDevices(() => galleryDevices())
 /** A revoked device leaves the list, and its projects go with it, as the product's do. */
-function revokeDevice(id: string) {
+async function revokeDevice(id: string) {
+  await slow()
   devices.revoke(id)
   s.value.deviceProjects = s.value.deviceProjects.filter((project) => project.deviceId !== id)
 }
@@ -311,7 +302,6 @@ function resetShortcuts() {
   <SettingsAccount
     v-else-if="tab === 'account'"
     :name="s.account.name"
-    :name-saving="nameSaving"
     v-model:email-open="emailOpen"
     v-model:password-open="passwordOpen"
     :overlay-store="appOverlayStore"
@@ -375,8 +365,7 @@ function resetShortcuts() {
   <SettingsDevices
     v-else-if="tab === 'devices'"
     :cloud="cloud"
-    :reset-pending="reset.status === 'pending'"
-    :reset-error="reset.status === 'failed' ? requestFailure(reset.message) : null"
+    :reset-error="resetFailure === null ? null : requestFailure(resetFailure)"
     @reset-cloud="resetCloud"
     :devices="devices.devices.value"
     :shown="devices.shown.value"

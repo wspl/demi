@@ -22,7 +22,7 @@ const page = usePage()
 const plugin = page.plugin
 const state = plugin.state(webStateSchema)
 
-/** The rows with a call in flight, whose controls wait for it. */
+/** The rows with a call in flight: a call for a row already in flight is not made again. */
 const calls = pendingCalls(page.errors)
 
 const keyDraft = ref('')
@@ -35,19 +35,19 @@ const KEY_REFUSALS: Record<WebReason, string> = {
   exa_unavailable: 'Exa did not answer the search that checks the key. Try again.',
 }
 
-function signIn(): void {
+function signIn(): Promise<void> {
   // The tab opens in this click and goes to Exa once the plugin answers.
   const url = plugin.call('sign_in', {} satisfies SignIn, signInStartedSchema).then((started) => started.url)
-  void calls.run('account', 'Could Not Start the Exa Sign-In', () => page.links.open(url))
+  return calls.run('account', 'Could Not Start the Exa Sign-In', () => page.links.open(url))
 }
 
-function signOut(): void {
-  void calls.run('account', 'Could Not Sign Out of Exa', () => plugin.call('sign_out', {} satisfies SignOut, z.null()))
+function signOut(): Promise<void> {
+  return calls.run('account', 'Could Not Sign Out of Exa', () => plugin.call('sign_out', {} satisfies SignOut, z.null()))
 }
 
-function saveKey(key: string): void {
+function saveKey(key: string): Promise<void> {
   keyProblem.value = undefined
-  void calls.run('key', 'Could Not Save the Key', async () => {
+  return calls.run('key', 'Could Not Save the Key', async () => {
     try {
       await plugin.call('save_key', { key } satisfies SaveKey, z.null())
       keyDraft.value = ''
@@ -61,8 +61,8 @@ function saveKey(key: string): void {
   })
 }
 
-function removeKey(): void {
-  void calls.run('key', 'Could Not Remove the Key', () => plugin.call('remove_key', {} satisfies RemoveKey, z.null()))
+function removeKey(): Promise<void> {
+  return calls.run('key', 'Could Not Remove the Key', () => plugin.call('remove_key', {} satisfies RemoveKey, z.null()))
 }
 </script>
 
@@ -70,7 +70,6 @@ function removeKey(): void {
   <SettingsWebSearch
     v-model:key-draft="keyDraft"
     :state="state"
-    :pending="calls.pending.value"
     :key-problem="keyProblem"
     @sign-in="signIn"
     @sign-out="signOut"

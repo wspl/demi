@@ -5,6 +5,8 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
+import { createKeyedRowWork, type Action } from '@demicodes/web-ui/ui/pending-action'
+import RowWorkScope from '@demicodes/web-ui/ui/RowWorkScope.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
@@ -58,6 +60,8 @@ const props = defineProps<{
   newShortcut?: string
   /** The keys Search conversations has in the keyboard settings, which Search shows; none when it has none. */
   searchShortcut?: string
+  /** Removes a project; its row works until it settles. */
+  onRemoveProject?: Action<[id: string]>
 }>()
 
 const emit = defineEmits<{
@@ -67,7 +71,6 @@ const emit = defineEmits<{
   /** Opens the search window. */
   search: []
   addProject: []
-  removeProject: [id: string]
   rename: [id: string, title: string]
   pin: [ids: string[], pinned: boolean]
   archive: [ids: string[]]
@@ -307,6 +310,8 @@ watch(entries, list.prune)
 // One context menu for rows and one for project headers, anchored where the pointer opened them.
 const rowMenu = useContextMenuOwner()
 const projectMenu = useContextMenuOwner()
+/** The work of the project menu's actions, which each project's row shows. */
+const projectWork = createKeyedRowWork()
 const menuTargets = ref<SidebarConversation[]>([])
 const menuProject = ref<SidebarProject | null>(null)
 
@@ -622,6 +627,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 :namesake="namesakes.has(entry.id)"
                 :collapsed="isFolded(entry.id)"
                 :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
+                :working="projectWork.isWorking(entry.id)"
                 @toggle="list.onProjectClick(entry.id)"
                 @create="emit('create', entry.id)"
                 data-touch-menu
@@ -713,16 +719,17 @@ function selectProjectConversations(project: SidebarProject): void {
     />
     <ContextMenu :overlay-store="appOverlayStore" :owner="projectMenu">
       <template #menu>
-        <SidebarProjectMenu
-          v-if="menuProject"
-          :project="menuProject"
-          :folded="isFolded(menuProject.id)"
-          :count="groups.find((group) => group.project.id === menuProject?.id)?.items.length ?? 0"
-          @create="emit('create', menuProject.id)"
-          @toggle-fold="setFolded(menuProject.id, !isFolded(menuProject.id))"
-          @select-all="selectProjectConversations(menuProject)"
-          @remove="emit('removeProject', menuProject.id)"
-        />
+        <RowWorkScope v-if="menuProject" :scope="projectWork.scope(menuProject.id)">
+          <SidebarProjectMenu
+            :project="menuProject"
+            :folded="isFolded(menuProject.id)"
+            :count="groups.find((group) => group.project.id === menuProject?.id)?.items.length ?? 0"
+            @create="emit('create', menuProject.id)"
+            @toggle-fold="setFolded(menuProject.id, !isFolded(menuProject.id))"
+            @select-all="selectProjectConversations(menuProject)"
+            @remove="onRemoveProject?.(menuProject.id)"
+          />
+        </RowWorkScope>
       </template>
     </ContextMenu>
   </aside>

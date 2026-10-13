@@ -3,6 +3,7 @@ import { computed, ref, useAttrs } from 'vue'
 import { blockUnavailableButtonEvent, pressOnKey } from './button-events'
 import { useButtonIconSpin } from './button-icon-spin'
 import { disabledTooltip } from './disabled'
+import { usePendingAction } from './pending-action'
 import Tooltip from './Tooltip.vue'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
 import type { SentenceText } from './ui-text'
@@ -12,7 +13,7 @@ const attrs = useAttrs()
 const restAttrs = computed(() => {
   const next: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(attrs)) {
-    if (key !== 'class') {
+    if (key !== 'class' && key !== 'onClick') {
       next[key] = value
     }
   }
@@ -32,6 +33,11 @@ const props = withDefaults(
      */
     variant?: 'default' | 'primary' | 'ghost' | 'danger'
     disabled?: boolean
+    /**
+     * Shows the spinner for work the caller's state owns. A press whose
+     * handler returns a promise shows it by itself until it settles, so a
+     * handler keeps no flag for that (`pending-action.ts`).
+     */
     loading?: boolean
     /** Why it is disabled, as a tooltip; only read while `disabled`. */
     disabledReason?: SentenceText
@@ -54,11 +60,27 @@ const tooltipContent = computed(() =>
 const emit = defineEmits<{ spinEnd: [] }>()
 const root = ref<HTMLElement | null>(null)
 // The icons a caller puts straight into the button, beside its label, turn.
-const { rotating, onClick } = useButtonIconSpin(
+const { rotating, onClick: spinOnPress } = useButtonIconSpin(
   () => root.value ? [...root.value.querySelectorAll(':scope > svg')] : [],
   props,
   () => emit('spinEnd'),
 )
+// A press whose handler returns a promise works until it settles; a second press meanwhile does nothing.
+const { pending, showsWork, press } = usePendingAction(false)
+const working = computed(() => props.loading === true || (pending.value && showsWork))
+const unavailable = computed(() => props.disabled === true || props.loading === true || pending.value)
+
+defineExpose({
+  /** Presses the button as a click does, for a shortcut that stands for it: refused while it is disabled or working. */
+  press(): void {
+    root.value?.click()
+  },
+})
+
+function onClick(event: MouseEvent): void {
+  spinOnPress()
+  press(attrs.onClick, event)
+}
 
 const sizeClass = computed(() => {
   if (props.size === 'lg') {
@@ -94,19 +116,19 @@ const sizeClass = computed(() => {
       v-bind="restAttrs"
       :data-spinning="rotating || undefined"
       @click="onClick"
-      @click.capture="blockUnavailableButtonEvent($event, disabled || loading)"
+      @click.capture="blockUnavailableButtonEvent($event, unavailable)"
       @keydown.capture="
-        blockUnavailableButtonEvent($event, disabled || loading)
+        blockUnavailableButtonEvent($event, unavailable)
       "
       @keydown="pressOnKey"
       @keyup="pressOnKey"
       role="button"
-      :tabindex="disabled || loading ? undefined : 0"
+      :tabindex="unavailable ? undefined : 0"
       :data-default-action="variant === 'primary' || undefined"
       class="relative inline-flex w-full cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow] duration-200 ease-out select-none"
-      :aria-disabled="disabled || loading || undefined"
-      :aria-busy="loading || undefined"
-      :data-loading="loading || undefined"
+      :aria-disabled="unavailable || undefined"
+      :aria-busy="working || undefined"
+      :data-loading="working || undefined"
       :data-pressed="!disabled && pressed ? true : undefined"
       :class="[
         sizeClass,
@@ -127,7 +149,7 @@ const sizeClass = computed(() => {
     >
       <slot />
       <span
-        v-if="loading"
+        v-if="working"
         class="button-loading-indicator absolute inset-0 flex items-center justify-center"
         aria-hidden="true"
       >

@@ -11,7 +11,6 @@ import CloudResetDialog from './CloudResetDialog.vue'
 
 const props = defineProps<{
   cloud: CloudState
-  resetPending?: boolean
   resetError?: ShownError | null
   overlayStore: OverlayStore
 }>()
@@ -38,9 +37,9 @@ const error = computed<ShownError | null>(() => {
   // The Cloud's own record of the failure, which no request answered.
   return own.value && props.cloud.error ? { message: props.cloud.error, requestId: null } : null
 })
+// From the press on: the dialog's own request, then the Cloud's phases.
 const busy = computed(
   () =>
-    props.resetPending ||
     props.cloud.state === 'resetting' ||
     (submitted.value &&
       !props.resetError &&

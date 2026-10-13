@@ -19,16 +19,13 @@ import {
 export const useDeviceSettings = defineStore('device-settings', () => {
   const product = useProduct()
   let lifetime = new AbortController()
-  const revoking = ref<string[]>([])
   /**
    * The device changes on their way, by device: each device's go one at a
    * time in order, as the backend answers each with the whole device.
    */
   const writes = new SerialQueue()
-  const reset = ref<
-    | { status: 'idle' | 'pending' }
-    | ({ status: 'failed' } & ShownError)
-  >({ status: 'idle' })
+  /** Why the last Cloud reset was refused; the dialog shows the reset under way from its own request. */
+  const resetError = ref<ShownError | null>(null)
   // The product state carries the Cloud's status; there is none only before
   // the channel's first snapshot arrives. Its device, and what its runner
   // reported, is there once the Cloud's first use made it.
@@ -51,11 +48,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     }
   })
   async function revoke(id: string): Promise<void> {
-    if (revoking.value.includes(id)) {
-      return
-    }
     const current = lifetime
-    revoking.value.push(id)
     try {
       const response = await apiRequest(`/devices/${encodeURIComponent(id)}`, {
         method: 'DELETE',
@@ -67,10 +60,6 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     } catch (error) {
       if (!current.signal.aborted) {
         reportError('Could Not Revoke Device', error, { userVisible: true })
-      }
-    } finally {
-      if (current === lifetime) {
-        revoking.value = revoking.value.filter((value) => value !== id)
       }
     }
   }
@@ -125,11 +114,8 @@ export const useDeviceSettings = defineStore('device-settings', () => {
   }
 
   async function resetCloud(operationId: string): Promise<void> {
-    if (reset.value.status === 'pending') {
-      return
-    }
     const current = lifetime
-    reset.value = { status: 'pending' }
+    resetError.value = null
     try {
       const response = await apiRequest('/cloud/reset', {
         method: 'POST',
@@ -137,8 +123,6 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         ...jsonBody({ operationId } satisfies CloudReset),
       })
       await readResponse(response, cloudResetAnswerSchema)
-      current.signal.throwIfAborted()
-      reset.value = { status: 'idle' }
     } catch (error) {
       if (!current.signal.aborted) {
         // The backend's refusal is a sentence for the reader; anything else
@@ -148,10 +132,10 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         if (!refused) {
           console.error('[demi] Cloud reset failed:', error)
         }
-        reset.value = {
-          status: 'failed',
-          ...shownError(error, refused ? error.message : 'The reset could not start. Check your connection and try again.'),
-        }
+        resetError.value = shownError(
+          error,
+          refused ? error.message : 'The reset could not start. Check your connection and try again.',
+        )
       }
     }
   }
@@ -161,15 +145,13 @@ export const useDeviceSettings = defineStore('device-settings', () => {
     () => {
       lifetime.abort()
       lifetime = new AbortController()
-      revoking.value = []
-      reset.value = { status: 'idle' }
+      resetError.value = null
     },
   )
   onScopeDispose(() => lifetime.abort())
   return {
     cloud,
-    reset,
-    revoking,
+    resetError,
     revoke,
     rename,
     setRoute,

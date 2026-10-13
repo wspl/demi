@@ -24,6 +24,7 @@ import {
   type MockProvider,
   type SettingsState,
 } from '../fixtures/settings'
+import { slow } from '../fixtures/slow'
 import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
 
 /**
@@ -108,7 +109,8 @@ function join(entry: MockProvider) {
   select(entry.id)
 }
 
-function removeProvider(id: string) {
+async function removeProvider(id: string) {
+  await slow()
   const list = s.value.providers
   const index = list.findIndex((p) => p.id === id)
   if (index < 0) {
@@ -249,12 +251,13 @@ const CLI_INSTALL_MS = 3000
 /** The specimen's CLI installs under way, which end when the page goes. */
 const cliInstalls = new Set<number>()
 
-/** Installing on Cloud while the Cloud wakes and downloads, then installed. */
-function installCli(p: SettingsProviderEntry) {
+/** Installing on Cloud while the Cloud wakes and downloads, then installed; Install works until the request is taken. */
+async function installCli(p: SettingsProviderEntry) {
   const cli = p.cli
   if (!cli || cli.install?.state === 'installing') {
     return
   }
+  await slow()
   cli.install = { state: 'installing' }
   const timer = window.setTimeout(() => {
     cliInstalls.delete(timer)
@@ -273,7 +276,8 @@ function activateAccount(p: SettingsProviderEntry, id: string) {
 }
 
 /** As the backend does: the active account's removal makes the first remaining one active, or leaves none. */
-function removeAccount(p: SettingsProviderEntry, id: string) {
+async function removeAccount(p: SettingsProviderEntry, id: string) {
+  await slow()
   const wasActive = p.accounts.some((a) => a.id === id && a.active)
   p.accounts = p.accounts.filter((a) => a.id !== id)
   if (wasActive && p.accounts[0]) {
@@ -315,7 +319,8 @@ async function saveModel(
   settle(p)
 }
 
-function removeModel(p: SettingsProviderEntry, m: SettingsProviderModel) {
+async function removeModel(p: SettingsProviderEntry, m: SettingsProviderModel) {
+  await slow()
   p.models = p.models.filter((x) => x.id !== m.id)
   settle(p)
 }

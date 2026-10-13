@@ -25,7 +25,6 @@ const props = defineProps<{
 
 const ending = ref<SettingsSession | null>(null)
 const confirmOpen = ref(false)
-const busy = ref(false)
 
 function askSignOut(session: SettingsSession): void {
   ending.value = session
@@ -34,14 +33,12 @@ function askSignOut(session: SettingsSession): void {
 
 async function signOut(): Promise<void> {
   const session = ending.value
-  if (!session || busy.value) {
+  if (!session) {
     return
   }
-  busy.value = true
   try {
     await props.host.signOut(session.id)
   } finally {
-    busy.value = false
     confirmOpen.value = false
   }
 }
@@ -79,7 +76,6 @@ async function signOut(): Promise<void> {
     :overlay-store="overlayStore"
     :title="`Sign out ${ending?.name ?? ''}?`"
     action="Sign Out"
-    :busy="busy"
     @close="confirmOpen = false"
     @confirm="signOut"
   >
