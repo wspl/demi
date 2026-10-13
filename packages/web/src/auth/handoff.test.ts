@@ -3,7 +3,9 @@ import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
 import { useProduct } from '../state/product'
+import { toasts } from '@demicodes/web-ui/infra/toast'
 import { makeHandoffCode, spendHandoffCode, useSessions, verifyWithPassword } from './handoff'
+import { usePasskeys } from './passkeys'
 
 const originalFetch = globalThis.fetch
 let pinia: ReturnType<typeof createPinia>
@@ -15,6 +17,7 @@ beforeEach(() => {
   channels = playChannels()
 })
 afterEach(() => {
+  toasts.length = 0
   useProduct().stop()
   disposePinia(pinia)
   channels.restore()
@@ -102,4 +105,38 @@ test('the dialog learns of the phone from the session its code made', () => {
     ['Safari on iPhone', false],
     ['Safari on macOS', true],
   ])
+})
+
+test('signing out a browser that is already signed out is done: its row leaves, and nothing failed', async () => {
+  const product = useProduct()
+  const laptop = {
+    id: 'session-1',
+    name: 'Safari on macOS',
+    createdAt: '2026-10-13T08:00:00.000Z',
+    lastActiveAt: '2026-10-13T08:00:00.000Z',
+    current: true,
+    handoffId: null,
+  }
+  const phone = { ...laptop, id: 'session-2', name: 'Safari on iPhone', current: false }
+  product.start()
+  channels.last().connect(productState({ sessions: [phone, laptop] }))
+  serve({
+    'DELETE /api/auth/sessions/session-2': [[{ requestId: 'req_test000000000001', code: 'session_not_found', message: 'This browser is no longer signed in' }, 404]],
+  })
+  await useSessions().signOut('session-2')
+  expect(useSessions().sessions.map((session) => session.name)).toEqual(['Safari on macOS'])
+  expect(toasts).toEqual([])
+})
+
+test('removing a passkey already removed is done: its row leaves, and nothing failed', async () => {
+  const product = useProduct()
+  const passkey = { id: 'pk-1', name: 'iCloud Keychain', synced: true, createdAt: '2026-10-13T08:00:00.000Z', lastUsedAt: null }
+  product.start()
+  channels.last().connect(productState({ passkeys: { passkeys: [passkey], userHandle: 'dXNlci0x' } }))
+  serve({
+    'DELETE /api/auth/passkeys/pk-1': [[{ requestId: 'req_test000000000001', code: 'passkey_not_found', message: 'No such passkey' }, 404]],
+  })
+  await usePasskeys().remove('pk-1')
+  expect(product.snapshot?.passkeys.passkeys).toEqual([])
+  expect(toasts).toEqual([])
 })
