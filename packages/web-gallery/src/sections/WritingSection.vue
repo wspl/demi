@@ -329,7 +329,7 @@ const exampleRules: readonly TextRule[] = [
   },
   {
     title: 'A free-text area has no placeholder',
-    rule: 'A text area (Instructions, a prompt, a description) is left empty: a placeholder there reads as text already filled in. The section’s or the row’s description says what goes in. A single-line input keeps a placeholder only when it shows the format of a value.',
+    rule: 'A text area (Instructions, a prompt, a description) is left empty: a placeholder there reads as text already filled in. The section’s or the row’s description says what goes in. A single-line input keeps a placeholder only when it shows the format of a value or the value used when it is left empty.',
     right: ['Instructions, empty, under a description that says what goes there', 'Repository: owner/repository', 'Code: 000000'],
     wrong: ['Instructions: Keep answers brief. Run the tests before you finish.', 'Name: My next idea'],
     source: 'Apple HIG: Text fields',
