@@ -5,6 +5,7 @@ import CopyButton from '@demicodes/web-ui/ui/CopyButton.vue'
 import CopyCode from '@demicodes/web-ui/ui/CopyCode.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
+import ExternalLink from '@demicodes/web-ui/ui/ExternalLink.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
@@ -28,6 +29,7 @@ import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { providerLogo, vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
+import { focusedByKeyboard } from '@demicodes/web-ui/ui/active-row'
 import { usageAt, usageOf } from '../fixtures/catalog'
 import { useCardLimits } from '../fixtures/usage-limits'
 import GallerySection from '../components/GallerySection.vue'
@@ -49,7 +51,23 @@ const paneWidth = ref(200)
 const paneHeight = ref(96)
 
 const spinning = ref(false)
-const ringShown = ref(true)
+/** The list specimen of the focus ring: its rows, the active one, and whether the keyboard has the list. */
+const ringRows = ['Rename', 'Duplicate', 'Archive']
+const ringActive = ref(0)
+const ringKeyboard = ref(false)
+
+function ringListFocus(event: FocusEvent): void {
+  ringKeyboard.value = focusedByKeyboard(event)
+}
+
+function ringListKey(event: KeyboardEvent): void {
+  const step = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0
+  if (step === 0)
+    return
+  event.preventDefault()
+  ringKeyboard.value = true
+  ringActive.value = (ringActive.value + step + ringRows.length) % ringRows.length
+}
 
 /** A clipboard that refuses, which the failure specimen of CopyButton copies to. */
 function refusedCopy(): never {
@@ -236,7 +254,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
 
       <GallerySection
         title="Focus Ring"
-        note="What the keyboard’s focus shows on any control, and only that: a click leaves none. A 2 px ring 1 px off its control, so it reaches 3 px past it; press Tab to see it. A box that clips (overflow other than visible, contain: paint) cuts what reaches past its edge, so inside one the ring is drawn inside its control: every overflow utility sets that for what it holds, and a box that clips by its own CSS carries focus-ring-inset. What a state selects without focusing it, such as a capsule the editor has selected, takes focus-ring-shown. bun browse finds a ring a box cuts or an element covers (demi.focusRings)."
+        note="What the keyboard’s focus shows on any control, and only that: a click leaves none. A 2 px ring 1 px off its control, so it reaches 3 px past it; press Tab to see it. A box that clips (overflow other than visible, contain: paint) cuts what reaches past its edge, so inside one the ring is drawn inside its control: every overflow utility sets that for what it holds, and a box that clips by its own CSS carries focus-ring-inset. Where the page moves the focus (a closed window giving it back, a field focused on opening), none shows, and a link in running text takes its hover look instead of a ring. A list that holds the focus and names its active row (aria-activedescendant) draws the ring on that row with focus-ring-shown; a selection is shown by its own selected look, never by the ring. bun browse finds a ring a box cuts or an element covers (demi.focusRings)."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="in the open">
@@ -267,13 +285,39 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
               >{{ row }}</button>
             </div>
           </GallerySpecimen>
-          <GallerySpecimen variant="selected, not focused · focus-ring-shown">
-            <button
-              type="button"
-              class="inline-flex h-6 cursor-default items-center rounded-md bg-btn px-2 text-chrome shadow-[var(--shadow-btn)]"
-              :class="ringShown ? 'focus-ring-shown' : ''"
-              @click="ringShown = !ringShown"
-            >image.png</button>
+          <GallerySpecimen variant="a link in running text · hover look, no ring">
+            <p class="markdown-body w-72">
+              Read <a
+                href="#"
+                @click.prevent="productWould('Link Opened')"
+              >the guide</a> first, or the <ExternalLink
+                href="https://example.com"
+                @click.prevent="productWould('Site Opened')"
+              >site</ExternalLink>.
+            </p>
+          </GallerySpecimen>
+          <GallerySpecimen variant="a list's active row · focus-ring-shown">
+            <div
+              role="listbox"
+              tabindex="0"
+              aria-label="Actions"
+              :aria-activedescendant="`ring-row-${ringActive}`"
+              class="focus-ring-inset w-48 rounded-lg border border-line outline-none"
+              @focus="ringListFocus"
+              @blur="ringKeyboard = false"
+              @keydown="ringListKey"
+            >
+              <div
+                v-for="(row, index) in ringRows"
+                :id="`ring-row-${index}`"
+                :key="row"
+                role="option"
+                :aria-selected="index === ringActive"
+                class="flex h-8 w-full cursor-default items-center px-3 text-chrome hover:bg-hover"
+                :class="[index === ringActive ? 'bg-active' : '', index === ringActive && ringKeyboard ? 'focus-ring-shown' : '']"
+                @click="ringActive = index; productWould(`${row} Chosen`)"
+              >{{ row }}</div>
+            </div>
           </GallerySpecimen>
         </div>
       </GallerySection>
