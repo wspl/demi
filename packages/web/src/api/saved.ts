@@ -6,6 +6,7 @@ import {
   savedListSchema,
   type ConversationDraft,
   type FromDraftAnswer,
+  type SavedEdit,
   type SavedFromDraft,
   type SavedList,
   type SavedMessage,
@@ -35,9 +36,12 @@ export async function postSaved(conversationId: string, save: SavedSave, signal:
   return (await readResponse(response, savedAnswerSchema)).message
 }
 
-/** Moves the message into the draft, and the draft into the list; answers the draft. */
-export async function editSaved(conversationId: string, messageId: string, signal: AbortSignal): Promise<ConversationDraft> {
-  const response = await apiRequest(`${savedPath(conversationId, messageId)}/edit`, { method: 'POST', signal })
+/**
+ * Moves the message into the draft, and the draft into the list under
+ * `becomes`, the page's id for it; answers the draft.
+ */
+export async function editSaved(conversationId: string, messageId: string, becomes: string, signal: AbortSignal): Promise<ConversationDraft> {
+  const response = await apiRequest(`${savedPath(conversationId, messageId)}/edit`, { method: 'POST', signal, ...jsonBody({ id: becomes } satisfies SavedEdit) })
   return (await readResponse(response, draftAnswerSchema)).draft
 }
 

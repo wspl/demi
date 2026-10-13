@@ -19,7 +19,7 @@ use demi_backend_user_shard::services::Services;
 use demi_web_api_protocol::drafts::{DRAFT_BYTES_MAX, DraftAnswer};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::saved::{
-    FromDraftAnswer, SAVED_MAX, SavedAnswer, SavedFromDraft, SavedList, SavedSave,
+    FromDraftAnswer, SAVED_MAX, SavedAnswer, SavedEdit, SavedFromDraft, SavedList, SavedSave,
 };
 
 use super::body::JsonBody;
@@ -80,11 +80,13 @@ pub(super) async fn edit(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
     Path((id, message)): Path<(String, String)>,
+    body: Result<JsonBody<SavedEdit>, ApiError>,
 ) -> Result<Json<DraftAnswer>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
+    let JsonBody(edit) = body?;
     let draft = services
         .control
-        .edit_saved(record.id.clone(), message)
+        .edit_saved(record.id.clone(), message, edit.id)
         .await?
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Conversation(record.id));

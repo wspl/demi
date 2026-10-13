@@ -3766,6 +3766,8 @@ test('editing a saved message fills the composer and moves the row at once, with
     const editing = store.editSaved(first, 'dns')
     await until(() => held.waiting.length === 1, 'the edit reaches the backend')
     expect(held.waiting[0]!.path).toBe(`/api/conversations/${FIRST}/saved/dns/edit`)
+    // The row the composer's message became has the id the request names.
+    expect(held.waiting[0]!.body).toEqual({ id: first.saved.shown.value![0]!.id })
     expect([first.draft, texts(first.saved.shown.value)]).toEqual(['Check prod’s DNS next', ['Half written']])
     // The draft it saved before the exchange is what the backend would swap out.
     expect(draftSaves().map((save) => (save.body as { text: string }).text)).toEqual(['Half written'])
@@ -3787,13 +3789,15 @@ test('an edit the backend answers leaves the composer as it showed, and the list
     first.draft = 'Half written'
     const editing = store.editSaved(first, 'dns')
     await until(() => held.waiting.length === 1, 'the edit reaches the backend')
-    // The backend swapped them, naming the half written one itself.
-    serverSaved.set(FIRST, [savedMessage('half', 'Half written')])
+    // The backend swapped them, keeping the half written one under the id the page named.
+    serverSaved.set(FIRST, [savedMessage((held.waiting[0]!.body as { id: string }).id, 'Half written')])
     records[0]!.savedRevision = 2
     const draft = { revision: 3, text: 'Check prod’s DNS next', files: [], replaced: null }
     serverDrafts.set(FIRST, draft)
     held.waiting[0]!.answer(Response.json({ draft }))
     await editing
+    // The channel brings the summary of the exchange; the list is read at its revision.
+    await changed(FIRST)
     await until(() => first.saved.revision === 2, 'the list is read after the exchange')
     expect([first.draft, first.savedDraft?.revision, texts(first.saved.shown.value)]).toEqual(['Check prod’s DNS next', 3, ['Half written']])
   } finally {
