@@ -126,8 +126,13 @@ conversation no longer runs, its subagents and background jobs included.
   the script waits on, with "the browser did not answer"; the tool kills it,
   and the next call starts a new one.
 - **Conditions.** `demi.emulate({ viewport, scale, theme, device, locale,
-  timeZone })` applies to the page as it is, without reloading it; the theme
-  reaches the gallery's own setting too. `demi.grant(permission)` gives a
+  timeZone })` applies to the page as it is, without reloading it, and
+  returns once the page has drawn a frame under them; the theme reaches the
+  gallery's own setting too. They are the slot's, kept for its later calls
+  and every page of it, and the tool is their one owner: a script's
+  `page.setViewportSize` and `page.emulateMedia({ colorScheme })`, on any
+  page of the context, are `demi.emulate` under Playwright's names, since a
+  second session setting them would undo the tool's at the next reload. `demi.grant(permission)` gives a
   permission such as the clipboard or local network access.
 - **The gallery.** `demi.gallery('/session?view=blocks')` opens a specimen
   page of the slot's gallery.
