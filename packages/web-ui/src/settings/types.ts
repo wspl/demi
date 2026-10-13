@@ -70,6 +70,8 @@ export interface SettingsDevice extends DeviceReport {
   seen?: string
   /** How to start its runner again; its page's header gives it while it is offline. */
   start?: DeviceStart | null
+  /** The device's home directory, which a location under it is written from as `~`. */
+  home?: string | null
   /** When it was paired, as an ISO 8601 timestamp. */
   pairedAt: string
   /** How this page reaches it (`direct-channel.md` § What the user sees). */

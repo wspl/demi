@@ -2,6 +2,7 @@
 import { pluralize } from '@demicodes/utils'
 import type { OverlayStore } from '../overlay/overlayStore'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
+import DirectoryLabel from '../files/DirectoryLabel.vue'
 
 /**
  * The confirmation before a device is revoked: the device leaves the user's
@@ -14,8 +15,10 @@ defineProps<{
   overlayStore: OverlayStore
   /** The device's name. */
   device: string
-  /** The names of the projects on the device, which go with it. */
+  /** The directories of the projects on the device, which go with them, read by name and location. */
   projects: readonly string[]
+  /** The device's home, which `~` writes in each location. */
+  home?: string | null
 }>()
 const emit = defineEmits<{
   close: []
@@ -33,6 +36,9 @@ const emit = defineEmits<{
     @close="emit('close')"
     @confirm="emit('revoke')"
   >
+    <template #entry="{ entry }">
+      <DirectoryLabel :path="entry" :home="home" />
+    </template>
     <p>
       “{{ device }}” leaves your devices. If its runner is connected, it
       removes itself from the device.
