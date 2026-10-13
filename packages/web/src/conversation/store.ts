@@ -1203,6 +1203,8 @@ export const useConversations = defineStore('conversations', () => {
       sessionPhase: 'idle',
       history: EMPTY_TRANSCRIPT,
       failures: {},
+      // A live child's usage comes with the opening handshake.
+      contextUsage: null,
     }))
     updateLiveStatus(conversation)
     conversation.load = 'ready'
@@ -2335,8 +2337,9 @@ export const useConversations = defineStore('conversations', () => {
     start: (conversation: Conversation) =>
       action(conversation, (runtime) => runtime.resume()),
     stop,
-    compact: (conversation: Conversation) =>
-      action(conversation, (runtime) => runtime.compact()),
+    /** Compacts the root's context, or the live subagent `node`'s, as its context card asks. */
+    compact: (conversation: Conversation, node?: string) =>
+      action(conversation, (runtime) => runtime.compact(node)),
     // Send Now on a steer or a queued message still on its way waits for the
     // session to hold it; on any other, it goes at once. Recall takes the
     // row away at once in either case.

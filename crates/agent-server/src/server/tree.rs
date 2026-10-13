@@ -317,7 +317,7 @@ impl<H: HostResolver> Tree<H> {
             let status_changed = deps.status_changed.clone();
             let root = root.clone();
             move |event| {
-                if let Some(frame) = frame_of(event) {
+                if let Some(frame) = frame_of(&root, event) {
                     sink.emit(frame);
                 }
                 if let SessionEvent::PhaseChanged { .. } = event {
@@ -387,6 +387,25 @@ impl<H: HostResolver> Tree<H> {
             .borrow()
             .get(id)
             .map(|child| child.node().clone())
+    }
+
+    /// The `context_usage` of each live node whose session can tell it
+    /// without reading a blob (`compaction.md` § Context estimate): the
+    /// root's, then each live child's, depth first in spawn order.
+    pub(crate) async fn held_context_usage(&self) -> Vec<ServerFrame> {
+        let nodes: Vec<Rc<Node<H>>> = std::iter::once(self.root.clone())
+            .chain(self.descendants().iter().map(|child| child.node().clone()))
+            .collect();
+        let mut frames = Vec::new();
+        for node in nodes {
+            if let Some(usage) = node.session().held_context_usage().await {
+                frames.push(ServerFrame::ContextUsage {
+                    node: node.id().clone(),
+                    usage,
+                });
+            }
+        }
+        frames
     }
 
     /// The tree's live nodes, the root first.
@@ -769,9 +788,9 @@ impl<H: HostResolver> Tree<H> {
     }
 }
 
-/// The frame a root session event becomes; an action's failure was already
-/// reported as its `error`.
-fn frame_of(event: &SessionEvent) -> Option<ServerFrame> {
+/// The frame an event of the root `root`'s session becomes; an action's
+/// failure was already reported as its `error`.
+fn frame_of(root: &NodeId, event: &SessionEvent) -> Option<ServerFrame> {
     Some(match event {
         SessionEvent::TranscriptChanged { patches, revision } => ServerFrame::TranscriptPatch {
             patches: patches.clone(),
@@ -782,7 +801,10 @@ fn frame_of(event: &SessionEvent) -> Option<ServerFrame> {
             subagent_id: None,
             phase: *phase,
         },
-        SessionEvent::ContextUsageChanged { usage } => ServerFrame::ContextUsage { usage: usage.clone() },
+        SessionEvent::ContextUsageChanged { usage } => ServerFrame::ContextUsage {
+            node: root.clone(),
+            usage: usage.clone(),
+        },
         SessionEvent::QueueChanged { queue } => ServerFrame::Queue {
             queue: queue.clone(),
         },

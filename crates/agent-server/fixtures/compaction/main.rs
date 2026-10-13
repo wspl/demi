@@ -1089,7 +1089,7 @@ async fn recall(fixture: Fixture, run: &Run) -> Result<bool, String> {
             match fill_to_compact(&mut conversation).await? {
                 Some(landed) => ("auto", Some(landed)),
                 None => {
-                    conversation.act(ClientFrame::Compact {}).await;
+                    conversation.act(ClientFrame::Compact { node: None }).await;
                     ("compact", None)
                 }
             }

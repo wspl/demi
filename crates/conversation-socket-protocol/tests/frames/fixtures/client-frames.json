@@ -126,6 +126,10 @@
     "type": "compact"
   },
   {
+    "type": "compact",
+    "node": "agent-1"
+  },
+  {
     "type": "shell_write",
     "commandId": "cmd-1",
     "stdin": "y\n"
