@@ -542,7 +542,8 @@ as at a return.
 Each socket's end is recorded on both sides, so a drop the user saw can be
 traced afterwards. The backend logs, at `info`, each page socket it opens
 and each it ends: the socket's kind and conversation, an id that ties the
-two lines, the edge's request id and the client's address when a proxy such
+two lines, which is the [request ID](../backend/backend.md#request-ids-and-the-server-log)
+of its upgrade, the edge's request id and the client's address when a proxy such
 as Cloudflare passes them, and, at the end, why it ended (the page closed it
 with a code and reason, the connection broke without a close, the page fell
 a whole outbox behind, the backend shut down), how long it lived and how

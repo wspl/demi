@@ -487,6 +487,68 @@ call it. The facts are never stored, and an error block is sent whole, as it
 is stored. A frame or history without an error block that yields a fact
 carries no `failures`.
 
+## Request IDs and the server log
+
+An error the user sees names the request it came from, and the server's log
+finds every line of that request by the name. For example, opening Settings ›
+Web Search shows *Could Not Read the Plugin's Data* with a second line
+*Request ID: req_k3v9x2m7qd4h8w1p*; the user copies it into a message, and an
+administrator, or an agent with the administrator's session, reads
+`GET /api/server/log?request=req_k3v9x2m7qd4h8w1p`, which returns the page's
+report of what did not parse, the synchronization channel's lines that sent
+the state, and the plugin's state read that built it.
+
+**Request IDs.** The backend gives every HTTP request an ID as it arrives,
+a WebSocket's upgrade included: `req_` and 16 random lowercase base-32
+characters. It never takes an ID from the client; Cloudflare's `cf-ray`, when
+a proxy passes it, is logged beside it. Every response carries the ID in
+`X-Request-Id`, and every JSON error carries it as `requestId` beside `code`
+and `message` ([Web API](../product/web-api.md#resource-index)). A socket
+keeps the ID of its upgrade for its whole life: its open and end lines carry
+it ([Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)),
+and so does every `error` frame it sends.
+
+**One request, every line.** The ID is a field of the request's `tracing`
+span, so every event logged while the request is handled carries it, and
+work the request starts in another task is started inside the span: a
+session it opens, a Host operation it sends, a store write it waits for log
+under the same ID. Work that outlives the request, such as a turn a socket's
+frame started, logs under the socket's ID with its own conversation and turn
+IDs.
+
+**The page's own errors.** A failure the page finds itself, a value it
+received that does not parse or a handler that throws, is reported with
+`POST /api/page-errors { title, message, detail }`; the backend logs it as a
+warning under that request's ID and answers 204, and the page shows that ID
+with the error. A report carries what failed and where, never a value it
+held: a schema's refusal names the path and the expected and received types.
+A page sends at most 30 reports a minute; more are answered 429 and shown
+without an ID.
+
+**Showing the ID.** An error the page shows for a failed request, a refused
+frame or its own report, in a toast, a dialog or a row's failure line,
+adds *Request ID: req_…* in secondary text with a button that copies it. An
+error the page words from a turn's failure record keeps its own diagnostics
+([Failures and recovery](../agent/failures-and-recovery.md)).
+
+**The server log.** Beside its standard error, which the process supervisor
+keeps, the backend writes the same events, as `DEMI_LOG` selects them, to
+its own log in `log/` under the data directory: one JSON object per line,
+with the time, level, target, message and the span's and event's fields,
+the request, user, conversation and turn IDs among them. The log is bounded:
+eight files of 32 MiB, the oldest removed when the newest fills, which keeps
+about a week of a small server's `info` lines. Writing never holds up the
+work: one writer thread owns the files, as the
+[Host log](../execution/runner.md#host-log)'s does, and a line its queue has
+no room for is dropped and counted. Nothing writes a request's body or query
+string, a credential, a secret's value or a file's contents to the log.
+
+`GET /api/server/log` is an administrator's: `request` keeps the lines of
+one request ID, `since` and `limit` (default 200, at most 1000) page through
+the newest lines, and `level` keeps lines at that level and above. Lines come
+oldest first as `{ lines: [{ at, level, target, message, fields }], next }`.
+An ID whose lines are no longer kept answers an empty list.
+
 ## Startup and shutdown
 
 At startup the backend:
@@ -611,7 +673,7 @@ the same flag.
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
 | `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | [Claude Code](../providers/claude-code.md#which-version) |
 | `DEMI_STUN_URLS` | The STUN servers pages and runners ask for their public address so a [direct channel](../execution/direct-channel.md) can cross networks, comma-separated `stun:` URLs. Default `stun:stun.cloudflare.com:3478`; empty keeps direct channels to one network. | [Direct channel](../execution/direct-channel.md#making-the-channel) |
-| `DEMI_LOG` | What the backend writes to its standard error, in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | [Claude Code](../providers/claude-code.md#process-lifetime) |
+| `DEMI_LOG` | What the backend writes to its standard error and its [server log](#request-ids-and-the-server-log), in `tracing-subscriber`'s `Targets` syntax: comma-separated, a default level and `target=level` pairs, each pair covering its target and the targets below it. For example, `info,demi::provider::claude_code::wire=trace` adds the Claude Code CLI's raw exchange to the default. Default `info`. | [Claude Code](../providers/claude-code.md#process-lifetime) |
 
 For example, a server whose backend sits behind Caddy on the same machine
 needs only the two settings without a default and the listening address:
