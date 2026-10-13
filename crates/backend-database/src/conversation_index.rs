@@ -186,6 +186,9 @@ pub struct ConversationStart {
     pub pinned: bool,
     pub target: ConversationTarget,
     pub model: Option<ModelSelection>,
+    /// Its Workflow menu choice, which a new conversation is given before
+    /// its first message.
+    pub workflow: WorkflowChoice,
 }
 
 impl Default for ConversationStart {
@@ -195,6 +198,7 @@ impl Default for ConversationStart {
             pinned: false,
             target: ConversationTarget::Cloud { path: None },
             model: None,
+            workflow: WorkflowChoice::Default,
         }
     }
 }
@@ -302,6 +306,7 @@ impl ControlService {
                     pinned: start.pinned,
                     target: &start.target,
                     model: start.model.as_ref(),
+                    workflow: &start.workflow,
                     at: now,
                 },
             )?;
@@ -620,6 +625,7 @@ pub struct NewConversation<'a> {
     pub pinned: bool,
     pub target: &'a ConversationTarget,
     pub model: Option<&'a ModelSelection>,
+    pub workflow: &'a WorkflowChoice,
     /// When it was created, and last active.
     pub at: Timestamp,
 }
@@ -631,13 +637,14 @@ pub fn insert_conversation(
     new: &NewConversation<'_>,
 ) -> Result<usize, StorageError> {
     let target = TargetColumns::of(new.target);
+    let (workflow_kind, workflow_id) = workflow_columns(new.workflow);
     let inserted = connection.execute(
         "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
            read_revision, target_kind, target_device_id, target_path, target_workspace_id, context_version,
-           model, created_at, updated_at)
+           model, created_at, updated_at, workflow_kind, workflow_id)
          VALUES (?1, ?2, ?3, ?4, 0, ?11,
            (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?2),
-           0, ?5, ?6, ?7, ?8, 0, ?9, ?10, ?10)
+           0, ?5, ?6, ?7, ?8, 0, ?9, ?10, ?10, ?12, ?13)
          ON CONFLICT (id) DO NOTHING",
         params![
             new.id.as_str(),
@@ -650,7 +657,9 @@ pub fn insert_conversation(
             target.workspace,
             new.model.map(to_json),
             new.at.as_millisecond(),
-            new.pinned
+            new.pinned,
+            workflow_kind,
+            workflow_id
         ],
     )?;
     Ok(inserted)

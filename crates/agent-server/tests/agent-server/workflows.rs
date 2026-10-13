@@ -168,6 +168,7 @@ async fn workflows_list_marks_the_choice_and_check_names_the_line_and_field_that
     *fixture.product.workflows.borrow_mut() = Some(WorkflowListing {
         chosen: WorkflowChoice::Workflow { id: "review".into() },
         directory: Some("/p/.demi/workflows".into()),
+        unavailable: None,
         workflows: vec![
             ListedWorkflow { id: "docs".into(), name: Some("Docs Review".into()), error: None },
             ListedWorkflow { id: "review".into(), name: Some("Review Team".into()), error: None },

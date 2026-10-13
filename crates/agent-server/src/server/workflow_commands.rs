@@ -109,6 +109,9 @@ fn render(listing: &WorkflowListing) -> String {
             "This project has no workflows: no directory from the working directory up to the repository's root has .demi/workflows/. This conversation uses {uses}.\n"
         );
     };
+    if let Some(reason) = &listing.unavailable {
+        return format!("The workflows in {directory} cannot be used: {reason} This conversation uses {uses}.\n");
+    }
     let mut text = format!("Workflows in {directory}; this conversation uses {uses}.\n");
     let width = listing
         .workflows
