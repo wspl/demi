@@ -141,6 +141,7 @@ impl RunnerFixture {
                 ),
                 token: Some(TOKEN.into()),
                 managed: false,
+                directory: None,
             },
         );
         let fixture = Self {
@@ -380,6 +381,7 @@ async fn adopt(
     let welcome = Inbound::HelloOk {
         device_id: TEST_DEVICE.into(),
         device_name: "fixture".into(),
+        conversations: Vec::new(),
     };
     let frame = wire::encode(&welcome)
         .expect("a valid welcome")

@@ -28,6 +28,7 @@ use demi_runner_jobs::{
     },
     connection::Live,
     kept_output::KeptReader,
+    scratch::Scratch,
     tasks::{TaskCommand, TaskSpec, WorkId, failure_exit},
 };
 use demi_runner_process::{
@@ -82,6 +83,8 @@ pub struct Registered {
     pub log: HostLogReader,
     /// The job root (`runner.md` § Pipes and output).
     pub jobs: PathBuf,
+    /// Where each conversation has its scratch directory.
+    pub scratch: Scratch,
     pub shell: Arc<dyn JobShell>,
     /// The names no declared root command may take: the runner's own and
     /// its shell's builtins.
@@ -346,7 +349,15 @@ impl Owner<'_> {
             Inbound::HelloOk {
                 device_id,
                 device_name,
+                conversations,
             } => {
+                // Before any job of this connection starts, so a
+                // conversation made since the backend listed them keeps the
+                // directory its first job makes.
+                if let Err(error) = registered.scratch.keep_only(&conversations).await {
+                    // The next connection tries again.
+                    tracing::warn!("the scratch directories could not be listed: {error}");
+                }
                 let state = registered.state.clone();
                 let config = RunnerConfig {
                     backend_url: registered.backend.url().clone(),
@@ -725,6 +736,7 @@ impl Owner<'_> {
                     env: values,
                     command: TaskCommand::Shell {
                         script: script.clone(),
+                        conversation: context.conversation.clone(),
                         stdin: stdin.clone(),
                         stdout: stdout.clone(),
                         commands: manifest_hash
