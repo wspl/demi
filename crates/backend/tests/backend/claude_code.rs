@@ -513,7 +513,7 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
         cache_read_tokens: 5,
         cache_write_tokens: 3,
     };
-    assert_eq!(response.usage, counted);
+    assert_eq!(response.usage, Some(counted));
     let totals = usage(&world.backend, &world.master).await.totals;
     assert_eq!(totals.len(), 1, "{totals:?}");
     let row = &totals[0];
@@ -625,16 +625,14 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
         assert!(output.contains(printed), "{output}");
     }
     assert_eq!(last_text(&blocks), "Both ran.");
-    // The CLI's result reports the turn's two calls together and lists no
-    // calls one by one, so the response carries their sum
+    // The CLI's result adds up the turn's two calls; the response carries
+    // the last call's own usage, the context that call read
     // (`claude-code.md` § Reading).
     let Block::Response(response) = &blocks[9] else {
         unreachable!()
     };
-    assert_eq!(
-        (response.usage.input_tokens, response.usage.output_tokens),
-        (50, 13)
-    );
+    let usage = response.usage.expect("the last call reported its usage");
+    assert_eq!((usage.input_tokens, usage.output_tokens), (30, 4));
     let inferences = world.inferences();
     let [first, called, answered] = inferences.as_slice() else {
         panic!("three requests: {inferences:?}");

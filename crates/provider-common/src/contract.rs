@@ -487,9 +487,10 @@ pub enum ProviderEvent {
         partial_json: String,
     },
     ToolCall(ToolCall),
-    /// The usage of the run's final API call: the context the next request
-    /// carries, never a total over the turn.
-    Response(TokenUsage),
+    /// The run's end, with the usage of its final API call: the context the
+    /// next request carries, never a total over the turn. None when the
+    /// vendor reported no call's own usage; nothing stands in for it.
+    Response(Option<TokenUsage>),
     /// The run's failure; it is the run's last event.
     Error(ProviderFailure),
     /// Entries of the vendor's own record of the session that belong to one

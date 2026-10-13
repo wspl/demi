@@ -42,7 +42,7 @@ async fn a_run_posts_to_the_chat_proxy_with_the_grok_clis_identity() {
         events,
         [
             ProviderEvent::TextDelta("hi".into()),
-            ProviderEvent::Response(TokenUsage::default())
+            ProviderEvent::Response(Some(TokenUsage::default()))
         ]
     );
     let sent = &vendor.requests()[0];
@@ -206,12 +206,12 @@ async fn the_stream_maps_reasoning_tool_calls_and_usage_by_the_shared_mapper() {
                 tool_name: "shell_exec".into(),
                 input: json!({ "cmd": "ls" })
             }),
-            ProviderEvent::Response(TokenUsage {
+            ProviderEvent::Response(Some(TokenUsage {
                 input_tokens: 5,
                 output_tokens: 2,
                 cache_read_tokens: 0,
                 cache_write_tokens: 0
-            }),
+            })),
         ]
     );
 }

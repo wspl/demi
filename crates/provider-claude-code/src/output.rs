@@ -158,9 +158,10 @@ impl StreamEventLine {
 
 tagged_wire! {
     /// A streamed piece of a message. `message_stop` ends the message, and
-    /// with it the model's batch of tool calls; `message_delta` reports the
-    /// API call's token counts.
+    /// with it the model's batch of tool calls; `message_start` and
+    /// `message_delta` report the API call's token counts.
     pub(crate) enum StreamEvent {
+        "message_start" => MessageStart(MessageStart),
         "message_delta" => MessageDelta(MessageDelta),
         "content_block_start" => BlockStart(BlockStart),
         "content_block_delta" => BlockDelta(BlockDelta),
@@ -186,6 +187,19 @@ pub(crate) struct BlockDelta {
 
 #[derive(Deserialize)]
 pub(crate) struct MessageStop {}
+
+/// The start of an API call's message, with the call's input counts.
+#[derive(Deserialize)]
+pub(crate) struct MessageStart {
+    #[serde(default)]
+    message: Option<StartedMessage>,
+}
+
+#[derive(Deserialize)]
+struct StartedMessage {
+    #[serde(default)]
+    usage: Option<UsageCounts>,
+}
 
 /// The end of an API call's message, with the call's final token counts.
 #[derive(Deserialize)]
@@ -280,8 +294,9 @@ pub(crate) struct ResultLine {
     api_error_status: Option<u16>,
 }
 
-/// An API call's token counts, as its `message_delta` states them.
-#[derive(Deserialize)]
+/// An API call's token counts as one of its events states them; a count the
+/// event leaves out is one it does not change.
+#[derive(Deserialize, Clone, Copy, Default)]
 struct UsageCounts {
     #[serde(default)]
     input_tokens: Option<u64>,
@@ -294,25 +309,53 @@ struct UsageCounts {
 }
 
 /// The token counts of the CLI's latest API call, which the response
-/// carries (`claude-code.md` § Reading): the last `message_delta`'s, the
-/// API's own count of that call. The `result` line's `usage` is never read:
-/// it sums every call of the CLI's turn, which spans every tool call the
-/// model made, and its `iterations`, which would list the calls, are empty
-/// when the CLI runs with `DISABLE_TELEMETRY` (Claude Code 2.1.296).
+/// carries (`claude-code.md` § Reading): its last `message_delta`'s, the
+/// API's own count of that call, each count the delta leaves out as the
+/// same call's `message_start` stated it, since the API's counts are
+/// cumulative over a message. The `result` line's `usage` is never read: it
+/// sums every call of the CLI's turn, which spans every tool call the model
+/// made, and its `iterations`, which would list the calls, are empty when
+/// the CLI runs with `DISABLE_TELEMETRY` (Claude Code 2.1.296).
 #[derive(Default)]
-pub(crate) struct LastCall(Option<TokenUsage>);
+pub(crate) struct LastCall {
+    /// The counts the latest call's `message_start` stated.
+    started: UsageCounts,
+    /// The latest call's counts once a `message_delta` stated them.
+    ended: Option<TokenUsage>,
+}
 
 impl LastCall {
     pub(crate) fn observe(&mut self, event: &StreamEvent) {
-        if let StreamEvent::MessageDelta(MessageDelta { usage: Some(usage) }) = event {
-            self.0 = Some(usage.usage());
+        match event {
+            StreamEvent::MessageStart(start) => {
+                let usage = start.message.as_ref().and_then(|message| message.usage);
+                self.started = usage.unwrap_or_default();
+            }
+            StreamEvent::MessageDelta(MessageDelta { usage: Some(ended) }) => {
+                let started = self.started;
+                self.ended = Some(
+                    UsageCounts {
+                        input_tokens: ended.input_tokens.or(started.input_tokens),
+                        output_tokens: ended.output_tokens.or(started.output_tokens),
+                        cache_read_input_tokens: ended
+                            .cache_read_input_tokens
+                            .or(started.cache_read_input_tokens),
+                        cache_creation_input_tokens: ended
+                            .cache_creation_input_tokens
+                            .or(started.cache_creation_input_tokens),
+                    }
+                    .usage(),
+                );
+            }
+            _ => {}
         }
     }
 
     /// The latest call's usage, which the turn's end takes, so a later turn
-    /// never reports it again; none when no call of the turn reported any.
+    /// never reports it again; none when no call of the turn ended with its
+    /// counts.
     pub(crate) fn take(&mut self) -> Option<TokenUsage> {
-        self.0.take()
+        std::mem::take(self).ended
     }
 }
 
@@ -425,7 +468,7 @@ impl StreamEvent {
                 }
                 _ => Vec::new(),
             },
-            Self::MessageDelta(_) | Self::MessageStop(_) => Vec::new(),
+            Self::MessageStart(_) | Self::MessageDelta(_) | Self::MessageStop(_) => Vec::new(),
         }
     }
 }

@@ -19,12 +19,12 @@ use tokio_util::sync::CancellationToken;
 use crate::cli::*;
 
 fn usage(input: u64, output: u64) -> ProviderEvent {
-    ProviderEvent::Response(TokenUsage {
+    ProviderEvent::Response(Some(TokenUsage {
         input_tokens: input,
         output_tokens: output,
         cache_read_tokens: 0,
         cache_write_tokens: 0,
-    })
+    }))
 }
 
 /// A turn in which the model called two tools and then answered, as Claude
@@ -69,9 +69,61 @@ async fn a_turn_of_several_calls_reports_its_last_calls_usage_never_their_sum() 
                 cli
             }
         );
-        assert_eq!(events.last(), Some(&ProviderEvent::Response(last)), "{events:?}");
+        assert_eq!(events.last(), Some(&ProviderEvent::Response(Some(last))), "{events:?}");
         assert!(!events.iter().any(|event| matches!(event, ProviderEvent::Error(_))));
     }
+}
+
+/// A `message_delta` that states only the output, as the Messages API may,
+/// leaves the input counts its call's `message_start` stated.
+#[tokio::test(flavor = "local")]
+async fn a_calls_input_counts_its_message_delta_leaves_out_are_its_message_starts() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let (events, _cli) = tokio::join!(
+        all_events(runtime.run(request_without_tools(vec![user("hi")]))),
+        async {
+            let cli = starts.next().await;
+            cli.say(json!({ "type": "stream_event", "event": { "type": "message_start", "message": {
+                "usage": { "input_tokens": 11, "output_tokens": 1, "cache_read_input_tokens": 5, "cache_creation_input_tokens": 3 },
+            } } }));
+            cli.text("hello");
+            cli.say(json!({ "type": "stream_event", "event": { "type": "message_delta", "usage": { "output_tokens": 7 } } }));
+            cli.say(json!({ "type": "result", "subtype": "success", "usage": { "input_tokens": 99, "output_tokens": 99 } }));
+            cli
+        }
+    );
+    let counted = TokenUsage {
+        input_tokens: 11,
+        output_tokens: 7,
+        cache_read_tokens: 5,
+        cache_write_tokens: 3,
+    };
+    assert_eq!(events, [text("hello"), ProviderEvent::Response(Some(counted))]);
+}
+
+/// A turn whose stream holds no `message_delta` gives a response without
+/// usage: the result's own usage sums the run's calls and never stands in.
+#[tokio::test(flavor = "local")]
+async fn a_turn_whose_stream_reports_no_calls_usage_gives_a_response_without_usage() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let (events, _cli) = tokio::join!(
+        all_events(runtime.run(request_without_tools(vec![user("hi")]))),
+        async {
+            let cli = starts.next().await;
+            cli.text("hello");
+            cli.say(json!({
+                "type": "result",
+                "subtype": "success",
+                "usage": { "input_tokens": 6, "output_tokens": 113, "cache_read_input_tokens": 24401 },
+            }));
+            cli
+        }
+    );
+    assert_eq!(events, [text("hello"), ProviderEvent::Response(None)]);
 }
 
 fn text(text: &str) -> ProviderEvent {
@@ -152,12 +204,12 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
         cli.say(json!({ "type": "result", "usage": { "input_tokens": 10, "output_tokens": 2 } }));
         cli
     });
-    let cached = ProviderEvent::Response(TokenUsage {
+    let cached = ProviderEvent::Response(Some(TokenUsage {
         input_tokens: 10,
         output_tokens: 2,
         cache_read_tokens: 7,
         cache_write_tokens: 3,
-    });
+    }));
     assert_eq!(events, [text("hel"), text("lo"), cached]);
     // The process resumes the session written for it, named by a UUID the
     // session's id gives, and mirrors it.

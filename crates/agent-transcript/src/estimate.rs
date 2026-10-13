@@ -8,7 +8,7 @@ use demi_provider_common::{
     InferenceItem, MediaBytes, Medium, ResultPart, ToolDefinition, UserPart,
 };
 use demi_shared_types::{
-    B64Bytes, Block, DocumentSource, INSTRUCTIONS_SOURCE, Model, ModelMediaKind,
+    B64Bytes, Block, DocumentSource, INSTRUCTIONS_SOURCE, Model, ModelMediaKind, ResponseBlock,
     ToolResultContentBlock, UserContentBlock,
 };
 
@@ -233,8 +233,9 @@ fn usage_anchor(blocks: &[Block]) -> Option<(usize, u64)> {
     for (index, block) in blocks.iter().enumerate().rev() {
         match block {
             Block::CompactionBoundary(_) | Block::CompactionMarker(_) => return None,
-            Block::Response(response) => {
-                let usage = response.usage;
+            // A response without usage anchors nothing: the estimate goes
+            // on from an earlier one, weighing the blocks after it.
+            Block::Response(ResponseBlock { usage: Some(usage), .. }) => {
                 let tokens = usage.input_tokens
                     + usage.output_tokens
                     + usage.cache_read_tokens

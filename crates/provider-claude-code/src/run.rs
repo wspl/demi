@@ -461,7 +461,7 @@ fn run(
                         }
                         runtime.live = Some(live);
                         match end {
-                            TurnEnd::Answered => yield ProviderEvent::Response(usage.unwrap_or_default()),
+                            TurnEnd::Answered => yield ProviderEvent::Response(usage),
                             TurnEnd::Failed { message, code, status } => {
                                 let mut failure = ProviderFailure {
                                     code,

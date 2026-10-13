@@ -39,12 +39,12 @@ fn done() -> Value {
 }
 
 fn response() -> ProviderEvent {
-    ProviderEvent::Response(TokenUsage {
+    ProviderEvent::Response(Some(TokenUsage {
         input_tokens: 1,
         output_tokens: 1,
         cache_read_tokens: 0,
         cache_write_tokens: 0,
-    })
+    }))
 }
 
 fn failure(events: &[ProviderEvent]) -> &ProviderFailure {
