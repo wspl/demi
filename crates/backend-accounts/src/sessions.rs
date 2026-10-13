@@ -3,10 +3,11 @@
 //! token's SHA-256, and a session expires 30 days after its last renewal.
 //! Each is named for the browser and system it signed in from, and a request
 //! writes its last activity at most once an hour. A session verified by
-//! password or passkey in the last five minutes, its sign-in included,
-//! makes handoff codes, each
-//! 256 random bits, kept as their SHA-256 for ten minutes and spent once,
-//! which open the account on a phone: in the phone's own session of the
+//! password or passkey in the last five minutes makes handoff codes and
+//! adds passkeys; a sign-in counts as a verification, a handoff code's too,
+//! which a phone keeping its session is verified by. Handoff codes are
+//! 256 random bits, kept as their SHA-256 for ten minutes and spent once;
+//! they open the account on a phone: in the phone's own session of the
 //! account when it has one, else in a new session.
 
 use base64::Engine as _;

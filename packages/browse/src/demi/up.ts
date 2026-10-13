@@ -34,7 +34,26 @@ const VITE_START_MS = 5 * 60 * 1000
 const BACKEND_READY = /^The development backend serves at /m
 const ACCOUNT = /^\s*Account: (\S+), password (.+)$/m
 
-export async function up(tool: Tool, named: string[]): Promise<void> {
+/** What `demi.up` takes besides the servers' names. */
+export interface UpOptions {
+  /**
+   * The host name of the backend's public URL, such as `localhost`, for a
+   * check of passkeys: browsers make none for the IP address the backend
+   * has by default, and the page must then be opened at that name too
+   * (`http://localhost:<the slot's network port>`). It applies when the
+   * backend starts; one already up keeps its own.
+   */
+  publicHost?: string
+}
+
+export async function up(tool: Tool, args: (string | UpOptions)[]): Promise<void> {
+  const named = args.filter((arg): arg is string => typeof arg === 'string')
+  const options: UpOptions = {}
+  for (const arg of args) {
+    if (typeof arg !== 'string') {
+      Object.assign(options, arg)
+    }
+  }
   const unknown = named.filter((name) => !SERVERS.some((server) => server === name))
   if (unknown.length > 0) {
     throw new Failure(`demi.up starts ${SERVERS.join(', ')}, not ${unknown.join(', ')}`)
@@ -44,7 +63,7 @@ export async function up(tool: Tool, named: string[]): Promise<void> {
   const gallery = wanted.includes('gallery') ? startGallery(tool) : Promise.resolve()
   const app = (async () => {
     if (wanted.includes('backend')) {
-      await startBackend(tool)
+      await startBackend(tool, options)
     }
     if (wanted.includes('web')) {
       await startWeb(tool)
@@ -75,7 +94,7 @@ function report(tool: Tool, title: string, address: string, what: string): void 
   tool.print(`${title.padEnd(9)} ${address}  ${what}`)
 }
 
-async function startBackend(tool: Tool): Promise<void> {
+async function startBackend(tool: Tool, options: UpOptions): Promise<void> {
   const port = tool.slot.ports.backend
   if (runningServer(tool.slot, 'backend')) {
     report(tool, 'Backend', local(port), 'already up')
@@ -84,6 +103,9 @@ async function startBackend(tool: Tool): Promise<void> {
   borrowEnv(tool)
   const began = Date.now()
   const command = [process.execPath, 'scripts/xtask.ts', 'dev', '--port', String(port), '--data', slotPaths(tool.slot).backendData]
+  if (options.publicHost !== undefined) {
+    command.push('--public-host', options.publicHost)
+  }
   const started = await start(tool, 'backend', port, command, {})
   const account = await untilReady('The backend', started, async () => {
     if (!lineOf(started.group.log, BACKEND_READY)) {

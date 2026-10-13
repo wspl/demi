@@ -192,16 +192,17 @@ impl ControlService {
     }
 
     /// Records on the session `token` names that the handoff code `handoff`
-    /// opened its account on it.
+    /// opened its account on it, and marks it verified now: a code's
+    /// sign-in is the phone's confirmation, as a new session's is.
     pub async fn record_handoff_on_web_session(
         &self,
         token: TokenHash,
         handoff: HandoffId,
     ) -> Result<(), StorageError> {
-        self.call(move |connection, _| {
+        self.call(move |connection, now| {
             connection.execute(
-                "UPDATE web_sessions SET handoff_id = ?1 WHERE token_hash = ?2",
-                params![handoff.as_str(), token.as_str()],
+                "UPDATE web_sessions SET handoff_id = ?1, verified_at = ?2 WHERE token_hash = ?3",
+                params![handoff.as_str(), now.as_millisecond(), token.as_str()],
             )?;
             Ok(())
         })

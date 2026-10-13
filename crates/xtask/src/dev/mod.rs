@@ -63,6 +63,12 @@ pub struct Options {
     /// the conversations of the earlier ones and seeds nothing.
     #[arg(long, conflicts_with = "keep")]
     data: Option<PathBuf>,
+    /// The host name of the backend's public URL, such as `localhost`, whose
+    /// passkeys a page opened at that name can make; the backend listens at
+    /// 127.0.0.1 all the same. Without it the public URL is the IP address,
+    /// for which browsers make no passkeys.
+    #[arg(long)]
+    public_host: Option<String>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -209,10 +215,15 @@ async fn session(
 
     let release = release_root(root).await?;
     let origin = format!("http://127.0.0.1:{}", options.port);
+    let public = format!(
+        "http://{}:{}",
+        options.public_host.as_deref().unwrap_or("127.0.0.1"),
+        options.port
+    );
     let backend = processes.backend.insert(spawn_backend(
         &root.join("backend"),
         options.port,
-        &origin,
+        &public,
         &socket,
         &release,
     )?);
@@ -407,11 +418,12 @@ async fn manager_socket(manager: &mut dyn ChildWrapper) -> Result<String, Error>
 }
 
 /// Starts the backend executable on the data directory `data`, with the
-/// variables the web app contract suite gives it, in isolated mode.
+/// variables the web app contract suite gives it, in isolated mode, its
+/// public URL `public`.
 fn spawn_backend(
     data: &Path,
     port: u16,
-    origin: &str,
+    public: &str,
     socket: &str,
     release: &Path,
 ) -> Result<Box<dyn ChildWrapper>, Error> {
@@ -422,7 +434,7 @@ fn spawn_backend(
         .env("DEMI_BACKEND_DATA", data)
         .env("DEMI_BACKEND_LISTEN", format!("127.0.0.1:{port}"))
         .env("DEMI_INSTANCE_MODE", "isolated")
-        .env("DEMI_BACKEND_PUBLIC_URL", origin)
+        .env("DEMI_BACKEND_PUBLIC_URL", public)
         .env("DEMI_MACHINE_MANAGER_SOCKET", socket)
         .stdin(Stdio::null());
     Ok(command.spawn()?)

@@ -18,6 +18,7 @@ import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import HandoffDialog from '@demicodes/web-ui/auth/HandoffDialog.vue'
+import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
 import SearchDialog from '@demicodes/web-ui/search/SearchDialog.vue'
 import type { SearchRow } from '@demicodes/web-ui/search/search'
 import { searchConversations } from './api/search'
@@ -39,6 +40,7 @@ import { productPageHost } from './plugins/host'
 import { useProduct } from './state/product'
 import { usePasskeySignals } from './auth/passkeys'
 import { useSessions } from './auth/handoff'
+import { usePasskeyOffer } from './auth/passkey-offer'
 provideBlobUrl(blobUrl)
 /** How many recent conversations the search window lists before the user types. */
 const RECENT_CONVERSATIONS = 20
@@ -66,6 +68,7 @@ const mediaViewer = provideMediaViewer()
 const session = useSession()
 const conversations = useConversations()
 const resources = useResources()
+const passkeyOffer = usePasskeyOffer()
 /**
  * The sidebar's rows: each conversation's own fields and the device it runs on. Every field is
  * named, so a field the row type gains fails to compile here, and a row reads none of the
@@ -312,6 +315,14 @@ useAppShortcuts(
           :host="handoffHost"
           :email="resources.email"
           @close="handoffOpen = false"
+        />
+        <PasskeyOffer
+          :is-open="passkeyOffer.open"
+          :overlay-store="appOverlayStore"
+          :add="passkeyOffer.add"
+          :email="resources.email"
+          @answered="passkeyOffer.answered"
+          @close="passkeyOffer.close"
         />
         <SearchDialog
           :is-open="searchOpen"

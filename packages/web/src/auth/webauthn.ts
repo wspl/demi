@@ -91,9 +91,10 @@ function descriptor(json: DescriptorJson): PublicKeyCredentialDescriptor {
 
 /**
  * Asks the browser for a new passkey; null when the user dismissed the
- * prompt.
+ * prompt, `'held'` when the password manager holds a passkey of the account
+ * already, which the options' excluded credentials make it refuse.
  */
-export async function createPasskey(options: CreationOptionsJson): Promise<RegistrationResponseJson | null> {
+export async function createPasskey(options: CreationOptionsJson): Promise<RegistrationResponseJson | 'held' | null> {
   let credential: Credential | null
   try {
     credential = await navigator.credentials.create({ publicKey: creationOptions(options) })
@@ -101,9 +102,8 @@ export async function createPasskey(options: CreationOptionsJson): Promise<Regis
     if (dismissed(error)) {
       return null
     }
-    // The options exclude the account's passkeys: the manager holds one.
     if (error instanceof DOMException && error.name === 'InvalidStateError') {
-      throw new Error('This password manager has a passkey for your account already.')
+      return 'held'
     }
     throw error
   }
