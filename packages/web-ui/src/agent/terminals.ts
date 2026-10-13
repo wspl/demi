@@ -4,6 +4,9 @@ import type { ConversationStatus } from './conversation-status'
 import type { ToolCallBlock } from './block-types'
 import type { CommandEnd } from './command-end'
 import { storedShellView } from './block-helpers'
+import { latestBlocks } from './history'
+import { computed, toRaw, type ComputedRef } from 'vue'
+import type { HeldTranscript } from '@demicodes/conversation-client'
 
 /** Where a command is, as its frames and stored views say: running, exited, stopped (`aborted`), or lost. */
 export type TerminalPhase = ShellViewStatus
@@ -214,40 +217,96 @@ export function followFrame(
 }
 
 /**
- * The command the `shell` call `toolUseId` of the subagent
- * `subagentId`, or of the root when none, started, when the page has seen
- * its live frames. A model may reuse a call's id; the latest command is
- * the one that runs.
+ * The command each `shell` call started, by the subagent that runs it,
+ * or the root for none, and the call's id, as `terminals` holds them when
+ * the page has seen their live frames. A model may reuse a call's id; the
+ * latest command is the one that runs. The lookup reads an index the list
+ * keeps (one pass whenever a command or its call changes), so a row that
+ * looks up its command reads neither the list nor any other command, and a
+ * frame that changes one command's output re-reads nothing.
  */
-export function callTerminal(
-  terminals: readonly TerminalRecord[],
-  subagentId: string | undefined,
-  toolUseId: string,
-): TerminalRecord | undefined {
-  return terminals.findLast(
-    (terminal) => terminal.toolUseId === toolUseId && terminal.subagentId === subagentId,
-  )
+export function useCallTerminals(
+  terminals: () => readonly TerminalRecord[],
+): (subagentId: string | undefined, toolUseId: string) => TerminalRecord | undefined {
+  const byCall = computed(() => {
+    const index = new Map<string | undefined, Map<string, TerminalRecord>>()
+    for (const terminal of terminals()) {
+      if (terminal.toolUseId === undefined) {
+        continue
+      }
+      let calls = index.get(terminal.subagentId)
+      if (calls === undefined) {
+        calls = new Map()
+        index.set(terminal.subagentId, calls)
+      }
+      calls.set(terminal.toolUseId, terminal)
+    }
+    return index
+  })
+  return (subagentId, toolUseId) => byCall.value.get(subagentId)?.get(toolUseId)
+}
+
+/** What the dock reads: the commands, and the transcripts of the root and its subagents that run them. */
+export interface DockSource {
+  terminals: readonly TerminalRecord[]
+  history: HeldTranscript
+  subagents: readonly { id: string; history: HeldTranscript }[]
 }
 
 /**
- * The commands the dock holds (`runtime.md` § Rendering boundary): all but
- * those whose `shell` call still runs, whose output shows under the
- * call. `blocksOf` gives the transcript of the subagent that runs a
- * command, or the root's for none.
+ * The ids of the calls in `blocks` that still run, in one pass: a model may
+ * reuse a call's id, and the latest call of an id says whether it runs.
  */
-export function dockTerminals(
-  terminals: readonly TerminalRecord[],
-  blocksOf: (subagentId: string | undefined) => readonly Block[],
-): TerminalRecord[] {
-  return terminals.filter((terminal) => {
-    if (!terminal.toolUseId) {
+function executingCalls(blocks: readonly Block[]): ReadonlySet<string> {
+  const executing = new Set<string>()
+  for (const block of blocks) {
+    if (block.type !== 'tool_call') {
+      continue
+    }
+    if (block.status === 'executing') {
+      executing.add(block.toolUseId)
+    } else {
+      executing.delete(block.toolUseId)
+    }
+  }
+  return executing
+}
+
+const NO_CALLS: ReadonlySet<string> = new Set()
+
+/**
+ * The commands the dock holds (`runtime.md` § Rendering boundary): all but
+ * those whose `shell` call still runs, whose output shows under the call.
+ * Each agent's running calls are a computed of their own, over the latest
+ * blocks of that agent's transcript: a patch to one transcript, as each
+ * streamed piece is, scans that transcript once and no other, and the
+ * commands are then read once, each by the set of its agent.
+ */
+export function useDockTerminals(source: () => DockSource): ComputedRef<TerminalRecord[]> {
+  const rootCalls = computed(() => executingCalls(latestBlocks(source().history)))
+  // By the subagent's record, which the store keeps while the child is
+  // listed; a record that goes takes its computed with it.
+  const childCalls = new WeakMap<object, ComputedRef<ReadonlySet<string>>>()
+  const callsOf = (agent: DockSource['subagents'][number]): ReadonlySet<string> => {
+    const key = toRaw(agent)
+    let calls = childCalls.get(key)
+    if (calls === undefined) {
+      calls = computed(() => executingCalls(latestBlocks(agent.history)))
+      childCalls.set(key, calls)
+    }
+    return calls.value
+  }
+  const agents = computed(() => new Map(source().subagents.map((agent) => [agent.id, agent])))
+  return computed(() => source().terminals.filter((terminal) => {
+    if (terminal.toolUseId === undefined) {
       return true
     }
-    const call = blocksOf(terminal.subagentId).findLast(
-      (block) => block.type === 'tool_call' && block.toolUseId === terminal.toolUseId,
-    )
-    return call?.type !== 'tool_call' || call.status !== 'executing'
-  })
+    const agent = terminal.subagentId === undefined ? undefined : agents.value.get(terminal.subagentId)
+    const executing = terminal.subagentId === undefined
+      ? rootCalls.value
+      : agent === undefined ? NO_CALLS : callsOf(agent)
+    return !executing.has(terminal.toolUseId)
+  }))
 }
 
 export function isTerminalRunning(phase: TerminalPhase): boolean {

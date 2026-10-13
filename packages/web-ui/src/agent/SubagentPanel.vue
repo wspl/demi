@@ -14,7 +14,7 @@ import AgentMark from './AgentMark.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { provideLiveCalls } from './live-calls'
 import { agentCompaction, subagentPanelTabs, type SubagentRecord } from './subagents'
-import { callTerminal, type TerminalRecord } from './terminals'
+import { useCallTerminals, type TerminalRecord } from './terminals'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
 import type { UsageLimits } from './context-usage'
 import { loadedInstructions } from './instructions'
@@ -63,9 +63,8 @@ const activeId = defineModel<string | null>('activeId', { required: true })
 
 const tabs = computed(() => subagentPanelTabs(props.agents, activeId.value))
 const active = computed(() => tabs.value.find((agent) => agent.id === activeId.value) ?? null)
-provideLiveCalls((toolUseId) =>
-  active.value ? callTerminal(props.terminals, active.value.id, toolUseId) : undefined,
-)
+const commandOf = useCallTerminals(() => props.terminals)
+provideLiveCalls((toolUseId) => active.value ? commandOf(active.value.id, toolUseId) : undefined)
 // A child's transcript shows its latest window, and earlier pages as the reader scrolls up.
 const shown = computed(() => active.value ? shownWindow(active.value.history, null) : null)
 const shownEdges = computed(() => active.value && shown.value ? windowEdges(active.value.history, shown.value) : null)
