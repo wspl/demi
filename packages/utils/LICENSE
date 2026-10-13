@@ -16,8 +16,12 @@ these conditions prevail.
    product whose functionality is substantially Demi's. For a commercial
    license, write to support@demi.sh.
 
-3. Branding is not restricted by these conditions; the names and marks of
-   Demi remain subject to section 6 of the Apache License.
+3. Branding. When you run or distribute Demi's web front end, you may not
+   remove, hide or change the Demi name, logo or copyright notices it shows,
+   nor present it under another name, without a commercial license from The
+   Demi Authors. This does not apply to uses of Demi that do not include its
+   web front end. The names and marks of Demi otherwise remain subject to
+   section 6 of the Apache License.
 
 4. Contributions. By contributing to Demi, you agree that The Demi Authors
    may use your contribution under these terms and may also license it to
