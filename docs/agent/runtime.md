@@ -638,8 +638,9 @@ is not `shell` completes as an error `Tool not found: <name>`.
   ([Host operations](../execution/sessions-and-targets.md#host-operations)).
   Their jobs run in the runner's shell
   ([Shell jobs](../execution/runner.md#shell-jobs)).
-- Every `shell` call starts a job of its own in the conversation's working
-  directory on its Host, the directory the context block names
+- Every `shell` call starts a job of its own in its node's working
+  directory on the primary Host ([Working directory](subagents.md#working-directory)),
+  the conversation's for the root, the directory the context block names
   ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
   Nothing of an earlier command carries over: not its directory, its
   variables or its functions. For example, after a script that runs
