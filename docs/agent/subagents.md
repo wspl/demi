@@ -591,7 +591,11 @@ next spawn on its agents can start `explore` and `reviewer`.
   directory that has a `.demi/workflows/` directory, searched from the
   conversation's working directory up to the root of its git repository as
   [instruction files](instructions.md#which-files-are-read) are. A file's
-  name without `.yaml` is its id; `name` is what the menu shows.
+  name without `.yaml` is its id; `name` is what the menu shows. A
+  workflow is a regular file of the project: a `.demi/workflows` directory
+  or a workflow file that is a symbolic link is listed as unavailable,
+  *Workflows are files of the project, not links*, so what a workflow says
+  is always what the repository holds and what the watch sees.
 - **A workflow** holds `name` (1 to 60 characters), `instructions`
   (optional, up to 65,536 characters) and `profiles`, a list of profiles.
   It sets no limit: the [limits](#limits) are the user's Settings alone,
@@ -605,7 +609,9 @@ next spawn on its agents can start `explore` and `reviewer`.
   profile unavailable, as a profile's missing model does. A workflow file is
   at most 1 MiB; its instructions are read with the project's files, once
   per input turn ([When it is sent](instructions.md#when-it-is-sent)), and
-  the conversation's choice at every request.
+  the conversation's choice at every request; a new choice reads the
+  chosen workflow's instructions at once, so the next request carries
+  them.
 - **Its instructions** are the root's: they join the
   [instructions block](instructions.md#what-the-model-receives) as an element
   of their own, `<workflow name="Review Team">`, after the project's files,
