@@ -55,7 +55,6 @@ pub(crate) struct SessionCore {
     /// only.
     request_blocks: RequestBlocks,
     pub(super) id: NodeId,
-    pub(super) cwd: String,
     /// The selection current now; every block records the one current when
     /// it was written.
     pub(super) model: ModelSelection,
@@ -352,7 +351,6 @@ struct RequestBlocks {
 /// What a new or restored session starts with.
 pub(super) struct CoreParts {
     pub(super) id: NodeId,
-    pub(super) cwd: String,
     pub(super) model: ModelSelection,
     pub(super) provider: Box<dyn ProviderRuntime>,
     pub(super) transcript: TranscriptLog,
@@ -379,7 +377,6 @@ impl SessionCore {
             writing: Vec::new(),
             request_blocks: RequestBlocks::default(),
             id: parts.id,
-            cwd: parts.cwd,
             model: parts.model,
             provider: ProviderSlot::Held(parts.provider),
             switch: None,
@@ -1386,8 +1383,14 @@ impl SessionCore {
 
     pub(super) fn push_context(&mut self, news: crate::runtime::NewContext) {
         let turn = self.turn();
-        self.transcript
-            .push_context(turn, &self.model, news.source, news.text, news.instructions);
+        self.transcript.push_context(
+            turn,
+            &self.model,
+            news.source,
+            news.text,
+            news.instructions,
+            news.cwd,
+        );
         self.commit();
     }
 
@@ -1948,7 +1951,6 @@ impl SessionCore {
             agent_inputs: self.inputs.agent_inputs(),
             reports: self.inputs.reports(),
             intervals: self.watched.intervals(),
-            cwd: self.cwd.clone(),
             model: self.model.clone(),
             edits: self.edits.clone(),
         }

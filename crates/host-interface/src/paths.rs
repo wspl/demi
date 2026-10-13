@@ -43,6 +43,20 @@ impl HostPaths {
         format!("{directory}{}{name}", self.separator())
     }
 
+    /// `path` read against `directory`, as a shell in `directory` reads it:
+    /// as it is when it is absolute, otherwise under `directory`, with `.`
+    /// and `..` taken out, in the Host's spelling of paths.
+    pub fn resolve(self, directory: &str, path: &str) -> String {
+        let style = match self {
+            Self::Posix => typed_path::PathType::Unix,
+            Self::Windows => typed_path::PathType::Windows,
+        };
+        typed_path::Utf8TypedPath::new(directory, style)
+            .join(path)
+            .normalize()
+            .into_string()
+    }
+
     /// The last component of `path`: the name of what it names.
     pub fn file_name(self, path: &str) -> &str {
         let path = path.trim_end_matches(|c| self.separates(c));

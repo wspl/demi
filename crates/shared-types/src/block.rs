@@ -264,8 +264,8 @@ pub struct ContextBlock {
     pub created_at: Timestamp,
     #[garde(dive)]
     pub model: ModelSelection,
-    /// The source that answered: `execution`, [`INSTRUCTIONS_SOURCE`], or a
-    /// plugin's id.
+    /// The source that answered: `execution`, [`INSTRUCTIONS_SOURCE`],
+    /// [`WORKING_DIRECTORY_SOURCE`], or a plugin's id.
     #[garde(length(chars, min = 1, max = 64))]
     pub source: String,
     #[garde(skip)]
@@ -276,6 +276,13 @@ pub struct ContextBlock {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub instructions: Vec<InstructionEntry>,
+    /// The working directory a [`WORKING_DIRECTORY_SOURCE`] block names,
+    /// the node's from this block on, which the page reads the node's
+    /// relative paths against (`subagents.md` § Working directory); absent
+    /// on another source's block.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(length(min = 1)))]
+    pub cwd: Option<String>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
     /// a process resumes); omitted when there are none. They never leave
@@ -297,6 +304,12 @@ pub const INSTRUCTIONS_SOURCE: &str = "instructions";
 /// compaction (`compaction.md` § What the model receives afterward); no
 /// plugin may be named so.
 pub const EXECUTION_SOURCE: &str = "execution";
+
+/// The context source of a subagent's working directory (`subagents.md`
+/// § Working directory): its block names the directory the child's `shell`
+/// calls start in, before its first request, after each change and after
+/// each compaction. No plugin may be named so: a plugin's id has no `_`.
+pub const WORKING_DIRECTORY_SOURCE: &str = "working_directory";
 
 /// The context source of the skills plugin, whose block is the skills
 /// catalog (`skills.md` § What the model sees), the context card's Skills

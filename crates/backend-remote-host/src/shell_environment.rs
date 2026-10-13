@@ -5,8 +5,8 @@
 //! holds the newest output the runner sends while a page watches and the job
 //! is therefore followed (`runtime.md` § Live output). At the job's end the
 //! product's keeper stores the whole output, and the runner lets the job's
-//! directory go (`runtime.md` § The whole output). Every job starts in the
-//! conversation's working directory on the Host, and nothing of an earlier
+//! directory go (`runtime.md` § The whole output). Every job starts in its
+//! node's working directory on the Host, and nothing of an earlier
 //! one carries over (`runtime.md` § Running shell tools). A command outlives
 //! the environment: its keeper records it running before its job starts, a
 //! disposed environment lets its jobs run on, and the next environment of
@@ -469,9 +469,11 @@ impl RemoteShellEnvironment {
         if running.stop.is_cancelled() {
             return Err("Shell command aborted".into());
         }
-        // Every job starts in the conversation's working directory on the
-        // Host (`runtime.md` § Running shell tools).
-        let cwd = self.0.options.host.default_cwd().to_owned();
+        // Every job starts in its node's working directory on the Host, the
+        // conversation's for the root (`runtime.md` § Running shell tools).
+        let cwd = request
+            .cwd
+            .unwrap_or_else(|| self.0.options.host.default_cwd().to_owned());
         let mut env = self.0.options.initial_env.clone();
         env.insert("PWD".into(), cwd.clone());
         let id = RemoteHost::job_id();

@@ -189,6 +189,41 @@
     "text": "The conversation now runs on the Cloud."
   },
   {
+    "type": "context",
+    "id": "c2",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "codex",
+      "model": {
+        "id": "gpt-5.5",
+        "name": "GPT-5.5",
+        "contextWindow": 272000,
+        "outputLimit": null,
+        "thinking": [
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "xhigh"
+            ],
+            "summaries": [],
+            "defaultSummary": null
+          }
+        ],
+        "acceptedExtensions": null
+      },
+      "thinking": {
+        "type": "budget",
+        "budgetTokens": 8000
+      },
+      "serviceTierId": null
+    },
+    "turnId": "turn-3",
+    "source": "working_directory",
+    "text": "Your working directory is /home/demi/app: your shell calls start there on the primary Host, and the relative paths you write are read against it. `demi agent cwd <dir>` changes it.",
+    "cwd": "/home/demi/app"
+  },
+  {
     "type": "wakeup",
     "id": "w1",
     "createdAt": "2026-09-21T14:13:20.000Z",

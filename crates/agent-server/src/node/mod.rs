@@ -6,6 +6,7 @@
 //! the lifecycle policy.
 
 use std::{
+    cell::RefCell,
     rc::{Rc, Weak},
     sync::Arc,
 };
@@ -21,20 +22,21 @@ use demi_agent_store::{
     media::store_result,
 };
 use demi_agent_tools::{
-    CallError, ContextSource, EndOf, Environments, HostResolver, Looking, ModelIdentity, NodeContext,
+    CallError, ContextSource, Directory, EndOf, Environments, HostResolver, Looking, ModelIdentity, NodeContext,
     ShellAccess, ShellEnvironmentFactory, Stopper, StoreNumbers, definitions, end_report,
     fill_output, interrupted_look, progress_report, report_media, runs_together, stored_running_commands,
     system_prompt, whole_status,
 };
 use demi_agent_transcript::IdSource;
 use demi_host_interface::{
-    CapabilityIndex, CommandSet, CommandState, CommandStatus, Ending, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
+    CapabilityIndex, CommandSet, CommandState, CommandStatus, Ending, FileKind, Host, HostError, JobCaller, Numbers, PageFeed, PageState, PageView, Seen,
     ShellEnvironment,
 };
 use demi_provider_common::{ProviderRuntime, RequestLimits, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
     Clock, CommandEnd, CommandId, CommandReport, ModelSelection, ReportEvent, NodeId, QueuedMessage, TurnId,
+    WORKING_DIRECTORY_SOURCE,
 };
 use futures_util::{FutureExt, future::LocalBoxFuture};
 
@@ -53,9 +55,9 @@ pub(crate) enum NodeRole {
     Child,
 }
 
-/// One live node: its record, its role and its session.
+/// One live node: its role, its session, and its runtime, which holds its
+/// record.
 pub struct Node<H: HostResolver> {
-    record: NodeRecord,
     role: NodeRole,
     session: AgentSession,
     runtime: Rc<NodeRuntime<H>>,
@@ -63,20 +65,67 @@ pub struct Node<H: HostResolver> {
 
 impl<H: HostResolver> Node<H> {
     pub fn id(&self) -> &NodeId {
-        &self.record.id
+        &self.runtime.node
     }
 
-    pub fn record(&self) -> &NodeRecord {
-        &self.record
+    /// The node's record as it is now: a child's working directory changes
+    /// with `demi agent cwd`.
+    pub fn record(&self) -> NodeRecord {
+        self.runtime.record.borrow().clone()
+    }
+
+    /// The node that spawned it; none for the root.
+    pub(crate) fn parent(&self) -> Option<NodeId> {
+        self.runtime.record.borrow().parent.clone()
     }
 
     pub fn session(&self) -> &AgentSession {
         &self.session
     }
 
-    /// The node's working directory.
-    pub fn cwd(&self) -> &str {
-        &self.runtime.cwd
+    /// A child's own working directory; none for the root, whose directory
+    /// is the conversation's.
+    fn cwd(&self) -> Option<String> {
+        self.runtime.cwd()
+    }
+
+    /// The node's working directory on the primary Host: a child's own, the
+    /// conversation's for the root (`subagents.md` § Working directory).
+    pub(crate) async fn directory(&self) -> Result<String, HostError> {
+        let cwd = self.cwd();
+        let context = self.runtime.context_in(cwd.as_deref());
+        self.runtime.hosts.directory(context).await
+    }
+
+    /// The conversation's primary Host now, through its host access.
+    pub(crate) async fn host(&self) -> Result<Rc<H::Host>, HostError> {
+        let cwd = self.cwd();
+        self.runtime.hosts.host(self.runtime.context_in(cwd.as_deref())).await
+    }
+
+    /// `dir` read against the node's working directory, when that names a
+    /// directory on the primary Host, which the host access reaches; why
+    /// it does not otherwise (`subagents.md` § Working directory).
+    pub(crate) async fn existing_directory(&self, dir: &str) -> Result<String, String> {
+        let base = self.directory().await.map_err(|error| error.to_string())?;
+        let host = self.host().await.map_err(|error| error.to_string())?;
+        let path = host.identity().paths.resolve(&base, dir);
+        match host.fs().stat(&path).await {
+            Ok(stat) if stat.kind == FileKind::Directory => Ok(path),
+            Ok(_) => Err(format!("{path}: not a directory")),
+            Err(error) if error.code() == Some("ENOENT") => {
+                Err(format!("{path}: no such directory on the primary Host"))
+            }
+            Err(error) => Err(format!("{path}: {error}")),
+        }
+    }
+
+    /// Moves the child to `cwd`, a directory on the primary Host, from its
+    /// next `shell` call on: recorded, then the node's.
+    pub(crate) async fn set_cwd(&self, cwd: String) -> Result<(), StoreError> {
+        self.runtime.store.set_cwd(&self.runtime.node, &cwd).await?;
+        self.runtime.record.borrow_mut().cwd = Some(cwd);
+        Ok(())
     }
 
     /// The commands the node's shell offers: the product's, with the
@@ -89,7 +138,7 @@ impl<H: HostResolver> Node<H> {
     /// The caller a job the node's call `tool_use_id` starts records.
     pub fn job_caller(&self, tool_use_id: &str) -> JobCaller {
         JobCaller {
-            node: self.record.id.clone(),
+            node: self.runtime.node.clone(),
             tool_use_id: tool_use_id.to_owned(),
         }
     }
@@ -126,11 +175,11 @@ impl<H: HostResolver> Node<H> {
         }
         self.runtime
             .store
-            .place(command, &self.record.id)
+            .place(command, &self.runtime.node)
             .await
             .unwrap_or_else(|error| {
                 // The look shows the output from its start.
-                tracing::warn!(node = %self.record.id, %command, %error, "a place in a command's output could not be read");
+                tracing::warn!(node = %self.runtime.node, %command, %error, "a place in a command's output could not be read");
                 None
             })
             .unwrap_or_default()
@@ -140,10 +189,10 @@ impl<H: HostResolver> Node<H> {
     /// command's record too while it runs (`storage.md` § Command outputs).
     pub(crate) async fn set_place(&self, command: &CommandId, seen: Seen) {
         self.runtime.environments.set_place(command, seen);
-        if let Err(error) = self.runtime.store.record_place(command, &self.record.id, seen).await {
+        if let Err(error) = self.runtime.store.record_place(command, &self.runtime.node, seen).await {
             // The node keeps its place; a backend that starts again shows
             // it the output from its last recorded place.
-            tracing::warn!(node = %self.record.id, %command, %error, "a place in a command's output was not recorded");
+            tracing::warn!(node = %self.runtime.node, %command, %error, "a place in a command's output was not recorded");
         }
     }
 
@@ -246,11 +295,9 @@ impl<H: HostResolver> Node<H> {
             hosts: runtime.hosts.as_ref(),
             shells: runtime.shells.as_ref(),
             environments: &environments,
-            context: NodeContext {
-                node: &closed.id,
-                root: &runtime.root,
-                cwd: &runtime.cwd,
-            },
+            node: &closed.id,
+            root: &runtime.root,
+            directory: &closed.cwd,
             agent: closed.number,
             commands: &runtime.commands,
             feed: &feed,
@@ -341,7 +388,7 @@ async fn adopt_all<H: HostResolver>(
         // A clock that went back counts no time.
         let ran = u64::try_from(now - command.started.as_millisecond()).unwrap_or(0);
         if let Err(error) = access.adopt(command, std::time::Duration::from_millis(ran)).await {
-            tracing::warn!(node = %access.context.node, command = %command.command, %error, "a running command was not taken up");
+            tracing::warn!(node = %access.node, command = %command.command, %error, "a running command was not taken up");
             left = Some(error.to_string());
         }
     }
@@ -359,7 +406,9 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     server: Weak<AgentServer<H>>,
     /// Where the window in use for a model comes from.
     providers: Rc<dyn ProviderResolver>,
-    cwd: String,
+    /// The node's record, the one live copy: `demi agent cwd` changes a
+    /// child's working directory in it.
+    record: RefCell<NodeRecord>,
     hosts: Rc<H>,
     /// The instructions of its system prompt.
     instructions: Instructions,
@@ -391,7 +440,49 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     clock: Arc<dyn Clock>,
 }
 
+/// The child's directory as its record holds it now.
+impl<H: HostResolver> Directory for NodeRuntime<H> {
+    fn cwd(&self) -> Option<String> {
+        self.record.borrow().cwd.clone()
+    }
+}
+
+/// What a child's `working_directory` block tells it (`subagents.md`
+/// § Working directory).
+fn working_directory_text(cwd: &str) -> String {
+    format!(
+        "Your working directory is {cwd}: your shell calls start there on the primary Host, and the relative paths you write are read against it. `demi agent cwd <dir>` changes it."
+    )
+}
+
+/// The `working_directory` block a child's next request needs, given the
+/// context blocks it receives, `seen`: one naming `cwd`, the child's
+/// directory, unless the newest it receives names it already. A child has
+/// one before its first request, after each change and after each
+/// compaction; the root, whose directory is the conversation's that the
+/// execution context names, none.
+fn working_directory(cwd: Option<String>, seen: &[SeenContext<'_>]) -> Option<NewContext> {
+    let cwd = cwd?;
+    let text = working_directory_text(&cwd);
+    let newest = seen
+        .iter()
+        .rev()
+        .find(|seen| seen.source == WORKING_DIRECTORY_SOURCE)
+        .map(|seen| seen.text);
+    (newest != Some(text.as_str())).then(|| NewContext {
+        source: WORKING_DIRECTORY_SOURCE.to_owned(),
+        text,
+        instructions: Vec::new(),
+        cwd: Some(cwd),
+    })
+}
+
 impl<H: HostResolver> NodeRuntime<H> {
+    /// A child's own working directory; none for the root.
+    fn cwd(&self) -> Option<String> {
+        Directory::cwd(self)
+    }
+
     /// Takes up the commands the node ran that the conversation records
     /// running, that `which` picks and its environments do not hold
     /// (`sessions-and-targets.md` § Recovery and persistence). Answers
@@ -413,11 +504,14 @@ impl<H: HostResolver> NodeRuntime<H> {
         left.map_or(Ok(!picked.is_empty()), Err)
     }
 
-    fn node_context(&self) -> NodeContext<'_> {
+    /// The node as its context sources and resolver see it, with `cwd`,
+    /// its own directory as the caller read it: a change made meanwhile
+    /// shows at the next read.
+    fn context_in<'a>(&'a self, cwd: Option<&'a str>) -> NodeContext<'a> {
         NodeContext {
             node: &self.node,
             root: &self.root,
-            cwd: &self.cwd,
+            cwd,
         }
     }
 
@@ -427,7 +521,9 @@ impl<H: HostResolver> NodeRuntime<H> {
             hosts: &self.hosts,
             shells: self.shells.as_ref(),
             environments: &self.environments,
-            context: self.node_context(),
+            node: &self.node,
+            root: &self.root,
+            directory: self,
             agent: self.agent,
             commands: &self.commands,
             feed: &self.feed,
@@ -579,6 +675,8 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         turn: &'a TurnId,
     ) -> LocalBoxFuture<'a, Vec<NewContext>> {
         Box::pin(async move {
+            let cwd = self.cwd();
+            let node = self.context_in(cwd.as_deref());
             let asked = self.context.iter().map(|source| async move {
                 let name = source.name();
                 let own: Vec<&str> = seen
@@ -586,7 +684,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                     .filter(|seen| seen.source == name)
                     .map(|seen| seen.text)
                     .collect();
-                (name, source.context(self.node_context(), turn, &own).await)
+                (name, source.context(node, turn, &own).await)
             });
             let mut news = Vec::new();
             for (name, answer) in futures_util::future::join_all(asked).await {
@@ -595,6 +693,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                         source: name.to_owned(),
                         text: answer.text,
                         instructions: answer.instructions,
+                        cwd: None,
                     }),
                     Ok(None) => {}
                     Err(error) => tracing::warn!(
@@ -605,6 +704,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                     ),
                 }
             }
+            news.extend(working_directory(cwd, seen));
             news
         })
     }
@@ -794,7 +894,6 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
 pub(crate) enum Origin {
     New {
         record: NodeRecord,
-        cwd: String,
         model: ModelSelection,
         /// Its first message, queued in its create commit, so that a node
         /// the process loses before its first save still has it.
@@ -942,17 +1041,13 @@ pub(crate) async fn assemble<H: HostResolver>(
     } = spec;
     let record = origin.record().clone();
     let session_store = store.session_store(&record.id);
-    let cwd = match &origin {
-        Origin::New { cwd, .. } => cwd.clone(),
-        Origin::Forked { checkpoint, .. } | Origin::Stored { checkpoint, .. } => checkpoint.state.cwd.clone(),
-    };
     let index = commands.render_index();
     let node_runtime = Rc::new(NodeRuntime {
         node: record.id.clone(),
         root,
         server,
         providers,
-        cwd: cwd.clone(),
+        record: RefCell::new(record.clone()),
         hosts,
         instructions,
         guide,
@@ -1019,7 +1114,6 @@ pub(crate) async fn assemble<H: HostResolver>(
         } => {
             let init = SessionInit {
                 id: record.id.clone(),
-                cwd,
                 model,
                 runtime,
             };
@@ -1036,7 +1130,6 @@ pub(crate) async fn assemble<H: HostResolver>(
     };
     Ok(Assembled {
         node: Node {
-            record,
             role,
             session,
             runtime: node_runtime,

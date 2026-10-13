@@ -25,6 +25,7 @@ serde_with.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
 tokio-util.workspace = true
+typed-path = "0.12"
 
 [dev-dependencies]
 # The crate's own tests use its test support.

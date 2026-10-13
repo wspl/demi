@@ -226,20 +226,18 @@ pub struct TestClient<H: HostResolver> {
 }
 
 impl<H: HostResolver> TestClient<H> {
-    /// A client of the conversation `root`, whose new tree works in `cwd`,
-    /// whose frames refer to no file.
-    pub fn connect(server: &Rc<AgentServer<H>>, root: &NodeId, cwd: &str) -> Self {
-        Self::connect_with(server, root, cwd, TestFiles::new())
+    /// A client of the conversation `root`, whose frames refer to no file.
+    pub fn connect(server: &Rc<AgentServer<H>>, root: &NodeId) -> Self {
+        Self::connect_with(server, root, TestFiles::new())
     }
 
     /// A client whose frames' files `files` resolves.
     pub fn connect_with(
         server: &Rc<AgentServer<H>>,
         root: &NodeId,
-        cwd: &str,
         files: Rc<dyn ContentResolver>,
     ) -> Self {
-        let (connection, frames) = server.connect(root.clone(), cwd.to_owned(), files);
+        let (connection, frames) = server.connect(root.clone(), files);
         Self {
             connection,
             frames,

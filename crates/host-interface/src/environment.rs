@@ -1,6 +1,6 @@
 //! The shell-environment contract behind the `shell` tool: a node's commands
-//! on one Host, each a job of its own that starts in the conversation's
-//! working directory there (`runtime.md` § Running shell tools), the
+//! on one Host, each a job of its own that starts in the node's working
+//! directory there (`runtime.md` § Running shell tools), the
 //! model's status view of each (`runtime.md` § Tools), and the pages' view
 //! of each, which the environment reports to the node's feed (`runtime.md`
 //! § Live output).
@@ -32,8 +32,8 @@ pub const DEFAULT_BINARY_LIMIT_BYTES: usize = 16 * 1024 * 1024;
 /// model's; the pages see its commands through the feed it was made with
 /// ([`PageFeed`]).
 pub trait ShellEnvironment {
-    /// Starts `request.script` as a job of its own in the conversation's
-    /// working directory on the Host, carrying nothing of an earlier
+    /// Starts `request.script` as a job of its own in the directory
+    /// `request.cwd` names on the Host, carrying nothing of an earlier
     /// command, and returns its command's handle; the command goes on by
     /// itself, and `cancel` stops it whenever it is cancelled. [`watch`]
     /// watches it.
@@ -146,6 +146,11 @@ pub trait PageFeed {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExecRequest {
     pub script: String,
+    /// The directory the job starts in: its node's working directory, or
+    /// none for the conversation's, the Host's own
+    /// ([`Host::default_cwd`](crate::Host::default_cwd); `subagents.md`
+    /// § Working directory).
+    pub cwd: Option<String>,
     /// The agent node the job's `rpc` calls act for, and its `shell` call
     /// that runs the script, which the pages' view of the command names.
     pub caller: JobCaller,

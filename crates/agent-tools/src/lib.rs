@@ -107,11 +107,27 @@ pub trait ShellEnvironmentFactory<H> {
     ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>>;
 }
 
+/// A node's working directory as its `shell` calls read it when each starts
+/// (`subagents.md` § Working directory): `demi agent cwd` changes it while
+/// a call of the node runs, from the next start on.
+pub trait Directory {
+    /// The node's own directory, a child's; none for the root, whose jobs
+    /// start in the conversation's.
+    fn cwd(&self) -> Option<String>;
+}
+
+/// A directory that does not change, such as a closed node's.
+impl Directory for Option<String> {
+    fn cwd(&self) -> Option<String> {
+        self.clone()
+    }
+}
+
 /// The tool's name.
 const SHELL: &str = "shell";
 
 /// What the `shell` tool does, as the model is told.
-const SHELL_DESCRIPTION: &str = "Start a shell script in the conversation's working directory and watch it as intervalMs says. Watching is not a deadline: a command still running when the call returns keeps running, the result carries its commandId, and the command reports to you as its interval says until it ends. Completed short output is returned directly. The shell calls of one response run at the same time.";
+const SHELL_DESCRIPTION: &str = "Start a shell script in your working directory and watch it as intervalMs says. Watching is not a deadline: a command still running when the call returns keeps running, the result carries its commandId, and the command reports to you as its interval says until it ends. Completed short output is returned directly. The shell calls of one response run at the same time.";
 
 /// The definitions the model receives, made once: the `shell` tool alone.
 pub fn definitions() -> Arc<[ToolDefinition]> {
@@ -143,7 +159,11 @@ pub struct ShellAccess<'a, H: HostResolver> {
     pub hosts: &'a H,
     pub shells: &'a dyn ShellEnvironmentFactory<H::Host>,
     pub environments: &'a Environments,
-    pub context: NodeContext<'a>,
+    pub node: &'a NodeId,
+    /// The conversation's root node.
+    pub root: &'a NodeId,
+    /// Where the node's jobs start, read as each starts.
+    pub directory: &'a dyn Directory,
     /// The node's agent number.
     pub agent: u64,
     pub commands: &'a Rc<CommandSet>,
@@ -173,14 +193,20 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         &self,
         handle: Handle<'_>,
     ) -> Result<(Rc<environments::Slot>, Rc<dyn ShellEnvironment>), CallError> {
+        let cwd = self.directory.cwd();
+        let context = NodeContext {
+            node: self.node,
+            root: self.root,
+            cwd: cwd.as_deref(),
+        };
         let host = self
             .hosts
-            .host(self.context)
+            .host(context)
             .await
             .map_err(|error| CallError::Failed(error.to_string()))?;
         let scope = EnvironmentScope {
-            root: self.context.root,
-            node: self.context.node,
+            root: self.root,
+            node: self.node,
             agent: self.agent,
             commands: self.commands,
             feed: self.feed,
@@ -245,8 +271,9 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         }
         let request = ExecRequest {
             script: input.script,
+            cwd: self.directory.cwd(),
             caller: JobCaller {
-                node: self.context.node.clone(),
+                node: self.node.clone(),
                 tool_use_id: call.tool_use_id,
             },
             title: input.description.0.clone(),
@@ -334,7 +361,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             command: running.command.clone(),
             job: running.job.clone(),
             caller: JobCaller {
-                node: self.context.node.clone(),
+                node: self.node.clone(),
                 tool_use_id: running.tool_use_id.clone(),
             },
             title: running.title.clone(),

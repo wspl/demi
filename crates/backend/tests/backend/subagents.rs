@@ -431,6 +431,99 @@ async fn a_child_works_in_its_parents_files_keeps_its_identity_and_runs_on_after
     backend.close().await;
 }
 
+// Several seconds: a parent and its child run eight shell jobs on a real
+// device, across a resume of the child.
+#[tokio::test]
+async fn a_child_works_in_its_own_directory_which_it_changes_and_keeps_and_the_root_keeps_the_conversations() {
+    let scripts = Arc::new(Scripts::default());
+    let (_harness, backend, master, _paired, root, _provider) = tree(&scripts).await;
+    for directory in ["app", "lib"] {
+        std::fs::create_dir(format!("{root}/{directory}")).unwrap();
+    }
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+
+    // The child starts where `--cwd` names, against its parent's directory,
+    // once the test lets it go; it moves to `../lib`, against its own, from
+    // its next call on; a directory the device does not have is refused and
+    // changes nothing.
+    scripts.child(vec![
+        shell("c1", &format!("{WAIT}; echo \"first=$(pwd)\" && demi agent cwd ../lib")),
+        shell("c2", "echo \"second=$(pwd)\"; demi agent cwd missing; echo \"refused=$?\""),
+        shell("c3", "echo \"third=$(pwd)\""),
+        say("moved"),
+        // Its next round, after a resume restored it from the store.
+        shell("c4", &format!("until [ -f go2 ]; do sleep 0.05; done; echo \"fourth=$(pwd)\"")),
+        say("still there"),
+    ]);
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t1", "demi agent cwd ../elsewhere; echo \"root=$?\"; pwd"),
+            shell(
+                "t2",
+                "demi agent spawn --cwd app --description mover <<< 'Move to the library'",
+            ),
+            say("dispatched"),
+            say("received"),
+        ],
+    );
+    let mut frames = socket.chat("m1", "Delegate the move").await;
+    std::fs::write(format!("{root}/app/go"), "").unwrap();
+    frames.extend(socket.until_idle().await);
+
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t3", "demi agent resume 1 <<< 'Look again'"),
+            say("resumed"),
+            say("received again"),
+        ],
+    );
+    frames.extend(socket.chat("m2", "Once more").await);
+    std::fs::write(format!("{root}/lib/go2"), "").unwrap();
+    frames.extend(socket.until_idle().await);
+
+    // The root's directory is the conversation's: its change is refused
+    // with the reason, and its shells still start there.
+    let refused = last_asked(&scripts, |session| session == FIRST);
+    assert!(
+        refused.contains("The main agent works in the conversation's directory; move the conversation with `demi conversation move` to work elsewhere.")
+            && refused.contains(&format!("root=1\\n{root}")),
+        "{refused}"
+    );
+    let children = scripts.asked(|session| session != FIRST);
+    let told = |cwd: &str| format!("Your working directory is {cwd}: ");
+    assert!(children[0].contains(&told(&format!("{root}/app"))), "{}", children[0]);
+    assert!(children[1].contains(&told(&format!("{root}/lib"))), "{}", children[1]);
+    let last = children.last().unwrap();
+    for ran in [
+        format!("first={root}/app"),
+        format!("second={root}/lib"),
+        format!("{root}/lib/missing: no such directory on the primary Host"),
+        "refused=1".to_owned(),
+        format!("third={root}/lib"),
+        format!("fourth={root}/lib"),
+    ] {
+        assert!(last.contains(&ran), "{ran} in {last}");
+    }
+    // The page learns where the child works: as it starts, as it moves, and
+    // in the conversation's list of subagents.
+    let moves: Vec<(SubagentEvent, String)> = frames
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::Subagent { event, job } => Some((*event, job.cwd.clone())),
+            _ => None,
+        })
+        .collect();
+    assert!(moves.contains(&(SubagentEvent::Started, format!("{root}/app"))), "{moves:?}");
+    assert!(moves.contains(&(SubagentEvent::Changed, format!("{root}/lib"))), "{moves:?}");
+    let history = transcript(&backend, &master, FIRST).await;
+    let listed: Vec<&str> = history.subagents.iter().map(|child| child.cwd.as_str()).collect();
+    assert_eq!(listed, [format!("{root}/lib")]);
+    backend.close().await;
+}
+
 // Over two seconds: the parent's and the child's shell jobs run on a real
 // device, the child's until the Fork is taken.
 #[tokio::test]
