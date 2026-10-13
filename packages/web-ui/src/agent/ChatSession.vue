@@ -52,7 +52,7 @@ import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
-import { dockChipsShown, resumeWaitsFor, sessionFailureNotice, turnRecovery } from './session-status'
+import { resumeWaitsFor, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import { latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
@@ -273,15 +273,16 @@ watch(
 )
 provideLabelRoom(() => titleRoom.value)
 // Recovery of an unfinished turn needs a provider and a conversation that is
-// neither archived nor being edited. A message the user sent, still on its
-// way or waiting for the backend, is the other way forward.
+// neither archived nor being edited, whose session has told its turn. A
+// message the user sent, still on its way or waiting for the backend, is the
+// other way forward.
 const canRecover = computed(
   () =>
     props.hasProvider &&
     !props.messageEdit &&
     !props.pendingSubmissions?.length &&
     !props.conversation.archived &&
-    props.conversation.load !== 'failed',
+    sessionShown(props.conversation.load),
 )
 // A session-level failure is told once, in the transcript flow: never beside
 // the status pane that already replaced the transcript, never under an error
@@ -620,7 +621,7 @@ watch(
                 @decide="(id, decision, credential) => emit('decidePermission', id, decision, credential)"
               />
             </template>
-            <template v-if="dockChipsShown(conversation.load)" #chips>
+            <template #chips>
               <!-- The transcript says what happened; the one recovery control is here, over the input. -->
               <Tooltip
                 v-if="recovery"
@@ -644,12 +645,9 @@ watch(
                 @open="toggleAgents"
               />
             </template>
+            <!-- With the transcript: a message sent while the session opens goes once it has. -->
             <slot
-              v-if="
-                conversation.archived ||
-                conversation.load === 'ready' ||
-                conversation.load === 'reconnecting'
-              "
+              v-if="conversation.archived || transcriptShown(conversation.load)"
               name="composer"
             />
           </SessionDock>
