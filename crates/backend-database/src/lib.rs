@@ -29,6 +29,7 @@ pub mod plugin_values;
 pub mod providers;
 pub mod references;
 pub mod running;
+pub mod saved;
 mod schema;
 #[cfg(feature = "testing")]
 pub use schema::testing as schema_testing;

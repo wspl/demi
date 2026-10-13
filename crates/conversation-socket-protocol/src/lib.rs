@@ -12,7 +12,9 @@ mod client;
 mod server;
 mod transcript;
 
-pub use client::{ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef};
+pub use client::{
+    ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef, SavedDelivery,
+};
 pub use server::{
     AbortResult, AbortTarget, CommandView, EditOutcome, Failures, JobModel, JobPhase, ServerFrame,
     RemoveOutcome, ShellStatus, SteerOutcome, SubagentEvent, SubagentJob,

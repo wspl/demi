@@ -264,8 +264,21 @@ async fn the_collection_after_a_deletion_keeps_what_a_fork_names_and_what_is_you
             _ => None,
         })
         .expect("the fork's message holds the screenshot");
-    // An upload nothing names.
+    // An upload nothing names, and one a message saved for later in the
+    // fork names, which a draft's rule holds.
     let unsent = upload(&backend, &master, "unsent.png", "image/png", &png(2)).await;
+    let kept = upload(&backend, &master, "kept.png", "image/png", &png(4)).await;
+    let saved = backend
+        .post(
+            &format!("/api/conversations/{SECOND}/saved"),
+            Some(&master),
+            json!({
+                "text": "Compare \u{FFFC}",
+                "files": [{ "type": "upload", "ref": kept.id, "fileName": "kept.png" }],
+            }),
+        )
+        .await;
+    assert_eq!(saved.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&saved.body));
     // A day and an hour later, a blob written an hour ago, whose row is
     // not written yet.
     harness.clock.advance(DAY + SignedDuration::from_hours(1));
@@ -287,6 +300,7 @@ async fn the_collection_after_a_deletion_keeps_what_a_fork_names_and_what_is_you
     assert_eq!(deleted.status, StatusCode::NO_CONTENT);
     backend.until_collected(&master).await;
     assert!(blob_path(&harness, &master, &named).exists());
+    assert!(blob_path(&harness, &master, kept.sha256.as_str()).exists());
     assert!(young.exists());
     assert!(!blob_path(&harness, &master, unsent.sha256.as_str()).exists());
     let unsent_records: i64 = harness
