@@ -1049,7 +1049,7 @@ session's inference transcript is only its own transcript frames.
 | Server frame | Fields | Sent |
 | --- | --- | --- |
 | `subagent` | `event` (`started`, `changed` or `closed`), `job` | When a child starts (spawn, resume, or restore), when its record changes, as when it moves to another directory, and when it closes |
-| `subagent_gone` | `subagentId` | On a reopen, for a child the page held that the store no longer has; the page drops it |
+| `subagents` | `subagents`, every child's summary as the open's snapshot lists them | Each open, after the root's state |
 | `subagent_transcript_reset` | `subagentId`, `start`, `blocks` from that index on, `length`, `revision`, optional `failures` | After `started`, and for every live child when a page opens the conversation or syncs its transcript; it starts at the child's latest page ([Where a reset starts](runtime.md#where-a-reset-starts)) |
 | `subagent_transcript_patch` | `subagentId`, `patches`, `revision`, optional `failures` | When a child's transcript changes |
 
@@ -1103,22 +1103,16 @@ subagents, and reads a subagent's transcript, live or not, by its pages when
 it shows it ([Conversation history](../product/web-api.md#conversation-history)). A transcript
 sync replays the live children the same way.
 
-A page that opens again after its connection dropped names in its `open`
-the children it holds as running and the highest subagent number it knows
-(`held`, [Client frames](runtime.md#client-frames)). For each child it held
-that no longer runs, and for each numbered above what it knew that has
-already ended, the handshake sends `subagent` with `closed` and its final
-job, then `subagent_transcript_reset` with its latest page, so a child that
-ended while the page was away shows as it ended; a held child the store no
-longer has is answered by `subagent_gone`, and the page drops it.
-The handshake reads the store's ended children before it attaches and does
-not read them again: a child that starts or ends after that read reaches
-the page by the ordinary `subagent` frames that follow the attach, and a
-`closed` the page already applied changes nothing. Every command the page
-held as running is answered by its `shell_output`, its end included, or by
-`shell_gone` when the conversation no longer has it, and every node's
-`context_usage` is sent, with no usage when it cannot be computed without
-reading a blob, so no figure from before stays. The web app's two frames for
+Every open, a first one or one after the connection dropped, sends
+`subagents`, the summary of every child of the tree, finished ones included:
+its number, description, profile, phase, when it started and ended, and the
+revision of its transcript, never its result or its transcript. The page
+takes the list whole, so a child that finished or started while the page
+was away shows as it is, and reads a child's transcript and result when it
+shows them, again when the revision moved. The open also sends every running
+command's `shell_output`, and the page's list of running commands is those,
+and every node's `context_usage`, with no usage when it cannot be computed
+without reading a blob, so no figure from before stays. The web app's two frames for
 stopping children are described in [Abort](#abort).
 
 ## Sequence
