@@ -82,7 +82,9 @@ phone: she presses the phone mark left of Settings at the sidebar's foot,
 *Hand Off to Phone*, confirms it is her with her password or a passkey, and
 a QR code appears. Her phone's camera reads it, the phone's browser opens
 the conversation she was on, signed in, and the laptop's dialog says
-*Handed off to Safari on iPhone.* and closes. The phone mark stands only where the page is not itself on a
+*Handed off to Safari on iPhone.* and closes. On the phone, the page the
+code opens says *Handing Off* while it opens the conversation, and *Couldn't
+Hand Off* with the reason when the code has expired or was used. The phone mark stands only where the page is not itself on a
 phone.
 
 - **Confirming it is the user** takes the password, or a passkey when the
