@@ -5,18 +5,20 @@ import { ICON_PX } from '../ui/icon-metrics'
 import MenuItem from '../ui/MenuItem.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import Tooltip from '../ui/Tooltip.vue'
-import type { DraftRow } from './drafts'
+import type { SavedRow } from './saved'
 
 /**
- * The list of drafts under the composer (`product.md` § Drafts), about four
+ * The list of messages saved for later under the composer
+ * (`product.md` § Saved for later), about four
  * rows tall and scrolling within; a fifth row shows half, so the list reads
  * as one that goes on. Each row is a menu row: its first line and, when the
- * draft has files, their count, with no time; pressing it edits the draft.
+ * message has files, their count, with no time; pressing it edits the
+ * message.
  * Edit, Send and Delete always stand at the row's end, where the row keeps
  * their inset, the count before them: quiet, and the normal icon color while
  * the pointer or the focus is on the row.
  */
-defineProps<{ rows: DraftRow[] }>()
+defineProps<{ rows: SavedRow[] }>()
 
 const emit = defineEmits<{
   edit: [id: string]
@@ -26,7 +28,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <div class="drafts-list flex flex-col rounded-lg bg-surface-raised outline outline-1 outline-line">
+  <div class="saved-list flex flex-col rounded-lg bg-surface-raised outline outline-1 outline-line">
     <ScrollArea class="flex-auto" viewport-class="overlay-menu-scroll p-1">
       <MenuItem
         v-for="row in rows"
@@ -40,7 +42,7 @@ const emit = defineEmits<{
             <Paperclip :size="ICON_PX.in28" class="shrink-0" />
             {{ row.attachmentCount }}
           </span>
-          <Tooltip content="Edit" class="inline-flex drafts-action">
+          <Tooltip content="Edit" class="inline-flex saved-action">
             <IconButton
               :icon="Pencil"
               variant="ghost"
@@ -49,7 +51,7 @@ const emit = defineEmits<{
               @click.stop="emit('edit', row.id)"
             />
           </Tooltip>
-          <Tooltip content="Send" class="inline-flex drafts-action">
+          <Tooltip content="Send" class="inline-flex saved-action">
             <IconButton
               :icon="ArrowUp"
               variant="ghost"
@@ -58,7 +60,7 @@ const emit = defineEmits<{
               @click.stop="emit('send', row.id)"
             />
           </Tooltip>
-          <Tooltip content="Delete" class="inline-flex drafts-action">
+          <Tooltip content="Delete" class="inline-flex saved-action">
             <IconButton
               :icon="Trash2"
               variant="ghost"
@@ -74,21 +76,21 @@ const emit = defineEmits<{
 </template>
 
 <style scoped>
-.drafts-list :deep(.drafts-action [role='button']) {
+.saved-list :deep(.saved-action [role='button']) {
   color: var(--color-fg-subtle);
 }
 
-.drafts-list :deep(.menu-row:hover .drafts-action [role='button']),
-.drafts-list :deep(.menu-row:focus-within .drafts-action [role='button']) {
+.saved-list :deep(.menu-row:hover .saved-action [role='button']),
+.saved-list :deep(.menu-row:focus-within .saved-action [role='button']) {
   color: var(--color-fg-muted);
 }
 
-.drafts-list :deep(.menu-row:hover .drafts-action [role='button']:hover),
-.drafts-list :deep(.menu-row:focus-within .drafts-action [role='button']:hover) {
+.saved-list :deep(.menu-row:hover .saved-action [role='button']:hover),
+.saved-list :deep(.menu-row:focus-within .saved-action [role='button']:hover) {
   color: var(--color-fg-body);
 }
 
-.drafts-list {
+.saved-list {
   /* Four rows and a half, with their 1px gaps and the list's padding. */
   max-height: calc(4.5 * 1.75rem + 4px + 0.5rem);
 }

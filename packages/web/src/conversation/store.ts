@@ -52,6 +52,7 @@ import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
 import { loadDraft } from '../api/drafts'
+import { deleteSaved as deleteSavedRequest, loadSaved, postSaved } from '../api/saved'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   attachedHostsSchema,
@@ -63,6 +64,7 @@ import {
   type AttachedHosts,
   type ConversationBatch,
   type ConversationDraft,
+  type SavedMessage,
   type ConversationPatch,
   type ConversationStatus,
   type ConversationSummary,
@@ -82,7 +84,7 @@ import { usePreferences } from '../state/preferences'
 import { useSession } from '../auth/session'
 import type { Conversation, PendingSend, ProductAttachment } from '../state/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
-import { createDraftSync, hasUnsavedDraft } from './draft-sync'
+import { createDraftSync, hasUnsavedDraft, namedFile } from './draft-sync'
 import { createHistoryReads } from './history'
 import { findCallBlock, shellCallOf } from './terminals'
 import { EMPTY_TRANSCRIPT, addPage, heldBlocks } from '@demicodes/web-ui/transport/protocol'
@@ -254,6 +256,8 @@ export const useConversations = defineStore('conversations', () => {
    * user).
    */
   const wishes = new Map<string, 'recall' | 'sendNow'>()
+  /** The revision of each conversation's saved messages a read was started for. */
+  const savedAsks = new Map<string, number>()
   /** The draft storage failures this page reported, each once. */
   const storageReported = new Set<'save' | 'restore' | 'unreadable'>()
 
@@ -411,6 +415,7 @@ export const useConversations = defineStore('conversations', () => {
       savedDraft: null,
       draftBase: null,
       draftShown: 0,
+      saved: null,
       files: [],
       attachmentIds: [],
       pendingSends: [],
@@ -516,6 +521,12 @@ export const useConversations = defineStore('conversations', () => {
         // Another page saved the draft since this one read it.
         if (current.savedDraft && record.draftRevision > current.savedDraft.revision) {
           void draftSync.read(current).catch((error) => report('Could Not Read the Draft', error))
+        }
+        // A page changed the messages saved for later since this one read
+        // them; a conversation not opened reads them when it opens.
+        if (cache.get(current.id) && record.savedRevision > savedAsked(current)) {
+          savedAsks.set(current.id, record.savedRevision)
+          void readSaved(current).catch((error) => report('Could Not Read the Saved Messages', error))
         }
         // Another page or a host's shell changed the hosts since this one
         // read them; a conversation not opened reads them when it opens.
@@ -710,6 +721,8 @@ export const useConversations = defineStore('conversations', () => {
           model: null,
           pluginsChanged: false,
           draftRevision: 0,
+          saved: 0,
+          savedRevision: 0,
           panelRevision: 0,
           hostsRevision: 0,
           pluginRevisions: [],
@@ -1193,6 +1206,8 @@ export const useConversations = defineStore('conversations', () => {
     // Taken after this web browser's own copy; a submission it confirms
     // clears the draft after it, so the transcript waits for it.
     const draftRead = draftRestored.then(() => draftSync.read(conversation, reads.draft))
+    // The composer's entry shows the list once read; nothing waits for it.
+    void readSaved(conversation).catch((error) => report('Could Not Read the Saved Messages', error))
     const hostsRead = reads.hosts.then((answer) => {
       signal.throwIfAborted()
       // A summary that raised the revision meanwhile started a newer read.
@@ -1583,6 +1598,8 @@ export const useConversations = defineStore('conversations', () => {
       unread: false,
       pluginsChanged: false,
       draftRevision: 0,
+      saved: 0,
+      savedRevision: 0,
       panelRevision: 0,
       hostsRevision: 0,
       pluginRevisions: [],
@@ -1890,6 +1907,184 @@ export const useConversations = defineStore('conversations', () => {
     conversation.draft = ''
     conversation.attachmentIds = []
     await deliverInOrder(conversation, pending)
+  }
+
+  /**
+   * The revision of the messages saved for later the page holds or has
+   * asked for, whichever is newer: a summary behind it starts no read.
+   */
+  function savedAsked(conversation: Conversation): number {
+    return Math.max(conversation.saved?.revision ?? 0, savedAsks.get(conversation.id) ?? 0)
+  }
+
+  /**
+   * Reads the conversation's messages saved for later (`web-api.md`
+   * § Messages saved for later): as it opens, and whenever its summary's
+   * revision of them is ahead; an answer older than the list the page
+   * holds is dropped.
+   */
+  async function readSaved(conversation: Conversation): Promise<void> {
+    const list = await loadSaved(conversation.id, lifetime.signal)
+    if (!conversation.saved || list.revision > conversation.saved.revision) {
+      conversation.saved = list
+    }
+  }
+
+  /** The list without the saved message `id`, at once; answers it with its place. */
+  function dropSaved(conversation: Conversation, id: string): { message: SavedMessage; index: number } | undefined {
+    const list = conversation.saved
+    const index = list?.messages.findIndex((message) => message.id === id) ?? -1
+    if (!list || index === -1) {
+      return undefined
+    }
+    const message = list.messages[index]!
+    list.messages = list.messages.filter((each) => each.id !== id)
+    return { message, index }
+  }
+
+  /** Puts a saved message the backend still keeps back in the list, at `index`. */
+  function putBackSaved(conversation: Conversation, message: SavedMessage, index: number): void {
+    const list = conversation.saved
+    if (!list || list.messages.some((each) => each.id === message.id)) {
+      return
+    }
+    const messages = [...list.messages]
+    messages.splice(Math.min(index, messages.length), 0, message)
+    list.messages = messages
+  }
+
+  /**
+   * Save for Later (`product.md` § Saved for later): the composer's message,
+   * its files included, leaves the composer at once and is kept by the
+   * backend, which empties the draft with it. Its files are uploaded
+   * first. A save that fails puts the message back into the composer while
+   * it is still empty.
+   */
+  async function saveForLater(conversation: Conversation): Promise<void> {
+    const files = messageFiles(conversation)
+    if (
+      conversation.archived ||
+      files.some((file) => isComposerFile(file) && file.phase === 'failed') ||
+      isEmptyMessage(conversation.draft, conversation.attachmentIds.length)
+    ) {
+      return
+    }
+    const text = conversation.draft
+    const fileIds = conversation.attachmentIds
+    const base = conversation.draftBase ?? 0
+    conversation.draft = ''
+    conversation.attachmentIds = []
+    try {
+      const named = await Promise.all(files.map(async (file): Promise<ClientContent> => {
+        if (!isComposerFile(file)) {
+          return { type: 'remote_file', deviceId: file.deviceId, path: file.path }
+        }
+        const upload = await uploads.uploaded(file)
+        return { type: 'upload', ref: upload.id, fileName: file.name }
+      }))
+      await persistConversation(conversation)
+      const message = await draftSync.saveForLater(conversation, { text, files: named }, base)
+      for (const id of fileIds) {
+        removeFile(conversation, id)
+      }
+      if (conversation.saved && !conversation.saved.messages.some((each) => each.id === message.id)) {
+        conversation.saved.messages = [message, ...conversation.saved.messages]
+      }
+    } catch (error) {
+      if (isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
+        refill(conversation, text, fileIds)
+      }
+      report('Could Not Save the Message', error)
+    }
+  }
+
+  /**
+   * Edit on a saved message: it goes into the composer and leaves the list;
+   * a message the composer holds is saved for later in its place, its files
+   * uploaded first, so it is kept whole.
+   */
+  async function editSaved(conversation: Conversation, id: string): Promise<void> {
+    if (conversation.archived) {
+      return
+    }
+    try {
+      await Promise.all(messageFiles(conversation).flatMap((file) => isComposerFile(file) ? [uploads.uploaded(file)] : []))
+      await draftSync.editSaved(conversation, id)
+      dropSaved(conversation, id)
+      if (conversation.id === product.activeConversationId) {
+        composerFocusRequests.value += 1
+      }
+    } catch (error) {
+      report('Could Not Edit the Message', error)
+    }
+  }
+
+  /**
+   * Send on a saved message: it goes the way the composer chose, `way`, and
+   * leaves the list as the session takes it. One another page sent or
+   * deleted first is gone already, and nothing is sent.
+   */
+  async function sendSaved(conversation: Conversation, id: string, way: SendWay): Promise<void> {
+    if (conversation.archived) {
+      return
+    }
+    const taken = dropSaved(conversation, id)
+    if (!taken) {
+      return
+    }
+    try {
+      const runtime = await runtimeFor(conversation)
+      // One another page sent or deleted first was gone, and is.
+      await runtime.sendSaved(id, way === 'send' ? 'message' : way)
+    } catch (error) {
+      // The backend keeps a message whose send failed.
+      putBackSaved(conversation, taken.message, taken.index)
+      report('Could Not Send the Message', error)
+    }
+  }
+
+  /** Delete on a saved message: it goes at once, and the toast's Undo saves it again. */
+  async function deleteSaved(conversation: Conversation, id: string): Promise<void> {
+    if (conversation.archived) {
+      return
+    }
+    const taken = dropSaved(conversation, id)
+    if (!taken) {
+      return
+    }
+    try {
+      await deleteSavedRequest(conversation.id, id, lifetime.signal)
+    } catch (error) {
+      if (!(error instanceof ApiError && error.code === 'saved_not_found')) {
+        putBackSaved(conversation, taken.message, taken.index)
+        report('Could Not Delete the Message', error)
+      }
+      return
+    }
+    showToast({
+      title: 'Saved Message Deleted',
+      tone: 'neutral',
+      action: { label: 'Undo', run: () => void undoDeleteSaved(conversation, taken.message) },
+    })
+  }
+
+  /**
+   * Undo of a deletion: the page's copy of the message is saved again, the
+   * draft left as it is; saved anew, it is the newest on the list.
+   */
+  async function undoDeleteSaved(conversation: Conversation, message: SavedMessage): Promise<void> {
+    try {
+      const saved = await postSaved(
+        conversation.id,
+        { text: message.text, files: message.files.map(namedFile) },
+        lifetime.signal,
+      )
+      if (conversation.saved && !conversation.saved.messages.some((each) => each.id === saved.id)) {
+        conversation.saved.messages = [saved, ...conversation.saved.messages]
+      }
+    } catch (error) {
+      report('Could Not Restore the Message', error)
+    }
   }
 
   /** Holds a message as sent and not yet confirmed, after those still on their way; answers it as the conversation holds it. */
@@ -2273,6 +2468,7 @@ export const useConversations = defineStore('conversations', () => {
     deleted.clear()
     restored.clear()
     savedDrafts.clear()
+    savedAsks.clear()
     storageReported.clear()
   }
 
@@ -2337,6 +2533,10 @@ export const useConversations = defineStore('conversations', () => {
     keepLastWords,
     /** Saves the drafts that wait for typing to pause: when the page is hidden, or, with `keepalive`, closes. */
     flushDrafts: (keepalive = false) => draftSync.flush(items.value, keepalive),
+    saveForLater,
+    editSaved,
+    sendSaved,
+    deleteSaved,
     restoreReplaced: (conversation: Conversation) =>
       void draftSync.act(conversation, 'restore').catch((error) => report('Could Not Restore the Draft', error)),
     dismissReplaced: (conversation: Conversation) =>
