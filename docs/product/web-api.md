@@ -636,8 +636,13 @@ draft's are ([Conversation drafts](#conversation-drafts)).
   are kept until saved ([Blob references](../backend/storage.md)).
 - Sending one is the `send_saved` frame on the conversation socket, `{ id,
   delivery }` with `delivery` the composer's choice: the session sends it as
-  the composer would and removes it, in one step, so it is never both sent
-  and kept, nor sent twice ([Client frames](../agent/runtime.md#client-frames)).
+  the composer would, and the message leaves the list when the session has
+  accepted it, in the same step, so it is never both sent and kept, nor sent
+  twice, and a send the session refuses leaves it on the list
+  ([Client frames](../agent/runtime.md#client-frames)).
+- Undo after Delete saves the message again as a new one, at the top of the
+  list. Saving in a conversation that has no record yet creates the record,
+  as its first send does.
 - An id the conversation has no saved message of answers 404
   `saved_not_found`.
 
