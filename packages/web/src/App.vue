@@ -36,10 +36,13 @@ import { blobUrl } from './api/uploads'
 import { providePageHost } from '@demicodes/web-ui/plugins/page'
 import { productPageHost } from './plugins/host'
 import { useProduct } from './state/product'
+import { usePasskeySignals } from './auth/passkeys'
 provideBlobUrl(blobUrl)
 /** How many recent conversations the search window lists before the user types. */
 const RECENT_CONVERSATIONS = 20
 const product = useProduct()
+// The password manager follows the account's email and passkeys.
+usePasskeySignals()
 providePageHost(productPageHost())
 // A page of another build than the backend serves loads that build, once
 // per build; one that still gets another says so (`web-application.md`

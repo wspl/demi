@@ -133,3 +133,10 @@ demi-runner-command-packages = { path = "../runner-command-packages" }
 # The way a Cloud's runner reaches the backend, through its runner socket.
 demi-runner-process = { path = "../runner-process" }
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+# The passkey scenarios' software authenticator and WebAuthn client, a
+# password manager's: discoverable passkeys that verify their user, backed
+# up, without a signature counter.
+passkey = { version = "0.6", features = ["rust-crypto"] }
+async-trait = "0.1"
+public-suffix = "0.1.3"
+url = "2"

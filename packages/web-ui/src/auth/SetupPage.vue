@@ -18,13 +18,21 @@ import {
  * The first visitor's page on a Demi without accounts: it creates the master
  * account, which manages Demi and every account added later. Owns nothing;
  * the host reports busy, an error, and whether another visitor set Demi up
- * first.
+ * first. Once the account is made, where the server and the browser offer
+ * passkeys, the host shows the optional Add a Passkey step: Add Passkey
+ * asks the browser for one with the password just entered, and Skip goes on
+ * without.
  */
 export type SetupPhase = {
   busy?: boolean
   error?: string
   /** The master account exists already: only signing in is left. */
   taken?: boolean
+  /** The account is made and signed in: the optional passkey step. */
+  passkey?: {
+    busy?: boolean
+    error?: string
+  }
 }
 
 const props = defineProps<{
@@ -42,6 +50,8 @@ const confirmation = defineModel<string>('confirmation', { default: '' })
 const emit = defineEmits<{
   submit: [name: string, email: string, password: string]
   signIn: []
+  addPasskey: []
+  skipPasskey: []
 }>()
 
 const nameLength = computed(() => Array.from(name.value.trim()).length)
@@ -65,7 +75,29 @@ function submit() {
 
 <template>
   <AuthPage
-    v-if="phase.taken"
+    v-if="phase.passkey"
+    title="Add a Passkey"
+    message="Sign in next time with Touch ID, Face ID or your password manager, without your password. You can add one later in Settings › Account."
+  >
+    <div class="flex flex-col gap-4">
+      <!-- The line keeps its height with nothing to say, so a message never moves the buttons. -->
+      <div class="min-h-4">
+        <InlineError v-if="phase.passkey.error" :message="phase.passkey.error" />
+      </div>
+      <Button
+        size="lg"
+        variant="primary"
+        class="w-full"
+        :loading="phase.passkey.busy"
+        @click="emit('addPasskey')"
+      >
+        Add Passkey
+      </Button>
+      <Button size="lg" class="w-full" :disabled="phase.passkey.busy" @click="emit('skipPasskey')">Skip</Button>
+    </div>
+  </AuthPage>
+  <AuthPage
+    v-else-if="phase.taken"
     title="Set Up Demi"
     message="Demi is set up already. Sign in with its master account."
   >

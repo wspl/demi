@@ -29,6 +29,7 @@ demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 demi-plugin-interface = { path = "../plugin-interface" }
+base64.workspace = true
 bytes.workspace = true
 futures-util.workspace = true
 garde.workspace = true
@@ -47,6 +48,17 @@ tokio.workspace = true
 tokio-rusqlite = "0.8"
 tracing.workspace = true
 uuid = { version = "1", features = ["v4"] }
+# The passkeys and their challenges the control store keeps
+# (`storage.md` § Passwords and credentials at rest), as `webauthn-rs`
+# encodes them: its state serialization stores a challenge between a
+# sign-in's two requests, which may reach different workers, and its
+# credential internals give a passkey's backup state.
+webauthn-rs = { version = "=0.5.5", default-features = false, features = ["conditional-ui", "danger-allow-state-serialisation", "danger-credential-internals"] }
+# `webauthn-rs` signs and verifies with OpenSSL, which it offers no
+# alternative to; built from source, so that the static Linux builds of the
+# backend and `demi-server` need no system OpenSSL. No runner, command
+# package or Host program depends on this crate.
+openssl = { version = "0.10", features = ["vendored"] }
 
 [dev-dependencies]
 demi-provider-common = { path = "../provider-common", features = ["testing"] }

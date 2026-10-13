@@ -22,8 +22,12 @@ const anatomy: [string, string][] = [
     'Email and password. The host reports busy, a wrong-credentials error, a lockout and whether the session ended. A wrong password gives the focus back to the password, its text selected, and the line under the fields keeps its height, so nothing moves. A lockout counts down to its end with Sign In off. No registration; a forgotten password goes to the administrator, as the line under Sign In says.'
   ],
   [
+    'Passkeys',
+    'Where the server and the browser offer passkeys, the email field lists them in its autofill and Sign In with Passkey asks the browser for one; neither needs the email first. A passkey that fails says why in the same line under the fields. A server at an IP address, or a browser without passkeys, shows neither.'
+  ],
+  [
     'Setup',
-    'What the first visitor of a Demi without accounts sees instead of signing in: a name, an email, a password and its confirmation create the master account, which signs in. Once it exists, the page is gone and every visitor signs in.'
+    'What the first visitor of a Demi without accounts sees instead of signing in: a name, an email, a password and its confirmation create the master account, which signs in. Where passkeys are offered, an optional Add a Passkey step follows, using the password just entered, with Skip. Once the account exists, the page is gone and every visitor signs in.'
   ],
   [
     'Starting',
@@ -52,7 +56,28 @@ const states: {
     }
   },
   { value: 'expired', label: 'Session Ended', phase: { reason: 'expired' } },
+  { value: 'passkey', label: 'Passkey', phase: { passkeyBusy: true } },
+  {
+    value: 'passkey-error',
+    label: 'Unknown Passkey',
+    phase: { passkeyError: 'This passkey is no longer on any account. Sign in with your password.' },
+  },
 ]
+
+/** Whether the server and the browser offer passkeys. */
+const passkeysOffered = ref(true)
+const offerOptions: { value: 'offered' | 'none'; label: TitleText }[] = [
+  { value: 'offered', label: 'Passkeys' },
+  { value: 'none', label: 'No Passkeys' },
+]
+
+/** Sign In with Passkey: the browser's prompt the product would open, then the chat. */
+async function signInWithPasskey() {
+  state.value = 'passkey'
+  await new Promise((resolve) => setTimeout(resolve, 900))
+  state.value = 'form'
+  productWould('Ask the Browser for a Passkey, Sign In and Open the Chat')
+}
 
 const state = ref('form')
 const email = ref('zan@example.com')
@@ -114,7 +139,22 @@ const setupStates: {
     phase: { error: 'Couldn’t reach Demi. Check the connection and try again.' },
   },
   { value: 'taken', label: 'Set Up Already', phase: { taken: true } },
+  { value: 'passkey', label: 'Add a Passkey', phase: { passkey: {} } },
+  { value: 'passkey-busy', label: 'Adding Passkey', phase: { passkey: { busy: true } } },
+  {
+    value: 'passkey-error',
+    label: 'Passkey Failed',
+    phase: { passkey: { error: 'The passkey could not be verified' } },
+  },
 ]
+
+/** Add Passkey on setup's step: the browser's prompt the product would open, then the chat. */
+async function addFirstPasskey() {
+  setupState.value = 'passkey-busy'
+  await new Promise((resolve) => setTimeout(resolve, 900))
+  setupState.value = 'passkey'
+  productWould('Ask the Browser to Save a Passkey and Open the Chat')
+}
 
 const setupState = ref('form')
 const setupName = ref('Zan')
@@ -133,7 +173,8 @@ function showSetupState(value: string) {
 }
 
 function createAccount(name: string, address: string) {
-  productWould(`Create the Master Account ${name} (${address}) and Open the Chat`)
+  productWould(`Create the Master Account ${name} (${address})`)
+  setupState.value = 'passkey'
 }
 </script>
 
@@ -156,15 +197,24 @@ function createAccount(name: string, address: string) {
     <GallerySection
       v-if="view === 'signin'"
       title="Sign In"
-      note="Switch the host-reported state. The prototype accepts any password except wrong; five failures lock the form."
+      note="Switch the host-reported state, and whether passkeys are offered. The prototype accepts any password except wrong; five failures lock the form. Sign In with Passkey shows the passkey sign-in running, then what the product would do."
     >
-      <div class="mb-3"><Segmented v-model="state" :options="states" /></div>
+      <div class="mb-3 flex flex-wrap gap-3">
+        <Segmented v-model="state" :options="states" />
+        <Segmented
+          :model-value="passkeysOffered ? 'offered' : 'none'"
+          :options="offerOptions"
+          @update:model-value="passkeysOffered = $event === 'offered'"
+        />
+      </div>
       <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
         <EmailLoginPage
           v-model:email="email"
           v-model:password="password"
           :phase="phase"
+          :passkeys="passkeysOffered"
           @submit="signIn"
+          @passkey="signInWithPasskey"
         />
       </div>
     </GallerySection>
@@ -172,7 +222,7 @@ function createAccount(name: string, address: string) {
     <GallerySection
       v-else-if="view === 'setup'"
       title="Setup"
-      note="Switch the state. Too short and differing passwords come from what is typed; the others the host reports. Set Up Already is what a visitor sees when another created the master account first."
+      note="Switch the state. Too short and differing passwords come from what is typed; the others the host reports. Set Up Already is what a visitor sees when another created the master account first. Create Account goes on to the optional Add a Passkey step."
     >
       <div class="mb-3">
         <Segmented
@@ -190,6 +240,8 @@ function createAccount(name: string, address: string) {
           :phase="setupPhase"
           @submit="createAccount"
           @sign-in="view = 'signin'"
+          @add-passkey="addFirstPasskey"
+          @skip-passkey="productWould('Open the Chat')"
         />
       </div>
     </GallerySection>

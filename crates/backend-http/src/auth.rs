@@ -8,6 +8,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
 use demi_backend_accounts::email_change::{StartOutcome, StartRefusal};
+use demi_backend_accounts::passkeys::relying_party_id;
 use demi_backend_database::accounts::ChallengeOutcome;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_page_sync::Part;
@@ -27,7 +28,15 @@ pub(super) async fn setup_status(
     State(services): State<Arc<Services>>,
 ) -> Result<Json<SetupStatus>, ApiError> {
     let needed = !services.control.has_users().await?;
-    Ok(Json(SetupStatus { needed }))
+    let passkey_rp_id = services
+        .public_url
+        .get()
+        .and_then(|url| relying_party_id(url.url()))
+        .map(str::to_owned);
+    Ok(Json(SetupStatus {
+        needed,
+        passkey_rp_id,
+    }))
 }
 
 /// Creates the master account while the instance has none, and signs it in.
