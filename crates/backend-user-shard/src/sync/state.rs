@@ -6,6 +6,7 @@
 
 use demi_backend_accounts::passkeys::{passkey_list, relying_party_id};
 use demi_backend_database::StorageError;
+use demi_backend_database::accounts::TokenHash;
 use demi_backend_page_sync::Part;
 use demi_backend_runners::install::install_commands;
 use demi_plugin_interface::PluginError;
@@ -28,8 +29,12 @@ pub(crate) enum StateError {
 
 impl Shard {
     /// The product state for `user`, this shard's user as the session
-    /// resolved them.
-    pub(crate) async fn product_state(&self, user: UserDto) -> Result<ProductState, StateError> {
+    /// resolved them, read for the page of the session `reader`.
+    pub(crate) async fn product_state(
+        &self,
+        user: UserDto,
+        reader: &TokenHash,
+    ) -> Result<ProductState, StateError> {
         let services = self.services();
         let preferences = services.control.preferences(self.user().clone()).await?;
         let providers = self.provider_states(&user).await?;
@@ -55,6 +60,7 @@ impl Shard {
         let instructions = services.control.instructions(self.user().clone()).await?;
         let credentials = self.credential_list().await?;
         let passkeys = passkey_list(&services.control, self.user()).await?;
+        let sessions = services.sessions.list(self.user(), reader).await?.sessions;
         let plugins = self.plugins().entries().await?;
         let plugin_states = self.plugins().page_states().await?;
         let public_url = services
@@ -83,6 +89,7 @@ impl Shard {
             credentials,
             passkeys,
             passkey_rp_id: relying_party_id(public_url).map(str::to_owned),
+            sessions,
             plugins,
             plugin_states,
             web_build: services.web_build.clone(),
@@ -92,11 +99,13 @@ impl Shard {
     }
 
     /// The part as the message that carries it, read now for `user`, this
-    /// shard's user; a conversation the user no longer has was deleted.
+    /// shard's user, and the page of the session `reader`; a conversation
+    /// the user no longer has was deleted.
     pub(crate) async fn read_part(
         &self,
         part: &Part,
         user: &UserDto,
+        reader: &TokenHash,
     ) -> Result<Option<SyncEvent>, StateError> {
         let control = &self.services().control;
         let event = match part {
@@ -148,6 +157,9 @@ impl Shard {
                     user_handle: list.user_handle,
                 }
             }
+            Part::Sessions => SyncEvent::Sessions {
+                sessions: self.services().sessions.list(self.user(), reader).await?.sessions,
+            },
             Part::Plugins => SyncEvent::Plugins {
                 plugins: self.plugins().entries().await?,
             },

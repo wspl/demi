@@ -27,7 +27,7 @@ import { PLUGIN_PAGES } from '../generated/pages'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import type { SettingsState } from '../fixtures/settings'
-import type { PasskeyAddOutcome, SettingsPasskeyHost } from '@demicodes/web-ui/settings/types'
+import type { PasskeyAddOutcome, SettingsPasskeyHost, SettingsSessionHost } from '@demicodes/web-ui/settings/types'
 import GallerySettingsProviders from './GallerySettingsProviders.vue'
 import GalleryInstructions from './GalleryInstructions.vue'
 import GalleryCredentials from './GalleryCredentials.vue'
@@ -115,6 +115,21 @@ const passkeys = computed<SettingsPasskeyHost>(() => ({
   remove: async (id: string) => {
     await new Promise((resolve) => setTimeout(resolve, 400))
     s.value.account.passkeys = s.value.account.passkeys.filter((candidate) => candidate.id !== id)
+  },
+}))
+/**
+ * The account's signed-in browsers as the product's host keeps them: Sign
+ * Out drops the browser after a beat, as the server's answer and its
+ * `sessions` part would, and the product would send that browser's pages to
+ * the sign-in page.
+ */
+const sessions = computed<SettingsSessionHost>(() => ({
+  sessions: s.value.account.sessions,
+  signOut: async (id: string) => {
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    const ended = s.value.account.sessions.find((session) => session.id === id)
+    s.value.account.sessions = s.value.account.sessions.filter((session) => session.id !== id)
+    productWould(`Send the Pages of ${ended?.name ?? 'the Browser'} to the Sign-In Page`)
   },
 }))
 /** The page whose section `tab` names, which reaches the section's page host. */
@@ -304,6 +319,7 @@ function resetShortcuts() {
     :email-phase="emailPhase"
     :password-phase="passwordPhase"
     :passkeys="passkeys"
+    :sessions="sessions"
     @update:name="rename"
     @change-email="openChangeEmail"
     @change-password="openChangePassword"

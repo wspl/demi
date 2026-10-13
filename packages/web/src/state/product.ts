@@ -134,6 +134,8 @@ function partEvent(state: ProductState, part: Part): PartEvent {
       return { type: 'credentials', credentials: state.credentials }
     case 'passkeys':
       return { type: 'passkeys', ...state.passkeys }
+    case 'sessions':
+      return { type: 'sessions', sessions: state.sessions }
   }
   if (part.startsWith('plugin:')) {
     const plugin = part.slice('plugin:'.length)
@@ -177,6 +179,8 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
       return { ...state, credentials: event.credentials }
     case 'passkeys':
       return { ...state, passkeys: { passkeys: event.passkeys, userHandle: event.userHandle } }
+    case 'sessions':
+      return { ...state, sessions: event.sessions }
   }
 }
 

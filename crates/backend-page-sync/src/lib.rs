@@ -37,6 +37,8 @@ pub enum Part {
     Credentials,
     /// The user's passkeys.
     Passkeys,
+    /// The user's sessions, the signed-in browsers.
+    Sessions,
     /// The plugin list: whether the user has each plugin on.
     Plugins,
     /// A plugin's state, by the plugin's id.
@@ -52,6 +54,9 @@ struct Channel {
     /// The session the channel opened with; none for a watch of the
     /// backend's own, which no sign-out ends.
     session: Option<TokenHash>,
+    /// Whether it follows the parts; a conversation socket's watch follows
+    /// only its session's end.
+    follows_parts: bool,
     marked: Mutex<Marked>,
     /// Woken by each mark; a mark while the task is busy leaves a permit, so
     /// none is missed.
@@ -80,6 +85,9 @@ impl Channel {
     }
 
     fn mark(&self, part: Part) {
+        if !self.follows_parts {
+            return;
+        }
         self.lock().parts.insert(part);
         self.wake.notify_one();
     }
@@ -96,19 +104,28 @@ impl SyncRegistry {
     /// `session`, for every change marked from now on, until the
     /// registration is dropped.
     pub fn register(&self, user: &UserId, session: TokenHash) -> Registration {
-        self.add(user, Some(session))
+        self.add(user, Some(session), true)
     }
 
     /// Registers a watch of `user`'s changes for a part of the backend that
     /// follows them as a page does, such as the search index, until the
     /// registration is dropped.
     pub fn watch(&self, user: &UserId) -> Registration {
-        self.add(user, None)
+        self.add(user, None, true)
     }
 
-    fn add(&self, user: &UserId, session: Option<TokenHash>) -> Registration {
+    /// Registers a watch of the end of `user`'s session `session`, for a
+    /// page's socket other than its channel, such as a conversation socket,
+    /// which closes with its session: its `marked` returns once the session
+    /// is signed out, and for nothing else.
+    pub fn watch_session(&self, user: &UserId, session: TokenHash) -> Registration {
+        self.add(user, Some(session), false)
+    }
+
+    fn add(&self, user: &UserId, session: Option<TokenHash>, follows_parts: bool) -> Registration {
         let channel = Arc::new(Channel {
             session,
+            follows_parts,
             marked: Mutex::default(),
             wake: Notify::new(),
         });

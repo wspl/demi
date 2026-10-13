@@ -16,6 +16,7 @@
 
 use std::cell::RefCell;
 use std::rc::{Rc, Weak};
+use std::time::Duration;
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
 use demi_agent_server::{ContentError, ContentResolver, FileReference, Outgoing, ResolvedFiles};
@@ -37,6 +38,7 @@ use tokio_util::sync::CancellationToken;
 
 use super::failure_facts;
 use crate::shard::page_socket::{PageSocketOrigin, open_page_socket};
+use crate::sync::ChannelSession;
 use crate::shard::{PageEnd, PageSocket, Shard};
 use demi_backend_host_access::access::{Admitted, ConversationHost, Waits};
 use demi_backend_host_access::remote_files::RemoteFile;
@@ -45,6 +47,10 @@ use demi_backend_host_access::root_of;
 /// The close code of a socket whose page fell a full outbox behind; the page
 /// reconnects and adopts the running tree.
 const LAGGED: u16 = 4001;
+
+/// The close code of a socket whose session was signed out, the
+/// synchronization channel's.
+const SESSION_ENDED: u16 = 4002;
 
 /// How a conversation socket ended.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -57,6 +63,10 @@ enum Ending {
     Lagged,
     /// The backend is shutting down.
     Closing,
+    /// The session the socket opened with was signed out, or expired.
+    SessionEnded,
+    /// The session could not be read at its expiry.
+    SessionUnread,
     /// The agent connection's outbox closed, so nothing more reaches the
     /// page; the socket goes without a close frame.
     Detached,
@@ -75,6 +85,8 @@ impl Ending {
             Self::NotJson => PageEnd::Close(frame(close_code::INVALID, "not_json")),
             Self::Lagged => PageEnd::Fail(frame(LAGGED, "lagged")),
             Self::Closing => PageEnd::Close(frame(close_code::AWAY, "backend_closing")),
+            Self::SessionEnded => PageEnd::Close(frame(SESSION_ENDED, "session_ended")),
+            Self::SessionUnread => PageEnd::Fail(frame(close_code::ERROR, "internal_error")),
             Self::Detached => PageEnd::Dropped("agent connection closed"),
         }
     }
@@ -104,12 +116,14 @@ impl Shard {
     /// its end, even when the shard closes meanwhile; until then, the
     /// outbox's frames keep flowing to the page. A socket that has sent
     /// nothing for the heartbeat interval sends a `heartbeat`. `origin` is
-    /// who opened it, which its log lines name.
+    /// who opened it, which its log lines name. The session it opened with,
+    /// `session`, closes it as it is signed out or as it expires.
     pub async fn serve_conversation_socket(
         self: Rc<Self>,
         conversation: ConversationRecord,
         socket: WebSocket,
         origin: PageSocketOrigin,
+        session: ChannelSession,
     ) {
         // Counted before any wait, so the shard's close waits for this
         // socket; one adopted as the close begins ends at once.
@@ -117,6 +131,7 @@ impl Shard {
         if self.is_closing() {
             return;
         }
+        let signed_out = self.services().sync.watch_session(self.user(), session.token.clone());
         let id = conversation.id;
         let resolver = Rc::new(ConversationFiles {
             shard: Rc::downgrade(&self),
@@ -203,6 +218,8 @@ impl Shard {
         let ending = tokio::select! {
             biased;
             () = self.closed() => Ending::Closing,
+            () = signed_out.marked() => Ending::SessionEnded,
+            ending = self.session_expiry(session) => ending,
             ending = relay => ending,
         };
         // A frame that reached the agent is handled to its end: its session
@@ -213,6 +230,35 @@ impl Shard {
         page.end(stream, ending.page_end()).await;
         // Dropping the connection, last, detaches it from its tree, whose
         // turns go on.
+    }
+
+    /// Resolves as the socket's session expires: at the expiry the socket
+    /// holds, it looks at the session again, since a request may have
+    /// renewed it, and waits for the new expiry if one did. One timer at a
+    /// time, which dropping the future releases.
+    async fn session_expiry(&self, mut session: ChannelSession) -> Ending {
+        let services = self.services();
+        loop {
+            let left = session.expires_at.to_jiff().duration_since(services.clock.now().to_jiff());
+            // An expiry already past is due at once.
+            tokio::time::sleep(Duration::try_from(left).unwrap_or(Duration::ZERO)).await;
+            match services.sessions.check(&session.token).await {
+                Ok(Some(renewed)) if renewed.expires_at > session.expires_at => {
+                    session.expires_at = renewed.expires_at;
+                }
+                // A session the clock has not yet passed is checked again
+                // at the expiry it holds.
+                Ok(Some(_)) => {}
+                Ok(None) => return Ending::SessionEnded,
+                Err(error) => {
+                    tracing::error!(
+                        error = &error as &dyn std::error::Error,
+                        "a conversation socket's session could not be read"
+                    );
+                    return Ending::SessionUnread;
+                }
+            }
+        }
     }
 
     /// Restores the conversation's tree with no page attached, as an `open`

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
@@ -16,7 +16,7 @@ import GalleryWebSearchShowcase from '../components/GalleryWebSearchShowcase.vue
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
 import GallerySettingsProviders from '../components/GallerySettingsProviders.vue'
-import { createSettingsState, incompleteProviders, mockProviders } from '../fixtures/settings'
+import { createSettingsState, gallerySessions, incompleteProviders, mockProviders } from '../fixtures/settings'
 import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
 import { PLUGIN_PAGES } from '../generated/pages'
 import { providePageHost, withPluginSections } from '@demicodes/web-ui/plugins/page'
@@ -34,6 +34,7 @@ import { demoProviders } from '../fixtures/catalog'
 import { composerModels, setGalleryContextLimit } from '../fixtures/context-limits'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
+import type { SettingsSessionHost } from '@demicodes/web-ui/settings/types'
 import { demoInstallCommands, demoDeviceReport } from '../fixtures/device-installation'
 import { DEMO_RUNNER_RELEASE, DIRECT_SCENARIOS, galleryDevices, useGalleryDevices, type DirectScenario } from '../fixtures/devices'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
@@ -153,6 +154,14 @@ function answerAs(answer: 'granted' | 'denied'): void {
 }
 /** The account specimen on a server without mail. */
 const noMail = ref({ name: 'Zan' })
+/** The specimen's signed-in browsers: Sign Out drops one, as the product's list would. */
+const noMailSessions = reactive<SettingsSessionHost>({
+  sessions: gallerySessions(),
+  signOut: async (id: string) => {
+    noMailSessions.sessions = noMailSessions.sessions.filter((session) => session.id !== id)
+    productWould('Sign the Browser Out')
+  },
+})
 // The plugins' sections reach the fixture's skills plugin, and show while the
 // fixture's Plugins page has their plugin on, as the product's do.
 providePageHost(
@@ -366,6 +375,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             email-unavailable="This server cannot send email, which a change needs for its code. Ask your administrator."
             :email-phase="{ kind: 'form', currentEmail: 'zan@example.com' }"
             :password-phase="{ kind: 'form' }"
+            :sessions="noMailSessions"
             @change-password="productWould('Open Change Password')"
             @submit-email="productWould('Send the Code')"
             @verify-email="productWould('Check the Code')"

@@ -23,8 +23,8 @@ use crate::shard::{PageEnd, PageGone, PageSocket, PageStream, Shard};
 /// The close code of a channel whose session ended.
 const SESSION_ENDED: u16 = 4002;
 
-/// The session a channel opened with: its token's hash, its user, and when
-/// it expires unless a request renews it.
+/// The session a page's channel or conversation socket opened with: its
+/// token's hash, its user, and when it expires unless a request renews it.
 pub struct ChannelSession {
     pub token: TokenHash,
     pub user: UserDto,
@@ -127,7 +127,7 @@ impl Channel<'_> {
     async fn serve(&mut self) -> Result<Infallible, End> {
         let state = self
             .shard
-            .product_state(self.session.user.clone())
+            .product_state(self.session.user.clone(), &self.session.token)
             .await
             .map_err(|error| {
                 tracing::error!(
@@ -200,7 +200,7 @@ impl Channel<'_> {
     async fn send_part(&mut self, part: &Part) -> Result<(), End> {
         let read = self
             .shard
-            .read_part(part, &self.session.user)
+            .read_part(part, &self.session.user, &self.session.token)
             .await
             .map_err(|error| {
                 tracing::error!(

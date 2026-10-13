@@ -16,7 +16,6 @@ use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
 use super::accounts::{
     Account, ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash, PasswordHash,
-    ResolvedSession, SessionPolicy, TokenHash,
 };
 use super::columns::{decode, instant, json, to_json};
 use super::{StorageError, schema, sqlite};
@@ -263,98 +262,6 @@ impl ControlService {
         .await
     }
 
-    /// Stores a new session and answers when it expires. A login is the one
-    /// moment the table grows, so it also drops the sessions that ran out
-    /// unnoticed.
-    pub async fn open_web_session(
-        &self,
-        token: TokenHash,
-        user: UserId,
-        policy: SessionPolicy,
-    ) -> Result<Timestamp, StorageError> {
-        self.call(move |connection, now| {
-            let expires_at = later(now, policy.lifetime)?;
-            let transaction = connection.transaction()?;
-            transaction.execute(
-                "DELETE FROM web_sessions WHERE expires_at <= ?1",
-                [now.as_millisecond()],
-            )?;
-            transaction.execute(
-                "INSERT INTO web_sessions (token_hash, user_id, expires_at) VALUES (?1, ?2, ?3)",
-                params![token.as_str(), user.as_str(), expires_at.as_millisecond()],
-            )?;
-            transaction.commit()?;
-            Ok(expires_at)
-        })
-        .await
-    }
-
-    /// The live session a token hash names, renewed when less than the
-    /// policy's margin remains; an expired session is deleted and is `None`.
-    pub async fn resolve_web_session(
-        &self,
-        token: TokenHash,
-        policy: SessionPolicy,
-    ) -> Result<Option<ResolvedSession>, StorageError> {
-        self.call(move |connection, now| {
-            let transaction = connection.transaction()?;
-            let found = {
-                let mut statement = transaction.prepare_cached(
-                    "SELECT s.expires_at, u.id, u.email, u.nickname, u.role, u.created_at
-                     FROM web_sessions s JOIN users u ON u.id = s.user_id
-                     WHERE s.token_hash = ?1",
-                )?;
-                let mut rows = statement.query([token.as_str()])?;
-                match rows.next()? {
-                    Some(row) => {
-                        Some((instant(row, "web_sessions", "expires_at")?, user_row(row)?))
-                    }
-                    None => None,
-                }
-            };
-            let Some((expires_at, user)) = found else {
-                return Ok(None);
-            };
-            if expires_at <= now {
-                transaction.execute(
-                    "DELETE FROM web_sessions WHERE token_hash = ?1",
-                    [token.as_str()],
-                )?;
-                transaction.commit()?;
-                return Ok(None);
-            }
-            let renewed = expires_at.to_jiff().duration_since(now.to_jiff()) < policy.renew_below;
-            let expires_at = if renewed {
-                let extended = later(now, policy.lifetime)?;
-                transaction.execute(
-                    "UPDATE web_sessions SET expires_at = ?1 WHERE token_hash = ?2",
-                    params![extended.as_millisecond(), token.as_str()],
-                )?;
-                extended
-            } else {
-                expires_at
-            };
-            transaction.commit()?;
-            Ok(Some(ResolvedSession {
-                user,
-                expires_at,
-                renewed,
-            }))
-        })
-        .await
-    }
-
-    pub async fn close_web_session(&self, token: TokenHash) -> Result<(), StorageError> {
-        self.call(move |connection, _| {
-            connection.execute(
-                "DELETE FROM web_sessions WHERE token_hash = ?1",
-                [token.as_str()],
-            )?;
-            Ok(())
-        })
-        .await
-    }
-
     /// Stores a challenge in place of the user's previous one and answers
     /// when it expires; `None` while the previous one was sent less than the
     /// cooldown ago.
@@ -533,7 +440,7 @@ fn saved_preferences(connection: &Connection, user: &UserId) -> Result<Preferenc
 }
 
 /// A `users` row, read from its columns in `USER_COLUMNS`.
-fn user_row(row: &Row<'_>) -> Result<UserDto, StorageError> {
+pub(crate) fn user_row(row: &Row<'_>) -> Result<UserDto, StorageError> {
     Ok(UserDto {
         id: decode("users", "id", UserId::try_from(row.get::<_, String>("id")?))?,
         email: decode(
@@ -608,12 +515,25 @@ mod tests {
 
     use super::testing::master;
     use super::*;
+    use crate::accounts::{SessionPolicy, TokenHash};
+    use crate::web_sessions::NewSession;
 
     /// A session policy of the tests: 30 days, renewed below 15.
     const SESSION_POLICY: SessionPolicy = SessionPolicy {
         lifetime: SignedDuration::from_hours(30 * 24),
         renew_below: SignedDuration::from_hours(15 * 24),
+        activity_every: Some(SignedDuration::from_hours(1)),
     };
+
+    /// A session of `user` from an unnamed browser, by the hash of `token`.
+    fn session(token: &str, user: &UserDto) -> NewSession {
+        NewSession {
+            token: TokenHash::of(token),
+            user: user.id.clone(),
+            name: "Safari on macOS".to_owned(),
+            handoff: None,
+        }
+    }
 
     /// A data directory another build of Demi made, an older one whose
     /// schema this build edited or the TypeScript backend's, stops startup
@@ -666,13 +586,13 @@ mod tests {
         let user = master(&control).await;
         for token in ["first", "second"] {
             control
-                .open_web_session(TokenHash::of(token), user.id.clone(), SESSION_POLICY)
+                .open_web_session(session(token, &user), SESSION_POLICY)
                 .await
                 .unwrap();
         }
         clock.advance(SESSION_POLICY.lifetime);
         control
-            .open_web_session(TokenHash::of("third"), user.id.clone(), SESSION_POLICY)
+            .open_web_session(session("third", &user), SESSION_POLICY)
             .await
             .unwrap();
         let sessions: i64 = control

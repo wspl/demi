@@ -71,7 +71,7 @@ pub fn web() -> Vec<Root> {
         panel,
         passkeys,
         permissions,
-        plugins, providers, search, settings, sidebar, state, subagents, usage, users, workspaces,
+        plugins, providers, search, sessions, settings, sidebar, state, subagents, usage, users, workspaces,
     };
     vec![
         receives::<error::ErrorBody>(),
@@ -92,6 +92,12 @@ pub fn web() -> Vec<Root> {
         sends::<passkeys::PasskeyPassword>(),
         sends::<passkeys::NewPasskey>(),
         sends::<passkeys::PasskeyPatch>(),
+        receives::<sessions::SessionList>(),
+        receives::<sessions::HandoffCode>(),
+        receives::<sessions::HandoffAnswer>(),
+        sends::<sessions::VerifyPassword>(),
+        sends::<sessions::HandoffRequest>(),
+        sends::<sessions::HandoffSpend>(),
         receives::<state::ProductState>(),
         receives::<state::SyncEvent>(),
         receives::<settings::Settings>(),

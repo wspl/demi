@@ -412,3 +412,21 @@ export interface SettingsPasskeyHost {
   /** Removes the passkey; a refusal the host says itself. */
   remove: (id: string) => Promise<void>
 }
+
+/** A browser signed in to the account, as Settings › Account lists it (`product.md` § User system). */
+export interface SettingsSession {
+  id: string
+  /** The browser and system it signed in from, such as Safari on iPhone. */
+  name: string
+  createdAt: string
+  lastActiveAt: string
+  /** The browser the user is reading the list in. */
+  current: boolean
+}
+
+/** The account's signed-in browsers and what the host does with them, for Settings › Account. */
+export interface SettingsSessionHost {
+  sessions: readonly SettingsSession[]
+  /** Signs another browser out; a refusal the host says itself. */
+  signOut: (id: string) => Promise<void>
+}
