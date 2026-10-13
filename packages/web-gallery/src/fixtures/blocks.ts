@@ -217,9 +217,9 @@ expect(readSessionCookie(header)).toEqual({
 \`\`\`
 `
 
-export const thinkingText = `The cookie name changed from sid to session. The helper already writes the new header.
+export const thinkingText = `The cookie name changed from \`sid\` to \`session\`. The helper already writes the new header.
 
-The test is the one still looking for sid, so the fix belongs in the test, not in the helper.
+The test is the one still looking for \`sid\`, so the fix belongs in the test, not in the helper. 测试里仍在找旧的名字，所以应该改测试，而不是改 helper。
 
 Let me search the test for the old name first.`
 

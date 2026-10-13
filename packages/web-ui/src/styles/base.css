@@ -75,6 +75,8 @@
   --text-conversation--line-height: var(--agent-leading);
   --text-chrome: var(--agent-chrome);
   --text-row: var(--agent-row);
+  --text-conversation-secondary: var(--agent-secondary);
+  --text-conversation-secondary--line-height: var(--agent-secondary-leading);
   --spacing-hit-xs: 20px;
   --spacing-hit-sm: 24px;
   --spacing-hit: 28px;
@@ -373,6 +375,11 @@ html {
   /* A transcript's rows read at its prose's size, whatever size the user
      picked; their lighter colour (--fg-row) keeps them under the prose. */
   --agent-row: var(--agent-text);
+  /* A block of secondary reading, such as an opened thinking: one step under
+     the prose (1 px under it at every size the user can pick), and looser, since small
+     text in a long block reads cramped at the prose's leading. */
+  --agent-secondary: calc(var(--agent-text) - 1px);
+  --agent-secondary-leading: 1.65;
 }
 
 button,
