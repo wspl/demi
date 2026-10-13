@@ -2,15 +2,15 @@
 //! browsers, at the edge (`web-api.md` § Account API, `backend.md`
 //! § Authentication and ownership): a code needs a session verified in the
 //! last five minutes, opens a page of the product once within ten minutes,
-//! and signs the phone in as a session of its own, which the laptop's page
-//! learns of from the `sessions` part and can sign out, its pages' sockets
-//! with it.
+//! in the phone's own session of the account when it has one and else in a
+//! session of its own, which the laptop's page learns of from the
+//! `sessions` part and can sign out, its pages' sockets with it.
 
 use jiff::SignedDuration;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
-use demi_web_api_protocol::auth::Identity;
+use demi_web_api_protocol::auth::{Identity, Role};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::sessions::{HandoffCode, SessionDto, SessionList};
 use demi_web_api_protocol::state::SyncEvent;
@@ -41,12 +41,38 @@ fn code_of(made: &HandoffCode) -> String {
 
 /// Spends `code` from a phone's browser, which holds no session.
 async fn spend(backend: &TestBackend, code: &str) -> Answer {
-    let request = reqwest::Client::new()
+    spend_signed_in(backend, code, None).await
+}
+
+/// Spends `code` from a phone's browser, which holds `held`'s session
+/// cookie when given.
+async fn spend_signed_in(backend: &TestBackend, code: &str, held: Option<&Session>) -> Answer {
+    let mut request = reqwest::Client::new()
         .post(format!("{}/api/auth/handoff", backend.url))
         .header("user-agent", IPHONE_SAFARI)
         .header("content-type", "application/json")
         .body(json!({ "code": code }).to_string());
+    if let Some(held) = held {
+        request = request.header("cookie", &held.cookie);
+    }
     answer(request.send().await.unwrap()).await
+}
+
+/// The sessions part's first list that holds a session the code `made`
+/// opened, skipping the messages before it.
+async fn handed_off(page: &mut crate::support::SyncChannel, made: &HandoffCode) -> Vec<SessionDto> {
+    let carries = |sessions: &Vec<SessionDto>| {
+        sessions
+            .iter()
+            .any(|session| session.handoff_id.as_ref() == Some(&made.id))
+    };
+    let received = page
+        .until(|event| matches!(event, SyncEvent::Sessions { sessions } if carries(sessions)))
+        .await;
+    match received.into_iter().last() {
+        Some(SyncEvent::Sessions { sessions }) => sessions,
+        other => unreachable!("{other:?}"),
+    }
 }
 
 async fn verify(backend: &TestBackend, laptop: &Session, password: &str) -> Answer {
@@ -146,6 +172,81 @@ async fn a_verified_laptop_hands_the_account_to_a_phone_once() {
     assert_eq!(expired.refusal(), (StatusCode::UNAUTHORIZED, ErrorCode::HandoffExpired));
     let lapsed = make_code(&backend, &laptop, "/chat").await;
     assert_eq!(lapsed.refusal(), (StatusCode::FORBIDDEN, ErrorCode::VerificationRequired));
+    backend.close().await;
+}
+
+/// A phone already signed in to the account opens the page in the session
+/// it has: no second session, no cookie, and the laptop learns of the code
+/// from the phone's session.
+#[tokio::test]
+async fn a_phone_signed_in_to_the_account_keeps_its_session() {
+    let harness = Harness::new();
+    let (backend, laptop) = harness.start_set_up().await;
+    let phone = session_from(&backend.login_answer(crate::support::MASTER_EMAIL, MASTER_PASSWORD).await);
+    let before: SessionList = backend.get("/api/auth/sessions", Some(&phone)).await.json();
+    let [phone_before, _] = before.sessions.as_slice() else {
+        panic!("two sessions: {before:?}");
+    };
+    assert!(phone_before.current);
+    let mut laptop_page = backend.sync(&laptop).await;
+    laptop_page.snapshot().await;
+
+    let made: HandoffCode = make_code(&backend, &laptop, "/chat").await.json();
+    let spent = spend_signed_in(&backend, &code_of(&made), Some(&phone)).await;
+    assert_eq!(spent.status, StatusCode::OK, "{}", String::from_utf8_lossy(&spent.body));
+    assert_eq!(spent.json::<Value>(), json!({ "to": "/chat" }));
+    assert!(spent.session_cookies().is_empty(), "{:?}", spent.session_cookies());
+
+    // Still two browsers, the phone's own session carrying the code.
+    let listed = handed_off(&mut laptop_page, &made).await;
+    assert_eq!(listed.len(), 2, "{listed:?}");
+    let phone_session = listed
+        .iter()
+        .find(|session| session.handoff_id.as_ref() == Some(&made.id))
+        .unwrap();
+    assert_eq!(phone_session.id, phone_before.id);
+    assert_eq!(backend.get("/api/auth/me", Some(&phone)).await.status, StatusCode::OK);
+
+    // The code is spent all the same.
+    let again = spend_signed_in(&backend, &code_of(&made), Some(&phone)).await;
+    assert_eq!(again.refusal(), (StatusCode::UNAUTHORIZED, ErrorCode::HandoffExpired));
+    backend.close().await;
+}
+
+/// A phone signed in to another account signs that one out, its pages with
+/// it, and takes this one in a new session.
+#[tokio::test]
+async fn a_phone_signed_in_to_another_account_takes_this_one() {
+    let harness = Harness::new();
+    let (backend, laptop) = harness.start_set_up().await;
+    harness.add_user("bob@example.test", "bob's password", Role::User);
+    let bob = backend.login("bob@example.test", "bob's password").await;
+    let mut bob_page = backend.sync(&bob).await;
+    bob_page.snapshot().await;
+    let mut laptop_page = backend.sync(&laptop).await;
+    laptop_page.snapshot().await;
+
+    let made: HandoffCode = make_code(&backend, &laptop, "/chat").await.json();
+    let spent = spend_signed_in(&backend, &code_of(&made), Some(&bob)).await;
+    assert_eq!(spent.status, StatusCode::OK, "{}", String::from_utf8_lossy(&spent.body));
+
+    // Bob's session is gone, its page closed with it.
+    assert_eq!(bob_page.closed().await, (4002, "session_ended".to_owned()));
+    let me = backend.get("/api/auth/me", Some(&bob)).await;
+    assert_eq!(me.refusal(), (StatusCode::UNAUTHORIZED, ErrorCode::Unauthenticated));
+
+    // The phone holds a new session of this account, made by the code.
+    let cookies = spent.session_cookies();
+    let [cookie] = cookies.as_slice() else {
+        panic!("one session cookie: {cookies:?}");
+    };
+    let phone = Session {
+        cookie: cookie.split(';').next().unwrap().to_owned(),
+        user: laptop.user.clone(),
+    };
+    assert_eq!(backend.get("/api/auth/me", Some(&phone)).await.json::<Identity>().user, laptop.user);
+    let listed = handed_off(&mut laptop_page, &made).await;
+    assert_eq!(listed.len(), 2, "{listed:?}");
     backend.close().await;
 }
 

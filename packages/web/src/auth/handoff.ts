@@ -78,11 +78,12 @@ export async function verifyWithPasskey(): Promise<HandoffVerifyOutcome> {
 }
 
 /**
- * How spending a code on the phone went: the page to go to, signed in; the
+ * How spending a code on the phone went: the page to go to, signed in to
+ * the code's account, in the phone's own session or a new one; the
  * code expired, was spent or is unknown; or another failure.
  */
 export type HandoffSpent =
-  | { kind: 'signedIn'; to: string }
+  | { kind: 'handedOff'; to: string }
   | { kind: 'expired' }
   | { kind: 'failed'; message: string }
 
@@ -93,7 +94,7 @@ export async function spendHandoffCode(code: string): Promise<HandoffSpent> {
       method: 'POST',
       ...jsonBody({ code } satisfies HandoffSpend),
     })
-    return { kind: 'signedIn', to: (await readResponse(response, handoffAnswerSchema)).to }
+    return { kind: 'handedOff', to: (await readResponse(response, handoffAnswerSchema)).to }
   } catch (error) {
     if (error instanceof ApiError && error.code === 'handoff_expired') {
       return { kind: 'expired' }
@@ -105,7 +106,8 @@ export async function spendHandoffCode(code: string): Promise<HandoffSpent> {
 /**
  * The account's signed-in browsers (`product.md` § User system), which the
  * synchronization channel's `sessions` part brings, and the dialog that
- * signs a phone in: it learns of the phone from the session the code made.
+ * hands off to a phone: it learns of the phone from the session that
+ * carries the code, the one the code made or the phone's own.
  */
 export const useSessions = defineStore('sessions', () => {
   const product = useProduct()
@@ -141,7 +143,7 @@ export const useSessions = defineStore('sessions', () => {
       makeCode: () => makeHandoffCode(to()),
       verifyPassword: verifyWithPassword,
       verifyPasskey: passkeys ? verifyWithPasskey : undefined,
-      signedInWith: (id) => product.snapshot?.sessions.find((session) => session.handoffId === id)?.name ?? null,
+      handedOffTo: (id) => product.snapshot?.sessions.find((session) => session.handoffId === id)?.name ?? null,
     }
   }
 
