@@ -1995,7 +1995,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `edit_result` | The operation id and an `outcome`: `{ status: "accepted", turnId }` or `{ status: "rejected", reason }` |
 | `abort_result` | What was stopped, and whether another `abort` would stop more |
 | `shell_output` | A command's live view ([Live output](#live-output)): `subagentId` when the command is a subagent's, and its `status`: `running`, `exited` with the `exitCode`, or `aborted`, each with the `commandId`, the `toolUseId` of the `shell` call that started it, the `tail` and `chars` of the pages' view, and `runningMs` |
-| `shell_gone` | `commandId`: a command the page named as running in `open`'s `held` that the conversation no longer has; the page drops it from its running list |
+| `shell_gone` | `commandId`: a command the page named as running in `open`'s `held` that the conversation no longer has, as a closed subagent's command; the page drops it from its running list, and the call's row shows how it ended from the transcript |
 | `shell_write_result` | The command id |
 | `remove_result` | The steer's or queued message's id and an `outcome`: `removed`, or `gone_on` when the turn had already taken it or the session never held it |
 | `pending_calls` | The calls the model is writing, each `{ toolUseId, toolName, description }`, `description` null until written, and `subagentId` when they are a subagent's ([Calls being written](#calls-being-written)) |
