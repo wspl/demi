@@ -596,7 +596,9 @@ message's row.
   Saved* in secondary red text, with Retry and Delete beside Edit; an edit
   refused leaves the message in the list and what the composer held in a
   *Not Saved* row the same way, so neither text is only on the page's
-  screen a moment and then gone.
+  screen a moment and then gone. A Not Saved row is this browser's, kept
+  across a reload, since the server refused it; the entry's count includes
+  it. A text in such a row is not also left in the composer.
 - **Saved messages belong to the conversation** and live on the server, so every
   page and device shows the same; archiving the conversation keeps them.
 

@@ -229,7 +229,11 @@ input, which the multi-worker control service also relies on
   as a draft holds them; `conversation_drafts` gains the revision of the
   list, which every save, edit, send and removal raises in the transaction
   that makes it. Its rows are deleted with their conversation, and the
-  uploads they name are held as a draft's are.
+  uploads they name are held as a draft's are. `saved_edits` keeps each
+  edit's operation id with its answer, and `saved_sends` each sent saved
+  message's id with the turn id it became, both for a day, so a write sent
+  again answers as it first did and a stale save of a sent message makes
+  no row; a write past the day is a new one.
   `permission_requests` stores each conversation's
   [permission requests](../agent/permissions.md#requests): id, conversation,
   categories, a JSON array of category ids sorted so that the same
