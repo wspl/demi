@@ -1,27 +1,32 @@
-"Commons Clause" License Condition v1.0
+Demi License
 
-The Software is provided to you by the Licensor under the License, as defined
-below, subject to the following condition.
+Demi is licensed under the Apache License, Version 2.0 (below), with the
+following additional conditions. Where they differ from the Apache License,
+these conditions prevail.
 
-Without limiting other conditions in the License, the grant of rights under
-the License will not include, and the License does not grant to you, the right
-to Sell the Software.
+1. Use. You may use, copy, modify and run Demi for any purpose, including
+   inside a company or other organization, for its own people and its own
+   business. You may charge others for services around Demi that they run
+   for themselves, such as deployment, integration, consulting and support.
 
-For purposes of the foregoing, "Sell" means practicing any or all of the
-rights granted to you under the License to provide to third parties, for a fee
-or other consideration (including without limitation fees for hosting or
-consulting/ support services related to the Software), a product or service
-whose value derives, entirely or substantially, from the functionality of the
-Software. Any license notice or attribution required by the License must also
-include this Commons Clause License Condition notice.
+2. Selling. Without a commercial license from The Demi Authors, you may not
+   offer Demi, or a modified version of it, to third parties for a fee or
+   other consideration: neither by operating it as a hosted or multi-tenant
+   service that they use, nor by selling, licensing or bundling it as a
+   product whose functionality is substantially Demi's. For a commercial
+   license, write to support@demi.sh.
 
-Software: Demi
+3. Branding is not restricted by these conditions; the names and marks of
+   Demi remain subject to section 6 of the Apache License.
 
-License: Apache License, Version 2.0
+4. Contributions. By contributing to Demi, you agree that The Demi Authors
+   may use your contribution under these terms and may also license it to
+   others under other terms, including commercial licenses.
 
-Licensor: The Demi Authors
+5. Versions of Demi released under the Apache License 2.0 alone, before
+   these conditions, keep that license.
 
-For a license to Sell the Software, write to support@demi.sh.
+Copyright 2026 The Demi Authors
 
 -------------------------------------------------------------------------------
 

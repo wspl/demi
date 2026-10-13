@@ -21,4 +21,4 @@ Demi has no TypeScript SDK: this package and
 web app's client of the conversation socket, not a way to run Demi's agent in
 another program ([The TypeScript boundary](../../docs/architecture/contracts.md#the-typescript-boundary)).
 
-Part of [Demi](../../README.md). Apache License 2.0 with the Commons Clause; see [LICENSE](LICENSE).
+Part of [Demi](../../README.md). Demi License; see [LICENSE](LICENSE).
