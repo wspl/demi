@@ -537,6 +537,45 @@ export function messageImageTargets(src: string): string[] {
   return targets
 }
 
+/**
+ * A line that opens display math as the math extension reads it: `$$` or `$`
+ * alone. The extension takes a block as math only once its closing line has
+ * arrived, so before that its lines lex as text.
+ */
+const MATH_OPENER = /^\${1,2}\n/
+
+/**
+ * Where the blocks of `src`, the text of a streaming reply, end that no text
+ * arriving after it can change (`file-previews.md`, a reply that streams
+ * renders a block at a time), as offsets into it in order. The blocks are
+ * the top-level blocks the message's own reader finds, so a blank line
+ * inside a fence, a list item or an indented code block never ends one,
+ * and a fence still open runs to the end. They are read from the lines
+ * that have ended, since the rest of a line can change what the lines
+ * before it are: `1. a`, a blank line and `2` are a list and a paragraph
+ * until `. b` makes them one list, and `x | y` above `- | -` reads as a
+ * table's head until the line goes on as text. Every block before the last
+ * is settled, except:
+ * - a block that opens display math before its closing line (`MATH_OPENER`),
+ *   and every block after it;
+ * - a raw HTML block, and every block after it: only the whole text nests
+ *   what follows `<details>` inside it.
+ */
+export function messageBlockEnds(src: string): number[] {
+  const blocks: { start: number; live: boolean }[] = []
+  let offset = 0
+  for (const token of new agentMarked.Lexer(agentMarked.defaults).blockTokens(src.slice(0, src.lastIndexOf('\n') + 1))) {
+    if (token.type !== 'space')
+      blocks.push({ start: offset, live: token.type === 'html' || (token.type !== 'blockKatex' && MATH_OPENER.test(token.raw)) })
+    offset += token.raw.length
+  }
+  let last = blocks.length - 1
+  const live = blocks.findIndex((block) => block.live)
+  if (live >= 0)
+    last = Math.min(last, live)
+  return blocks.slice(1, Math.max(1, last + 1)).map((block) => block.start)
+}
+
 /** An agent's message: GitHub Flavored Markdown with math. */
 export function renderMarkdown(src: string, options?: MarkdownRenderOptions): string {
   activeOptions = options
