@@ -399,6 +399,7 @@ impl TranscriptLog {
             created_at,
             model: model.clone(),
             data,
+            run: None,
             entries: Vec::new(),
         }));
     }

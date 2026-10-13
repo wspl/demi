@@ -1261,22 +1261,33 @@ async fn a_wait_for_the_model_starts_with_the_turn_before_its_request_is_built()
     assert!(provider.requests().is_empty());
 }
 
-// Until something of the answer shows, the row says Requesting, and the
-// wait runs on: hidden reasoning and a call whose title is not written yet
-// show nothing (`runtime.md` § Waiting for the model). The next request
-// waits again from the end of the step. A paused clock.
+// The wait ends with the model's first output (`runtime.md` § Waiting for
+// the model): a call being written only once its title is, and reasoning
+// as soon as its block starts, redacted reasoning and reasoning whose text
+// never comes included, so a model that thinks never reads as one that has
+// not answered. Each request after a step waits again from the step's end.
+// A paused clock.
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn a_wait_for_the_model_runs_on_until_its_answer_shows_something() {
+async fn a_wait_for_the_model_ends_at_its_first_output_reasoning_at_its_start() {
     let provider = ScriptedRuntime::new([
         paced(vec![
-            (1_000, ProviderEvent::RedactedThinking("opaque".into())),
             (1_000, event::tool_call_start("call-1", "read")),
             (500, event::tool_call_input("call-1", r#"{"descr"#)),
             (500, event::tool_call_input("call-1", r#"iption":"Read the notes","#)),
             (0, event::tool_call("call-1", "read", json!({ "description": "Read the notes" }))),
             (0, event::response(1, 1)),
         ]),
-        Turn::Events(vec![event::text("done"), event::response(1, 1)]),
+        paced(vec![
+            (1_000, ProviderEvent::RedactedThinking("opaque".into())),
+            (1_000, event::tool_call("call-2", "read", json!({ "description": "Read again" }))),
+            (0, event::response(1, 1)),
+        ]),
+        paced(vec![
+            (1_000, ProviderEvent::ThinkingStart),
+            (5_000, ProviderEvent::ThinkingSignature("anthropic:sig".into())),
+            (0, event::text("done")),
+            (0, event::response(1, 1)),
+        ]),
     ]);
     let store = MemoryTreeStore::new();
     let read = tool("read", |_| Box::pin(async { Ok(output("42")) }));
@@ -1285,13 +1296,24 @@ async fn a_wait_for_the_model_runs_on_until_its_answer_shows_something() {
     let (_subscription, waits) = waits(&session);
 
     let running = session.send(text("go"), turn("t1")).unwrap();
-    tokio::time::sleep(Duration::from_millis(2_750)).await;
-    assert_eq!(session.waited_ms(), Some(2_750), "nothing showed yet");
+    tokio::time::sleep(Duration::from_millis(1_750)).await;
+    assert_eq!(session.waited_ms(), Some(1_750), "a call without its title shows nothing");
+    tokio::time::sleep(Duration::from_millis(1_750)).await;
+    assert_eq!(session.waited_ms(), None, "redacted reasoning ended the second wait");
+    tokio::time::sleep(Duration::from_millis(2_000)).await;
+    assert_eq!(session.waited_ms(), None, "a reasoning block's start ended the third wait");
+    let blocks = session.transcript().blocks;
+    assert!(
+        matches!(blocks.last(), Some(Block::Thinking(thinking)) if thinking.text.is_empty()),
+        "the reasoning block is open, without text, at its start: {:?}",
+        kinds(&blocks)
+    );
     assert_eq!(running.await, Ok(ActionEnd::Completed));
 
-    // One wait until the call's title, at three seconds, and one for the
-    // next request, from the end of the call to the text.
-    assert_eq!(*waits.borrow(), [Some(0), None, Some(0), None]);
+    // Three waits: until the call's title at two seconds, from the call's
+    // end until the redacted reasoning, and from the second call's end
+    // until the reasoning starts.
+    assert_eq!(*waits.borrow(), [Some(0), None, Some(0), None, Some(0), None]);
 }
 
 #[tokio::test(flavor = "local")]
@@ -1856,8 +1878,9 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
             _ => None,
         })
         .collect();
-    // A thinking start and its first text open the block in one patch.
-    assert_eq!(appends, ["notes", "world"]);
+    // A thinking start opens its block at once, so the page shows the model
+    // thinking before any text; each piece of text is then a patch.
+    assert_eq!(appends, ["private ", "notes", "world"]);
 }
 
 /// A call the model is writing (`runtime.md` § Calls being written): it is
