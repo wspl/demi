@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { CircleX, Sparkles, TriangleAlert, Zap } from '@lucide/vue'
+import { computed } from 'vue'
+import { CircleX, TriangleAlert, Zap } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Button from '../ui/Button.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
@@ -53,8 +52,7 @@ const reasoningLabel = computed(() => {
   return reasoning ? reasoningOptionLabel(reasoning, props.settings?.thinkingEffort ?? null) : ''
 })
 
-// Each state is an icon and a label. The label shows while the editor keeps its
-// least width with it; otherwise the selector is its icon, and the label its tooltip.
+// Each state is an icon and a label.
 const labelText = computed(() => {
   if (props.load === 'loading')
     return 'Loading models…'
@@ -62,12 +60,10 @@ const labelText = computed(() => {
     return 'Couldn’t load models.'
   return reasoningLabel.value ? `${state.value.label} · ${reasoningLabel.value}` : state.value.label
 })
-const label = ref<HTMLElement | null>(null)
-const compact = useRoomLabel(label, () => labelText.value)
 </script>
 
 <template>
-  <Tooltip :content="labelText" :disabled="!compact" tag="div" class="flex">
+  <div class="flex">
     <span
       v-if="load === 'loading'"
       class="relative inline-flex h-7 items-center overflow-hidden px-2 text-chrome text-fg-subtle"
@@ -75,7 +71,7 @@ const compact = useRoomLabel(label, () => labelText.value)
       :aria-label="labelText"
     >
       <IndeterminateSpinner :size="14" />
-      <span ref="label" class="whitespace-nowrap pl-1.5" :class="compact ? COMPACT_LABEL_CLASS : ''">{{ labelText }}</span>
+      <span class="whitespace-nowrap pl-1.5">{{ labelText }}</span>
     </span>
     <span
       v-else-if="load === 'failed'"
@@ -84,7 +80,7 @@ const compact = useRoomLabel(label, () => labelText.value)
       :aria-label="labelText"
     >
       <CircleX :size="14" class="shrink-0" />
-      <span ref="label" class="whitespace-nowrap pl-1.5" :class="compact ? COMPACT_LABEL_CLASS : ''">{{ labelText }}</span>
+      <span class="whitespace-nowrap pl-1.5">{{ labelText }}</span>
       <Button size="sm" class="ml-1.5" @click="emit('retry')">Retry</Button>
     </span>
     <Dropdown
@@ -95,19 +91,9 @@ const compact = useRoomLabel(label, () => labelText.value)
     >
       <template #trigger="{ isOpen }">
         <span class="relative inline-flex items-center overflow-hidden">
-          <!-- The sparkle stands in for the name; with room for the name it would only repeat it. -->
-          <Sparkles
-            v-if="compact"
-            :size="ICON_PX.in28"
-            class="mr-1 shrink-0"
-          />
           <!-- The name sits a step above the chip's tone and the level a step below it, so the
                two stay two steps apart whether the chip is subtle (closed) or body (open). -->
-          <span
-            ref="label"
-            class="inline-flex items-center gap-1 whitespace-nowrap"
-            :class="compact ? COMPACT_LABEL_CLASS : ''"
-          >
+          <span class="inline-flex items-center gap-1 whitespace-nowrap">
             <span :class="isOpen ? 'text-fg-body' : 'text-fg-muted'">{{ state.label }}</span>
             <span
               v-if="reasoningLabel"
@@ -133,5 +119,5 @@ const compact = useRoomLabel(label, () => labelText.value)
         />
       </template>
     </Dropdown>
-  </Tooltip>
+  </div>
 </template>

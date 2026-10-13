@@ -2,7 +2,7 @@
 import { computed, inject, ref, watch } from 'vue'
 import { isFocusedElementEditable } from '@vueuse/core'
 import type { ContextUsage, InstructionEntry } from '@demicodes/protocol'
-import { ArrowUp, File as FileIcon, HardDrive, Plus, RotateCcw, Square, X } from '@lucide/vue'
+import { ArrowUp, File as FileIcon, HardDrive, Paperclip, RotateCcw, Square, X } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '../overlay/appOverlay'
 import {
@@ -583,11 +583,11 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             v-bind="attachOpen ? { open: true } : {}"
           >
             <template #trigger="{ isOpen }">
-              <!-- A press on + takes no focus, as on the send button: the message keeps it until the
+              <!-- A press on the paperclip takes no focus, as on the send button: the message keeps it until the
                    menu takes it, and gets it back when the menu closes. -->
               <Tooltip content="Attach">
                 <IconButton
-                  :icon="Plus"
+                  :icon="Paperclip"
                   variant="ghost"
                   circle
                   :pressed="isOpen"
@@ -613,7 +613,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             </template>
           </Dropdown>
         </template>
-        <template #model>
+        <template #below>
           <div :inert="!!shownEdit && !edit.editable.value">
             <ModelSelector
               :load="modelLoad"
@@ -625,8 +625,6 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               @context-limit="emit('changeContextLimit', $event)"
             />
           </div>
-        </template>
-        <template #actions>
           <ContextUsageIndicator
             :usage="usage"
             :is-compacting="compacting"
@@ -637,6 +635,9 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             @open-instruction="emit('openInstruction', $event)"
             @refresh-limits="emit('refreshLimits', $event)"
           />
+        </template>
+
+        <template #actions>
           <Tooltip v-if="shownEdit" content="Cancel edit">
             <IconButton
               :icon="X"
