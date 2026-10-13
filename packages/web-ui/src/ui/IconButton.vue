@@ -4,7 +4,7 @@ import { blockUnavailableButtonEvent, pressOnKey } from './button-events'
 import { useButtonIconSpin } from './button-icon-spin'
 import type { Component } from 'vue'
 import { disabledTooltip } from './disabled'
-import { usePendingAction } from './pending-action'
+import { useOperationControl, type Operation } from './operations'
 import { ICON_PX } from './icon-metrics'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
 import CornerDot from './CornerDot.vue'
@@ -33,10 +33,12 @@ const props = withDefaults(
     circle?: boolean
     disabled?: boolean
     /**
-     * Shows the spinner for work the caller's state owns. A press whose
-     * handler returns a promise shows it by itself until it settles, so a
-     * handler keeps no flag for that (`pending-action.ts`).
+     * The operation the press starts (`operations.ts`): the spinner takes the
+     * icon's place while it runs, or the row of the same target shows it, and
+     * a press while its group runs on its target starts nothing.
      */
+    operation?: Operation
+    /** Shows the spinner for work the caller's state owns. */
     loading?: boolean
     /** Why it is disabled, as a tooltip; only read while `disabled`. */
     disabledReason?: SentenceText
@@ -68,10 +70,10 @@ const { rotating, onClick: spinOnPress } = useButtonIconSpin(
   props,
   () => emit('spinEnd'),
 )
-// A press whose handler returns a promise works until it settles; a second press meanwhile does nothing.
-const { pending, showsWork, press } = usePendingAction(true)
-const working = computed(() => props.loading === true || (pending.value && showsWork))
-const unavailable = computed(() => props.disabled === true || props.loading === true || pending.value)
+// The press starts the button's operation; a press while its group runs starts nothing.
+const { running, blocked, showsSpinner, press } = useOperationControl(() => props.operation, true)
+const working = computed(() => props.loading === true || showsSpinner.value)
+const unavailable = computed(() => props.disabled === true || props.loading === true || blocked.value)
 
 function onClick(event: MouseEvent): void {
   spinOnPress()
@@ -125,10 +127,11 @@ const glyphPx = computed(() => {
       :tabindex="unavailable ? undefined : 0"
       class="inline-flex shrink-0 cursor-default items-center justify-center transition-[color,background-color,box-shadow] duration-200 ease-out"
       :aria-disabled="unavailable || undefined"
-      :aria-busy="working || undefined"
+      :aria-busy="loading || running || undefined"
       :data-pressed="!disabled && pressed ? true : undefined"
       :class="[
         circle ? 'rounded-full' : 'rounded-md',
+        blocked && !running ? 'opacity-40' : '',
         size === 'xs'
           ? 'size-hit-xs'
           : size === 'sm'

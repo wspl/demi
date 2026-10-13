@@ -129,12 +129,28 @@ function openAdd(): void {
   open.value = 'add'
 }
 
-/** Runs a host call, which the dialog's button shows until it settles, then closes the dialog. */
-async function carryOut(call: () => Promise<void>): Promise<void> {
+/** An action on an account, as an operation (`operations.ts`): the account's row shows it while it runs. */
+function onUser(action: string, user: SettingsUser | null) {
+  return { action, target: userTarget(user) }
+}
+
+function userTarget(user: SettingsUser | null): string {
+  return `user:${user?.id ?? 'new'}`
+}
+
+/** Closes `dialog` once its work on `user` is done, if it is still the dialog shown about that account. */
+function closeIfShown(dialog: Dialog, user: SettingsUser): void {
+  if (open.value === dialog && target.value?.id === user.id) {
+    open.value = null
+  }
+}
+
+/** Runs a host call, which the dialog's button shows until it settles, then closes the dialog if it is still this one. */
+async function carryOut(dialog: Dialog, user: SettingsUser, call: () => Promise<void>): Promise<void> {
   try {
     await call()
   } finally {
-    open.value = null
+    closeIfShown(dialog, user)
   }
 }
 
@@ -178,7 +194,7 @@ async function resetPassword(): Promise<void> {
       readyOpen.value = true
     }
   } finally {
-    open.value = null
+    closeIfShown('reset', user)
   }
 }
 
@@ -199,21 +215,21 @@ async function makeAnotherPassword(): Promise<boolean> {
 async function changeRole(role: SettingsNewUser['role']): Promise<void> {
   const user = target.value
   if (user) {
-    await carryOut(() => props.host.setRole(user.id, role))
+    await carryOut('role', user, () => props.host.setRole(user.id, role))
   }
 }
 
 async function signOutEverywhere(): Promise<void> {
   const user = target.value
   if (user) {
-    await carryOut(() => props.host.signOutEverywhere(user.id))
+    await carryOut('signOut', user, () => props.host.signOutEverywhere(user.id))
   }
 }
 
 async function disableAccount(): Promise<void> {
   const user = target.value
   if (user) {
-    await carryOut(() => props.host.setDisabled(user.id, true))
+    await carryOut('disable', user, () => props.host.setDisabled(user.id, true))
   }
 }
 
@@ -267,7 +283,14 @@ function closeDialog(): void {
       <template #actions>
         <Button size="sm" @click="openAdd">Add User…</Button>
       </template>
-      <SettingsRow v-for="user in host.users" :key="user.id" :label="nameOf(user)" :muted="user.disabled" center-leading>
+      <SettingsRow
+        v-for="user in host.users"
+        :key="user.id"
+        :label="nameOf(user)"
+        :muted="user.disabled"
+        :target="userTarget(user)"
+        center-leading
+      >
         <template #leading>
           <Avatar :account-id="user.id" :name="user.nickname" :email="user.email" :size="32" />
         </template>
@@ -309,6 +332,7 @@ function closeDialog(): void {
                   <MenuItem
                     :label="ACTION_LABEL[action]"
                     :is-danger="action === 'disable'"
+                    :operation="onUser(action, user)"
                     @select="run(action, user)"
                   />
                 </template>
@@ -324,6 +348,7 @@ function closeDialog(): void {
     :overlay-store="overlayStore"
     :roles="roles"
     :error="addError"
+    :operation="onUser('add', null)"
     @close="closeDialog"
     @submit="add"
     @edit="addError = undefined"
@@ -334,6 +359,7 @@ function closeDialog(): void {
     :name="targetName"
     :current="target?.role ?? 'user'"
     :roles="roles"
+    :operation="onUser('changeRole', target)"
     @close="closeDialog"
     @submit="changeRole"
   />
@@ -342,6 +368,7 @@ function closeDialog(): void {
     :overlay-store="overlayStore"
     :title="`Reset ${targetName}’s password?`"
     action="Reset Password"
+    :operation="onUser('resetPassword', target)"
     @close="closeDialog"
     @confirm="resetPassword"
   >
@@ -380,6 +407,7 @@ function closeDialog(): void {
     :overlay-store="overlayStore"
     :title="`Sign ${targetName} out everywhere?`"
     action="Sign Out Everywhere"
+    :operation="onUser('signOutEverywhere', target)"
     @close="closeDialog"
     @confirm="signOutEverywhere"
   >
@@ -393,6 +421,7 @@ function closeDialog(): void {
     :overlay-store="overlayStore"
     :title="`Disable ${targetName}’s account?`"
     action="Disable Account"
+    :operation="onUser('disable', target)"
     @close="closeDialog"
     @confirm="disableAccount"
   >

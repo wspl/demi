@@ -41,7 +41,7 @@ import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Tooltip from '../ui/Tooltip.vue'
-import type { Action } from '../ui/pending-action'
+import type { Action } from '../ui/operations'
 import type { PlaceholderText } from '../ui/ui-text'
 import { usePhone } from '../ui/phone'
 import {
@@ -126,6 +126,8 @@ const props = withDefaults(
     pluginsChanged?: boolean
     /** Stops the turn; Stop works until the session took it. */
     onStop?: Action
+    /** The conversation's ID, which names the target of Stop (`operations.ts`), so Stop shows its own conversation's work only. */
+    conversationId?: string
     /** Puts a saved message in the composer, removing it from the list. */
     onEditSaved?: Action<[id: string]>
     /** Sends a saved message as the composer would, the way it chooses now. */
@@ -742,6 +744,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               variant="ghost"
               circle
               aria-label="Stop"
+              :operation="conversationId ? { action: 'stop', target: `conversation:${conversationId}` } : undefined"
               @mousedown.prevent
               @click="onStop?.()"
             />

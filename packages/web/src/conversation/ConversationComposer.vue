@@ -245,6 +245,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @retry-attachment="store.retryFile(conversation, $event)"
       @change-model="store.changeModel(conversation, $event)"
       @change-context-limit="preferences.setContextLimit($event)"
+      :conversation-id="conversation.id"
       @stop="store.stop(conversation)"
       @compact="store.compact(conversation)"
       @open-instruction="card.openInstruction"

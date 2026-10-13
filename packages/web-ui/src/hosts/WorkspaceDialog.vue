@@ -8,6 +8,7 @@ import { baseName } from '@demicodes/utils'
 import type { OverlayStore } from '../overlay/overlayStore'
 import AsyncRegion from '../ui/AsyncRegion.vue'
 import Button from '../ui/Button.vue'
+import { operations, type Action, type Operation } from '../ui/operations'
 import ChoiceCards, { type ChoiceCardOption } from '../ui/ChoiceCards.vue'
 import Dialog from '../ui/Dialog.vue'
 import Dropdown from '../ui/Dropdown.vue'
@@ -44,7 +45,6 @@ import {
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
-  pending?: boolean
   load?: 'loading' | 'ready' | 'failed'
   devices: WorkspaceDevice[]
   /** The user's last choice, which the form opens on; absent the first time. */
@@ -54,12 +54,17 @@ const props = defineProps<{
   /** The file browser's tree for a device. */
   sourceFor: (deviceId: string) => FileBrowserSource
   placesFor?: (deviceId: string) => FileBrowserPlaceGroup[]
+  /** Creates the project; the button works, and the form waits, until it settles. */
+  onCreate?: Action<[draft: WorkspaceDraft]>
 }>()
+
+/** Creating a project (`operations.ts`): the form opened again while it works shows it working. */
+const CREATING: Operation = { action: 'create', target: 'project:new' }
+const creating = computed(() => operations.runs(CREATING))
 
 const emit = defineEmits<{
   retry: []
   close: []
-  create: [draft: WorkspaceDraft]
   /** The user chose a kind or a device: the choice the next opening starts on. */
   choose: [choice: WorkspaceHostChoice]
   /**
@@ -121,7 +126,7 @@ const directoryId = useId()
 const projectName = computed(() => baseName(path.value))
 const canCreate = computed(
   () =>
-    !props.pending &&
+    !creating.value &&
     (kind.value === 'cloud'
       ? !!name.value.trim()
       : online.value && path.value.startsWith('/') && !!projectName.value),
@@ -133,7 +138,7 @@ watch(
   () => props.isOpen && (props.load ?? 'ready') === 'ready',
   (shown) => {
     // A request in flight or its failure keeps the form's input.
-    if (!shown || props.pending || props.message) {
+    if (!shown || creating.value || props.message) {
       return
     }
     const choice = openingChoice(props.lastHost, props.devices)
@@ -163,22 +168,15 @@ function pickDirectory(chosen: string) {
   browsing.value = false
 }
 
-function create() {
+function create(): unknown {
   if (!canCreate.value) {
     return
   }
-  if (kind.value === 'cloud') {
-    emit('create', {
-      kind: 'cloud',
-      name: name.value.trim(),
-    })
-  } else {
-    emit('create', {
-      kind: 'device',
-      deviceId: deviceId.value,
-      path: path.value.replace(/\/$/, '') || '/',
-    })
-  }
+  return props.onCreate?.(
+    kind.value === 'cloud'
+      ? { kind: 'cloud', name: name.value.trim() }
+      : { kind: 'device', deviceId: deviceId.value, path: path.value.replace(/\/$/, '') || '/' },
+  )
 }
 function choose(): void {
   emit('choose', {
@@ -268,7 +266,7 @@ function selectDevice(id: string, close: () => void): void {
             Project name
             <TextInput
               v-model="name"
-              :disabled="pending"
+              :disabled="creating"
               focused
               maxlength="64"
             />
@@ -280,7 +278,7 @@ function selectDevice(id: string, close: () => void): void {
                 <!-- The menu fills the row, the way the file browser's device picker does; Add Device sits after it. -->
                 <Dropdown
                   :overlay-store="overlayStore"
-                  :disabled="pending"
+                  :disabled="creating"
                   variant="field"
                   width="fill"
                   trigger-label="Device"
@@ -321,7 +319,7 @@ function selectDevice(id: string, close: () => void): void {
                 </Dropdown>
                 <Button
                   class="shrink-0"
-                  :disabled="pending"
+                  :disabled="creating"
                   @click="emit('connectDevice', paired)"
                 >
                   <Plus :size="14" />
@@ -340,7 +338,7 @@ function selectDevice(id: string, close: () => void): void {
                   v-model="path"
                   :source="browserSource"
                   kind="directory"
-                  :disabled="pending"
+                  :disabled="creating"
                   placeholder="/path/to/project"
                   :aria-labelledby="`${directoryId}-label`"
                   :aria-describedby="`${directoryId}-hint`"
@@ -348,7 +346,7 @@ function selectDevice(id: string, close: () => void): void {
                 />
                 <Button
                   class="shrink-0"
-                  :disabled="!online || pending"
+                  :disabled="!online || creating"
                   @click="browsing = true"
                 >
                   <FolderOpen :size="14" />
@@ -370,8 +368,8 @@ function selectDevice(id: string, close: () => void): void {
       <Button @click="emit('close')">Cancel</Button>
       <Button
         variant="primary"
-        :disabled="!canCreate && !pending"
-        :loading="pending"
+        :disabled="!canCreate && !creating"
+        :operation="CREATING"
         @click="create"
         >{{ action }}</Button
       >

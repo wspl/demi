@@ -12,7 +12,6 @@ import {
   type SettingsModelDraft,
   type SettingsQuotaRefresh,
   type SettingsProviderEntry,
-  type SettingsProviderOperation,
   type SettingsProviderModel,
   type SettingsVendor,
 } from '@demicodes/web-ui/settings/types'
@@ -25,6 +24,8 @@ import {
   type SettingsState,
 } from '../fixtures/settings'
 import { slow } from '../fixtures/slow'
+import { operations } from '@demicodes/web-ui/ui/operations'
+import { providerOperation } from '@demicodes/web-ui/settings/provider-operations'
 import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
 
 /**
@@ -36,7 +37,6 @@ const props = defineProps<{
 }>()
 
 const s = computed(() => props.state)
-const testing = ref<string | null>(null)
 
 /**
  * As the product's page shows an entry from what it holds: it is incomplete,
@@ -123,60 +123,38 @@ async function removeProvider(id: string) {
   }
 }
 
-/** The mock judges a connection by its inputs: no key is rejected, localhost is unreachable. */
+/**
+ * The mock judges a connection by its inputs: no key is rejected, localhost
+ * is unreachable. The test is the provider's operation, as the product's
+ * store starts it (`provider-operations.ts`).
+ */
 function test(p: SettingsProviderEntry, accountId?: string) {
-  if (accountId) {
-    accountOperation.value = { providerId: p.id, accountId, action: 'test' }
-  } else {
-    testing.value = p.id
-  }
-  window.setTimeout(() => {
-    testing.value = null
-    accountOperation.value = null
-    if (p.vendorId && !p.apiKey && !p.keyConfigured) {
-      p.state = 'error'
-      p.detail = '401 · No API key provided'
-    } else if (/localhost|127\.0\.0\.1/.test(p.baseUrl)) {
-      p.state = 'unreachable'
-      p.detail = `connect ECONNREFUSED ${p.baseUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}`
-    } else {
-      p.state = 'ready'
-      p.detail = undefined
-      p.testedIn = `${180 + Math.round(Math.random() * 400)} ms`
-    }
-  }, 1200)
-}
-
-const refreshing = ref<string | null>(null)
-function refresh(p: SettingsProviderEntry) {
-  refreshing.value = p.id
-  window.setTimeout(() => {
-    refreshing.value = null
-    p.catalogFetched = 'just now'
-  }, 1400)
-}
-
-// The product asks the vendor about one account, in use or not; here that account's
-// windows move a little, as a fresh answer would.
-const accountOperation = ref<{
-  providerId: string
-  accountId: string
-  action: 'test'
-} | null>(null)
-const cliChecking = ref<string | null>(null)
-const operations = computed<Record<string, SettingsProviderOperation>>(() =>
-  cliChecking.value
-    ? { [cliChecking.value]: { kind: 'cli' } }
-    : accountOperation.value
-    ? {
-        [accountOperation.value.providerId]: {
-          kind: 'account',
-          accountId: accountOperation.value.accountId,
-          action: accountOperation.value.action,
-        },
+  void operations.start(
+    providerOperation(p.id, accountId ? { kind: 'account', accountId, action: 'test' } : { kind: 'testing' }),
+    () => slow(1200).then(() => {
+      if (p.vendorId && !p.apiKey && !p.keyConfigured) {
+        p.state = 'error'
+        p.detail = '401 · No API key provided'
+      } else if (/localhost|127\.0\.0\.1/.test(p.baseUrl)) {
+        p.state = 'unreachable'
+        p.detail = `connect ECONNREFUSED ${p.baseUrl.replace(/^https?:\/\//, '').replace(/\/.*$/, '')}`
+      } else {
+        p.state = 'ready'
+        p.detail = undefined
+        p.testedIn = `${180 + Math.round(Math.random() * 400)} ms`
       }
-    : {},
-)
+    }),
+  )
+}
+
+function refresh(p: SettingsProviderEntry) {
+  void operations.start(providerOperation(p.id, { kind: 'refreshing' }), () =>
+    slow(1400).then(() => {
+      p.catalogFetched = 'just now'
+    }),
+  )
+}
+
 const usageTimers = ref<Record<string, Record<string, { timer: number; trigger: SettingsQuotaRefresh }>>>({})
 /** The vendor's words for a manual refresh that failed, by provider and account, until that account's next answer. */
 const usageFailures = ref<Record<string, Record<string, ShownError>>>({})
@@ -237,13 +215,13 @@ function checkCli(p: SettingsProviderEntry) {
   if (!p.cli) {
     return
   }
-  cliChecking.value = p.id
-  window.setTimeout(() => {
-    cliChecking.value = null
-    if (p.cli) {
-      p.cli.newest = { version: '2.1.279' }
-    }
-  }, 1200)
+  void operations.start(providerOperation(p.id, { kind: 'cli' }), () =>
+    slow(1200).then(() => {
+      if (p.cli) {
+        p.cli.newest = { version: '2.1.279' }
+      }
+    }),
+  )
 }
 
 /** How long the Cloud takes to wake, read the release and install the CLI. */
@@ -471,8 +449,6 @@ function closeLogin() {
     :providers="s.providers"
     :vendors="mockVendors"
     :overlay-store="appOverlayStore"
-    :testing="testing"
-    :refreshing="refreshing"
     :refreshing-usage="refreshingUsage"
     :usage-failures="usageFailures"
     @change="changeProvider"
@@ -483,7 +459,6 @@ function closeLogin() {
     @sign-in="beginLogin"
     @test="test"
     @refresh="refresh"
-    :operations="operations"
     @refresh-usage="refreshUsage"
     @check-cli="checkCli"
     @install-cli="installCli"

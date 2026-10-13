@@ -9,6 +9,8 @@ import { useResources } from '../state/resources'
 import { useProviderSettings } from './providers'
 import { dismissToast, toasts } from '@demicodes/web-ui/infra/toast'
 import { waitFor } from '@demicodes/utils'
+import { operations } from '@demicodes/web-ui/ui/operations'
+import { providerOperation, providerTarget } from '@demicodes/web-ui/settings/provider-operations'
 
 const realFetch = globalThis.fetch
 let pinia: ReturnType<typeof createPinia>
@@ -144,7 +146,7 @@ afterEach(() => {
 
 async function idle(): Promise<void> {
   for (let attempt = 0; attempt < 30; attempt++) {
-    if (!Object.keys(useProviderSettings().operations).length) {
+    if (!useProviderSettings().providers.some((entry) => operations.onTarget(providerTarget(entry.id))) && !operations.onTarget(providerTarget('new'))) {
       return
     }
     await new Promise<void>((resolve) => setImmediate(resolve))
@@ -290,7 +292,7 @@ test('an edit or a model made while a test runs shows at once and is saved when 
   }
   settings.test({ ...provider(), models: [gpt] })
   await nextTick()
-  expect(settings.operations.configured?.kind).toBe('testing')
+  expect(operations.runs(providerOperation('configured', { kind: 'testing' }))).toBe(true)
 
   settings.change(provider(), { name: 'Renamed' })
   expect(provider().name).toBe('Renamed')
@@ -456,7 +458,7 @@ test('provider writes become busy before dispatch and reject duplicate clicks', 
   const deferred = Promise.withResolvers<Response>()
   write = () => deferred.promise
   settings.change(provider, { name: 'Changed' })
-  expect(settings.operations.configured?.kind).toBe('saving')
+  expect(operations.runs(providerOperation('configured', { kind: 'saving' }))).toBe(true)
   settings.change(provider, { name: 'Duplicate' })
   await nextTick()
   expect(writes).toBe(1)
@@ -466,7 +468,7 @@ test('provider writes become busy before dispatch and reject duplicate clicks', 
   expect(
     settings.providers.find((entry) => entry.id === 'configured')?.name,
   ).toBe('Changed')
-  expect(settings.operations.configured).toBeUndefined()
+  expect(operations.onTarget(providerTarget('configured'))).toBe(false)
 })
 
 test('a failed save is a toast; the input stays and the next change resends it', async () => {

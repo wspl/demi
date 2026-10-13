@@ -22,6 +22,8 @@ import SettingsPasskeys from './SettingsPasskeys.vue'
 import SettingsSessions from './SettingsSessions.vue'
 import type { SettingsPasskeyHost, SettingsSessionHost } from './types'
 import SettingsRow from './SettingsRow.vue'
+import { THIS_SESSION } from '../sidebar/session-target'
+import type { Action } from '../ui/operations'
 
 /**
  * Who you are here. The credential dialogs open from their rows; the host drives
@@ -32,6 +34,8 @@ import SettingsRow from './SettingsRow.vue'
  */
 const props = defineProps<{
   overlayStore: OverlayStore
+  /** Signs this browser out; Sign Out works until the page goes to the sign-in page. */
+  onSignOut?: Action
   /** The account id, which the avatar's tone follows. */
   accountId: string
   email: string
@@ -70,7 +74,6 @@ const emit = defineEmits<{
   verifyEmail: [code: string]
   resendEmail: []
   submitPassword: [current: string, next: string]
-  signOut: []
   deleteAccount: []
 }>()
 
@@ -159,7 +162,7 @@ function checkName(value: string): string | null {
         label="Sign out"
         description="Ends this browser’s session. Conversations stay on the server."
       >
-        <Button size="sm" @click="emit('signOut')">Sign Out</Button>
+        <Button size="sm" :operation="THIS_SESSION" @click="onSignOut?.()">Sign Out</Button>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup title="Danger Zone">

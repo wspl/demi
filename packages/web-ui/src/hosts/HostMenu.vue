@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Plus, Unlink } from '@lucide/vue'
 import Dropdown from '../ui/Dropdown.vue'
 import Menu from '../ui/Menu.vue'
@@ -9,7 +9,7 @@ import Button from '../ui/Button.vue'
 import IconButton from '../ui/IconButton.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { ICON_PX } from '../ui/icon-metrics'
-import { provideRowWork, type Action } from '../ui/pending-action'
+import { operations, type Action } from '../ui/operations'
 import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
 import Tooltip from '../ui/Tooltip.vue'
 import { isTextCut } from '../ui/truncation'
@@ -40,6 +40,8 @@ const props = defineProps<{
   /** The conversation is archived or being changed: nothing here can move it. Work that runs does not lock it. */
   locked?: MoveLock
   pending?: boolean
+  /** The conversation's ID, which names the target of its Detach operations. */
+  conversationId: string
   /** Detaches a Host from the conversation; the header's button works until it settles. */
   onDetach?: Action<[id: string]>
 }>()
@@ -47,8 +49,9 @@ const emit = defineEmits<{
   choose: [host: HostChoice]
   connect: []
 }>()
-// The menu closes as Detach is pressed, so the header's button, the Hosts' row, shows the work.
-const detaching = provideRowWork()
+// The menu closes as Detach is pressed, so the header's button, the row of the conversation's Hosts, shows the work.
+const hostsTarget = computed(() => `hosts:${props.conversationId}`)
+const detaching = computed(() => operations.onTarget(hostsTarget.value))
 
 const open = ref(false)
 // Where the header's title needs the width, the host is its icon and its name a tooltip.
@@ -151,6 +154,7 @@ function connect() {
                   size="xs"
                   aria-label="Detach"
                   :disabled="!!locked"
+                  :operation="{ action: `detach:${host.id}`, target: hostsTarget }"
                   @click.stop="detach(host.id)"
                 />
               </Tooltip>

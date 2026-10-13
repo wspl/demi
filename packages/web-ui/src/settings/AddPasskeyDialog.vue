@@ -7,6 +7,7 @@ import Dialog from '../ui/Dialog.vue'
 import InlineError from '../ui/InlineError.vue'
 import TextInput from '../ui/TextInput.vue'
 import { hiddenUsername } from '../ui/field-autofill'
+import { useOpening } from '../ui/operations'
 import SettingsRow from './SettingsRow.vue'
 import type { PasskeyAddOutcome } from './types'
 
@@ -51,14 +52,20 @@ watch(password, () => {
   passwordProblem.value = null
 })
 
-/** Continue: the button works until the host and the browser's prompt have answered. */
+const opening = useOpening(() => props.isOpen)
+
+/** Continue: the button works until the host and the browser's prompt have answered, which this opening alone shows. */
 async function submit(): Promise<void> {
   if (password.value === '') {
     passwordProblem.value = 'Required'
     return
   }
   error.value = null
+  const stillShown = opening.shownNow()
   const outcome = await props.add(password.value)
+  if (!stillShown()) {
+    return
+  }
   switch (outcome.kind) {
     case 'added':
       emit('close')
@@ -118,7 +125,9 @@ async function submit(): Promise<void> {
     </div>
     <template #footer>
       <Button @click="emit('close')">Cancel</Button>
-      <Button ref="continueButton" variant="primary" @click="submit">Continue</Button>
+      <Button ref="continueButton" variant="primary" :operation="{ action: 'add', target: 'passkey:new' }" @click="submit">
+        Continue
+      </Button>
     </template>
   </Dialog>
 </template>

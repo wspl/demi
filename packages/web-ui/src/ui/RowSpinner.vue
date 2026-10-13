@@ -2,7 +2,7 @@
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
 
 /**
- * The mark of a row that works (`provideRowWork`): a spinner of the size of
+ * The mark of a row that works (`provideRowTarget`): a spinner of the size of
  * an `xs` icon button, in the place where the row's controls stand.
  */
 </script>
