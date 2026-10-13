@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
-import type { Action } from '../ui/pending-action'
+import type { Action, Operation } from '../ui/operations'
 import Segmented from '../ui/Segmented.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsNewUser, UserRole } from './types'
@@ -24,6 +24,8 @@ const props = defineProps<{
   roles: readonly SettingsNewUser['role'][]
   /** Changes the role; Change Role works until it settles. */
   onSubmit?: Action<[role: SettingsNewUser['role']]>
+  /** What Change Role does, to which account (`operations.ts`). */
+  operation?: Operation
 }>()
 
 const emit = defineEmits<{
@@ -68,7 +70,7 @@ function submit(): unknown {
     </div>
     <template #footer>
       <Button @click="emit('close')">Cancel</Button>
-      <Button variant="primary" :disabled="!canSubmit" @click="submit">Change Role</Button>
+      <Button variant="primary" :disabled="!canSubmit" :operation="operation" @click="submit">Change Role</Button>
     </template>
   </Dialog>
 </template>

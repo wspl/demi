@@ -26,3 +26,8 @@ export function projectsNamingTheirHost(projects: readonly SidebarProject[]): Se
   }
   return new Set(projects.filter((project) => (hostsByName.get(project.name)?.size ?? 0) > 1).map((project) => project.id))
 }
+
+/** The project as the target of an operation (`operations.ts`), such as Remove Project. */
+export function projectTarget(id: string): string {
+  return `project:${id}`
+}

@@ -66,6 +66,7 @@ async function submit(): Promise<void> {
           size="sm"
           variant="primary"
           ref="saveButton"
+          :operation="{ action: 'save', target: 'instructions' }"
           :disabled="!changed || tooLong"
           @click="submit"
         >

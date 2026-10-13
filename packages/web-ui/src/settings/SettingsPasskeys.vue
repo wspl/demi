@@ -47,6 +47,12 @@ function askRemove(passkey: SettingsPasskey): void {
   removeOpen.value = true
 }
 
+/** Removing a passkey, as an operation on it (`operations.ts`): its Remove… shows it while it runs. */
+function removal(passkey: SettingsPasskey | null) {
+  return { action: 'remove', target: `passkey:${passkey?.id ?? ''}` }
+}
+
+/** Remove confirmed: once it is done, the question closes, if it still asks about this passkey. */
 async function remove(): Promise<void> {
   const passkey = removing.value
   if (!passkey) {
@@ -55,7 +61,9 @@ async function remove(): Promise<void> {
   try {
     await props.host.remove(passkey.id)
   } finally {
-    removeOpen.value = false
+    if (removing.value?.id === passkey.id) {
+      removeOpen.value = false
+    }
   }
 }
 
@@ -84,7 +92,9 @@ const empty = computed(() => props.host.passkeys.length === 0)
         </div>
       </template>
       <Button size="sm" :aria-label="`Rename ${passkey.name}`" @click="rename(passkey)">Rename…</Button>
-      <Button size="sm" :aria-label="`Remove ${passkey.name}`" @click="askRemove(passkey)">Remove…</Button>
+      <Button size="sm" :aria-label="`Remove ${passkey.name}`" :operation="removal(passkey)" @click="askRemove(passkey)">
+        Remove…
+      </Button>
     </SettingsRow>
     <div v-if="empty" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">No passkeys</div>
   </SettingsGroup>
@@ -110,6 +120,7 @@ const empty = computed(() => props.host.passkeys.length === 0)
     :overlay-store="overlayStore"
     :title="`Remove the passkey “${removing?.name ?? ''}”?`"
     action="Remove"
+    :operation="removal(removing)"
     @close="removeOpen = false"
     @confirm="remove"
   >

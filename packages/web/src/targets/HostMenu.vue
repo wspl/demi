@@ -42,6 +42,7 @@ const attachedHosts = computed<HostMenuHost[]>(() =>
 <template>
   <HostMenu
     :primary-host="primaryHost"
+    :conversation-id="conversation.id"
     :pending="store.pendingChanges.includes(conversation.id)"
     :devices="devices"
     :attached-hosts="attachedHosts"

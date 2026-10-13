@@ -4,24 +4,26 @@ import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import RowSpinner from '@demicodes/web-ui/ui/RowSpinner.vue'
+import { provideRowTarget } from '@demicodes/web-ui/ui/operations'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
 import DeviceMark from './DeviceMark.vue'
-import { projectHostName } from './project-hosts'
+import { projectHostName, projectTarget } from './project-hosts'
 import type { SidebarProject } from './types'
 
 /** A project row: the checkout's name, the host it is on as the row's end mark, and the fold. */
-defineProps<{
+const props = defineProps<{
   project: SidebarProject
   /** Another project of this name runs on another host: the row names its host in words before the mark. */
   namesake: boolean
   collapsed: boolean
   /** The keyboard cursor is here. */
   focused: boolean
-  /** An action on the project waits for the backend: the row shows the spinner where the host's mark stands. */
-  working?: boolean
 }>()
+
+// An operation on the project, such as Remove Project from its menu, shows the spinner where the host's mark stands.
+const working = provideRowTarget(() => projectTarget(props.project.id))
 
 const phone = usePhone()
 

@@ -31,6 +31,12 @@ function askSignOut(session: SettingsSession): void {
   confirmOpen.value = true
 }
 
+/** Signing a browser out, as an operation on its session (`operations.ts`). */
+function signOutOf(session: SettingsSession | null) {
+  return { action: 'signOut', target: `session:${session?.id ?? ''}` }
+}
+
+/** Sign Out confirmed: once the session ended, the question closes, if it still asks about this browser. */
 async function signOut(): Promise<void> {
   const session = ending.value
   if (!session) {
@@ -39,7 +45,9 @@ async function signOut(): Promise<void> {
   try {
     await props.host.signOut(session.id)
   } finally {
-    confirmOpen.value = false
+    if (ending.value?.id === session.id) {
+      confirmOpen.value = false
+    }
   }
 }
 </script>
@@ -67,6 +75,7 @@ async function signOut(): Promise<void> {
         v-if="!session.current"
         size="sm"
         :aria-label="`Sign out ${session.name}`"
+        :operation="signOutOf(session)"
         @click="askSignOut(session)"
       >Sign Out…</Button>
     </SettingsRow>
@@ -76,6 +85,7 @@ async function signOut(): Promise<void> {
     :overlay-store="overlayStore"
     :title="`Sign out ${ending?.name ?? ''}?`"
     action="Sign Out"
+    :operation="signOutOf(ending)"
     @close="confirmOpen = false"
     @confirm="signOut"
   >

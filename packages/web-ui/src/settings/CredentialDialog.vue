@@ -12,7 +12,7 @@ import IconButton from '../ui/IconButton.vue'
 import InlineError from '../ui/InlineError.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
-import type { Action } from '../ui/pending-action'
+import type { Action, Operation } from '../ui/operations'
 import ScrollArea from '../ui/ScrollArea.vue'
 import Segmented from '../ui/Segmented.vue'
 import TextInput from '../ui/TextInput.vue'
@@ -45,6 +45,9 @@ const props = defineProps<{
   /** The credential edited; null for a new one. */
   credential: SettingsCredential | null
   onSave?: Action<[draft: SettingsCredentialDraft]>
+  /** What Save does, and what Delete does, one group on the credential (`operations.ts`): while one works, the other cannot be pressed. */
+  saveOperation?: Operation
+  deleteOperation?: Operation
   /** Why the last save failed, with the request it came from. */
   error?: ShownError | null
 }>()
@@ -266,11 +269,11 @@ const keepLabel = computed(() => {
       <InlineError v-if="error" class="px-5 pt-3" :message="error.message" :request-id="error.requestId" />
     </div>
     <template v-if="credential" #footer-leading>
-      <Button variant="danger" @click="emit('delete')">Delete</Button>
+      <Button variant="danger" :operation="deleteOperation" @click="emit('delete')">Delete</Button>
     </template>
     <template #footer>
       <Button @click="emit('close')">Cancel</Button>
-      <Button variant="primary" :disabled="!canSave" @click="save">
+      <Button variant="primary" :disabled="!canSave" :operation="saveOperation" @click="save">
         {{ credential ? 'Save' : 'Create Credential' }}
       </Button>
     </template>

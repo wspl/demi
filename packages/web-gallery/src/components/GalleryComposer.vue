@@ -713,7 +713,7 @@ onBeforeUnmount(() => {
     :is-open="moveQuestion.open.value"
     :overlay-store="appOverlayStore"
     :question="moveQuestion.question.value"
-    :busy="moveQuestion.busy.value"
+    :answers="moveQuestion.answers"
     @close="moveQuestion.cancel"
     @move="moveQuestion.answer"
   />

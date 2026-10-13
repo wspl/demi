@@ -294,19 +294,16 @@ const projectForms: {
   variant: string
   devices: WorkspaceDevice[]
   lastHost?: WorkspaceHostChoice
-  pending: boolean
   load: 'loading' | 'ready'
 }[] = [
-  { variant: 'first time: Cloud', devices, pending: false, load: 'ready' },
+  { variant: 'first time: Cloud', devices, load: 'ready' },
   {
     variant: 'last chose a device',
     devices,
     lastHost: { kind: 'device', deviceId: hosts[0]!.id },
-    pending: false,
     load: 'ready',
   },
-  { variant: 'creating', devices, pending: true, load: 'ready' },
-  { variant: 'devices loading', devices: [], pending: false, load: 'loading' },
+  { variant: 'devices loading', devices: [], load: 'loading' },
 ]
 /**
  * Each project form's remembered choice, as the product's preference keeps it:
@@ -673,12 +670,11 @@ const resetPhases: {
                 :overlay-store="appOverlayStore"
                 :devices="form.devices"
                 :last-host="projectLastHosts[index]"
-                :pending="form.pending"
                 :load="form.load"
                 :source-for="sourceFor"
                 :places-for="placesFor"
                 @close="close"
-                @create="(draft) => finish(close, draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name} and Open a New Conversation in It` : `Set Up the Project at ${draft.path} and Open a New Conversation in It`)"
+                @create="(draft) => finishSlowly(close, draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name} and Open a New Conversation in It` : `Set Up the Project at ${draft.path} and Open a New Conversation in It`)"
                 @choose="(choice) => (projectLastHosts[index] = choice)"
                 @connect-device="productWould('Add Device')"
                 @retry="productWould('Load the Devices Again')"
