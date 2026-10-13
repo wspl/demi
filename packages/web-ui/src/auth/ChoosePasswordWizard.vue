@@ -62,7 +62,8 @@ const offerStep = computed<PasskeyOfferStep>({
 const password = ref('')
 const confirmation = ref('')
 const error = ref<ShownError | null>(null)
-const busy = ref(false)
+/** Choose Password, whose press Enter in a field stands for, so a second one meanwhile does nothing. */
+const chooseButton = ref<InstanceType<typeof Button> | null>(null)
 
 watch(
   () => props.isOpen,
@@ -79,31 +80,27 @@ watch(
 const tooShort = computed(() => isTooShort(password.value))
 const mismatch = computed(() => differs(password.value, confirmation.value))
 const canSubmit = computed(
-  () => !busy.value && password.value.length >= PASSWORD_MIN_LENGTH && confirmation.value === password.value,
+  () => password.value.length >= PASSWORD_MIN_LENGTH && confirmation.value === password.value,
 )
 
+/** Choose Password: the button works until the host has answered. */
 async function submit(): Promise<void> {
   if (!canSubmit.value) {
     return
   }
-  busy.value = true
   error.value = null
-  try {
-    const outcome = await props.choose(password.value)
-    if (outcome.kind === 'failed') {
-      error.value = outcome
-      return
-    }
-    // The password is chosen and forgotten; the offer, when there is one, goes on in place.
-    password.value = ''
-    confirmation.value = ''
-    if (props.offer) {
-      step.value = 'ask'
-    } else {
-      emit('done')
-    }
-  } finally {
-    busy.value = false
+  const outcome = await props.choose(password.value)
+  if (outcome.kind === 'failed') {
+    error.value = outcome
+    return
+  }
+  // The password is chosen and forgotten; the offer, when there is one, goes on in place.
+  password.value = ''
+  confirmation.value = ''
+  if (props.offer) {
+    step.value = 'ask'
+  } else {
+    emit('done')
   }
 }
 </script>
@@ -123,7 +120,7 @@ async function submit(): Promise<void> {
       :icon="Lock"
       message="The password you were given is only a first one. Choose your own to go on."
     >
-      <form class="flex flex-col gap-4" @submit.prevent="submit">
+      <form class="flex flex-col gap-4" @submit.prevent="chooseButton?.press()">
         <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
           New password
           <TextInput
@@ -132,7 +129,6 @@ async function submit(): Promise<void> {
             autocomplete="new-password"
             name="password"
             focused
-            :disabled="busy"
           />
           <span class="text-[12px] leading-4 text-fg-subtle">{{ PASSWORD_HINT }}</span>
         </label>
@@ -143,7 +139,6 @@ async function submit(): Promise<void> {
             masked="password"
             autocomplete="new-password"
             name="confirmation"
-            :disabled="busy"
           />
         </label>
         <input v-bind="hiddenUsername(email)" />
@@ -152,8 +147,16 @@ async function submit(): Promise<void> {
         <InlineError v-else-if="mismatch" :message="PASSWORDS_DIFFER" />
       </form>
       <template #actions>
-        <Button :disabled="busy" @click="emit('signOut')">Sign Out</Button>
-        <Button variant="primary" :disabled="!canSubmit && !busy" :loading="busy" @click="submit">Choose Password</Button>
+        <Button @click="emit('signOut')">Sign Out</Button>
+        <Button
+          ref="chooseButton"
+          variant="primary"
+          :disabled="!canSubmit"
+          :operation="{ action: 'choose', target: 'account:password' }"
+          @click="submit"
+        >
+          Choose Password
+        </Button>
       </template>
     </WizardStep>
     <PasskeyOfferSteps

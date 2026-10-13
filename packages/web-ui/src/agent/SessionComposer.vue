@@ -43,6 +43,7 @@ import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import type { Action } from '../ui/operations'
 import type { PlaceholderText } from '../ui/ui-text'
 import { usePhone } from '../ui/phone'
 import {
@@ -125,6 +126,16 @@ const props = withDefaults(
     offlineHost?: OfflineHost | null
     /** The conversation runs with commands of plugins since turned on or off: offers a reload. */
     pluginsChanged?: boolean
+    /** Stops the turn; Stop works until the session took it. */
+    onStop?: Action
+    /** The conversation's ID, which names the target of Stop (`operations.ts`), so Stop shows its own conversation's work only. */
+    conversationId?: string
+    /** Puts a saved message in the composer, removing it from the list. */
+    onEditSaved?: Action<[id: string]>
+    /** Sends a saved message as the composer would, the way it chooses now. */
+    onSendSaved?: Action<[id: string, way: SendWay]>
+    /** Removes a saved message at once; the caller offers the undo. */
+    onDeleteSaved?: Action<[id: string]>
     /** The reload the composer offered is under way. */
     reloading?: boolean
     /**
@@ -160,15 +171,8 @@ const emit = defineEmits<{
   retryModels: []
   /** The draft goes: at once while nothing runs, otherwise as a steer or to the queue. */
   submit: [way: SendWay]
-  stop: []
   /** Keep the message, its files included, for later, and empty the composer. */
   saveForLater: []
-  /** Put a saved message in the composer, removing it from the list. */
-  editSaved: [id: string]
-  /** Send a saved message as the composer would, the way it chooses now. */
-  sendSaved: [id: string, way: SendWay]
-  /** Remove a saved message at once; the caller offers the undo. */
-  deleteSaved: [id: string]
   compact: []
   /** Opens where an instructions entry of the context card is written. */
   openInstruction: [entry: InstructionEntry]
@@ -301,13 +305,13 @@ const composerRoot = ref<HTMLElement | null>(null)
 const { width: composerWidth } = useElementSize(composerRoot)
 const compactEntry = computed(() => composerWidth.value > 0 && composerWidth.value < COMPACT_ENTRY_BELOW_PX)
 /** Edit puts the message in the composer, so the list gives its room back; Send and Delete keep it open for the next. */
-function editSaved(id: string) {
+function editSaved(id: string): unknown {
   savedOpen.value = false
-  emit('editSaved', id)
+  return props.onEditSaved?.(id)
 }
 /** Send goes the way the composer's send button would now: at once, or steering or queueing while the agent works. */
-function sendSaved(id: string) {
-  emit('sendSaved', id, chooseSendWay(working.value, props.sendWhileRunning, false))
+function sendSaved(id: string): unknown {
+  return props.onSendSaved?.(id, chooseSendWay(working.value, props.sendWhileRunning, false))
 }
 // The list closes with its last message, so the next one does not open it unasked.
 watch(() => props.saved.length, (count) => {
@@ -703,7 +707,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :rows="saved"
             @edit="editSaved"
             @send="sendSaved"
-            @delete="emit('deleteSaved', $event)"
+            @delete="onDeleteSaved?.($event)"
           />
         </template>
         <template #below>
@@ -760,8 +764,9 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               variant="ghost"
               circle
               aria-label="Stop"
+              :operation="conversationId ? { action: 'stop', target: `conversation:${conversationId}` } : undefined"
               @mousedown.prevent
-              @click="emit('stop')"
+              @click="onStop?.()"
             />
           </Tooltip>
           <!-- A press on the send button takes no focus: the message keeps it. A ⌘/Ctrl-click sends

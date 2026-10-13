@@ -2,6 +2,7 @@
 import { pluralize } from '@demicodes/utils'
 import type { OverlayStore } from '../overlay/overlayStore'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
+import type { Action, Operation } from '../ui/operations'
 import DirectoryLabel from '../files/DirectoryLabel.vue'
 
 /**
@@ -19,10 +20,12 @@ defineProps<{
   projects: readonly string[]
   /** The device's home, which `~` writes in each location. */
   home?: string | null
+  onRevoke?: Action
+  /** What Revoke does, to which device (`operations.ts`). */
+  operation?: Operation
 }>()
 const emit = defineEmits<{
   close: []
-  revoke: []
 }>()
 </script>
 
@@ -32,9 +35,10 @@ const emit = defineEmits<{
     :overlay-store="overlayStore"
     title="Revoke this device?"
     action="Revoke"
+    :operation="operation"
     :goes="projects"
     @close="emit('close')"
-    @confirm="emit('revoke')"
+    @confirm="onRevoke?.()"
   >
     <template #entry="{ entry }">
       <DirectoryLabel :path="entry" :home="home" />

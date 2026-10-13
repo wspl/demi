@@ -541,7 +541,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
             :is-open="askedMove.open.value"
             :overlay-store="appOverlayStore"
             :question="askedMove.question.value"
-            :busy="askedMove.busy.value"
+            :answers="askedMove.answers"
             @close="askedMove.cancel"
             @move="askedMove.answer"
           />

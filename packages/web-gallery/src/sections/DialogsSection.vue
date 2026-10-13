@@ -11,6 +11,7 @@ import ChoosePasswordWizard from '@demicodes/web-ui/auth/ChoosePasswordWizard.vu
 import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { galleryHandoff, type HandoffSpecimenStart } from '../fixtures/handoff'
+import { slow } from '../fixtures/slow'
 import { galleryPasskeyOffer, type PasskeyOfferScript } from '../fixtures/passkey-offer'
 import { DEVICE_REPORTS } from '../fixtures/device-reports'
 import type { DeviceReport } from '@demicodes/web-ui/auth/device-unlock'
@@ -64,6 +65,15 @@ const { view } = useGalleryView()
 function finish(close: () => void, title: HeadlineText): void {
   close()
   productWould(title)
+}
+
+/**
+ * An action the product carries out before the dialog closes: the dialog's
+ * button works a moment, as it does for the backend's answer, then it closes.
+ */
+async function finishSlowly(close: () => void, title: HeadlineText): Promise<void> {
+  await slow()
+  finish(close, title)
 }
 
 /**
@@ -239,25 +249,22 @@ const modelEditors: {
   variant: string
   mode: 'create' | 'edit' | 'view'
   model: SettingsModelDraft
-  pending: boolean
   /** Whether the dialog searches models.dev as the product's does. */
   search?: boolean
   error?: ShownError
 }[] = [
-  { variant: 'view', mode: 'view', model, pending: false },
-  { variant: 'add · empty', mode: 'create', model: emptyModel, pending: false, search: true },
-  { variant: 'add · name typed, matches listed', mode: 'create', model: { ...emptyModel, name: 'gemini fl' }, pending: false, search: true },
-  { variant: 'add · filled from a match', mode: 'create', model: matchedModel, pending: false, search: true },
+  { variant: 'view', mode: 'view', model },
+  { variant: 'add · empty', mode: 'create', model: emptyModel, search: true },
+  { variant: 'add · name typed, matches listed', mode: 'create', model: { ...emptyModel, name: 'gemini fl' }, search: true },
+  { variant: 'add · filled from a match', mode: 'create', model: matchedModel, search: true },
   {
     variant: 'add · refused',
     mode: 'create',
     model: matchedModel,
-    pending: false,
     search: true,
     error: correction('The model gemini-3.8-flash is already in Google’s list.'),
   },
-  { variant: 'edit', mode: 'edit', model, pending: false },
-  { variant: 'edit · saving', mode: 'edit', model, pending: true },
+  { variant: 'edit · Save works a moment', mode: 'edit', model },
 ]
 const pairingPhases: { variant: string; phase: PairingPhase; installCommands?: DeviceInstallCommands }[] = [
   { variant: 'start the runner', phase: { kind: 'setup' } },
@@ -287,19 +294,16 @@ const projectForms: {
   variant: string
   devices: WorkspaceDevice[]
   lastHost?: WorkspaceHostChoice
-  pending: boolean
   load: 'loading' | 'ready'
 }[] = [
-  { variant: 'first time: Cloud', devices, pending: false, load: 'ready' },
+  { variant: 'first time: Cloud', devices, load: 'ready' },
   {
     variant: 'last chose a device',
     devices,
     lastHost: { kind: 'device', deviceId: hosts[0]!.id },
-    pending: false,
     load: 'ready',
   },
-  { variant: 'creating', devices, pending: true, load: 'ready' },
-  { variant: 'devices loading', devices: [], pending: false, load: 'loading' },
+  { variant: 'devices loading', devices: [], load: 'loading' },
 ]
 /**
  * Each project form's remembered choice, as the product's preference keeps it:
@@ -473,7 +477,7 @@ const resetPhases: {
                 title="Remove “OpenAI API”?"
                 action="Remove"
                 @close="close"
-                @confirm="finish(close, 'Remove the Provider')"
+                @confirm="finishSlowly(close, 'Remove the Provider')"
               >
                 <p>Its API key and its 4 models go with it.</p>
                 <p>Conversations that use one of its models keep their history, and their next message needs another model.</p>
@@ -489,7 +493,7 @@ const resetPhases: {
                 action="Remove"
                 :goes="['web-design-guidelines', 'react-best-practices', 'and 3 more']"
                 @close="close"
-                @confirm="finish(close, 'Remove the Skill Source')"
+                @confirm="finishSlowly(close, 'Remove the Skill Source')"
               >
                 <p>Its skills go with it, and the agent is no longer offered them. You can add the repository again later.</p>
               </ConfirmDialog>
@@ -562,11 +566,10 @@ const resetPhases: {
                 :overlay-store="appOverlayStore"
                 :mode="editor.mode"
                 :model="editor.model"
-                :pending="editor.pending"
                 :error="editor.error"
                 :search="editor.search ? searchMockModels : undefined"
                 @close="close"
-                @save="(saved) => finish(close, `Save ${saved.name || saved.id}`)"
+                @save="(saved) => finishSlowly(close, `Save ${saved.name || saved.id}`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -623,7 +626,7 @@ const resetPhases: {
                 :projects="item.projects"
                 :home="item.home"
                 @close="close"
-                @revoke="finish(close, `Revoke the Device ${item.device}`)"
+                @revoke="finishSlowly(close, `Revoke the Device ${item.device}`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -652,7 +655,7 @@ const resetPhases: {
                 :overlay-store="appOverlayStore"
                 :titles="item.titles"
                 @close="close"
-                @delete="finish(close, item.titles.length === 1 ? 'Delete the Conversation' : `Delete ${countOf(item.titles.length, 'Conversation')}`)"
+                @delete="finishSlowly(close, item.titles.length === 1 ? 'Delete the Conversation' : `Delete ${countOf(item.titles.length, 'Conversation')}`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -667,12 +670,11 @@ const resetPhases: {
                 :overlay-store="appOverlayStore"
                 :devices="form.devices"
                 :last-host="projectLastHosts[index]"
-                :pending="form.pending"
                 :load="form.load"
                 :source-for="sourceFor"
                 :places-for="placesFor"
                 @close="close"
-                @create="(draft) => finish(close, draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name} and Open a New Conversation in It` : `Set Up the Project at ${draft.path} and Open a New Conversation in It`)"
+                @create="(draft) => finishSlowly(close, draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name} and Open a New Conversation in It` : `Set Up the Project at ${draft.path} and Open a New Conversation in It`)"
                 @choose="(choice) => (projectLastHosts[index] = choice)"
                 @connect-device="productWould('Add Device')"
                 @retry="productWould('Load the Devices Again')"

@@ -7,6 +7,7 @@ import Dialog from '../ui/Dialog.vue'
 import InlineError from '../ui/InlineError.vue'
 import TextInput from '../ui/TextInput.vue'
 import { hiddenUsername } from '../ui/field-autofill'
+import { useOpening } from '../ui/operations'
 import SettingsRow from './SettingsRow.vue'
 import type { PasskeyAddOutcome } from './types'
 
@@ -34,7 +35,8 @@ const password = ref('')
 /** What is wrong with the password, said under it; null when nothing is. */
 const passwordProblem = ref<string | null>(null)
 const error = ref<ShownError | null>(null)
-const busy = ref(false)
+/** Continue, whose press Enter in the field stands for, so a second one meanwhile does nothing. */
+const continueButton = ref<InstanceType<typeof Button> | null>(null)
 
 watch(
   () => props.isOpen,
@@ -50,36 +52,35 @@ watch(password, () => {
   passwordProblem.value = null
 })
 
+const opening = useOpening(() => props.isOpen)
+
+/** Continue: the button works until the host and the browser's prompt have answered, which this opening alone shows. */
 async function submit(): Promise<void> {
-  if (busy.value) {
-    return
-  }
   if (password.value === '') {
     passwordProblem.value = 'Required'
     return
   }
-  busy.value = true
   error.value = null
-  try {
-    const outcome = await props.add(password.value)
-    switch (outcome.kind) {
-      case 'added':
-        emit('close')
-        break
-      case 'wrongPassword':
-        passwordProblem.value = outcome.message
-        break
-      case 'dismissed':
-        break
-      case 'held':
-        error.value = { message: outcome.message, requestId: null }
-        break
-      case 'failed':
-        error.value = outcome
-        break
-    }
-  } finally {
-    busy.value = false
+  const stillShown = opening.shownNow()
+  const outcome = await props.add(password.value)
+  if (!stillShown()) {
+    return
+  }
+  switch (outcome.kind) {
+    case 'added':
+      emit('close')
+      break
+    case 'wrongPassword':
+      passwordProblem.value = outcome.message
+      break
+    case 'dismissed':
+      break
+    case 'held':
+      error.value = { message: outcome.message, requestId: null }
+      break
+    case 'failed':
+      error.value = outcome
+      break
   }
 }
 </script>
@@ -101,7 +102,7 @@ async function submit(): Promise<void> {
       </header>
       <form
         class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
-        @submit.prevent="submit"
+        @submit.prevent="continueButton?.press()"
       >
         <SettingsRow label="Password">
           <template v-if="passwordProblem" #detail>
@@ -114,9 +115,7 @@ async function submit(): Promise<void> {
             focused
             autocomplete="current-password"
             :invalid="passwordProblem !== null"
-            :readonly="busy"
             class="w-48 max-w-full"
-            @keydown.enter="submit"
           />
         </SettingsRow>
         <!-- Last in the card, so the card's row dividers skip it; it is out of the flow. -->
@@ -125,8 +124,10 @@ async function submit(): Promise<void> {
       <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
     </div>
     <template #footer>
-      <Button :disabled="busy" @click="emit('close')">Cancel</Button>
-      <Button variant="primary" :loading="busy" @click="submit">Continue</Button>
+      <Button @click="emit('close')">Cancel</Button>
+      <Button ref="continueButton" variant="primary" :operation="{ action: 'add', target: 'passkey:new' }" @click="submit">
+        Continue
+      </Button>
     </template>
   </Dialog>
 </template>

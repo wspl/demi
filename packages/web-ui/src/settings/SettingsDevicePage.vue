@@ -37,6 +37,7 @@ import type { SentenceText } from '../ui/ui-text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
+import type { Action } from '../ui/operations'
 import type { SettingsDevice } from './types'
 
 /**
@@ -58,8 +59,9 @@ const props = defineProps<{
   /** The directories of the projects on the device, which go with it. */
   projects?: readonly string[]
   nameMaxLength: number | null
-  revoking?: boolean
   overlayStore: OverlayStore
+  /** Revokes the device; the dialog's button works until it settles. */
+  onRevoke?: Action
 }>()
 const emit = defineEmits<{
   back: []
@@ -67,7 +69,6 @@ const emit = defineEmits<{
   tryNow: []
   measure: []
   rename: [name: string]
-  revoke: []
 }>()
 
 const ROUTES: readonly DeviceRoute[] = ['automatic', 'direct', 'server']
@@ -196,9 +197,18 @@ const details = computed(() => {
 const detailsOpen = ref(false)
 const renameOpen = ref(false)
 const revokeOpen = ref(false)
-function revoke() {
-  revokeOpen.value = false
-  emit('revoke')
+/** Revoking the device, as an operation on it (`operations.ts`): Revoke… shows it while it runs, the page shown again included. */
+const revoking = computed(() => ({ action: 'revoke', target: `device:${device.value?.id ?? ''}` }))
+/** Revoke confirmed: once it is done, the question closes, if it still asks about this device. */
+async function revoke(): Promise<void> {
+  const id = device.value?.id
+  try {
+    await props.onRevoke?.()
+  } finally {
+    if (device.value?.id === id) {
+      revokeOpen.value = false
+    }
+  }
 }
 </script>
 
@@ -273,7 +283,7 @@ function revoke() {
 
     <SettingsGroup v-if="device">
       <SettingsRow label="Revoke this device">
-        <Button size="sm" variant="danger" :loading="revoking" @click="revokeOpen = true">Revoke…</Button>
+        <Button size="sm" variant="danger" :operation="revoking" @click="revokeOpen = true">Revoke…</Button>
       </SettingsRow>
     </SettingsGroup>
 
@@ -298,6 +308,7 @@ function revoke() {
       :device="device?.name ?? ''"
       :projects="projects ?? []"
       :home="device?.home"
+      :operation="revoking"
       @close="revokeOpen = false"
       @revoke="revoke"
     />

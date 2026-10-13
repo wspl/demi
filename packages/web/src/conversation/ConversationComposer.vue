@@ -264,6 +264,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @change-model="store.changeModel(conversation, $event)"
       @change-workflow="void store.changeWorkflow(conversation.id, $event)"
       @change-context-limit="preferences.setContextLimit($event)"
+      :conversation-id="conversation.id"
       @stop="store.stop(conversation)"
       @compact="store.compact(conversation)"
       @open-instruction="card.openInstruction"

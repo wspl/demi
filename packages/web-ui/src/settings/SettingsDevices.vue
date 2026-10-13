@@ -18,6 +18,7 @@ import SettingsDevicePage from './SettingsDevicePage.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
+import type { Action } from '../ui/operations'
 import type { SettingsDevice } from './types'
 
 /**
@@ -30,15 +31,12 @@ import type { SettingsDevice } from './types'
 const props = defineProps<{
   load?: 'loading' | 'ready' | 'failed'
   cloud: CloudState | null
-  resetPending?: boolean
   resetError?: ShownError | null
   devices: SettingsDevice[]
   /** The device whose page is shown, the Cloud's included; null shows the list. */
   shown?: string | null
   /** The runner release the server's devices follow; null on a server without them. */
   runnerRelease: string | null
-  /** The devices whose revocation is under way. */
-  revokingIds?: string[]
   /** The most characters a device's name has; null for no limit. */
   nameMaxLength: number | null
   /** The user's projects, each on a device; a revoked device's go with it. */
@@ -47,6 +45,8 @@ const props = defineProps<{
   /** The backend's install commands; null until the host has them. */
   installCommands: DeviceInstallCommands | null
   claimDevice: (code: string, signal?: AbortSignal) => Promise<PairingResult>
+  /** Revokes a device; its page works until it settles. */
+  onRevoke?: Action<[id: string]>
 }>()
 const emit = defineEmits<{
   retry: []
@@ -56,7 +56,6 @@ const emit = defineEmits<{
   tryNow: [id: string]
   measure: [id: string]
   rename: [id: string, name: string]
-  revoke: [id: string]
   resetCloud: [operationId: string]
 }>()
 
@@ -102,14 +101,13 @@ const pageProjects = computed(() =>
     :runner-release="runnerRelease"
     :projects="pageProjects"
     :name-max-length="nameMaxLength"
-    :revoking="!!shown && revokingIds?.includes(shown)"
     :overlay-store="overlayStore"
     @back="emit('show', null)"
     @set-route="emit('setRoute', shown!, $event)"
     @try-now="emit('tryNow', shown!)"
     @measure="emit('measure', shown!)"
     @rename="emit('rename', shown!, $event)"
-    @revoke="emit('revoke', shown!)"
+    @revoke="onRevoke?.(shown!)"
   />
   <SettingsPage
     v-else
@@ -118,7 +116,6 @@ const pageProjects = computed(() =>
   >
     <CloudSettings
       v-if="cloud"
-      :reset-pending="resetPending"
       :reset-error="resetError"
       :cloud="cloud"
       :overlay-store="overlayStore"

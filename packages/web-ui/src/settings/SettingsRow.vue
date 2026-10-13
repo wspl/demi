@@ -4,6 +4,8 @@ import { useElementSize } from '@vueuse/core'
 import { ChevronRight } from '@lucide/vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { disabledTooltip } from '../ui/disabled'
+import { provideRowTarget } from '../ui/operations'
+import RowSpinner from '../ui/RowSpinner.vue'
 import Tag from '../ui/Tag.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
@@ -53,6 +55,11 @@ const props = defineProps<{
   /** Why it is disabled, as a tooltip; only read while `disabled`. */
   disabledReason?: SentenceText
   statuses?: readonly SettingsRowStatus[]
+  /**
+   * What the row stands for, as operations name it, such as `passkey:k1`:
+   * the row shows the spinner while any operation on it runs.
+   */
+  target?: string
 }>()
 
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
@@ -71,6 +78,12 @@ const { height: rowHeight } = useElementSize(rowElement, undefined, { box: 'bord
 const emit = defineEmits<{
   click: []
 }>()
+
+// The row works while an operation on its target runs, whichever control
+// started it, a dialog since closed included (`operations.ts`): a spinner
+// stands before its controls, and its accessory, such as its ··· menu, stays
+// for the menu to be opened again.
+const working = provideRowTarget(() => props.target)
 </script>
 
 <template>
@@ -142,6 +155,8 @@ const emit = defineEmits<{
     <!-- Beside the text the controls may take up to two thirds; inputs shrink, buttons never wrap.
          The container spans the row's content box so a bare input can stretch to it.
          Under the text (below @sm) a field takes the width its siblings leave; an inset row never drops. -->
+      <!-- A row with no controls shows its work at its end, before its accessory. -->
+      <RowSpinner v-if="working && !$slots.default" class="ml-auto self-center" />
       <div
         v-if="$slots.default"
         @click="isolateControls && $event.stopPropagation()"
@@ -152,6 +167,7 @@ const emit = defineEmits<{
         disabled ? 'pointer-events-none' : '',
       ]"
       >
+        <RowSpinner v-if="working" />
         <slot />
       </div>
       <div v-if="below" class="order-last min-w-0 basis-full" :class="faded ? 'opacity-60' : ''">

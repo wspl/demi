@@ -18,6 +18,7 @@ import { buildReasoningState, reasoningOptionLabel } from '../agent/reasoning'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
 import Dropdown from '../ui/Dropdown.vue'
+import type { Action, Operation } from '../ui/operations'
 import ScrollArea from '../ui/ScrollArea.vue'
 import InlineError from '../ui/InlineError.vue'
 import Switch from '../ui/Switch.vue'
@@ -48,14 +49,17 @@ const props = defineProps<{
    * included, which name the profile's model and tell whether it is gone.
    */
   catalogModels: Record<string, ModelInfo[]>
-  pending?: boolean
+  /** Saves the profile; Save works until it settles. */
+  onSave?: Action<[draft: SettingsSubagentDraft]>
+  /** What Save does, and what Delete does, one group on the profile (`operations.ts`): while one works, the other cannot be pressed. */
+  saveOperation?: Operation
+  deleteOperation?: Operation
   /** Why the last save failed, with the request it came from. */
   error?: ShownError | null
 }>()
 
 const emit = defineEmits<{
   close: []
-  save: [draft: SettingsSubagentDraft]
   delete: []
   /** The user's context limit on a model, for all their conversations with it, as the composer's menu sets it. */
   contextLimit: [change: ContextLimitChange]
@@ -115,18 +119,17 @@ function changeModel(change: ModelSettingsChange): void {
 const nameProblem = computed(() => profileNameProblem(draft.value.name.trim()))
 
 const canSave = computed(() =>
-  !props.pending &&
   draft.value.name.trim() !== '' &&
   nameProblem.value === null &&
   draft.value.description.trim() !== '',
 )
 
-function save(): void {
+function save(): unknown {
   if (!canSave.value) {
     return
   }
   const model: ModelSettings | null = draft.value.model ? { ...draft.value.model } : null
-  emit('save', {
+  return props.onSave?.({
     name: draft.value.name.trim(),
     description: draft.value.description.trim(),
     model,
@@ -155,7 +158,7 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
       </header>
 
       <!-- Only the fields scroll; the title and the buttons stay in place. -->
-      <ScrollArea :inert="pending" class="min-h-0" viewport-class="flex flex-col gap-3 px-5">
+      <ScrollArea class="min-h-0" viewport-class="flex flex-col gap-3 px-5">
         <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
           <SettingsRow label="Name" description="Required. Lowercase letters, digits and hyphens, starting with a letter.">
             <template v-if="nameProblem" #detail>
@@ -226,11 +229,11 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
       <InlineError v-if="error" class="px-5 pt-3" :message="error.message" :request-id="error.requestId" />
     </div>
     <template v-if="mode === 'edit'" #footer-leading>
-      <Button variant="danger" :disabled="pending" @click="emit('delete')">Delete</Button>
+      <Button variant="danger" :operation="deleteOperation" @click="emit('delete')">Delete</Button>
     </template>
     <template #footer>
       <Button @click="emit('close')">Cancel</Button>
-      <Button variant="primary" :disabled="!canSave" @click="save">
+      <Button variant="primary" :disabled="!canSave" :operation="saveOperation" @click="save">
         {{ mode === 'create' ? 'Create Profile' : 'Save' }}
       </Button>
     </template>
