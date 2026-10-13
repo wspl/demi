@@ -310,7 +310,7 @@ onMounted(async () => {
           v-model:tab="settingsTab"
           :is-open="settingsOpen"
           :overlay-store="appOverlayStore"
-          :account="{ name: demoAccount.name }"
+          :account="{ id: demoAccount.id, name: demoAccount.name }"
           :sections="settingsSections"
           @close="settingsOpen = false"
         >

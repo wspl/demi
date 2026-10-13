@@ -135,7 +135,7 @@ function detach(id: string): void {
       <template #sidebar>
         <div class="w-48 p-3">
           <SidebarAccount
-            :account="{ name: '', email: 'new@example.com' }"
+            :account="{ id: 'new', name: '', email: 'new@example.com' }"
             @open-settings="productWould('Open Settings')"
             @sign-out="productWould('Sign Out')"
           />
