@@ -67,7 +67,7 @@ const paste = computed(() => store.pasteHost(props.conversation))
 
 /** The version of the draft a later save replaced, which the composer offers to restore. */
 const replaced = computed(() => {
-  const version = props.conversation.savedDraft?.replaced
+  const version = props.conversation.record.read.value?.draft.replaced
   return version
     ? {
         markdown: version.text,
@@ -78,12 +78,25 @@ const replaced = computed(() => {
     : null
 })
 
-/** The messages saved for later as the list under the composer shows them, newest first. */
-const savedRows = computed<SavedRow[]>(() =>
-  (props.conversation.saved.shown.value ?? []).map((message) => (
-    { id: message.id, preview: savedPreview(message.text), attachmentCount: message.files.length }
-  )),
-)
+/**
+ * The messages saved for later as the list under the composer shows them,
+ * newest first: those the server did not save, then the list, each saved, or
+ * saving while the page's save of it is on its way.
+ */
+const savedRows = computed<SavedRow[]>(() => {
+  const record = props.conversation.record
+  const shown = record.shown.value?.saved ?? []
+  const kept = new Set(record.read.value?.saved.map((message) => message.id))
+  const row = (message: { id: string; text: string; files: unknown[] }, state: SavedRow['state']): SavedRow => (
+    { id: message.id, preview: savedPreview(message.text), attachmentCount: message.files.length, state }
+  )
+  return [
+    ...props.conversation.notSaved
+      .filter((message) => !shown.some((each) => each.id === message.id))
+      .map((message) => row(message, 'notSaved')),
+    ...shown.map((message) => row(message, kept.has(message.id) ? 'saved' : 'saving')),
+  ]
+})
 /** The list stands open while this composer shows; another conversation's starts closed. */
 const savedOpen = ref(false)
 watch(() => props.conversation.id, () => {
@@ -251,6 +264,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @edit-saved="store.editSaved(conversation, $event)"
       @send-saved="(id, way) => store.sendSaved(conversation, id, way)"
       @delete-saved="store.deleteSaved(conversation, $event)"
+      @retry-saved="store.retrySaved(conversation, $event)"
       @restore-replaced="store.restoreReplaced(conversation)"
       @dismiss-replaced="store.dismissReplaced(conversation)"
       @reload-plugins="store.reloadPlugins(conversation)"

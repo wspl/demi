@@ -486,7 +486,7 @@ export const useProduct = defineStore('product', () => {
       return false
     }
     const event = typeof answer === 'function' ? answer(state) : answer
-    return slot.answered(partOf(event), at, answerOf(event))
+    return slot.answered([partOf(event)], at, answerOf(event))
   }
 
   /**
@@ -496,7 +496,7 @@ export const useProduct = defineStore('product', () => {
    * it ended through the change it gets.
    */
   function change(part: Part, apply: (state: ProductState) => ProductState): ProductChange {
-    const entry = slot.change(apply, part)
+    const entry = slot.change(apply, { parts: [part] })
     return {
       send: () => entry.send(),
       land: (answer = (state) => partEvent(apply(state), part)) => void entry.land(answerOf(answer)),

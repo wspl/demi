@@ -208,24 +208,28 @@ export class ConversationClient {
 
   /**
    * Sends the message saved for later `id` the way the composer chose
-   * (`web-api.md` § Messages saved for later), its id the turn's or the
-   * steer's; resolves once the session holds it: in the transcript or the
-   * queue, or accepted as a steer. A steer the session refuses rejects with
-   * `SteerRejectedError`, and a message the list no longer holds with
-   * `SavedGoneError`.
+   * (`web-api.md` § Messages saved for later), as the message `turnId`, the
+   * page's id for this send; resolves once the session holds it: in the
+   * transcript or the queue, or accepted as a steer, at once when it does
+   * already. A steer the session refuses rejects with `SteerRejectedError`,
+   * and a message the list no longer holds, which no send took as
+   * `turnId`, with `SavedGoneError`.
    */
-  sendSaved(id: string, delivery: SavedDelivery): Promise<void> {
+  sendSaved(id: string, turnId: string, delivery: SavedDelivery): Promise<void> {
+    if (this.writtenTurns.has(turnId) || this.queue.some((message) => message.id === turnId)) {
+      return Promise.resolve()
+    }
     return this.request(
-      { type: 'send_saved', id, delivery },
+      { type: 'send_saved', id, turnId, delivery },
       (event) => {
-        if (event.type === 'steer_result' && event.steerId === id) {
+        if (event.type === 'steer_result' && event.steerId === turnId) {
           return event.outcome.status === 'accepted'
             ? { resolve: undefined }
             : { reject: new SteerRejectedError(event.outcome.reason) }
         }
         const written = (event.type === 'transcript_reset' || event.type === 'transcript_patch')
-          && this.writtenTurns.has(id)
-        const queued = event.type === 'queue' && event.queue.some((message) => message.id === id)
+          && this.writtenTurns.has(turnId)
+        const queued = event.type === 'queue' && event.queue.some((message) => message.id === turnId)
         if (delivery !== 'steer' && (written || queued)) {
           return { resolve: undefined }
         }

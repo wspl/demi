@@ -136,7 +136,7 @@ export class PanelTabs {
 
   /** The revision of the panel last read; -1 before the first read. */
   get revision(): number {
-    return this.slot.revision
+    return this.slot.revision()
   }
 
   /** Whether the panel was read once. */
@@ -190,7 +190,7 @@ export class PanelTabs {
 
   /** Takes a panel read anywhere: an older one than the panel held changes nothing. */
   receive(panel: PanelRead): void {
-    this.slot.replace(panel.tabs, { revision: panel.revision })
+    this.slot.replace(panel.tabs, { revisions: { '': panel.revision } })
   }
 
   private async flush(): Promise<void> {
@@ -220,7 +220,7 @@ export class PanelTabs {
         const alone = this.read && answer.changed && answer.revision === this.revision + 1
         const read = this.read
         this.slot.land(shown, {
-          revision: answer.revision,
+          revisions: { '': answer.revision },
           ...(alone ? { value: (tabs: PanelTab[]) => batch.reduce((next, entry) => applyPanelChange(next, entry.change), tabs) } : {}),
         })
         // Another change came in between, or after: only then is the panel read.
