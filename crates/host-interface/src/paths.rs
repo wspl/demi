@@ -57,18 +57,33 @@ impl HostPaths {
             .into_string()
     }
 
-    /// `path` read against `directory` without taking out `.` and `..`, so
-    /// the Host, which follows links first, decides where it leads: as it
-    /// is when it is absolute, otherwise joined to `directory`.
+    /// `path` read against `directory` as the Host's own path join reads
+    /// it, without taking out `.` and `..`, so the Host, which follows
+    /// links first, decides where they lead: an absolute path as it is; on
+    /// Windows a rooted one, `\rules\review.yaml`, on `directory`'s drive,
+    /// and a drive-relative one, `C:foo`, as it is, for the Host to read
+    /// against that drive's directory; otherwise joined to `directory`.
     pub fn beside(self, directory: &str, path: &str) -> String {
-        let style = match self {
-            Self::Posix => typed_path::PathType::Unix,
-            Self::Windows => typed_path::PathType::Windows,
-        };
-        if typed_path::Utf8TypedPath::new(path, style).is_absolute() {
-            path.to_owned()
-        } else {
-            self.join(directory, path)
+        match self {
+            Self::Posix if path.starts_with('/') => path.to_owned(),
+            Self::Posix => self.join(directory, path),
+            Self::Windows => {
+                use typed_path::{Utf8WindowsComponent, Utf8WindowsPath};
+                let prefix = |path: &str| match Utf8WindowsPath::new(path).components().next() {
+                    Some(Utf8WindowsComponent::Prefix(prefix)) => Some(prefix.as_str().to_owned()),
+                    _ => None,
+                };
+                if prefix(path).is_some() {
+                    // A drive or a share of its own, `C:foo` included,
+                    // which the Host reads against that drive.
+                    path.to_owned()
+                } else if path.starts_with(['\\', '/']) {
+                    // Rooted on the directory's drive.
+                    format!("{}{path}", prefix(directory).unwrap_or_default())
+                } else {
+                    self.join(directory, path)
+                }
+            }
         }
     }
 

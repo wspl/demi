@@ -3,6 +3,7 @@
 mod fs;
 mod git;
 mod load;
+mod nofollow;
 mod volumes;
 mod watch;
 

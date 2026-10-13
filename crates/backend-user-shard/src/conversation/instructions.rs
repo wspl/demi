@@ -59,10 +59,11 @@ struct WorkflowText {
 }
 
 /// The last read of the workflow a conversation chose: the input turn and
-/// the workflow it was for, and its instructions, none when it has none or
-/// cannot be used.
+/// the choice it was for, by how often the choice had changed then, and
+/// its instructions, none when it has none or cannot be used.
 struct WorkflowRead {
     turn: TurnId,
+    changes: u64,
     id: String,
     text: Option<WorkflowText>,
 }
@@ -85,9 +86,10 @@ impl Instructions {
 
     /// The instructions of the workflow `id` the conversation chose, none
     /// when it has none or cannot be used: read at the first request of
-    /// each input turn, as the project files are, and at once for a new
-    /// choice, so the next request carries them; what the last read found
-    /// is used while a read cannot run.
+    /// each input turn, as the project files are, and at the first request
+    /// after any change of the choice, Default and No Subagents included,
+    /// so a workflow chosen again reads as its file is then; what the last
+    /// read found is used while a read cannot run.
     async fn workflow_text(
         &self,
         shard: &Shard,
@@ -95,11 +97,12 @@ impl Instructions {
         id: &str,
         turn: &TurnId,
     ) -> Option<WorkflowText> {
+        let changes = shard.workflow_choice_changes(conversation);
         let current = self
             .workflows
             .borrow()
             .get(conversation)
-            .is_some_and(|read| read.turn == *turn && read.id == id);
+            .is_some_and(|read| read.turn == *turn && read.changes == changes && read.id == id);
         if !current {
             // The request ends with the provider request it serves, which
             // drops this future.
@@ -117,6 +120,7 @@ impl Instructions {
                         });
                     let read = WorkflowRead {
                         turn: turn.clone(),
+                        changes,
                         id: id.to_owned(),
                         text,
                     };
@@ -257,12 +261,10 @@ async fn search(
             reads.push(HostRead {
                 path: join(directory, name),
                 limit: 0,
-            });
+    within: None,
+});
         }
-        reads.push(HostRead {
-            path: demi_file(directory),
-            limit: 0,
-        });
+        reads.push(HostRead::new(demi_file(directory), 0));
     }
     let (found, _) = shard
         .host_shard()
@@ -271,12 +273,13 @@ async fn search(
     let (git, named) = found.split_at(ancestors.len());
     let searched = project::searched(&ancestors, git).len();
     let taken_file = |path: String, answer: &HostFile| match answer {
-        HostFile::File { size, .. } => Some(HostRead { path, limit: *size }),
+        HostFile::File { size, .. } => Some(HostRead { path, limit: *size, within: None }),
         HostFile::Unreadable { message } => {
             tracing::info!(%path, %message, "a project instruction file cannot be read");
             None
         }
-        HostFile::Missing | HostFile::Directory { .. } | HostFile::Other => None,
+        // Instruction files are read through links: none answers a link.
+        HostFile::Missing | HostFile::Directory { .. } | HostFile::Other | HostFile::Link => None,
     };
     // Each directory's files in their order, nearest directory first.
     let mut by_directory: Vec<Vec<HostRead>> = Vec::new();

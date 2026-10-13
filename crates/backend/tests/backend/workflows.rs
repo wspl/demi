@@ -11,6 +11,8 @@ use demi_provider_common::testing::MockVendor;
 use demi_shared_types::{Block, INSTRUCTIONS_SOURCE, InstructionEntry, WorkflowChoice};
 use demi_web_api_protocol::conversations::ConversationUpdate;
 use demi_web_api_protocol::workflows::ConversationWorkflows;
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::auth::Role;
 use reqwest::StatusCode;
 use serde_json::json;
 
@@ -87,8 +89,8 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
         json!({
             "directory": path(&workflows),
             "workflows": [
-                { "id": "broken", "name": null, "error": broken },
-                { "id": "review", "name": "Review Team", "error": null },
+                { "id": "broken", "name": null, "path": path(&workflows.join("broken.yaml")), "unavailable": broken },
+                { "id": "review", "name": "Review Team", "path": path(&workflows.join("review.yaml")), "unavailable": null },
             ],
             "watch": [
                 { "kind": "folder_names", "path": path(&web.join(".demi")) },
@@ -231,9 +233,9 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     assert_eq!(
         listed["workflows"],
         json!([
-            { "id": "docs", "name": "Docs Review", "error": null },
-            { "id": "linked", "name": null, "error": "Workflows are files of the project, not links." },
-            { "id": "review", "name": "Review Team", "error": null },
+            { "id": "docs", "name": "Docs Review", "path": path(&workflows.join("docs.yaml")), "unavailable": null },
+            { "id": "linked", "name": null, "path": path(&workflows.join("linked.yaml")), "unavailable": "Workflows are files of the project, not links." },
+            { "id": "review", "name": "Review Team", "path": path(&workflows.join("review.yaml")), "unavailable": null },
         ])
     );
 
@@ -262,10 +264,11 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
         "{received}"
     );
 
-    // Docs Review chosen at the turn's start; mid-turn, Review Team's
-    // instructions change and the user chooses it: the next request carries
-    // Review Team's instructions as the file is now.
-    choose(&backend, &master, json!({ "type": "workflow", "id": "docs" })).await;
+    // Review Team chosen at the turn's start; mid-turn the user chooses No
+    // Subagents, Review Team's instructions change, and the user chooses it
+    // again: the next request carries them as the file is now, not the read
+    // the turn began with.
+    choose(&backend, &master, json!({ "type": "workflow", "id": "review" })).await;
     let started = repo.join("started");
     let go = repo.join("go");
     let before = work
@@ -279,6 +282,7 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
         async move { exists }
     })
     .await;
+    choose(&backend, &master, json!({ "type": "none" })).await;
     std::fs::write(workflows.join("review.yaml"), REVIEW.replace("REVIEW STEPS", "REVIEW STEPS TWO")).unwrap();
     choose(&backend, &master, json!({ "type": "workflow", "id": "review" })).await;
     std::fs::write(&go, "").unwrap();
@@ -287,7 +291,7 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     assert_eq!(turn.requests.len(), 2);
     let first = turn.requests[0]["messages"].to_string();
     let second = turn.requests[1]["messages"].to_string();
-    assert!(first.contains("DOCS STEPS ONE"), "{first}");
+    assert!(first.contains("REVIEW STEPS\\n</workflow>"), "{first}");
     assert!(second.contains("REVIEW STEPS TWO"), "{second}");
 
     // `.demi/workflows` itself a link: nothing in it is read, and the menu
@@ -301,6 +305,31 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     assert_eq!(listed["unavailable"], json!("Workflows are files of the project, not links."));
     assert_eq!(listed["workflows"], json!([]));
     assert_eq!(listed["watch"], json!([{ "kind": "folder_names", "path": path(&repo.join(".demi")) }]));
+
+    // `.demi` itself a link, to a directory whose `workflows` holds a
+    // workflow: nothing behind it is listed or read.
+    std::fs::rename(repo.join(".demi"), home.join("old-demi")).unwrap();
+    std::fs::create_dir_all(home.join("shared-demi/workflows")).unwrap();
+    std::fs::write(home.join("shared-demi/workflows/review.yaml"), REVIEW).unwrap();
+    std::os::unix::fs::symlink(home.join("shared-demi"), repo.join(".demi")).unwrap();
+    let listed = menu(&backend, &master).await;
+    assert_eq!(listed["directory"], json!(path(&workflows)));
+    assert_eq!(listed["unavailable"], json!("Workflows are files of the project, not links."));
+    assert_eq!(listed["workflows"], json!([]));
+    assert_eq!(listed["watch"], json!([{ "kind": "folder_names", "path": path(&repo) }]));
+
+    // A `.demi` the Host cannot read is not looked past: its workflows are
+    // unavailable, and none of a directory above is offered instead.
+    std::fs::remove_file(repo.join(".demi")).unwrap();
+    std::fs::create_dir_all(repo.join(".demi/workflows")).unwrap();
+    std::fs::write(repo.join(".demi/workflows/review.yaml"), REVIEW).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    std::fs::set_permissions(repo.join(".demi"), std::fs::Permissions::from_mode(0o000)).unwrap();
+    let listed = menu(&backend, &master).await;
+    std::fs::set_permissions(repo.join(".demi"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    let reason = listed["unavailable"].as_str().unwrap_or_default().to_owned();
+    assert!(reason.starts_with(&format!("the Host cannot read {}: ", path(&repo.join(".demi")))), "{listed}");
+    assert_eq!(listed["workflows"], json!([]));
     backend.close().await;
 }
 
@@ -332,6 +361,24 @@ async fn a_new_conversation_lists_its_directorys_workflows_and_keeps_the_choice_
     let listed = listed.json::<ConversationWorkflows>();
     assert_eq!(listed.workflows.len(), 1);
     assert_eq!(listed.workflows[0].name.as_deref(), Some("Review Team"));
+
+    // A directory that is no absolute path, one that is not there, and a
+    // device of another user's.
+    let ask = |device: String, directory: &str| {
+        let query = url::form_urlencoded::Serializer::new(String::new()).append_pair("directory", directory).finish();
+        format!("/api/devices/{device}/workflows?{query}")
+    };
+    for relative in ["repo", ""] {
+        let refused = backend.get(&ask(alpha.id().to_owned(), relative), Some(&master)).await;
+        assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody), "{relative:?}");
+    }
+    let missing = repo.join("missing").to_str().unwrap().to_owned();
+    let gone = backend.get(&ask(alpha.id().to_owned(), &missing), Some(&master)).await;
+    assert_eq!(gone.refusal(), (StatusCode::NOT_FOUND, ErrorCode::FsNotFound));
+    harness.add_user("user@example.test", "user-pass-1", Role::User);
+    let other = backend.login("user@example.test", "user-pass-1").await;
+    let foreign = backend.get(&ask(alpha.id().to_owned(), &directory), Some(&other)).await;
+    assert_eq!(foreign.refusal(), (StatusCode::NOT_FOUND, ErrorCode::DeviceNotFound));
 
     // Its first send makes it with the choice.
     let created = backend

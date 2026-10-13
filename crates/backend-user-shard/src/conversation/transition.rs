@@ -62,7 +62,11 @@ impl Shard {
             change,
             ConversationChange::Record(RecordChange::Pinned(_) | RecordChange::Archived(_))
         );
+        let chooses = matches!(change, ConversationChange::Record(RecordChange::Workflow(_)));
         let switched = self.apply_change(id, change).await?;
+        if chooses {
+            self.workflow_choice_changed(id);
+        }
         self.mark(Part::Conversation(id.clone()));
         if reorders {
             self.mark(Part::ConversationOrder);

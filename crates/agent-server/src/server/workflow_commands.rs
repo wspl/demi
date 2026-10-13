@@ -122,8 +122,8 @@ fn render(listing: &WorkflowListing) -> String {
         + 2;
     for workflow in &listing.workflows {
         let mark = if Some(workflow.id.as_str()) == chosen_id { '*' } else { ' ' };
-        let shown = match (&workflow.name, &workflow.error) {
-            (_, Some(error)) => format!("does not read: {error}"),
+        let shown = match (&workflow.name, &workflow.unavailable) {
+            (_, Some(reason)) => format!("cannot be used: {reason}"),
             (Some(name), None) => name.clone(),
             (None, None) => String::new(),
         };
