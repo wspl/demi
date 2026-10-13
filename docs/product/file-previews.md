@@ -201,8 +201,7 @@ shows in every message that names it, and one the page already decoded never
 stands for a newer file. While the description is first read, and when the
 file is missing, the image shows its alt text. An image follows its file
 while it is on screen; one scrolled away reads its description again when it
-is shown. and a click on
-`plot.py` opens it in the File view. A link to a Host file shows the file's
+is shown. A click on `plot.py` opens it in the File view. A link to a Host file shows the file's
 icon before its name, the icon the file tree shows for it, so a file reads as
 a file and not as a page on the web. A link that starts with an icon, a
 file's icon or an agent's mark ([Linking an agent](../agent/subagents.md#linking-an-agent)),
@@ -457,7 +456,10 @@ it was, not dimmed, so the user can go on reading and typing beside it.
   transcript it was opened from, the conversation's or a subagent's: the
   images messages show, the user's attached images and the media tools
   returned, in the order they stand, from the oldest to the newest. At the
-  first or the last nothing moves. The title bar counts them, *3 of 12*. A
+  first or the last nothing moves. A message's Host image is among them
+  by its file, whose version the viewer follows as the message does, so an
+  open viewer shows the file as it is now; one whose file turns out to be
+  missing shows *Could not show this image.* when stepped to. The title bar counts them, *3 of 12*. A
   picture the transcript has not loaded yet, above the part the page holds,
   is not among them. While the focus is on a video, the arrow keys are the
   player's, which seeks with them. On a phone, where the viewer takes the
