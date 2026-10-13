@@ -9,6 +9,7 @@ import ImagePreview from './ImagePreview.vue'
 import MediaPreview from './MediaPreview.vue'
 import { formatZoom } from './image-zoom'
 import type { MediaViewerState, ShownMedium } from './media-viewer'
+import type { StepReach } from './swipe-step'
 import type { PixelSize } from './thumbnail'
 
 /**
@@ -21,13 +22,14 @@ import type { PixelSize } from './thumbnail'
  * Opening another medium shows it in the same window, fitted.
  *
  * On a phone, the medium fills the screen instead, with its close control
- * (§ Media a tool returned, On a phone). The page draws it beside the viewer
- * it provides.
+ * (§ Media a tool returned, On a phone), and a swipe left or right steps to
+ * the next or the previous picture (`ImagePreview`). The page draws it beside
+ * the viewer it provides.
  */
 const props = defineProps<{ viewer: MediaViewerState }>()
 
 /** The medium itself, which the window and a phone's full screen both show. */
-const [DefineMedium, ReuseMedium] = createReusableTemplate<{ flush: boolean }>()
+const [DefineMedium, ReuseMedium] = createReusableTemplate<{ flush: boolean; swipe: boolean }>()
 
 /** A phone's width, the app's narrow width, where the viewer fills the screen (48rem, as `Dialog`'s). */
 const phone = useMediaQuery('(max-width: 767.98px)')
@@ -74,6 +76,25 @@ function onKeydown(event: KeyboardEvent): void {
   props.viewer.step(direction === -1 ? -1 : 1)
 }
 
+/** The neighbours of the picture shown, which a swipe can step to; none when it stands in no transcript. */
+const reach = computed<StepReach | undefined>(() => {
+  const place = props.viewer.position.value
+  return place ? { previous: place.at > 1, next: place.at < place.of } : undefined
+})
+
+/** The side the picture shown slid in from, when a swipe brought it. */
+const arriving = ref<-1 | 0 | 1>(0)
+
+watch(() => props.viewer.shown.value, () => {
+  // Only the picture that mounts for a swipe's step slides in; one the page opens later does not.
+  arriving.value = 0
+}, { flush: 'post' })
+
+function onSwipe(direction: -1 | 1, slid: boolean): void {
+  arriving.value = slid ? direction : 0
+  props.viewer.step(direction)
+}
+
 function onSize(width: number, height: number): void {
   size.value = { width, height }
   props.viewer.measured({ width, height })
@@ -81,7 +102,7 @@ function onSize(width: number, height: number): void {
 </script>
 
 <template>
-  <DefineMedium v-slot="{ flush }">
+  <DefineMedium v-slot="{ flush, swipe }">
     <template v-if="medium">
       <RegionStatus v-if="failed" class="h-full" status="failed" :label="`Could not show this ${medium.kind}.`" />
       <ImagePreview
@@ -90,9 +111,12 @@ function onSize(width: number, height: number): void {
         :src="medium.src"
         :name="medium.name"
         :flush="flush"
+        :steps="swipe ? reach : undefined"
+        :from="arriving"
         @size="onSize"
         @zoom="zoom = $event"
         @failed="failed = true"
+        @step="onSwipe"
       />
       <MediaPreview
         v-else
@@ -119,7 +143,7 @@ function onSize(width: number, height: number): void {
   >
     <div class="flex h-full min-h-0 flex-col">
       <div class="min-h-0 flex-1">
-        <ReuseMedium :flush="false" />
+        <ReuseMedium :flush="false" :swipe="true" />
       </div>
       <div class="h-6 shrink-0 px-3 text-center text-[11px] tabular-nums text-fg-muted">
         {{ details(false) }}
@@ -139,6 +163,6 @@ function onSize(width: number, height: number): void {
   >
     <template #title>{{ medium?.name }}</template>
     <template v-if="details(true)" #trailing>{{ details(true) }}</template>
-    <ReuseMedium flush />
+    <ReuseMedium flush :swipe="false" />
   </FloatingWindow>
 </template>
