@@ -180,7 +180,7 @@ why.
   screen in the same frame: with its result, when it shows at once, or
   with the control showing that it is working, when it waits. A button
   that waits shows a spinner in place of its icon or beside its label and
-  keeps its size; a menu item that waits closes its menu and the row it
+  keeps its height; a menu item that waits closes its menu and the row it
   acts on shows the spinner; a row action shows it on that row. The
   control stays pressable for what makes sense while it waits, such as
   Cancel, and a second press of the same action does not send it twice.
@@ -204,7 +204,8 @@ why.
   the spinner and the others of the group are not pressable. Cancel or
   closing a dialog while its action works closes it and does not stop the
   request, whose row goes on showing that it works until the answer, as a
-  sent mail goes on sending after its window closes.
+  sent mail goes on sending after its window closes; a refusal that comes
+  after its dialog closed shows as a toast.
 - **Which wait, and show it in place.** An action waits for the backend's
   answer, showing its progress on the control that started it, when the
   user needs to know it really happened before going on:
