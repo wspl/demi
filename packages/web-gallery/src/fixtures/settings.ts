@@ -18,6 +18,7 @@ import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import type { WebState } from '@demicodes/plugin-web'
 import { commitOf } from './plugins'
 import { createCredentialState } from './credentials'
+import { createUsersState } from './users'
 import type { SettingsPasskey, SettingsSession } from '@demicodes/web-ui/settings/types'
 
 const DAY_MS = 24 * 3_600_000
@@ -795,6 +796,8 @@ export function createSettingsState() {
       passkeys: galleryPasskeys(),
       sessions: gallerySessions(),
     },
+    /** The Users page as the master sees it. */
+    users: createUsersState('zan'),
     providers: mockProviders(),
     selectedProviderId: null as string | null,
     providerDetailOpen: false,
