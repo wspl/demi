@@ -192,11 +192,11 @@ impl Mapper {
     /// message that named no stop reason finished, as `message_stop` says.
     fn stop(&self) -> ProviderEvent {
         let Some((reason, received)) = &self.stopped else {
-            return ProviderEvent::Response(self.usage);
+            return ProviderEvent::Response(Some(self.usage));
         };
         let end = match reason.as_str() {
             "end_turn" | "tool_use" | "stop_sequence" => {
-                return ProviderEvent::Response(self.usage);
+                return ProviderEvent::Response(Some(self.usage));
             }
             "max_tokens" | "model_context_window_exceeded" => EarlyEnd::OutputLimit,
             "refusal" => EarlyEnd::Filter,

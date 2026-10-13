@@ -472,7 +472,7 @@ impl TranscriptLog {
         }));
     }
 
-    pub fn push_response(&mut self, model: &ModelSelection, usage: TokenUsage) {
+    pub fn push_response(&mut self, model: &ModelSelection, usage: Option<TokenUsage>) {
         let (id, created_at) = self.stamp();
         self.append(Block::Response(ResponseBlock {
             id,

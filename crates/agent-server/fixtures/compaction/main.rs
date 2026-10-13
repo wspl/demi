@@ -295,7 +295,7 @@ impl ProviderRuntime for Recorded {
             let recorded = &mut requests[index];
             match event {
                 ProviderEvent::TextDelta(text) => recorded.answer.push_str(text),
-                ProviderEvent::Response(usage) => recorded.usage = Some(*usage),
+                ProviderEvent::Response(usage) => recorded.usage = *usage,
                 _ => {}
             }
         }))

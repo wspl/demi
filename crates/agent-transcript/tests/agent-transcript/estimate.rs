@@ -33,12 +33,12 @@ fn response(id: &str, input_tokens: u64) -> Block {
         id: id.try_into().unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),
-        usage: TokenUsage {
+        usage: Some(TokenUsage {
             input_tokens,
             output_tokens: 50,
             cache_read_tokens: 100,
             cache_write_tokens: 0,
-        },
+        }),
     })
 }
 

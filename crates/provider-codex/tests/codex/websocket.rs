@@ -97,7 +97,7 @@ async fn a_websocket_request_is_one_response_create_message_with_the_websocket_b
         events,
         [
             ProviderEvent::TextDelta("ws".into()),
-            ProviderEvent::Response(usage())
+            ProviderEvent::Response(Some(usage()))
         ]
     );
 
@@ -154,7 +154,7 @@ async fn envelopes_carry_their_events_and_a_done_envelope_is_the_completion() {
         events,
         [
             ProviderEvent::TextDelta("hi".into()),
-            ProviderEvent::Response(usage())
+            ProviderEvent::Response(Some(usage()))
         ]
     );
 }
@@ -171,7 +171,7 @@ async fn a_websocket_that_closes_before_its_first_event_gives_way_to_server_sent
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
     let provider = provider(&socket, &vendor, &pool, TransportMode::Auto, None);
     let events = run(runtime_of(&provider).as_mut(), inference_request()).await;
-    assert_eq!(events, [ProviderEvent::Response(usage())]);
+    assert_eq!(events, [ProviderEvent::Response(Some(usage()))]);
     assert_eq!(vendor.requests().len(), 1);
     assert_eq!(
         vendor.requests()[0].header("accept"),
@@ -203,7 +203,7 @@ async fn a_websocket_that_cannot_connect_sends_the_next_ten_minutes_of_requests_
     let mut runtime = runtime_of(&provider);
     assert_eq!(
         run(runtime.as_mut(), inference_request()).await,
-        [ProviderEvent::Response(usage())]
+        [ProviderEvent::Response(Some(usage()))]
     );
     // A new session of the same provider does not try the WebSocket again
     // within ten minutes.
@@ -211,7 +211,7 @@ async fn a_websocket_that_cannot_connect_sends_the_next_ten_minutes_of_requests_
     let mut other = runtime_of(&provider);
     assert_eq!(
         run(other.as_mut(), inference_request()).await,
-        [ProviderEvent::Response(usage())]
+        [ProviderEvent::Response(Some(usage()))]
     );
     assert_eq!(socket.connections().len(), 1);
     assert_eq!(vendor.requests().len(), 2);
@@ -219,7 +219,7 @@ async fn a_websocket_that_cannot_connect_sends_the_next_ten_minutes_of_requests_
     clock.advance(jiff::SignedDuration::from_secs(1));
     assert_eq!(
         run(other.as_mut(), inference_request()).await,
-        [ProviderEvent::Response(usage())]
+        [ProviderEvent::Response(Some(usage()))]
     );
     assert_eq!(socket.connections().len(), 2);
     assert_eq!(vendor.requests().len(), 2);
@@ -274,7 +274,7 @@ async fn a_handshake_refused_with_401_refreshes_the_token_once() {
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
     let provider = provider(&socket, &vendor, &pool, TransportMode::WebSocket, None);
     let events = run(runtime_of(&provider).as_mut(), inference_request()).await;
-    assert_eq!(events, [ProviderEvent::Response(usage())]);
+    assert_eq!(events, [ProviderEvent::Response(Some(usage()))]);
     let connections = socket.connections();
     assert_eq!(
         connections[1].headers.get("authorization").unwrap(),

@@ -55,7 +55,7 @@ async fn a_request_refused_with_401_refreshes_once_and_is_sent_again() {
         cache_read_tokens: 0,
         cache_write_tokens: 0,
     };
-    assert_eq!(events, [ProviderEvent::Response(usage)]);
+    assert_eq!(events, [ProviderEvent::Response(Some(usage))]);
 
     let requests = vendor.requests();
     let paths: Vec<&str> = requests.iter().map(|request| request.uri.path()).collect();

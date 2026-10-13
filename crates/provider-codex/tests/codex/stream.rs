@@ -60,7 +60,7 @@ async fn a_run_streams_thinking_text_tool_calls_and_usage() {
                 tool_name: "shell_exec".into(),
                 input: json!({ "script": "pwd" })
             }),
-            ProviderEvent::Response(usage),
+            ProviderEvent::Response(Some(usage)),
         ]
     );
 }

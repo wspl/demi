@@ -54,7 +54,7 @@ async fn a_run_posts_to_the_messages_endpoint_with_the_key_and_version() {
             })
             .unwrap();
         let events = run(runtime.as_mut(), inference_request()).await;
-        assert_eq!(events, [ProviderEvent::Response(TokenUsage::default())]);
+        assert_eq!(events, [ProviderEvent::Response(Some(TokenUsage::default()))]);
     }
     for request in vendor.requests() {
         assert_eq!(
