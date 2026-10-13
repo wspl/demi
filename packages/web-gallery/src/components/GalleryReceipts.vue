@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ref } from 'vue'
+import DockWindowArea from '@demicodes/web-ui/agent/DockWindowArea.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
+import { dockWindowShare } from '../dock-window-share'
 import { provideOriginRevealer } from '@demicodes/web-ui/agent/agent-receipts'
 import { agentLinkWindow, findAgent, provideMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
@@ -59,7 +61,7 @@ provideMessageAgents(() => ({
   <div class="relative">
     <slot />
     <!-- The window stands over the receipts as the product's stands over the session, at a session window's height. -->
-    <div class="pointer-events-none absolute inset-x-0 top-0 h-[28rem]">
+    <DockWindowArea v-model:share="dockWindowShare" class="absolute inset-x-0 top-0 h-[40rem]">
       <SubagentPanel
         v-model:open="open"
         v-model:active-id="activeId"
@@ -70,6 +72,6 @@ provideMessageAgents(() => ({
         @abort-agent="(id) => emit('abortAgent', id)"
         v-bind="agentContext.panel"
       />
-    </div>
+    </DockWindowArea>
   </div>
 </template>

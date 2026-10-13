@@ -144,6 +144,7 @@ onBeforeUnmount(() => {
   <div
     ref="root"
     role="separator"
+    data-resize-handle
     :aria-orientation="orientation"
     :aria-valuemin="min"
     :aria-valuemax="max"
@@ -165,6 +166,7 @@ onBeforeUnmount(() => {
     <!-- The line: hidden until the pointer rests on the handle, lit while it drags or has focus. -->
     <span
       aria-hidden="true"
+      data-resize-line
       class="absolute rounded-full transition-colors duration-150 group-hover/handle:delay-150"
       :class="[
         vertical ? 'inset-y-0 left-1/2 w-0.5 -translate-x-1/2' : 'inset-x-0 top-1/2 h-0.5 -translate-y-1/2',
