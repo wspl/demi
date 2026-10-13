@@ -10,9 +10,9 @@ import { scrollbarsOptions, scrollbarsTarget, type ScrollAxis } from './scrollba
  * while it scrolls and while its thumb is dragged (`scrollbars.ts`).
  *
  * The root is a flex item (`min-h-0`); the viewport inside it scrolls along
- * `axis` (vertically unless told otherwise) and clips the other axis. Padding
- * for rings drawn at the content's edges goes on `viewportClass`, as for any
- * scroll region.
+ * `axis` (vertically unless told otherwise) and clips the other axis. A focus
+ * ring inside it is drawn inside its control, so content at the edges, or
+ * scrolled flush to them, keeps it whole (`base.css`, § The focus ring).
  */
 const props = withDefaults(defineProps<{
   /** Classes for the scrolling viewport: padding, flex layout of the content. */

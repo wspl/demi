@@ -89,7 +89,7 @@ function onMenuKey(event: KeyboardEvent): void {
     role="tab"
     :aria-selected="isActive"
     tabindex="0"
-    class="focus-ring group relative flex h-(--tab-h) w-max [--surface-current:var(--fill-color)] [--tab-h:--spacing(7)] phone:[--tab-h:--spacing(9)] phone:text-[15px] min-w-[min(--spacing(22),var(--tab-room,--spacing(22)))] max-w-[min(--spacing(40),var(--tab-room,--spacing(40)))] shrink phone:shrink-0 cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
+    class="group relative flex h-(--tab-h) w-max [--surface-current:var(--fill-color)] [--tab-h:--spacing(7)] phone:[--tab-h:--spacing(9)] phone:text-[15px] min-w-[min(--spacing(22),var(--tab-room,--spacing(22)))] max-w-[min(--spacing(40),var(--tab-room,--spacing(40)))] shrink phone:shrink-0 cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
     :class="isActive
       ? 'bg-(--tab-active) text-fg-emphasis after:opacity-0 [--fill-color:var(--tab-active)]'
       : 'text-fg-subtle hover:bg-(--tab-hover) hover:text-fg-body hover:[--fill-color:var(--tab-hover)]'"

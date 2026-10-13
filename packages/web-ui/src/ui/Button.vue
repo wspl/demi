@@ -103,7 +103,7 @@ const sizeClass = computed(() => {
       role="button"
       :tabindex="disabled || loading ? undefined : 0"
       :data-default-action="variant === 'primary' || undefined"
-      class="focus-ring relative inline-flex w-full cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow] duration-200 ease-out select-none"
+      class="relative inline-flex w-full cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow] duration-200 ease-out select-none"
       :aria-disabled="disabled || loading || undefined"
       :aria-busy="loading || undefined"
       :data-loading="loading || undefined"
