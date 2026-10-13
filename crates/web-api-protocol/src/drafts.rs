@@ -57,10 +57,31 @@ pub struct ReplacedDraftAction {
     pub revision: u64,
 }
 
-/// The answer of every draft route: the draft as it now is.
+/// `GET /conversations/:id/draft`'s answer: the draft as it now is.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct DraftAnswer {
     pub draft: ConversationDraft,
+}
+
+/// The revisions of a conversation's draft and of its messages saved for
+/// later after a write, which every answer of a write of either carries:
+/// the page holds the two as one piece of state (`web-api.md` § Messages
+/// saved for later).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Revisions {
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub draft: u64,
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub saved: u64,
+}
+
+/// The answer of a write that changes the draft, a save, a restore, a
+/// dismissal or an edit of a saved message: the draft as the write left it,
+/// with the revisions after it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DraftWritten {
+    pub draft: ConversationDraft,
+    pub revisions: Revisions,
 }
 
 /// A conversation's draft.

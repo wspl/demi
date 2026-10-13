@@ -7,8 +7,8 @@ use demi_shared_types::{MAX_SAFE_INTEGER, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::drafts::{ConversationDraft, DraftFile};
-use crate::ids::SavedMessageId;
+use crate::drafts::{ConversationDraft, DraftFile, Revisions};
+use crate::ids::{SavedEditId, SavedMessageId};
 
 /// The most messages a conversation keeps saved for later.
 pub const SAVED_MAX: usize = 200;
@@ -45,11 +45,14 @@ pub struct SavedSave {
     pub files: Vec<ClientContent>,
 }
 
-/// `POST /conversations/:id/saved/:messageId/edit`: the id the page gives the
-/// message the draft becomes, when the draft holds one.
+/// `POST /conversations/:id/saved/:messageId/edit`: the page's id for this
+/// edit, by which the backend answers it again for a day, and the id the
+/// page gives the message the draft becomes, when the draft holds one.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SavedEdit {
+    #[garde(skip)]
+    pub op: SavedEditId,
     #[garde(skip)]
     pub id: SavedMessageId,
 }
@@ -76,16 +79,26 @@ pub struct SavedList {
     pub messages: Vec<SavedMessage>,
 }
 
-/// `POST /conversations/:id/saved`'s answer: the message as saved.
+/// `POST /conversations/:id/saved`'s answer: the message as saved, with
+/// the revisions after it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SavedAnswer {
     pub message: SavedMessage,
+    pub revisions: Revisions,
 }
 
 /// `POST /conversations/:id/saved/from-draft`'s answer: the message as
-/// saved and the draft it emptied.
+/// saved and the draft it emptied, with the revisions after them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct FromDraftAnswer {
     pub message: SavedMessage,
     pub draft: ConversationDraft,
+    pub revisions: Revisions,
+}
+
+/// `DELETE /conversations/:id/saved/:messageId`'s answer, whether the
+/// message was there or gone already: the revisions after it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct SavedRemoved {
+    pub revisions: Revisions,
 }

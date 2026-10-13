@@ -6,7 +6,8 @@
 
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::drafts::{
-    ConversationDraft, DRAFT_BYTES_MAX, DraftFile, ReplacedAction, ReplacedDraft,
+    ConversationDraft, DRAFT_BYTES_MAX, DraftFile, DraftWritten, ReplacedAction, ReplacedDraft,
+    Revisions,
 };
 use demi_web_api_protocol::ids::{AttachmentId, ConversationId, UserId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -130,6 +131,22 @@ impl Stored {
         next
     }
 
+    /// The draft's revision and the list's, as a write's answer names them.
+    pub(super) fn revisions(&self) -> Revisions {
+        Revisions {
+            draft: self.revision,
+            saved: self.saved_revision,
+        }
+    }
+
+    /// The draft as a write's answer carries it, with the revisions.
+    pub(super) fn written_answer(self) -> DraftWritten {
+        DraftWritten {
+            revisions: self.revisions(),
+            draft: self.present(),
+        }
+    }
+
     pub(super) fn present(self) -> ConversationDraft {
         ConversationDraft {
             revision: self.revision,
@@ -170,7 +187,7 @@ impl ControlService {
         base: u64,
         text: String,
         files: Vec<StagedFile>,
-    ) -> Result<Result<ConversationDraft, DraftRefusal>, StorageError> {
+    ) -> Result<Result<DraftWritten, DraftRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             if archived(&transaction, &conversation)? {
@@ -186,7 +203,7 @@ impl ControlService {
             let next = Stored::saved_on(stored(&transaction, &conversation)?, base, version);
             write(&transaction, &conversation, &next, now.as_millisecond())?;
             transaction.commit()?;
-            Ok(Ok(next.present()))
+            Ok(Ok(next.written_answer()))
         })
         .await
     }
@@ -199,7 +216,7 @@ impl ControlService {
         conversation: ConversationId,
         action: ReplacedAction,
         revision: u64,
-    ) -> Result<Result<ConversationDraft, DraftRefusal>, StorageError> {
+    ) -> Result<Result<DraftWritten, DraftRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             if archived(&transaction, &conversation)? {
@@ -233,7 +250,7 @@ impl ControlService {
             };
             write(&transaction, &conversation, &next, now.as_millisecond())?;
             transaction.commit()?;
-            Ok(Ok(next.present()))
+            Ok(Ok(next.written_answer()))
         })
         .await
     }
