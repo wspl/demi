@@ -8,10 +8,9 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::{DeviceChange, DeviceRecord};
 use demi_web_api_protocol::text::Trimmed;
-use demi_backend_runners::codes::{ClaimCode, new_device_token};
+use demi_backend_runners::claims::ClaimRefusal;
 use demi_backend_runners::files::browse_directory;
 use demi_host_interface::{HostError, HostErrorKind, MkdirOptions};
 use demi_web_api_protocol::devices::{
@@ -55,44 +54,20 @@ pub(super) async fn claim(
     JsonBody(Claim { code }): JsonBody<Claim>,
 ) -> Result<(StatusCode, Json<DeviceAnswer>), ApiError> {
     let services = &state.services;
-    if !services.claims.attempt(&user.id) {
-        return Err(ApiError::new(
+    match services.claims.claim(&services.control, &user.id, &code).await {
+        Ok(device) => Ok((StatusCode::CREATED, Json(DeviceAnswer { device }))),
+        Err(ClaimRefusal::TooManyAttempts) => Err(ApiError::new(
             StatusCode::TOO_MANY_REQUESTS,
             ErrorCode::RateLimited,
             "Too many claim attempts",
-        ));
+        )),
+        Err(ClaimRefusal::UnknownCode) => Err(ApiError::new(
+            StatusCode::NOT_FOUND,
+            ErrorCode::InvalidCode,
+            "Unknown or expired pairing code",
+        )),
+        Err(ClaimRefusal::Storage(error)) => Err(error.into()),
     }
-    let pending = ClaimCode::parse(&code)
-        .and_then(|code| services.claims.take(&code))
-        .ok_or_else(invalid_code)?;
-    let token = new_device_token();
-    let device = services
-        .control
-        .create_device(
-            user.id.clone(),
-            pending.runner.name.clone(),
-            pending.runner.platform,
-            TokenHash::of(token.expose()),
-        )
-        .await?;
-    let id = device.id.clone();
-    match pending.grant(device, token).await {
-        Ok(device) => Ok((StatusCode::CREATED, Json(DeviceAnswer { device }))),
-        Err(_) => {
-            // The runner went away before it held its token: the device it
-            // would have been goes too.
-            services.control.delete_device(id).await?;
-            Err(invalid_code())
-        }
-    }
-}
-
-fn invalid_code() -> ApiError {
-    ApiError::new(
-        StatusCode::NOT_FOUND,
-        ErrorCode::InvalidCode,
-        "Unknown or expired pairing code",
-    )
 }
 
 /// Renames a paired device, or sets its route; the Cloud keeps its name and

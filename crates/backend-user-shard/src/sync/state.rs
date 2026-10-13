@@ -6,6 +6,7 @@
 
 use demi_backend_database::StorageError;
 use demi_backend_page_sync::Part;
+use demi_backend_runners::install::install_commands;
 use demi_plugin_interface::PluginError;
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::providers::{ProviderReading, ProviderState};
@@ -54,6 +55,11 @@ impl Shard {
         let credentials = self.credential_list().await?;
         let plugins = self.plugins().entries().await?;
         let plugin_states = self.plugins().page_states().await?;
+        let public_url = services
+            .public_url
+            .get()
+            .expect("the backend listens before it serves a request")
+            .url();
         Ok(ProductState {
             user,
             mode: services.mode,
@@ -64,12 +70,8 @@ impl Shard {
                 .map(|workspace| workspace.dto())
                 .collect(),
             devices,
-            public_url: services
-                .public_url
-                .get()
-                .expect("the backend listens before it serves a request")
-                .as_str()
-                .to_owned(),
+            public_url: public_url.as_str().to_owned(),
+            install_commands: install_commands(public_url),
             stun_urls: services.stun.clone(),
             runner_release,
             conversations,

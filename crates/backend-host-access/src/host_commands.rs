@@ -2,9 +2,11 @@
 //! hosts, § What the agent can change; `commands.md` § Demi command
 //! inputs): `list` names the Hosts the calling conversation reaches,
 //! `current` its primary Host, and `shell --host` runs a script on one of
-//! them as one job there; with the user's Manage Devices, `devices` lists
-//! the user's devices, `attach` attaches one at once, and `detach` marks one
-//! to detach once the conversation's work ends. A `shell`
+//! them as one job there; `install-command` prints the command that installs
+//! the runner on a computer; with the user's Manage Devices, `devices` lists
+//! the user's devices, `pair` pairs the computer whose installer shows a
+//! code and attaches it, `attach` attaches one at once, and `detach` marks
+//! one to detach once the conversation's work ends. A `shell`
 //! job carries its invoking job's command context, caller and commands, and its standard input and output are the calling command's:
 //! the relayed pipes' far ends become the job's device, so the bytes flow
 //! between the two devices through the backend's pipes, never through a
@@ -24,8 +26,10 @@ use demi_host_interface::{
     Call, GroupBuilder, LeafBuilder, ProcessEnd, RpcError, RpcInvocation, RpcPort, TypedRpc,
 };
 use demi_shared_types::StreamKind;
+use demi_backend_runners::claims::ClaimRefusal;
+use demi_backend_runners::install::install_commands;
 use demi_web_api_protocol::devices::{DeviceKind, DeviceState};
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -36,11 +40,11 @@ use crate::access::{HostRole, ReachableHost};
 use crate::transition::ChangeRefusal;
 
 const SUMMARY: &str =
-    "The hosts this conversation reaches: list them, show the primary one, run a command on another, attach or detach the user's devices.";
+    "The hosts this conversation reaches: list them, show the primary one, run a command on another, pair a computer, attach or detach the user's devices.";
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Lists the computers this conversation can reach, its primary Host and the devices attached to it, and runs a command on another one; lists the user's devices and attaches or detaches one. Use it when a task involves a second machine: fetching a file from the user's laptop, checking a server, or running something where a particular device is.";
+const ENTRY: &str = "Lists the computers this conversation can reach, its primary Host and the devices attached to it, and runs a command on another one; lists the user's devices and attaches or detaches one; pairs a computer you can run commands on, such as one you reach by ssh, with the user's account. Use it when a task involves a second machine: fetching a file from the user's laptop, checking a server, or running something where a particular device is.";
 
 /// The permission category of the commands that change the devices a
 /// conversation reaches (`sessions-and-targets.md` § What the agent can
@@ -50,11 +54,15 @@ pub const MANAGE_DEVICES: &str = "host.devices";
 
 const MANAGE_DEVICES_ACTION: &str = "manage devices";
 
-const MANAGE_DEVICES_DESCRIPTION: &str = "Manage Devices lets the agents of this conversation list your devices, and attach them to this conversation or detach them. The agents run commands as you on an attached device.";
+const MANAGE_DEVICES_DESCRIPTION: &str = "Manage Devices lets the agents of this conversation list your devices, attach them to this conversation or detach them, and pair a computer they can run commands on with your account. The agents run commands as you on an attached device.";
 
 const DEVICES_SUMMARY: &str = "The user's paired devices and the Cloud, with their states and what each is to this conversation.";
 
 const ATTACH_SUMMARY: &str = "Attach one of the user's paired devices to this conversation, by name or id from `demi host devices`, so `demi host shell --host` reaches it.";
+
+const INSTALL_COMMAND_SUMMARY: &str = "The command that installs the runner on a computer, as Add Device shows it; run it there and pass the pairing code it shows to `demi host pair`.";
+
+const PAIR_SUMMARY: &str = "Pair the computer whose installer shows `<code>` with the user's account and attach it to this conversation, so `demi host shell --host` reaches it.";
 
 const DETACH_SUMMARY: &str = "Detach an attached host, by name or id from `demi host list`, once this conversation's work ends.";
 
@@ -75,6 +83,37 @@ pub(crate) struct NoArgs {}
 struct AttachArgs {
     /// Device name or id from demi host devices
     device: String,
+    /// The name this conversation gives the host; the device's name by
+    /// default
+    #[schemars(length(min = 1, max = 256))]
+    name: Option<String>,
+}
+
+/// A system the runner installs on.
+#[derive(Clone, Copy, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+enum System {
+    Linux,
+    Macos,
+    Windows,
+}
+
+/// The input of `demi host install-command`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct InstallCommandArgs {
+    /// Print only this system's command, bare, as `$(…)` takes it; without
+    /// it, each system's, labelled
+    system: Option<System>,
+}
+
+/// The input of `demi host pair`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct PairArgs {
+    /// The pairing code the computer's installer shows
+    #[schemars(length(min = 1))]
+    code: String,
     /// The name this conversation gives the host; the device's name by
     /// default
     #[schemars(length(min = 1, max = 256))]
@@ -128,6 +167,18 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
                 .input::<NoArgs>()
                 .permission(MANAGE_DEVICES)
                 .bind(TypedRpc::new(verb(shard.clone(), devices))),
+        )
+        .leaf(
+            LeafBuilder::rpc("install-command", INSTALL_COMMAND_SUMMARY)
+                .input::<InstallCommandArgs>()
+                .bind(TypedRpc::new(verb(shard.clone(), install_command))),
+        )
+        .leaf(
+            LeafBuilder::rpc("pair", PAIR_SUMMARY)
+                .input::<PairArgs>()
+                .positionals(["code"])
+                .permission(MANAGE_DEVICES)
+                .bind(TypedRpc::new(verb(shard.clone(), pair))),
         )
         .leaf(
             LeafBuilder::rpc("attach", ATTACH_SUMMARY)
@@ -307,34 +358,106 @@ async fn attach(
             "{wanted}: no paired device of this name or id (see `demi host devices`); the Cloud is attached only when the conversation moves off it"
         )));
     };
-    let alias = name
-        .as_deref()
+    let attached =
+        attach_device(&*shard, &conversation, &device.id, &device.name, name.as_deref()).await?;
+    port.stdout(format!(
+        "Attached {} as {attached}; run commands there with `demi host shell --host {attached} <script>`.\n",
+        device.name
+    ))
+    .await?;
+    Ok(0)
+}
+
+/// Attaches the user's paired device `device`, named `device_name`, to the
+/// conversation as `alias`, the device's name by default, and answers the
+/// name the conversation reaches it by.
+async fn attach_device(
+    shard: &dyn HostShard,
+    conversation: &ConversationId,
+    device: &DeviceId,
+    device_name: &str,
+    alias: Option<&str>,
+) -> Result<String, RpcError> {
+    let alias = alias
         .map(str::trim)
         .filter(|name| !name.is_empty())
-        .unwrap_or(&device.name)
+        .unwrap_or(device_name)
         .to_owned();
     let change = RecordChange::Attach(AttachedHostRecord {
-        device: device.id.clone(),
+        device: device.clone(),
         name: alias,
         cwd: None,
     });
-    match shard.transition(&conversation, change.into()).await {
+    match shard.transition(conversation, change.into()).await {
         Ok(()) => {}
         Err(ChangeRefusal::HostIsPrimary) => {
             return Err(RpcError::Failed(format!(
-                "{}: this conversation's primary host already",
-                device.name
+                "{device_name}: this conversation's primary host already"
             )));
         }
-        Err(refusal) => return Err(RpcError::Failed(format!("{}: {refusal}", device.name))),
+        Err(refusal) => return Err(RpcError::Failed(format!("{device_name}: {refusal}"))),
     }
-    let hosts = reachable(&*shard, &conversation).await?;
-    let attached = hosts
+    let hosts = reachable(shard, conversation).await?;
+    Ok(hosts
         .iter()
-        .find(|host| host.device == device.id)
-        .map_or(device.name.as_str(), |host| host.name.as_str());
+        .find(|host| host.device == *device)
+        .map_or(device_name, |host| host.name.as_str())
+        .to_owned())
+}
+
+async fn install_command(
+    shard: Rc<dyn HostShard>,
+    call: Call<InstallCommandArgs>,
+    port: RpcPort,
+) -> Result<u8, RpcError> {
+    let backend = shard
+        .public_url()
+        .get()
+        .ok_or_else(|| RpcError::Failed("the backend is not listening yet".into()))?;
+    let commands = install_commands(backend.url());
+    let text = match call.args.system {
+        Some(System::Linux) => commands.linux,
+        Some(System::Macos) => commands.macos,
+        Some(System::Windows) => commands.windows,
+        None => format!(
+            "linux: {}\nmacos: {}\nwindows: {}",
+            commands.linux, commands.macos, commands.windows
+        ),
+    };
+    port.stdout(format!("{text}\n")).await?;
+    Ok(0)
+}
+
+async fn pair(shard: Rc<dyn HostShard>, call: Call<PairArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let Call {
+        args: PairArgs { code, name },
+        invocation,
+    } = call;
+    let conversation = conversation_of(&invocation)?;
+    let device = match shard.claims().claim(shard.control(), shard.user(), &code).await {
+        Ok(device) => device,
+        Err(ClaimRefusal::UnknownCode) => {
+            return Err(RpcError::Failed(format!(
+                "{code}: no computer waits under this pairing code; it expired or was never issued. The installer shows a new code when one expires: read the newest one it shows and pass that."
+            )));
+        }
+        Err(ClaimRefusal::TooManyAttempts) => {
+            return Err(RpcError::Failed(
+                "Too many pairing codes were tried in the last minute; wait a minute, then pass the newest code the installer shows.".into(),
+            ));
+        }
+        Err(ClaimRefusal::Storage(error)) => return Err(RpcError::Failed(error.to_string())),
+    };
+    let attached = attach_device(&*shard, &conversation, &device.id, &device.name, name.as_deref())
+        .await
+        .map_err(|error| {
+            RpcError::Failed(format!(
+                "Paired as {}, but it could not be attached: {error}",
+                device.name
+            ))
+        })?;
     port.stdout(format!(
-        "Attached {} as {attached}; run commands there with `demi host shell --host {attached} <script>`.\n",
+        "Paired as {}; attached as {attached}.\n",
         device.name
     ))
     .await?;

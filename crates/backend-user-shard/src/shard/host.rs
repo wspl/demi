@@ -18,6 +18,7 @@ use demi_backend_host_access::plugin_files::{DirectorySets, PluginInstalls};
 use demi_backend_remote_host::Pipes;
 use demi_backend_runners::devices::Devices;
 use demi_backend_runners::native::NativeCatalog;
+use demi_backend_runners::claims::PendingClaims;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_backend_runners::router::CommandRouter;
 use demi_shared_types::Clock;
@@ -70,6 +71,10 @@ impl HostShard for Shard {
 
     fn public_url(&self) -> &PublicUrl {
         &self.services.public_url
+    }
+
+    fn claims(&self) -> &PendingClaims {
+        &self.services.claims
     }
 
     fn tasks(&self) -> &TaskTracker {

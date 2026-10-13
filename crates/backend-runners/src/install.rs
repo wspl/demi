@@ -15,6 +15,7 @@ use std::path::Path;
 use demi_runner_protocol::console::{PAIRED, PAIRING_CODE, REMOVAL};
 use demi_runner_protocol::release::RunnerRelease;
 use demi_runner_protocol::wire::RunnerPlatform;
+use demi_web_api_protocol::devices::InstallCommands;
 use sha2::{Digest, Sha256};
 use url::Url;
 
@@ -43,6 +44,34 @@ pub fn backend_url(url: &Url) -> Result<Url, InvalidBackendUrl> {
 /// own.
 fn registration(backend: &Url) -> String {
     hex::encode(Sha256::digest(backend.as_str().as_bytes()))
+}
+
+/// The commands that install and start the runner of `backend` on each
+/// system, which Add Device and `demi host install-command` show
+/// (`runner.md` § Installation, pairing and removal). They fetch the
+/// installer from `backend`'s origin, which serves it whatever path the URL
+/// has. `curl` may use only the URL's scheme, and TLS 1.2 or newer for
+/// `https`, so a development backend's plain `http` is reached too.
+pub fn install_commands(backend: &Url) -> InstallCommands {
+    let installer = |name: &str| {
+        backend
+            .join(name)
+            .expect("an absolute path joins any backend URL")
+    };
+    let shell = installer("/install.sh");
+    let tls = if shell.scheme() == "https" {
+        " --tlsv1.2"
+    } else {
+        ""
+    };
+    // Always quoted, as a person reads it, though a URL rarely needs it.
+    let quoted = format!("'{}'", shell.as_str().replace('\'', r"'\''"));
+    let unix = format!("curl --proto '={}'{tls} -sSf {quoted} | sh", shell.scheme());
+    InstallCommands {
+        linux: unix.clone(),
+        macos: unix,
+        windows: format!("irm {} | iex", powershell(installer("/install.ps1").as_str())),
+    }
 }
 
 /// The command that starts the runner of `backend`'s installation again on

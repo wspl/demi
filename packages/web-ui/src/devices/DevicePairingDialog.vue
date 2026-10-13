@@ -13,17 +13,16 @@ import InlineError from '../ui/InlineError.vue'
 import SettingsRow from '../settings/SettingsRow.vue'
 import Segmented from '../ui/Segmented.vue'
 import {
-  deviceInstallCommand,
   deviceSystemOf,
   deviceSystems,
-  type DeviceInstallation,
+  type DeviceInstallCommands,
   type DeviceSystem,
 } from './installation'
 
 const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
-  installation: DeviceInstallation
+  installCommands: DeviceInstallCommands
   phase: PairingPhase /** Stack on an open dialog, when opened from inside one. */
   stack?: boolean
 }>()
@@ -35,9 +34,7 @@ const emit = defineEmits<{
 }>()
 const code = ref('')
 const system = ref<DeviceSystem>(deviceSystemOf(clientPlatform(navigator)))
-const command = computed(() =>
-  deviceInstallCommand(props.installation, system.value),
-)
+const command = computed(() => props.installCommands[system.value])
 watch(
   () => props.isOpen,
   () => {

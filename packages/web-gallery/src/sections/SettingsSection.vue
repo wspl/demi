@@ -34,7 +34,7 @@ import { demoProviders } from '../fixtures/catalog'
 import { composerModels, setGalleryContextLimit } from '../fixtures/context-limits'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
-import { demoDeviceInstallation, demoDeviceReport } from '../fixtures/device-installation'
+import { demoInstallCommands, demoDeviceReport } from '../fixtures/device-installation'
 import { DEMO_RUNNER_RELEASE, DIRECT_SCENARIOS, galleryDevices, useGalleryDevices, type DirectScenario } from '../fixtures/devices'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
 
@@ -271,7 +271,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
               :shown="directDevices.shown.value"
               :runner-release="DEMO_RUNNER_RELEASE"
               :overlay-store="appOverlayStore"
-              :installation="demoDeviceInstallation"
+              :install-commands="demoInstallCommands"
               :claim-device="directDevices.claim"
               :name-max-length="64"
               @show="directDevices.shown.value = $event"
