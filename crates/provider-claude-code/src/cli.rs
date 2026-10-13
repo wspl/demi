@@ -1,6 +1,7 @@
 //! How a CLI process starts (`claude-code.md` § Requests over stream-json,
 //! § Accounts and sign-in): no tools, slash commands or permission prompts
-//! of its own; the session the provider wrote, resumed and mirrored, with
+//! of its own, and nothing the machine or the account adds to them; the
+//! session the provider wrote, resumed and mirrored, with
 //! the system prompt and tools of the request rather than those the session
 //! recorded; the request's model, system prompt and effort; the thinking
 //! display; stream-json in
@@ -94,6 +95,13 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
         "--session-mirror",
         "--system-prompt-snapshot",
         "off",
+        // Safe mode loads none of the machine's CLAUDE.md, skills, plugins,
+        // agents or LSP servers, and none of the claude.ai account's
+        // connectors: without it, a token with the `user:mcp_servers` scope
+        // gives the model the account's connector tools beside `main`'s and
+        // an "MCP Server Instructions" message (Claude Code 2.1.296, its
+        // safe-mode table's `mcpClaudeAi: false`, logged as `[claudeai-mcp]
+        // Disabled in safe mode`).
         "--safe-mode",
         "--disable-slash-commands",
         "--tools",
@@ -141,8 +149,7 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
 /// process's own configuration directory, and the directory of its
 /// sessions there; the CLI's updater off, since Demi alone changes its
 /// version; its automatic compaction off, since Demi compacts the
-/// conversation itself; its telemetry off, which halves its start in a
-/// Cloud's sandbox; an MCP tool-output limit of one million tokens, so
+/// conversation itself; an MCP tool-output limit of one million tokens, so
 /// the CLI never cuts a result Demi sends; `CLAUDECODE` removed, so the CLI
 /// never takes itself for a session inside another Claude Code; and the
 /// input the session ends with answered at once.
