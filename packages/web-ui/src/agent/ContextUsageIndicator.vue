@@ -7,6 +7,7 @@ import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import FoldChevron from '../ui/FoldChevron.vue'
 import { ICON_PX } from '../ui/icon-metrics'
+import { vInkEdgeEnd } from '../ui/ink-edge'
 import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
@@ -218,7 +219,7 @@ const ringColor = computed(() => {
               <span class="ml-auto tabular-nums text-fg-muted">
                 {{ contextFigure(usage) }}
               </span>
-              <FoldChevron :open="listOpen" :size="ICON_PX.in20" class="self-center text-fg-subtle" />
+              <FoldChevron v-ink-edge-end :open="listOpen" :size="ICON_PX.in20" class="self-center text-fg-subtle" />
             </button>
             <span v-else class="text-fg-muted">Context usage unavailable</span>
           </div>
