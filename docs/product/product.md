@@ -334,7 +334,12 @@ work is idle:
 Its answers stop the turn, its subagents and its commands as Stop does, then
 move the conversation once it is idle, and the second also tells the agent;
 a turn that has ended meanwhile moves at once. What will stop is counted from
-what the page shows: the agent, its running subagents and commands. The
+what the page shows, the agent, its running subagents and commands, as
+*The agent, 1 subagent and 2 commands will stop.*, and the move waits for
+each of them to end. The offline card's Move to Another Host… asks the same
+way. While an archived conversation or a move already under way holds the
+menus, their Hosts read as unavailable with *This conversation is archived.*
+or *This conversation is moving.* The
 directory picker of a project's device asks once a directory is chosen, not
 before it opens. Nothing else changes: an offline device still cannot be
 chosen.
