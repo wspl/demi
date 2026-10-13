@@ -193,7 +193,15 @@ Host. For example, the agent's reply contains an image and a link:
 [plot.py](scripts/plot.py)
 ```
 
-The chart loads from the Host the way a document's image does, and a click on
+The chart loads from the Host the way a document's image does, and shows the
+file as it is now: the page keeps each shown image's description, its size,
+time and version, follows the file on the conversation's file watch, and
+names that version in the image's address, so a picture the file replaces
+shows in every message that names it, and one the page already decoded never
+stands for a newer file. While the description is first read, and when the
+file is missing, the image shows its alt text. An image follows its file
+while it is on screen; one scrolled away reads its description again when it
+is shown. and a click on
 `plot.py` opens it in the File view. A link to a Host file shows the file's
 icon before its name, the icon the file tree shows for it, so a file reads as
 a file and not as a page on the web. A link that starts with an icon, a
