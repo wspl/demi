@@ -50,6 +50,19 @@ export class SavedGoneError extends Error {
   }
 }
 
+/**
+ * The connection ended while the session was running the action: it had
+ * taken it, so the action was accepted, and only the wait for its end is
+ * lost. What became of it is in the snapshot of the next connection
+ * (`web-application.md` § What a reopened socket brings back), not a refusal.
+ */
+export class ActionOutlivedError extends Error {
+  constructor(cause: Error) {
+    super('The connection ended while the session ran the action', { cause })
+    this.name = 'ActionOutlivedError'
+  }
+}
+
 /** An `error` frame: a failed turn, a refused frame or a failed save, with its code and diagnostics. */
 export class SessionError extends Error {
   readonly code: string | null
@@ -554,7 +567,7 @@ export class ConversationClient {
 
   private rejectWaiters(error: Error): void {
     for (const waiter of this.actionWaiters.splice(0)) {
-      waiter.reject(error)
+      waiter.reject(waiter.status === 'sent' ? error : new ActionOutlivedError(error))
     }
     this.rejectSteersAndAborts(error)
   }
