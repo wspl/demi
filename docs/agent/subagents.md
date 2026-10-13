@@ -1237,8 +1237,11 @@ and its tip; the state and time always stay.
   account the child runs on. The indicator stands only while the child's
   session is open: an ended child has no context to compact or watch, so
   its bar ends with the model and effort, whether it ended before the page
-  opened or while it watched. The bar's text keeps the same distance from the
-  window's left and right edges as the transcript's content above it.
+  opened or while it watched. Its segments run close to the window's ends, as an
+  editor's status bar's do: the first and last segment's text stands about
+  as far from the window's side as the window's corner is round, never at
+  the transcript's wide indent, which leaves the bar's two groups floating
+  apart from the edges they belong to.
 - **The Completed menu** shows each child's profile tag after its
   description, and its time.
 
