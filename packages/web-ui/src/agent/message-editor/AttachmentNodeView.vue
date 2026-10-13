@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { NodeViewWrapper, nodeViewProps } from '@tiptap/vue-3'
-import { useMessageFiles } from '../../markdown/message-files'
 import AttachmentCapsule from './AttachmentCapsule.vue'
+import { useCapsuleOpening } from './capsule-opening'
 import { useTransfers, type MessageCapsule } from './capsules'
 
 const props = defineProps(nodeViewProps)
 const transfers = useTransfers()
-const files = useMessageFiles()
 /** The file this capsule stands for: as the composer knows it now, or as its node carries it. */
 const capsule = computed<MessageCapsule | null>(() => {
   const saved: MessageCapsule | null = props.node.attrs['capsule'] ?? null
@@ -18,17 +17,9 @@ const transfer = computed(() => {
   const id = capsule.value?.id
   return id && transfers ? transfers.transfer(id) : undefined
 })
-/** In the conversation, a file on the conversation's Host opens through the `file` intent, where a plugin opens it. */
-const opens = computed(() => {
-  const path = capsule.value?.path
-  return !props.editor.isEditable && !capsule.value?.host && path && files()?.open ? path : null
-})
+/** A file on another device is not on the conversation's Host, so it opens nothing. */
+const { opens, open } = useCapsuleOpening(() => props.editor.isEditable, () => capsule.value?.host ? null : capsule.value?.path)
 
-function open(): void {
-  if (opens.value) {
-    files()?.open?.({ path: opens.value, line: null })
-  }
-}
 // The wrapper breaks as the line around it does: tiptap's own `white-space:
 // normal` would let the one-line composer wrap after it.
 </script>
