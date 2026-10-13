@@ -197,6 +197,21 @@ export function contentMessage(content: readonly MessageEditContent[]): { markdo
   return { markdown, capsules: files.map((blocks, index) => contentCapsule(String(index), blocks)) }
 }
 
+/**
+ * An image a message names, as the capsule the user's message shows it by
+ * (`file-previews.md` § Files named in messages): named as the user alt-texted
+ * it, else by its file or address, its picture the one loaded from `src`, and
+ * a Host image at its path, which a click opens. The message's Markdown is not
+ * touched; only how it shows changes.
+ */
+export function imageCapsule(image: { url: string } | { path: string }, src: string, alt: string): MessageCapsule {
+  if ('path' in image) {
+    return { id: `image:${image.path}`, name: alt || baseName(image.path), image: src, path: image.path }
+  }
+  const leaf = image.url.startsWith('data:') ? undefined : image.url.split(/[?#]/)[0]?.split('/').pop()
+  return { id: `image:${image.url}`, name: alt || (leaf ? decodedTarget(leaf) : 'image'), image: src }
+}
+
 /** A media block's name, when no record names it: the leaf of its address, or its kind. */
 function mediaName(block: Extract<MessageEditContent, { type: 'image' | 'video' }>): string {
   const { source } = block
