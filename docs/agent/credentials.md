@@ -38,7 +38,7 @@ allowed it there.
 
 | Part | Meaning |
 | --- | --- |
-| Name | What the user and the agent call it, 1 to 80 characters, unique among the user's credentials: *Google API key*, *GitHub token for zan* |
+| Name | What the user and the agent call it, 1 to 80 characters, unique among the user's credentials: *Google API key*, *GitHub token for deploys* |
 | Fields | One to ten, each a name (lowercase letters, digits, `_` and `-`), a label the card and Settings show, a kind, and a value. A **secret** field is typed hidden and left out of `list` and `show`, which print its name and kind only; an agent reads it with `read`, as advice suggests into a pipe or a variable. A **visible** field, such as a user name or a host, is shown to an agent as it is |
 | Keep until | *Always*, or a time: a credential kept for a while is destroyed when the time comes. A request offers *1 hour* (the default), *1 day*, *30 days* and *Always*; the agent's `--keep` sets the default the card shows, and the user decides |
 | Note | The reason it was asked for, editable |
@@ -55,7 +55,7 @@ the user did not ask it to: `remove` needs the user's permission.
 A credential is used in a conversation only once the user allowed it there.
 One the user saved from that conversation's request is allowed there at once;
 any other, read by name, asks the user first with a card, *Allow this
-conversation to use "GitHub token for zan"?*, and the read fails until they
+conversation to use "GitHub token for deploys"?*, and the read fails until they
 allow it, as a permission request does
 ([Requests](permissions.md#requests)). An allowance lasts the conversation's
 life, for every agent of its tree.
@@ -72,7 +72,7 @@ read.
 
 ```text
 demi credentials read "Google API key" key | demi providers edit google --api-key-stdin
-GITHUB_TOKEN=$(demi credentials read "GitHub token for zan" token) git push
+GITHUB_TOKEN=$(demi credentials read "GitHub token for deploys" token) git push
 curl -H "Authorization: Bearer $(demi credentials read "Linear key" key)" https://api.linear.app/graphql
 demi credentials read "Deploy key" private_key > ~/.ssh/deploy && chmod 600 ~/.ssh/deploy
 ```
