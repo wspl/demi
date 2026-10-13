@@ -35,6 +35,8 @@ pub enum Part {
     Instructions,
     /// The user's credentials, without their values.
     Credentials,
+    /// The user's passkeys.
+    Passkeys,
     /// The plugin list: whether the user has each plugin on.
     Plugins,
     /// A plugin's state, by the plugin's id.

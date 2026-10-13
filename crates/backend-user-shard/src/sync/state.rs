@@ -4,6 +4,7 @@
 //! sends it; the state is not one atomic read across databases, and need not
 //! be, since a change made while it is read is marked and sent after it.
 
+use demi_backend_accounts::passkeys::{passkey_list, relying_party_id};
 use demi_backend_database::StorageError;
 use demi_backend_page_sync::Part;
 use demi_backend_runners::install::install_commands;
@@ -53,6 +54,7 @@ impl Shard {
             .await?;
         let instructions = services.control.instructions(self.user().clone()).await?;
         let credentials = self.credential_list().await?;
+        let passkeys = passkey_list(&services.control, self.user()).await?;
         let plugins = self.plugins().entries().await?;
         let plugin_states = self.plugins().page_states().await?;
         let public_url = services
@@ -79,6 +81,8 @@ impl Shard {
             subagents,
             instructions,
             credentials,
+            passkeys,
+            passkey_rp_id: relying_party_id(public_url).map(str::to_owned),
             plugins,
             plugin_states,
             web_build: services.web_build.clone(),
@@ -137,6 +141,13 @@ impl Shard {
             Part::Credentials => SyncEvent::Credentials {
                 credentials: self.credential_list().await?,
             },
+            Part::Passkeys => {
+                let list = passkey_list(control, self.user()).await?;
+                SyncEvent::Passkeys {
+                    passkeys: list.passkeys,
+                    user_handle: list.user_handle,
+                }
+            }
             Part::Plugins => SyncEvent::Plugins {
                 plugins: self.plugins().entries().await?,
             },

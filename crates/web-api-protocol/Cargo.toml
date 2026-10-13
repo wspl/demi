@@ -26,3 +26,7 @@ serde_with.workspace = true
 thiserror.workspace = true
 typed-path = "0.12"
 url = "2"
+# WebAuthn's request and response JSON, which a passkey's routes decode and
+# encode (`web-api.md` § Account API); the backend's `webauthn-rs` checks
+# them.
+webauthn-rs-proto = "=0.5.5"

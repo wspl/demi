@@ -62,10 +62,15 @@ pub struct Identity {
     pub user: UserDto,
 }
 
-/// `GET /setup`: whether the instance still needs its master account.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// `GET /setup`: whether the instance still needs its master account, and
+/// the relying party's id of its passkeys.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct SetupStatus {
     pub needed: bool,
+    /// The public URL's host name; none when the backend offers no
+    /// passkeys, as when that host is an IP address.
+    pub passkey_rp_id: Option<String>,
 }
 
 /// A password as a request carries it. `Debug` never shows it.
