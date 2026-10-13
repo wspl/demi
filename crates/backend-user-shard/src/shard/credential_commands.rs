@@ -168,7 +168,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<RequestArgs>()
                 .describe(
                     "name",
-                    format!("The credential's name, 1 to {NAME_MAX} characters, such as \"GitHub token for zan\"."),
+                    format!("The credential's name, 1 to {NAME_MAX} characters, such as \"GitHub token for deploys\"."),
                 )
                 .describe(
                     "field",

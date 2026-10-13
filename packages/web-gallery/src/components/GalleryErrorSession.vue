@@ -253,7 +253,7 @@ const cases: SessionCase[] = [
                 >
                 <template v-if="item.composer !== 'none'" #composer>
                   <GalleryComposer
-                    placeholder="Ask Demi…"
+                    placeholder="Ask anything…"
                     draft="Keep this draft while the session recovers."
                     :providers="item.composer === 'noModels' ? [] : undefined"
                     :models="item.composer === 'noModels' ? {} : undefined"

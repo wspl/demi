@@ -8,7 +8,7 @@ export interface SeedSaved {
 
 /** Two saved messages, the older with files. */
 export const twoSaved: SeedSaved[] = [
-  { text: 'Check prod’s DNS next, and tell me whether the AAAA record still points at the old host.' },
+  { text: 'Check the server’s DNS next, and tell me whether the AAAA record still points at the old host.' },
   {
     text: 'Compare the two screenshots and list what moved.',
     files: [{ id: 'before', name: 'before.png', phase: 'ready' }, { id: 'after', name: 'after.png', phase: 'ready' }],

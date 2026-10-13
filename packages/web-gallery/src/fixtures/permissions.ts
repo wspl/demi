@@ -42,7 +42,7 @@ export function moveRequest(): PermissionRequestView {
     kind: 'permission',
     id: 'pr-move',
     categories: [organizeConversations, manageDevices],
-    command: 'demi conversation move shop-app',
+    command: 'demi conversation move photo-album',
     subagent: null,
   }
 }
@@ -102,7 +102,7 @@ export function signInRequest(): CredentialRequestView {
   return {
     kind: 'credential',
     id: 'cr-linear',
-    name: 'Linear sign-in for zan',
+    name: 'Linear sign-in for alex',
     reason: 'To file the issues you listed in the Linear workspace',
     fields: [
       { name: 'user', label: 'User name', kind: 'visible' },
@@ -127,7 +127,7 @@ export const FIELDS_DIFFER =
 
 /** A stored credential the conversation asks to use. */
 export function allowanceRequest(): AllowanceRequestView {
-  return { kind: 'allowance', id: 'al-github', name: 'GitHub token for zan', removed: false }
+  return { kind: 'allowance', id: 'al-github', name: 'GitHub token for deploys', removed: false }
 }
 
 /** The same request after the user removed the credential in Settings. */

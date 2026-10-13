@@ -52,7 +52,7 @@ export function laptopTree(): MemoryDirectory {
   return dir({
     Applications: dir({}, { modifiedAt: old(11, 2) }),
     Users: dir({
-      zan: dir(
+      alex: dir(
         {
           Desktop: dir(
             {
@@ -206,9 +206,9 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
           label: 'Recent',
           places: [
             // Two directories of one name differ by their location; the deep one gives its location up from the left.
-            { path: '/Users/alex/Projects/demi' },
+            { path: '/Users/alex/Projects/shop' },
             { path: '/Users/alex/Projects/chromium' },
-            { path: '/Users/alex/Work/demi' },
+            { path: '/Users/alex/Work/shop' },
             { path: '/Users/alex/Projects/clients/acme-corporation/platform/billing-services' },
             { path: '/Users/alex/dotfiles' }
           ]

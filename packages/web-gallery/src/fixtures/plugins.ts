@@ -219,7 +219,7 @@ export const GALLERY_EXA_KEY_LENGTH = 16
 
 /**
  * The web plugin over `state`: Sign In answers Exa's sign-in page, which the
- * page opens in a new tab, and the user is signed in as zan@example.com a
+ * page opens in a new tab, and the user is signed in as alex@example.com a
  * moment later, as Exa's callback would; Sign Out forgets the sign-in. A key
  * is checked with one search, a beat long: one shorter than
  * {@link GALLERY_EXA_KEY_LENGTH} is refused, as Exa refuses a key copied in
@@ -243,7 +243,7 @@ export function webPlugin(state: WebState): GalleryPlugin {
           await beat(300)
           // The tab the page opened comes back signed in.
           void beat(1500).then(() => {
-            state.account = { email: 'zan@example.com' }
+            state.account = { email: 'alex@example.com' }
             inUse()
           })
           return { url: 'https://auth.exa.ai/authorize?client_id=demi&state=gallery' }

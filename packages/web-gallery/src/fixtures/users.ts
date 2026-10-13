@@ -9,7 +9,7 @@ import { DAY, HOUR, MINUTE, ago } from './time'
  */
 export function galleryUsers(): SettingsUser[] {
   return [
-    { id: 'zan', nickname: 'Zan', email: 'zan@example.com', role: 'master', disabled: false, choosesPassword: false, lastActiveAt: ago(MINUTE) },
+    { id: ('alex'), nickname: 'Alex', email: 'alex@example.com', role: 'master', disabled: false, choosesPassword: false, lastActiveAt: ago(MINUTE) },
     { id: 'ana', nickname: 'Ana', email: 'ana@example.com', role: 'admin', disabled: false, choosesPassword: false, lastActiveAt: ago(3 * HOUR) },
     { id: 'mei', nickname: 'Mei', email: 'mei@example.com', role: 'admin', disabled: false, choosesPassword: false, lastActiveAt: ago(2 * DAY) },
     { id: 'bo', nickname: 'Bo', email: 'bo@example.com', role: 'user', disabled: false, choosesPassword: false, lastActiveAt: ago(25 * MINUTE) },

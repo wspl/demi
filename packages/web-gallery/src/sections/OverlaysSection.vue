@@ -75,7 +75,7 @@ const menuDevices: HostDeviceOption[] = [
 const askedMove = useMoveQuestion()
 function askMove(stops?: WorkToStop) {
   void askedMove.ask(
-    { host: 'MacBook Pro', directory: '~/code/shop-app', from: 'Cloud', fromCloud: true, ...(stops ? { stops } : {}) },
+    { host: 'MacBook Pro', directory: '~/code/photo-album', from: 'Cloud', fromCloud: true, ...(stops ? { stops } : {}) },
     async (tell) => {
       productWould(
         stops
@@ -204,12 +204,12 @@ const alignmentPanes = [
   { id: 'conversation', label: 'Conversation', grow: 'flex-[3]' },
   { id: 'panel', label: 'Work panel', grow: 'flex-[2]' },
 ] as const
-const alignmentDirectories = ['shop-app', 'demi', 'renderfarm-render-pipeline']
+const alignmentDirectories = ['photo-album', 'demi', 'renderfarm-render-pipeline']
 const alignmentDirectory = reactive<Record<string, string>>({
   'conversation-start': 'demi',
-  'conversation-end': 'shop-app',
+  'conversation-end': 'photo-album',
   'panel-start': 'demi',
-  'panel-end': 'shop-app',
+  'panel-end': 'photo-album',
 })
 const widthDirectory = reactive({
   content: widthDirectories[0]!,

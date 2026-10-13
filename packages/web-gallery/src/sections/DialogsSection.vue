@@ -140,18 +140,18 @@ const passwordChoices: { variant: string; choose: ReturnType<typeof galleryPassw
   ] as [string, PasswordChoiceScript, boolean][]
 ).map(([variant, script, offer]) => ({ variant, choose: galleryPasswordChoice(script), offer }))
 const emailPhases: { variant: string; phase: ChangeEmailPhase }[] = [
-  { variant: 'form', phase: { kind: 'form', currentEmail: 'zan@example.com' } },
-  { variant: 'form · busy', phase: { kind: 'form', currentEmail: 'zan@example.com', busy: true } },
-  { variant: 'verify', phase: { kind: 'verify', email: 'zan@demi.codes' } },
-  { variant: 'verify · code resent', phase: { kind: 'verify', email: 'zan@demi.codes', resent: true } },
-  { variant: 'done', phase: { kind: 'done', email: 'zan@demi.codes' } },
+  { variant: 'form', phase: { kind: 'form', currentEmail: 'alex@example.com' } },
+  { variant: 'form · busy', phase: { kind: 'form', currentEmail: 'alex@example.com', busy: true } },
+  { variant: 'verify', phase: { kind: 'verify', email: 'alex@demi.codes' } },
+  { variant: 'verify · code resent', phase: { kind: 'verify', email: 'alex@demi.codes', resent: true } },
+  { variant: 'done', phase: { kind: 'done', email: 'alex@demi.codes' } },
 ]
 const revokeConfirmations: { variant: string; device: string; home: string; projects: string[] }[] = [
   {
     variant: 'with projects · two of one name',
     device: 'alex-mbp',
     home: '/Users/alex',
-    projects: ['/Users/alex/Projects/demi', '/Users/alex/Work/demi', '/Users/alex/Projects/notes'],
+    projects: ['/Users/alex/Projects/shop', '/Users/alex/Work/shop', '/Users/alex/Projects/notes'],
   },
   { variant: 'without projects', device: 'build-01', home: '/home/build', projects: [] },
 ]
@@ -183,7 +183,7 @@ const claudePhases: { variant: string; phase: ProviderLoginPhase }[] = [
     variant: 'Claude Code · signing in',
     phase: { kind: 'code', url: claudeLink, submitted: true },
   },
-  { variant: 'Claude Code · done', phase: { kind: 'done', account: 'zan@example.com · max', active: true } },
+  { variant: 'Claude Code · done', phase: { kind: 'done', account: 'alex@example.com · max', active: true } },
   {
     variant: 'Claude Code · failed',
     phase: { kind: 'failed', ...requestFailure('Login failed: the authorization code has expired.') },
@@ -195,15 +195,15 @@ const codexPhases: { variant: string; phase: ProviderLoginPhase }[] = [
     variant: 'Codex · device code',
     phase: { kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M', expiresIn: '10 min' },
   },
-  { variant: 'Codex · done · the first account', phase: { kind: 'done', account: 'zan@example.com · Plus', active: true } },
-  { variant: 'Codex · done · added beside another', phase: { kind: 'done', account: 'alex@example.com · Pro', active: false } },
+  { variant: 'Codex · done · the first account', phase: { kind: 'done', account: 'alex@example.com · Plus', active: true } },
+  { variant: 'Codex · done · added beside another', phase: { kind: 'done', account: 'alex@work.example · Pro', active: false } },
 ]
 const grokPhases: { variant: string; phase: ProviderLoginPhase }[] = [
   {
     variant: 'Grok Build · device code',
     phase: { kind: 'device', url: 'https://accounts.x.ai/device', code: 'QK4P-9TWD', expiresIn: '10 min' },
   },
-  { variant: 'Grok Build · done', phase: { kind: 'done', account: 'zan@example.com · SuperGrok', active: true } },
+  { variant: 'Grok Build · done', phase: { kind: 'done', account: 'alex@example.com · SuperGrok', active: true } },
 ]
 const model: SettingsModelDraft = {
   id: 'claude-sonnet-4-5',
@@ -353,7 +353,7 @@ const resetPhases: {
                   :is-open="open"
                   :overlay-store="appOverlayStore"
                   :host="item.host"
-                  email="zan@example.com"
+                  email="alex@example.com"
                   @close="close"
                 />
               </GalleryDialogFrame>
@@ -374,7 +374,7 @@ const resetPhases: {
                   :is-open="open"
                   :overlay-store="appOverlayStore"
                   :add="item.add"
-                  email="zan@example.com"
+                  email="alex@example.com"
                   @answered="productWould('Remember the Answer on This Browser')"
                   @close="close"
                 />
@@ -433,7 +433,7 @@ const resetPhases: {
                 :is-open="open"
                 :overlay-store="appOverlayStore"
                 :phase="item.phase"
-                email="zan@example.com"
+                email="alex@example.com"
                 @close="close"
                 @submit="productWould('Change the Password')"
               />
@@ -447,7 +447,7 @@ const resetPhases: {
                   :is-open="open"
                   :overlay-store="appOverlayStore"
                   :phase="{ kind: 'form' }"
-                  email="zan@example.com"
+                  email="alex@example.com"
                   @close="close"
                   @submit="productWould('Change the Password')"
                 />

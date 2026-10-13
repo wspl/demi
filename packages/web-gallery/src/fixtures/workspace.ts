@@ -20,14 +20,14 @@ import { WatchChannel } from '@demicodes/web-ui/files/watch-channel'
  * conversation edits, with the files its tabs and changed-file pills name.
  * Nothing here reads a real disk.
  */
-export const WORKSPACE_ROOT = '/Users/alex/Projects/demi'
+export const WORKSPACE_ROOT = '/Users/alex/Projects/shop'
 
 /**
  * Another checkout of the project, where a child of the conversation works
  * (`subagents.md` § Working directory): it has files named as the
  * conversation's own, with the contents of its own branch.
  */
-export const SLOT_ROOT = '/Users/alex/Projects/demi-slots/2'
+export const SLOT_ROOT = '/Users/alex/Projects/shop-slots/2'
 
 const at = new Date(Date.UTC(2026, 8, 12, 9, 30)).toISOString()
 
@@ -705,7 +705,7 @@ export function createGalleryWorkspace(latencyMs = 200, watch: 'live' | 'unavail
   const source = createMemoryFileSource({
     platform: 'macos',
     home: '/Users/alex',
-    root: dir({ Users: dir({ zan: home }) }),
+    root: dir({ Users: dir({ alex: home }) }),
     latencyMs,
     // Slow enough that a file of a few tens of MB shows its upload's progress.
     uploadRate: 8 * 1024 * 1024,

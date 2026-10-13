@@ -5,8 +5,8 @@
 //! alone.
 //!
 //! A Host's paths are walked and joined in its own form ([`HostPaths`]): on
-//! Windows `C:\Users\zan\app` walks up to `C:\`, and its `.git` is
-//! `C:\Users\zan\app\.git`.
+//! Windows `C:\Users\alex\app` walks up to `C:\`, and its `.git` is
+//! `C:\Users\alex\app\.git`.
 
 use demi_host_interface::HostPaths;
 

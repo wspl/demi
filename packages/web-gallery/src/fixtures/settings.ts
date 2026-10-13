@@ -321,7 +321,7 @@ export function mockProviders(): MockProvider[] {
       accounts: [
         {
           id: 'a1',
-          label: 'zan@example.com',
+          label: 'alex@example.com',
           plan: 'Max 5×',
           active: true,
           // As the usage probe names them: by period and scope, a limit on one model too. The
@@ -335,7 +335,7 @@ export function mockProviders(): MockProvider[] {
         },
         {
           id: 'a2',
-          label: 'alex@example.com',
+          label: 'alex@work.example',
           plan: 'Pro',
           active: false,
           // The full window's reset has passed and the next snapshot has not come yet.
@@ -347,7 +347,7 @@ export function mockProviders(): MockProvider[] {
         // The vendor names no plan, so the row shows none.
         {
           id: 'a3',
-          label: 'zan@family.example',
+          label: 'alex@family.example',
           plan: '',
           active: false,
           // A vendor names its windows as it likes; the label column fits the longest. Its
@@ -482,8 +482,8 @@ export function mockProviders(): MockProvider[] {
         family: 'grok-build',
         // Signed in and reachable from the backend: its active account can be tested.
         accounts: [
-          { id: 'g1', label: 'zan@example.com', plan: 'XPremium', active: true, quota: [] },
-          { id: 'g2', label: 'alex@example.com', plan: '', active: false, quota: [] },
+          { id: 'g1', label: 'alex@example.com', plan: 'XPremium', active: true, quota: [] },
+          { id: 'g2', label: 'alex@work.example', plan: '', active: false, quota: [] },
         ],
         models: [
           model({ id: 'grok-4-6', name: 'Grok 4.6', contextWindow: 256_000, outputLimit: 64_000, tools: true }),
@@ -766,7 +766,7 @@ export function searchMockModels(query: string, signal: AbortSignal): Promise<Se
 /** The projects on the paired devices, which a revoked device takes with it. */
 function galleryDeviceProjects(): { deviceId: string; path: string }[] {
   return [
-    { deviceId: 'mac', path: '/Users/alex/Projects/demi' },
+    { deviceId: 'mac', path: '/Users/alex/Projects/shop' },
     { deviceId: 'mac', path: '/Users/alex/Projects/notes' },
   ]
 }
@@ -790,14 +790,14 @@ export function createSettingsState() {
       answer: 'granted' as 'granted' | 'denied',
     },
     account: {
-      name: 'Zan',
-      email: 'zan@example.com',
+      name: 'Alex',
+      email: 'alex@example.com',
       passwordChanged: '3 months ago',
       passkeys: galleryPasskeys(),
       sessions: gallerySessions(),
     },
     /** The Users page as the master sees it. */
-    users: createUsersState('zan'),
+    users: createUsersState(('alex')),
     providers: mockProviders(),
     selectedProviderId: null as string | null,
     providerDetailOpen: false,
@@ -871,7 +871,7 @@ export function createSettingsState() {
         },
         {
           id: 'commit',
-          origin: 'https://github.com/zan/commit',
+          origin: 'https://github.com/alex/commit',
           commit: '9f2c1a7d9f2c1a7d9f2c1a7d9f2c1a7d9f2c1a7d',
           fetchedAt: ahead(-2 * 24 * 60 * 60_000),
           fetching: false,
