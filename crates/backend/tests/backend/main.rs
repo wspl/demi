@@ -48,6 +48,7 @@ mod offline;
 mod organize;
 mod outputs;
 mod panel;
+mod passkeys;
 mod permissions;
 mod plugins;
 mod provider_commands;

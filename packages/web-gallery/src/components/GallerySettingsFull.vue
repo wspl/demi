@@ -27,6 +27,7 @@ import { PLUGIN_PAGES } from '../generated/pages'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import type { SettingsState } from '../fixtures/settings'
+import type { PasskeyAddOutcome, SettingsPasskeyHost } from '@demicodes/web-ui/settings/types'
 import GallerySettingsProviders from './GallerySettingsProviders.vue'
 import GalleryInstructions from './GalleryInstructions.vue'
 import GalleryCredentials from './GalleryCredentials.vue'
@@ -79,6 +80,43 @@ async function resetCloud(operationId: string) {
 }
 
 const s = computed(() => props.state)
+
+/**
+ * The account's passkeys as the product's host keeps them: the password
+ * `wrong` is refused, any other adds a passkey after the browser's prompt
+ * would have been answered, named as Chrome names its own; a rename and a
+ * removal change the list after a beat, as the server's answer would.
+ */
+const passkeys = computed<SettingsPasskeyHost>(() => ({
+  passkeys: s.value.account.passkeys,
+  add: async (password: string): Promise<PasskeyAddOutcome> => {
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    if (password === 'wrong') {
+      return { kind: 'wrongPassword', message: 'Wrong password' }
+    }
+    productWould('Ask the Browser to Save a Passkey')
+    const now = new Date().toISOString()
+    s.value.account.passkeys.push({
+      id: `pk-${s.value.account.passkeys.length + 1}-${Date.now()}`,
+      name: 'Google Password Manager',
+      synced: true,
+      createdAt: now,
+      lastUsedAt: null,
+    })
+    return { kind: 'added' }
+  },
+  rename: async (id: string, name: string) => {
+    await new Promise((resolve) => setTimeout(resolve, 300))
+    const passkey = s.value.account.passkeys.find((candidate) => candidate.id === id)
+    if (passkey) {
+      passkey.name = name
+    }
+  },
+  remove: async (id: string) => {
+    await new Promise((resolve) => setTimeout(resolve, 400))
+    s.value.account.passkeys = s.value.account.passkeys.filter((candidate) => candidate.id !== id)
+  },
+}))
 /** The page whose section `tab` names, which reaches the section's page host. */
 const pluginPage = computed(() => settingsPage(PLUGIN_PAGES, props.tab))
 
@@ -265,6 +303,7 @@ function resetShortcuts() {
     :password-changed="s.account.passwordChanged"
     :email-phase="emailPhase"
     :password-phase="passwordPhase"
+    :passkeys="passkeys"
     @update:name="rename"
     @change-email="openChangeEmail"
     @change-password="openChangePassword"

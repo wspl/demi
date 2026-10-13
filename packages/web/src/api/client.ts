@@ -21,6 +21,8 @@ export class ApiError extends Error {
    * tree changes); empty for an error no answer gave.
    */
   readonly headers: Headers
+  /** With `unknown_passkey`, the passkey no account has. */
+  readonly credentialId: string | null
 
   constructor(
     status: number,
@@ -30,6 +32,7 @@ export class ApiError extends Error {
     retryAfterSeconds: number | null = null,
     headers: Headers = new Headers(),
     statusText = '',
+    credentialId: string | null = null,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -39,6 +42,7 @@ export class ApiError extends Error {
     this.reason = reason
     this.retryAfterSeconds = retryAfterSeconds
     this.headers = headers
+    this.credentialId = credentialId
   }
 }
 
@@ -267,6 +271,7 @@ export function apiError(status: number, text: string, headers: Headers = new He
     retryAfter === null ? null : retryAfterSchema.safeParse(retryAfter).data ?? null,
     headers,
     statusText,
+    parsed.success ? parsed.data.credentialId ?? null : null,
   )
 }
 

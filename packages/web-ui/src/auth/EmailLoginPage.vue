@@ -7,14 +7,21 @@ import TextInput from '../ui/TextInput.vue'
 import { isEmail } from './email'
 
 /**
- * Email and password on the auth page. Owns nothing; the host reports busy,
- * error, a lockout and why the user is here.
+ * Email and password on the auth page, and passkeys where the host offers
+ * them. Owns nothing; the host reports busy, error, a lockout and why the
+ * user is here.
  *
  * While a sign-in runs the fields keep the focus, read-only. A wrong password
  * gives the focus back to the password field with its text selected, as
  * macOS does, so the next try is typed at once; the line under the fields
  * keeps its height either way, so nothing moves. A lockout counts down to its
  * end and keeps Sign In off until then.
+ *
+ * With `passkeys`, the email field offers the browser's passkeys in its
+ * autofill (`autocomplete="username webauthn"`, which the host's request
+ * with conditional mediation fills), and Sign In with Passkey asks the
+ * browser for one; neither needs an email first. A passkey's refusal is the
+ * same line under the fields, and leaves the focus where it is.
  */
 export type EmailLoginPhase = {
   busy?: boolean
@@ -23,10 +30,16 @@ export type EmailLoginPhase = {
   lockedUntil?: number
   /** The session ended and sent them back to this page. */
   reason?: 'expired'
+  /** A passkey sign-in runs. */
+  passkeyBusy?: boolean
+  /** Why the last passkey sign-in failed. */
+  passkeyError?: string
 }
 
 const props = defineProps<{
   phase: EmailLoginPhase
+  /** The server and the browser offer passkeys. */
+  passkeys?: boolean
 }>()
 
 const email = defineModel<string>('email', { default: '' })
@@ -34,6 +47,8 @@ const password = defineModel<string>('password', { default: '' })
 
 const emit = defineEmits<{
   submit: [email: string, password: string]
+  /** Sign In with Passkey. */
+  passkey: []
 }>()
 
 const passwordField = ref<InstanceType<typeof TextInput>>()
@@ -85,12 +100,16 @@ const message = computed(() => {
   if (lockedSeconds.value > 0) {
     return `Too many failed sign-ins. Try again in ${countdown.value}.`
   }
-  return props.phase.lockedUntil === undefined ? props.phase.error : undefined
+  if (props.phase.lockedUntil !== undefined) {
+    return undefined
+  }
+  return props.phase.error ?? props.phase.passkeyError
 })
 
 const canSubmit = computed(
   () =>
     !props.phase.busy &&
+    !props.phase.passkeyBusy &&
     lockedSeconds.value === 0 &&
     isEmail(email.value) &&
     password.value.length > 0,
@@ -130,7 +149,7 @@ watch(
         <TextInput
           v-model="email"
           size="lg"
-          autocomplete="email"
+          :autocomplete="passkeys ? 'username webauthn' : 'email'"
           inputmode="email"
           name="email"
           :readonly="phase.busy"
@@ -164,6 +183,16 @@ watch(
         @click="submit"
       >
         Sign In
+      </Button>
+      <Button
+        v-if="passkeys"
+        size="lg"
+        class="w-full"
+        :disabled="phase.busy"
+        :loading="phase.passkeyBusy"
+        @click="emit('passkey')"
+      >
+        Sign In with Passkey
       </Button>
       <p class="select-none text-center text-[12px] leading-4 text-fg-subtle">
         Forgot your password? Ask your administrator to reset it.

@@ -79,6 +79,19 @@ describe('cookie session', () => {
     expect(session.user?.role).toBe('master')
   })
 
+  test('setup that offers a passkey keeps its page, signed in, until its passkey step ends', async () => {
+    const session = useSession()
+    serve({ 'GET /api/auth/me': signedOut, 'GET /api/setup': [{ needed: true, passkeyRpId: 'demi.example' }, 200] })
+    await session.restore()
+    serve({ 'POST /api/setup': [{ user: { ...user, role: 'master' } }, 201] })
+    await session.setUp(user.nickname, user.email, 'correct horse', new AbortController().signal, true)
+    // The app stays closed: the page is setup's, its session the new account's.
+    expect(session.signedIn).toBe(false)
+    expect(session.current).toEqual({ status: 'passkeyStep', user: { ...user, role: 'master' } })
+    session.finishSetup()
+    expect(session.user?.role).toBe('master')
+  })
+
   test('a visitor whose setup came second is sent to sign in', async () => {
     const session = useSession()
     serve({ 'GET /api/auth/me': signedOut, 'GET /api/setup': [{ needed: true }, 200] })

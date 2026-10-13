@@ -18,6 +18,18 @@ import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import type { WebState } from '@demicodes/plugin-web'
 import { commitOf } from './plugins'
 import { createCredentialState } from './credentials'
+import type { SettingsPasskey } from '@demicodes/web-ui/settings/types'
+
+const DAY_MS = 24 * 3_600_000
+
+/** The account's passkeys: a synced one in iCloud Keychain, used today, and one Chrome kept on a Windows PC, never used. */
+function galleryPasskeys(): SettingsPasskey[] {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
+  return [
+    { id: 'pk-icloud', name: 'iCloud Keychain', synced: true, createdAt: ago(41 * DAY_MS), lastUsedAt: ago(2 * 3_600_000) },
+    { id: 'pk-windows', name: 'Chrome on Windows', synced: false, createdAt: ago(9 * DAY_MS), lastUsedAt: null },
+  ]
+}
 import { createSubagentState } from './subagent-profiles'
 import { DAY, HOUR, MINUTE, SECOND, ago, ahead } from './time'
 
@@ -766,6 +778,7 @@ export function createSettingsState() {
       name: 'Zan',
       email: 'zan@example.com',
       passwordChanged: '3 months ago',
+      passkeys: galleryPasskeys(),
     },
     providers: mockProviders(),
     selectedProviderId: null as string | null,
