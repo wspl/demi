@@ -71,6 +71,42 @@ fn the_answer_gives_its_first_line_unquoted_within_the_bound() {
     );
 }
 
+/// A model that answers a question its user turn asks, and titles a
+/// message its user turn hands it as material, as DeepSeek V4.1 Flash once
+/// titled "What is 5 times 8?" "40".
+#[tokio::test(flavor = "local")]
+async fn a_question_is_titled_not_answered() {
+    let script = ScriptedRuntime::new([Turn::Respond(Box::new(|request| {
+        let [InferenceItem::UserMessage { content }] = &request.items[..] else {
+            panic!("one user message: {:?}", request.items);
+        };
+        let [UserPart::Text(text)] = &content[..] else {
+            panic!("one text: {content:?}");
+        };
+        let answer = if text == "What is 5 times 8?" {
+            "40"
+        } else if text.ends_with("\n\n<message>\nWhat is 5 times 8?\n</message>") {
+            "5 times 8"
+        } else {
+            panic!("the message is neither asked nor handed over: {text:?}");
+        };
+        vec![event::text(answer), event::response(1, 1)]
+    }))]);
+    let mut runtime = script.clone();
+
+    let title = request_title(
+        &mut runtime,
+        "c1",
+        "r1".into(),
+        &test_model(),
+        "What is **5 times 8**?",
+        CancellationToken::new(),
+    )
+    .await;
+
+    assert_eq!(title, Ok(Some("5 times 8".into())));
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_request_reads_the_instruction_at_the_lowest_effort_and_ignores_thinking() {
     let mut selection = test_model();
@@ -130,12 +166,6 @@ async fn a_request_reads_the_instruction_at_the_lowest_effort_and_ignores_thinki
     assert_eq!(requests.len(), 2, "a message without text asks nothing");
     let request = &requests[0];
     assert_eq!(request.system_prompt, TITLE_INSTRUCTION);
-    assert_eq!(
-        *request.items,
-        [InferenceItem::UserMessage {
-            content: vec![UserPart::Text("@src/auth.ts add refresh tokens".into())]
-        }]
-    );
     assert!(request.tools.is_empty());
     assert_eq!(
         request.thinking,
