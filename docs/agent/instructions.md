@@ -117,6 +117,7 @@ whether the list of rows is open or closed. Each entry is one row in the block's
 | --- | --- | --- |
 | Personal instructions | `Personal instructions` | Opens Settings › Instructions |
 | A project file | Its path from the directory of the block's outermost file, as `AGENTS.md` and `web/CLAUDE.md`; its full path as a tip | Shows the file in the work panel, through the `file` intent ([Files named in messages](../product/file-previews.md#files-named-in-messages)) |
+| The conversation's workflow | `Workflow: Review Team`; the workflow file's path as a tip | Shows the workflow file in the work panel, as a project file does |
 
 The card shows no token count for an entry: the Instructions row of the
 context window carries their estimate
