@@ -403,7 +403,8 @@ Code's `/context` does. A click on the indicator opens the card, as a click
 opens a popover from a Mac's menu bar; a click anywhere outside it, another
 click on the indicator, or Escape closes it. Resting the pointer on the
 indicator opens nothing, so the card never covers the transcript on its way
-past; the indicator's own tip says *Context* and the usage as the card's
+past. The ring is blue below 75% of the window, orange from 75% and red from
+90%, so the eye catches a context filling up; the indicator's own tip says *Context* and the usage as the card's
 header writes it, *Context 285.1K / 1M (28%)*, and nothing while the usage or
 the window is unknown.
 On a phone a tap
