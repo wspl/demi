@@ -1,4 +1,5 @@
 /** POSIX path arithmetic for the file browser: pure, no filesystem. */
+import { baseName } from '@demicodes/utils'
 
 /** Collapses repeated and trailing slashes and resolves `.` and `..`; a relative input is taken from the root. */
 export function normalizePath(path: string): string {
@@ -85,6 +86,22 @@ export function homePath(path: string, home: string | null | undefined): string 
   if (relative === '')
     return '~'
   return relative === normalizePath(path) ? path : `~/${relative}`
+}
+
+/**
+ * A directory as a list row reads it: its own name first, where it is second.
+ * The home is `~` and the root `/`, each with no location; any other
+ * directory is its last segment, located by its parent, which `homePath`
+ * writes from `~` under the home.
+ */
+export function directoryParts(path: string, home: string | null | undefined): { name: string; location: string } {
+  const normalized = normalizePath(path)
+  if (normalized === '/')
+    return { name: '/', location: '' }
+  const written = homePath(normalized, home)
+  if (written === '~')
+    return { name: '~', location: '' }
+  return { name: baseName(normalized), location: homePath(parentPath(normalized), home) }
 }
 
 /** Every ancestor from the root down to the path itself, for a breadcrumb. */

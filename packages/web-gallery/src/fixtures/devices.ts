@@ -118,7 +118,7 @@ const day = minutes(24 * 60)
  * nothing.
  */
 function demoDevice(
-  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'seen' | 'start'> & { os: SettingsDevice['os']; runnerVersion: string | null },
+  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'seen' | 'start' | 'home'> & { os: SettingsDevice['os']; runnerVersion: string | null },
   scenario: DirectScenario,
   paired: number,
 ): GalleryDevice {
@@ -137,7 +137,7 @@ export const DEMO_RUNNER_RELEASE = '9c1f…release'
 export function galleryDevices(): GalleryDevice[] {
   const current = (system: 'macos' | 'linux' | 'windows') => demoDeviceReport(system, DEMO_RUNNER_RELEASE)
   return [
-    demoDevice({ id: 'mac', name: 'alex-mbp', state: 'online', seen: ago(0), ...current('macos') }, 'connected', 40 * day),
+    demoDevice({ id: 'mac', name: 'alex-mbp', state: 'online', seen: ago(0), home: '/Users/zan', ...current('macos') }, 'connected', 40 * day),
     demoDevice(
       { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * day), start: demoDeviceStart('linux'), ...current('linux') },
       'unreachable',

@@ -8,6 +8,8 @@ import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
+import DirectoryLabel from '@demicodes/web-ui/files/DirectoryLabel.vue'
+import { directoryParts } from '@demicodes/web-ui/files/paths'
 import type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
@@ -49,6 +51,8 @@ const browsingDevice = ref<string | null>(null)
 const browserOpen = ref(false)
 const browserPath = ref<string | undefined>()
 const pending = ref(false)
+// The home of the Host the conversation runs on, which writes each row's location from `~`.
+const home = computed(() => props.hosts.find((host) => host.id === props.deviceId)?.source.home)
 const browsingHost = computed(() =>
   props.hosts.find((host) => host.id === browsingDevice.value),
 )
@@ -122,12 +126,15 @@ defineExpose({ browse })
               v-for="item in recentDirectories"
               :key="item.id"
               :icon="Folder"
-              :label="item.path"
+              :label="directoryParts(item.path, home).name"
+              :hint="item.path"
               choice
               :is-selected="item.id === selectedProjectId"
               :disabled="locked || item.disabled"
               @select="selectRecent(item.id)"
-            />
+            >
+              <DirectoryLabel :path="item.path" :home="home" />
+            </MenuItem>
             <MenuDivider />
             <MenuItem
               :icon="Folder"

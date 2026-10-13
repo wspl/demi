@@ -56,6 +56,8 @@ const recentDirectories = computed(() => {
     disabled: host!.state !== 'online',
   }))
 })
+/** The recent directory the session runs in, which the menu checks. */
+const selectedRecent = computed(() => recentDirectories.value.find((entry) => entry.path === folder.value.path)?.id)
 const workspaceName = computed(() => folder.value.path.split('/').filter(Boolean).at(-1) ?? null)
 const primaryHost = computed<HostMenuHost>(() => {
   const device = devices.find((candidate) => candidate.id === folder.value.deviceId)
@@ -133,6 +135,7 @@ function detach(id: string): void {
             :locked="locked"
             browse-enabled
             :recent-directories="recentDirectories"
+            :selected-project-id="selectedRecent"
             :hosts="hosts"
             :select-folder="selectFolder"
             @select-recent="selectRecent"

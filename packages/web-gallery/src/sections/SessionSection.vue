@@ -3116,7 +3116,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Product Session"
-        note="The shared product page, with local fixture state and handlers. The header gives its title up to 260px and cuts it short last: a longer title is cut to that and the buttons keep their names, and as the frame narrows, the directory button and then the host button become their icons, their names in tooltips, and they name themselves again once the title fits whole. Resize the frame from its corner. The Rename button beside the title edits it in place, as a double-click on the title does: Enter or clicking away keeps the new title, Escape or an empty one keeps the old."
+        note="The shared product page, with local fixture state and handlers. The header gives its title up to 260px and cuts it short last: a longer title is cut to that and the buttons keep their names, and as the frame narrows, the directory button and then the host button become their icons, their names in tooltips, and they name themselves again once the title fits whole. Resize the frame from its corner. The directory button opens the Host’s recent directories, each read by its own name with where it is beside it, smaller and grey (the home written ~), the whole path in its tooltip; two directories of one name, demi in ~/Projects and in ~/Work, differ by it, and a long location gives up its left. The Rename button beside the title edits it in place, as a double-click on the title does: Enter or clicking away keeps the new title, Escape or an empty one keeps the old."
       >
         <div class="max-w-full resize-x overflow-hidden pb-3" style="min-width: 20rem">
           <GalleryConnectedSession />
