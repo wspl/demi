@@ -33,6 +33,7 @@ import { ICON_PX } from '../ui/icon-metrics'
 import SidebarNavItem from '../sidebar/SidebarNavItem.vue'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
 import FileBrowserList from './FileBrowserList.vue'
+import DirectoryLabel from './DirectoryLabel.vue'
 import FileIcon from './FileIcon.vue'
 import { landmarkIcon } from './file-icons'
 import {
@@ -45,7 +46,7 @@ import {
   type FileBrowserSortKey,
 } from './file-browser-state'
 import { baseName } from '@demicodes/utils'
-import { joinPath, normalizePath, parentPath } from './paths'
+import { directoryParts, joinPath, normalizePath, parentPath } from './paths'
 import { failureShown } from './file-cache'
 import { useShowing } from './showing'
 import {
@@ -139,6 +140,21 @@ const currentHost = computed(() =>
   props.hosts.find((host) => host.id === props.hostId),
 )
 const hasRail = computed(() => props.places.length > 0)
+/** A place's name: the label its caller gave it, or its directory's own. */
+function placeName(place: FileBrowserPlace): string {
+  return place.label ?? directoryParts(place.path, props.source.home).name
+}
+/** The names that more than one place goes by, which the rail tells apart by location. */
+const sharedNames = computed(() => {
+  const seen = new Map<string, Set<string>>()
+  for (const group of props.places) {
+    for (const place of group.places) {
+      const name = placeName(place)
+      seen.set(name, (seen.get(name) ?? new Set()).add(normalizePath(place.path)))
+    }
+  }
+  return new Set([...seen].filter(([, paths]) => paths.size > 1).map(([name]) => name))
+})
 /** A place's glyph: the theme folder its name resolves to, or the id the caller names. */
 function placeIcon(place: FileBrowserPlace): Component {
   const target = normalizePath(place.path)
@@ -438,10 +454,12 @@ onBeforeUnmount(() => pending?.abort())
                   v-for="place in group.places"
                   :key="place.path"
                   :icon="placeIcon(place)"
-                  :label="place.label ?? (baseName(place.path) || '/')"
+                  :label="placeName(place)"
                   :hint="place.path"
                   @select="goTo(place.path)"
-                />
+                >
+                  <DirectoryLabel :path="place.path" :home="source.home" :name="placeName(place)" />
+                </MenuItem>
               </MenuGroup>
             </Menu>
           </template>
@@ -490,11 +508,18 @@ onBeforeUnmount(() => pending?.abort())
             v-for="place in group.places"
             :key="place.path"
             :icon="placeIcon(place)"
-            :label="place.label ?? (baseName(place.path) || '/')"
+            :label="placeName(place)"
             :pressed="path === normalizePath(place.path)"
             :hint="place.path"
             @click="goTo(place.path)"
-          />
+          >
+            <DirectoryLabel
+              :path="place.path"
+              :home="source.home"
+              :name="placeName(place)"
+              :hide-location="!sharedNames.has(placeName(place))"
+            />
+          </SidebarNavItem>
         </nav>
       </ScrollArea>
       <FileBrowserList

@@ -55,7 +55,7 @@ const props = defineProps<{
   page: { kind: 'device'; device: SettingsDevice } | { kind: 'cloud'; report: DeviceReport }
   /** The runner release the server's devices follow; null on a server without them. */
   runnerRelease: string | null
-  /** The names of the projects on the device, which go with it. */
+  /** The directories of the projects on the device, which go with it. */
   projects?: readonly string[]
   nameMaxLength: number | null
   revoking?: boolean
@@ -297,6 +297,7 @@ function revoke() {
       :overlay-store="overlayStore"
       :device="device?.name ?? ''"
       :projects="projects ?? []"
+      :home="device?.home"
       @close="revokeOpen = false"
       @revoke="revoke"
     />

@@ -90,10 +90,17 @@ export function laptopTree(): MemoryDirectory {
                 'thumbs.ts': 3_004
               }, day(2)),
               sketchbook: project({ 'main.ts': 5_555 }, old(12, 30)),
+              chromium: project({ 'BUILD.gn': 8_120 }, day(5)),
+              clients: dir({
+                'acme-corporation': dir({
+                  platform: dir({ 'billing-services': project({ 'main.ts': 3_100 }, day(3)) }, { modifiedAt: day(3) }),
+                }, { modifiedAt: day(3) }),
+              }, { modifiedAt: day(3) }),
               'a project with a very long directory name that will not fit in the address bar': project({ 'index.ts': 12 }, old(9, 9)),
             },
             { modifiedAt: day(7, 9) },
           ),
+          Work: dir({ demi: project({ 'index.ts': 640 }, day(6)) }, { modifiedAt: day(6) }),
           Library: dir(
             {
               Caches: caches(),
@@ -198,7 +205,11 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
         {
           label: 'Recent',
           places: [
+            // Two directories of one name differ by their location; the deep one gives its location up from the left.
             { path: '/Users/alex/Projects/demi' },
+            { path: '/Users/alex/Projects/chromium' },
+            { path: '/Users/alex/Work/demi' },
+            { path: '/Users/alex/Projects/clients/acme-corporation/platform/billing-services' },
             { path: '/Users/alex/dotfiles' }
           ]
         },
