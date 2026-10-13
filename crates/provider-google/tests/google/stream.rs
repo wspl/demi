@@ -62,6 +62,22 @@ async fn thought_parts_stream_as_thinking_and_a_function_call_emits_its_signatur
 }
 
 #[tokio::test]
+async fn a_reply_without_usage_metadata_reports_no_usage() {
+    let events = events_of(chunks(&[
+        parts(json!([{ "text": "done" }])),
+        json!({ "candidates": [{ "finishReason": "STOP" }] }),
+    ]))
+    .await;
+    assert_eq!(
+        events,
+        [
+            ProviderEvent::TextDelta("done".into()),
+            ProviderEvent::Response(None),
+        ]
+    );
+}
+
+#[tokio::test]
 async fn a_signed_call_opens_thinking_and_a_signature_after_thoughts_closes_it() {
     let events = events_of(chunks(&[
         parts(json!([{ "functionCall": { "name": "look", "id": "c1" }, "thoughtSignature": "sig-1" }])),

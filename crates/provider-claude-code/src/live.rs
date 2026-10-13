@@ -180,8 +180,6 @@ pub(crate) enum Waited {
 pub(crate) struct LiveCli {
     shared: Arc<Shared>,
     key: ProcessKey,
-    /// The CLI executable's path, which names its version.
-    pub(crate) executable: String,
     /// The access token the process holds, and when it expires.
     pub(crate) token: Secret,
     expires_at: Timestamp,
@@ -251,11 +249,7 @@ impl LiveCli {
             .await?
         };
         let session_build = building.elapsed();
-        // The site the placement chose names the executable, and with it the
-        // version, that the error a run logs names.
-        let executable = RefCell::new(String::new());
         let start = |site: &CliSite| {
-            executable.replace(site.executable.clone());
             let start = cli::start(site, request, &token, &file);
             // The environment and the descriptors are left out: a
             // descriptor holds the token.
@@ -292,7 +286,6 @@ impl LiveCli {
         Ok(Self {
             shared: shared.clone(),
             key: ProcessKey::of(request),
-            executable: executable.into_inner(),
             token,
             expires_at,
             config: Some(config),

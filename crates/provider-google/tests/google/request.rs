@@ -8,7 +8,7 @@ use demi_provider_common::{
     RuntimeEnv, ToolDefinition, UserPart,
     testing::{MockVendor, inference_request, property_order, titled_tool},
 };
-use demi_shared_types::{B64Bytes, ThinkingConfig, TokenUsage};
+use demi_shared_types::{B64Bytes, ThinkingConfig};
 use serde_json::{Value, json};
 
 use crate::{body_of, chunks, provider_at, run};
@@ -62,7 +62,7 @@ async fn a_run_streams_from_the_models_endpoint_with_the_key() {
         let mut request = inference_request();
         request.model_id = "gemini-3.6-flash".into();
         let events = run(runtime.as_mut(), request).await;
-        assert_eq!(events, [ProviderEvent::Response(Some(TokenUsage::default()))]);
+        assert_eq!(events, [ProviderEvent::Response(None)]);
     }
     for sent in vendor.requests() {
         assert_eq!(

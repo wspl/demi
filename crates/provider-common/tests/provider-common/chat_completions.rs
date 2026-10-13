@@ -21,6 +21,7 @@ fn vendor() -> Vendor {
         clock: Arc::new(FixedClock(
             "2026-09-18T14:00:00.000Z".parse::<Timestamp>().unwrap(),
         )),
+        model: "grok-code".into(),
     }
 }
 
@@ -129,7 +130,9 @@ async fn reasoning_content_is_thinking_that_starts_once() {
             ProviderEvent::ThinkingDelta("think ".into()),
             ProviderEvent::ThinkingDelta("more".into()),
             ProviderEvent::TextDelta("answer".into()),
-            ProviderEvent::Response(Some(TokenUsage::default())),
+            // No chunk reported usage: the response reports none, never
+            // zeros.
+            ProviderEvent::Response(None),
         ]
     );
 }
@@ -151,7 +154,7 @@ async fn tool_calls_assemble_by_index_and_flush_when_the_reply_is_complete() {
         [
             call("tool_call_0", "no_id", json!({})),
             call("call-2", "bad", json!("{")),
-            ProviderEvent::Response(Some(TokenUsage::default())),
+            ProviderEvent::Response(None),
         ]
     );
     // A vendor that omits `index` sends one call at a time, in order.
