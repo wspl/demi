@@ -11,6 +11,8 @@ use serde::{Deserialize, Serialize};
 
 use demi_shared_types::Nullable;
 
+use crate::files::AbsolutePath;
+
 /// The project's workflows as the menu lists them, by id.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -38,15 +40,17 @@ pub struct ConversationWorkflows {
 pub struct MenuWorkflow {
     /// The file's name without `.yaml`.
     pub id: String,
-    /// What the menu shows; null for a file that does not read.
+    /// What the menu shows; null for a file that cannot be used.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub name: Option<String>,
-    /// Why the file does not read, its path and the line and field that
-    /// are wrong; null while it reads.
+    /// The file on the Host.
+    pub path: String,
+    /// Why it cannot be used: it is a link, or it does not read, with its
+    /// path and the line and field that are wrong; null while it can.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
-    pub error: Option<String>,
+    pub unavailable: Option<String>,
 }
 
 /// A subject the page subscribes to on the file watch.
@@ -62,5 +66,5 @@ pub struct WatchSubject {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct WorkflowsQuery {
-    pub directory: String,
+    pub directory: AbsolutePath,
 }

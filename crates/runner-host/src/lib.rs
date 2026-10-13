@@ -6,6 +6,7 @@
 
 pub mod files;
 pub mod fs;
+pub mod nofollow;
 pub mod git;
 pub mod host;
 pub mod numbers;

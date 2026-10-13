@@ -23,6 +23,7 @@ use demi_web_api_protocol::files::{
 };
 use demi_web_api_protocol::ids::DeviceId;
 use demi_web_api_protocol::workflows::WorkflowsQuery;
+use demi_backend_user_shard::conversation::workflows::DeviceWorkflowsRefusal;
 
 use super::AppState;
 use super::body::JsonBody;
@@ -168,18 +169,28 @@ pub(super) async fn workflows(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-    QueryParams(query): QueryParams<WorkflowsQuery>,
+    query: Result<QueryParams<WorkflowsQuery>, ApiError>,
 ) -> Result<axum::response::Response, ApiError> {
     let device = owned_device(&state, &user.id, &id, Some(DeviceKind::User)).await?;
+    // A directory that is not an absolute path is the request's fault, as a
+    // body's would be (`web-api.md` § Workflows of a directory).
+    let QueryParams(query) = query.map_err(|error| ApiError::invalid_body(error.message().to_owned()))?;
     let (workflows, read_at) = state
         .shards
         .of(&user.id)
         .call(move |shard, _| async move {
             shard
-                .device_workflows(&device.id, &query.directory)
+                .device_workflows(&device.id, query.directory.as_str())
                 .await
-                .ok_or_else(ApiError::device_offline)?
-                .map_err(device_fs_error)
+                .map_err(|refusal| match refusal {
+                    DeviceWorkflowsRefusal::Offline => ApiError::device_offline(),
+                    DeviceWorkflowsRefusal::NoDirectory => ApiError::new(
+                        StatusCode::NOT_FOUND,
+                        ErrorCode::FsNotFound,
+                        "No such directory on the device",
+                    ),
+                    DeviceWorkflowsRefusal::Host(error) => device_fs_error(error),
+                })
         })
         .await??;
     Ok(super::files::read_answer(&read_at, Json(workflows)))

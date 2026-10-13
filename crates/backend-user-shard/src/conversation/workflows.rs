@@ -30,16 +30,17 @@ use tokio_util::sync::CancellationToken;
 use crate::shard::Shard;
 use crate::shard::agent_profiles::{Scope, first_offering};
 
-/// Why a workflow directory or file that is a symbolic link is not read.
+/// Why a workflow directory or file that is a link is not read.
 pub(crate) const NOT_LINKS: &str = "Workflows are files of the project, not links.";
 
 /// The workflows a working directory has now.
 pub(crate) struct ProjectWorkflows {
-    /// The `.demi/workflows` directory they are in; none when no directory
-    /// searched has one.
+    /// The `.demi/workflows` directory they are in, or would be; none when
+    /// no directory searched has a `.demi` that holds one.
     pub(crate) directory: Option<String>,
-    /// Why that directory cannot be used, a link; none while it can.
-    pub(crate) unavailable: Option<&'static str>,
+    /// Why that directory cannot be used: it, or its `.demi`, is a link, or
+    /// the Host could not tell; none while it can.
+    pub(crate) unavailable: Option<String>,
     /// Each file, by id.
     pub(crate) files: Vec<WorkflowFile>,
     /// What the page watches to hear of a workflow added, changed or
@@ -59,22 +60,27 @@ pub(crate) struct WorkflowFile {
 
 /// Why a workflow file cannot be used.
 pub(crate) enum Unread {
-    /// It is a symbolic link, which is never followed.
+    /// It is a link, which is never followed.
     Link,
     /// It does not read, as this says.
     Fails(String),
 }
+
+/// The directory a search was asked about is not there, or is no
+/// directory, as the Host said at its number.
+#[derive(Debug)]
+pub(crate) struct NoDirectory(ReadAt);
 
 impl ProjectWorkflows {
     fn get(&self, id: &str) -> Option<&WorkflowFile> {
         self.files.iter().find(|file| file.id == id)
     }
 
-    /// Why the workflow `id` cannot be used: its directory or file is a
-    /// link, it does not read, or it is gone; none while it can.
+    /// Why the workflow `id` cannot be used: its directory cannot, it does
+    /// not read or is a link, or it is gone; none while it can.
     fn unavailable(&self, id: &str) -> Option<String> {
-        if let Some(reason) = self.unavailable {
-            return Some(reason.to_owned());
+        if let Some(reason) = &self.unavailable {
+            return Some(reason.clone());
         }
         match self.get(id) {
             None => Some("it is no longer in the project's .demi/workflows/".to_owned()),
@@ -82,7 +88,8 @@ impl ProjectWorkflows {
         }
     }
 
-    /// The Workflow menu's list, by id.
+    /// The Workflow menu's list, by id (`web-api.md` § Workflows of a
+    /// directory).
     fn menu(self) -> (ConversationWorkflows, ReadAt) {
         let workflows = self
             .files
@@ -90,12 +97,13 @@ impl ProjectWorkflows {
             .map(|file| MenuWorkflow {
                 id: file.id.clone(),
                 name: file.read.as_ref().ok().map(|workflow| workflow.name.clone()),
-                error: file.reason(),
+                path: file.path.clone(),
+                unavailable: file.reason(),
             })
             .collect();
         let answer = ConversationWorkflows {
             directory: self.directory,
-            unavailable: self.unavailable.map(str::to_owned),
+            unavailable: self.unavailable,
             workflows,
             watch: self.watch,
         };
@@ -133,20 +141,25 @@ pub(crate) fn workflow_text(answer: HostFile) -> Result<String, String> {
         }
         HostFile::Unreadable { message } => Err(format!("the Host cannot read it: {message}")),
         HostFile::Directory { .. } => Err("it is a directory".to_owned()),
+        HostFile::Link => Err(NOT_LINKS.to_owned()),
         HostFile::Missing | HostFile::Other => Err("there is no such file".to_owned()),
     }
 }
 
-/// The workflows of `cwd`, read through `read`: one request finds `.git`,
-/// `.demi` and `.demi/workflows` in every directory from `cwd` up to the
-/// repository's root, and one more reads the nearest directory's files. A
-/// `.demi/workflows` that is a link, and a workflow file that is one, are
-/// never followed (`subagents.md` § Workflows of a project).
+/// The workflows of `cwd`, read through `read`: one request finds `cwd`
+/// itself, and `.git`, `.demi` and `.demi/workflows` in every directory
+/// from `cwd` up to the repository's root, and one more reads the nearest
+/// workflows directory's files. Nothing below a searched directory is
+/// followed: the Host answers a `.demi`, a `.demi/workflows` or a workflow
+/// file that is a link, or that has become one by the time it is read, as
+/// a link, and a `.demi` it cannot read makes that directory's workflows
+/// unavailable rather than looked past (`subagents.md` § Workflows of a
+/// project).
 pub(crate) async fn search_workflows<E, Fut>(
     paths: HostPaths,
     cwd: &str,
     read: impl Fn(Vec<HostRead>) -> Fut,
-) -> Result<ProjectWorkflows, E>
+) -> Result<Result<ProjectWorkflows, NoDirectory>, E>
 where
     Fut: Future<Output = Result<(Vec<HostFile>, ReadAt), E>>,
 {
@@ -154,64 +167,88 @@ where
     let [demi, workflows] = WORKFLOWS_DIRECTORY;
     let dot_demi = |directory: &str| paths.join(directory, demi);
     let workflows_of = |directory: &str| paths.join(&dot_demi(directory), workflows);
-    let mut reads = project::root_reads(paths, &ancestors);
+    let mut reads = vec![HostRead::new(cwd.to_owned(), 0)];
+    reads.extend(project::root_reads(paths, &ancestors));
     for directory in &ancestors {
         for path in [dot_demi(directory), workflows_of(directory)] {
-            reads.push(HostRead { path, limit: 0 });
+            reads.push(HostRead {
+                path,
+                limit: 0,
+                within: Some(directory.clone()),
+            });
         }
     }
     let (found, read_at) = read(reads).await?;
+    let (itself, found) = found.split_at(1);
+    if !matches!(itself[0], HostFile::Directory { .. }) {
+        return Ok(Err(NoDirectory(read_at)));
+    }
     let (git, kept) = found.split_at(ancestors.len());
     let searched = project::searched(&ancestors, git);
     let mut watch = Vec::new();
+    let names = |path: String| WatchSubject {
+        kind: WatchKind::FolderNames,
+        path,
+    };
     let mut nearest = None;
     for (directory, answers) in searched.iter().zip(kept.chunks(2)) {
-        // `.demi`'s own listing says what `workflows` is without following it.
-        let listed = match &answers[0] {
-            HostFile::Directory { entries } => entries.iter().find(|entry| entry.name == workflows),
-            _ => None,
-        };
-        if listed.is_some_and(|entry| entry.kind == EntryKind::Symlink) {
-            watch.push(WatchSubject {
-                kind: WatchKind::FolderNames,
-                path: dot_demi(directory),
-            });
-            nearest = Some((workflows_of(directory), None));
-            break;
+        let unusable = |reason: String| (directory.clone(), workflows_of(directory), Err(reason));
+        match (&answers[0], &answers[1]) {
+            (HostFile::Missing | HostFile::File { .. } | HostFile::Other, _) => {
+                watch.push(names(directory.clone()));
+                continue;
+            }
+            (HostFile::Link, _) => {
+                watch.push(names(directory.clone()));
+                nearest = Some(unusable(NOT_LINKS.to_owned()));
+            }
+            (HostFile::Unreadable { message }, _) => {
+                watch.push(names(directory.clone()));
+                nearest = Some(unusable(format!("the Host cannot read {}: {message}", dot_demi(directory))));
+            }
+            (HostFile::Directory { .. }, HostFile::Missing | HostFile::File { .. } | HostFile::Other) => {
+                watch.push(names(dot_demi(directory)));
+                continue;
+            }
+            (HostFile::Directory { .. }, HostFile::Link) => {
+                watch.push(names(dot_demi(directory)));
+                nearest = Some(unusable(NOT_LINKS.to_owned()));
+            }
+            (HostFile::Directory { .. }, HostFile::Unreadable { message }) => {
+                watch.push(names(dot_demi(directory)));
+                nearest = Some(unusable(format!("the Host cannot read {}: {message}", workflows_of(directory))));
+            }
+            (HostFile::Directory { .. }, HostFile::Directory { entries }) => {
+                watch.push(WatchSubject {
+                    kind: WatchKind::FolderDetails,
+                    path: workflows_of(directory),
+                });
+                nearest = Some((directory.clone(), workflows_of(directory), Ok(entries.clone())));
+            }
         }
-        if let HostFile::Directory { entries } = &answers[1] {
-            let path = workflows_of(directory);
-            watch.push(WatchSubject {
-                kind: WatchKind::FolderDetails,
-                path: path.clone(),
-            });
-            nearest = Some((path, Some(entries.clone())));
-            break;
-        }
-        let path = if matches!(answers[0], HostFile::Directory { .. }) {
-            dot_demi(directory)
-        } else {
-            directory.clone()
-        };
-        watch.push(WatchSubject {
-            kind: WatchKind::FolderNames,
-            path,
-        });
+        break;
     }
-    let (directory, entries) = match nearest {
-        None => (None, None),
-        Some((directory, entries)) => (Some(directory), entries),
-    };
-    let Some(entries) = entries else {
-        return Ok(ProjectWorkflows {
-            unavailable: directory.is_some().then_some(NOT_LINKS),
-            directory,
+    let Some((project, directory, entries)) = nearest else {
+        return Ok(Ok(ProjectWorkflows {
+            directory: None,
+            unavailable: None,
             files: Vec::new(),
             watch,
             read_at,
-        });
+        }));
     };
-    let directory = directory.expect("a directory with entries");
+    let entries = match entries {
+        Ok(entries) => entries,
+        Err(reason) => {
+            return Ok(Ok(ProjectWorkflows {
+                directory: Some(directory),
+                unavailable: Some(reason),
+                files: Vec::new(),
+                watch,
+                read_at,
+            }));
+        }
+    };
     let mut named: Vec<(String, String, bool)> = entries
         .iter()
         .filter(|entry| matches!(entry.kind, EntryKind::File | EntryKind::Symlink))
@@ -228,6 +265,7 @@ where
             path: path.clone(),
             // One byte past the largest file read, to tell a larger one.
             limit: WORKFLOW_FILE_MAX_BYTES + 1,
+            within: Some(project.clone()),
         })
         .collect();
     let mut answers = if reads.is_empty() {
@@ -239,24 +277,43 @@ where
     let files = named
         .into_iter()
         .map(|(id, path, link)| {
-            let read = if link {
-                Err(Unread::Link)
-            } else {
-                let answer = answers.next().unwrap_or(HostFile::Missing);
-                workflow_text(answer)
+            let read = match if link { HostFile::Link } else { answers.next().unwrap_or(HostFile::Missing) } {
+                HostFile::Link => Err(Unread::Link),
+                answer => workflow_text(answer)
                     .and_then(|text| parse_workflow(&text).map_err(|error| error.to_string()))
-                    .map_err(Unread::Fails)
+                    .map_err(Unread::Fails),
             };
             WorkflowFile { id, path, read }
         })
         .collect();
-    Ok(ProjectWorkflows {
+    Ok(Ok(ProjectWorkflows {
         directory: Some(directory),
         unavailable: None,
         files,
         watch,
         read_at,
-    })
+    }))
+}
+
+/// Why a device's directory's workflows were not listed.
+#[derive(Debug)]
+pub enum DeviceWorkflowsRefusal {
+    /// The device's runner is not connected.
+    Offline,
+    /// The directory is not there.
+    NoDirectory,
+    Host(HostError),
+}
+
+/// No workflows: what a conversation whose directory is gone has.
+fn none(read_at: ReadAt) -> ProjectWorkflows {
+    ProjectWorkflows {
+        directory: None,
+        unavailable: None,
+        files: Vec::new(),
+        watch: Vec::new(),
+        read_at,
+    }
 }
 
 impl Shard {
@@ -273,7 +330,9 @@ impl Shard {
             .map_err(|error| ReadFilesError::Access(error.into()))?;
         let cwd = self.placement(id).await?.directory;
         let host = self.host_shard();
-        search_workflows(paths, &cwd, |reads| async move { host.read_files(id, &reads, cancel).await }).await
+        let found = search_workflows(paths, &cwd, |reads| async move { host.read_files(id, &reads, cancel).await }).await?;
+        // A conversation whose directory is gone has none.
+        Ok(found.unwrap_or_else(|NoDirectory(read_at)| none(read_at)))
     }
 
     /// The Workflow menu's list for a new conversation that works in
@@ -285,12 +344,15 @@ impl Shard {
         &self,
         device: &DeviceId,
         directory: &str,
-    ) -> Option<Result<(ConversationWorkflows, ReadAt), HostError>> {
-        let host = self.devices().device_access(device)?;
+    ) -> Result<(ConversationWorkflows, ReadAt), DeviceWorkflowsRefusal> {
+        let host = self.devices().device_access(device).ok_or(DeviceWorkflowsRefusal::Offline)?;
         let paths = host.identity().paths;
         let host = &host;
-        let found = search_workflows(paths, directory, |reads| async move { look_files(host, &reads).await }).await;
-        Some(found.map(ProjectWorkflows::menu))
+        let found = search_workflows(paths, directory, |reads| async move { look_files(host, &reads).await })
+            .await
+            .map_err(DeviceWorkflowsRefusal::Host)?
+            .map_err(|NoDirectory(_)| DeviceWorkflowsRefusal::NoDirectory)?;
+        Ok(found.menu())
     }
 
     /// The Workflow menu's list for the conversation `id` (`GET
@@ -315,7 +377,8 @@ impl Shard {
             .map(|file| ListedWorkflow {
                 id: file.id.clone(),
                 name: file.read.as_ref().ok().map(|workflow| workflow.name.clone()),
-                error: file.read.as_ref().err().map(|unread| match unread {
+                path: file.path.clone(),
+                unavailable: file.read.as_ref().err().map(|unread| match unread {
                     Unread::Link => NOT_LINKS.to_owned(),
                     Unread::Fails(error) => error.clone(),
                 }),
@@ -324,7 +387,7 @@ impl Shard {
         Ok(WorkflowListing {
             chosen,
             directory: found.directory,
-            unavailable: found.unavailable.map(str::to_owned),
+            unavailable: found.unavailable,
             workflows,
         })
     }
@@ -437,7 +500,8 @@ impl Shard {
         let read = HostRead {
             path: paths.beside(directory, path),
             limit: WORKFLOW_FILE_MAX_BYTES + 1,
-        };
+    within: None,
+};
         let (mut found, _) = self
             .host_shard()
             .read_files(id, std::slice::from_ref(&read), &CancellationToken::new())

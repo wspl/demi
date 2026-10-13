@@ -114,9 +114,12 @@ const execution = computed(() => executionFor(props.conversation))
  */
 const record = computed(() => product.snapshot?.conversations.find((item) => item.id === props.conversation.id) ?? null)
 const workflowList = useConversationWorkflows(() => props.conversation)
-/** The record's choice, with the changes on their way; a new conversation's own before its first send. */
+/**
+ * The record's choice, with the changes on their way; a new conversation's
+ * own until its record is made, whatever the channel already brought of it.
+ */
 const workflow = computed(() => ({
-  choice: record.value?.workflow ?? props.conversation.workflow,
+  choice: props.conversation.persistence === 'synced' && record.value ? record.value.workflow : props.conversation.workflow,
   list: workflowList.value,
 }))
 // A reset holds the conversations that cannot work without the Cloud: it is
@@ -259,7 +262,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @arrange-attachments="store.arrangeFiles(conversation, $event)"
       @retry-attachment="store.retryFile(conversation, $event)"
       @change-model="store.changeModel(conversation, $event)"
-      @change-workflow="store.changeWorkflow(conversation.id, $event)"
+      @change-workflow="void store.changeWorkflow(conversation.id, $event)"
       @change-context-limit="preferences.setContextLimit($event)"
       @stop="store.stop(conversation)"
       @compact="store.compact(conversation)"

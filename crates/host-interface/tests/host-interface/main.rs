@@ -4,4 +4,5 @@
 
 mod commands;
 mod output;
+mod paths;
 mod records;

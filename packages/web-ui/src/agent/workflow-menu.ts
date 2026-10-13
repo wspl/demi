@@ -10,14 +10,16 @@ export type WorkflowChoice =
   | { type: 'none' }
   | { type: 'workflow'; id: string }
 
-/** A workflow file of the project, as the backend lists it. */
+/** A workflow file of the project, as the backend lists it (`web-api.md` § Workflows of a directory). */
 export interface WorkflowOption {
   /** The file's name without `.yaml`. */
   id: string
-  /** What the menu shows; null for a file that does not read. */
+  /** What the menu shows; null for a file that cannot be used. */
   name: string | null
-  /** Why the file does not read; null while it does. */
-  error: string | null
+  /** The file on the Host. */
+  path: string
+  /** Why it cannot be used, a link or a file that does not read; null while it can. */
+  unavailable: string | null
 }
 
 /**
@@ -67,7 +69,7 @@ export function workflowShown(choice: WorkflowChoice, list: WorkflowList): Workf
   const listed = list.workflows.find((workflow) => workflow.id === choice.id)
   if (!listed)
     return { label: choice.id, unavailable: GONE }
-  return { label: listed.name ?? choice.id, unavailable: listed.error }
+  return { label: listed.name ?? choice.id, unavailable: listed.unavailable }
 }
 
 /**
@@ -95,7 +97,7 @@ export function workflowRows(choice: WorkflowChoice, list: WorkflowList): Workfl
     return choice.type === 'workflow' ? [...shown, row(`workflow:${choice.id}`, choice.id, choice, list.reason)] : shown
   }
   for (const workflow of list.workflows) {
-    rows.push(row(`workflow:${workflow.id}`, workflow.name ?? workflow.id, { type: 'workflow', id: workflow.id }, workflow.error))
+    rows.push(row(`workflow:${workflow.id}`, workflow.name ?? workflow.id, { type: 'workflow', id: workflow.id }, workflow.unavailable))
   }
   if (choice.type === 'workflow' && !list.workflows.some((workflow) => workflow.id === choice.id))
     rows.push(row(`workflow:${choice.id}`, choice.id, choice, GONE))

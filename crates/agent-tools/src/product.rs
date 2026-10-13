@@ -179,10 +179,13 @@ pub struct WorkflowListing {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct ListedWorkflow {
     pub id: String,
-    /// What the menu shows; null for a file that does not read.
+    /// What the menu shows; null for a file that cannot be used.
     pub name: Option<String>,
-    /// Why the file does not read; null while it does.
-    pub error: Option<String>,
+    /// The file on the Host.
+    pub path: String,
+    /// Why it cannot be used: it is a link, or the parser's whole error;
+    /// null while it can.
+    pub unavailable: Option<String>,
 }
 
 /// The model options of a profile change: `--model`, `--provider`,
