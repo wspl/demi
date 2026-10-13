@@ -35,6 +35,7 @@ pub(crate) fn run(
         }
         let session_id = request.session_id.clone();
         let request_id = request.request_id.clone();
+        let model = request.model_id.clone();
         let websocket = shared.transport != TransportMode::Sse;
         let body = encode_body(LABEL, move || request::encode(&request, websocket));
         let body = tokio::select! {
@@ -91,6 +92,7 @@ pub(crate) fn run(
             label: LABEL,
             reader: read_codex_failure,
             clock: shared.clock.clone(),
+            model,
         };
         let mut events = std::pin::pin!(responses::map_events(events, vendor, SIGNATURE_TAG, cancel));
         while let Some(event) = events.next().await {

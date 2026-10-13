@@ -4,7 +4,10 @@
 //! or delta of a type Demi does not read is skipped, so a CLI release that
 //! adds one does not break a run; one Demi reads that is malformed fails it.
 
-use demi_provider_common::wire::{Reported, ReportedString, Tagged};
+use demi_provider_common::wire::{
+    Reported, ReportedString, Tagged,
+    messages::{CallUsage, MessagesUsage},
+};
 use demi_provider_common::{ErrorCode, ProviderEvent, ToolCall, tagged_wire};
 use std::collections::HashMap;
 
@@ -198,14 +201,14 @@ pub(crate) struct MessageStart {
 #[derive(Deserialize)]
 struct StartedMessage {
     #[serde(default)]
-    usage: Option<UsageCounts>,
+    usage: Option<MessagesUsage>,
 }
 
 /// The end of an API call's message, with the call's final token counts.
 #[derive(Deserialize)]
 pub(crate) struct MessageDelta {
     #[serde(default)]
-    usage: Option<UsageCounts>,
+    usage: Option<MessagesUsage>,
 }
 
 tagged_wire! {
@@ -294,59 +297,26 @@ pub(crate) struct ResultLine {
     api_error_status: Option<u16>,
 }
 
-/// An API call's token counts as one of its events states them; a count the
-/// event leaves out is one it does not change.
-#[derive(Deserialize, Clone, Copy, Default)]
-struct UsageCounts {
-    #[serde(default)]
-    input_tokens: Option<u64>,
-    #[serde(default)]
-    output_tokens: Option<u64>,
-    #[serde(default)]
-    cache_read_input_tokens: Option<u64>,
-    #[serde(default)]
-    cache_creation_input_tokens: Option<u64>,
-}
-
 /// The token counts of the CLI's latest API call, which the response
-/// carries (`claude-code.md` § Reading): its last `message_delta`'s, the
-/// API's own count of that call, each count the delta leaves out as the
-/// same call's `message_start` stated it, since the API's counts are
-/// cumulative over a message. The `result` line's `usage` is never read: it
-/// sums every call of the CLI's turn, which spans every tool call the model
-/// made, and its `iterations`, which would list the calls, are empty when
-/// the CLI runs with `DISABLE_TELEMETRY` (Claude Code 2.1.296).
+/// carries (`claude-code.md` § Reading), read from the API's stream events
+/// the CLI passes through as the Anthropic API's provider reads them
+/// ([`CallUsage`]). The `result` line's `usage` is never read: it sums every
+/// call of the CLI's turn, which spans every tool call the model made, and
+/// its `iterations`, which would list the calls, are empty when the CLI runs
+/// with `DISABLE_TELEMETRY` (Claude Code 2.1.296).
 #[derive(Default)]
-pub(crate) struct LastCall {
-    /// The counts the latest call's `message_start` stated.
-    started: UsageCounts,
-    /// The latest call's counts once a `message_delta` stated them.
-    ended: Option<TokenUsage>,
-}
+pub(crate) struct LastCall(CallUsage);
 
 impl LastCall {
     pub(crate) fn observe(&mut self, event: &StreamEvent) {
         match event {
             StreamEvent::MessageStart(start) => {
-                let usage = start.message.as_ref().and_then(|message| message.usage);
-                self.started = usage.unwrap_or_default();
+                self.0
+                    .start(start.message.as_ref().and_then(|message| message.usage));
             }
-            StreamEvent::MessageDelta(MessageDelta { usage: Some(ended) }) => {
-                let started = self.started;
-                self.ended = Some(
-                    UsageCounts {
-                        input_tokens: ended.input_tokens.or(started.input_tokens),
-                        output_tokens: ended.output_tokens.or(started.output_tokens),
-                        cache_read_input_tokens: ended
-                            .cache_read_input_tokens
-                            .or(started.cache_read_input_tokens),
-                        cache_creation_input_tokens: ended
-                            .cache_creation_input_tokens
-                            .or(started.cache_creation_input_tokens),
-                    }
-                    .usage(),
-                );
-            }
+            StreamEvent::MessageDelta(MessageDelta {
+                usage: Some(counts),
+            }) => self.0.delta(*counts),
             _ => {}
         }
     }
@@ -355,7 +325,7 @@ impl LastCall {
     /// never reports it again; none when no call of the turn ended with its
     /// counts.
     pub(crate) fn take(&mut self) -> Option<TokenUsage> {
-        std::mem::take(self).ended
+        std::mem::take(&mut self.0).usage()
     }
 }
 
@@ -523,17 +493,6 @@ impl ResultLine {
             };
         }
         TurnEnd::Answered
-    }
-}
-
-impl UsageCounts {
-    fn usage(&self) -> TokenUsage {
-        TokenUsage {
-            input_tokens: self.input_tokens.unwrap_or(0),
-            output_tokens: self.output_tokens.unwrap_or(0),
-            cache_read_tokens: self.cache_read_input_tokens.unwrap_or(0),
-            cache_write_tokens: self.cache_creation_input_tokens.unwrap_or(0),
-        }
     }
 }
 

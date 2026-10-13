@@ -31,6 +31,7 @@ pub(crate) fn run(
         }
         let wire = shared.wire;
         let policy = shared.policy;
+        let model = request.model_id.clone();
         let body = encode_body(LABEL, move || match wire {
             WireApi::Responses => request::responses(&request, policy),
             WireApi::ChatCompletions => request::chat_completions(&request, policy),
@@ -83,6 +84,7 @@ pub(crate) fn run(
             label: LABEL,
             reader: read_http_failure,
             clock: shared.clock.clone(),
+            model,
         };
         let body = response.bytes_stream();
         let events = match wire {

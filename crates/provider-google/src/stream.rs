@@ -32,6 +32,7 @@ pub(crate) fn run(
             return;
         }
         let url = shared.stream_url(&request.model_id);
+        let model = request.model_id.clone();
         let body = encode_body(LABEL, move || request::encode(&request));
         let body = tokio::select! {
             biased;
@@ -78,7 +79,7 @@ pub(crate) fn run(
             return;
         }
         let mut frames = std::pin::pin!(sse_data(response.bytes_stream()).take_until(cancel.clone().cancelled_owned()));
-        let mut mapper = Mapper::new(shared);
+        let mut mapper = Mapper::new(shared, model);
         let mut out = Vec::new();
         while let Some(frame) = frames.next().await {
             let data = match frame {
@@ -102,12 +103,14 @@ pub(crate) fn run(
     }
 }
 
-/// The state of one stream: whether a thinking block is open, the usage so
-/// far, and why the vendor ended the reply, with the chunk that said so.
+/// The state of one stream: the model it answers for, whether a thinking
+/// block is open, the last usage a chunk reported, and why the vendor ended
+/// the reply, with the chunk that said so.
 struct Mapper {
     shared: Arc<Shared>,
+    model: String,
     thinking_open: bool,
-    usage: TokenUsage,
+    usage: Option<TokenUsage>,
     ended: Option<(Ending, String)>,
 }
 
@@ -119,11 +122,12 @@ enum Ending {
 }
 
 impl Mapper {
-    fn new(shared: Arc<Shared>) -> Self {
+    fn new(shared: Arc<Shared>, model: String) -> Self {
         Self {
             shared,
+            model,
             thinking_open: false,
-            usage: TokenUsage::default(),
+            usage: None,
             ended: None,
         }
     }
@@ -143,7 +147,7 @@ impl Mapper {
             return true;
         }
         if let Some(usage) = chunk.usage_metadata {
-            self.usage = usage.token_usage();
+            self.usage = Some(usage.token_usage());
         }
         if let Some(reason) = chunk.prompt_feedback.and_then(|feedback| feedback.block_reason) {
             self.ended = Some((Ending::Blocked(reason), data.to_owned()));
@@ -160,7 +164,8 @@ impl Mapper {
     }
 
     /// The run's end with the stream's: the response when a candidate
-    /// finished with `STOP`, else the failure that says why the reply is not
+    /// finished with `STOP`, with the last usage a chunk reported and none
+    /// when no chunk did, else the failure that says why the reply is not
     /// complete.
     fn end(&self) -> ProviderEvent {
         let Some((ending, received)) = &self.ended else {
@@ -168,7 +173,7 @@ impl Mapper {
         };
         let (end, reason) = match ending {
             Ending::Finished(reason) if reason == "STOP" => {
-                return ProviderEvent::Response(Some(self.usage));
+                return ProviderEvent::response(self.usage, LABEL, &self.model);
             }
             Ending::Finished(reason) => match reason.as_str() {
                 "MAX_TOKENS" => (EarlyEnd::OutputLimit, reason),

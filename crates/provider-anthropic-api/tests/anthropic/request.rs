@@ -7,7 +7,7 @@ use demi_provider_common::{
     RuntimeEnv, ToolDefinition, UserPart, VendorPolicy,
     testing::{MockVendor, inference_request, property_order, titled_tool},
 };
-use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage};
+use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary};
 use serde_json::{Value, json};
 
 use crate::{provider_at, run, runtime, runtime_with, stop};
@@ -54,7 +54,7 @@ async fn a_run_posts_to_the_messages_endpoint_with_the_key_and_version() {
             })
             .unwrap();
         let events = run(runtime.as_mut(), inference_request()).await;
-        assert_eq!(events, [ProviderEvent::Response(Some(TokenUsage::default()))]);
+        assert_eq!(events, [ProviderEvent::Response(None)]);
     }
     for request in vendor.requests() {
         assert_eq!(
