@@ -298,6 +298,10 @@ pub enum ErrorCode {
     /// The draft's replaced version is not the one the request names any
     /// more: a save or another page's action changed it.
     DraftChanged,
+    /// The conversation keeps as many messages saved for later as it may.
+    SavedFull,
+    /// The conversation has no message saved for later of that id.
+    SavedNotFound,
 }
 
 serde_plain::derive_display_from_serialize!(ErrorCode);

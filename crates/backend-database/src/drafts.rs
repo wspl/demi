@@ -41,37 +41,96 @@ pub enum DraftRefusal {
 }
 
 /// A draft's text and files, as its row stores the draft and the replaced
-/// version.
+/// version, and as a message saved for later stores them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct Version {
+pub(super) struct Version {
     #[garde(skip)]
-    text: String,
+    pub(super) text: String,
     #[garde(skip)]
-    files: Vec<DraftFile>,
+    pub(super) files: Vec<DraftFile>,
 }
 
 impl Version {
+    pub(super) fn empty() -> Self {
+        Self {
+            text: String::new(),
+            files: Vec::new(),
+        }
+    }
+
     /// Nothing a restore could bring back: no text but blank space, and no
     /// file.
-    fn is_empty(&self) -> bool {
+    pub(super) fn is_empty(&self) -> bool {
         self.text.trim().is_empty() && self.files.is_empty()
+    }
+
+    /// Whether the version as stored is over a draft's limit.
+    pub(super) fn too_large(&self) -> bool {
+        to_json(self).len() > DRAFT_BYTES_MAX
     }
 }
 
 /// A draft's row.
-struct Stored {
-    revision: u64,
-    version: Version,
+pub(super) struct Stored {
+    pub(super) revision: u64,
+    pub(super) version: Version,
     /// The revision `version` was written at: a dismissal changes the
     /// revision and not the text.
-    written: u64,
+    pub(super) written: u64,
     /// The version a save replaced, with the revision it had.
-    replaced: Option<(u64, Version)>,
+    pub(super) replaced: Option<(u64, Version)>,
+    /// The revision of the conversation's messages saved for later, which
+    /// the row keeps beside the draft's (`storage.md` § Control records).
+    pub(super) saved_revision: u64,
 }
 
 impl Stored {
-    fn present(self) -> ConversationDraft {
+    /// The row with `version` as the draft, written now, and the list's
+    /// revision as it was: the next revision of `current`, or the first.
+    pub(super) fn written(current: Option<Self>, version: Version) -> Self {
+        match current {
+            None => Self {
+                revision: 1,
+                version,
+                written: 1,
+                replaced: None,
+                saved_revision: 0,
+            },
+            Some(current) => Self {
+                revision: current.revision + 1,
+                // The text a save repeats is not written again.
+                written: if current.version == version {
+                    current.written
+                } else {
+                    current.revision + 1
+                },
+                replaced: current.replaced,
+                saved_revision: current.saved_revision,
+                version,
+            },
+        }
+    }
+
+    /// The row after a save of `version` built on the revision `base`: a
+    /// save built on a revision older than the draft's text replaces a text
+    /// its page never showed, which the row keeps as the replaced version,
+    /// unless it is empty or the one saved.
+    pub(super) fn saved_on(current: Option<Self>, base: u64, version: Version) -> Self {
+        let unseen = current
+            .as_ref()
+            .filter(|current| {
+                base < current.written && !current.version.is_empty() && current.version != version
+            })
+            .map(|current| (current.revision, current.version.clone()));
+        let mut next = Self::written(current, version);
+        if unseen.is_some() {
+            next.replaced = unseen;
+        }
+        next
+    }
+
+    pub(super) fn present(self) -> ConversationDraft {
         ConversationDraft {
             revision: self.revision,
             text: self.version.text,
@@ -117,65 +176,14 @@ impl ControlService {
             if archived(&transaction, &conversation)? {
                 return Ok(Err(DraftRefusal::Archived));
             }
-            let mut presented = Vec::with_capacity(files.len());
-            for file in files {
-                presented.push(match file {
-                    StagedFile::Upload { id, file_name } => {
-                        let upload = attachment_by_id(&transaction, &id)?
-                            .filter(|upload| upload.owner == owner);
-                        let Some(upload) = upload else {
-                            return Ok(Err(DraftRefusal::UploadNotFound(id)));
-                        };
-                        DraftFile::Upload {
-                            r#ref: id,
-                            file_name,
-                            media_type: upload.media_type,
-                            sha256: upload.sha256,
-                            snippet: upload.snippet,
-                        }
-                    }
-                    StagedFile::Remote { device_id, path } => {
-                        DraftFile::RemoteFile { device_id, path }
-                    }
-                });
-            }
-            let version = Version {
-                text,
-                files: presented,
+            let version = match staged_version(&transaction, &owner, text, files)? {
+                Ok(version) => version,
+                Err(missing) => return Ok(Err(DraftRefusal::UploadNotFound(missing))),
             };
-            if to_json(&version).len() > DRAFT_BYTES_MAX {
+            if version.too_large() {
                 return Ok(Err(DraftRefusal::TooLarge));
             }
-            let next = match stored(&transaction, &conversation)? {
-                None => Stored {
-                    revision: 1,
-                    version,
-                    written: 1,
-                    replaced: None,
-                },
-                Some(current) => {
-                    // A save built on a revision older than the draft's text
-                    // replaces a text its page never showed.
-                    let unseen = base < current.written
-                        && !current.version.is_empty()
-                        && current.version != version;
-                    Stored {
-                        revision: current.revision + 1,
-                        // The text a save repeats is not written again.
-                        written: if current.version == version {
-                            current.written
-                        } else {
-                            current.revision + 1
-                        },
-                        replaced: if unseen {
-                            Some((current.revision, current.version))
-                        } else {
-                            current.replaced
-                        },
-                        version,
-                    }
-                }
-            };
+            let next = Stored::saved_on(stored(&transaction, &conversation)?, base, version);
             write(&transaction, &conversation, &next, now.as_millisecond())?;
             transaction.commit()?;
             Ok(Ok(next.present()))
@@ -213,12 +221,14 @@ impl ControlService {
                     replaced: (!current.version.is_empty())
                         .then_some((current.revision, current.version)),
                     version: replaced,
+                    saved_revision: current.saved_revision,
                 },
                 ReplacedAction::Dismiss => Stored {
                     revision: current.revision + 1,
                     written: current.written,
                     version: current.version,
                     replaced: None,
+                    saved_revision: current.saved_revision,
                 },
             };
             write(&transaction, &conversation, &next, now.as_millisecond())?;
@@ -229,30 +239,81 @@ impl ControlService {
     }
 }
 
+/// The text and the files a save names, each upload presented with what its
+/// record holds; the id of an upload `owner` has none of.
+pub(super) fn staged_version(
+    connection: &Connection,
+    owner: &UserId,
+    text: String,
+    files: Vec<StagedFile>,
+) -> Result<Result<Version, AttachmentId>, StorageError> {
+    let mut presented = Vec::with_capacity(files.len());
+    for file in files {
+        presented.push(match file {
+            StagedFile::Upload { id, file_name } => {
+                let upload =
+                    attachment_by_id(connection, &id)?.filter(|upload| upload.owner == *owner);
+                let Some(upload) = upload else {
+                    return Ok(Err(id));
+                };
+                DraftFile::Upload {
+                    r#ref: id,
+                    file_name,
+                    media_type: upload.media_type,
+                    sha256: upload.sha256,
+                    snippet: upload.snippet,
+                }
+            }
+            StagedFile::Remote { device_id, path } => DraftFile::RemoteFile { device_id, path },
+        });
+    }
+    Ok(Ok(Version {
+        text,
+        files: presented,
+    }))
+}
+
 /// The blobs the drafts of `owner`'s conversations name, in their current
-/// and their replaced versions: each upload's bytes.
+/// and their replaced versions, and the messages they keep saved for later:
+/// each upload's bytes.
 pub(crate) fn draft_blobs(
     connection: &Connection,
     owner: &UserId,
 ) -> Result<Vec<BlobRef>, StorageError> {
+    let mut versions = Vec::new();
+    {
+        let mut statement = connection.prepare(
+            "SELECT d.revision, d.document, d.written, d.replaced_revision, d.replaced, d.saved_revision
+             FROM conversation_drafts d JOIN conversations c ON c.id = d.conversation_id
+             WHERE c.user_id = ?1",
+        )?;
+        let mut rows = statement.query([owner.as_str()])?;
+        while let Some(row) = rows.next()? {
+            let draft = stored_row(row)?;
+            versions.push(draft.version);
+            versions.extend(draft.replaced.map(|(_, version)| version));
+        }
+    }
     let mut statement = connection.prepare(
-        "SELECT d.revision, d.document, d.written, d.replaced_revision, d.replaced
-         FROM conversation_drafts d JOIN conversations c ON c.id = d.conversation_id
+        "SELECT s.document FROM saved_messages s JOIN conversations c ON c.id = s.conversation_id
          WHERE c.user_id = ?1",
     )?;
     let mut rows = statement.query([owner.as_str()])?;
-    let mut blobs = Vec::new();
     while let Some(row) = rows.next()? {
-        let draft = stored_row(row)?;
-        let versions = std::iter::once(draft.version).chain(draft.replaced.map(|(_, version)| version));
-        for version in versions {
-            blobs.extend(version.files.into_iter().filter_map(|file| match file {
-                DraftFile::Upload { sha256, .. } => Some(sha256),
-                DraftFile::RemoteFile { .. } => None,
-            }));
-        }
+        versions.push(json::<Version>(
+            "saved_messages",
+            "document",
+            &row.get::<_, String>(0)?,
+        )?);
     }
-    Ok(blobs)
+    Ok(versions
+        .into_iter()
+        .flat_map(|version| version.files)
+        .filter_map(|file| match file {
+            DraftFile::Upload { sha256, .. } => Some(sha256),
+            DraftFile::RemoteFile { .. } => None,
+        })
+        .collect())
 }
 
 /// Whether the conversation is archived.
@@ -268,14 +329,14 @@ pub(crate) fn archived(
 }
 
 /// The conversation's draft row, when it has one.
-fn stored(
+pub(super) fn stored(
     connection: &Connection,
     conversation: &ConversationId,
 ) -> Result<Option<Stored>, StorageError> {
     connection
         .query_row(
-            "SELECT revision, document, written, replaced_revision, replaced FROM conversation_drafts
-             WHERE conversation_id = ?1",
+            "SELECT revision, document, written, replaced_revision, replaced, saved_revision
+             FROM conversation_drafts WHERE conversation_id = ?1",
             [conversation.as_str()],
             |row| Ok(stored_row(row)),
         )
@@ -312,15 +373,21 @@ fn stored_row(row: &Row<'_>) -> Result<Stored, StorageError> {
             });
         }
     };
+    let saved_revision = decode(
+        TABLE,
+        "saved_revision",
+        u64::try_from(row.get::<_, i64>("saved_revision")?),
+    )?;
     Ok(Stored {
         revision,
         version,
         written,
         replaced,
+        saved_revision,
     })
 }
 
-fn write(
+pub(super) fn write(
     connection: &Connection,
     conversation: &ConversationId,
     draft: &Stored,
@@ -335,11 +402,12 @@ fn write(
         None => (None, None),
     };
     connection.execute(
-        "INSERT INTO conversation_drafts (conversation_id, revision, document, written, replaced_revision, replaced, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+        "INSERT INTO conversation_drafts (conversation_id, revision, document, written, replaced_revision, replaced,
+           saved_revision, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
          ON CONFLICT (conversation_id) DO UPDATE SET revision = excluded.revision, document = excluded.document,
            written = excluded.written, replaced_revision = excluded.replaced_revision, replaced = excluded.replaced,
-           updated_at = excluded.updated_at",
+           saved_revision = excluded.saved_revision, updated_at = excluded.updated_at",
         params![
             conversation.as_str(),
             column(draft.revision),
@@ -347,6 +415,7 @@ fn write(
             column(draft.written),
             replaced_revision,
             replaced,
+            column(draft.saved_revision),
             now
         ],
     )?;

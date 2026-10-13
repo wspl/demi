@@ -10,6 +10,7 @@ import { latestBlocks } from '@demicodes/web-ui/agent/history'
 
 import { composerRemoteAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
+import { savedPreview, type SavedRow } from '@demicodes/web-ui/agent/saved'
 import { turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import { executionFor, hostDeviceOptions, moveLocked, primaryHostOf } from '../targets/execution'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
@@ -74,6 +75,18 @@ const replaced = computed(() => {
         ),
       }
     : null
+})
+
+/** The messages saved for later as the list under the composer shows them, newest first. */
+const savedRows = computed<SavedRow[]>(() =>
+  (props.conversation.saved?.messages ?? []).map((message) => (
+    { id: message.id, preview: savedPreview(message.text), attachmentCount: message.files.length }
+  )),
+)
+/** The list stands open while this composer shows; another conversation's starts closed. */
+const savedOpen = ref(false)
+watch(() => props.conversation.id, () => {
+  savedOpen.value = false
 })
 
 function openProviders() {
@@ -214,6 +227,12 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :draft-shown="conversation.draftShown"
       :plugins-changed="conversation.pluginsChanged"
       :reloading="store.pendingChanges.includes(conversation.id)"
+      :saved="savedRows"
+      v-model:saved-open="savedOpen"
+      @save-for-later="store.saveForLater(conversation)"
+      @edit-saved="store.editSaved(conversation, $event)"
+      @send-saved="(id, way) => store.sendSaved(conversation, id, way)"
+      @delete-saved="store.deleteSaved(conversation, $event)"
       @restore-replaced="store.restoreReplaced(conversation)"
       @dismiss-replaced="store.dismissReplaced(conversation)"
       @reload-plugins="store.reloadPlugins(conversation)"

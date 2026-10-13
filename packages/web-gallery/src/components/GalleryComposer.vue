@@ -12,6 +12,8 @@ import {
   type PasteHost,
 } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { showToast } from '@demicodes/web-ui/infra/toast'
+import { createId } from '@demicodes/utils'
+import { savedPreview, type SavedRow } from '@demicodes/web-ui/agent/saved'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
@@ -47,6 +49,7 @@ import { demoInstructions, demoOpenInstruction } from '../fixtures/instructions'
 import type { SentMessage, RecallComposer } from '../turn-flow'
 import { createGalleryRemoteFileHosts } from '../fixtures/files'
 import { galleryUploads } from '../fixtures/upload-sweep'
+import type { SeedSaved } from '../fixtures/saved'
 
 const props = withDefaults(
   defineProps<{
@@ -96,6 +99,10 @@ const props = withDefaults(
     onQueue?: (content: UserContentBlock[], message: SentMessage) => void
     /** The specimen's flow, whose Recall gives a message back into this composer, as the product's does. */
     flow?: { attachComposer(host: RecallComposer): () => void }
+    /** The messages saved for later the specimen starts with, newest first; Save for Later adds to them. */
+    saved?: SeedSaved[]
+    /** Their list starts open. */
+    savedOpen?: boolean
   }>(),
   {
     draft: '',
@@ -125,6 +132,25 @@ interface DraftVersion {
   text: string
   files: ComposerAttachment[]
 }
+/** A message saved for later as the product's server keeps it: its text and its files. */
+interface SavedMessage {
+  id: string
+  markdown: string
+  files: ComposerAttachment[]
+}
+const savedMessages = ref<SavedMessage[]>(
+  (props.saved ?? []).map((seed) => ({
+    id: createId(),
+    markdown: seed.text,
+    files: (seed.files ?? []).map((item) => composerAttachment(item)),
+  })),
+)
+const savedOpen = ref(props.savedOpen === true)
+const savedRows = computed<SavedRow[]>(() => savedMessages.value.map((saved) => ({
+  id: saved.id,
+  preview: savedPreview(saved.markdown),
+  attachmentCount: saved.files.length,
+})))
 /** The version a later save replaced, as the product's backend keeps it. */
 const replacedVersion = ref<DraftVersion | null>(
   props.replaced ? { text: props.replaced, files: [] } : null,
@@ -208,6 +234,8 @@ const composerProps = computed(() => {
     flow: _flow,
     sendWhileRunning: _sendWhileRunning,
     offlineHost: _offlineHost,
+    saved: _saved,
+    savedOpen: _savedOpen,
     ...rest
   } = props
   return rest
@@ -290,6 +318,88 @@ function submit(way: SendWay) {
   while (attached.value.length) {
     forget(attached.value[0]!.id, false)
   }
+}
+
+/**
+ * Keeps the message for later at the top of the list and empties the
+ * composer, as the product's Save for Later does: its files go with it, their
+ * uploads going on. A composer holding nothing saves nothing.
+ */
+function saveForLater() {
+  if (isEmptyMessage(draft.value, carried.value.length)) {
+    return
+  }
+  const files = carried.value.flatMap((id) => attached.value.filter((item) => item.id === id))
+  // What the composer held only for an undo goes.
+  for (const item of attached.value.filter((file) => !carried.value.includes(file.id))) {
+    forget(item.id, true)
+  }
+  savedMessages.value = [
+    { id: createId(), markdown: draft.value, files },
+    ...savedMessages.value,
+  ]
+  draft.value = ''
+  carried.value = []
+  attached.value = []
+  composer.value?.focusDraft()
+}
+
+/** Takes a saved message off the list. */
+function takeSaved(id: string): { saved: SavedMessage } | undefined {
+  const saved = savedMessages.value.find((each) => each.id === id)
+  if (!saved) {
+    return undefined
+  }
+  savedMessages.value = savedMessages.value.filter((each) => each.id !== id)
+  return { saved }
+}
+
+/**
+ * Puts a saved message in the composer and takes it off the list; a
+ * composer holding a message saves that one for later first, so nothing is
+ * lost.
+ */
+function editSaved(id: string) {
+  const taken = takeSaved(id)
+  if (!taken) {
+    return
+  }
+  saveForLater()
+  attached.value = [...taken.saved.files]
+  carried.value = taken.saved.files.map((file) => file.id)
+  draft.value = taken.saved.markdown
+  shown.value += 1
+  composer.value?.focusDraft()
+}
+
+/** Sends a saved message the way the composer chose, steering or queueing while the agent works, and takes it off the list. */
+function sendSaved(id: string, way: SendWay) {
+  const taken = takeSaved(id)
+  if (!taken) {
+    return
+  }
+  handOn(taken.saved.markdown, taken.saved.files, way)
+  if (way === 'send') {
+    productWould('Send the Message')
+  }
+}
+
+/** Removes a saved message at once, with Undo in a toast that saves it again, the newest on the list, as the product's does. */
+function deleteSaved(id: string) {
+  const taken = takeSaved(id)
+  if (!taken) {
+    return
+  }
+  showToast({
+    title: 'Saved Message Deleted',
+    tone: 'neutral',
+    action: {
+      label: 'Undo',
+      run: () => {
+        savedMessages.value = [{ ...taken.saved, id: createId() }, ...savedMessages.value]
+      },
+    },
+  })
 }
 
 /**
@@ -547,6 +657,12 @@ onBeforeUnmount(() => {
     :instructions="demoInstructions"
     :replaced="replacedVersion && { markdown: replacedVersion.text, fileNames: replacedVersion.files.map((file) => file.name) }"
     :draft-shown="shown"
+    :saved="savedRows"
+    v-model:saved-open="savedOpen"
+    @save-for-later="saveForLater"
+    @edit-saved="editSaved"
+    @send-saved="sendSaved"
+    @delete-saved="deleteSaved"
     :plugins-changed="pluginsChanged"
     :reloading="reloading"
     :offline-host="offlineHost"

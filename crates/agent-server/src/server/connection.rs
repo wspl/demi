@@ -156,14 +156,26 @@ impl<H: HostResolver> Connection<H> {
     /// Handles one decoded frame to its end; a frame whose handling waits,
     /// such as a send whose uploads are being written to the Host or an
     /// `abort` waiting for the stop to be recorded, delays the frames behind
-    /// it. A failure is answered as a frame, never returned.
-    pub async fn handle(&self, frame: ClientFrame) {
+    /// it. A failure is answered as a frame, never returned. Answers whether
+    /// the session took the message the frame carries: a `send` it admitted
+    /// or a `steer` it accepted, which the backend needs to know of a
+    /// message saved for later (`web-api.md` § Messages saved for later).
+    pub async fn handle(&self, frame: ClientFrame) -> bool {
         match frame {
-            ClientFrame::Open { from, edge } => self.open(from, edge.as_ref()).await,
-            ClientFrame::Close {} => self.close().await,
+            ClientFrame::Open { from, edge } => {
+                self.open(from, edge.as_ref()).await;
+                false
+            }
+            ClientFrame::Close {} => {
+                self.close().await;
+                false
+            }
             frame => match self.attached() {
                 Some(tree) => self.dispatch(&tree, frame).await,
-                None => self.refuse(frame),
+                None => {
+                    self.refuse(frame);
+                    false
+                }
             },
         }
     }
@@ -325,7 +337,9 @@ impl<H: HostResolver> Connection<H> {
         }
     }
 
-    async fn dispatch(&self, tree: &Rc<Tree<H>>, frame: ClientFrame) {
+    /// Handles a frame of an attached connection; answers whether the
+    /// session took the message a `send` or `steer` carries.
+    async fn dispatch(&self, tree: &Rc<Tree<H>>, frame: ClientFrame) -> bool {
         let session = tree.root().session();
         let kind = frame.kind();
         match frame {
@@ -335,14 +349,19 @@ impl<H: HostResolver> Connection<H> {
             } => {
                 let (content, media) = match resolve_message(&*self.resolver, content).await {
                     Ok(resolved) => resolved,
-                    Err(error) => return self.content_error(error),
+                    Err(error) => {
+                        self.content_error(error);
+                        return false;
+                    }
                 };
                 session.hold_media(media);
                 // The session reports the action's course as events; the
                 // handle is not needed.
                 if let Err(error) = session.send(content, message_id) {
                     self.reject(kind, error.to_string());
+                    return false;
                 }
+                return true;
             }
             ClientFrame::Steer { steer_id, content } => {
                 let outcome = match resolve_message(&*self.resolver, content).await {
@@ -354,7 +373,9 @@ impl<H: HostResolver> Connection<H> {
                     }
                     Err(error) => Err(error.message),
                 };
+                let accepted = outcome.is_ok();
                 self.steer_result(steer_id, outcome);
+                return accepted;
             }
             // The session tells the list's change as it happens, so the
             // answer follows the list's frame.
@@ -363,6 +384,11 @@ impl<H: HostResolver> Connection<H> {
                 self.remove_result(steer_id.into_string(), removed);
             }
             ClientFrame::SteerNow { steer_id } => session.steer_now(&steer_id),
+            // The backend keeps the saved messages and hands the session
+            // the `send` or `steer` a saved message becomes.
+            ClientFrame::SendSaved { .. } => {
+                self.reject(kind, "Only the backend sends a message saved for later");
+            }
             ClientFrame::DequeueMessage { message_id } => {
                 let removed = session.dequeue_message(&message_id);
                 self.remove_result(message_id.into_string(), removed);
@@ -430,6 +456,7 @@ impl<H: HostResolver> Connection<H> {
                 unreachable!("open and close are handled before dispatch")
             }
         }
+        false
     }
 }
 
