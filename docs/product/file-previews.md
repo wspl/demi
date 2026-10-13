@@ -269,9 +269,11 @@ does. Text before the first image in the same paragraph does not stop the
 run: a list item whose words are followed by two images, one per line, shows
 its words, then the two side by side. 
 
-A link to a file opens the `file` intent, and so does a click on a Host image;
-while no plugin the user has on opens it, a file link is shown as text and a
-Host image only shows. A `:line` suffix on a path is dropped, since the File view opens a whole file.
+A link to a file opens the `file` intent; a click on an image a message
+shows, a Host image as any other, opens it in the [media viewer](#the-media-viewer),
+as a tool's screenshot does, since a picture in the reading is looked at
+where it is read. While no plugin the user has on opens files, a file link
+is shown as text. A `:line` suffix on a path is dropped, since the File view opens a whole file.
 Only a Markdown link or image names a file: a path in code or plain text stays
 text, because the page cannot tell which paths exist without asking the Host
 for each. Paths name files on the conversation's Host; a file on another Host
@@ -444,6 +446,14 @@ it was, not dimmed, so the user can go on reading and typing beside it.
   user has moved the window by then.
 - **One viewer.** Opening another picture or video shows it in the same
   window, in place of the one it showed.
+- **Previous and next.** The left and right arrow keys, while the focus is
+  in the viewer, show the picture or video before or after this one in the
+  transcript it was opened from, the conversation's or a subagent's: the
+  images messages show, the user's attached images and the media tools
+  returned, in the order they stand, from the oldest to the newest. At the
+  first or the last nothing moves. The title bar counts them, *3 of 12*. A
+  picture the transcript has not loaded yet, above the part the page holds,
+  is not among them.
 - **What it shows.** An image opens fitted to the window, scaled down and
   never enlarged, over a checkerboard where it is transparent; its pixel
   size and the zoom show in the title bar, *1280 × 720 · 50%*, where 100% is
