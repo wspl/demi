@@ -1221,7 +1221,10 @@ model's name; the state and time always stay.
   model and effort: the child's own context, and on click the same context
   card, filled from the child's session ([Context card](compaction.md#what-fills-the-context)),
   whose Compact compacts the child and whose usage limits are those of the
-  account the child runs on. The bar's text keeps the same distance from the
+  account the child runs on. The indicator stands only while the child's
+  session is open: an ended child has no context to compact or watch, so
+  its bar ends with the model and effort, whether it ended before the page
+  opened or while it watched. The bar's text keeps the same distance from the
   window's left and right edges as the transcript's content above it.
 - **An agent link and a receipt's name**, pointed at, show the two groups
   on one line and nothing more: the link's own text already names the
