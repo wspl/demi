@@ -295,8 +295,11 @@ developer: the page writes it to the browser console, never into the toast.
   by the plugin's action and the key of what it acts on, such as the Skills
   page's switch of a source: when the component that showed the control
   goes, the call goes on, and the control drawn again shows it working. The
-  SDK gives plugins the page's operations for this; it has no pending state
-  of its own.
+  page context's `operation(action, key)` gives a call's operation, and
+  `Button`, `IconButton`, `MenuItem` and `Switch` take it; the SDK has no
+  pending state of its own. A plugin's switch waits for its call and then
+  shows the state the plugin sends, since that state is the plugin's to
+  tell, not the page's.
 
 ## The conversation files service
 
@@ -444,7 +447,6 @@ happened to use, and the SDK's entry exports them by these groups:
 | Navigation | `AddressBar` |
 | Files | `FileIcon`, `FileView`, `ChangeView`, and the shapes and paths the conversation files service gives |
 | Icons | `ICON_PX`, the icon sizes, and Demi's own icons, such as `GlobePlus` |
-| Composables | `pendingCalls`, the calls a page's controls wait for ([Calls and states](#calls-and-states)) |
 | Streams | The liveness helpers a stream's protocol uses to tell a silent stream, and the waits before opening one again |
 
 A primitive joins the kit when a page needs it and another page could use it;
