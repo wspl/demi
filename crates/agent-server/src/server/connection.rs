@@ -262,7 +262,9 @@ impl<H: HostResolver> Connection<H> {
                 return;
             }
         };
-        tree.attach(self.id, self.outbox.clone(), from, edge);
+        // Read before the attach, which takes its frames in one step.
+        let placement = tree.placement().await;
+        tree.attach(self.id, self.outbox.clone(), from, edge, placement.as_ref());
         // Each node's usage follows the handshake, since the window in use
         // is asked for (`compaction.md` § Context estimate). It is the
         // estimate at the moment it is sent, so a later change still
@@ -376,7 +378,8 @@ impl<H: HostResolver> Connection<H> {
                 self.send(ServerFrame::AbortResult { result });
             }
             ClientFrame::SyncTranscript { from, edge } => {
-                for frame in tree.fresh_transcripts(from, edge.as_ref()) {
+                let placement = tree.placement().await;
+                for frame in tree.fresh_transcripts(from, edge.as_ref(), placement.as_ref()) {
                     self.send(frame);
                 }
             }

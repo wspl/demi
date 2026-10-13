@@ -29,7 +29,7 @@ use demi_agent_session::{
     CallCommand, StartedCommand, StepOutcomes, ToolEffect, ToolFailure, ToolInvocation,
     ToolOutcome, WindowEnd,
 };
-use demi_agent_store::{AgentTreeStore, RunningCommand};
+use demi_agent_store::{AgentTreeStore, ChildDirectory, RunningCommand};
 use demi_host_interface::{
     CommandSet, CommandState, CommandStatus, ExecRequest, Host, HostError, HostErrorKind, JobCaller, Numbers,
     PageFeed, ShellEnvironment, ShellError, TakenUp,
@@ -107,18 +107,18 @@ pub trait ShellEnvironmentFactory<H> {
     ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>>;
 }
 
-/// A node's working directory as its `shell` calls read it when each starts
-/// (`subagents.md` § Working directory): `demi agent cwd` changes it while
-/// a call of the node runs, from the next start on.
+/// A node's own working directory as its `shell` calls read it when each
+/// starts (`subagents.md` § Working directory): `demi agent cwd` changes it
+/// while a call of the node runs, from the next start on.
 pub trait Directory {
-    /// The node's own directory, a child's; none for the root, whose jobs
-    /// start in the conversation's.
-    fn cwd(&self) -> Option<String>;
+    /// A child's own directory and where the conversation worked when it
+    /// was set; none for the root, whose jobs start in the conversation's.
+    fn own(&self) -> Option<ChildDirectory>;
 }
 
 /// A directory that does not change, such as a closed node's.
-impl Directory for Option<String> {
-    fn cwd(&self) -> Option<String> {
+impl Directory for Option<ChildDirectory> {
+    fn own(&self) -> Option<ChildDirectory> {
         self.clone()
     }
 }
@@ -192,12 +192,12 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     async fn environment(
         &self,
         handle: Handle<'_>,
+        cwd: Option<&str>,
     ) -> Result<(Rc<environments::Slot>, Rc<dyn ShellEnvironment>), CallError> {
-        let cwd = self.directory.cwd();
         let context = NodeContext {
             node: self.node,
             root: self.root,
-            cwd: cwd.as_deref(),
+            cwd,
         };
         let host = self
             .hosts
@@ -217,6 +217,27 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             .resolve(key, handle, self.shells.create(scope, host))
             .await
             .map_err(CallError::Failed)
+    }
+
+    /// Where a child's next job starts: its own directory while the
+    /// conversation works where it did when that was set, the
+    /// conversation's otherwise; none for the root, whose jobs start where
+    /// the Host starts its work.
+    async fn cwd(&self) -> Result<Option<String>, CallError> {
+        let Some(own) = self.directory.own() else {
+            return Ok(None);
+        };
+        let context = NodeContext {
+            node: self.node,
+            root: self.root,
+            cwd: None,
+        };
+        let now = self
+            .hosts
+            .placement(context)
+            .await
+            .map_err(|error| CallError::Failed(error.to_string()))?;
+        Ok(Some(own.effective(&now).to_owned()))
     }
 
     /// Runs one step of a round (`runtime.md` § Dispatch and failures):
@@ -265,13 +286,14 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             }
             None => (None, None),
         };
-        let (slot, environment) = self.environment(Handle::None).await?;
+        let cwd = self.cwd().await?;
+        let (slot, environment) = self.environment(Handle::None, cwd.as_deref()).await?;
         if let Some(suppressed) = slot.repeated(&input.script) {
             return Ok(suppressed);
         }
         let request = ExecRequest {
             script: input.script,
-            cwd: self.directory.cwd(),
+            cwd,
             caller: JobCaller {
                 node: self.node.clone(),
                 tool_use_id: call.tool_use_id,
@@ -356,7 +378,8 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// environment for the conversation's current Host
     /// (`sessions-and-targets.md` § Recovery and persistence).
     pub async fn adopt(&self, running: &RunningCommand, ran: Duration) -> Result<(), CallError> {
-        let (_, environment) = self.environment(Handle::None).await?;
+        let cwd = self.cwd().await?;
+        let (_, environment) = self.environment(Handle::None, cwd.as_deref()).await?;
         environment.adopt(TakenUp {
             command: running.command.clone(),
             job: running.job.clone(),
@@ -374,7 +397,8 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// Writes `stdin` to a running command of the current Host, as a page's
     /// input does.
     pub async fn write(&self, command: &CommandId, stdin: String) -> Result<(), CallError> {
-        let (_, environment) = self.environment(Handle::Command(command)).await?;
+        let cwd = self.cwd().await?;
+        let (_, environment) = self.environment(Handle::Command(command), cwd.as_deref()).await?;
         environment.write(command, Bytes::from(stdin)).await?;
         Ok(())
     }
@@ -382,7 +406,8 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
     /// Stops a running command of the current Host, as a page's stop does:
     /// its end's report says the user stopped it.
     pub async fn abort(&self, command: &CommandId) -> Result<(), CallError> {
-        let (_, environment) = self.environment(Handle::Command(command)).await?;
+        let cwd = self.cwd().await?;
+        let (_, environment) = self.environment(Handle::Command(command), cwd.as_deref()).await?;
         self.environments.stopped_by(command, Stopper::User);
         environment.abort(command).await?;
         Ok(())

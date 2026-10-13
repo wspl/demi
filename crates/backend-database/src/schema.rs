@@ -304,22 +304,31 @@ pub(crate) const CONVERSATION: Schema = Schema {
 
 /// From the conversation schema of transcript block format 6, whose
 /// checkpoint state (format 2) kept the node's working directory, to the
-/// one in which a child's row keeps it (`subagents.md` § Working
-/// directory), checkpoint state format 3: each child's directory moves
-/// from its state into the new column, and the root's goes, since the
-/// root works in the conversation's directory. Format 6, which no server
-/// has kept, now also lets a `context` block name a directory, which no
-/// stored block does, so the blocks are as they were. Each state is
-/// decoded and checked as format 3 before it is written back.
+/// one in which a child's row keeps it with where the conversation worked
+/// when it was set (`subagents.md` § Working directory), checkpoint state
+/// format 3: each child's directory moves from its state into its row, and
+/// the root's goes, since the root works in the conversation's directory.
+/// Where the conversation worked then is not in this database, and no
+/// device is recorded: a child of that schema worked in the conversation's
+/// directory, and it does again, since no device the conversation runs on
+/// now is none. Format 6, which no server has kept, now also lets a
+/// `context` block name a directory, which no stored block does, so the
+/// blocks are as they were. Each state is decoded and checked as format 3
+/// before it is written back.
 fn nodes_with_their_directories(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
-    transaction.execute_batch("ALTER TABLE nodes ADD COLUMN cwd TEXT CHECK (cwd <> '');")?;
+    transaction.execute_batch(
+        "ALTER TABLE nodes ADD COLUMN cwd TEXT CHECK (cwd <> '');
+         ALTER TABLE nodes ADD COLUMN cwd_device TEXT;
+         ALTER TABLE nodes ADD COLUMN cwd_under TEXT CHECK (cwd_under <> '');",
+    )?;
     let states = transaction
         .prepare("SELECT id, parent_id IS NOT NULL, state FROM nodes")?
         .query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?, row.get::<_, String>(2)?))
         })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut update = transaction.prepare("UPDATE nodes SET state = ?2, cwd = ?3 WHERE id = ?1")?;
+    let mut update =
+        transaction.prepare("UPDATE nodes SET state = ?2, cwd = ?3, cwd_under = ?3 WHERE id = ?1")?;
     for (id, child, state) in states {
         let mut fields: serde_json::Map<String, serde_json::Value> =
             decode("nodes", "state", serde_json::from_str(&state)).map_err(corrupt)?;
@@ -1760,9 +1769,16 @@ CREATE TABLE nodes (
   -- The number of the agent the node was forked from; null for one that
   -- was not forked.
   forked_from      INTEGER CHECK (forked_from >= 1),
-  -- A child's working directory on the primary Host; null for the root,
-  -- which works in the conversation's.
+  -- A child's own working directory on the primary Host, and where the
+  -- conversation worked when it was set: the primary Host's device, null
+  -- for a Cloud not made yet, and the conversation's directory then. The
+  -- child works there while the conversation still does, and in the
+  -- conversation's directory otherwise. All null for the root, which works
+  -- in the conversation's. Their reader refuses a row that sets some of
+  -- them only, since a migration adds no table CHECK.
   cwd              TEXT CHECK (cwd <> ''),
+  cwd_device       TEXT,
+  cwd_under        TEXT CHECK (cwd_under <> ''),
   CHECK ((closed_phase IS NULL) = (closed_at IS NULL)),
   CHECK (result IS NULL OR closed_phase = 'completed'),
   CHECK (failure IS NULL OR closed_phase = 'error')

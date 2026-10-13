@@ -22,7 +22,7 @@ use std::sync::Arc;
 
 use demi_agent_store::{AgentTreeStore, RunningCommand, SessionStore, StoredCommand, StoredOutput};
 use demi_agent_store::{
-    Checkpoint, CheckpointState, CheckpointUpdate, ClosePhase, NodeClose, NodeRecord, StoreError,
+    Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement, StoreError,
     media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
@@ -125,8 +125,8 @@ impl AgentTreeStore for SqliteTreeStore {
                     transaction.execute(
                         "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at,
                            can_spawn, closed_phase, closed_at, result, failure, delivered, state, block_count,
-                           output_revision, forked_from, cwd)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, 0, ?16, ?17)",
+                           output_revision, forked_from, cwd, cwd_device, cwd_under)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, 0, ?16, ?17, ?18, ?19)",
                         params![
                             record.id.as_str(),
                             integer(record.number),
@@ -144,7 +144,9 @@ impl AgentTreeStore for SqliteTreeStore {
                             record.delivered,
                             to_json(&initial.state),
                             record.forked_from.map(integer),
-                            record.cwd,
+                            record.cwd.as_ref().map(|own| &own.cwd),
+                            record.cwd.as_ref().and_then(|own| own.under.device.as_ref()),
+                            record.cwd.as_ref().map(|own| &own.under.directory),
                         ],
                     )?;
                     if let Err(refused) = write_checkpoint(&transaction, &record.id, &initial, &completions)? {
@@ -239,17 +241,17 @@ impl AgentTreeStore for SqliteTreeStore {
     fn set_cwd<'a>(
         &'a self,
         id: &'a NodeId,
-        cwd: &'a str,
+        cwd: &'a ChildDirectory,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         let node = id.clone();
-        let cwd = cwd.to_owned();
+        let cwd = cwd.clone();
         Box::pin(async move {
             let changed = self
                 .db
                 .call(move |connection| {
                     Ok(connection.execute(
-                        "UPDATE nodes SET cwd = ?2 WHERE id = ?1 AND parent_id IS NOT NULL",
-                        params![node.as_str(), cwd],
+                        "UPDATE nodes SET cwd = ?2, cwd_device = ?3, cwd_under = ?4 WHERE id = ?1 AND parent_id IS NOT NULL",
+                        params![node.as_str(), cwd.cwd, cwd.under.device, cwd.under.directory],
                     )?)
                 })
                 .await
@@ -616,7 +618,7 @@ fn node_state(
 
 const NODE_COLUMNS: &str =
     "id, number, parent_id, description, profile, instructions, round, started_at, can_spawn,
-     closed_phase, closed_at, result, failure, delivered, forked_from, cwd";
+     closed_phase, closed_at, result, failure, delivered, forked_from, cwd, cwd_device, cwd_under";
 
 fn node_by_id(connection: &Connection, id: &NodeId) -> Result<Option<NodeRecord>, StorageError> {
     let mut statement =
@@ -676,7 +678,21 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
     };
     // A child works in a directory of its own; the root in the
     // conversation's, which no row holds.
-    let cwd: Option<String> = row.get("cwd")?;
+    let device: Option<String> = row.get("cwd_device")?;
+    let cwd = match (row.get::<_, Option<String>>("cwd")?, row.get::<_, Option<String>>("cwd_under")?) {
+        (Some(cwd), Some(directory)) => Some(ChildDirectory {
+            cwd,
+            under: Placement { device, directory },
+        }),
+        (None, None) if device.is_none() => None,
+        _ => {
+            return Err(StorageError::Corrupt {
+                table: TABLE,
+                column: "cwd",
+                reason: "a working directory without where the conversation worked".into(),
+            });
+        }
+    };
     if cwd.is_some() != parent.is_some() {
         return Err(StorageError::Corrupt {
             table: TABLE,
@@ -1401,7 +1417,13 @@ mod tests {
             closed: None,
             delivered: false,
             forked_from: None,
-            cwd: parent.map(|_| "/w".to_owned()),
+            cwd: parent.map(|_| ChildDirectory {
+                cwd: "/w".to_owned(),
+                under: Placement {
+                    device: Some("laptop".to_owned()),
+                    directory: "/w".to_owned(),
+                },
+            }),
         }
     }
 

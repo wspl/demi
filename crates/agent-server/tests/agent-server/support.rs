@@ -16,7 +16,7 @@ use demi_agent_server::{
     AgentServer, ServerConfig, ServerDeps,
     testing::{ScriptedProviders, TestClient},
 };
-use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
+use demi_agent_store::{AgentTreeStore, Placement, testing::MemoryTreeStore};
 use demi_agent_tools::{
     ContextAnswer, ContextSource, EnvironmentScope, HostResolver, NodeContext,
     ShellEnvironmentFactory, SubagentSettings, SubagentSource, Toolset,
@@ -106,8 +106,11 @@ impl Default for TestProduct {
 impl HostResolver for TestProduct {
     type Host = NoHost;
 
-    async fn directory(&self, context: NodeContext<'_>) -> Result<String, HostError> {
-        Ok(context.cwd.unwrap_or("/workspace").to_owned())
+    async fn placement(&self, _context: NodeContext<'_>) -> Result<Placement, HostError> {
+        Ok(Placement {
+            device: None,
+            directory: "/workspace".to_owned(),
+        })
     }
 }
 
@@ -837,14 +840,34 @@ impl Host for ScriptedHost {
     }
 }
 
-/// Where the nodes' shell tools run: the scripted Host.
-pub struct LiveHosts;
+/// Where the nodes' shell tools run: the scripted Host, where the
+/// conversation works in `/workspace` until the test moves it, as a change
+/// of its target in the store does.
+#[derive(Default)]
+pub struct LiveHosts {
+    moved: RefCell<Option<String>>,
+}
+
+impl LiveHosts {
+    /// The conversation works in `directory` of the scripted Host from now
+    /// on.
+    pub fn move_to(&self, directory: &str) {
+        self.moved.replace(Some(directory.to_owned()));
+    }
+}
 
 impl HostResolver for LiveHosts {
     type Host = ScriptedHost;
 
     async fn host(&self, _context: NodeContext<'_>) -> Result<Rc<ScriptedHost>, HostError> {
         Ok(Rc::new(ScriptedHost))
+    }
+
+    async fn placement(&self, _context: NodeContext<'_>) -> Result<Placement, HostError> {
+        Ok(Placement {
+            device: Some("scripted".to_owned()),
+            directory: self.moved.borrow().clone().unwrap_or_else(|| "/workspace".to_owned()),
+        })
     }
 }
 
@@ -854,6 +877,9 @@ impl HostResolver for LiveHosts {
 /// stopping: it ends when the test says (`runner.md` § Cancellation and
 /// completion).
 pub struct ScriptedShell {
+    /// The directory each of its jobs started in, in order; none for one
+    /// that starts where the Host starts its work.
+    pub started_in: RefCell<Vec<Option<String>>>,
     feed: Rc<dyn PageFeed>,
     command: RefCell<Option<Rc<RefCell<CommandRecord>>>>,
     /// Changes when the command ends.
@@ -901,6 +927,7 @@ impl ShellEnvironment for ScriptedShell {
         request: ExecRequest,
         _cancel: CancellationToken,
     ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
+        self.started_in.borrow_mut().push(request.cwd.clone());
         let command = CommandId::try_from("1").unwrap();
         let record = Rc::new(RefCell::new(CommandRecord::new(
             command.clone(),
@@ -1056,6 +1083,16 @@ pub fn scripted_host_server(
     shells: Rc<ScriptedShells>,
     store: Rc<MemoryTreeStore>,
 ) -> Rc<AgentServer<LiveHosts>> {
+    scripted_host_server_in(providers, shells, store, Rc::default())
+}
+
+/// [`scripted_host_server`], whose conversation works where `hosts` says.
+pub fn scripted_host_server_in(
+    providers: Rc<ScriptedProviders>,
+    shells: Rc<ScriptedShells>,
+    store: Rc<MemoryTreeStore>,
+    hosts: Rc<LiveHosts>,
+) -> Rc<AgentServer<LiveHosts>> {
     AgentServer::new(ServerDeps {
         toolsets: Rc::new(Toolset {
             commands: Rc::new(CommandSet::new()),
@@ -1069,7 +1106,7 @@ pub fn scripted_host_server(
         }),
         instructions: Rc::from("system prompt"),
         guide: Rc::from("harness guide"),
-        hosts: Rc::new(LiveHosts),
+        hosts,
         context: Rc::new([]),
         providers,
         shells,
@@ -1100,6 +1137,7 @@ impl ShellEnvironmentFactory<ScriptedHost> for ScriptedShells {
         _host: Rc<ScriptedHost>,
     ) -> LocalBoxFuture<'a, Result<Rc<dyn ShellEnvironment>, HostError>> {
         let shell = Rc::new(ScriptedShell {
+            started_in: RefCell::default(),
             feed: scope.feed.clone(),
             command: RefCell::default(),
             ends: watch::Sender::new(()),
