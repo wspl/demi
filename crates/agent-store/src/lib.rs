@@ -23,7 +23,7 @@ pub mod testing;
 
 use std::rc::Rc;
 
-use demi_conversation_socket_protocol::{JobModel, JobPhase, SubagentJob};
+use demi_conversation_socket_protocol::{JobModel, JobPhase, SubagentChild, SubagentJob};
 use demi_host_interface::{Seen, WholeOutput};
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
@@ -62,6 +62,12 @@ pub trait AgentTreeStore {
         &'a self,
         parent: &'a NodeId,
     ) -> LocalBoxFuture<'a, Result<Vec<NodeRecord>, StoreError>>;
+
+    /// Every subagent of the tree, at any depth, live and closed, in the
+    /// order of their numbers, each with the model selection its checkpoint
+    /// saved: what a tree that opens keeps of its children
+    /// (`subagents.md` § Protocol).
+    fn subagents(&self) -> LocalBoxFuture<'_, Result<Vec<(NodeRecord, ModelSelection)>, StoreError>>;
 
     /// The node's record and its first checkpoint in one commit, so that a
     /// node the process loses before its first turn still has the message
@@ -280,19 +286,15 @@ impl ChildDirectory {
 }
 
 impl NodeRecord {
-    /// A child as the `subagent` frames and the conversation's transcript
-    /// route describe it (`subagents.md` § Protocol): running on `model`
-    /// while it is live, else as it closed, with the result of a completed
-    /// round, working where the conversation's placement `now` puts it;
-    /// with `now` unknown, in its own directory. The root, which no node
-    /// spawned, has none.
-    pub fn job(&self, model: JobModel, now: Option<&Placement>) -> Option<SubagentJob> {
+    /// A child as the `subagent` frames, the open's snapshot and the
+    /// conversation's subagents route describe it (`subagents.md`
+    /// § Protocol): running on `model` while it is live, else as it closed,
+    /// working where the conversation's placement `now` puts it; with `now`
+    /// unknown, in its own directory. The root, which no node spawned, has
+    /// none.
+    pub fn child(&self, model: JobModel, now: Option<&Placement>) -> Option<SubagentChild> {
         let parent = self.parent.clone()?;
-        let result = match self.closed.as_ref().map(|close| &close.phase) {
-            Some(ClosePhase::Completed { result }) => Some(result.clone()),
-            _ => None,
-        };
-        Some(SubagentJob {
+        Some(SubagentChild {
             subagent_id: self.id.clone(),
             number: self.number,
             parent_session_id: parent,
@@ -307,11 +309,23 @@ impl NodeRecord {
                 .map_or(JobPhase::Running, |close| close.phase.job_phase()),
             started_at: self.started_at,
             ended_at: self.closed.as_ref().map(|close| close.at),
-            result,
             cwd: {
                 let own = self.cwd.as_ref().expect("a child's record names its directory");
                 now.map_or(own.cwd.as_str(), |now| own.effective(now)).to_owned()
             },
+        })
+    }
+
+    /// The child as [`child`](Self::child) describes it, with the result of
+    /// a completed round.
+    pub fn job(&self, model: JobModel, now: Option<&Placement>) -> Option<SubagentJob> {
+        let result = match self.closed.as_ref().map(|close| &close.phase) {
+            Some(ClosePhase::Completed { result }) => Some(result.clone()),
+            _ => None,
+        };
+        Some(SubagentJob {
+            child: self.child(model, now)?,
+            result,
         })
     }
 

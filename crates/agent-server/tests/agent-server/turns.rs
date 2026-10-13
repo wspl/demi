@@ -442,6 +442,64 @@ async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_
     );
 }
 
+/// A page that had a figure for the root's context, and opens again once
+/// the conversation was restored, is told the figure is unknown while an
+/// image no response measured has not been read back
+/// (`subagents.md` § Protocol): it shows no figure rather than the old one.
+#[tokio::test(flavor = "local")]
+async fn a_reopened_page_is_told_the_usage_an_open_cannot_tell_without_a_read() {
+    let failing = Turn::Stream(Box::new(|_| {
+        futures_util::stream::iter([event::error("the vendor refused", Some(ErrorCode::AuthExpired))])
+            .boxed_local()
+    }));
+    let script = ScriptedRuntime::new([failing]);
+    let blobs = MemoryBlobs::new();
+    let png = png(4, 3, 1);
+    let uploaded = blobs.put(png.clone()).await.unwrap();
+    let upload = attachments::Upload {
+        name: "tiny.png",
+        path: "/home/demi/.demi/attachments/conversation/tiny.png",
+        media_type: "image/png",
+        sha256: &uploaded,
+        bytes: &png,
+    };
+    let resolved = attachments::upload_blocks(upload, &*blobs).await.unwrap();
+    let fixture = Fixture::with(&script, MemoryTreeStore::with_blobs(blobs), ServerConfig::default());
+    fixture
+        .resolver
+        .select(model_reading("stub", "test-model", &[FileExtension::Png]));
+    let files = TestFiles::new();
+    files.upload("upload-1", resolved);
+    let mut client = TestClient::connect_with(&fixture.server, &conversation(), files);
+    client.send(open()).await;
+    client.next_until(is_pending_steers).await;
+    client
+        .send(ClientFrame::Send {
+            message_id: crate::support::turn("m1"),
+            content: vec![ClientContent::Upload {
+                r#ref: "upload-1".into(),
+                file_name: "tiny.png".into(),
+            }],
+        })
+        .await;
+    let turn = client.next_until(is_idle).await;
+    assert!(
+        turn.iter().any(|frame| matches!(frame, ServerFrame::ContextUsage { usage: Some(_), .. })),
+        "{turn:?}"
+    );
+    client.send(ClientFrame::Close {}).await;
+    client.next_until(|frame| *frame == ServerFrame::Closed).await;
+
+    client.send(open()).await;
+    let mut handshake = client.next_until(is_pending_steers).await;
+    handshake.extend(client.received());
+    assert!(
+        handshake.iter().any(|frame| matches!(frame,
+            ServerFrame::ContextUsage { node, usage: None } if node == &conversation())),
+        "{handshake:?}"
+    );
+}
+
 #[tokio::test(flavor = "local")]
 async fn stop_during_a_stream_answers_after_the_stopped_marker_and_the_queued_message_runs_next() {
     let script = ScriptedRuntime::new([
