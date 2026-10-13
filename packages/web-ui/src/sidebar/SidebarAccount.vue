@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { accountDisplayName, accountInitial } from '../auth/account-display';
+import { accountDisplayName } from '../auth/account-display';
+import Avatar from '@demicodes/web-ui/ui/Avatar.vue';
 import { CircleUser, LogOut, Settings } from '@lucide/vue';
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay';
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue';
@@ -29,9 +30,6 @@ const emit = defineEmits<{
 const displayName = computed(() =>
   accountDisplayName(props.account.name, props.account.email)
 );
-const initials = computed(() =>
-  accountInitial(props.account.name, props.account.email)
-);
 </script>
 
 <template>
@@ -54,11 +52,14 @@ const initials = computed(() =>
         @keydown="pressOnKey"
         @keyup="pressOnKey"
       >
-        <span
-          class="flex size-6 shrink-0 items-center justify-center rounded-full bg-tint-accent text-[11px] font-medium text-on-accent phone:size-8 phone:text-[13px]"
-        >
-          {{ initials }}
-        </span>
+        <!-- 24 px, and 32 px on a phone, as the row grows to a finger's height. -->
+        <Avatar
+          class="phone:size-8 phone:text-[13px]"
+          :account-id="account.id"
+          :name="account.name"
+          :email="account.email"
+          :size="24"
+        />
         <span class="min-w-0 truncate text-chrome text-fg phone:text-[16px]">{{ displayName }}</span>
       </div>
     </template>

@@ -6,18 +6,21 @@ const HOUR = 60 * 60 * 1000
 const DAY = 24 * HOUR
 
 export const demoAccount: SidebarAccount = {
+  id: 'alex',
   name: 'Alex',
   email: 'alex@example.com',
 }
 
 /** An account with no name, so its email stands in: too long for the narrowest sidebar, not the default. */
 export const emailOnlyAccount: SidebarAccount = {
+  id: 'alex-chen',
   name: '',
   email: 'alex.chen@acme.dev',
 }
 
 /** A master account as setup leaves it, with no name and an email too long for the default sidebar. */
 export const longEmailAccount: SidebarAccount = {
+  id: 'someone-longname',
   name: '',
   email: 'someone.longname@protonmail.example',
 }

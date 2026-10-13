@@ -6,6 +6,7 @@ import HandoffDialog from '../auth/HandoffDialog.vue'
 import { signInCodeWording, userReadyWording, type HandoffHost, type HandoffWording } from '../auth/handoff'
 import VerifyDialog from '../auth/VerifyDialog.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
+import Avatar from '../ui/Avatar.vue'
 import Button from '../ui/Button.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import Dropdown from '../ui/Dropdown.vue'
@@ -283,7 +284,10 @@ function closeDialog(): void {
       <template #actions>
         <Button size="sm" @click="openAdd">Add User…</Button>
       </template>
-      <SettingsRow v-for="user in host.users" :key="user.id" :label="nameOf(user)" :muted="user.disabled">
+      <SettingsRow v-for="user in host.users" :key="user.id" :label="nameOf(user)" :muted="user.disabled" center-leading>
+        <template #leading>
+          <Avatar :account-id="user.id" :name="user.nickname" :email="user.email" :size="32" />
+        </template>
         <template v-if="user.id === host.viewerId || user.disabled || user.choosesPassword" #tags>
           <Tag v-if="user.id === host.viewerId">You</Tag>
           <Tag v-if="user.disabled" tone="warning">Disabled</Tag>
