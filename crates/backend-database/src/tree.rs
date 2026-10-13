@@ -107,6 +107,10 @@ impl AgentTreeStore for SqliteTreeStore {
         })
     }
 
+    fn subagents(&self) -> LocalBoxFuture<'_, Result<Vec<(NodeRecord, ModelSelection)>, StoreError>> {
+        Box::pin(async move { self.db.call(|connection| subagents(connection)).await.map_err(store_error) })
+    }
+
     fn create_node(
         &self,
         record: NodeRecord,

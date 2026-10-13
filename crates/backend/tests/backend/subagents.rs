@@ -426,7 +426,7 @@ async fn a_child_works_in_its_parents_files_keeps_its_identity_and_runs_on_after
     let jobs: Vec<(&str, JobPhase)> = history
         .subagents
         .iter()
-        .map(|child| (child.description.as_str(), child.phase))
+        .map(|child| (child.child.description.as_str(), child.child.phase))
         .collect();
     assert_eq!(jobs, [("reader", JobPhase::Completed)]);
     backend.close().await;
@@ -513,14 +513,14 @@ async fn a_child_works_in_its_own_directory_which_it_changes_and_keeps_and_the_r
     let moves: Vec<(SubagentEvent, String)> = frames
         .iter()
         .filter_map(|frame| match frame {
-            ServerFrame::Subagent { event, job } => Some((*event, job.cwd.clone())),
+            ServerFrame::Subagent { event, job } => Some((*event, job.child.cwd.clone())),
             _ => None,
         })
         .collect();
     assert!(moves.contains(&(SubagentEvent::Started, format!("{root}/app"))), "{moves:?}");
     assert!(moves.contains(&(SubagentEvent::Changed, format!("{root}/lib"))), "{moves:?}");
     let history = transcript(&backend, &master, FIRST).await;
-    let listed: Vec<&str> = history.subagents.iter().map(|child| child.cwd.as_str()).collect();
+    let listed: Vec<&str> = history.subagents.iter().map(|child| child.child.cwd.as_str()).collect();
     assert_eq!(listed, [format!("{root}/lib")]);
     backend.close().await;
 }
@@ -855,7 +855,7 @@ async fn a_childs_job_says_what_its_round_runs_on_in_the_menus_names() {
         jobs.iter()
             .map(|job| {
                 let job = job.clone();
-                (job.number, job.profile, job.model, job.round, job.forked_from)
+                (job.child.number, job.child.profile, job.child.model, job.child.round, job.child.forked_from)
             })
             .collect()
     };

@@ -2137,6 +2137,82 @@ async function openWithSession(id: string, handshake: ServerFrame[] = []) {
 
 const transcriptReads = () => requests.filter((request) => request.path.endsWith('/transcript')).length
 
+// `web-application.md` § What a reopened socket brings back: production
+// showed a subagent Running with its transcript stopped where the page's
+// socket dropped, though it had finished while the page was away, until a
+// reload. Each open's snapshot lists every child, every running command
+// and every node's usage, and the page takes them whole: the child ended,
+// one that started and ended meanwhile appears, a command ended or is
+// gone, and a usage the open cannot tell clears the figure. Cost: two
+// openings, no wait.
+test('a conversation that opens again after its socket dropped shows what ended while it was away', async () => {
+  const running = {
+    subagentId: 'reader', number: 1, parentSessionId: FIRST, description: 'Read the notes',
+    profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
+    phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
+  }
+  const brief = { ...shownBlock, id: 'brief' }
+  const calls = (status: 'executing' | 'completed') =>
+    ['cmd-1', 'cmd-2'].map((id) => execCall(`call-${id}`, `serve ${id}`, status))
+  const usage = { tokens: 10, window: 100, compactFrom: 50, rows: [] }
+  const command = (commandId: string) => ({
+    type: 'shell_output' as const,
+    subagentId: 'reader',
+    status: { status: 'running' as const, commandId, toolUseId: `call-${commandId}`, tail: 'one\n', chars: 4, runningMs: 10 },
+  })
+  const handshake: ServerFrame[] = [
+    { type: 'subagents', subagents: [{ ...running, revision: 3 }] },
+    { type: 'subagent', event: 'started', job: running },
+    { type: 'subagent_transcript_reset', subagentId: 'reader', start: 0, length: 3, blocks: [brief, ...calls('executing')], revision: 3 },
+    { type: 'phase', subagentId: 'reader', phase: 'running' },
+    { type: 'waiting', subagentId: 'reader', waitedMs: 1_000 },
+    command('cmd-1'),
+    command('cmd-2'),
+    { type: 'context_usage', node: FIRST, usage },
+  ]
+  const { conversation, sockets } = await openWithSession(FIRST, handshake)
+  const reader = () => conversation.subagents.find((agent) => agent.id === 'reader')!
+  expect(reader()).toMatchObject({ phase: 'running', sessionPhase: 'running' })
+  expect(conversation.terminals.map((terminal) => terminal.id)).toEqual(['cmd-1', 'cmd-2'])
+  expect(conversation.contextUsage).toEqual(usage)
+
+  // While the page is away the reader finishes, agent 2 starts and
+  // finishes, and the reader's commands end, the second one forgotten
+  // with its shells.
+  handshake.splice(
+    0,
+    handshake.length,
+    {
+      type: 'subagents',
+      subagents: [
+        { ...running, phase: 'completed', endedAt: '2026-09-13T00:02:00.000Z', revision: 9 },
+        { ...running, subagentId: 'counter', number: 2, description: 'Count', phase: 'completed', endedAt: '2026-09-13T00:03:00.000Z', revision: 4 },
+      ],
+    },
+    {
+      type: 'shell_output', subagentId: 'reader',
+      status: { status: 'exited', commandId: 'cmd-1', toolUseId: 'call-cmd-1', tail: 'one\ntwo\n', chars: 8, runningMs: 20, exitCode: 0 },
+    },
+    { type: 'context_usage', node: FIRST, usage: null },
+  )
+  sockets[0]!.end()
+  await pageReturned()
+  await waitFor(
+    () => sockets[1]?.sent.length === 1 && conversation.load === 'ready',
+    () => `it did not open again: ${sockets.length} sockets`,
+  )
+
+  expect(reader()).toMatchObject({
+    phase: 'completed', endedAt: '2026-09-13T00:02:00.000Z', sessionPhase: 'idle', waitingSince: null,
+  })
+  // Its transcript moved past what the page holds: it is read again when shown.
+  expect(reader().history.windows).toEqual([])
+  expect(conversation.subagents.map((agent) => [agent.id, agent.phase])).toEqual([['reader', 'completed'], ['counter', 'completed']])
+  expect(toRaw(conversation.terminals).map((terminal) => [terminal.id, terminal.phase])).toEqual([['cmd-1', 'exited']])
+  expect(conversation.contextUsage).toBeNull()
+  expect(conversation.status).not.toBe('active')
+})
+
 // A reload while the agent waits for the model, with a steer waiting: the
 // page shows the conversation once, as the session has it, the transcript
 // with the steer and the Requesting clock counting on from the wait the
