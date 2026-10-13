@@ -617,8 +617,8 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
   }
 }
 
-/** Shows `component` of a page with the page's context below it. */
-export const PageScope = defineComponent({
+/** The component of a page with the page's context below it, made once for the page it was given. */
+const PageScopeBody = defineComponent({
   props: {
     page: { type: Object as PropType<AnyPluginPage>, required: true },
     component: { type: [Object, Function] as PropType<Component>, required: true },
@@ -627,6 +627,22 @@ export const PageScope = defineComponent({
   setup(props) {
     providePage(pageContext(usePageHost(), props.page))
     return () => h(props.component, props.props)
+  },
+})
+
+/**
+ * Shows `component` of a page with the page's context below it. A scope
+ * shown for another page is a new one, so a component never reads the
+ * context, or keeps the effects, of the page that was shown before it.
+ */
+export const PageScope = defineComponent({
+  props: {
+    page: { type: Object as PropType<AnyPluginPage>, required: true },
+    component: { type: [Object, Function] as PropType<Component>, required: true },
+    props: { type: Object as PropType<Record<string, unknown>>, default: () => ({}) },
+  },
+  setup(props) {
+    return () => h(PageScopeBody, { key: props.page.plugin, ...props })
   },
 })
 
