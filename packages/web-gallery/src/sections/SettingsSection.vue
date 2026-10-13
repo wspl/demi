@@ -135,7 +135,7 @@ const anatomy: [string, string][] = [
   ],
 ]
 
-const account = { name: 'Zan' }
+const account = { name: 'Alex' }
 const full = createSettingsState()
 /** Providers where the only API-key entry is complete: Add, then a vendor, adds an incomplete one. */
 const adding = createSettingsState()
@@ -159,7 +159,7 @@ function answerAs(answer: 'granted' | 'denied'): void {
   full.notifications.enabled = false
 }
 /** The account specimen on a server without mail. */
-const noMail = ref({ name: 'Zan' })
+const noMail = ref({ name: 'Alex' })
 /** The specimen's signed-in browsers: Sign Out drops one, as the product's list would. */
 const noMailSessions = reactive<SettingsSessionHost>({
   sessions: gallerySessions(),
@@ -186,9 +186,9 @@ const sections = computed(() =>
   ),
 )
 /** The Users specimens: the master's page, an admin's, and the master's at phone width. */
-const usersAsMaster = createUsersState('zan')
+const usersAsMaster = createUsersState(('alex'))
 const usersAsAdmin = createUsersState('ana')
-const usersNarrow = createUsersState('zan')
+const usersNarrow = createUsersState(('alex'))
 const fullTab = ref<SettingsTab | null>('models')
 const fullNarrowTab = ref<SettingsTab | null>(null)
 // Each pinned dialog closes from its own Close and opens again in place from Open,
@@ -312,7 +312,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Users"
-        note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width. Every control acts on its own specimen: Add User… adds a row (zan@example.com is taken, and the new row comes with its password and QR code in its last step; Lena and Joe show the new-account and disabled looks), Change Role… moves a user to admin, Reset Password… marks the account as still to choose its password, the first of those needing a confirmation asks for a password (any but wrong confirms), and Disable Account… and Sign Out Everywhere… toast what the product would do to the account’s sessions. As the admin, Ana, there is no Change Role…, and the master’s row, the other admin’s and her own have no menu."
+        note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width. Every control acts on its own specimen: Add User… adds a row (alex@example.com is taken, and the new row comes with its password and QR code in its last step; Lena and Joe show the new-account and disabled looks), Change Role… moves a user to admin, Reset Password… marks the account as still to choose its password, the first of those needing a confirmation asks for a password (any but wrong confirms), and Disable Account… and Sign Out Everywhere… toast what the product would do to the account’s sessions. As the admin, Ana, there is no Change Role…, and the master’s row, the other admin’s and her own have no menu."
       >
         <GallerySpecimen variant="Master" wide>
           <div class="@container w-full max-w-2xl rounded-xl border border-line bg-surface-dialog p-6">
@@ -406,9 +406,9 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
           <SettingsAccount
             v-model:name="noMail.name"
             :overlay-store="appOverlayStore"
-            email="zan@example.com"
+            email="alex@example.com"
             email-unavailable="This server cannot send email, which a change needs for its code. Ask your administrator."
-            :email-phase="{ kind: 'form', currentEmail: 'zan@example.com' }"
+            :email-phase="{ kind: 'form', currentEmail: 'alex@example.com' }"
             :password-phase="{ kind: 'form' }"
             :sessions="noMailSessions"
             @change-password="productWould('Open Change Password')"
@@ -573,7 +573,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
         </GallerySpecimen>
         <GallerySpecimen variant="Signed In" wide>
           <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
-            <GalleryWebSearchShowcase :state="{ account: { email: 'zan@example.com' }, key: null, inUse: 'account' }" />
+            <GalleryWebSearchShowcase :state="{ account: { email: 'alex@example.com' }, key: null, inUse: 'account' }" />
           </div>
         </GallerySpecimen>
         <GallerySpecimen variant="Signed In, Key Saved" wide>
@@ -600,7 +600,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
         <GallerySpecimen variant="Checking a Key" wide>
           <div class="w-full rounded-xl border border-line bg-surface-dialog p-6">
             <GalleryWebSearchShowcase
-              :state="{ account: { email: 'zan@example.com' }, key: null, inUse: 'account' }"
+              :state="{ account: { email: 'alex@example.com' }, key: null, inUse: 'account' }"
               draft="b81c0f2e-55aa-4c3e-9d21-7f3a"
               :pending="['key']"
             />
@@ -608,7 +608,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
         </GallerySpecimen>
         <GallerySpecimen variant="Narrow · 360px">
           <div class="w-[360px] max-w-full rounded-xl border border-line bg-surface-dialog p-4">
-            <GalleryWebSearchShowcase :state="{ account: { email: 'zan@example.com' }, key: { lastFour: '7f3a', unchecked: null }, inUse: 'key' }" />
+            <GalleryWebSearchShowcase :state="{ account: { email: 'alex@example.com' }, key: { lastFour: '7f3a', unchecked: null }, inUse: 'key' }" />
           </div>
         </GallerySpecimen>
       </GallerySection>

@@ -85,7 +85,7 @@ demi: this conversation needs the user's permission to manage skills; the reques
 
 \`\`\`
 ls: cannot access 'C:/Windows/Web/*.png': The filename, directory name, or volume label syntax is incorrect.
-DESKTOP-B5O1P43  7222bda0-93b5-4d83-b2ee-592137c94eb5  online  C:\\Users\\Plutonist  (primary)
+DESKTOP-B5O1P43  7222bda0-93b5-4d83-b2ee-592137c94eb5  online  C:\\Users\\alex  (primary)
 Unpacking Chrome for Testing 153.0.8010.36
 \`\`\`
 

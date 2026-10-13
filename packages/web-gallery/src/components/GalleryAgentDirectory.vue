@@ -22,7 +22,7 @@ import GalleryWorkPanel from './GalleryWorkPanel.vue'
  * work panel: the child's links, its file change and the folder in its
  * status bar open the panel for the child's directory, while the panel's
  * own tabs stay on the conversation's. The agent's conversation is in
- * `/Users/alex/Projects/demi`.
+ * `/Users/alex/Projects/shop`.
  */
 const agentContext = useAgentContext()
 const workspace = createGalleryWorkspace()
