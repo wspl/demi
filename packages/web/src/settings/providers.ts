@@ -9,6 +9,7 @@ import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import {
+  type SettingsCompatibleDraft,
   type SettingsModelDraft,
   type SettingsModelMatch,
   type SettingsQuotaRefresh,
@@ -18,7 +19,6 @@ import {
   type SettingsProviderOperation,
   type SettingsProviderModel,
   type SettingsVendor,
-  type SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
@@ -205,6 +205,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       configured: false,
       keyConfigured: false,
       vendorId: null,
+      compatible: false,
       baseUrl: '',
       wireApi: 'openai-responses',
       apiKey: '',
@@ -252,13 +253,16 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     create({ source: 'vendor', vendorId: vendor.id })
   }
 
-  function addEndpoint(wireApi: SettingsWireApi): void {
+  /** A compatible API: its endpoint is what makes the entry one, so it is sent with the family. */
+  function addCompatible(draft: SettingsCompatibleDraft): void {
+    const { wireApi, label, baseUrl, apiKey } = draft
+    const entry = { source: 'custom' as const, label, baseUrl, ...(apiKey ? { apiKey } : {}) }
     create(
       wireApi === 'anthropic-messages'
-        ? { source: 'custom', providerType: 'anthropic' }
+        ? { ...entry, providerType: 'anthropic' }
         : wireApi === 'google-generative'
-          ? { source: 'custom', providerType: 'google' }
-          : { source: 'custom', providerType: 'openai', wireApi: wireApi === 'openai-chat' ? 'chat-completions' : 'responses' },
+          ? { ...entry, providerType: 'google' }
+          : { ...entry, providerType: 'openai', wireApi: wireApi === 'openai-chat' ? 'chat-completions' : 'responses' },
     )
   }
 
@@ -331,9 +335,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
       await patch(provider, {
         ...(changes.name !== undefined ? { label: changes.name } : {}),
-        ...(changes.baseUrl !== undefined
-          ? { baseUrl: changes.baseUrl || null }
-          : {}),
+        // Only a compatible API's endpoint is edited, and the page never empties it.
+        ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl } : {}),
         ...(changes.apiKey ? { apiKey: changes.apiKey } : {}),
         ...(changes.modelSource
           ? {
@@ -831,7 +834,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     report,
     change,
     addProvider,
-    addEndpoint,
+    addCompatible,
     removeProvider,
     beginLogin,
     closeLogin,

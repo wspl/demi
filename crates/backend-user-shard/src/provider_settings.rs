@@ -52,6 +52,14 @@ pub enum ProviderRefusal {
     /// provider; it names the entry.
     #[error("{0} lists its own models; its list cannot be edited.")]
     OwnModels(String),
+    /// An endpoint for a vendor entry, which uses its vendor's; it names the
+    /// entry.
+    #[error("{0} uses its vendor’s endpoint; it can’t be changed.")]
+    VendorEndpoint(String),
+    /// The removal of a compatible entry's endpoint, which is what makes it
+    /// compatible; it names the entry.
+    #[error("{0} is a compatible API; its endpoint can’t be removed.")]
+    CompatibleEndpoint(String),
     #[error(transparent)]
     Storage(#[from] StorageError),
 }
@@ -87,8 +95,9 @@ impl Services {
             .ok_or(ProviderRefusal::Busy)
     }
 
-    /// Creates an API-key entry from the vendor list or for a custom
-    /// endpoint. Its label is the vendor's or the family's name unless the
+    /// Creates an API-key entry: a vendor entry from the vendor list, or from
+    /// a family alone for its own vendor; or a compatible entry, a family with
+    /// an endpoint of the user's. Its label is the vendor's or the family's name unless the
     /// body gives one, and what the body leaves out leaves it incomplete.
     pub async fn create_provider(
         &self,
@@ -101,7 +110,6 @@ impl Services {
                 vendor_id,
                 label,
                 api_key,
-                base_url,
                 models,
             } => {
                 let vendor = self
@@ -112,19 +120,16 @@ impl Services {
                     .map_err(|error| ProviderRefusal::CatalogUnavailable(error.to_string()))?
                     .ok_or(ProviderRefusal::UnknownVendor(vendor_id))?;
                 self.api_key_family(&vendor.provider_type, vendor.wire_api)?;
-                let base_url = match base_url {
-                    Some(endpoint) => Some(endpoint),
-                    None => vendor
-                        .base_url
-                        .map(EndpointUrl::try_from)
-                        .transpose()
-                        .map_err(|_| {
-                            ProviderRefusal::CatalogUnavailable(format!(
-                                "models.dev names no usable endpoint for {}",
-                                vendor.id
-                            ))
-                        })?,
-                };
+                let base_url = vendor
+                    .base_url
+                    .map(EndpointUrl::try_from)
+                    .transpose()
+                    .map_err(|_| {
+                        ProviderRefusal::CatalogUnavailable(format!(
+                            "models.dev names no usable endpoint for {}",
+                            vendor.id
+                        ))
+                    })?;
                 let label = label.map_or(vendor.name, |label| label.into_string());
                 let config = ApiKeyConfig {
                     api_key: api_key.map(key).transpose()?,
@@ -192,7 +197,14 @@ impl Services {
                 config.api_key = Some(key(text)?);
             }
             if let Some(base_url) = patch.base_url {
-                config.base_url = base_url;
+                // An entry stays the kind it was added as.
+                match (config.is_compatible(), base_url) {
+                    (false, _) => return Err(ProviderRefusal::VendorEndpoint(entry.label.clone())),
+                    (true, None) => {
+                        return Err(ProviderRefusal::CompatibleEndpoint(entry.label.clone()));
+                    }
+                    (true, endpoint) => config.base_url = endpoint,
+                }
             }
             if let Some(models) = patch.models {
                 config.models = models;

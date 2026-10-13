@@ -17,11 +17,12 @@ import type { DeviceReport } from '@demicodes/web-ui/auth/device-unlock'
 import GalleryDeviceReport from '../components/GalleryDeviceReport.vue'
 import { galleryPasswordChoice, type PasswordChoiceScript } from '../fixtures/password-choice'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
+import AddCompatibleDialog from '@demicodes/web-ui/settings/AddCompatibleDialog.vue'
 import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import AddSkillSourceDialog from '@demicodes/plugin-skills/AddSkillSourceDialog.vue'
 import type { AddSourceAnswer } from '@demicodes/plugin-skills/types'
-import { WIRE_API_LABELS, type SettingsModelDraft, type SettingsVendor } from '@demicodes/web-ui/settings/types'
+import { COMPATIBLE_WIRE_APIS, WIRE_API_LABELS, type SettingsModelDraft, type SettingsVendor } from '@demicodes/web-ui/settings/types'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import DeviceRenameDialog from '@demicodes/web-ui/devices/DeviceRenameDialog.vue'
 import DeviceRevokeDialog from '@demicodes/web-ui/devices/DeviceRevokeDialog.vue'
@@ -496,7 +497,7 @@ const resetPhases: {
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="Add Provider" note="A vendor from the catalog, or a bare endpoint speaking one of the protocols Demi implements.">
+      <GallerySection title="Add Provider" note="A vendor from the catalog, whose endpoint and models are its own, or a compatible API: a proxy or a server speaking one of the protocols Demi implements, which lists the models you add. A protocol goes on to its endpoint and key.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen
             v-for="catalog in providerCatalogs"
@@ -512,8 +513,23 @@ const resetPhases: {
                 :load="catalog.load"
                 @close="close"
                 @add="(vendor) => finish(close, `Add ${vendor.name}`)"
-                @add-endpoint="(wireApi) => finish(close, `Add an Endpoint Speaking ${WIRE_API_LABELS[wireApi]}`)"
+                @add-compatible="(wireApi) => finish(close, `Ask the Endpoint of a Compatible API (${WIRE_API_LABELS[wireApi]})`)"
                 @retry="productWould('Load the Provider Catalog Again')"
+              />
+            </GalleryDialogFrame>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+      <GallerySection title="Add Compatible API" note="After the protocol: the name, which is the protocol's own until given, the endpoint, which an http or https address must fill before Add, and the key, which may come later. The new entry lists no model until one is added.">
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+          <GallerySpecimen v-for="wireApi in COMPATIBLE_WIRE_APIS" :key="wireApi" wide :variant="WIRE_API_LABELS[wireApi]">
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <AddCompatibleDialog
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                :wire-api="wireApi"
+                @close="close"
+                @add="(draft) => finish(close, `Add ${draft.label}`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>

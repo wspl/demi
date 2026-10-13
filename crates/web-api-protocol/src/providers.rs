@@ -102,9 +102,10 @@ fn distinct_ids(models: &[ConfiguredModel], (): &()) -> garde::Result {
     }
 }
 
-/// `POST /providers`: an API-key entry from the vendor list, whose family,
-/// wire and endpoint the vendor supplies, or a custom endpoint that names its
-/// family itself. Everything but the kind may come later: the entry is
+/// `POST /providers`: a vendor entry from the vendor list, whose family,
+/// wire and endpoint the vendor supplies; or a custom entry that names its
+/// family itself, a compatible entry when it gives an endpoint and a vendor
+/// entry of the family's own vendor when it does not. Everything but the kind may come later: the entry is
 /// incomplete until it has what it needs, and its label is the vendor's or
 /// the family's name without one.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
@@ -126,11 +127,6 @@ pub enum CreateProvider {
         #[schemars(with = "String")]
         #[garde(length(min = 1))]
         api_key: Option<String>,
-        /// Replaces the vendor's endpoint.
-        #[serde(default, with = "unwrap_or_skip")]
-        #[schemars(with = "EndpointUrl")]
-        #[garde(skip)]
-        base_url: Option<EndpointUrl>,
         /// Replaces the vendor's live model list.
         #[serde(default, with = "unwrap_or_skip")]
         #[schemars(with = "ConfiguredModels")]
@@ -165,8 +161,9 @@ pub enum CreateProvider {
 }
 
 /// `PATCH /providers/:id`: a new label for any entry; for an API-key entry
-/// also a new key, endpoint and model list, where `null` removes the
-/// endpoint override or returns to the live model list.
+/// also a new key and model list, where `null` returns to the vendor's
+/// catalog; and, for a compatible entry only, a new endpoint, which is never
+/// removed.
 #[derive(Debug, Default, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderPatch {
@@ -188,8 +185,8 @@ pub struct ProviderPatch {
     pub models: Option<Option<ConfiguredModels>>,
 }
 
-/// An entry as the web app sees it: its family, label, endpoint, vendor and
-/// model list, never its key.
+/// An entry as the web app sees it: its family, label, kind, endpoint, vendor
+/// and model list, never its key.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProviderDto {
@@ -207,10 +204,16 @@ pub struct ProviderDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub vendor_id: Option<String>,
-    /// The configured endpoint; null for the family's default.
+    /// A compatible entry (`providers.md` § Endpoints): its endpoint is its
+    /// own and its models are the ones the user adds. Any other API-key
+    /// entry is a vendor entry; false for a subscription.
+    pub compatible: bool,
+    /// The base URL an API-key entry's requests go to, whichever kind it
+    /// is: the configured one, else the family's default; null for a
+    /// subscription.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<EndpointUrl>")]
-    pub base_url: Option<EndpointUrl>,
+    pub endpoint: Option<EndpointUrl>,
     /// Whether an API-key entry has its key saved; false for a
     /// subscription. The key itself is never sent.
     pub has_api_key: bool,
