@@ -731,21 +731,28 @@ Passkeys ([User system](product.md#user-system),
   as `POST /api/auth/login` does; an expired or used challenge answers 401
   `passkey_expired`, a passkey no account has 401 `unknown_passkey` with its
   `credentialId`, and a failed check 401 `invalid_credentials`.
-- `GET /api/auth/passkeys` returns `{ passkeys }`, each `{ id, name, synced,
-  createdAt, lastUsedAt }`. `POST /api/auth/passkeys/options` takes
+- `GET /api/auth/passkeys` returns `{ passkeys, userHandle }`: each passkey
+  `{ id, name, synced, createdAt, lastUsedAt }`, its `id` the credential id in
+  base64url, as `unknown_passkey`'s `credentialId` and the browser name it,
+  and `userHandle` the account's WebAuthn user handle, which the page passes
+  to the browser's signal methods with the relying party's id. `POST /api/auth/passkeys/options` takes
   `{ password }`, checks it as `PUT /api/auth/password` checks `current`, and
   returns `{ challengeId, options }`, the creation options, which exclude the
   account's passkeys. `POST /api/auth/passkeys` takes `{ challengeId,
   credential }` and answers 201 `{ passkey }`; its name is the password
-  manager's, from the authenticator's AAGUID in the community list of
-  passkey providers the backend carries, and otherwise the browser and
-  system of the page that added it, such as `Chrome on Windows`.
+  manager's for the few managers most people use, whose AAGUIDs their
+  vendors publish and the backend lists itself (Google Password Manager,
+  Windows Hello, 1Password, Bitwarden and the like; Apple's passkeys carry
+  none), and otherwise the browser and system of the page that added it,
+  such as `Safari on macOS`.
   `PATCH /api/auth/passkeys/:id` renames one with `{ name }` (1–80
   characters after trimming), and `DELETE /api/auth/passkeys/:id` removes
   it, both 204. The synchronization channel's `passkeys` part carries the
   list, so Settings on another page follows.
-- The public `GET /api/setup` answer carries `passkeys`, whether this backend
-  offers them: false when the public URL's host is an IP address. The setup
+- The public `GET /api/setup` answer carries `passkeyRpId`, the relying
+  party's id, the public URL's host name, or null when this backend offers
+  no passkeys, as when that host is an IP address; the product state carries
+  it too. The setup
   page adds the new account's first passkey with the password just entered,
   through the same routes, after `POST /api/setup` has signed it in.
 - `PATCH /api/auth/me` takes `{ nickname }` (1–80 characters after trimming).
