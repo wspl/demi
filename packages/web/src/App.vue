@@ -104,7 +104,7 @@ const pageRoute = computed(() =>
 const { open, openFound, create } = useConversationNavigation()
 /** The search window (`product.md` § Finding a conversation). */
 const searchOpen = ref(false)
-/** Sign In on Your Phone (`product.md` § User system): its code opens the page the window shows. */
+/** Hand Off to Your Phone (`product.md` § User system): its code opens the page the window shows. */
 const handoffOpen = ref(false)
 const sessions = useSessions()
 const handoffHost = computed(() => sessions.handoffHost(() => pageRoute.value.fullPath))
@@ -252,7 +252,8 @@ useAppShortcuts(
     :failure="session.current.status === 'failed' ? session.current.error : null"
     :on-retry="() => session.restore()"
   />
-  <div v-else-if="session.signedIn" class="flex h-full flex-col">
+  <!-- A phone signed in opens a handoff code on its own page too, which goes on to the page the code opens. -->
+  <div v-else-if="session.signedIn && route.path !== '/handoff'" class="flex h-full flex-col">
     <ConnectionBanner v-if="product.connection" :problem="product.connection" />
     <SidebarLayout
       class="min-h-0 flex-1"
@@ -287,7 +288,7 @@ useAppShortcuts(
           @archive="conversations.archive"
           @delete="conversations.remove"
           @open-settings="settingsAddress.open"
-          @sign-in-on-phone="handoffOpen = true"
+          @hand-off-to-phone="handoffOpen = true"
           @sign-out="signOut"
         />
       </template>
