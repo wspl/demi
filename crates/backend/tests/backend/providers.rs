@@ -113,7 +113,7 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
         (CredentialKind::ApiKey, "anthropic", "Work")
     );
     assert_eq!(
-        created.base_url.as_ref().map(|url| url.as_str()),
+        created.endpoint.as_ref().map(|url| url.as_str()),
         Some("https://proxy.example/v1")
     );
     assert_eq!((created.wire_api, created.vendor_id.clone()), (None, None));
@@ -178,14 +178,14 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
         );
     }
 
-    // An edit replaces the key and returns to the family's endpoint and the
-    // live catalog; the answer never shows the key.
+    // An edit replaces the key and the endpoint, and clearing the list leaves
+    // a compatible entry without models; the answer never shows the key.
     let path = format!("/api/providers/{}", created.id);
     let edited = backend
         .patch(
             &path,
             &master,
-            json!({ "label": "Personal", "apiKey": "sk-ant-secret-2", "baseUrl": null, "models": null }),
+            json!({ "label": "Personal", "apiKey": "sk-ant-secret-2", "baseUrl": "https://other.example/v1", "models": null }),
         )
         .await;
     assert_eq!(edited.status, StatusCode::OK);
@@ -194,16 +194,12 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
     assert_eq!(
         (
             edited.label.as_str(),
-            edited.base_url.clone(),
+            edited.endpoint.as_ref().map(|url| url.as_str().to_owned()),
             edited.models.clone()
         ),
-        ("Personal", None, None)
+        ("Personal", Some("https://other.example/v1".to_owned()), None)
     );
-    let live = catalog_of(&backend, &master, "").await;
-    assert_eq!(
-        live.providers[0].models[0].model.id, "claude-opus-4-8",
-        "the anthropic directory"
-    );
+    assert_eq!(catalog_of(&backend, &master, "").await.providers[0].models, []);
 
     // API-key entries of one family repeat.
     let body = json!({ "source": "custom", "providerType": "anthropic", "label": "Second", "apiKey": "k" });
@@ -482,7 +478,7 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
         ("openai", Some(WireApi::ChatCompletions), Some("deepseek"))
     );
     assert_eq!(
-        deepseek.base_url.as_ref().map(|url| url.as_str()),
+        deepseek.endpoint.as_ref().map(|url| url.as_str()),
         Some("https://api.deepseek.com/")
     );
     // The entry's catalog is the vendor's live list, read again from
@@ -724,7 +720,12 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
     let entry = create(
         &backend,
         &master,
-        json!({ "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test", "baseUrl": vendor.url("/v1") }),
+        json!({
+            "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+            "baseUrl": vendor.url("/v1"),
+            "models": [{ "id": "claude-opus-4-8", "displayName": "Claude Opus 4.8", "contextWindow": 1_000_000,
+                "outputLimit": null, "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null }]
+        }),
     )
     .await;
     let path = format!("/api/providers/{}/test", entry.id);
@@ -890,7 +891,7 @@ async fn an_anthropic_compatible_vendor_receives_an_effort_as_a_token_budget() {
     let catalog = json!({
         "moonshot": {
             "id": "moonshot", "name": "Moonshot", "npm": "@ai-sdk/anthropic",
-            "api": "https://api.moonshot.example/anthropic", "models": {}
+            "api": vendor.url("/v1"), "models": {}
         }
     });
     vendor.respond_at("/api.json", served(&catalog));
@@ -905,7 +906,7 @@ async fn an_anthropic_compatible_vendor_receives_an_effort_as_a_token_budget() {
         &master,
         json!({
             "source": "vendor", "vendorId": "moonshot", "label": "Moonshot", "apiKey": "key",
-            "baseUrl": vendor.url("/v1"), "models": [leveled.clone()]
+            "models": [leveled.clone()]
         }),
     )
     .await;
@@ -1183,6 +1184,112 @@ async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_
     assert_eq!(
         availability_of(&backend, &master, &custom.id).await,
         json!({ "type": "available" })
+    );
+    backend.close().await;
+}
+
+#[tokio::test]
+async fn a_compatible_entry_lists_only_the_models_added_to_it_and_every_entry_stays_the_kind_it_was_added_as() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+
+    // Anthropic's own vendor entry lists the family's built-in models; the
+    // same family at an endpoint the user gave lists none until one is added.
+    let vendor = create(
+        &backend,
+        &master,
+        json!({ "source": "custom", "providerType": "anthropic", "apiKey": "sk-ant-1" }),
+    )
+    .await;
+    let compatible = create(
+        &backend,
+        &master,
+        json!({
+            "source": "custom", "providerType": "anthropic", "apiKey": "sk-proxy",
+            "baseUrl": "https://proxy.example/v1"
+        }),
+    )
+    .await;
+    // Whichever kind it is, an entry's read model says where its requests go.
+    assert_eq!(
+        (vendor.compatible, vendor.endpoint.as_ref().map(|url| url.as_str())),
+        (false, Some("https://api.anthropic.com/v1"))
+    );
+    assert_eq!(
+        (compatible.compatible, compatible.endpoint.as_ref().map(|url| url.as_str())),
+        (true, Some("https://proxy.example/v1"))
+    );
+    let catalog = catalog_of(&backend, &master, "").await;
+    let models_of = |id: &ProviderId| {
+        catalog
+            .providers
+            .iter()
+            .find(|provider| &provider.provider_id == id)
+            .map(|provider| provider.models.len())
+    };
+    assert!(models_of(&vendor.id).unwrap() > 0, "{catalog:?}");
+    assert_eq!(models_of(&compatible.id), Some(0), "{catalog:?}");
+    // With nothing to infer with, the entry is incomplete rather than failed.
+    assert_eq!(
+        availability_of(&backend, &master, &compatible.id).await,
+        setup(&["models"])
+    );
+
+    // A model added to it is the whole of its catalog.
+    let path = format!("/api/providers/{}", compatible.id);
+    let added = backend
+        .patch(&path, &master, json!({ "models": [configured("claude-sonnet-4-6")] }))
+        .await;
+    assert_eq!(added.status, StatusCode::OK);
+    let catalog = catalog_of(&backend, &master, "").await;
+    let ids: Vec<_> = catalog
+        .providers
+        .iter()
+        .find(|provider| provider.provider_id == compatible.id)
+        .unwrap()
+        .models
+        .iter()
+        .map(|model| model.model.id.clone())
+        .collect();
+    assert_eq!(ids, ["claude-sonnet-4-6"]);
+
+    // A compatible endpoint is changed, never removed; a vendor entry's is
+    // never set; a vendor from the list brings its own.
+    let moved = backend
+        .patch(&path, &master, json!({ "baseUrl": "https://other.example/v1" }))
+        .await;
+    assert_eq!(
+        moved.json::<ProviderAnswer>().provider.endpoint.map(|url| url.as_str().to_owned()),
+        Some("https://other.example/v1".to_owned())
+    );
+    let removed = backend
+        .patch(&path, &master, json!({ "baseUrl": null }))
+        .await;
+    assert_eq!(
+        removed.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::EndpointKind)
+    );
+    let set = backend
+        .patch(
+            &format!("/api/providers/{}", vendor.id),
+            &master,
+            json!({ "baseUrl": "https://proxy.example/v1" }),
+        )
+        .await;
+    assert_eq!(
+        set.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::EndpointKind)
+    );
+    let by_vendor = backend
+        .post(
+            "/api/providers",
+            Some(&master),
+            json!({ "source": "vendor", "vendorId": "anthropic", "baseUrl": "https://proxy.example/v1" }),
+        )
+        .await;
+    assert_eq!(
+        by_vendor.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
     );
     backend.close().await;
 }
