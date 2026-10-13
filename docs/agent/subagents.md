@@ -554,6 +554,80 @@ conversation, the category `agent.profiles`, *Change Subagent Profiles*:
 can use." ([Categories](permissions.md#categories)). `profiles list` and
 `profiles show` are reads and need none.
 
+### Subagent sets of a project
+
+A project can keep sets of subagent profiles in its repository, so a team
+shares how its work is split and each conversation picks one. For example,
+`~/app` holds `.demi/subagents/review.yaml`:
+
+```yaml
+name: Review Team
+guidance: |
+  Have reviewer check every change before you report it.
+  Use explore for any search across more than one package.
+maxSubagents: 4
+maxDepth: 1
+profiles:
+  explore:
+    description: Use for finding code and call sites; it reports and changes nothing.
+    model: claude-haiku-4-5
+    effort: low
+    spawning: false
+    instructions: |
+      Read and report where things are. Never change a file.
+  reviewer:
+    description: Use to review a finished change before reporting it.
+    instructions: |
+      Review the diff for bugs and missed cases; change nothing.
+```
+
+In a conversation on `~/app/web`, the Subagents menu at the composer's lower
+left offers **Default**, **Off** and **Review Team**. Alex picks Review Team:
+from the next spawn on, the conversation's agents see `explore` and
+`reviewer` with the guidance above them, and no more than four run at once.
+
+- **Where.** The set files are `.demi/subagents/*.yaml` of the nearest
+  directory that has a `.demi/subagents/` directory, searched from the
+  conversation's working directory up to the root of its git repository as
+  [instruction files](instructions.md#which-files-are-read) are. A file's
+  name without `.yaml` is its id; `name` is what the menu shows.
+- **A set** holds `name` (1 to 60 characters), `guidance` (optional, up to
+  65,536 characters), `maxSubagents` and `maxDepth` (optional, as the
+  [limits](#limits) are), and `profiles`, a map of profile names to
+  profiles. A profile has the fields of a user's profile
+  ([Profiles](#profiles)): its name is the map's key, `description`,
+  `instructions` (optional), `spawning` (default `false`), and its model as
+  `model`, a model id, with `effort` and `tier` (optional; without a model
+  the child inherits its parent's). A model id is looked for in the user's
+  provider entries in their order, the first entry whose catalog has it
+  taking it; one no entry has makes the profile unavailable, as a
+  profile's missing model does.
+- **The menu** is the conversation's choice, kept with the conversation as
+  its model is. **Default**, which a new conversation starts with, applies
+  the user's Subagents settings. **Off** turns subagents off for this
+  conversation, as the settings' switch does for all of them. **A set**
+  applies the set in place of the user's profiles and limits, for this
+  conversation only, whatever the settings' switch is. The set's limits
+  never go above the user's: each is the lower of the set's and the
+  settings'. A conversation whose working directory has no sets offers
+  Default and Off only; one whose chosen set is gone, renamed or no longer
+  reads shows it as unavailable, with why, and its spawns fail with that
+  reason until the user picks another.
+- **Nothing applies by itself.** A repository is often someone else's, and
+  a set only applies when the user picks it in a conversation, never
+  because a repository holds it, so cloning a project changes nothing about
+  how its conversations spawn.
+- **Each spawn reads the set as the file is then.** The Host reads the set
+  file at each spawn and at each `demi agent profiles list`, as a spawn
+  reads the settings at that moment ([Limits](#limits)); the menu lists the
+  sets from the conversation's [file watch](../product/web-api.md#file-watch),
+  so a set added, changed or removed shows at once, with no polling. A file
+  that does not parse is listed as unavailable with the parse error.
+- **What the model sees.** With a set chosen, `demi agent profiles list`
+  shows the set's name and guidance, then its profiles as it shows the
+  user's ([What the model sees](#what-the-model-sees)); with Off, the line
+  that subagents are turned off for this conversation.
+
 ### Limits
 
 The user's Subagents settings hold two limits, which apply to every
