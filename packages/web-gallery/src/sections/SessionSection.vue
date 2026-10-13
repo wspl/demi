@@ -120,7 +120,7 @@ import GalleryModelPreference from '../components/GalleryModelPreference.vue'
 import GalleryFindBar from '../components/GalleryFindBar.vue'
 import GalleryUserMessageLengths from '../components/GalleryUserMessageLengths.vue'
 import { regenerateMessage, submitMessageEdit, type MessageEditHost, type MessageEditState } from '@demicodes/web-ui/agent/message-editing'
-import { callTerminal, firstRunningTerminalId, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
+import { useCallTerminals, firstRunningTerminalId, type TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
 import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
@@ -901,13 +901,9 @@ function toggleLeftRunning(): void {
 }
 // The specimens' calls show their commands' output while they run: the live
 // call's and the Turn's, whose flow runs its own command.
-provideLiveCalls((toolUseId) =>
-  callTerminal(
-    [...terminals, ...turnFlow.state.terminals, ...workFlow.state.terminals, returnedFailingCommand, runningRun.command, leftRunning.command],
-    undefined,
-    toolUseId,
-  ),
-)
+const commandOf = useCallTerminals(() =>
+  [...terminals, ...turnFlow.state.terminals, ...workFlow.state.terminals, returnedFailingCommand, runningRun.command, leftRunning.command])
+provideLiveCalls((toolUseId) => commandOf(undefined, toolUseId))
 /** The devices an offline primary Host's card offers, as Run On lists them: it shows the online ones. */
 const offlineMenuDevices: HostDeviceOption[] = [
   { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer' },
