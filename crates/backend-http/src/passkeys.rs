@@ -6,7 +6,6 @@ use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Path, State};
-use axum::http::header::USER_AGENT;
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
@@ -26,10 +25,11 @@ use super::body::JsonBody;
 use super::cookies::{self, Https};
 use super::error::ApiError;
 use super::gate::{self, AuthUser};
+use super::sessions::user_agent;
 
 /// The relying party for this request, or 409 `passkeys_unavailable` when
 /// the backend offers no passkeys.
-fn relying_party(services: &Services, headers: &HeaderMap) -> Result<RelyingParty, ApiError> {
+pub(super) fn relying_party(services: &Services, headers: &HeaderMap) -> Result<RelyingParty, ApiError> {
     let public = services
         .public_url
         .get()
@@ -45,7 +45,7 @@ fn relying_party(services: &Services, headers: &HeaderMap) -> Result<RelyingPart
     })
 }
 
-fn too_many(IssueRefusal::TooMany: IssueRefusal) -> ApiError {
+pub(super) fn too_many(IssueRefusal::TooMany: IssueRefusal) -> ApiError {
     ApiError::new(
         StatusCode::TOO_MANY_REQUESTS,
         ErrorCode::TooManyAttempts,
@@ -53,7 +53,7 @@ fn too_many(IssueRefusal::TooMany: IssueRefusal) -> ApiError {
     )
 }
 
-fn refused(refusal: Refusal) -> ApiError {
+pub(super) fn refused(refusal: Refusal) -> ApiError {
     match refusal {
         Refusal::Expired => ApiError::new(
             StatusCode::UNAUTHORIZED,
@@ -66,6 +66,13 @@ fn refused(refusal: Refusal) -> ApiError {
             "This passkey is no longer on any account. Sign in with your password.",
         )
         .with_credential_id(id),
+        // Another account's passkey is named back without its id: the page
+        // tells the browser of no passkey it must forget.
+        Refusal::OtherAccount => ApiError::new(
+            StatusCode::UNAUTHORIZED,
+            ErrorCode::UnknownPasskey,
+            "This passkey is another account's. Use one of this account's passkeys or its password.",
+        ),
         Refusal::Failed => ApiError::new(
             StatusCode::UNAUTHORIZED,
             ErrorCode::InvalidCredentials,
@@ -102,6 +109,7 @@ pub(super) async fn sign_in(
         &party,
         request.challenge_id,
         &request.credential,
+        None,
     )
     .await?
     .map_err(refused)?;
@@ -111,7 +119,8 @@ pub(super) async fn sign_in(
         .await?
         .ok_or_else(|| refused(Refusal::Failed))?;
     services.sync.mark(&user, Part::Passkeys);
-    let session = services.sessions.open(user).await?;
+    let session = services.sessions.open(user.clone(), user_agent(&headers)).await?;
+    services.sync.mark(&user, Part::Sessions);
     let jar = jar.add(cookies::session(&session.token, session.expires_at, https));
     Ok((jar, Json(Identity { user: account.user })).into_response())
 }
@@ -159,16 +168,13 @@ pub(super) async fn add(
     JsonBody(request): JsonBody<NewPasskey>,
 ) -> Result<(StatusCode, Json<PasskeyAnswer>), ApiError> {
     let party = relying_party(&services, &headers)?;
-    let user_agent = headers
-        .get(USER_AGENT)
-        .and_then(|value| value.to_str().ok());
     let record = passkeys::finish_registration(
         &services.control,
         &party,
         &user.id,
         request.challenge_id,
         &request.credential,
-        user_agent,
+        user_agent(&headers),
     )
     .await?
     .map_err(refused)?;

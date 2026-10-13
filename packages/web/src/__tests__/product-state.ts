@@ -48,6 +48,7 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
     instructions: '',
     credentials: [],
     passkeys: { passkeys: [], userHandle: 'dXNlci0x' },
+    sessions: [],
     passkeyRpId: null,
     plugins: [{ id: 'skills', name: 'Skills', description: 'Skills the agent follows.', enabled: true, packages: [] }],
     pluginStates: { skills: { sources: [] } },

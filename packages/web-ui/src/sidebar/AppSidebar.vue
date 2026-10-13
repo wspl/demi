@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Archive, FolderPlus, Search, Settings, SquarePen } from '@lucide/vue'
+import { Archive, FolderPlus, Search, Settings, Smartphone, SquarePen } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -73,6 +73,8 @@ const emit = defineEmits<{
   delete: [ids: string[]]
   /** Settings, on a section when an entry names one (`archived`, or an entry's own). */
   openSettings: [section?: string]
+  /** The phone mark at the foot: sign in on a phone by a QR code. */
+  signInOnPhone: []
   signOut: []
   retryList: []
 }>()
@@ -631,7 +633,7 @@ function selectProjectConversations(project: SidebarProject): void {
       </div>
     </Teleport>
 
-    <!-- The account, and settings. -->
+    <!-- The account, signing in on a phone, and settings. -->
     <div
       class="flex shrink-0 items-center gap-1 border-t border-line px-2 py-2 phone:h-[52px] phone:py-0"
     >
@@ -640,6 +642,16 @@ function selectProjectConversations(project: SidebarProject): void {
         @open-settings="emit('openSettings')"
         @sign-out="emit('signOut')"
       />
+      <!-- A page that is itself on a phone has no phone to hand the account to. -->
+      <Tooltip v-if="!phone" content="Sign In on Phone" placement="top">
+        <IconButton
+          :icon="Smartphone"
+          :size="phone ? 'lg' : 'md'"
+          variant="ghost"
+          aria-label="Sign In on Phone"
+          @click="emit('signInOnPhone')"
+        />
+      </Tooltip>
       <Tooltip content="Settings" placement="right">
         <IconButton
           :icon="Settings"

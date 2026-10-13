@@ -28,13 +28,14 @@ use demi_web_api_protocol::ids::{ConversationId, UserId};
 use super::AppState;
 use super::body::{JsonBody, page_socket};
 use super::error::ApiError;
-use super::gate::AuthUser;
+use super::gate::{AuthUser, CurrentSession};
 use super::hosts;
 use super::page_client::PageClient;
 use super::query::QueryParams;
 use demi_backend_user_shard::shard::page_socket::{PageSocketKind, PageSocketOrigin};
 use demi_backend_user_shard::conversation::ForkRefusal;
 use demi_backend_user_shard::services::Services;
+use demi_backend_user_shard::sync::ChannelSession;
 
 fn not_found() -> ApiError {
     ApiError::new(
@@ -345,6 +346,7 @@ pub(super) async fn read(
 pub(super) async fn stream(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    session: CurrentSession,
     Path(id): Path<String>,
     client: PageClient,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
@@ -368,11 +370,16 @@ pub(super) async fn stream(
         conversation: Some(record.id.clone()),
         ..client.origin(PageSocketKind::Conversation, user.id.clone())
     };
+    let session = ChannelSession {
+        token: session.token,
+        user: user.clone(),
+        expires_at: session.expires_at,
+    };
     Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
         let adopted = state
             .shards
             .of(&user.id)
-            .adopt(move |shard| shard.serve_conversation_socket(record, socket, origin))
+            .adopt(move |shard| shard.serve_conversation_socket(record, socket, origin, session))
             .await;
         // A shard that is closing takes no socket: dropping it closes it.
         if adopted.is_err() {

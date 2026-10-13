@@ -13,3 +13,4 @@ pub mod passwords;
 pub mod sessions;
 pub mod settings;
 pub mod subagents;
+pub mod user_agent;

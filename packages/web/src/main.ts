@@ -26,6 +26,7 @@ import { useSession } from './auth/session'
 import ChatPage from './conversation/ChatPage.vue'
 import LoginPage from './auth/LoginPage.vue'
 import SetupPage from './auth/SetupPage.vue'
+import HandoffPage from './auth/HandoffPage.vue'
 import App from './App.vue'
 import { SETTINGS_ROUTE } from './settings/address'
 import { returnAddress, signInAddress } from './auth/return'
@@ -57,6 +58,11 @@ const router = createRouter({
     {
       path: '/setup',
       component: SetupPage,
+    },
+    // A phone's camera opens a handoff code here, signed in or not.
+    {
+      path: '/handoff',
+      component: HandoffPage,
     },
     {
       path: '/:pathMatch(.*)*',
@@ -147,6 +153,10 @@ router.beforeEach(async (to) => {
   // Each session state has its pages: setup while no account exists, sign-in
   // without a session, and the product with one.
   const status = session.current.status
+  // The handoff page signs the phone in, in whatever state it was.
+  if (to.path === '/handoff') {
+    return true
+  }
   if (status === 'failed') {
     // The address stays for the retry; the page shows the failure over it.
     return true

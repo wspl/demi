@@ -17,6 +17,7 @@ import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
+import HandoffDialog from '@demicodes/web-ui/auth/HandoffDialog.vue'
 import SearchDialog from '@demicodes/web-ui/search/SearchDialog.vue'
 import type { SearchRow } from '@demicodes/web-ui/search/search'
 import { searchConversations } from './api/search'
@@ -37,6 +38,7 @@ import { providePageHost } from '@demicodes/web-ui/plugins/page'
 import { productPageHost } from './plugins/host'
 import { useProduct } from './state/product'
 import { usePasskeySignals } from './auth/passkeys'
+import { useSessions } from './auth/handoff'
 provideBlobUrl(blobUrl)
 /** How many recent conversations the search window lists before the user types. */
 const RECENT_CONVERSATIONS = 20
@@ -102,6 +104,10 @@ const pageRoute = computed(() =>
 const { open, openFound, create } = useConversationNavigation()
 /** The search window (`product.md` § Finding a conversation). */
 const searchOpen = ref(false)
+/** Sign In on Your Phone (`product.md` § User system): its code opens the page the window shows. */
+const handoffOpen = ref(false)
+const sessions = useSessions()
+const handoffHost = computed(() => sessions.handoffHost(() => pageRoute.value.fullPath))
 /** What the search window lists before the user types: the conversations most recently active. */
 const recentConversations = computed<SearchRow[]>(() =>
   conversations.items
@@ -281,6 +287,7 @@ useAppShortcuts(
           @archive="conversations.archive"
           @delete="conversations.remove"
           @open-settings="settingsAddress.open"
+          @sign-in-on-phone="handoffOpen = true"
           @sign-out="signOut"
         />
       </template>
@@ -298,6 +305,13 @@ useAppShortcuts(
         <!-- Both stay mounted and open by state, so closing plays the dialog's leave. -->
         <SettingsDialog @sign-out="signOut" />
         <TargetDialog />
+        <HandoffDialog
+          :is-open="handoffOpen"
+          :overlay-store="appOverlayStore"
+          :host="handoffHost"
+          :email="resources.email"
+          @close="handoffOpen = false"
+        />
         <SearchDialog
           :is-open="searchOpen"
           :overlay-store="appOverlayStore"

@@ -138,10 +138,18 @@ async fn the_snapshot_is_the_users_product_state() {
     let (backend, master) = harness.start_set_up().await;
     let mut page = backend.sync(&master).await;
     let state = page.snapshot().await;
+    // The page's own session, the one setup signed in, from a client that
+    // names no browser.
+    let [session] = state.sessions.as_slice() else {
+        panic!("one session: {:?}", state.sessions);
+    };
+    assert!(session.current);
+    assert_eq!((session.name.as_str(), &session.handoff_id), ("Web Browser", &None));
     assert_eq!(
         state,
         ProductState {
             user: master.user.clone(),
+            sessions: state.sessions.clone(),
             mode: InstanceMode::Shared,
             preferences: Preferences::default(),
             providers: Vec::new(),
@@ -642,15 +650,16 @@ async fn the_channel_opens_for_a_signed_in_page_of_the_product_and_ends_with_its
     // A channel never renews its session, not even as it opens: the
     // tablet's page opens 20 days after its sign-in, when a request would
     // renew the session, and closes as the session ends 30 days after the
-    // sign-in. The laptop's requests renew the laptop's.
+    // sign-in. The laptop's requests renew the laptop's, and the sessions
+    // they and the sign-out change come between the themes.
     harness.clock.advance(days(20));
     theme(&backend, &laptop, "dark").await;
-    assert!(themed(&laptop_page.next().await, Theme::Dark));
+    laptop_page.until(|event| themed(event, Theme::Dark)).await;
     let mut tablet_page = backend.sync(&tablet).await;
     tablet_page.snapshot().await;
     harness.clock.advance(days(11));
     theme(&backend, &laptop, "light").await;
-    assert!(themed(&laptop_page.next().await, Theme::Light));
+    laptop_page.until(|event| themed(event, Theme::Light)).await;
     assert_eq!(
         tablet_page.closed().await,
         (4002, "session_ended".to_owned())

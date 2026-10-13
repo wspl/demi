@@ -4,6 +4,9 @@ import { countOf } from '@demicodes/utils'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ChangeEmailDialog, { type ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import ChangePasswordDialog, { type ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
+import HandoffDialog from '@demicodes/web-ui/auth/HandoffDialog.vue'
+import Button from '@demicodes/web-ui/ui/Button.vue'
+import { galleryHandoff, type HandoffSpecimenStart } from '../fixtures/handoff'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
@@ -84,6 +87,24 @@ function openFound(close: () => void, row: SearchRow): void {
   finish(close, row.match ? `Open “${row.title}” at the Matching Message` : `Open “${row.title}”`)
 }
 
+/**
+ * Sign In on Your Phone, opened on each of its steps; Open again starts the
+ * specimen over, on its step.
+ */
+const handoffSpecimens = ref(
+  (
+    [
+      ['Confirm · password, or Use Passkey; wrong is refused', 'verify'],
+      ['Code · Sign In on the Phone stands in for its camera', 'code'],
+      ['Expired · Show New Code asks for another', 'expired'],
+      ['Signed in · the dialog closes a moment later', 'signedIn'],
+    ] as [string, HandoffSpecimenStart][]
+  ).map(([variant, start]) => ({ variant, start, ...galleryHandoff(start) })),
+)
+function restartHandoff(index: number): void {
+  const specimen = handoffSpecimens.value[index]!
+  handoffSpecimens.value[index] = { ...specimen, ...galleryHandoff(specimen.start) }
+}
 const emailPhases: { variant: string; phase: ChangeEmailPhase }[] = [
   { variant: 'form', phase: { kind: 'form', currentEmail: 'zan@example.com' } },
   { variant: 'form · busy', phase: { kind: 'form', currentEmail: 'zan@example.com', busy: true } },
@@ -285,6 +306,27 @@ const resetPhases: {
     </p>
 
     <template v-if="view === 'account'">
+      <GallerySection
+        title="Sign In on Your Phone"
+        note="The phone mark at the sidebar’s foot opens it. The backend decides whether the user confirms it is them first: with the password, or a passkey where the account has one, which holds five minutes. The code is a QR code of the backend’s address with the page the window shows; it lasts ten minutes, and an expired one offers Show New Code. Once the phone signs in, the dialog names its browser and closes by itself."
+      >
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+          <GallerySpecimen v-for="(item, index) in handoffSpecimens" :key="item.variant" wide :variant="item.variant">
+            <div class="flex flex-col items-start gap-3">
+              <GalleryDialogFrame v-slot="{ open, close }" @reopen="restartHandoff(index)">
+                <HandoffDialog
+                  :is-open="open"
+                  :overlay-store="appOverlayStore"
+                  :host="item.host"
+                  email="zan@example.com"
+                  @close="close"
+                />
+              </GalleryDialogFrame>
+              <Button v-if="item.start === 'code'" size="sm" @click="item.phoneSignsIn()">Sign In on the Phone</Button>
+            </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
       <GallerySection
         title="Change Email"
         note="The new address and the current password, then the code that proves the address is reachable."

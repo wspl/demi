@@ -3322,6 +3322,8 @@ onBeforeUnmount(() => {
                   @archive="(ids) => (panelConversations = panelConversations.filter((conversation) => !ids.includes(conversation.id)))"
                   @delete="(ids) => (panelConversations = panelConversations.filter((conversation) => !ids.includes(conversation.id)))"
                   @open-settings="(section) => productWould(section ? `Open ${section} Settings` : 'Open Settings')"
+                  @sign-in-on-phone="productWould('Open Sign In on Your Phone')"
+                  @sign-out="productWould('Sign Out')"
                 />
               </template>
               <ChatSession

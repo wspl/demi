@@ -18,7 +18,7 @@ import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import type { WebState } from '@demicodes/plugin-web'
 import { commitOf } from './plugins'
 import { createCredentialState } from './credentials'
-import type { SettingsPasskey } from '@demicodes/web-ui/settings/types'
+import type { SettingsPasskey, SettingsSession } from '@demicodes/web-ui/settings/types'
 
 const DAY_MS = 24 * 3_600_000
 
@@ -28,6 +28,20 @@ function galleryPasskeys(): SettingsPasskey[] {
   return [
     { id: 'pk-icloud', name: 'iCloud Keychain', synced: true, createdAt: ago(41 * DAY_MS), lastUsedAt: ago(2 * 3_600_000) },
     { id: 'pk-windows', name: 'Chrome on Windows', synced: false, createdAt: ago(9 * DAY_MS), lastUsedAt: null },
+  ]
+}
+
+/**
+ * The browsers signed in to the account, newest first: a phone a code
+ * signed in an hour ago, this Mac's Safari, and a Chrome on a Windows PC
+ * last active three days ago.
+ */
+export function gallerySessions(): SettingsSession[] {
+  const ago = (ms: number) => new Date(Date.now() - ms).toISOString()
+  return [
+    { id: 'session-phone', name: 'Safari on iPhone', createdAt: ago(3_600_000), lastActiveAt: ago(3_600_000), current: false },
+    { id: 'session-mac', name: 'Safari on macOS', createdAt: ago(12 * DAY_MS), lastActiveAt: ago(60_000), current: true },
+    { id: 'session-windows', name: 'Chrome on Windows', createdAt: ago(20 * DAY_MS), lastActiveAt: ago(3 * DAY_MS), current: false },
   ]
 }
 import { createSubagentState } from './subagent-profiles'
@@ -779,6 +793,7 @@ export function createSettingsState() {
       email: 'zan@example.com',
       passwordChanged: '3 months ago',
       passkeys: galleryPasskeys(),
+      sessions: gallerySessions(),
     },
     providers: mockProviders(),
     selectedProviderId: null as string | null,
