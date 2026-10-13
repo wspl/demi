@@ -44,7 +44,6 @@ test('a reply asks which of its code paths are files once it is complete, all in
   const asked: (readonly string[])[] = []
   const files: MessageFiles = {
     cwd: '/work',
-    imageUrl: (path) => path,
     open: () => {},
     codeFiles: (paths) => {
       asked.push(paths)

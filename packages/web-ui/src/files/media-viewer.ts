@@ -1,4 +1,6 @@
-import { computed, inject, provide, shallowRef, type ComputedRef, type InjectionKey, type ShallowRef } from 'vue'
+import { computed, inject, provide, ref, shallowRef, watch, type ComputedRef, type InjectionKey, type Ref, type ShallowRef } from 'vue'
+import { hostImage } from './host-image'
+import { useShowing } from './showing'
 import {
   windowRectAround,
   windowSizeFor,
@@ -6,19 +8,68 @@ import {
   type WindowRect,
 } from '../ui/floating-window'
 import type { PixelSize } from './thumbnail'
+import type { FileContents } from './types'
+
+/** A Host file a medium shows, which the viewer shows at the version the page keeps of it and follows while it shows it. */
+export interface MediumFile {
+  path: string
+  contents: FileContents
+}
 
 /**
  * An image or a video shown large over the page: what it is, where it loads
- * from, what it is called, and what the page knows of it before it loads.
+ * from, its address or, for a Host image, its file, what it is called, and
+ * what the page knows of it before it loads.
  */
-export interface ShownMedium {
+export type ShownMedium = {
   kind: 'image' | 'video'
-  src: string
   name: string
   /** Its pixel size, when its reference or its thumbnail knows it. */
   size?: PixelSize | null
   /** The transcript row it stands in, which tells apart the same picture standing in two rows (`transcriptRowOf`). */
   row?: string
+} & ({ src: string; file?: never } | { file: MediumFile; src?: never })
+
+/** What tells a medium from another: its address, or a Host image's file, whatever version shows. */
+export function mediumKey(medium: ShownMedium): string {
+  return medium.file ? `file:${medium.file.path}` : medium.src
+}
+
+/**
+ * Where the viewer loads `medium` from while it is `open`: its address, or
+ * for a Host image the version of its file the page keeps, shown from the
+ * kept files while the viewer is open, so it is the picture the message
+ * shows and the file's next version replaces it in place
+ * (`file-previews.md` § Files named in messages). `gone` says a Host image's
+ * file is not there. Closed, the last stays for the window's leave.
+ */
+export function useMediumSource(
+  medium: () => ShownMedium | null,
+  open: () => boolean,
+): { src: Readonly<Ref<string>>; gone: Readonly<Ref<boolean>> } {
+  const file = useShowing(
+    () => (open() ? medium()?.file?.contents : null),
+    () => medium()?.file?.path,
+    (contents, path) => contents.showDescription(path),
+  )
+  const src = ref('')
+  const gone = ref(false)
+  watch(medium, (shown) => {
+    src.value = shown?.src ?? ''
+    gone.value = false
+  }, { immediate: true })
+  watch(() => {
+    const shownFile = medium()?.file
+    return shownFile && open() ? hostImage(file.entry.value, shownFile.contents, shownFile.path) : null
+  }, (image) => {
+    // Closed, or a medium that is no file: what shows stays.
+    if (image === null)
+      return
+    if (image.state === 'shown')
+      src.value = image.src
+    gone.value = image.state === 'none'
+  }, { immediate: true })
+  return { src, gone }
 }
 
 /** The row of the transcript the element stands in, as a list marks its rows; none outside a transcript. */
@@ -104,10 +155,12 @@ export function createMediaViewer(where: () => ViewerPlace): MediaViewerState {
    * not there.
    */
   function locate(media: readonly ShownMedium[], medium: ShownMedium, last: number): number {
-    if (media[last]?.src === medium.src)
+    const key = mediumKey(medium)
+    const at = media[last]
+    if (at && mediumKey(at) === key)
       return last
-    const inRow = medium.row === undefined ? -1 : media.findIndex((each) => each.src === medium.src && each.row === medium.row)
-    return inRow >= 0 ? inRow : media.findIndex((each) => each.src === medium.src)
+    const inRow = medium.row === undefined ? -1 : media.findIndex((each) => mediumKey(each) === key && each.row === medium.row)
+    return inRow >= 0 ? inRow : media.findIndex((each) => mediumKey(each) === key)
   }
 
   const position = computed<ViewerPosition | null>(() => {
@@ -122,7 +175,7 @@ export function createMediaViewer(where: () => ViewerPlace): MediaViewerState {
   /** Shows `medium` in the window, standing at `at` of the transcript's media, if it is known. */
   function open(medium: ShownMedium, among: MediaSequence | null, at: number): void {
     // The same medium again leaves the window as the user left it.
-    if (shown.value?.src !== medium.src || !geometry.value) {
+    if (!shown.value || mediumKey(shown.value) !== mediumKey(medium) || !geometry.value) {
       const size = medium.size ?? null
       geometry.value = { rect: sized(size), awaitsSize: size === null }
     }
