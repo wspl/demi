@@ -9,6 +9,7 @@
 use crate::job_directories::{JobDirectories, JobDirectory, StreamLengths};
 use crate::job_media::{Arrival, JobMedia, MEDIA_DIRECTORY};
 use crate::kept_output::KeptOutput;
+use crate::scratch::{SCRATCH_ENV, Scratch};
 use crate::{
     commands::{
         contexts::{self, ContextPaths, ExecutionContext, Installation},
@@ -74,6 +75,8 @@ pub struct JobConfig {
     pub output: mpsc::Sender<wire::Frame>,
     /// Where each job gets its own directory.
     pub directories: Arc<JobDirectories>,
+    /// Where each conversation has its scratch directory.
+    pub scratch: Scratch,
     pub pipes: PipeClient,
     /// Runs the jobs' scripts.
     pub shell: Arc<dyn JobShell>,
@@ -123,6 +126,9 @@ struct Controls {
 pub enum TaskCommand {
     Shell {
         script: String,
+        /// The conversation the job belongs to, whose scratch directory
+        /// `DEMI_SCRATCH` names.
+        conversation: String,
         stdin: Option<wire::PipeRef>,
         stdout: Option<wire::PipeRef>,
         /// The manifest, command context and viewable media types of a job
@@ -446,6 +452,9 @@ impl JobConfig {
         } = controls;
         let id = spec.id;
         let mut env = spec.env;
+        // Where the job's own work is, which its report never marks
+        // temporary (`edit-tracking.md` § Temporary files).
+        let working = spec.cwd.clone();
         let mut job = None;
         // A job's execution context, held until the job has ended.
         let mut execution = None;
@@ -489,6 +498,7 @@ impl JobConfig {
             }
             TaskCommand::Shell {
                 script,
+                conversation,
                 stdin,
                 stdout,
                 commands,
@@ -501,6 +511,8 @@ impl JobConfig {
                     running,
                 } = self.directories.create(&id, &cancel).await?;
                 env.insert(JOB_ID_ENV.into(), id.clone());
+                let scratch = self.scratch.create(&conversation).await?;
+                env.insert(SCRATCH_ENV.into(), scratch.to_string_lossy().into_owned());
                 let edit_context = demi_command_protocol::EditContext {
                     directory: path.join("changes").to_string_lossy().into_owned(),
                     lock: self
@@ -814,8 +826,9 @@ impl JobConfig {
             // then lasts until the backend releases it.
             Some((logs, recorder, _running)) => {
                 let output = logs.lengths();
+                let scratch = self.scratch.clone();
                 let edits = tokio::task::spawn_blocking(move || {
-                    crate::edit_report::finish(recorder.as_ref())
+                    crate::edit_report::finish(recorder.as_ref(), &scratch, &working)
                 })
                 .await
                 .map_err(io::Error::other)?;

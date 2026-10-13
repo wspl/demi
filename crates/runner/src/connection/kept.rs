@@ -80,6 +80,7 @@ impl Kept {
         let jobs = JobTable::new(JobConfig {
             output: jobs_output,
             directories: directories.clone(),
+            scratch: registered.scratch.clone(),
             pipes: registered.pipes.clone(),
             shell: registered.shell.clone(),
             commands: Some(Commands {

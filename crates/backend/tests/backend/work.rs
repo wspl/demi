@@ -355,9 +355,10 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
     let switches = context.matches(SWITCHED).count();
     assert!(context.contains("[Execution target switched]"), "{context}");
     let primary = format!(
-        " ({}). Shells start in {}. {}\\n[Execution target switched]",
+        " ({}). Shells start in {}. {} {}\\n[Execution target switched]",
         std::env::consts::ARCH,
         on_beta.display(),
+        crate::support::SCRATCH,
         crate::support::device_utilities()
     );
     assert!(
