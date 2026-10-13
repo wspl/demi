@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RequestIdLine from '../ui/RequestIdLine.vue'
 import { computed, markRaw, nextTick, onBeforeUnmount, reactive, ref, shallowReactive, watch } from 'vue'
 import { Download, RefreshCw, Upload } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
@@ -517,6 +518,11 @@ defineExpose({
         >
           <span>Could not list the workspace.</span>
           <span class="text-[11px] text-fg-faint">{{ rootFailure.message }}</span>
+          <RequestIdLine
+            v-if="rootFailure.requestId"
+            class="text-fg-faint"
+            :request-id="rootFailure.requestId"
+          />
         </div>
       </template>
     </Tree>

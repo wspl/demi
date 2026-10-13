@@ -17,7 +17,7 @@ import { PageScope, settingsPage, withPluginSections } from '@demicodes/web-ui/p
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { reportError, shownError } from '@demicodes/web-ui/infra/errors'
+import { formError, reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   emailChangeStartedSchema,
@@ -42,6 +42,20 @@ import ProvidersPanel from './ProvidersPanel.vue'
 import InstructionsPanel from './InstructionsPanel.vue'
 import SubagentsPanel from './SubagentsPanel.vue'
 import CredentialsPanel from './CredentialsPanel.vue'
+
+/**
+ * The refusals the user corrects in the form they filled, in the page's
+ * words (`web-api.md` § Resource index): they name no request.
+ */
+const PASSWORD_CORRECTIONS = { invalid_credentials: 'That is not your current password.' } as const
+const EMAIL_CORRECTIONS = {
+  ...PASSWORD_CORRECTIONS,
+  email_taken: 'That email address is already in use.',
+} as const
+const CODE_CORRECTIONS = {
+  invalid_code: 'That code is not right, or it expired. Check the newest message.',
+  email_taken: 'That email address is already in use.',
+} as const
 
 const emit = defineEmits<{ signOut: [] }>()
 const resources = useResources()
@@ -198,7 +212,7 @@ async function submitEmail(email: string, password: string): Promise<void> {
       emailPhase.value = {
         ...previous,
         busy: false,
-        error: shownError(error),
+        error: formError(error, EMAIL_CORRECTIONS),
       }
     }
   } finally {
@@ -261,7 +275,7 @@ async function verifyEmail(code: string): Promise<void> {
       emailPhase.value = {
         ...previous,
         busy: false,
-        error: shownError(error),
+        error: formError(error, CODE_CORRECTIONS),
       }
     }
   } finally {
@@ -311,7 +325,7 @@ async function submitPassword(current: string, next: string): Promise<void> {
       }
       passwordPhase.value = {
         kind: 'form',
-        error: shownError(error),
+        error: formError(error, PASSWORD_CORRECTIONS),
       }
     }
   } finally {

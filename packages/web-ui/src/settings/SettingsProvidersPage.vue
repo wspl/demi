@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { shownError, type ShownError } from '../infra/errors'
+import { formError, type ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
 import { countUnlessOne, upperFirst } from '@demicodes/utils'
 import { showToast } from '../infra/toast'
@@ -437,7 +437,8 @@ async function saveModel(draft: SettingsModelDraft) {
     editor.status = { kind: 'idle' }
     editor.open = false
   } catch (error) {
-    editor.status = { kind: 'failed', ...shownError(error) }
+    // A refused field of the model is the user's to correct in the dialog.
+    editor.status = { kind: 'failed', ...formError(error, { invalid_body: null }) }
   }
 }
 function accountPending(

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { requestFailure } from '../fixtures/request-failures'
+import { correction, requestFailure } from '../fixtures/request-failures'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { Layers, Play } from '@lucide/vue'
@@ -237,8 +237,8 @@ const permissionSpecimens = reactive<
   { variant: 'credential · one hidden field, an hour proposed', fixture: () => [googleKeyRequest()], requests: [googleKeyRequest()], error: null, refusal: null },
   { variant: 'credential · a visible and a hidden field, 30 days proposed', fixture: () => [signInRequest()], requests: [signInRequest()], error: null, refusal: null },
   { variant: 'credential · renewal of a saved one', fixture: () => [renewalRequest()], requests: [renewalRequest()], error: null, refusal: null },
-  { variant: 'credential · the values refused', fixture: () => [googleKeyRequest()], requests: [googleKeyRequest()], error: requestFailure(INVALID_ANSWER), refusal: requestFailure(INVALID_ANSWER) },
-  { variant: 'credential · other fields than the saved ones', fixture: () => [renewalRequest()], requests: [renewalRequest()], error: requestFailure(FIELDS_DIFFER), refusal: requestFailure(FIELDS_DIFFER) },
+  { variant: 'credential · the values refused', fixture: () => [googleKeyRequest()], requests: [googleKeyRequest()], error: correction(INVALID_ANSWER), refusal: correction(INVALID_ANSWER) },
+  { variant: 'credential · other fields than the saved ones', fixture: () => [renewalRequest()], requests: [renewalRequest()], error: correction(FIELDS_DIFFER), refusal: correction(FIELDS_DIFFER) },
   { variant: 'allowance', fixture: () => [allowanceRequest()], requests: [allowanceRequest()], error: null, refusal: null },
   { variant: 'allowance · the credential was removed', fixture: () => [removedAllowanceRequest()], requests: [removedAllowanceRequest()], error: null, refusal: null },
   {

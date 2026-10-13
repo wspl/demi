@@ -82,6 +82,38 @@ function detailOf(error: unknown): string {
   return 'detail' in error && typeof error.detail === 'string' ? error.detail : error.stack ?? ''
 }
 
+/**
+ * `error` as the form the user filled shows it. A refusal whose `code` is
+ * one of `corrections`' is one the user corrects there, such as a wrong
+ * current password or an address already taken: it names no request, since
+ * nothing about it needs tracing (`backend.md` § Request IDs and the server
+ * log), and says the words `corrections` gives its code, or its own when
+ * that is null. Any other failure names its request.
+ */
+export function formError(
+  error: unknown,
+  corrections: Readonly<Record<string, SentenceText | null | undefined>>,
+): ShownError {
+  const code = error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : null
+  if (code !== null && code in corrections) {
+    return { message: corrections[code] ?? (error instanceof Error ? error.message : String(error)), requestId: null }
+  }
+  return shownError(error)
+}
+
+/**
+ * An address's query in a report's message: after the `?` of an absolute
+ * URL or a path, up to the next space, quote or fragment. A failure's
+ * message can quote the address it asked, whose query can carry a file's
+ * path or a token; the report keeps the address's path alone.
+ */
+const QUERY = /((?:[a-z][a-z0-9+.-]*:\/\/|(?<![\w.])\/)[^\s?#"'`]*)\?[^\s#"'`]*/gi
+
+/** `text` with the query of every address in it removed. */
+function withoutQueries(text: string): string {
+  return text.replace(QUERY, '$1')
+}
+
 /** The backend's limits on a report's fields, in characters. */
 const REPORT_LIMITS = { title: 200, message: 2000, detail: 16000 } as const
 
@@ -93,7 +125,7 @@ async function sendReport(report: PageErrorReport): Promise<string | null> {
   try {
     return await reporter({
       title: report.title.slice(0, REPORT_LIMITS.title),
-      message: report.message.slice(0, REPORT_LIMITS.message),
+      message: withoutQueries(report.message).slice(0, REPORT_LIMITS.message),
       detail: report.detail.slice(0, REPORT_LIMITS.detail),
     })
   } catch (error) {

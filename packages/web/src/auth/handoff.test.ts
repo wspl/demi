@@ -54,7 +54,7 @@ test('a code for the page the user is on asks to confirm first when the backend 
     ],
   })
   expect(await makeHandoffCode('/chat/7f3a')).toEqual({ kind: 'verify' })
-  expect(await verifyWithPassword('wrong')).toEqual({ kind: 'wrongPassword', message: 'Wrong password' })
+  expect(await verifyWithPassword('wrong')).toEqual({ kind: 'wrongPassword', message: 'That is not your password.' })
   expect(await verifyWithPassword('right')).toEqual({ kind: 'verified' })
   // The code expires ten minutes after its answer arrives, on the page's clock.
   const before = Date.now()
