@@ -44,7 +44,9 @@ shows as any edit does.
   `%TEMP%` on Windows, as the operating system defines them, as Time Machine
   and Spotlight pass them over, and the conversation's scratch directory
   ([Scratch directory](runner.md#scratch-directory)), where the agent keeps
-  what only it needs. A path inside the working directory of the agent that
+  what only it needs. A path in the scratch directory is temporary first of all, even
+  inside the working directory, as under `~`, which holds `DEMI_HOME`;
+  otherwise a path inside the working directory of the agent that
   wrote it is never temporary, even when that directory is itself in a
   temporary directory, as a development runner's can be: the agent's own
   work always shows. The runner records its edits as any others,
