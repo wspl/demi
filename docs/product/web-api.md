@@ -296,10 +296,12 @@ remove itself
 closes its connection and removes its conversation attachments.
 Pairing accepts a live code and returns the claimed device; expired/unknown codes
 return 404 and excessive attempts 429. The installation routes contain no
-credential and do not grant device access. The install command the page shows
-fetches the installer from the origin of the state's `publicUrl`, not from the
-page's own origin, which in development is Vite's, and lets `curl` use only
-that URL's scheme, TLS 1.2 or newer for `https`; a development backend serves
+credential and do not grant device access. The install commands, which the backend composes and the state's
+`installCommands` carries for `linux`, `macos` and `windows`, and which the
+page and `demi host install-command` show as they are, fetch the installer
+from the origin of `publicUrl`, not from the page's own origin, which in
+development is Vite's, and let `curl` use only that URL's scheme, TLS 1.2 or
+newer for `https`; a development backend serves
 plain `http`. The runner receives a pending code; the signed-in page claims
 it through `POST /api/devices/claim`. Device tokens are delivered only to the
 runner.
@@ -1298,7 +1300,9 @@ archived conversations, the Cloud's state, `subagents`, the user's
 [personal instructions](#instructions), `plugins`, the plugin list, and
 `pluginStates`, the user state of each plugin the user has on that declares
 one, by plugin id, `publicUrl`,
-the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`), `stunUrls`, the
+the URL runners connect to (`DEMI_BACKEND_PUBLIC_URL`), `installCommands`,
+the commands that install the runner on each system
+([Workspaces, devices, and attached hosts](#workspaces-devices-and-attached-hosts)), `stunUrls`, the
 STUN servers a page's direct channel asks (`DEMI_STUN_URLS`), `runnerRelease`,
 the runner release this backend serves, which a device's page compares with
 the device's `runnerVersion` to say whether it is up to date, `webBuild`, the
