@@ -79,7 +79,13 @@ pub enum ClientFrame {
     },
     Retry {},
     Resume {},
-    Compact {},
+    /// Compact the context of `node`, the root when absent: a subagent's
+    /// context card compacts that child.
+    Compact {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        node: Option<NodeId>,
+    },
     /// Write stdin to a running command.
     ShellWrite {
         #[garde(skip)]
@@ -151,7 +157,7 @@ impl ClientFrame {
             Self::AbortSubagent { .. } => ClientFrameKind::AbortSubagent,
             Self::Retry {} => ClientFrameKind::Retry,
             Self::Resume {} => ClientFrameKind::Resume,
-            Self::Compact {} => ClientFrameKind::Compact,
+            Self::Compact { .. } => ClientFrameKind::Compact,
             Self::ShellWrite { .. } => ClientFrameKind::ShellWrite,
             Self::ShellAbort { .. } => ClientFrameKind::ShellAbort,
             Self::SyncTranscript { .. } => ClientFrameKind::SyncTranscript,

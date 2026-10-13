@@ -2,6 +2,7 @@ import type { AgentMessage, Block, JobModel } from '@demicodes/protocol'
 import type { AgentRun, SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import { demoModel, inRun, screenshotTool, shellView, thinkingText } from './blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
+import { usageAt } from './catalog'
 import { ago } from './time'
 
 function user(id: string, createdAt: string, text: string): Block {
@@ -75,9 +76,9 @@ function shell(
   }
 }
 
-const OPUS: JobModel = { provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false }
-const SONNET: JobModel = { provider: 'Anthropic', model: 'Claude Sonnet 5.5', effort: 'medium', fast: false }
-const HAIKU: JobModel = { provider: 'Anthropic', model: 'Claude Haiku 5', effort: 'low', fast: false }
+const OPUS: JobModel = { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false }
+const SONNET: JobModel = { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Sonnet 5.5', effort: 'medium', fast: false }
+const HAIKU: JobModel = { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Haiku 5', effort: 'low', fast: false }
 
 /**
  * What a gallery child runs on (`subagents.md` § What an agent runs on): its
@@ -198,6 +199,7 @@ export function workSubagent(): SubagentRecord {
     ...runsOn('research', SONNET),
     phase: 'running',
     sessionPhase: 'running',
+    contextUsage: usageAt(0.34),
     startedAt: ago(60_000),
     failures: {},
     pendingCalls: [],
@@ -235,6 +237,7 @@ export function gallerySubagents(): SubagentRecord[] {
       // Its turn ended while the search it started runs on: it shows no
       // Requesting row (`runtime.md` § Frame protocol).
       sessionPhase: 'idle',
+      contextUsage: usageAt(0.58),
       startedAt: ago(134_000),
       failures: {},
       pendingCalls: [],
@@ -272,6 +275,7 @@ export function gallerySubagents(): SubagentRecord[] {
       ...runsOn('frontend', { ...SONNET, effort: 'high', fast: true }, { forkedFrom: 1 }),
       phase: 'running',
       sessionPhase: 'running',
+      contextUsage: usageAt(0.22),
       startedAt: ago(48_000),
       failures: {},
       pendingCalls: [],
@@ -314,6 +318,7 @@ export function gallerySubagents(): SubagentRecord[] {
       ...runsOn('quick', { ...HAIKU, effort: 'off' }),
       phase: 'running',
       sessionPhase: 'running',
+      contextUsage: usageAt(0.41),
       startedAt: ago(12_000),
       failures: {},
       pendingCalls: [],
@@ -336,6 +341,7 @@ export function gallerySubagents(): SubagentRecord[] {
       ...runsOn(null, OPUS, { round: 2 }),
       phase: 'completed',
       sessionPhase: 'idle',
+      contextUsage: usageAt(0.47),
       startedAt: ago(420_000),
       endedAt: ago(240_000),
       failures: {},
@@ -372,6 +378,7 @@ export function gallerySubagents(): SubagentRecord[] {
       ...runsOn('browser', SONNET),
       phase: 'error',
       sessionPhase: 'idle',
+      contextUsage: usageAt(0.12),
       startedAt: ago(300_000),
       endedAt: ago(270_000),
       failures: {},
@@ -412,6 +419,7 @@ export function gallerySubagents(): SubagentRecord[] {
       ...runsOn('review', { ...OPUS, effort: 'medium' }),
       phase: 'aborted',
       sessionPhase: 'idle',
+      contextUsage: usageAt(0.09),
       startedAt: ago(180_000),
       endedAt: ago(120_000),
       failures: {},
@@ -470,6 +478,7 @@ export function briefSubagent(): SubagentRecord {
     ...runsOn('research', SONNET),
     phase: 'running',
     sessionPhase: 'running',
+    contextUsage: usageAt(0.27),
     startedAt: ago(30_000),
     failures: {},
     pendingCalls: [],

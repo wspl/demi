@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { Bot, CircleStop, X } from '@lucide/vue'
+import type { InstructionEntry } from '@demicodes/protocol'
 import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
@@ -12,9 +13,11 @@ import TabItem from './TabItem.vue'
 import AgentMark from './AgentMark.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { provideLiveCalls } from './live-calls'
-import { subagentPanelTabs, type SubagentRecord } from './subagents'
+import { agentCompaction, subagentPanelTabs, type SubagentRecord } from './subagents'
 import { callTerminal, type TerminalRecord } from './terminals'
-import { shownWindow, windowEdges, type TranscriptReveal } from './history'
+import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
+import type { UsageLimits } from './context-usage'
+import { loadedInstructions } from './instructions'
 
 const props = withDefaults(
   defineProps<{
@@ -23,6 +26,8 @@ const props = withDefaults(
     terminals?: readonly TerminalRecord[]
     /** A block of a child's transcript to bring into view and mark for a moment, on that child's tab. */
     reveal?: TranscriptReveal | null
+    /** The usage limits of the account a provider entry runs on, which a child's context card shows; absent, it shows none. */
+    usageLimits?: (providerId: string) => UsageLimits | null
   }>(),
   {
     terminals: () => [],
@@ -42,6 +47,12 @@ const emit = defineEmits<{
   read: [id: string, at: 'latest' | 'before']
   /** The block `reveal` names is in view. */
   revealed: []
+  /** Compact in the shown child's context card: that child's context. */
+  compactAgent: [id: string]
+  /** The child's context card asks for the usage limits of the account its entry `providerId` runs on again. */
+  refreshLimits: [providerId: string, automatic: boolean]
+  /** An instruction in the child's context card opens where it is written. */
+  openInstruction: [entry: InstructionEntry]
 }>()
 /**
  * Whether the panel is open, and the child it shows: none leaves it open,
@@ -86,6 +97,19 @@ function pick(id: string): void {
 function closePanel(): void {
   open.value = false
 }
+
+/** What the shown child's context card holds beside its usage. */
+const context = computed(() => {
+  const agent = active.value
+  if (!agent) {
+    return null
+  }
+  return {
+    ...agentCompaction(agent),
+    instructions: loadedInstructions(latestBlocks(agent.history)),
+    limits: props.usageLimits?.(agent.model.providerId) ?? null,
+  }
+})
 
 const anyRunning = computed(() => props.agents.some((agent) => agent.phase === 'running'))
 
@@ -171,7 +195,17 @@ function closeTab(id: string): void {
         @revealed="emit('revealed')"
         @read-before="emit('read', active.id, 'before')"
       />
-      <AgentStatusBar :run="active" />
+      <AgentStatusBar
+        :run="active"
+        :usage="active.contextUsage"
+        :compacting="context?.compacting ?? false"
+        :unavailable-reason="context?.unavailableReason ?? null"
+        :instructions="context?.instructions ?? []"
+        :limits="context?.limits ?? null"
+        @compact="emit('compactAgent', active.id)"
+        @open-instruction="emit('openInstruction', $event)"
+        @refresh-limits="emit('refreshLimits', active.model.providerId, $event)"
+      />
     </div>
     <RegionStatus v-else class="h-full" status="note" :icon="Bot" label="No agents are running." />
   </SessionOverlay>

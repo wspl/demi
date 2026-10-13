@@ -17,6 +17,10 @@ import GalleryComposer from './GalleryComposer.vue'
 import { productWould } from '../product-would'
 import { useLiveGalleryCommand } from '../live-command'
 import { useTurnFlow } from '../turn-flow'
+import { useAgentContext } from '../agent-context'
+
+/** What a child's context card in the Agents window shows and does beside its usage. */
+const agentContext = useAgentContext()
 
 const props = withDefaults(defineProps<{ showActivity?: boolean }>(), { showActivity: true })
 // The session runs on the gallery's scripted runtime: a message sent here gets a turn, as in the product.
@@ -118,6 +122,7 @@ function detach(id: string): void {
         @send-queued="flow.sendQueued"
         @recall-steer="flow.recallSteer"
         @interrupt-pending-steer="flow.interruptPendingSteer"
+        v-bind="agentContext.session"
       >
         <template #workspace>
           <WorkspaceDirectoryMenu

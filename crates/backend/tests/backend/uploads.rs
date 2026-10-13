@@ -771,7 +771,7 @@ pub(crate) fn png(seed: u8) -> Vec<u8> {
 
 /// The frames of a compaction pass, to the idle phase that ends it.
 async fn compact(socket: &mut Socket) -> Vec<ServerFrame> {
-    socket.send(&ClientFrame::Compact {}).await;
+    socket.send(&ClientFrame::Compact { node: None }).await;
     socket.until_idle().await
 }
 

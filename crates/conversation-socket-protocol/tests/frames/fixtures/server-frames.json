@@ -198,6 +198,7 @@
   },
   {
     "type": "context_usage",
+    "node": "agent-1",
     "usage": {
       "tokens": 23000,
       "window": 100000,
@@ -369,6 +370,7 @@
       "description": "Runs the tests",
       "profile": "research",
       "model": {
+        "providerId": "anthropic",
         "provider": "Anthropic",
         "model": "Claude Sonnet 5.5",
         "effort": "medium",
@@ -391,6 +393,7 @@
       "description": "Runs the tests",
       "profile": null,
       "model": {
+        "providerId": "anthropic",
         "provider": "Anthropic",
         "model": "Claude Opus 5.5",
         "effort": "off",
