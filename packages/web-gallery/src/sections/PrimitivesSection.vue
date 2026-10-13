@@ -49,6 +49,7 @@ const paneWidth = ref(200)
 const paneHeight = ref(96)
 
 const spinning = ref(false)
+const ringShown = ref(true)
 
 /** A clipboard that refuses, which the failure specimen of CopyButton copies to. */
 function refusedCopy(): never {
@@ -229,6 +230,50 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
           </GallerySpecimen>
           <GallerySpecimen variant="disabled · reason">
             <Button disabled :disabled-reason="IN_DEVELOPMENT">In Development</Button>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Focus Ring"
+        note="What the keyboard’s focus shows on any control, and only that: a click leaves none. A 2 px ring 1 px off its control, so it reaches 3 px past it; press Tab to see it. A box that clips (overflow other than visible, contain: paint) cuts what reaches past its edge, so inside one the ring is drawn inside its control: every overflow utility sets that for what it holds, and a box that clips by its own CSS carries focus-ring-inset. What a state selects without focusing it, such as a capsule the editor has selected, takes focus-ring-shown. bun browse finds a ring a box cuts or an element covers (demi.focusRings)."
+      >
+        <div class="specimen-row">
+          <GallerySpecimen variant="in the open">
+            <div class="flex items-center gap-2 p-1">
+              <Button @click="productWould('Saved')">Save</Button>
+              <IconButton :icon="Search" aria-label="Search" @click="productWould('Search Opened')" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="in a box that clips · overflow-hidden">
+            <div class="w-48 overflow-hidden rounded-lg border border-line">
+              <button
+                v-for="row in ['Rename', 'Duplicate', 'Archive']"
+                :key="row"
+                type="button"
+                class="flex h-8 w-full cursor-default items-center px-3 text-left text-chrome hover:bg-hover"
+                @click="productWould(`${row} Chosen`)"
+              >{{ row }}</button>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="in a box that clips by its own CSS · focus-ring-inset">
+            <div class="focus-ring-inset w-48 rounded-lg border border-line" style="overflow: clip">
+              <button
+                v-for="row in ['Rename', 'Duplicate', 'Archive']"
+                :key="row"
+                type="button"
+                class="flex h-8 w-full cursor-default items-center px-3 text-left text-chrome hover:bg-hover"
+                @click="productWould(`${row} Chosen`)"
+              >{{ row }}</button>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="selected, not focused · focus-ring-shown">
+            <button
+              type="button"
+              class="inline-flex h-6 cursor-default items-center rounded-md bg-btn px-2 text-chrome shadow-[var(--shadow-btn)]"
+              :class="ringShown ? 'focus-ring-shown' : ''"
+              @click="ringShown = !ringShown"
+            >image.png</button>
           </GallerySpecimen>
         </div>
       </GallerySection>
