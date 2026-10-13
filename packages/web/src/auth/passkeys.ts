@@ -1,6 +1,7 @@
 import { computed, watch } from 'vue'
 import { shownError } from '@demicodes/web-ui/infra/errors'
 import { defineStore } from 'pinia'
+import { SerialQueue } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import type { PasskeyAddOutcome, PasskeyOfferOutcome, SettingsPasskey } from '@demicodes/web-ui/settings/types'
 import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
@@ -94,20 +95,31 @@ export const usePasskeys = defineStore('passkeys', () => {
     })),
   )
 
-  async function rename(id: string, name: string): Promise<void> {
-    const at = product.sent()
-    try {
-      await apiRequest(`/auth/passkeys/${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        ...jsonBody({ name } satisfies PasskeyPatch),
+  /** The renames on their way, by passkey: each passkey's go one at a time, in the order the user made them. */
+  const writes = new SerialQueue()
+
+  /** Renames a passkey as the name is typed: the row shows it at once, and a refusal gives the old name back. */
+  function rename(id: string, name: string): Promise<void> {
+    const shown = product.change('passkeys', (state) => ({
+      ...state,
+      passkeys: {
+        ...state.passkeys,
+        passkeys: state.passkeys.passkeys.map((passkey) => (passkey.id === id ? { ...passkey, name } : passkey)),
+      },
+    }))
+    return writes
+      .run(id, async () => {
+        shown.send()
+        await apiRequest(`/auth/passkeys/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          ...jsonBody({ name } satisfies PasskeyPatch),
+        })
+        shown.land()
       })
-      product.answered(
-        at,
-        passkeysAnswer((current) => current.map((passkey) => (passkey.id === id ? { ...passkey, name } : passkey))),
-      )
-    } catch (error) {
-      reportError('Could Not Rename the Passkey', error, { userVisible: true })
-    }
+      .catch((error) => {
+        shown.drop()
+        reportError('Could Not Rename the Passkey', error, { userVisible: true })
+      })
   }
 
   async function remove(id: string): Promise<void> {

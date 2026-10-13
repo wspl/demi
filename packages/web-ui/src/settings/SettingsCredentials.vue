@@ -41,32 +41,32 @@ interface Editor {
   /** The credential edited; null for a new one. */
   credential: SettingsCredential | null
   open: boolean
-  status: { kind: 'idle' | 'saving' } | ({ kind: 'failed' } & ShownError)
+  /** Why the last save or delete was refused, shown in the dialog. */
+  error: ShownError | null
 }
 
 const editor = ref<Editor | null>(null)
 
 function open(credential: SettingsCredential | null): void {
-  editor.value = { credential, open: true, status: { kind: 'idle' } }
+  editor.value = { credential, open: true, error: null }
 }
 
-function failed(error: unknown): Editor['status'] {
+function failed(error: unknown): ShownError {
   // A refused name or field is the user's to correct in the dialog.
-  return { kind: 'failed', ...formError(error, { invalid_body: null, credential_name_taken: null }) }
+  return formError(error, { invalid_body: null, credential_name_taken: null })
 }
 
 async function save(draft: SettingsCredentialDraft): Promise<void> {
   const current = editor.value
-  if (!current || current.status.kind === 'saving') {
+  if (!current) {
     return
   }
-  current.status = { kind: 'saving' }
+  current.error = null
   try {
     await props.saveCredential(current.credential?.id ?? null, draft)
-    current.status = { kind: 'idle' }
     current.open = false
   } catch (error) {
-    current.status = failed(error)
+    current.error = failed(error)
   }
 }
 
@@ -74,26 +74,23 @@ async function save(draft: SettingsCredentialDraft): Promise<void> {
 const deleteOpen = ref(false)
 
 async function remove(): Promise<void> {
-  deleteOpen.value = false
   const current = editor.value
-  if (!current?.credential || current.status.kind === 'saving') {
+  if (!current?.credential) {
     return
   }
-  current.status = { kind: 'saving' }
+  current.error = null
   try {
     await props.deleteCredential(current.credential.id)
-    current.status = { kind: 'idle' }
     current.open = false
   } catch (error) {
-    current.status = failed(error)
+    current.error = failed(error)
+  } finally {
+    deleteOpen.value = false
   }
 }
 
 /** What the user has revealed, by credential: its values and the secret fields shown. */
 const revealed = ref(new Map<string, { values: Record<string, string>; shown: Set<string> }>())
-/** The credentials whose values are being read. */
-const reading = ref(new Set<string>())
-
 async function toggle(credential: SettingsCredential, field: string): Promise<void> {
   const held = revealed.value.get(credential.id)
   if (held?.shown.has(field)) {
@@ -104,19 +101,9 @@ async function toggle(credential: SettingsCredential, field: string): Promise<vo
     held.shown.add(field)
     return
   }
-  if (reading.value.has(credential.id)) {
-    return
-  }
-  reading.value = new Set(reading.value).add(credential.id)
-  try {
-    const values = await props.revealCredential(credential.id)
-    if (values) {
-      revealed.value = new Map(revealed.value).set(credential.id, { values, shown: new Set([field]) })
-    }
-  } finally {
-    const next = new Set(reading.value)
-    next.delete(credential.id)
-    reading.value = next
+  const values = await props.revealCredential(credential.id)
+  if (values) {
+    revealed.value = new Map(revealed.value).set(credential.id, { values, shown: new Set([field]) })
   }
 }
 
@@ -186,7 +173,6 @@ const empty = computed(() => props.credentials.length === 0)
                         :icon="fieldValue(credential, field) === null ? Eye : EyeOff"
                         size="xs"
                         variant="ghost"
-                        :loading="reading.has(credential.id)"
                         :aria-label="`${fieldValue(credential, field) === null ? 'Show' : 'Hide'} ${field.label}`"
                         @click.stop="toggle(credential, field.name)"
                       />
@@ -229,8 +215,7 @@ const empty = computed(() => props.credentials.length === 0)
       :is-open="editor.open"
       :overlay-store="overlayStore"
       :credential="editor.credential"
-      :pending="editor.status.kind === 'saving'"
-      :error="editor.status.kind === 'failed' ? editor.status : null"
+      :error="editor.error"
       @close="editor.open = false"
       @save="save"
       @delete="deleteOpen = true"

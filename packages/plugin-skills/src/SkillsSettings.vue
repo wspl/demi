@@ -51,7 +51,7 @@ onMounted(() => {
   })
 })
 
-/** The sources with a call in flight, whose controls wait for it. */
+/** The sources with a call in flight, whose switches wait for it. */
 const calls = pendingCalls(page.errors)
 
 /** Calls `method` for `source`, which answers nothing; a refusal says why in a toast. */
@@ -60,8 +60,8 @@ function change(
   method: string,
   params: SourceCall | SetEnabled | SetSourceEnabled,
   couldNot: HeadlineText,
-): void {
-  void calls.run(source, couldNot, () => plugin.call(method, params, z.null()))
+): Promise<void> {
+  return calls.run(source, couldNot, () => plugin.call(method, params, z.null()))
 }
 
 /** The refusals that are about the origin typed, which the dialog says under its field (`skills.md` § The page). */

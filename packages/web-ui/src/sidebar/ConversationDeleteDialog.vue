@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
+import type { Action } from '../ui/pending-action'
 
 /**
  * The question before conversations are deleted for good (`product.md`
@@ -15,11 +16,11 @@ const props = defineProps<{
   overlayStore: OverlayStore
   /** The titles of the conversations to delete; content, not UI text. */
   titles: readonly string[]
+  onDelete?: Action
 }>()
 
 const emit = defineEmits<{
   close: []
-  delete: []
 }>()
 
 const one = computed(() => props.titles.length === 1)
@@ -35,7 +36,7 @@ const title = computed(() =>
     :title="title"
     action="Delete"
     @close="emit('close')"
-    @confirm="emit('delete')"
+    @confirm="onDelete?.()"
   >
     <p v-if="one">
       The conversation is deleted with its messages and the files it holds.

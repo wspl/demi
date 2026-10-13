@@ -142,8 +142,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         return 'Could Not Update the Command-Line Tool'
       case 'account':
         switch (operation.action) {
-          case 'activate':
-            return 'Could Not Switch Accounts'
           case 'remove':
             return 'Could Not Remove the Account'
           case 'test':
@@ -177,13 +175,14 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
   }
 
+  /** Runs the operation and reports its failure; the promise ends with it, for the control that started it to show. */
   function perform(
     id: string,
     operation: SettingsProviderOperation,
     action: (signal: AbortSignal) => Promise<void>,
-  ): void {
+  ): Promise<void> {
     const current = lifetime
-    void run(id, operation, action).catch((error) => {
+    return run(id, operation, action).catch((error) => {
       if (!current.signal.aborted) {
         report(failureTitle(operation), error)
       }
@@ -354,8 +353,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     })
   }
 
-  function removeProvider(id: string): void {
-    perform(id, { kind: 'removing' }, async (signal) => {
+  function removeProvider(id: string): Promise<void> {
+    return perform(id, { kind: 'removing' }, async (signal) => {
       await apiRequest(`/providers/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         signal,
@@ -526,8 +525,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     })
   }
 
-  function installCli(provider: SettingsProviderEntry): void {
-    perform(provider.id, { kind: 'cli' }, async (signal) => {
+  function installCli(provider: SettingsProviderEntry): Promise<void> {
+    return perform(provider.id, { kind: 'cli' }, async (signal) => {
       try {
         await apiRequest(`/providers/${encodeURIComponent(provider.id)}/cli/install`, { method: 'POST', signal })
         await readCli(provider.id, false, lifetime.signal)
@@ -601,29 +600,51 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     })
   }
 
-  function accountAction(
-    provider: SettingsProviderEntry,
-    id: string,
-    action: 'activate' | 'remove',
-  ): void {
-    perform(
+  function removeAccount(provider: SettingsProviderEntry, id: string): Promise<void> {
+    return perform(
       provider.id,
-      { kind: 'account', accountId: id, action },
+      { kind: 'account', accountId: id, action: 'remove' },
       async (signal) => {
-        const base = `/providers/${encodeURIComponent(provider.id)}/accounts`
-        await apiRequest(
-          action === 'activate'
-            ? `${base}/active`
-            : `${base}/${encodeURIComponent(id)}`,
-          {
-            method: action === 'activate' ? 'PUT' : 'DELETE',
-            signal,
-            ...(action === 'activate' ? jsonBody({ credentialId: id } satisfies ActivateAccount) : {}),
-          },
-        )
+        await apiRequest(`/providers/${encodeURIComponent(provider.id)}/accounts/${encodeURIComponent(id)}`, {
+          method: 'DELETE',
+          signal,
+        })
         signal.throwIfAborted()
       },
     )
+  }
+
+  /**
+   * Makes `id` the provider's active account as the user presses Activate:
+   * the Active mark moves at once (it is a switch, `web-application.md`
+   * § Responding to the user), the change is sent after the provider's
+   * earlier writes, and a refusal moves the mark back with a toast.
+   */
+  function activateAccount(provider: SettingsProviderEntry, id: string): Promise<void> {
+    const shown = product.change('providers', (state) => ({
+      ...state,
+      providers: state.providers.map((entry) =>
+        entry.id === provider.id && entry.details.type === 'read'
+          ? { ...entry, details: { ...entry.details, active: id } }
+          : entry,
+      ),
+    }))
+    const current = lifetime
+    return writes
+      .run(provider.id, async () => {
+        current.signal.throwIfAborted()
+        shown.send()
+        await apiRequest(`/providers/${encodeURIComponent(provider.id)}/accounts/active`, {
+          method: 'PUT',
+          signal: current.signal,
+          ...jsonBody({ credentialId: id } satisfies ActivateAccount),
+        })
+        shown.land()
+      })
+      .catch((error) => {
+        shown.drop()
+        report('Could Not Switch Accounts', error)
+      })
   }
 
   const login = ref<{
@@ -840,7 +861,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     closeLogin,
     test,
     refresh,
-    accountAction,
+    removeAccount,
+    activateAccount,
     saveModel,
     saveModels,
     searchModels,

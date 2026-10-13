@@ -25,7 +25,8 @@ const {
   test,
   refresh,
   refreshUsage,
-  accountAction,
+  removeAccount,
+  activateAccount,
   saveModel,
   saveModels,
   searchModels,
@@ -108,10 +109,8 @@ onUnmounted(() => {
     @refresh-usage="refreshUsage"
     @check-cli="checkCli"
     @install-cli="installCli"
-    @activate-account="
-      (provider, id) => accountAction(provider, id, 'activate')
-    "
-    @remove-account="(provider, id) => accountAction(provider, id, 'remove')"
+    @activate-account="activateAccount"
+    @remove-account="removeAccount"
     :save-model="saveModel"
     :search-models="searchModels"
     @remove-model="

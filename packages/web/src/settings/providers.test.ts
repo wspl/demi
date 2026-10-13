@@ -25,6 +25,8 @@ let created: Record<string, unknown>[]
 let nextId: string
 let write: (body: Record<string, unknown>) => Promise<Response>
 let probe: (body: string, signal: AbortSignal | null | undefined) => Promise<Response>
+/** What the backend answers to making another account the active one. */
+let activate: () => Promise<Response>
 
 beforeEach(async () => {
   pinia = createPinia()
@@ -49,6 +51,7 @@ beforeEach(async () => {
   })
   writes = 0
   probe = async () => Response.json({})
+  activate = async () => new Response(null, { status: 204 })
   write = async (body) => {
     if (typeof body.label === 'string') {
       state.providers[0]!.label = body.label
@@ -115,6 +118,9 @@ beforeEach(async () => {
       // The page's channel brings the entry as the write left it.
       channels.last().send({ type: 'providers', providers: state.providers })
       return answer
+    }
+    if (path === '/api/providers/codex/accounts/active' && init?.method === 'PUT') {
+      return activate()
     }
     if (path === '/api/providers/configured/quota' && init?.method === 'POST') {
       return probe(String(init.body), init.signal)
@@ -515,4 +521,49 @@ test('an API key change, which no view shows, still loads the catalog once the c
   await idle()
   await new Promise<void>((resolve) => setImmediate(resolve))
   expect(catalogReads).toEqual(['/api/models'])
+})
+
+test('Activate moves the Active mark at once, and a refused switch moves it back with a toast', async () => {
+  // Cost: the product state and a stubbed backend; a few milliseconds.
+  const account = (id: string) => ({ id, label: `${id}@example.com`, detail: null, updatedAt: null, quota: null })
+  state.providers.push({
+    id: 'codex',
+    kind: 'subscription',
+    providerType: 'codex',
+    label: 'Codex',
+    wireApi: null,
+    vendorId: null,
+    compatible: false,
+    endpoint: null,
+    hasApiKey: false,
+    models: null,
+    createdAt: '2026-09-10T00:00:00.000Z',
+    details: {
+      type: 'read',
+      auth: { status: 'authenticated' },
+      runtime: { status: 'ready' },
+      accounts: [account('a'), account('b')],
+      active: 'a',
+      quota: null,
+      quotaCapability: { type: 'none' },
+      cliPackage: null,
+    },
+  })
+  channels.last().send({ type: 'providers', providers: state.providers })
+  const settings = useProviderSettings()
+  const entry = () => settings.providers.find((candidate) => candidate.id === 'codex')!
+  const activeAccount = () => entry().accounts.find((candidate) => candidate.active)?.id
+  expect(activeAccount()).toBe('a')
+
+  const answer = Promise.withResolvers<Response>()
+  activate = () => answer.promise
+  const switching = settings.activateAccount(entry(), 'b')
+  expect(activeAccount()).toBe('b')
+
+  answer.resolve(
+    Response.json({ requestId: 'req_test000000000001', code: 'account_not_found', message: 'That account is gone.' }, { status: 404 }),
+  )
+  await switching
+  expect(activeAccount()).toBe('a')
+  expect(toasts.map((toast) => toast.title)).toEqual(['Could Not Switch Accounts'])
 })

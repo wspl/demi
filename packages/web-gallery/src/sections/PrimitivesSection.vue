@@ -39,6 +39,7 @@ import { usageAt, usageOf } from '../fixtures/catalog'
 import { useCardLimits } from '../fixtures/usage-limits'
 import GallerySection from '../components/GallerySection.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
+import GalleryWorkingControls from '../components/GalleryWorkingControls.vue'
 import { productWould } from '../product-would'
 import { demoInstructions, demoOpenInstruction } from '../fixtures/instructions'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
@@ -270,6 +271,13 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             <Button disabled :disabled-reason="IN_DEVELOPMENT">In Development</Button>
           </GallerySpecimen>
         </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Working"
+        note="No click goes unanswered. A control given an action that returns a promise shows that it works until the promise settles, with no flag of the caller’s. A button shows the spinner over its label and keeps its size; an icon button shows it in place of its icon; a menu item closes its menu and the row it acts on shows the spinner (a choice, which keeps the menu open, shows it in its own gutter); a row action shows it on its row. A second press of the same action meanwhile does nothing, and Cancel and the other controls stay usable. Each specimen waits 0.9 s, as a request would."
+      >
+        <GalleryWorkingControls />
       </GallerySection>
 
       <GallerySection

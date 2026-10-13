@@ -4,6 +4,7 @@ import { X } from '@lucide/vue'
 import IconButton from './IconButton.vue'
 import ScrollArea from './ScrollArea.vue'
 import { useEscapeClose } from '../composables/useEscapeClose'
+import { endRowWork } from './pending-action'
 import { createOverlayFamily, overlayFamilyKey, overlayOwnerKey } from '../overlay/overlayFamily'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayInlineKey, useOverlayTarget } from '../overlay/overlayContainer'
@@ -109,6 +110,8 @@ const family = createOverlayFamily()
 provide(overlayFamilyKey, family)
 const nested = inject(dialogNestingKey, false)
 provide(dialogNestingKey, true)
+// The dialog's buttons show their work on themselves, not on the row that opened it.
+endRowWork()
 // What opens in the dialog floats above it and its cards.
 provideLayerElevation()
 

@@ -2,17 +2,19 @@
 import { reactive, ref } from 'vue'
 import SettingsWebSearch from '@demicodes/plugin-web/SettingsWebSearch.vue'
 import type { WebState } from '@demicodes/plugin-web'
+import { slow } from '../fixtures/slow'
 import { productWould } from '../product-would'
 
 /**
  * One state of the Web Search page, pinned: its controls act on the
  * specimen's own state as the plugin would, at once, and Sign In says what
- * the product would open.
+ * the product would open. With `slow`, Save waits for Exa's answer a moment,
+ * its button working until then.
  */
 const props = defineProps<{
   state: WebState
-  /** The rows shown waiting for a call. */
-  pending?: readonly string[]
+  /** Exa takes a moment to check the key. */
+  slow?: boolean
   /** A key the user typed, still in the field. */
   draft?: string
   keyProblem?: string
@@ -34,8 +36,11 @@ function signOut(): void {
   state.account = null
   inUse()
 }
-function saveKey(key: string): void {
+async function saveKey(key: string): Promise<void> {
   keyProblem.value = undefined
+  if (props.slow) {
+    await slow(1500)
+  }
   state.key = { lastFour: key.slice(-4), unchecked: null }
   keyDraft.value = ''
   inUse()
@@ -50,7 +55,6 @@ function removeKey(): void {
   <SettingsWebSearch
     v-model:key-draft="keyDraft"
     :state="state"
-    :pending="pending ?? []"
     :key-problem="keyProblem"
     @sign-in="signIn"
     @sign-out="signOut"

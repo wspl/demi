@@ -34,8 +34,6 @@ const props = defineProps<{
   overlayStore: OverlayStore
   /** The account id, which the avatar's tone follows. */
   accountId: string
-  /** While the display name saves: the field waits, and says so. */
-  nameSaving?: boolean
   email: string
   emailVerified?: boolean
   /**
@@ -99,7 +97,6 @@ function checkName(value: string): string | null {
         </template>
         <CommitTextInput
           :model-value="name"
-          :disabled="nameSaving"
           aria-label="Display name"
           :validate="checkName"
           @problem="nameProblem = $event"
@@ -107,9 +104,6 @@ function checkName(value: string): string | null {
           maxlength="50"
           class="w-56 max-w-full"
         />
-        <!-- One word beside the field while it saves, and none once it has: the field shows
-             the name. A save that failed is the product's toast; the field keeps the draft. -->
-        <span v-if="nameSaving" class="text-[12px] text-fg-subtle" role="status">Saving…</span>
       </SettingsRow>
       <SettingsRow label="Email" :description="emailUnavailable">
         <template v-if="emailVerified" #tags

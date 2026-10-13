@@ -9,6 +9,7 @@ import Button from '../ui/Button.vue'
 import IconButton from '../ui/IconButton.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { ICON_PX } from '../ui/icon-metrics'
+import { provideRowWork, type Action } from '../ui/pending-action'
 import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
 import Tooltip from '../ui/Tooltip.vue'
 import { isTextCut } from '../ui/truncation'
@@ -39,12 +40,15 @@ const props = defineProps<{
   /** The conversation is archived or being changed: nothing here can move it. Work that runs does not lock it. */
   locked?: MoveLock
   pending?: boolean
+  /** Detaches a Host from the conversation; the header's button works until it settles. */
+  onDetach?: Action<[id: string]>
 }>()
 const emit = defineEmits<{
   choose: [host: HostChoice]
-  detach: [id: string]
   connect: []
 }>()
+// The menu closes as Detach is pressed, so the header's button, the Hosts' row, shows the work.
+const detaching = provideRowWork()
 
 const open = ref(false)
 // Where the header's title needs the width, the host is its icon and its name a tooltip.
@@ -77,9 +81,9 @@ function chooseAttached(host: HostMenuHost) {
   }
 }
 
-function detach(id: string) {
+function detach(id: string): unknown {
   open.value = false
-  emit('detach', id)
+  return props.onDetach?.(id)
 }
 
 function connect() {
@@ -101,7 +105,7 @@ function connect() {
           variant="ghost"
           class="max-w-full"
           aria-label="Where this conversation runs"
-          :loading="pending"
+          :loading="pending || detaching"
         >
           <component :is="hostGlyph(primaryHost)" :size="ICON_PX.in28" class="shrink-0" />
           <!-- Wide enough for a Windows computer's default name, DESKTOP- and seven characters. -->

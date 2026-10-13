@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
+import type { Action } from '../ui/pending-action'
 import Segmented from '../ui/Segmented.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsNewUser, UserRole } from './types'
@@ -21,12 +22,12 @@ const props = defineProps<{
   /** The account's role now. */
   current: UserRole
   roles: readonly SettingsNewUser['role'][]
-  busy?: boolean
+  /** Changes the role; Change Role works until it settles. */
+  onSubmit?: Action<[role: SettingsNewUser['role']]>
 }>()
 
 const emit = defineEmits<{
   close: []
-  submit: [role: SettingsNewUser['role']]
 }>()
 
 const role = ref<SettingsNewUser['role']>('user')
@@ -41,11 +42,11 @@ watch(
 )
 
 const options = computed(() => props.roles.map((value) => ({ value, label: ROLE_LABEL[value] })))
-const canSubmit = computed(() => !props.busy && role.value !== props.current)
+const canSubmit = computed(() => role.value !== props.current)
 
-function submit(): void {
+function submit(): unknown {
   if (canSubmit.value) {
-    emit('submit', role.value)
+    return props.onSubmit?.(role.value)
   }
 }
 </script>
@@ -67,7 +68,7 @@ function submit(): void {
     </div>
     <template #footer>
       <Button @click="emit('close')">Cancel</Button>
-      <Button variant="primary" :disabled="!canSubmit && !busy" :loading="busy" @click="submit">Change Role</Button>
+      <Button variant="primary" :disabled="!canSubmit" @click="submit">Change Role</Button>
     </template>
   </Dialog>
 </template>

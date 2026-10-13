@@ -77,7 +77,8 @@ interface Editor {
   id: string | null
   draft: SettingsSubagentDraft
   open: boolean
-  status: { kind: 'idle' | 'saving' } | ({ kind: 'failed' } & ShownError)
+  /** Why the last save or delete was refused, shown in the dialog. */
+  error: ShownError | null
 }
 
 const editor = ref<Editor | null>(null)
@@ -116,28 +117,27 @@ function open(profile: SettingsSubagentProfile | null): void {
         }
       : { ...NEW_PROFILE },
     open: true,
-    status: { kind: 'idle' },
+    error: null,
   }
 }
 
-function failed(error: unknown): Editor['status'] {
+function failed(error: unknown): ShownError {
   // A refused name or field is the user's to correct in the dialog.
-  return { kind: 'failed', ...formError(error, { invalid_body: null, profile_exists: null }) }
+  return formError(error, { invalid_body: null, profile_exists: null })
 }
 
 async function save(draft: SettingsSubagentDraft): Promise<void> {
   const current = editor.value
-  if (!current || current.status.kind === 'saving') {
+  if (!current) {
     return
   }
   current.draft = draft
-  current.status = { kind: 'saving' }
+  current.error = null
   try {
     await props.saveProfile(current.id, draft)
-    current.status = { kind: 'idle' }
     current.open = false
   } catch (error) {
-    current.status = failed(error)
+    current.error = failed(error)
   }
 }
 
@@ -145,18 +145,18 @@ async function save(draft: SettingsSubagentDraft): Promise<void> {
 const deleteOpen = ref(false)
 
 async function remove(): Promise<void> {
-  deleteOpen.value = false
   const current = editor.value
-  if (!current?.id || current.status.kind === 'saving') {
+  if (!current?.id) {
     return
   }
-  current.status = { kind: 'saving' }
+  current.error = null
   try {
     await props.deleteProfile(current.id)
-    current.status = { kind: 'idle' }
     current.open = false
   } catch (error) {
-    current.status = failed(error)
+    current.error = failed(error)
+  } finally {
+    deleteOpen.value = false
   }
 }
 
@@ -275,8 +275,7 @@ const empty = computed(() => props.profiles.length === 0)
       :providers="providers"
       :models="models"
       :catalog-models="catalogModels"
-      :pending="editor.status.kind === 'saving'"
-      :error="editor.status.kind === 'failed' ? editor.status : null"
+      :error="editor.error"
       @close="editor.open = false"
       @save="save"
       @delete="deleteOpen = true"
