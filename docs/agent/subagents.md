@@ -558,7 +558,7 @@ can use." ([Categories](permissions.md#categories)). `profiles list` and
 
 A project can keep **workflows** in its repository: each a group of
 subagent profiles with the instructions that go with them, how to split the
-work between them, and limits, so a team shares how its work is split and each conversation picks
+work between them, so a team shares how its work is split and each conversation picks
 one. For example,
 `~/app` holds `.demi/workflows/review.yaml`:
 
@@ -567,8 +567,6 @@ name: Review Team
 instructions: |
   Have reviewer check every change before you report it.
   Use explore for any search across more than one package.
-maxSubagents: 4
-maxDepth: 1
 profiles:
   - id: explore
     description: Use for finding code and call sites; it reports and changes nothing.
@@ -585,8 +583,7 @@ profiles:
 In a conversation on `~/app/web`, the Workflow menu at the composer's lower
 left offers **Default**, **No Subagents** and **Review Team**. Alex picks Review Team:
 the root reads the workflow's instructions with the project's, and from the
-next spawn on its agents can start `explore` and `reviewer`, no more than
-four at once.
+next spawn on its agents can start `explore` and `reviewer`.
 
 - **Where.** The workflow files are `.demi/workflows/*.yaml` of the nearest
   directory that has a `.demi/workflows/` directory, searched from the
@@ -594,9 +591,9 @@ four at once.
   [instruction files](instructions.md#which-files-are-read) are. A file's
   name without `.yaml` is its id; `name` is what the menu shows.
 - **A workflow** holds `name` (1 to 60 characters), `instructions`
-  (optional, up to 65,536 characters), `maxSubagents` and `maxDepth`
-  (optional, as the [limits](#limits) are), and `profiles`, a list of
-  profiles. A profile has the fields of a user's profile
+  (optional, up to 65,536 characters) and `profiles`, a list of profiles.
+  It sets no limit: the [limits](#limits) are the user's Settings alone,
+  whatever workflow a conversation uses. A profile has the fields of a user's profile
   ([Profiles](#profiles)): `id`, its name, unique in the list,
   `description`, `instructions` (optional), `spawning` (default `false`),
   and its model as `model`, a model id, with `effort` and `tier` (optional;
@@ -615,10 +612,8 @@ four at once.
   its model is. **Default**, which a new conversation starts with, applies
   the user's Subagents settings. **No Subagents** turns subagents off for this
   conversation, as the settings' switch does for all of them. **A workflow**
-  applies it in place of the user's profiles and limits, for this
-  conversation only, whatever the settings' switch is. The workflow's limits
-  never go above the user's: each is the lower of the workflow's and the
-  settings'. A conversation whose working directory has no workflows offers
+  applies its profiles in place of the user's, for this conversation only,
+  whatever the settings' switch is. A conversation whose working directory has no workflows offers
   Default and No Subagents only; one whose chosen workflow is gone, renamed or no longer
   reads shows it as unavailable, with why, and its spawns fail with that
   reason until the user picks another.
