@@ -13,7 +13,7 @@ use demi_backend_database::drafts::{DraftRefusal, StagedFile};
 use demi_backend_page_sync::Part;
 use demi_conversation_socket_protocol::ClientContent;
 use demi_web_api_protocol::drafts::{
-    ATTACHMENT_MARK, DRAFT_BYTES_MAX, DraftAnswer, DraftSave, ReplacedDraftAction,
+    ATTACHMENT_MARK, DRAFT_BYTES_MAX, DraftAnswer, DraftSave, DraftWritten, ReplacedDraftAction,
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::AttachmentId;
@@ -41,7 +41,7 @@ pub(super) async fn save(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     body: Result<JsonBody<DraftSave>, ApiError>,
-) -> Result<Json<DraftAnswer>, ApiError> {
+) -> Result<Json<DraftWritten>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
     let JsonBody(save) = body?;
     let files = staged_files(&save.text, save.files)?;
@@ -57,7 +57,7 @@ pub(super) async fn save(
         .await?
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Conversation(record.id));
-    Ok(Json(DraftAnswer { draft: saved }))
+    Ok(Json(saved))
 }
 
 /// Restores or dismisses the replaced version the request names.
@@ -66,7 +66,7 @@ pub(super) async fn replaced(
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     body: Result<JsonBody<ReplacedDraftAction>, ApiError>,
-) -> Result<Json<DraftAnswer>, ApiError> {
+) -> Result<Json<DraftWritten>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
     let JsonBody(request) = body?;
     let changed = services
@@ -75,7 +75,7 @@ pub(super) async fn replaced(
         .await?
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Conversation(record.id));
-    Ok(Json(DraftAnswer { draft: changed }))
+    Ok(Json(changed))
 }
 
 /// A draft's files as storage takes them, when `text` holds one mark per

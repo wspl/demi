@@ -48,13 +48,16 @@ pub enum ClientFrame {
         #[garde(dive)]
         content: Vec<ClientContent>,
     },
-    /// Send a message saved for later as the composer would, and remove it
-    /// from the list in the same step (`web-api.md` § Messages saved for
-    /// later). The backend handles it; the message's id becomes its turn's
-    /// or its steer's.
+    /// Send a message saved for later as the composer would, as the message
+    /// `turn_id`, and remove it from the list in the same step (`web-api.md`
+    /// § Messages saved for later). The backend handles it; `turn_id`, the
+    /// page's id for this send, becomes its turn's or its steer's, never the
+    /// saved message's own.
     SendSaved {
         #[garde(length(min = 1))]
         id: String,
+        #[garde(skip)]
+        turn_id: TurnId,
         #[garde(skip)]
         delivery: SavedDelivery,
     },

@@ -16,10 +16,11 @@ use axum::http::StatusCode;
 use demi_backend_database::saved::SavedRefusal;
 use demi_backend_page_sync::Part;
 use demi_backend_user_shard::services::Services;
-use demi_web_api_protocol::drafts::{DRAFT_BYTES_MAX, DraftAnswer};
+use demi_web_api_protocol::drafts::{DRAFT_BYTES_MAX, DraftWritten};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::saved::{
-    FromDraftAnswer, SAVED_MAX, SavedAnswer, SavedEdit, SavedFromDraft, SavedList, SavedSave,
+    FromDraftAnswer, SAVED_MAX, SavedAnswer, SavedEdit, SavedFromDraft, SavedList, SavedRemoved,
+    SavedSave,
 };
 
 use super::body::JsonBody;
@@ -47,13 +48,13 @@ pub(super) async fn from_draft(
     let record = owned(&services, &user.id, &id).await?;
     let JsonBody(save) = body?;
     let files = staged_files(&save.text, save.files)?;
-    let (message, draft) = services
+    let answer = services
         .control
         .save_from_draft(record.id.clone(), user.id.clone(), save.id, save.base, save.text, files)
         .await?
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Conversation(record.id));
-    Ok((StatusCode::CREATED, Json(FromDraftAnswer { message, draft })))
+    Ok((StatusCode::CREATED, Json(answer)))
 }
 
 /// Adds a message for later, leaving the draft as it is.
@@ -66,46 +67,48 @@ pub(super) async fn save(
     let record = owned(&services, &user.id, &id).await?;
     let JsonBody(save) = body?;
     let files = staged_files(&save.text, save.files)?;
-    let message = services
+    let answer = services
         .control
         .add_saved(record.id.clone(), user.id.clone(), save.id, save.text, files)
         .await?
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Conversation(record.id));
-    Ok((StatusCode::CREATED, Json(SavedAnswer { message })))
+    Ok((StatusCode::CREATED, Json(answer)))
 }
 
-/// Moves the message into the draft, and the draft into the list.
+/// Moves the message into the draft, and the draft into the list; the edit's
+/// answer is kept by its `op` for a day.
 pub(super) async fn edit(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
     Path((id, message)): Path<(String, String)>,
     body: Result<JsonBody<SavedEdit>, ApiError>,
-) -> Result<Json<DraftAnswer>, ApiError> {
+) -> Result<Json<DraftWritten>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
     let JsonBody(edit) = body?;
-    let draft = services
+    let answer = services
         .control
-        .edit_saved(record.id.clone(), message, edit.id)
+        .edit_saved(record.id.clone(), edit.op, message, edit.id)
         .await?
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Conversation(record.id));
-    Ok(Json(DraftAnswer { draft }))
+    Ok(Json(answer))
 }
 
+/// Removes the message; one already gone answers the same.
 pub(super) async fn remove(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
     Path((id, message)): Path<(String, String)>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Json<SavedRemoved>, ApiError> {
     let record = owned(&services, &user.id, &id).await?;
-    services
+    let revisions = services
         .control
         .delete_saved(record.id.clone(), message)
         .await?
         .map_err(refused)?;
     services.sync.mark(&user.id, Part::Conversation(record.id));
-    Ok(StatusCode::NO_CONTENT)
+    Ok(Json(SavedRemoved { revisions }))
 }
 
 fn refused(refusal: SavedRefusal) -> ApiError {

@@ -3,18 +3,22 @@
 //! the conversation's draft, keeping one its page never showed to restore,
 //! an edit exchanges a saved message with the draft in one go, Undo's save
 //! leaves the draft alone, a removal and a send take one off the list, and the conversation's summary counts
-//! them with the list's revision. A saved message leaves the list once the
-//! session takes it, and stays when the session fails its send; it is sent
-//! once: a second `send_saved` of it is rejected. No test calls a real model.
+//! them with the list's revision. Every write answers the revisions after it,
+//! and a write sent again answers as it first did: a save by its id, an edit
+//! by its operation id, a removal of a message gone already. A saved message
+//! leaves the list once the session takes it as the turn the page named, and
+//! stays when the session fails its send; a send of it with that turn again
+//! answers as the first did, and one with another turn is rejected. No test
+//! calls a real model.
 
 use demi_conversation_socket_protocol::{
     ClientFrame, ClientFrameKind, SavedDelivery, ServerFrame, SteerOutcome,
 };
 use demi_provider_common::testing::{MockResponse, MockVendor};
-use demi_shared_types::{Block, BlockId, MediaSource, UserContentBlock};
-use demi_web_api_protocol::drafts::{ConversationDraft, DraftAnswer, DraftFile};
+use demi_shared_types::{Block, BlockId, MediaSource, TurnId, UserContentBlock};
+use demi_web_api_protocol::drafts::{ConversationDraft, DraftAnswer, DraftFile, DraftWritten, Revisions};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::saved::{FromDraftAnswer, SavedAnswer, SavedList, SavedMessage};
+use demi_web_api_protocol::saved::{FromDraftAnswer, SavedAnswer, SavedList, SavedMessage, SavedRemoved};
 use demi_web_api_protocol::state::SyncEvent;
 use reqwest::StatusCode;
 use serde_json::{Value, json};
@@ -79,22 +83,33 @@ async fn from_draft(
         )
         .await;
     assert_eq!(saved.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&saved.body));
-    let FromDraftAnswer { message, draft } = saved.json();
+    let FromDraftAnswer { message, draft, revisions } = saved.json();
+    assert_eq!(revisions.draft, draft.revision);
     (message, draft)
 }
 
-async fn edit_as(backend: &TestBackend, session: &Session, message: &str, becomes: &str) -> Answer {
+/// The edit `op` of the saved message `message`, the draft becoming the
+/// message `becomes`.
+async fn edit_as(backend: &TestBackend, session: &Session, op: &str, message: &str, becomes: &str) -> Answer {
     backend
         .post(
             &format!("/api/conversations/{FIRST}/saved/{message}/edit"),
             Some(session),
-            json!({ "id": becomes }),
+            json!({ "op": op, "id": becomes }),
         )
         .await
 }
 
 async fn edit(backend: &TestBackend, session: &Session, message: &str) -> Answer {
-    edit_as(backend, session, message, &fresh()).await
+    edit_as(backend, session, &fresh(), message, &fresh()).await
+}
+
+/// Deletes the saved message `message`; answers the revisions after it.
+async fn delete(backend: &TestBackend, session: &Session, message: &str) -> Revisions {
+    let path = format!("/api/conversations/{FIRST}/saved/{message}");
+    let removed = backend.delete(&path, session).await;
+    assert_eq!(removed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&removed.body));
+    removed.json::<SavedRemoved>().revisions
 }
 
 async fn put_draft(backend: &TestBackend, session: &Session, base: u64, text: &str, files: &Value) {
@@ -179,25 +194,26 @@ async fn saving_the_composers_message_empties_the_draft_an_edit_exchanges_them_a
     put_draft(&backend, &laptop, 4, "Then the IPv6", &json!([])).await;
     let edited = edit(&backend, &laptop, &saved.id).await;
     assert_eq!(edited.status, StatusCode::OK, "{}", String::from_utf8_lossy(&edited.body));
-    let edited = edited.json::<DraftAnswer>().draft;
+    let edited = edited.json::<DraftWritten>().draft;
     assert_eq!((edited.revision, edited.text.as_str(), &edited.files), (6, compare.as_str(), &saved.files));
     assert_eq!(draft(&backend, &laptop).await, edited);
     until_saved(&mut phone_page, FIRST, 2, 3).await;
     assert_eq!(texts(&list(&backend, &laptop).await), vec!["Then the IPv6", "Check prod’s DNS next"]);
     // An empty composer saves nothing in exchange.
     put_draft(&backend, &laptop, 6, "", &json!([])).await;
-    let edited = edit(&backend, &laptop, &dns.id).await.json::<DraftAnswer>().draft;
+    let edited = edit(&backend, &laptop, &dns.id).await.json::<DraftWritten>().draft;
     assert_eq!(edited.text, "Check prod’s DNS next");
     let read = list(&backend, &laptop).await;
     assert_eq!(texts(&read), vec!["Then the IPv6"]);
 
-    // Delete removes one, and the id is gone for every route then; Undo
-    // saves it again and leaves the draft the composer holds as it is.
+    // Delete removes one and answers the revisions; deleted again, as a
+    // stale page does, it answers the same. Undo saves it again under a new
+    // id and leaves the draft the composer holds as it is.
     let ipv6 = read.messages[0].clone();
-    let path = format!("/api/conversations/{FIRST}/saved/{}", ipv6.id);
-    assert_eq!(backend.delete(&path, &laptop).await.status, StatusCode::NO_CONTENT);
+    let removed = delete(&backend, &laptop, &ipv6.id).await;
+    assert_eq!(removed.saved, 5);
     until_saved(&mut phone_page, FIRST, 0, 5).await;
-    assert_eq!(backend.delete(&path, &laptop).await.refusal(), (StatusCode::NOT_FOUND, ErrorCode::SavedNotFound));
+    assert_eq!(delete(&backend, &laptop, &ipv6.id).await, removed);
     assert_eq!(edit(&backend, &laptop, &ipv6.id).await.refusal(), (StatusCode::NOT_FOUND, ErrorCode::SavedNotFound));
     let typed = draft(&backend, &laptop).await;
     let undone = add(&backend, &laptop, &ipv6.text, &json!([])).await;
@@ -293,35 +309,59 @@ async fn a_save_sent_again_with_its_id_makes_one_message_and_another_content_or_
 
 // About 50 ms: a few edits on a local backend.
 #[tokio::test]
-async fn an_edit_sent_again_with_its_id_answers_as_the_first_did_and_an_id_another_message_holds_is_refused() {
+async fn an_edit_sent_again_answers_as_it_first_did_whatever_happened_since() {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     create(&backend, &master, FIRST).await;
     let dns = save(&backend, &master, "Check the DNS", &json!([])).await;
+    let ipv6 = save(&backend, &master, "Then the IPv6", &json!([])).await;
     let other = save(&backend, &master, "Other", &json!([])).await;
-    put_draft(&backend, &master, 0, "Half written", &json!([])).await;
 
-    // The half written message is saved under the page's id, the saved one is in the draft.
-    let becomes = fresh();
-    let first = edit_as(&backend, &master, &dns.id, &becomes).await;
+    // With the composer empty, the edit moves the message into the draft and
+    // makes no message; sent again, it answers the same, not 404.
+    let op = fresh();
+    let first = edit_as(&backend, &master, &op, &dns.id, &fresh()).await;
     assert_eq!(first.status, StatusCode::OK, "{}", String::from_utf8_lossy(&first.body));
-    let first = first.json::<DraftAnswer>().draft;
-    assert_eq!(first.text, "Check the DNS");
-    let read = list(&backend, &master).await;
-    assert_eq!(read.messages.iter().find(|message| message.id == becomes).map(|message| message.text.as_str()), Some("Half written"));
-
-    // Sent again, it changes nothing and answers the draft as it is.
-    let again = edit_as(&backend, &master, &dns.id, &becomes).await;
+    let first = first.json::<DraftWritten>();
+    assert_eq!((first.draft.text.as_str(), first.revisions), ("Check the DNS", Revisions { draft: first.draft.revision, saved: 4 }));
+    let again = edit_as(&backend, &master, &op, &dns.id, &fresh()).await;
     assert_eq!(again.status, StatusCode::OK, "{}", String::from_utf8_lossy(&again.body));
-    assert_eq!(again.json::<DraftAnswer>().draft, first);
-    assert_eq!(list(&backend, &master).await, read);
+    assert_eq!(again.json::<DraftWritten>(), first);
 
-    // An id another message holds is taken, and nothing moves.
+    // With "Check the DNS" in the composer, an edit of the IPv6 message
+    // saves it under the page's id; that message is deleted afterwards, and
+    // the edit sent again still answers as it first did and moves nothing.
+    let op = fresh();
+    let becomes = fresh();
+    let second = edit_as(&backend, &master, &op, &ipv6.id, &becomes).await.json::<DraftWritten>();
+    assert_eq!(second.draft.text, "Then the IPv6");
+    let read = list(&backend, &master).await;
+    assert_eq!(texts(&read), vec!["Check the DNS", "Other"]);
+    assert_eq!(read.messages[0].id, becomes);
+    delete(&backend, &master, &becomes).await;
+    let again = edit_as(&backend, &master, &op, &ipv6.id, &becomes).await;
+    assert_eq!(again.status, StatusCode::OK, "{}", String::from_utf8_lossy(&again.body));
+    assert_eq!(again.json::<DraftWritten>(), second);
+    assert_eq!(texts(&list(&backend, &master).await), vec!["Other"]);
+
+    // A new edit naming an id a message holds is refused, and nothing moves.
+    let held = save(&backend, &master, "Held", &json!([])).await;
     assert_eq!(
-        edit_as(&backend, &master, &other.id, &becomes).await.refusal(),
+        edit_as(&backend, &master, &fresh(), &other.id, &held.id).await.refusal(),
         (StatusCode::CONFLICT, ErrorCode::IdTaken)
     );
-    assert_eq!(list(&backend, &master).await, read);
+    assert_eq!(texts(&list(&backend, &master).await), vec!["Held", "Other"]);
+
+    // An edit's answer is kept a day.
+    harness.clock.advance(jiff::SignedDuration::from_hours(25));
+    let late = save(&backend, &master, "Late", &json!([])).await;
+    let op = fresh();
+    edit_as(&backend, &master, &op, &late.id, &fresh()).await;
+    harness.clock.advance(jiff::SignedDuration::from_hours(25));
+    assert_eq!(
+        edit_as(&backend, &master, &op, &late.id, &fresh()).await.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::SavedNotFound)
+    );
     backend.close().await;
 }
 
@@ -350,20 +390,24 @@ async fn a_saved_message_is_sent_once_as_the_composer_chose_and_leaves_the_list(
         &json!([{ "type": "remote_file", "deviceId": "a-gone-device", "path": "/var/log/app.log" }]),
     )
     .await;
-    let send_saved = |id: &str, delivery| ClientFrame::SendSaved { id: id.to_owned(), delivery };
-    socket.send(&send_saved(&lost.id, SavedDelivery::Message)).await;
+    let send_saved = |id: &str, turn: &str, delivery| ClientFrame::SendSaved {
+        id: id.to_owned(),
+        turn_id: TurnId::try_from(turn).unwrap(),
+        delivery,
+    };
+    socket.send(&send_saved(&lost.id, &fresh(), SavedDelivery::Message)).await;
     socket
         .until(|frame| matches!(frame, ServerFrame::Error { .. }))
         .await;
     let read = list(&backend, &master).await;
     assert_eq!((read.revision, read.messages.len()), (3, 3));
-    let path = format!("/api/conversations/{FIRST}/saved/{}", lost.id);
-    assert_eq!(backend.delete(&path, &master).await.status, StatusCode::NO_CONTENT);
+    delete(&backend, &master, &lost.id).await;
 
-    // Sent as the next message, it starts a turn with its id, its file
-    // where its mark stood, and leaves the list.
+    // Sent as the next message, it starts a turn with the id the page named,
+    // its file where its mark stood, and leaves the list.
     vendor.respond(answer(&["Seen."], 1, 1));
-    socket.send(&send_saved(&look.id, SavedDelivery::Message)).await;
+    let look_turn = fresh();
+    socket.send(&send_saved(&look.id, &look_turn, SavedDelivery::Message)).await;
     socket.until_idle().await;
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     let user = blocks
@@ -373,7 +417,7 @@ async fn a_saved_message_is_sent_once_as_the_composer_chose_and_leaves_the_list(
             _ => None,
         })
         .expect("the message is in the transcript");
-    assert_eq!(user.turn_id.as_str(), look.id);
+    assert_eq!(user.turn_id.as_str(), look_turn);
     assert!(matches!(
         user.content.as_slice(),
         [UserContentBlock::Text { text }, UserContentBlock::Image { source: MediaSource::Ref { .. } }, ..]
@@ -381,23 +425,29 @@ async fn a_saved_message_is_sent_once_as_the_composer_chose_and_leaves_the_list(
     ), "{:?}", user.content);
     assert_eq!(texts(&list(&backend, &master).await), vec!["Also check the IPv6 records"]);
 
-    // While a turn runs, one goes as a steer under its own id; sent again,
-    // as another page might, it is gone and goes nowhere.
+    // While a turn runs, one goes as a steer under the id the page named;
+    // sent again with that id, as the page does after a reload, it answers
+    // as it did, and nothing is sent twice.
     vendor.respond(MockResponse::event_stream(": thinking\n\n").stay_open());
     socket.send(&send("m2", "Hold on")).await;
     vendor.received(2).await;
-    socket.send(&send_saved(&steer.id, SavedDelivery::Steer)).await;
+    let steer_turn = fresh();
+    let accepted_steer = ServerFrame::SteerResult {
+        steer_id: BlockId::try_from(steer_turn.clone()).unwrap(),
+        outcome: SteerOutcome::Accepted,
+    };
+    socket.send(&send_saved(&steer.id, &steer_turn, SavedDelivery::Steer)).await;
     let accepted = socket
         .until(|frame| matches!(frame, ServerFrame::SteerResult { .. }))
         .await;
-    assert_eq!(
-        accepted.last(),
-        Some(&ServerFrame::SteerResult {
-            steer_id: BlockId::try_from(steer.id.clone()).unwrap(),
-            outcome: SteerOutcome::Accepted,
-        })
-    );
-    socket.send(&send_saved(&steer.id, SavedDelivery::Steer)).await;
+    assert_eq!(accepted.last(), Some(&accepted_steer));
+    socket.send(&send_saved(&steer.id, &steer_turn, SavedDelivery::Steer)).await;
+    let again = socket
+        .until(|frame| matches!(frame, ServerFrame::SteerResult { .. }))
+        .await;
+    assert_eq!(again.last(), Some(&accepted_steer));
+    // Another page's send of it, as another turn, finds it gone and goes nowhere.
+    socket.send(&send_saved(&steer.id, &fresh(), SavedDelivery::Steer)).await;
     let rejected = socket
         .until(|frame| matches!(frame, ServerFrame::Rejected { .. }))
         .await;
@@ -415,5 +465,62 @@ async fn a_saved_message_is_sent_once_as_the_composer_chose_and_leaves_the_list(
     let read = list(&backend, &master).await;
     assert_eq!((read.revision, read.messages.len()), (6, 0));
     socket.stop().await;
+    backend.close().await;
+}
+
+// About a second: two turns against a scripted endpoint.
+#[tokio::test]
+async fn undo_after_a_stale_delete_saves_a_new_message_whose_send_is_a_new_turn() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let check = save(&backend, &master, "Check the DNS", &json!([])).await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    let send_saved = |id: &str, turn: &str| ClientFrame::SendSaved {
+        id: id.to_owned(),
+        turn_id: TurnId::try_from(turn).unwrap(),
+        delivery: SavedDelivery::Message,
+    };
+
+    // Page B sends it.
+    vendor.respond(answer(&["Checked."], 1, 1));
+    let first_turn = fresh();
+    socket.send(&send_saved(&check.id, &first_turn)).await;
+    socket.until_idle().await;
+    let after_send = list(&backend, &master).await;
+    assert!(after_send.messages.is_empty());
+
+    // Page A still lists it and deletes it: the message is gone already,
+    // and the delete answers the revisions as they are.
+    let removed = delete(&backend, &master, &check.id).await;
+    assert_eq!(removed.saved, after_send.revision);
+    // A save of that id again, as a stale page's retry, makes nothing.
+    let stale = add_as(&backend, &master, &check.id, "Check the DNS", &json!([])).await;
+    assert_eq!(stale.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&stale.body));
+    assert!(list(&backend, &master).await.messages.is_empty());
+
+    // Its Undo saves the message again under a new id, and sending that is
+    // a new turn, under the id of its own send.
+    let undone = save(&backend, &master, "Check the DNS", &json!([])).await;
+    assert_ne!(undone.id, check.id);
+    vendor.respond(answer(&["Checked again."], 1, 1));
+    let second_turn = fresh();
+    socket.send(&send_saved(&undone.id, &second_turn)).await;
+    socket.until_idle().await;
+    let turns: Vec<String> = transcript(&backend, &master, FIRST)
+        .await
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::User(user) => Some(user.turn_id.as_str().to_owned()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(turns, vec![first_turn, second_turn]);
+    assert!(list(&backend, &master).await.messages.is_empty());
     backend.close().await;
 }
