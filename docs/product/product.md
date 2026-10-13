@@ -455,8 +455,9 @@ draft's row.
   opens the list under the composer, which rises to make room: about four
   rows tall, scrolling within. Each row shows the message's first line and,
   when it has attachments, their count; pressing the row edits it, and its
-  end holds Edit, Send and Delete, shown while the row is pointed at or
-  focused, and at rest on a phone. Where the row under the composer runs
+  end holds Edit, Send and Delete, always shown, in a quiet color that
+  darkens when the row is pointed at, since the row holds nothing else
+  there. Where the row under the composer runs
   out of room, the entry shows its mark and the count alone, *7*, with
   *7 Drafts* as its tip.
 - **Edit** puts the draft in the composer, removes it from the list and
