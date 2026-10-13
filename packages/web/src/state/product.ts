@@ -1,8 +1,9 @@
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { schemaRefusal } from '@demicodes/protocol'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { Slot, type SlotAnswer } from '@demicodes/web-ui/infra/slot'
 import { browserOnline, openSocket, reconnectNow, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { connectionProblem } from '@demicodes/web-ui/transport/connection'
 import { asError } from '@demicodes/utils'
@@ -213,14 +214,9 @@ function parse(data: unknown): unknown {
   }
 }
 
-/** A change in the list of those not landed yet. */
-interface PendingChange {
-  part: Part
-  apply: (state: ProductState) => ProductState
-  /** Where the channel stood when its write went out; null before. */
-  sentAt: number | null
-  /** Its answer came after a value of its part from the channel: it leaves with the part's next value. */
-  waits: boolean
+/** What a write's answer says of its part, as the slot takes it. */
+function answerOf(answer: Answer): SlotAnswer<ProductState> & { value: (read: ProductState) => ProductState } {
+  return { value: (state) => withPart(state, typeof answer === 'function' ? answer(state) : answer) }
 }
 
 /**
@@ -228,23 +224,23 @@ interface PendingChange {
  * (`web-application.md` § Page synchronization): the one module that follows
  * it, through the synchronization channel. The channel's snapshot is the
  * whole copy, and each later message replaces one part of it; each state of
- * the page follows the copy by its own rule. Nothing asks for this state on
- * a timer or after a write: a write's answer goes through `answered`, or
+ * the page follows the copy by its own rule. The copy is a slot
+ * (`web-ui/infra/slot`) read in parts. Nothing asks for this state on a
+ * timer or after a write: a write's answer goes through `answered`, or
  * lands the change the write made (`change`).
  */
 export const useProduct = defineStore('product', () => {
-  /** The state as the channel and the writes' answers last left it. */
-  const read = ref<ProductState | null>(null)
+  /**
+   * The state as the channel and the writes' answers last left it, with this
+   * page's changes not landed yet, in the order the user made them, on top
+   * (`web-application.md` § Responding to the user).
+   */
+  const slot = new Slot<ProductState>()
+  const read = slot.read
   /** The account a channel of an account still to choose its password sent first, before any state; null otherwise. */
   const firstUser = ref<ProductState['user'] | null>(null)
-  /** This page's changes not landed yet, in the order the user made them. */
-  const changes = shallowRef<PendingChange[]>([])
-  /**
-   * What the page shows: the state it last read with its own changes not
-   * landed yet applied on top, in order (`web-application.md` § Responding
-   * to the user).
-   */
-  const snapshot = computed(() => read.value && changes.value.reduce((state, change) => change.apply(state), read.value))
+  /** What the page shows: the state it last read with its own changes not landed yet applied on top. */
+  const snapshot = slot.shown
   const load = ref<'loading' | 'ready' | 'failed'>('loading')
   const modelSnapshot = ref<{ key: string; providers: CatalogProvider[]; checkedAt: number } | null>(null)
   const vendors = ref<VendorCatalog | null>(null)
@@ -310,12 +306,6 @@ export const useProduct = defineStore('product', () => {
   let retry: ReconnectWait | null = null
   /** The open channel's silence watch (`web-application.md` § Liveness and reconnection). */
   let silence: SilenceWatch | null = null
-  /** Messages received, which numbers them. */
-  let received = 0
-  /** The number of the last snapshot, and of each part's last value. */
-  let snapshotAt = 0
-  const partAt = new Map<Part, number>()
-
   function clearRetry(): void {
     retry?.cancel()
     retry = null
@@ -432,7 +422,6 @@ export const useProduct = defineStore('product', () => {
   }
 
   function receive(event: SyncEvent): void {
-    received += 1
     if (event.type === 'heartbeat') {
       return
     }
@@ -442,30 +431,23 @@ export const useProduct = defineStore('product', () => {
       // nothing still says it connects once the banner goes (`web-application.md`
       // § Liveness and reconnection).
       const returned = failures.value > 0 || restarting.value
-      snapshotAt = received
       failures.value = 0
       restarting.value = false
       if (returned) {
         reconnectNow()
       }
-      read.value = event.state
       // The snapshot is the next value of every part.
-      release(() => true)
+      slot.replace(event.state)
       load.value = 'ready'
       // Model discovery never holds the page; it records its own failure.
       void loadModels().catch(() => {})
       return
     }
-    const part = partOf(event)
-    partAt.set(part, received)
-    if (read.value) {
-      read.value = withPart(read.value, event)
-    } else if (event.type === 'user') {
+    if (!slot.receive(partOf(event), (state) => withPart(state, event)) && event.type === 'user') {
       // The channel of an account still to choose its password carries the
       // account alone, until the choice, on this page or another.
       firstUser.value = event.user
     }
-    release((change) => change.part === part)
     if (event.type === 'providers') {
       providersChanged()
     }
@@ -489,7 +471,7 @@ export const useProduct = defineStore('product', () => {
 
   /** Where the channel stands as a write is sent, which its answer is measured against. */
   function sent(): number {
-    return received
+    return slot.now()
   }
 
   /**
@@ -504,21 +486,7 @@ export const useProduct = defineStore('product', () => {
       return false
     }
     const event = typeof answer === 'function' ? answer(state) : answer
-    const part = partOf(event)
-    if (Math.max(snapshotAt, partAt.get(part) ?? 0) > at) {
-      return false
-    }
-    read.value = withPart(state, event)
-    // The answer is newer than every write of the part that landed before it.
-    release((change) => change.part === part)
-    return true
-  }
-
-  /** The changes whose answer waits for a value from the channel that `brought` says came leave. */
-  function release(brought: (change: PendingChange) => boolean): void {
-    if (changes.value.some((change) => change.waits && brought(change))) {
-      changes.value = changes.value.filter((change) => !(change.waits && brought(change)))
-    }
+    return slot.answered([partOf(event)], at, answerOf(event))
   }
 
   /**
@@ -528,27 +496,11 @@ export const useProduct = defineStore('product', () => {
    * it ended through the change it gets.
    */
   function change(part: Part, apply: (state: ProductState) => ProductState): ProductChange {
-    const entry: PendingChange = { part, apply, sentAt: null, waits: false }
-    changes.value = [...changes.value, entry]
-    const settle = (answer: Answer | undefined, stays: boolean) => {
-      // A change released since, as by a sign-out, has nothing left to say,
-      // and one that landed waits only for the channel.
-      if (!changes.value.includes(entry) || entry.waits) {
-        return
-      }
-      const applied = answer !== undefined && answered(entry.sentAt ?? received, answer)
-      if (stays && !applied) {
-        entry.waits = true
-        return
-      }
-      changes.value = changes.value.filter((candidate) => candidate !== entry)
-    }
+    const entry = slot.change(apply, { parts: [part] })
     return {
-      send: () => {
-        entry.sentAt = received
-      },
-      land: (answer = (state) => partEvent(apply(state), part)) => settle(answer, true),
-      drop: (answer) => settle(answer, false),
+      send: () => entry.send(),
+      land: (answer = (state) => partEvent(apply(state), part)) => void entry.land(answerOf(answer)),
+      drop: (answer) => entry.drop(answer && answerOf(answer)),
     }
   }
 
@@ -776,11 +728,7 @@ export const useProduct = defineStore('product', () => {
     failures.value = 0
     restarting.value = false
     servedBuild.value = null
-    received = 0
-    snapshotAt = 0
-    partAt.clear()
-    changes.value = []
-    read.value = null
+    slot.clear()
     firstUser.value = null
     clearModels()
     vendors.value = null

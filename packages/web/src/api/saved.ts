@@ -1,14 +1,17 @@
 import { apiRequest, jsonBody, readResponse } from './client'
 import {
-  draftAnswerSchema,
+  draftWrittenSchema,
   fromDraftAnswerSchema,
   savedAnswerSchema,
   savedListSchema,
-  type ConversationDraft,
+  savedRemovedSchema,
+  type DraftWritten,
   type FromDraftAnswer,
+  type Revisions,
+  type SavedAnswer,
+  type SavedEdit,
   type SavedFromDraft,
   type SavedList,
-  type SavedMessage,
   type SavedSave,
 } from './generated/web-api'
 
@@ -29,18 +32,23 @@ export async function saveFromDraft(conversationId: string, save: SavedFromDraft
   return readResponse(response, fromDraftAnswerSchema)
 }
 
-/** Adds a message for later, leaving the draft as it is, as Undo after Delete does. */
-export async function postSaved(conversationId: string, save: SavedSave, signal: AbortSignal): Promise<SavedMessage> {
+/** Adds a message for later, leaving the draft as it is, as Undo after Delete and Retry of a message not saved do. */
+export async function postSaved(conversationId: string, save: SavedSave, signal: AbortSignal): Promise<SavedAnswer> {
   const response = await apiRequest(savedPath(conversationId), { method: 'POST', signal, ...jsonBody(save) })
-  return (await readResponse(response, savedAnswerSchema)).message
+  return readResponse(response, savedAnswerSchema)
 }
 
-/** Moves the message into the draft, and the draft into the list; answers the draft. */
-export async function editSaved(conversationId: string, messageId: string, signal: AbortSignal): Promise<ConversationDraft> {
-  const response = await apiRequest(`${savedPath(conversationId, messageId)}/edit`, { method: 'POST', signal })
-  return (await readResponse(response, draftAnswerSchema)).draft
+/**
+ * The edit `edit.op`: moves the message into the draft, and the draft into
+ * the list as `edit.id`; answers the draft, with the revisions after it.
+ */
+export async function editSaved(conversationId: string, messageId: string, edit: SavedEdit, signal: AbortSignal): Promise<DraftWritten> {
+  const response = await apiRequest(`${savedPath(conversationId, messageId)}/edit`, { method: 'POST', signal, ...jsonBody(edit) })
+  return readResponse(response, draftWrittenSchema)
 }
 
-export async function deleteSaved(conversationId: string, messageId: string, signal: AbortSignal): Promise<void> {
-  await apiRequest(savedPath(conversationId, messageId), { method: 'DELETE', signal })
+/** Deletes the message; one gone already answers the same. Answers the revisions after it. */
+export async function deleteSaved(conversationId: string, messageId: string, signal: AbortSignal): Promise<Revisions> {
+  const response = await apiRequest(savedPath(conversationId, messageId), { method: 'DELETE', signal })
+  return (await readResponse(response, savedRemovedSchema)).revisions
 }

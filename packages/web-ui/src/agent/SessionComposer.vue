@@ -136,6 +136,8 @@ const props = withDefaults(
     onSendSaved?: Action<[id: string, way: SendWay]>
     /** Removes a saved message at once; the caller offers the undo. */
     onDeleteSaved?: Action<[id: string]>
+    /** Saves again a message the server did not save. */
+    onRetrySaved?: Action<[id: string]>
     /** The reload the composer offered is under way. */
     reloading?: boolean
     /**
@@ -708,6 +710,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             @edit="editSaved"
             @send="sendSaved"
             @delete="onDeleteSaved?.($event)"
+            @retry="onRetrySaved?.($event)"
           />
         </template>
         <template #below>
