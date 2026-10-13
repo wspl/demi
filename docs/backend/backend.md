@@ -526,13 +526,20 @@ diagnostics such as why it replaced a socket, is reported with
 `POST /api/page-errors { title, message, detail }`; the backend logs it as a
 warning under that request's ID and answers 204, and the page shows that ID
 with the error. A report carries what failed and where, never a value it
-held: a schema's refusal names the path and the expected and received types.
+held: a schema's refusal names the path and the expected and received types,
+a schema's own refinement words its refusal without quoting the value, and
+an address in a report's message keeps its path, never its query.
 A page sends at most 30 reports a minute; more are answered 429 and shown
 without an ID.
 
 **Showing the ID.** An error the page shows for a failed request, a refused
 frame or its own report, in a toast, a dialog or a row's failure line,
-adds *Request ID: req_…* in secondary text with a button that copies it. An
+adds *Request ID: req_…* in secondary text with a button that copies it.
+A refusal the user corrects in the form they filled, such as a wrong
+current password or an address already taken, shows no ID: it says what to
+change, and nothing about it needs tracing. A file's preview, its changes
+and the file tree show the ID with a read that failed as every other view
+does. An
 error the page words from a turn's failure record keeps its own diagnostics
 ([Failures and recovery](../agent/failures-and-recovery.md)).
 
