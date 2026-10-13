@@ -2484,6 +2484,7 @@ dependencies = [
  "bytes",
  "garde",
  "gix-imara-diff",
+ "jiff",
  "schemars",
  "serde",
  "serde_json",
