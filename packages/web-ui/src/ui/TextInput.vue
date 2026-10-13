@@ -3,6 +3,7 @@ import { computed, onMounted, ref, useAttrs, useSlots } from 'vue'
 import { Eye, EyeOff } from '@lucide/vue'
 import { keepComposition } from '@demicodes/utils'
 import { disabledTooltip } from './disabled'
+import { autofillAttrs, drawnAsDots, inputType as typeOf, type Masked } from './field-autofill'
 import IconButton from './IconButton.vue'
 import Tooltip from './Tooltip.vue'
 import { useAutofocus } from './autofocus'
@@ -17,8 +18,21 @@ const props = withDefaults(defineProps<{
   focused?: boolean
   /** Paint the focus ring without holding focus, for a catalog specimen. */
   showFocus?: boolean
-  /** A key or password: masked, with a built-in eye to reveal it. */
-  secret?: boolean
+  /**
+   * Masked, with a built-in eye to reveal it. `password` is an account
+   * password only (sign-in, setup, change password): a real `type=password`
+   * field that browsers and password managers fill and save, so the caller
+   * also sets `autocomplete` (`current-password`, `new-password`). `secret` is
+   * every other secret (an API key, a token, a credential's value): a text
+   * field drawn as dots that browsers and password managers leave alone, so a
+   * saved login is never offered for it nor taken from it.
+   */
+  masked?: Masked
+  /**
+   * A filter or search box: `type=search` with autofill off, so a browser
+   * never takes it for the user name of a login form on the same page.
+   */
+  search?: boolean
   /**
    * The value has no whitespace around it, such as a pasted key or token: what
    * a terminal or a web page adds around a copy is dropped as it arrives.
@@ -28,7 +42,7 @@ const props = withDefaults(defineProps<{
    * The value is literal text, not prose: a path, an address, a key, a code
    * or an identifier. The browser neither marks its spelling nor corrects or
    * capitalizes it, as macOS's Terminal and a browser's address bar do not.
-   * A `secret` or `trim` field is literal too.
+   * A `masked` or `trim` field is literal too.
    */
   literal?: boolean
   /** Height family: lg is 36px, md is 28px, sm is 24px. Match the surface's other controls. */
@@ -65,9 +79,10 @@ const layoutAttrs = computed(() => ({
   style: attrs['style']
 }))
 const inputAttrs = computed(() => ({
-  ...(props.literal || props.secret || props.trim
+  ...(props.literal || props.masked || props.trim
     ? { spellcheck: false, autocorrect: 'off', autocapitalize: 'off' }
     : {}),
+  ...autofillAttrs(props.masked, props.search),
   ...Object.fromEntries(
     Object.entries(attrs).filter(([key]) => key !== 'class' && key !== 'style')
   ),
@@ -83,6 +98,13 @@ function input(event: Event): void {
   }
   emit('update:modelValue', target.value)
 }
+
+const inputType = computed(() => typeOf(props.masked, props.search, revealed.value))
+const maskClass = computed(() => [
+  drawnAsDots(props.masked, revealed.value) ? '[-webkit-text-security:disc]' : '',
+  // The browser's own clear button is not drawn: the app's fields clear by their own means.
+  props.search ? '[&::-webkit-search-cancel-button]:appearance-none' : '',
+])
 
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
 
@@ -110,7 +132,7 @@ const insetPadding = {
 
 const inputPadClass = computed(() => [
   slots['prefix'] ? 'pl-1.5' : props.bare ? 'pl-0' : insetPadding[props.size].left,
-  props.secret || slots['suffix']
+  props.masked || slots['suffix']
     ? 'pr-1.5'
     : props.bare ? 'pr-0' : insetPadding[props.size].right,
 ])
@@ -163,19 +185,19 @@ defineExpose({
       </div>
       <input
         ref="inputRef"
-        :type="secret && !revealed ? 'password' : 'text'"
+        :type="inputType"
         v-bind="inputAttrs"
         :value="modelValue"
         :placeholder="placeholder"
         :disabled="disabled || undefined"
         :aria-invalid="invalid || undefined"
         class="h-full min-w-0 flex-1 bg-transparent text-chrome text-fg outline-none placeholder:text-fg-subtle"
-        :class="inputPadClass"
+        :class="[inputPadClass, maskClass]"
         @input="input"
         @focus="isFocused = true"
         @blur="isFocused = false"
       />
-      <div v-if="secret" class="flex shrink-0 items-center pr-1">
+      <div v-if="masked" class="flex shrink-0 items-center pr-1">
         <IconButton
           :icon="revealed ? EyeOff : Eye"
           variant="ghost"

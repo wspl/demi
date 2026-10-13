@@ -145,7 +145,7 @@ function submit() {
         <TextInput
           v-model="password"
           size="lg"
-          secret
+          masked="password"
           autocomplete="new-password"
           name="password"
           :disabled="phase.busy"
@@ -160,7 +160,7 @@ function submit() {
         <TextInput
           v-model="confirmation"
           size="lg"
-          secret
+          masked="password"
           autocomplete="new-password"
           name="confirmation"
           :disabled="phase.busy"

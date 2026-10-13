@@ -24,6 +24,8 @@ import type { SettingsPasskey, SettingsPasskeyHost } from './types'
 const props = defineProps<{
   host: SettingsPasskeyHost
   overlayStore: OverlayStore
+  /** The account's email, for the password step of Add Passkey. */
+  email: string
 }>()
 
 /** The most characters a passkey's name has once trimmed (`web-api.md` § Account API). */
@@ -92,6 +94,7 @@ const empty = computed(() => props.host.passkeys.length === 0)
   <AddPasskeyDialog
     :is-open="adding"
     :overlay-store="overlayStore"
+    :email="email"
     :add="host.add"
     @close="adding = false"
   />

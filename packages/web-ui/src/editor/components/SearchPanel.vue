@@ -52,6 +52,7 @@ function flip(key: Toggle): void {
     <TextInput
       class="min-w-0 max-w-72 flex-1"
       size="sm"
+      search
       placeholder="Find"
       aria-label="Find"
       main-field="true"
