@@ -28,6 +28,7 @@ mod cloud;
 mod conversations;
 mod credentials;
 mod deletion;
+mod diagnostics;
 mod direct;
 mod drafts;
 mod edge;

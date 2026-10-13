@@ -1,4 +1,5 @@
 import { onScopeDispose, shallowRef, watch, type Ref } from 'vue'
+import { shownError } from '../infra/errors'
 import type { EditCopies } from '@demicodes/protocol'
 import type { ChangeSides, ReadCallChange } from './changes'
 import { FileBrowserError } from './types'
@@ -12,7 +13,7 @@ export type RequestSidesState =
   | { phase: 'ready'; sides: ChangeSides }
   /** A side that is not text. */
   | { phase: 'binary' }
-  | { phase: 'failed'; message: string }
+  | { phase: 'failed'; message: string; requestId: string | null }
 
 export interface RequestSides {
   readonly state: Readonly<Ref<RequestSidesState>>
@@ -74,7 +75,7 @@ export function useRequestSides(
         return
       state.value = error instanceof FileBrowserError && (error.kind === 'binary' || error.kind === 'too-large')
         ? { phase: 'binary' }
-        : { phase: 'failed', message: error instanceof Error ? error.message : String(error) }
+        : { phase: 'failed', ...shownError(error) }
     }
   }
 

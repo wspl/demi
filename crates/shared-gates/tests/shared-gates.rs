@@ -190,3 +190,21 @@ async fn keyed_gates_serialize_one_key_and_forget_it_once_nobody_uses_it() {
     drop(held);
     assert!(gates.is_empty());
 }
+
+/// Each key may try so many times within the window: an attempt past it is
+/// refused and not counted, other keys keep their own counts, and an
+/// attempt that leaves the window makes room for one more. Paused time.
+#[tokio::test(start_paused = true)]
+async fn each_key_may_try_so_many_times_a_window() {
+    let window = demi_shared_gates::RateWindow::new(2, Duration::from_secs(60));
+    let (ana, ben) = ("ana", "ben");
+    assert!(window.attempt(&ana));
+    tokio::time::advance(Duration::from_secs(30)).await;
+    assert!(window.attempt(&ana));
+    assert!(!window.attempt(&ana));
+    assert!(window.attempt(&ben));
+    // The first attempt leaves the window, and one more fits.
+    tokio::time::advance(Duration::from_secs(30)).await;
+    assert!(window.attempt(&ana));
+    assert!(!window.attempt(&ana));
+}

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { requestFailure } from '../fixtures/request-failures'
+import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import { computed, onScopeDispose, ref } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ProviderLoginDialog, {
@@ -176,7 +178,7 @@ const operations = computed<Record<string, SettingsProviderOperation>>(() =>
 )
 const usageTimers = ref<Record<string, Record<string, { timer: number; trigger: SettingsQuotaRefresh }>>>({})
 /** The vendor's words for a manual refresh that failed, by provider and account, until that account's next answer. */
-const usageFailures = ref<Record<string, Record<string, string>>>({})
+const usageFailures = ref<Record<string, Record<string, ShownError>>>({})
 /** Every other request a manual press asked for fails, so the page shows both outcomes; an automatic one always answers. */
 let manualRefreshes = 0
 const refreshingUsage = computed(() => Object.fromEntries(
@@ -208,7 +210,7 @@ function refreshUsage(p: SettingsProviderEntry, accountId: string, automatic = f
         delete usageTimers.value[p.id]
       }
       if (fails) {
-        usageFailures.value[p.id] = { ...usageFailures.value[p.id], [accountId]: 'Anthropic’s usage service is unavailable.' }
+        usageFailures.value[p.id] = { ...usageFailures.value[p.id], [accountId]: requestFailure('Anthropic’s usage service is unavailable.') }
         return
       }
       delete usageFailures.value[p.id]?.[accountId]

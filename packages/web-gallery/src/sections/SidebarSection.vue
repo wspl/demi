@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { simulatedRequestId } from '../fixtures/request-failures'
 import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import { moveBefore } from '@demicodes/utils'
 import type { SidebarConversation, SidebarProject, SidebarProjectHost, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
@@ -213,9 +214,12 @@ function archiveRows(list: Ref<SidebarConversation[]>, ids: string[]): void {
     } else {
       dismissToast(toast)
     }
+    // One batch request refused them all, as the product's does.
+    const requestId = simulatedRequestId(`archive ${ids.join(' ')}`)
     showRefused('Archive', refused.map((conversation) => ({
       title: conversation.title,
       reasons: ['A conversation with running work cannot be archived, restored or moved'],
+      requestId,
     })))
   }, 800)
   answers.add(answer)

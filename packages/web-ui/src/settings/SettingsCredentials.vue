@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formError, type ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import { Eye, EyeOff } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -40,7 +41,7 @@ interface Editor {
   /** The credential edited; null for a new one. */
   credential: SettingsCredential | null
   open: boolean
-  status: { kind: 'idle' | 'saving' } | { kind: 'failed'; message: string }
+  status: { kind: 'idle' | 'saving' } | ({ kind: 'failed' } & ShownError)
 }
 
 const editor = ref<Editor | null>(null)
@@ -50,7 +51,8 @@ function open(credential: SettingsCredential | null): void {
 }
 
 function failed(error: unknown): Editor['status'] {
-  return { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+  // A refused name or field is the user's to correct in the dialog.
+  return { kind: 'failed', ...formError(error, { invalid_body: null, credential_name_taken: null }) }
 }
 
 async function save(draft: SettingsCredentialDraft): Promise<void> {
@@ -228,7 +230,7 @@ const empty = computed(() => props.credentials.length === 0)
       :overlay-store="overlayStore"
       :credential="editor.credential"
       :pending="editor.status.kind === 'saving'"
-      :error="editor.status.kind === 'failed' ? editor.status.message : null"
+      :error="editor.status.kind === 'failed' ? editor.status : null"
       @close="editor.open = false"
       @save="save"
       @delete="deleteOpen = true"

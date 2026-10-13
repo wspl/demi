@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import { computed } from 'vue'
 import AllowanceRequestCard from './AllowanceRequestCard.vue'
 import CredentialRequestCard from './CredentialRequestCard.vue'
@@ -18,7 +19,7 @@ const props = defineProps<{
   /** A decision is on its way: the buttons wait for its answer. */
   deciding?: boolean
   /** What the backend refused the last credential answer for. */
-  error?: string | null
+  error?: ShownError | null
 }>()
 
 const emit = defineEmits<{

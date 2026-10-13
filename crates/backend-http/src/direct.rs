@@ -82,7 +82,7 @@ pub(super) async fn open(
         device: Some(device.clone()),
         ..client.origin(PageSocketKind::DirectSignaling, user.id.clone())
     };
-    Ok(page_socket(upgrade).on_upgrade(move |socket| async move {
+    Ok(page_socket(upgrade, move |socket| async move {
         let (page, from_page) = open_page_socket(socket, tuning, origin);
         let signaling = Signaling {
             state,

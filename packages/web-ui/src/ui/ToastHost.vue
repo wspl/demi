@@ -66,6 +66,7 @@ function pinLeavingToast(el: Element) {
           :message="toast.message"
           :tone="toast.tone"
           :action="toast.action?.label"
+          :request-id="toast.requestId"
           @dismiss="dismissToast(toast.id)"
           @act="act(toast)"
         />

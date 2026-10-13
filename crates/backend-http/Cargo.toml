@@ -44,6 +44,9 @@ axum = { version = "0.8", features = ["ws"] }
 axum-extra = { version = "0.12", features = ["cookie", "typed-header"] }
 bytes.workspace = true
 cookie = "0.18"
+# Request IDs: 80 random bits in lowercase Crockford base-32.
+data-encoding = "2"
+rand = "0.9"
 futures-util.workspace = true
 garde.workspace = true
 http-body = "1"

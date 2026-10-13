@@ -1,4 +1,5 @@
 import type { Block, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
 import type { DeviceState } from '@demicodes/web-ui/devices/state'
@@ -56,7 +57,7 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /** When the root began to wait for the model's answer, as `Date.now()`; null when it waits for none (`runtime.md` § Waiting for the model). */
   waitingSince: number | null
   model: ModelSettings
-  lastError: string | null
+  lastError: ShownError | null
   /** The composer's Markdown, a mark where each file's capsule stands. */
   draft: string
   /** The draft the backend holds, as this page last read or saved it; null until read. */

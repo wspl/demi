@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import AuthPage from './AuthPage.vue'
 import Button from '../ui/Button.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
@@ -14,7 +15,7 @@ import InlineError from '../ui/InlineError.vue'
 export type HandoffPagePhase =
   | { kind: 'opening' }
   | { kind: 'expired' }
-  | { kind: 'failed'; message: string }
+  | ({ kind: 'failed' } & ShownError)
 
 defineProps<{
   phase: HandoffPagePhase
@@ -46,7 +47,7 @@ const emit = defineEmits<{
     "
   >
     <div class="flex flex-col items-start gap-4">
-      <InlineError v-if="phase.kind === 'failed'" :message="phase.message" />
+      <InlineError v-if="phase.kind === 'failed'" :message="phase.message" :request-id="phase.requestId" />
       <Button variant="primary" @click="emit('signIn')">Sign In</Button>
     </div>
   </AuthPage>

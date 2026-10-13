@@ -4,6 +4,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use bytes::Bytes;
 use demi_backend_accounts::email_change::{AccountMail, CodeKey, EmailChanges};
@@ -32,6 +33,8 @@ use demi_backend_providers::vault::operations::ProviderOperations;
 use demi_backend_providers::vault::quotas::AccountQuotas;
 use demi_backend_providers::vault::seal::VaultKey;
 use demi_backend_runners::claims::PendingClaims;
+use demi_shared_gates::RateWindow;
+use demi_web_api_protocol::sessions::SessionId;
 use demi_backend_runners::devices::Returning;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::install::RunnerReleases;
@@ -49,6 +52,8 @@ use crate::tuning::{ConversationTuning, LifecycleTuning, PageTuning, RunnerTunin
 const CONTROL_DATABASE: &str = "control.sqlite";
 const CONVERSATION_DATABASES: &str = "conversations";
 const SEARCH_INDEXES: &str = "search";
+/// How many error reports a page's session sends a minute; more are refused.
+const PAGE_ERRORS_PER_MINUTE: usize = 30;
 
 /// The services that span users, or that are needed before the user is
 /// known. The edge and every shard share them.
@@ -75,6 +80,9 @@ pub struct Services {
     pub logins: Arc<LoginFlows>,
     /// Runners waiting to be paired, which have no user yet.
     pub claims: PendingClaims,
+    /// The page error reports each session sent within the last minute, at
+    /// most thirty (`backend.md` § Request IDs and the server log).
+    pub page_errors: RateWindow<SessionId>,
     pub runners: RunnerTuning,
     pub conversation_tuning: ConversationTuning,
     /// How the sockets to a page are timed.
@@ -366,6 +374,7 @@ impl Services {
             operations,
             logins,
             claims: PendingClaims::new(settings.runners.claims_per_minute),
+            page_errors: RateWindow::new(PAGE_ERRORS_PER_MINUTE, Duration::from_secs(60)),
             runners: settings.runners,
             conversation_tuning: settings.conversations,
             pages: settings.pages,

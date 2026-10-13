@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import {
   identitySchema,
   setupStatusSchema,
@@ -31,7 +32,7 @@ type SessionState =
    * page shows it with Retry, which checks again (`web-application.md`
    * § Page synchronization).
    */
-  | { status: 'failed'; error: string }
+  | { status: 'failed'; error: ShownError }
   | {
       status: 'signedIn'
       user: User
@@ -106,7 +107,7 @@ export const useSession = defineStore('session', {
           return
         }
         if (first) {
-          this.current = { status: 'failed', error: error instanceof Error ? error.message : String(error) }
+          this.current = { status: 'failed', error: shownError(error) }
           return
         }
         throw error

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useElementSize, useResizeObserver } from '@vueuse/core'
@@ -68,7 +69,7 @@ const props = withDefaults(defineProps<{
   pendingAction?: PendingAction
   /** What the providers read out of the error blocks' failure records, by block id. */
   failures?: Record<string, ProviderFailureFacts>
-  loadError?: string | null
+  loadError?: ShownError | null
   /** A session-level failure told at the tail of the transcript, in flow. */
   failure?: SessionFailureNotice | null
   /** The messages sent and not yet confirmed, in the order they were sent. */
@@ -385,7 +386,7 @@ defineExpose({
       <SessionStatus
         v-if="paneStatus"
         :kind="paneStatus"
-        :detail="paneStatus === 'failed' ? (loadError ?? undefined) : undefined"
+        :detail="paneStatus === 'failed' ? loadError : null"
         @retry="emit('retryLoad')"
       />
       <div

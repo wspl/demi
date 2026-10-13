@@ -114,7 +114,7 @@ test('a decision shows at once and is not read back; a refused one gives the req
   expect(state.requests.map((request) => request.id)).toEqual(['pr-1'])
   expect(reads.value).toBe(1)
 
-  decide = () => Response.json({ code: 'internal_error', message: 'Not decided' }, { status: 500 })
+  decide = () => Response.json({ requestId: 'req_test000000000001', code: 'internal_error', message: 'Not decided' }, { status: 500 })
   await permissions.decide(CONVERSATION, 'pr-1', 'deny')
   expect(state.requests.map((request) => request.id)).toEqual(['pr-1'])
   expect(reads.value).toBe(1)
@@ -192,10 +192,11 @@ test('the values of a credential go with the answer, the card stays until they a
   const state = permissions.stateFor(CONVERSATION)
   await until(() => state.requests.length).toBe(3)
 
-  decide = () => Response.json({ code: 'invalid_answer', message: 'The value of “API key” can be at most 64 KiB.' }, { status: 400 })
+  decide = () => Response.json({ requestId: 'req_test000000000001', code: 'invalid_answer', message: 'The value of “API key” can be at most 64 KiB.' }, { status: 400 })
   await permissions.decide(CONVERSATION, 'cr-1', 'allow', { values: { key: 'AIza' }, keep: '1d' })
   expect(state.requests.map((request) => request.id)).toEqual(['cr-1', 'al-1', 'al-2'])
-  expect(state.error).toBe('The value of “API key” can be at most 64 KiB.')
+  // The user corrects the value in the card: no request to trace.
+  expect(state.error).toEqual({ message: 'The value of “API key” can be at most 64 KiB.', requestId: null })
   expect(state.deciding).toBe(false)
 
   decide = () => new Response(null, { status: 204 })

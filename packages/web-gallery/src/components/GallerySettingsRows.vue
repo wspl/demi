@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { requestFailure } from '../fixtures/request-failures'
+import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import { ref } from 'vue'
 import { Monitor, Moon, RefreshCw, Sun } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -51,12 +53,12 @@ const usage = ref<SettingsQuotaWindow[]>([
   { id: 'seven_day', label: '7d all models', used: 31, max: 100, resetsAt: ahead(3 * DAY + 4 * HOUR) },
 ])
 /** The vendor's words for a refresh that failed, until the next answer. */
-const usageFailure = ref<string | null>(null)
+const usageFailure = ref<ShownError | null>(null)
 /** Every other press fails, so the row shows both outcomes. */
 let presses = 0
 function refreshUsage(): void {
   if (++presses % 2 === 1) {
-    usageFailure.value = 'Anthropic’s usage service is unavailable.'
+    usageFailure.value = requestFailure('Anthropic’s usage service is unavailable.')
     return
   }
   usageFailure.value = null

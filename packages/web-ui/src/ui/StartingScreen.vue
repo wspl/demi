@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { ShownError } from '../infra/errors'
 import AsyncRegion from './AsyncRegion.vue'
 
 /**
@@ -12,8 +13,8 @@ withDefaults(
   defineProps<{
     /** The page could not reach the backend so far. */
     connecting: boolean
-    /** The backend's own failure of the check, in its words; null while there is none. */
-    failure?: string | null
+    /** The backend's own failure of the check, in its words, with its request; null while there is none. */
+    failure?: ShownError | null
     /** Checks again, as `RegionStatus` takes it. */
     onRetry?: () => unknown
   }>(),
@@ -27,7 +28,8 @@ withDefaults(
       :state="failure === null ? 'loading' : 'failed'"
       :label="connecting ? 'Connecting to Demi…' : 'Loading Demi…'"
       error="Couldn’t check your session."
-      :detail="failure"
+      :detail="failure?.message"
+      :request-id="failure?.requestId"
       :on-retry="onRetry"
     />
   </div>
