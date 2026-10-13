@@ -12,7 +12,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
 use demi_backend_accounts::passkeys;
-use demi_backend_accounts::sessions::SignOut;
+use demi_backend_accounts::sessions::{PhoneSession, SignOut};
 use demi_backend_page_sync::Part;
 use demi_backend_user_shard::services::Services;
 use demi_web_api_protocol::error::ErrorCode;
@@ -23,7 +23,7 @@ use demi_web_api_protocol::sessions::{
 };
 
 use super::body::JsonBody;
-use super::cookies::{self, Https};
+use super::cookies::{self, Https, SESSION_COOKIE};
 use super::error::ApiError;
 use super::gate::{AuthUser, CurrentSession};
 use super::passkeys::{refused, relying_party, too_many};
@@ -122,8 +122,10 @@ pub(super) async fn make_code(
     Ok(Json(code))
 }
 
-/// `POST /auth/handoff`: spends a code and signs its account in, as
-/// `POST /auth/login` does.
+/// `POST /auth/handoff`: spends a code and opens its account in the
+/// browser: in the session its cookie holds when that is of the account,
+/// setting no cookie, else signed in as `POST /auth/login` does, ending the
+/// other account's session the cookie held, its pages with it.
 pub(super) async fn spend_code(
     State(services): State<Arc<Services>>,
     headers: HeaderMap,
@@ -131,9 +133,10 @@ pub(super) async fn spend_code(
     Https(https): Https,
     JsonBody(request): JsonBody<HandoffSpend>,
 ) -> Result<Response, ApiError> {
+    let current = jar.get(SESSION_COOKIE).map(|cookie| cookie.value());
     let Some(handed) = services
         .sessions
-        .spend_handoff(&request.code, user_agent(&headers))
+        .spend_handoff(&request.code, current, user_agent(&headers))
         .await?
     else {
         return Err(ApiError::new(
@@ -143,12 +146,18 @@ pub(super) async fn spend_code(
         ));
     };
     services.sync.mark(&handed.user, Part::Sessions);
-    let jar = jar.add(cookies::session(
-        &handed.session.token,
-        handed.session.expires_at,
-        https,
-    ));
-    Ok((jar, Json(HandoffAnswer { to: handed.to })).into_response())
+    let answer = Json(HandoffAnswer { to: handed.to });
+    match handed.session {
+        PhoneSession::Kept => Ok(answer.into_response()),
+        PhoneSession::Opened { session, ended } => {
+            if let Some(ended) = ended {
+                services.sync.end_session(&ended.user, &ended.token);
+                services.sync.mark(&ended.user, Part::Sessions);
+            }
+            let jar = jar.add(cookies::session(&session.token, session.expires_at, https));
+            Ok((jar, answer).into_response())
+        }
+    }
 }
 
 /// `GET /auth/sessions`.

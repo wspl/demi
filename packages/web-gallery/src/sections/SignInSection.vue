@@ -32,7 +32,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Phone handoff',
-    'What a phone’s camera opens from a code another signed-in browser shows: it signs in while the code is spent, then opens the page the code names. A code that expired or was used says so, with Sign In.'
+    'What a phone’s camera opens from a code another signed-in browser shows: it says it opens the page while the code is spent, then opens the page the code names, signed in: in the phone’s own session when it was signed in to the account. A code that expired or was used says so, with Sign In.'
   ],
   [
     'Starting',
@@ -178,7 +178,7 @@ function showSetupState(value: string) {
 }
 
 const handoffStates: { value: string; label: TitleText; phase: HandoffPagePhase }[] = [
-  { value: 'signingIn', label: 'Signing In', phase: { kind: 'signingIn' } },
+  { value: 'opening', label: 'Opening', phase: { kind: 'opening' } },
   { value: 'expired', label: 'Expired', phase: { kind: 'expired' } },
   { value: 'failed', label: 'Failed', phase: { kind: 'failed', message: 'Couldn’t reach Demi. Check the connection and try again.' } },
 ]
@@ -262,7 +262,7 @@ function createAccount(name: string, address: string) {
     <GallerySection
       v-else-if="view === 'handoff'"
       title="Phone Handoff"
-      note="Switch the state. Signing In shows while the code is spent; the product then opens the page the code names. Sign In opens the sign-in page."
+      note="Switch the state. Opening shows while the code is spent; the product then opens the page the code names. Sign In opens the sign-in page."
     >
       <div class="mb-3">
         <Segmented v-model="handoffState" :options="handoffStates" />
