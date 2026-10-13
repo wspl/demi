@@ -57,8 +57,8 @@ const props = defineProps<{
   limits?: UsageLimits | null
   /**
    * The meter stands as a segment of a status bar (`StatusBarSegment`): its
-   * hover background fills the bar's full height and the segment's width, not
-   * a rounded square, and Tab reaches it with the focus ring.
+   * hover background fills the bar's height inside its inset and the segment's
+   * width, not a rounded square, and Tab reaches it with the focus ring.
    */
   segment?: boolean
 }>()
@@ -163,7 +163,7 @@ const ringColor = computed(() => {
           aria-haspopup="dialog"
           :aria-expanded="isOpen"
           class="relative flex cursor-default items-center justify-center transition-colors hover:bg-hover"
-          :class="[segment ? 'focus-ring h-full px-1.5' : 'size-hit rounded-md', isOpen ? 'bg-hover' : '']"
+          :class="[segment ? 'status-bar-segment focus-ring h-full' : 'size-hit rounded-md', isOpen ? 'bg-hover' : '']"
           :data-acting="segment || undefined"
         >
           <IndeterminateSpinner v-if="isCompacting" />
