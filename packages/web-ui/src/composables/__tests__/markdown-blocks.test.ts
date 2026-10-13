@@ -5,6 +5,7 @@ import { chromium, type Browser, type Page } from 'playwright'
 import type { useMarkdownBlocks as UseMarkdownBlocks } from '../useMarkdownBlocks'
 import type { md as Md } from '../../markdown/md'
 import type * as Vue from 'vue'
+import { STREAM_PACE } from '../../ui/stream-reveal'
 
 // A streaming reply renders a block at a time (`file-previews.md`): a
 // settled block renders once and stays as the same nodes, the last block
@@ -175,6 +176,24 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
       }
     })
     expect(result).toEqual({ settled: 3, firstFading: true, stacked: 0 })
+  })
+
+  // A fade over text that is the render's own top-level node, as an HTML
+  // block shown as text is, splits it; once the fades end, the end render
+  // kept the split's first piece in place of the whole and dropped the rest.
+  test('a reply ends whole after its fades split the render\'s text', async () => {
+    const result = await (await page()).evaluate(async (fadeMs) => {
+      const { root, steps, show } = window.reply
+      const text = '<div>abcdefghijklmnopqrstuvwxyz</div>\n'
+      // Shown almost a fade ago, so its fades end in a few milliseconds.
+      steps.value = [{ start: 5, end: text.length, at: performance.now() - fadeMs + 20 }]
+      await show(text)
+      await Promise.all(root.getAnimations({ subtree: true }).map((animation) => animation.finished))
+      steps.value = []
+      await show(text, false)
+      return { ended: root.innerHTML, whole: window.exposed.md.render(text) }
+    }, STREAM_PACE.fadeMs)
+    expect(result.ended).toBe(result.whole)
   })
 
   // Characters every regular expression of the page scans for the step after
