@@ -71,11 +71,15 @@ export function signInCodeWording(name: string): HandoffWording {
   }
 }
 
-/** Add User's last step, once the account `name` is made: its first password stands beside the code. */
-export function addedUserWording(name: string): HandoffWording {
+/**
+ * The last step of Add User… and Reset Password…, once the account is made
+ * or has a new password: `title` names the action, and the password the
+ * server made stands beside the code.
+ */
+export function userReadyWording(title: string, name: string): HandoffWording {
   return {
     ...signInCodeWording(name),
-    title: 'Add User',
+    title,
     scan: 'Or scan with their phone’s camera to sign it in.',
   }
 }

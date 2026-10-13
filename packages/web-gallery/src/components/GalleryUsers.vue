@@ -4,22 +4,27 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsUsers from '@demicodes/web-ui/settings/SettingsUsers.vue'
 import type { SettingsUsersHost } from '@demicodes/web-ui/settings/types'
 import { galleryHandoff } from '../fixtures/handoff'
-import type { UsersState } from '../fixtures/users'
+import { fakeFirstPassword, type UsersState } from '../fixtures/users'
 import { productWould } from '../product-would'
 
 /**
  * Settings › Users over a specimen's accounts. Each write waits a beat, as
- * the product's does, then changes the list: Add User adds a row that has
- * not signed in yet (an address another row has is refused), Change Role and
- * Disable Account change the row, and the product would end the sessions of
- * an account signed out, which a toast says. Reset Password marks the account
- * as still to choose its password.
+ * the product's does, then changes the list. Add User…, Reset Password… and
+ * Sign-In Code… ask the administrator's confirmation first, as a session not
+ * verified in the last five minutes does: any password but `wrong` confirms.
+ * Add User… adds a row that has not signed in yet and still has to choose
+ * its password (an address another row has is refused); Reset Password… and
+ * New Password make a first password and mark the account the same;
+ * Change Role… and Disable Account… change the row; and the product would
+ * end the sessions of an account signed out, which a toast says.
  */
 const props = defineProps<{
   state: UsersState
 }>()
 
 const timers = new Set<number>()
+/** When the administrator's confirmation holds until; the specimen starts unverified. */
+let verifiedUntil = 0
 
 /** Resolves after a beat, as a request to the backend would. */
 function beat(): Promise<void> {
@@ -37,15 +42,17 @@ onBeforeUnmount(() => {
   }
 })
 
+function verified(): boolean {
+  return Date.now() < verifiedUntil
+}
+
+let added = 0
 /** The nickname an account made by an address starts with: its name before the @, capitalized. */
 function nicknameOf(email: string): string {
   const name = email.split('@')[0] ?? email
   return name.charAt(0).toUpperCase() + name.slice(1)
 }
 
-let added = 0
-/** The accounts made here, whose first sign-in code the Add User dialog shows without asking the administrator again. */
-const justAdded = new Set<string>()
 function find(id: string) {
   return props.state.users.find((user) => user.id === id)
 }
@@ -53,31 +60,51 @@ function find(id: string) {
 const host = computed<SettingsUsersHost>(() => ({
   users: props.state.users,
   viewerId: props.state.viewerId,
+  verifyPassword: async (password) => {
+    await beat()
+    if (password === 'wrong') {
+      return { kind: 'wrongPassword', message: 'That is not your password.' }
+    }
+    verifiedUntil = Date.now() + 5 * 60_000
+    return { kind: 'verified' }
+  },
+  verifyPasskey: async () => {
+    await beat()
+    productWould('Ask the Browser for a Passkey of This Account')
+    verifiedUntil = Date.now() + 5 * 60_000
+    return { kind: 'verified' }
+  },
   add: async (draft) => {
     await beat()
+    if (!verified()) {
+      return { kind: 'needsVerification' }
+    }
     if (props.state.users.some((user) => user.email === draft.email.toLowerCase())) {
       return { kind: 'emailTaken' }
     }
     added += 1
+    const nickname = nicknameOf(draft.email)
     props.state.users.push({
       id: `added-${added}`,
-      nickname: nicknameOf(draft.email),
+      nickname,
       email: draft.email.toLowerCase(),
       role: draft.role,
       disabled: false,
       choosesPassword: true,
       lastActiveAt: null,
     })
-    const id = `added-${added}`
-    justAdded.add(id)
-    return { kind: 'added', id }
+    return { kind: 'added', id: `added-${added}`, nickname, password: fakeFirstPassword() }
   },
-  resetPassword: async (id) => {
+  newPassword: async (id) => {
     await beat()
+    if (!verified()) {
+      return { kind: 'needsVerification' }
+    }
     const user = find(id)
     if (user) {
       user.choosesPassword = true
     }
+    return { kind: 'made', password: fakeFirstPassword() }
   },
   setRole: async (id, role) => {
     await beat()
@@ -90,10 +117,6 @@ const host = computed<SettingsUsersHost>(() => ({
     await beat()
     productWould(`Sign ${find(id)?.nickname ?? 'the User'} Out Everywhere`)
   },
-  signInCode: (id) => {
-    const confirmed = justAdded.delete(id)
-    return galleryHandoff(confirmed ? 'code' : 'verify').host
-  },
   setDisabled: async (id, disabled) => {
     await beat()
     const user = find(id)
@@ -104,6 +127,8 @@ const host = computed<SettingsUsersHost>(() => ({
       }
     }
   },
+  // A code asks the confirmation inside its own dialog, which a verified session skips.
+  signInCode: () => galleryHandoff(verified() ? 'code' : 'verify').host,
 }))
 </script>
 
