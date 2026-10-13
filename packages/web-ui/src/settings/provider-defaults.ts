@@ -1,11 +1,5 @@
-import type { SettingsVendor, SettingsWireApi } from './types'
-
-const OFFICIAL_VENDOR_BY_PROTOCOL: Record<SettingsWireApi, string> = {
-  'anthropic-messages': 'anthropic',
-  'openai-responses': 'openai',
-  'openai-chat': 'openai',
-  'google-generative': 'google',
-}
+import type { SentenceText } from '../ui/ui-text'
+import type { SettingsVendor } from './types'
 
 /** The vendors Add Provider lists first, in this order, before the rest of the catalog. */
 const FIRST_VENDORS = ['openai', 'anthropic', 'google']
@@ -16,11 +10,15 @@ export function vendorsInListOrder(vendors: readonly SettingsVendor[]): Settings
   return [...first, ...vendors.filter((vendor) => !FIRST_VENDORS.includes(vendor.id))]
 }
 
-/** Bare protocol entries start from the official vendor's catalog endpoint. */
-export function defaultEndpointUrl(
-  vendors: readonly SettingsVendor[],
-  wireApi: SettingsWireApi,
-): string {
-  const vendorId = OFFICIAL_VENDOR_BY_PROTOCOL[wireApi]
-  return vendors.find((vendor) => vendor.id === vendorId)?.baseUrl ?? ''
+/** What is wrong with an endpoint the user typed, said as the fix; null for an http or https address. */
+export function endpointProblem(text: string): SentenceText | null {
+  try {
+    const { protocol } = new URL(text.trim())
+    if (protocol === 'http:' || protocol === 'https:') {
+      return null
+    }
+  } catch {
+    // Not an address at all: said below with the rest.
+  }
+  return 'Enter an http or https address.'
 }

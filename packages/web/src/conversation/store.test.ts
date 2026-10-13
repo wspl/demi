@@ -41,7 +41,7 @@ const model = {
 /** The provider entry a conversation infers with, as the product state lists it. */
 const stubProvider = {
   id: 'stub', kind: 'api_key' as const, providerType: 'stub', label: 'Stub',
-  wireApi: null, vendorId: null, baseUrl: null, hasApiKey: true, models: null, createdAt: '2026-09-09T00:00:00.000Z',
+  wireApi: null, vendorId: null, compatible: false, endpoint: null, hasApiKey: true, models: null, createdAt: '2026-09-09T00:00:00.000Z',
   details: { type: 'failed' as const, message: 'Not read in this test' },
 }
 /** A catalog with the one stub model. */
