@@ -201,7 +201,9 @@ file's icon or an agent's mark ([Linking an agent](../agent/subagents.md#linking
 is a small object in the sentence, as a mention is in Slack or Notion, so it
 keeps 0.2 em of space on each side, inside its hover fill where it has one
 and outside its underline: in "已经告诉[负责的 Agent](agent:57)：", the character before the
-mark and the colon after the name no longer touch it. A link without an
+mark and the colon after the name no longer touch it. Latin punctuation
+right after it, `. , ; : ! ? ) ] }`, takes no space before it, as after any
+word: "the main agent;" never reads "the main agent ;". A link without an
 icon is words and is spaced as words.
 
 | Target | A link | An image |
