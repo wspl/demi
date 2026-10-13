@@ -290,10 +290,13 @@ developer: the page writes it to the browser console, never into the toast.
   input meanwhile; it never waits for the state the call causes. On success
   the control shows the state the plugin sends; on failure the page reports
   the call's error, as `errors.report` reports any failed call, in a toast,
-  and the control shows the plugin's last state again. When the component
-  that showed the control goes, the calls it still waits for are aborted and
-  nothing reports them. The SDK's `pendingCalls` is that rule, by the key of
-  what each control acts on: the Skills page's switches by their source.
+  and the control shows the plugin's last state again. A call is an
+  operation of the page ([Responding to the user](../product/web-application.md#responding-to-the-user)),
+  by the plugin's action and the key of what it acts on, such as the Skills
+  page's switch of a source: when the component that showed the control
+  goes, the call goes on, and the control drawn again shows it working. The
+  SDK gives plugins the page's operations for this; it has no pending state
+  of its own.
 
 ## The conversation files service
 
