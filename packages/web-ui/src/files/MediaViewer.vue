@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, shallowRef, watch } from 'vue'
 import { createReusableTemplate, useMediaQuery } from '@vueuse/core'
 import Dialog from '../ui/Dialog.vue'
 import FloatingWindow from '../ui/FloatingWindow.vue'
@@ -8,7 +8,7 @@ import { appOverlayStore } from '../overlay/appOverlay'
 import ImagePreview from './ImagePreview.vue'
 import MediaPreview from './MediaPreview.vue'
 import { formatZoom } from './image-zoom'
-import type { MediaViewerState, ShownMedium } from './media-viewer'
+import { mediumKey, useMediumSource, type MediaViewerState, type ShownMedium } from './media-viewer'
 import type { StepReach } from './swipe-step'
 import type { PixelSize } from './thumbnail'
 
@@ -35,13 +35,16 @@ const [DefineMedium, ReuseMedium] = createReusableTemplate<{ flush: boolean; swi
 const phone = useMediaQuery('(max-width: 767.98px)')
 
 // The last medium stays while the viewer closes, so its leave shows the picture.
-const medium = ref<ShownMedium | null>(null)
+const medium = shallowRef<ShownMedium | null>(null)
 const size = ref<PixelSize | null>(null)
 /** An image's zoom, which its preview reports; none for a video. */
 const zoom = ref<number | null>(null)
 const failed = ref(false)
 const floating = ref<InstanceType<typeof FloatingWindow>>()
 const open = computed(() => props.viewer.shown.value !== null)
+
+/** Where the medium loads from: its address, or a Host image's file at the version the page keeps, followed while the viewer is open. */
+const { src, gone } = useMediumSource(() => medium.value, () => open.value)
 
 watch(() => props.viewer.shown.value, (shown, previous) => {
   if (!shown)
@@ -53,6 +56,10 @@ watch(() => props.viewer.shown.value, (shown, previous) => {
   // A medium shown in place of another moves the focus into the window again, from the thumbnail that showed it.
   if (previous)
     floating.value?.activate()
+})
+// A new version of the file is another picture, which may show where the last could not.
+watch(src, () => {
+  failed.value = false
 })
 
 /** What the title bar tells of the medium: its place among the transcript's, its pixel size and an image's zoom, *3 of 12 · 1280 × 720 · 50%*. */
@@ -104,11 +111,11 @@ function onSize(width: number, height: number): void {
 <template>
   <DefineMedium v-slot="{ flush, swipe }">
     <template v-if="medium">
-      <RegionStatus v-if="failed" class="h-full" status="failed" :label="`Could not show this ${medium.kind}.`" />
+      <RegionStatus v-if="failed || gone" class="h-full" status="failed" :label="`Could not show this ${medium.kind}.`" />
       <ImagePreview
-        v-else-if="medium.kind === 'image'"
-        :key="medium.src"
-        :src="medium.src"
+        v-else-if="medium.kind === 'image' && src"
+        :key="mediumKey(medium)"
+        :src="src"
         :name="medium.name"
         :flush="flush"
         :steps="swipe ? reach : undefined"
@@ -119,9 +126,9 @@ function onSize(width: number, height: number): void {
         @step="onSwipe"
       />
       <MediaPreview
-        v-else
-        :key="medium.src"
-        :src="medium.src"
+        v-else-if="medium.kind === 'video'"
+        :key="mediumKey(medium)"
+        :src="src"
         kind="video"
         :name="medium.name"
         autoplay

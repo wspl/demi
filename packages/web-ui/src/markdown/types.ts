@@ -1,4 +1,6 @@
 import type { MessageAgents } from '../agent/agent-links'
+import type { FileContents } from '../files/types'
+import type { HostImage } from '../files/host-image'
 
 /**
  * An attachment the agent uploaded to the conversation (`commands.md`
@@ -55,8 +57,14 @@ export interface ConversationFiles {
    * while it is not known, and such a path then names no file.
    */
   home?: string | null
-  /** The URL an image at a Host path loads from. */
-  imageUrl(path: string): string
+  /**
+   * The Host's files a message's images load from: each image shows the
+   * version of its file the page keeps, which the Host's watch keeps current
+   * (`plugin-pages.md` § What the service keeps), so it changes when the file
+   * does. Absent while the Host is not known, and a Host image then shows its
+   * alt text.
+   */
+  contents?: FileContents
   /**
    * Shows the file at a Host path, at its line when it names one, through
    * the `file` intent; absent while no plugin the user has on opens it, so a
@@ -91,6 +99,12 @@ export interface MarkdownRenderOptions {
   files?: MessageFiles
   /** The paths of the message's inline code the Host has as files, which show as links to them. */
   codeFiles?: ReadonlySet<string> | null
+  /**
+   * What shows of each Host image the message names, by its absolute path
+   * (`useHostImages`); one it does not name yet is still being read, and
+   * shows its alt text meanwhile.
+   */
+  hostImages?: ReadonlyMap<string, HostImage>
   /** The conversation's agents, which `agent:4` links; absent, such a link shows its text alone. */
   agents?: MessageAgents
 }

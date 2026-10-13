@@ -2,6 +2,7 @@ import type { RendererObject, Token, Tokens } from 'marked'
 import { markdownReader } from './reader'
 import { baseName } from '@demicodes/utils'
 import type { MarkdownRenderOptions, MessageAttachment, MessageFileTarget, MessageFiles } from './types'
+import type { HostImage } from '../files/host-image'
 import { codeBlockHtml } from './highlight'
 import { attachmentId, isHttpUrl, messageFileTarget, messageImage } from './filePath'
 import { codeFileTarget } from './code-paths'
@@ -125,6 +126,9 @@ function firstWord(html: string): string {
  */
 export const ATTACHMENT_FILE_ATTRIBUTE = 'data-attachment-file'
 
+/** The attribute of a Host image that names its file's path, which a click on it shows in the viewer (`openMessageLink`). */
+export const HOST_FILE_ATTRIBUTE = 'data-host-file'
+
 /** An attachment as Demi's own form of a copy holds a stored file. */
 function attachmentFile(attachment: MessageAttachment): CopiedStoredFile {
   return { type: 'stored', name: attachment.name, sha256: attachment.sha256, mediaType: attachment.mediaType }
@@ -191,6 +195,23 @@ function attachmentTarget(
     default:
       return body
   }
+}
+
+/**
+ * Where an image loads from: its URL, or a Host image's file at the version
+ * the page keeps of it, with the path the click shows it by; `loading`
+ * while a Host image's file is read. Null shows its alt text.
+ */
+function imageSource(target: string): { src: string; path: string | null } | 'loading' | null {
+  const image = messageImage(target, activeOptions?.files)
+  if (!image)
+    return null
+  if ('url' in image)
+    return { src: image.url, path: null }
+  const shown: HostImage = activeOptions?.hostImages?.get(image.path) ?? { state: 'loading' }
+  if (shown.state !== 'shown')
+    return shown.state === 'loading' ? 'loading' : null
+  return { src: shown.src, path: image.path }
 }
 
 /**
@@ -265,11 +286,14 @@ const messageRenderer: RendererObject = {
     const attachment = attachmentId(token.href)
     if (attachment !== null)
       return attachmentTarget(attachment, escapeHtml(token.text), (found) => attachmentMedium(found, token))
-    const source = messageImage(token.href, activeOptions?.files)
-    if (source === null)
+    const source = imageSource(token.href)
+    // A Host image shows its alt text while its file is read, as an attachment does.
+    if (source === null || source === 'loading')
       return escapeHtml(token.text)
     const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
-    return `<img src="${escapeHtml(source.src)}" alt="${escapeHtml(token.text)}"${title} />`
+    // A Host image names its file, which the viewer a click opens follows.
+    const file = source.path === null ? '' : ` ${HOST_FILE_ATTRIBUTE}="${escapeHtml(source.path)}"`
+    return `<img src="${escapeHtml(source.src)}" alt="${escapeHtml(token.text)}"${title}${file} />`
   },
 }
 
@@ -290,7 +314,7 @@ function showsMedium(token: Token): boolean {
   const href: string = token.href
   const id = attachmentId(href)
   if (id === null)
-    return messageImage(href, activeOptions?.files) !== null
+    return imageSource(href) !== null
   const lookup = activeOptions?.files?.attachment?.(id)
   if (!lookup || lookup.state === 'missing')
     return false
@@ -484,8 +508,12 @@ export function messageMedia(src: string, files: MessageFiles | undefined): Show
     const id = attachmentId(token.href)
     if (id === null) {
       const image = messageImage(token.href, files)
-      if (image)
-        media.push({ kind: 'image', src: image.src, name: token.text || 'image' })
+      const name = token.text || 'image'
+      if (image && 'url' in image)
+        media.push({ kind: 'image', src: image.url, name })
+      // A Host image is its file, which the viewer shows at the version the page keeps.
+      else if (image && files?.contents)
+        media.push({ kind: 'image', file: { path: image.path, contents: files.contents }, name })
       return
     }
     const lookup = files?.attachment?.(id)
@@ -497,6 +525,16 @@ export function messageMedia(src: string, files: MessageFiles | undefined): Show
       media.push({ kind, src: attachment.url, name: attachment.name, size: declaredSize(attachment) })
   })
   return media
+}
+
+/** The target of each image of an agent's message, in order, at any depth. */
+export function messageImageTargets(src: string): string[] {
+  const targets: string[] = []
+  agentMarked.walkTokens(agentMarked.lexer(src), (token) => {
+    if (token.type === 'image')
+      targets.push(token.href)
+  })
+  return targets
 }
 
 /** An agent's message: GitHub Flavored Markdown with math. */
