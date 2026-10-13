@@ -52,11 +52,13 @@ export class DeviceSignaling implements PeerSignaling {
    * @param deviceId The paired device the socket introduces the page to.
    * @param opened Called each time the socket opens: first, and again after it closed.
    * @param peerClosed Called when the backend closed the runner's peer, whose introduction is out of date.
+   * @param dropped Called when the socket closed or was taken as broken: the backend closes the runner's peer then, so the page's peer is gone too.
    */
   constructor(
     private readonly deviceId: string,
     private readonly opened: () => void,
     private readonly peerClosed: () => void,
+    private readonly dropped: () => void,
   ) {
     this.connect()
   }
@@ -191,6 +193,7 @@ export class DeviceSignaling implements PeerSignaling {
     this.drop()
     if (this.stopped)
       return
+    this.dropped()
     this.failures = Math.max(this.failures, 1)
     this.waiting = waitToReconnect(this.failures, () => {
       this.waiting = null
