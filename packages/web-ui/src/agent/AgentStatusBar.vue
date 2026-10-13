@@ -80,7 +80,7 @@ const forked = computed(() => (props.run.forkedFrom === null ? null : agents()?.
 </script>
 
 <template>
-  <div class="status-bar @container flex h-8 phone:h-9 shrink-0 items-stretch border-t border-line text-chrome phone:text-[15px] text-fg-muted">
+  <div data-window-bar class="status-bar @container flex h-8 phone:h-9 shrink-0 items-stretch border-t border-line text-chrome phone:text-[15px] text-fg-muted">
     <div class="flex shrink-0 items-stretch">
       <StatusBarSegment>
         <StatusDot v-if="tone" :tone="tone" :breathing="run.phase === 'running'" />

@@ -13,6 +13,7 @@ import { useSession } from '../auth/session'
 import { useProduct } from './product'
 import { usePreferences } from './preferences'
 import { modelInfo, providerView, setupOf, wireApi } from './catalog'
+import { DOCK_WINDOW_SHARE } from '@demicodes/web-ui/agent/dock-window'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
 import type { PairingDevice } from '@demicodes/web-ui/devices/pairing'
@@ -233,6 +234,12 @@ export const useResources = defineStore('resources', () => {
       local.value.asideShare = share
     },
   })
+  const dockWindowShare = computed({
+    get: () => local.value.dockWindowShare ?? DOCK_WINDOW_SHARE.default,
+    set: (share: number) => {
+      local.value.dockWindowShare = share
+    },
+  })
   const recentProjectIds = computed(() => local.value.recentProjects)
 
   function rememberProject(id: string): void {
@@ -321,6 +328,7 @@ export const useResources = defineStore('resources', () => {
     sidebarOpen,
     sidebarWidth,
     asideShare,
+    dockWindowShare,
     deviceById,
     conversationDevice,
     recentProjectIds,

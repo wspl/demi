@@ -110,3 +110,36 @@ test.skipIf(!existsSync(chromium.executablePath()))(
     ])
   },
 )
+
+// The markers are web-ui's `ResizeHandle`: the root, and the line inside it that the keyboard's focus lights.
+const WITH_HANDLES = `
+<style>
+  [data-resize-handle] { outline: none; position: relative; height: 8px; width: 200px; margin: 24px 0; }
+  [data-resize-line] { position: absolute; left: 0; right: 0; top: 3px; height: 2px; }
+  [data-resize-handle]:focus-visible [data-resize-line]:not(.unlit) { background: blue; }
+  .clip { overflow: hidden; width: 200px; }
+</style>
+<div role="separator" tabindex="0" data-resize-handle aria-label="Open"><span data-resize-line></span></div>
+<div role="separator" tabindex="0" data-resize-handle aria-label="Unlit"><span data-resize-line class="unlit"></span></div>
+<div contenteditable aria-label="Field" style="outline: none">text</div>
+<div data-region tabindex="-1" style="outline: none">Pane</div>`
+
+test.skipIf(!existsSync(chromium.executablePath()))(
+  'focus rings: a resize handle\'s lit line is its indicator, an unlit one is listed',
+  async () => {
+    const tool: Tool = {
+      slot,
+      browser,
+      network: () => Promise.reject(new Error('focusRings needs no network')),
+      print: () => undefined,
+      env: {},
+      wrote: () => undefined,
+      release: () => undefined,
+      endServer: () => undefined,
+    }
+    const page = await browser.page()
+    await page.setContent(WITH_HANDLES)
+    const report = await focusRings(tool, { shots: false })
+    expect([report.checked, report.offenders.length, report.withoutIndicator]).toEqual([1, 0, ['div Unlit']])
+  },
+)
