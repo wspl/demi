@@ -1669,8 +1669,10 @@ the selected path becomes a remote reference when the message is sent.
 
 `GET /api/conversations/:id/changes` lists the uncommitted changes of the
 conversation's execution directory, or of the directory `?directory=` names
-on its primary Host, as a child's Change view asks for its own
-([Working directory](../agent/subagents.md#working-directory)), as `{ root, repository, gitDir, head,
+on its primary Host, absolute, as a child's Change view asks for its own
+([Working directory](../agent/subagents.md#working-directory)); `changes/file`
+and `changes/raw` take the same `directory` and read that tree; a relative
+one answers 400 `invalid_query`. It answers as `{ root, repository, gitDir, head,
 files, truncated, watched }`, the runner's reply
 ([Runner](../execution/runner.md#working-tree)) plus `root`, the directory the
 paths are relative to. `gitDir` is the absolute path of the repository's git
