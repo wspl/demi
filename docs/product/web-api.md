@@ -617,15 +617,18 @@ message is `{ id, text, files, savedAt }`, its `text` and `files` as a
 draft's are ([Conversation drafts](#conversation-drafts)).
 
 - `GET /api/conversations/:id/saved` answers `{ revision, messages }`.
-- `POST /api/conversations/:id/saved/from-draft` takes `{ base, text,
-  files }`, as a draft's `PUT` does, the composer's message: it saves them
+- `POST /api/conversations/:id/saved/from-draft` takes `{ id, base, text,
+  files }`, `id` the page's UUID for the new message, and `base`, `text` and
+  `files` as a draft's `PUT` takes them, the composer's message: it saves them
   as a message for later and empties the conversation's draft in the same
   transaction, so the message is never in both places, and answers
   `{ message, draft }` with 201.
-- `POST /api/conversations/:id/saved` takes `{ text, files }` and adds them
+- `POST /api/conversations/:id/saved` takes `{ id, text, files }` and adds them
   as a message for later, leaving the draft as it is, as Undo after Delete
   does; it answers `{ message }` with 201.
-- Either save: a text without exactly
+- Either save with an id the conversation already has answers as the first
+  save did when its content is the same, and 409 `id_taken` otherwise, so a
+  save sent again never makes two. A text without exactly
   one mark per file answers 400 `invalid_body`, a message over 256 KiB 413
   `too_large`, and a conversation with 200 saved messages 409
   `saved_full`.
@@ -642,7 +645,7 @@ draft's are ([Conversation drafts](#conversation-drafts)).
   accepted it, in the same step, so it is never both sent and kept, nor sent
   twice, and a send the session refuses leaves it on the list
   ([Client frames](../agent/runtime.md#client-frames)).
-- Undo after Delete saves the message again as a new one, at the top of the
+- Undo after Delete saves the message again with its own id, at the top of the
   list. Saving in a conversation that has no record yet creates the record,
   as its first send does.
 - An id the conversation has no saved message of answers 404
