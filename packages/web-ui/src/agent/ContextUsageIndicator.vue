@@ -55,6 +55,12 @@ const props = defineProps<{
   instructions?: readonly InstructionEntry[]
   /** The usage limits of the account the conversation's model runs on; none for a model on an API key. */
   limits?: UsageLimits | null
+  /**
+   * The meter stands as a segment of a status bar (`StatusBarSegment`): its
+   * hover background fills the bar's full height and the segment's width, not
+   * a rounded square, and Tab reaches it with the focus ring.
+   */
+  segment?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -156,8 +162,9 @@ const ringColor = computed(() => {
           aria-label="Context window"
           aria-haspopup="dialog"
           :aria-expanded="isOpen"
-          class="relative flex size-hit cursor-default items-center justify-center rounded-md transition-colors hover:bg-hover"
-          :class="isOpen ? 'bg-hover' : ''"
+          class="relative flex cursor-default items-center justify-center transition-colors hover:bg-hover"
+          :class="[segment ? 'focus-ring h-full px-1.5' : 'size-hit rounded-md', isOpen ? 'bg-hover' : '']"
+          :data-acting="segment || undefined"
         >
           <IndeterminateSpinner v-if="isCompacting" />
           <svg
