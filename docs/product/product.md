@@ -291,6 +291,15 @@ Attached
   and choosing a directory moves the conversation there, into the project
   whose directory it is, or out of its project otherwise. The header's
   directory menu chooses another directory on the same Host the same way.
+- **While the agent works,** the Hosts and directories stay choosable, as
+  everything else does: choosing one asks first, as a Mac asks before
+  quitting an app with work in progress: *Stop the agent and move this
+  conversation to Studio PC?*, naming what still runs, *The agent and 2
+  running commands will stop.*, with **Stop and Move** and Cancel. Stop and
+  Move stops the turn, its subagents and its commands as Stop does, then
+  moves the conversation; a turn that has already ended by then moves it
+  at once. The directory picker of a project's device asks once a directory
+  is chosen, not before it opens.
 - **Attached** lists the devices the conversation's agents attached, by name
   and state. An attached device has no directory or project of its own to
   show: it is a machine the agents may run commands on. The user cannot
