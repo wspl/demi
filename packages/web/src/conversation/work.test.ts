@@ -48,6 +48,27 @@ function signIn(id: string): void {
   useSession().current = { status: 'signedIn', user }
 }
 
+test("the dock windows' share of the session's height survives reload, for the account that set it", async () => {
+  signIn('one')
+  const resources = useResources()
+  expect(resources.dockWindowShare).toBe(0.5)
+  resources.dockWindowShare = 0.8
+  await nextTick()
+  expect(readLocalState('one').dockWindowShare).toBe(0.8)
+
+  disposePinia(pinia)
+  pinia = createPinia()
+  setActivePinia(pinia)
+  signIn('one')
+  expect(useResources().dockWindowShare).toBe(0.8)
+
+  disposePinia(pinia)
+  pinia = createPinia()
+  setActivePinia(pinia)
+  signIn('two')
+  expect(useResources().dockWindowShare).toBe(0.5)
+})
+
 test('panel open and closed choices survive reload with the panel share in the same preferences', async () => {
   signIn('one')
   const work = useWorkPanel()
