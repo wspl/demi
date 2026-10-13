@@ -358,7 +358,13 @@ integration.
 Model discovery uses one account-wide cache and shared pending request
 ([Catalog cache](../providers/models.md#catalog-cache)).
 Execution availability is derived separately for each conversation. History
-loading does not wait for model discovery.
+loading does not wait for model discovery; starting a conversation's session
+does, for the provider entries the page holds when it starts, so a change to
+an entry while a conversation opens makes the session wait for the list of
+the new entries rather than start with none. A message sent meanwhile shows
+Requesting and goes once the list answers. A list that fails to load ends
+that message as undelivered with the list's own failure, *Couldn't load the
+models: …*, and Retry.
 
 The conversation store uses the shared `ConversationCache` to retain opened
 state, initialization, and runtimes for the signed-in page lifetime. Switching
