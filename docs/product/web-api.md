@@ -755,7 +755,9 @@ directory cannot be used, such as a link, or null; each workflow as
 on its file watch to learn of a change. The answer carries the Host's read
 number in `X-Demi-Read-At`, as file reads do. The device route wakes
 nothing and answers 409 `device_offline` while the device's runner is not
-connected; another Host error answers 400 `fs_error`. `POST
+connected; a directory that is not an absolute path answers 400
+`invalid_body`, one that does not exist 404 `fs_not_found`, and another Host
+error 400 `fs_error`. `POST
 /api/conversations` takes an optional `workflow`, the new conversation's
 choice, absent for Default, and the conversation's PATCH takes `workflow` to
 change it.
