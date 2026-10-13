@@ -449,19 +449,12 @@ fn run(
                             live.close().await;
                             continue 'attempt;
                         }
-                        // Without a call's own count the response reports
-                        // none: the result's usage sums the turn's calls,
-                        // which no request measured. The executable's path
-                        // names the CLI's version.
-                        if matches!(end, TurnEnd::Answered) && usage.is_none() {
-                            tracing::error!(
-                                executable = %live.executable,
-                                "Claude Code ended a turn whose stream reported no API call's usage; the response reports none"
-                            );
-                        }
                         runtime.live = Some(live);
                         match end {
-                            TurnEnd::Answered => yield ProviderEvent::Response(usage),
+                            // Without a call's own count the response reports
+                            // none: the result's usage sums the turn's calls,
+                            // which no request measured.
+                            TurnEnd::Answered => yield ProviderEvent::response(usage, crate::FAMILY, &request.model_id),
                             TurnEnd::Failed { message, code, status } => {
                                 let mut failure = ProviderFailure {
                                     code,

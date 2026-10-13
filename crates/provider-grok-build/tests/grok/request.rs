@@ -42,7 +42,7 @@ async fn a_run_posts_to_the_chat_proxy_with_the_grok_clis_identity() {
         events,
         [
             ProviderEvent::TextDelta("hi".into()),
-            ProviderEvent::Response(Some(TokenUsage::default()))
+            ProviderEvent::Response(None)
         ]
     );
     let sent = &vendor.requests()[0];

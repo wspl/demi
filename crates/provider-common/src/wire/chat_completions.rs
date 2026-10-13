@@ -20,8 +20,9 @@ use crate::{
     },
 };
 
-/// One streamed chunk. With `stream_options.include_usage`, only the last
-/// chunk carries counts; the ones before spell their absence as `null`.
+/// One streamed chunk. With `stream_options.include_usage`, which every
+/// request asks for, only the last chunk carries counts; the ones before
+/// spell their absence as `null`.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Chunk {
     #[serde(default)]
@@ -123,9 +124,10 @@ pub fn decode_chunk(data: &str) -> Result<Chunk, WireError> {
 /// ends or `cancel` fires. When the stream ends, with its `[DONE]` sentinel
 /// or with the body, the run ends with the tool calls collected and one
 /// response if a choice finished with `stop` or `tool_calls`, and otherwise
-/// with a failure: the vendor's other finish reason, or none at all. A
-/// vendor error or an undecodable chunk ends it as a failure at once. A
-/// cancelled run ends without a further event.
+/// with a failure: the vendor's other finish reason, or none at all. The
+/// response carries the last usage a chunk reported, and none when no chunk
+/// did. A vendor error or an undecodable chunk ends it as a failure at once.
+/// A cancelled run ends without a further event.
 pub fn map_sse<'a, S>(
     body: S,
     vendor: Vendor,
@@ -157,7 +159,7 @@ where
         if cancel.is_cancelled() {
             return;
         }
-        mapper.finish(&mut out);
+        mapper.finish(&vendor, &mut out);
         for event in out.drain(..) {
             yield event;
         }
@@ -180,7 +182,8 @@ struct Mapper {
     /// The calls being assembled, by index, so they flush in index order.
     calls: BTreeMap<u32, Collected>,
     thinking_started: bool,
-    usage: TokenUsage,
+    /// The counts the last chunk with usage reported.
+    usage: Option<TokenUsage>,
     /// The finish reason a choice named, with the chunk that named it.
     finished: Option<(String, String)>,
 }
@@ -190,7 +193,7 @@ impl Mapper {
     /// frame ends the run.
     fn frame(&mut self, data: &str, vendor: &Vendor, out: &mut Vec<ProviderEvent>) -> bool {
         if data.trim() == "[DONE]" {
-            self.finish(out);
+            self.finish(vendor, out);
             return true;
         }
         let chunk = match decode_chunk(data) {
@@ -209,7 +212,7 @@ impl Mapper {
             return true;
         }
         if let Some(usage) = chunk.usage {
-            self.usage = usage.token_usage();
+            self.usage = Some(usage.token_usage());
         }
         for choice in chunk.choices.into_iter().flatten() {
             if let Some(delta) = choice.delta {
@@ -310,7 +313,7 @@ impl Mapper {
 
     /// The end of the stream: the calls collected and the response when the
     /// reply is complete, else the failure that says why it is not.
-    fn finish(&mut self, out: &mut Vec<ProviderEvent>) {
+    fn finish(&mut self, vendor: &Vendor, out: &mut Vec<ProviderEvent>) {
         let Some((reason, received)) = &self.finished else {
             out.push(ProviderEvent::Error(ProviderFailure::cut_short()));
             return;
@@ -318,7 +321,7 @@ impl Mapper {
         let end = match reason.as_str() {
             "stop" | "tool_calls" => {
                 self.flush(out);
-                out.push(ProviderEvent::Response(Some(self.usage)));
+                out.push(ProviderEvent::response(self.usage, vendor.label, &vendor.model));
                 return;
             }
             "length" => EarlyEnd::OutputLimit,

@@ -6,9 +6,13 @@ use std::{collections::HashMap, sync::Arc};
 use demi_provider_common::{
     EarlyEnd, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
     http_failure, read_http_failure, tagged_wire,
-    wire::{NonEmpty, ReportedString, Tagged, decode_tagged, sse_data},
+    wire::{
+        NonEmpty, ReportedString, Tagged, decode_tagged,
+        messages::{CallUsage, MessagesUsage},
+        sse_data,
+    },
 };
-use demi_shared_types::{Clock, FailureSource, ProviderErrorDiagnostics, TokenUsage};
+use demi_shared_types::{Clock, FailureSource, ProviderErrorDiagnostics};
 use futures_util::{Stream, StreamExt};
 use reqwest::header::{ACCEPT, CONTENT_TYPE};
 use serde::Deserialize;
@@ -37,6 +41,7 @@ pub(crate) fn run(
         if cancel.is_cancelled() {
             return;
         }
+        let model = request.model_id.clone();
         // A body with images is megabytes of base64, built off the shard.
         let policy = shared.policy;
         let body = match encode_body(LABEL, move || request::encode(&request, policy)).await {
@@ -81,7 +86,7 @@ pub(crate) fn run(
             return;
         }
         let mut frames = Box::pin(sse_data(response.bytes_stream()));
-        let mut mapper = Mapper::new(shared.clock.clone());
+        let mut mapper = Mapper::new(shared.clock.clone(), model);
         loop {
             let next = tokio::select! {
                 biased;
@@ -123,11 +128,13 @@ enum Next {
     Last(ProviderEvent),
 }
 
-/// The state of one stream: the tool-use blocks being streamed, by index,
-/// the usage so far, and the stop reason the message named, with its frame.
+/// The state of one stream: the model it answers for, the tool-use blocks
+/// being streamed, by index, the message's token counts, and the stop reason
+/// the message named, with its frame.
 struct Mapper {
+    model: String,
     tools: HashMap<u32, ToolBlock>,
-    usage: TokenUsage,
+    usage: CallUsage,
     stopped: Option<(String, String)>,
     clock: Arc<dyn Clock>,
 }
@@ -141,10 +148,11 @@ struct ToolBlock {
 }
 
 impl Mapper {
-    fn new(clock: Arc<dyn Clock>) -> Self {
+    fn new(clock: Arc<dyn Clock>, model: String) -> Self {
         Self {
+            model,
             tools: HashMap::new(),
-            usage: TokenUsage::default(),
+            usage: CallUsage::default(),
             stopped: None,
             clock,
         }
@@ -167,11 +175,13 @@ impl Mapper {
                 Next::Last(ProviderEvent::Error(self.failure(event, data)))
             }
             StreamEvent::MessageStart(start) => {
-                merge(&mut self.usage, start.message.usage.as_ref());
+                self.usage.start(start.message.usage);
                 Next::Nothing
             }
             StreamEvent::MessageDelta(message) => {
-                merge(&mut self.usage, message.usage.as_ref());
+                if let Some(counts) = message.usage {
+                    self.usage.delta(counts);
+                }
                 if let Some(reason) = message.delta.and_then(|delta| delta.stop_reason) {
                     self.stopped = Some((reason, data.to_owned()));
                 }
@@ -190,14 +200,15 @@ impl Mapper {
     /// The run's end at `message_stop`: the response when the model
     /// finished, else the failure that says why the reply is cut short. A
     /// message that named no stop reason finished, as `message_stop` says.
+    /// The response carries the message's counts as its `message_delta`
+    /// stated them, and none when no `message_delta` did.
     fn stop(&self) -> ProviderEvent {
+        let response = || ProviderEvent::response(self.usage.usage(), LABEL, &self.model);
         let Some((reason, received)) = &self.stopped else {
-            return ProviderEvent::Response(Some(self.usage));
+            return response();
         };
         let end = match reason.as_str() {
-            "end_turn" | "tool_use" | "stop_sequence" => {
-                return ProviderEvent::Response(Some(self.usage));
-            }
+            "end_turn" | "tool_use" | "stop_sequence" => return response(),
             "max_tokens" | "model_context_window_exceeded" => EarlyEnd::OutputLimit,
             "refusal" => EarlyEnd::Filter,
             _ => EarlyEnd::Other,
@@ -324,25 +335,6 @@ fn tagged(value: &str) -> String {
     format!("{SIGNATURE_TAG}{value}")
 }
 
-/// Folds one event's counts into the total. A stream reports each count
-/// once, the input side on `message_start` and the output side on
-/// `message_delta`, and repeats the others as zero or omits them, so a count
-/// that is zero or absent keeps the total.
-fn merge(total: &mut TokenUsage, reported: Option<&Usage>) {
-    let Some(reported) = reported else {
-        return;
-    };
-    let keep =
-        |current: u64, count: Option<u64>| count.filter(|count| *count > 0).unwrap_or(current);
-    total.input_tokens = keep(total.input_tokens, reported.input_tokens);
-    total.output_tokens = keep(total.output_tokens, reported.output_tokens);
-    total.cache_read_tokens = keep(total.cache_read_tokens, reported.cache_read_input_tokens);
-    total.cache_write_tokens = keep(
-        total.cache_write_tokens,
-        reported.cache_creation_input_tokens,
-    );
-}
-
 tagged_wire! {
     /// The stream events Demi maps; any other type, such as `ping` or one the
     /// vendor adds, is skipped.
@@ -364,16 +356,7 @@ struct MessageStart {
 
 #[derive(Deserialize)]
 struct StartedMessage {
-    usage: Option<Usage>,
-}
-
-/// Token counts as the API reports them: whole numbers, or absent.
-#[derive(Deserialize)]
-struct Usage {
-    input_tokens: Option<u64>,
-    output_tokens: Option<u64>,
-    cache_read_input_tokens: Option<u64>,
-    cache_creation_input_tokens: Option<u64>,
+    usage: Option<MessagesUsage>,
 }
 
 /// `index` ties a block's start, deltas and stop together, so a block event
@@ -398,7 +381,7 @@ struct BlockStop {
 #[derive(Deserialize)]
 struct MessageDelta {
     delta: Option<MessageChange>,
-    usage: Option<Usage>,
+    usage: Option<MessagesUsage>,
 }
 
 /// What a message delta changes; Demi reads why the model stopped.
