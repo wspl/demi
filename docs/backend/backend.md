@@ -156,7 +156,43 @@ account verifies the password against a fixed dummy hash, so it takes as long
 as a wrong password and its timing does not reveal which addresses have
 accounts.
 
-Setup and login are public entrances. Runner and pipe routes use device
+A passkey sign-in is WebAuthn's, and the `webauthn-rs` crate does every
+check of it: the signature, the origin, the relying party and the user
+verification. The relying party's id is the host name of the public URL
+(`DEMI_BACKEND_PUBLIC_URL`); the allowed origin is the public URL's, and in
+development the page's own origin as the origin check below admits it.
+
+```
+page                                    backend
+  │ POST /api/auth/passkey/options ─────▶ a challenge, kept 5 minutes, used once
+  │ ◀── request options for demi.example
+  │ navigator.credentials.get()   the device verifies the user and signs
+  │ POST /api/auth/passkey ─────────────▶ verifies with the stored public key
+  │ ◀── the demi_session cookie, as a password login sets it
+```
+
+- **Synced passkeys are the common case.** Registration asks for no
+  attestation and no authenticator attachment, so the browser saves the
+  passkey in its password manager, which syncs it; a synced passkey reports
+  itself backed up and usually keeps no signature counter, and both are
+  accepted. Registration asks for a discoverable credential, which password
+  managers always make, and sign-in asks for none by name, so neither the
+  autofill nor the button needs an email first.
+- **User verification is required,** so a passkey proves both the device and
+  the person.
+- **A passkey names its account by the user's id,** never the email, so an
+  email change keeps it. The page tells the browser what changed where it
+  supports WebAuthn's signal methods: the account's current email and its
+  accepted passkeys after a sign-in and an email change, and an unknown
+  passkey when a sign-in names one the account no longer has or the user
+  removes one, so the password manager follows.
+- **Challenges live in the control database,** since a sign-in's two
+  requests may reach different workers. Issuing one removes the expired ones;
+  with 1000 waiting, the options request answers 429. A failed passkey
+  sign-in is not counted toward the address lockout, since a signature
+  cannot be guessed.
+
+Setup, login and passkey sign-in are public entrances. Runner and pipe routes use device
 credentials instead of the session cookie. Public installer downloads carry no
 credential. The synchronization channel checks the
 session cookie itself, since the gate would renew the session and the channel
