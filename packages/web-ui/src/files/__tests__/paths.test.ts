@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { homePath, isValidEntryName, joinPath, normalizePath, parentPath, pathSegments, relativePath, typedPath } from '../paths'
+import { directoryParts, homePath, isValidEntryName, joinPath, normalizePath, parentPath, pathSegments, relativePath, typedPath } from '../paths'
 
 test('normalizePath collapses slashes and resolves dot segments from the root', () => {
   expect(normalizePath('/Users//zan/./Projects/')).toBe('/Users/alex/Projects')
@@ -58,4 +58,15 @@ test('a typed path names the home with ~, starts a relative one from the workspa
   // Only a leading `~` alone or before a slash is the home, as in a shell.
   expect(typedPath('~notes', places)).toBe('/Users/alex/Projects/demi/~notes')
   expect(typedPath('~', { home: '/Users/zan' })).toBe('/Users/zan')
+})
+
+test('a directory row reads by its name, its parent beside it, the home as ~', () => {
+  const home = '/Users/zan'
+  expect(directoryParts('/Users/alex/Projects/demi', home)).toEqual({ name: 'demi', location: '~/Projects' })
+  expect(directoryParts('/Users/alex/demi', home)).toEqual({ name: 'demi', location: '~' })
+  expect(directoryParts('/srv/app/', home)).toEqual({ name: 'app', location: '/srv' })
+  expect(directoryParts('/tmp', home)).toEqual({ name: 'tmp', location: '/' })
+  expect(directoryParts('/Users/zan', home)).toEqual({ name: '~', location: '' })
+  expect(directoryParts('/', home)).toEqual({ name: '/', location: '' })
+  expect(directoryParts('/home/build/app', null)).toEqual({ name: 'app', location: '/home/build' })
 })

@@ -48,7 +48,8 @@ const emit = defineEmits<{
         class="flex flex-col gap-1 pl-4 text-[13px] leading-5 text-fg-emphasis"
       >
         <li v-for="(entry, index) in goes" :key="index" class="list-disc break-words">
-          {{ entry }}
+          <!-- The caller dresses an entry it knows more of, such as a directory with its location. -->
+          <slot name="entry" :entry="entry">{{ entry }}</slot>
         </li>
       </ul>
     </div>
