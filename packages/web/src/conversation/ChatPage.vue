@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onUnmounted, useTemplateRef, watch } from 'vue'
+import { computed, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
@@ -25,6 +25,9 @@ import type { Conversation } from '../state/types'
 
 const store = useConversations()
 const resources = useResources()
+// The share follows the drag live in the page and reaches the preferences once it settles.
+const dockWindowShare = ref(resources.dockWindowShare)
+watch(() => resources.dockWindowShare, (share) => { dockWindowShare.value = share })
 const product = useProduct()
 const work = useWorkPanel()
 const permissions = usePermissions()
@@ -214,6 +217,8 @@ async function fork(request: MessageForkRequest): Promise<void> {
 <template>
   <ChatSession
     v-if="pageKind === 'session' && conversation"
+    v-model:dock-window-share="dockWindowShare"
+    @dock-window-resize-end="resources.dockWindowShare = $event"
     :conversation="conversation"
     :has-provider="hasProvider"
     :backend-away="product.connection !== null"

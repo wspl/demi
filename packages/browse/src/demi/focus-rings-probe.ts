@@ -296,9 +296,32 @@ export function ringProbe(): RingProbe {
     return [...found.values()]
   }
 
+  /** The indicator a resize handle draws: its line, lit by the focus, which an ancestor may clip as it does an outline. */
+  const readLine = (element: Element, line: Element): RingReading | 'none' => {
+    const colour = getComputedStyle(line).backgroundColor
+    if (colour === 'rgba(0, 0, 0, 0)' || colour === 'transparent') return 'none'
+    const rect = line.getBoundingClientRect()
+    const box = { left: rect.left, top: rect.top, right: rect.right, bottom: rect.bottom }
+    const clipped = clippers(line, box)
+    // Covered where the line is sampled: three places along its length, on its middle.
+    const found = new Map<string, RingFinding>()
+    for (const fraction of [0.15, 0.5, 0.85]) {
+      const x = rect.left + rect.width * fraction
+      const y = rect.top + rect.height / 2
+      if (x < clipped.region.left || x >= clipped.region.right || y < clipped.region.top || y >= clipped.region.bottom) continue
+      const above = aboveAt(line, x, y)
+      if (above) found.set(above.by, above)
+    }
+    const findings = [...clipped.findings, ...found.values()]
+    return { element: describe(element), indicator: 'resize line', box, findings }
+  }
+
   const readElement = async (element: Element): Promise<RingReading | 'none'> => {
     // The ring may fade in: it is read where it ends.
     await Promise.allSettled(element.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity).map((animation) => animation.finished))
+    // A resize handle (web-ui's `ResizeHandle`) shows keyboard focus as the line inside it, not as an outline.
+    const line = element.matches('[data-resize-handle]') ? element.querySelector('[data-resize-line]') : null
+    if (line) return readLine(element, line)
     const { parts, sides, bands } = readIndicator(element)
     if (parts.length === 0) return 'none'
     const rect = element.getBoundingClientRect()
@@ -349,6 +372,8 @@ export function ringProbe(): RingProbe {
       read.add(element)
       if (scope !== null && !scope.contains(element)) return 'skipped'
       if (!element.matches(':focus-visible') || !shown(element)) return 'skipped'
+      // Neither is a control with a ring: a text field's focus is its caret, and a region (`data-region`) holds focus for its own keys.
+      if (element.matches('textarea, input:not([type=button], [type=checkbox], [type=radio], [type=range], [type=file], [type=submit], [type=reset]), [contenteditable]:not([contenteditable="false"]), [data-region]')) return 'skipped'
       return readElement(element)
     },
     readShown: (element) => readElement(element),

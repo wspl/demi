@@ -5,6 +5,7 @@ import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
+import { dockWindowShare } from '../dock-window-share'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
 import AssistantTextBlock from '@demicodes/web-ui/agent/blocks/AssistantTextBlock.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -64,7 +65,7 @@ const createdAt = new Date(Date.now() - 60_000).toISOString()
 
 <template>
   <div class="gallery-frame h-[26rem] w-full bg-surface">
-    <SessionSurface ref="surface">
+    <SessionSurface ref="surface" v-model:dock-window-share="dockWindowShare">
       <div
         class="flex h-full flex-col justify-end"
         :style="{ paddingBottom: `${surface?.dockHeight ?? 0}px` }"

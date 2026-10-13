@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, inject, ref, watch } from 'vue'
+import { useElementSize, useMutationObserver } from '@vueuse/core'
 import { Ellipsis, X } from '@lucide/vue'
 import { useStackedWindow } from '../ui/window-stack'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -8,11 +9,13 @@ import { useEscapeClose } from '../composables/useEscapeClose'
 import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
+import ResizeHandle from '../ui/ResizeHandle.vue'
 import ContextMenu from '../ui/ContextMenu.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TabStrip from './TabStrip.vue'
 import { usePhone } from '../ui/phone'
 import { useBackClose } from '../overlay/back-close'
+import { DOCK_WINDOW_SHARE, dockWindowBounds, dockWindowHeight, dockWindowKey, dockWindowShare } from './dock-window'
 
 /**
  * The window over a session the dock opens, such as Agents and Running: a
@@ -36,9 +39,15 @@ import { useBackClose } from '../overlay/back-close'
  * newer window, such as the media viewer, stands in front of it and takes
  * the key first.
  *
+ * Its top edge resizes it (`ResizeHandle`): the height is a share of the
+ * session area's, kept by the `DockWindowArea` it stands in and shared by the
+ * dock's windows. The least it takes is its strip, its bar (a `[data-window-bar]`
+ * in its content, such as the status bar) and three lines of the transcript,
+ * measured from the layout; the most is the room above the dock.
+ *
  * On a phone it takes the whole screen, rising from the bottom, under a bar
- * of the strip, its controls and Close; Back closes it there, as a page the
- * phone pushed (`useBackClose`).
+ * of the strip, its controls and Close, with no edge to drag; Back closes it
+ * there, as a page the phone pushed (`useBackClose`).
  */
 const props = defineProps<{
   open: boolean
@@ -78,6 +87,27 @@ const stacked = useStackedWindow({
 })
 
 const phone = usePhone()
+
+const space = inject(dockWindowKey)
+if (!space) {
+  throw new Error('A dock window stands in a DockWindowArea')
+}
+const stripRef = ref<HTMLElement>()
+const bodyRef = ref<HTMLElement>()
+const lineRef = ref<HTMLElement>()
+const { height: header } = useElementSize(stripRef, { width: 0, height: 0 }, { box: 'border-box' })
+const { height: line } = useElementSize(lineRef, { width: 0, height: 0 }, { box: 'border-box' })
+const bar = ref(0)
+function measureBar(): void {
+  bar.value = bodyRef.value?.querySelector<HTMLElement>('[data-window-bar]')?.offsetHeight ?? 0
+}
+// The bar comes and goes with the tab shown, so the content is watched, not only measured once.
+watch(bodyRef, measureBar, { flush: 'post' })
+useMutationObserver(bodyRef, measureBar, { childList: true, subtree: true })
+const bounds = computed(() => dockWindowBounds({ header: header.value, bar: bar.value, line: line.value }, space.room.value))
+const height = computed(() => dockWindowHeight(space.share.value, space.area.value, bounds.value))
+const defaultHeight = computed(() => dockWindowHeight(DOCK_WINDOW_SHARE.default, space.area.value, bounds.value))
+
 useBackClose(() => props.open, () => emit('close'), () => phone.value)
 
 // As the page's other windows: an Escape typed in a field (a terminal, the composer) is the field's.
@@ -117,62 +147,85 @@ function openStripMenu(event: MouseEvent): void {
     <div
       v-if="open"
       ref="root"
-      data-region
-      tabindex="-1"
-      class="pointer-events-auto flex min-h-0 flex-col overflow-hidden bg-surface outline-none"
-      :class="phone ? 'fixed inset-0 z-40 pb-[var(--safe-bottom)]' : 'overlay-window absolute inset-0 z-10 origin-bottom rounded-xl'"
+      class="pointer-events-auto origin-bottom"
+      :class="phone ? 'fixed inset-0 z-40 pb-[var(--safe-bottom)]' : 'absolute inset-x-0 bottom-0 z-10'"
+      :style="phone ? undefined : { height: `${height}px` }"
     >
+      <!-- The root holds the handle too, so a press on the edge is a press in the window. It straddles the window's top, inset from its rounded corners, in a wrapper that takes no room. -->
+      <div v-if="!phone" class="absolute inset-x-3 top-0 z-10 h-0">
+        <ResizeHandle
+          :model-value="height"
+          :min="bounds.min"
+          :max="bounds.max"
+          :default-value="defaultHeight"
+          orientation="horizontal"
+          side="end"
+          label="Window height"
+          @update:model-value="space.share.value = dockWindowShare($event, space.area.value)"
+          @commit="space.commit(dockWindowShare($event, space.area.value))"
+        />
+      </div>
       <div
-        class="flex shrink-0 items-center gap-1 bg-surface-base px-1.5"
-        :class="phone ? 'h-[calc(2.75rem+var(--safe-top))] pt-[var(--safe-top)]' : 'h-10'"
-        data-touch-menu
-        @contextmenu="openStripMenu"
+        data-region
+        tabindex="-1"
+        class="flex h-full min-h-0 flex-col overflow-hidden bg-surface outline-none"
+        :class="phone ? '' : 'overlay-window rounded-xl'"
       >
-        <TabStrip class="flex-1" :still="stillTabs">
-          <slot name="tabs" :open-tab-menu="openTabMenu" />
-        </TabStrip>
-        <Dropdown v-if="$slots.stripMenu" :overlay-store="appOverlayStore">
-          <template #trigger="{ isOpen }">
-            <Tooltip content="More">
-              <IconButton
-                :icon="Ellipsis"
-                size="sm"
-                variant="ghost"
-                aria-label="More"
-                :pressed="isOpen"
-              />
-            </Tooltip>
+        <!-- One line of the transcript's text, to measure the window's least height by. -->
+        <span ref="lineRef" aria-hidden="true" class="pointer-events-none invisible absolute left-0 top-0 text-conversation">A</span>
+        <div
+          ref="stripRef"
+          class="flex shrink-0 items-center gap-1 bg-surface-base px-1.5"
+          :class="phone ? 'h-[calc(2.75rem+var(--safe-top))] pt-[var(--safe-top)]' : 'h-10'"
+          data-touch-menu
+          @contextmenu="openStripMenu"
+        >
+          <TabStrip class="flex-1" :still="stillTabs">
+            <slot name="tabs" :open-tab-menu="openTabMenu" />
+          </TabStrip>
+          <Dropdown v-if="$slots.stripMenu" :overlay-store="appOverlayStore">
+            <template #trigger="{ isOpen }">
+              <Tooltip content="More">
+                <IconButton
+                  :icon="Ellipsis"
+                  size="sm"
+                  variant="ghost"
+                  aria-label="More"
+                  :pressed="isOpen"
+                />
+              </Tooltip>
+            </template>
+            <template #content="{ close }">
+              <Menu @click="close">
+                <slot name="stripMenu" />
+              </Menu>
+            </template>
+          </Dropdown>
+          <slot name="trailing" />
+          <Tooltip content="Close">
+            <IconButton
+              :icon="X"
+              size="sm"
+              variant="ghost"
+              aria-label="Close"
+              @click="emit('close')"
+            />
+          </Tooltip>
+        </div>
+        <div ref="bodyRef" class="min-h-0 flex-1 overflow-hidden bg-surface">
+          <slot />
+        </div>
+        <ContextMenu :overlay-store="appOverlayStore" :owner="tabMenu">
+          <template #menu>
+            <slot v-if="menuTabId !== null" name="tabMenu" :id="menuTabId" />
           </template>
-          <template #content="{ close }">
-            <Menu @click="close">
-              <slot name="stripMenu" />
-            </Menu>
+        </ContextMenu>
+        <ContextMenu :overlay-store="appOverlayStore" :owner="stripMenu">
+          <template #menu>
+            <slot name="stripMenu" />
           </template>
-        </Dropdown>
-        <slot name="trailing" />
-        <Tooltip content="Close">
-          <IconButton
-            :icon="X"
-            size="sm"
-            variant="ghost"
-            aria-label="Close"
-            @click="emit('close')"
-          />
-        </Tooltip>
+        </ContextMenu>
       </div>
-      <div class="min-h-0 flex-1 overflow-hidden bg-surface">
-        <slot />
-      </div>
-      <ContextMenu :overlay-store="appOverlayStore" :owner="tabMenu">
-        <template #menu>
-          <slot v-if="menuTabId !== null" name="tabMenu" :id="menuTabId" />
-        </template>
-      </ContextMenu>
-      <ContextMenu :overlay-store="appOverlayStore" :owner="stripMenu">
-        <template #menu>
-          <slot name="stripMenu" />
-        </template>
-      </ContextMenu>
     </div>
   </Transition>
   </Teleport>

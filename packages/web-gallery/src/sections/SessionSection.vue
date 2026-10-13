@@ -81,6 +81,8 @@ import { fixtureSearch, searchableMessages } from '../fixtures/search'
 import { ASIDE_SHARE, SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import { demoAccount, demoConversations, demoProjects } from '../sidebar/sidebar-data'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
+import DockWindowArea from '@demicodes/web-ui/agent/DockWindowArea.vue'
+import { dockWindowShare } from '../dock-window-share'
 import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
 import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
@@ -2907,12 +2909,12 @@ onBeforeUnmount(() => {
     <template v-if="view === 'windows'">
       <GallerySection
         title="Agents"
-        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Close Tab for a finished one, the other disabled. A child's last row reads its own phase: Find the cookie assertion ended its turn while its search runs on, so it shows no Requesting row, while Check the logout path waits for its model. Stop Agent stops the child at once; a command it still runs stays in the Running window as Stopping…, its tab's mark a spinner, until its runner says that it ended, here 3 seconds later: stop Find the cookie assertion and open the Terminals window below. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Along the window's bottom edge a thin bar, in the secondary text color under its own divider, says what the shown tab's child is doing and runs on: its state and how long it has run, counting while it runs, Forked from agent N for a fork, and on the right its profile, model, effort and Fast (What an Agent Runs On), then the composer's context indicator for the child's own context, its segments running close to the window's ends, the first and last text as far from the window's side as its corner is round. Its card is the composer's, filled from the child, with the usage limits of the account the child runs on; its Compact compacts that child, here a toast, and waits while the child's turn runs. Completed opens the searchable finished list, each child's profile a tag after its description, none for no profile, then how long it ran; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. It stands with the media viewer a screenshot in a child’s transcript opens in the order they opened, the newest in front: a press outside every window, here anywhere on the page but a window, closes the newest alone, as Escape does, and a second press the next. Close (×), or Escape with the focus in it, closes it too, and Run Them Again opens it again."
+        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Close Tab for a finished one, the other disabled. A child's last row reads its own phase: Find the cookie assertion ended its turn while its search runs on, so it shows no Requesting row, while Check the logout path waits for its model. Stop Agent stops the child at once; a command it still runs stays in the Running window as Stopping…, its tab's mark a spinner, until its runner says that it ended, here 3 seconds later: stop Find the cookie assertion and open the Terminals window below. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Along the window's bottom edge a thin bar, in the secondary text color under its own divider, says what the shown tab's child is doing and runs on: its state and how long it has run, counting while it runs, Forked from agent N for a fork, and on the right its profile, model, effort and Fast (What an Agent Runs On), then the composer's context indicator for the child's own context, its segments running close to the window's ends, the first and last text as far from the window's side as its corner is round. Its card is the composer's, filled from the child, with the usage limits of the account the child runs on; its Compact compacts that child, here a toast, and waits while the child's turn runs. Completed opens the searchable finished list, each child's profile a tag after its description, none for no profile, then how long it ran; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. It stands with the media viewer a screenshot in a child’s transcript opens in the order they opened, the newest in front: a press outside every window, here anywhere on the page but a window, closes the newest alone, as Escape does, and a second press the next. Close (×), or Escape with the focus in it, closes it too, and Run Them Again opens it again. Its top edge resizes it: drag it, or focus it and press the arrow keys (Shift for bigger steps, Home and End for the smallest and the largest), and a double-click returns to the usual height, half the area. The height is kept as a share of the area, one for every window here, as the product keeps one for its Agents and Running windows; it never goes under the strip, the bar and three lines of the transcript, nor over the room above the dock."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
         </div>
-        <div class="relative h-[24rem] min-h-0">
+        <DockWindowArea v-model:share="dockWindowShare" class="h-[24rem]">
           <SubagentPanel
             v-model:open="exhibitOpen"
             v-model:active-id="exhibitAgentId"
@@ -2921,7 +2923,7 @@ onBeforeUnmount(() => {
             @abort-agent="sessionFlow.abortSubagent"
             v-bind="agentContext.panel"
           />
-        </div>
+        </DockWindowArea>
       </GallerySection>
       <GallerySection
         title="Working Directory"
@@ -3007,7 +3009,7 @@ onBeforeUnmount(() => {
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" :disabled="briefOpen" @click="briefOpen = true">Open Again</Button>
         </div>
-        <div class="relative h-[32rem] min-h-0">
+        <DockWindowArea v-model:share="dockWindowShare" class="h-[32rem]">
           <SubagentPanel
             v-model:open="briefOpen"
             v-model:active-id="briefAgentId"
@@ -3016,7 +3018,7 @@ onBeforeUnmount(() => {
             @abort-agent="stopBriefAgent"
             v-bind="agentContext.panel"
           />
-        </div>
+        </DockWindowArea>
       </GallerySection>
       <GallerySection
         title="Agents Chip"
@@ -3046,18 +3048,18 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Terminals"
-        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script highlighted as Bash in the colors all code shows in (Count the old cookie name and list the changed files), then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). A command being stopped shows a spinner in its tab’s mark until its runner says that it ended, and End Command is off meanwhile. A press outside every window closes it while it is the newest; Close (×), or Escape with the focus on its strip, closes it too, while the terminal keeps the Escape typed into it."
+        note="The same window. Tabs are running jobs, each titled by its call’s description, cut at the end and whole in its tooltip; the body is a read-only xterm with ANSI color from bun, rg and git. The terminal opens with the script as a terminal shows what was typed: a muted $ and the first line, a muted > before each further line (Show the auth test changes), long lines wrapped at the terminal’s width (Find where the old cookie name is still used), the script highlighted as Bash in the colors all code shows in (Count the old cookie name and list the changed files), then the output. The watch tab’s output comes live: the terminal adds only what is new and keeps its scrollback, and after a burst longer than a frame holds, it shows the frame’s tail anew. A click on a tab only selects it; its menu, from a right-click or the Menu key or Shift+F10, ends a running command (End Command) or closes an ended one’s tab (Close Tab). A command being stopped shows a spinner in its tab’s mark until its runner says that it ended, and End Command is off meanwhile. A press outside every window closes it while it is the newest; Close (×), or Escape with the focus on its strip, closes it too, while the terminal keeps the Escape typed into it. Its top edge resizes it, and shares its height with the Agents window above."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
         </div>
-        <div class="relative h-[24rem] min-h-0">
+        <DockWindowArea v-model:share="dockWindowShare" class="h-[24rem]">
           <TerminalPanel
             v-model:active-id="exhibitTerminalId"
             :terminals="terminals"
             @abort="sessionFlow.abortTerminal"
           />
-        </div>
+        </DockWindowArea>
       </GallerySection>
       <GallerySection
         title="Panel Under a Permission Card"
@@ -3067,7 +3069,7 @@ onBeforeUnmount(() => {
           <Button variant="ghost" size="sm" :disabled="coverRequests.length > 0" @click="coverRequests = [rootRequest()]">Ask Again</Button>
         </div>
         <div class="gallery-frame h-[40rem] bg-surface">
-          <SessionSurface ref="coverSurface">
+          <SessionSurface ref="coverSurface" v-model:dock-window-share="dockWindowShare">
             <div class="flex h-full min-h-0 flex-col">
               <AgentMessageList
                 class="min-h-0 flex-1"
