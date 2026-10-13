@@ -60,6 +60,10 @@ that leads from it to the next. A schema's version is a digest of its text: the
 first 31 bits of its SHA-256, which a database records in SQLite's own
 `user_version` field.
 
+The [server log](backend.md#request-ids-and-the-server-log)'s database
+is outside this rule: it holds no state, and one of another schema is
+created again rather than migrated.
+
 For example, 0.2.0 adds a column to the devices table. The control schema's
 text changes, so its version does too, and the history gains the schema that
 0.1.0 shipped, with a migration that adds the column. A 0.2.0 backend that
