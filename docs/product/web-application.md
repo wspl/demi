@@ -184,12 +184,23 @@ why.
   acts on shows the spinner; a row action shows it on that row. The
   control stays pressable for what makes sense while it waits, such as
   Cancel, and a second press of the same action does not send it twice.
-  This is one behavior of the controls themselves, written once in
-  `web-ui`: a control given an action that returns a promise shows that it
-  works until the promise settles, so no handler can forget it. A working
+  This is one behavior written once in `web-ui`: an *operation* is an
+  action on one target, such as removing project *app* or saving
+  credential *GitHub*, and the page keeps each running operation by its
+  action and target, not in the control that started it. A control given
+  an operation shows that it works while that operation runs, wherever and
+  whenever it is drawn: a menu reopened, a dialog reopened, a row scrolled
+  away and back all show it working, and pressing it again starts nothing.
+  A row shows that it works while any operation on its target runs, so a
+  dialog closed while its operation works leaves the progress on the row
+  it came from. An operation that finishes changes only what it started:
+  a dialog it opened, if still open, and nothing another operation opened
+  since. Every operation settles: a request carries its timeout, and one
+  that ends with the page (a reload, a sign-out) ends with it. A working
   control keeps its own look, a danger button its red, with the spinner
-  added. Controls that start one of several exclusive actions, such as a
-  dialog's Use Passkey and Continue, form a group: while one works, it shows
+  added beside its label or in place of its icon. Controls that start one
+  of several exclusive operations on one target, such as a dialog's Save
+  and Delete, or Use Passkey and Continue, form a group: while one works, it shows
   the spinner and the others of the group are not pressable. Cancel or
   closing a dialog while its action works closes it and does not stop the
   request, whose row goes on showing that it works until the answer, as a
