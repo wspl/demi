@@ -52,12 +52,7 @@ const vendorMarks = [
   { label: 'OpenAI', src: vendorLogo('openai') },
   { label: 'Ollama', src: vendorLogo('ollama') },
 ]
-/** The three candidate default avatars, compared in the three places the product draws one. */
-const avatarSchemes = [
-  { scheme: 'contacts', title: 'A · Contacts Gray', note: 'One gray gradient for everyone, as macOS Contacts draws it.' },
-  { scheme: 'hue', title: 'B · Muted Hue', note: 'A muted tone the account id picks, so people tell apart in a list.' },
-  { scheme: 'ink', title: 'C · Ink', note: 'The text color as a disc, the surface color for the letters.' },
-] as const
+/** The accounts the Avatar specimens draw: two words, one word, one CJK character, only an email, two letters. */
 const avatarAccounts = [
   { id: 'acc-1', name: 'Alex Morgan', email: 'alex@example.com' },
   { id: 'acc-2', name: 'Priya', email: 'priya@example.com' },
@@ -66,10 +61,10 @@ const avatarAccounts = [
   { id: 'acc-5', name: 'Bo', email: 'bo@example.com' },
 ] as const
 const avatarSelf = avatarAccounts[0]
-/** One account id for each of the hue scheme's eight tones, found by trying ids in turn. */
-const avatarPalette = ['Slate', 'Sage', 'Clay', 'Sand', 'Dusk', 'Moss', 'Plum', 'Steel'].map((name, index) => {
+/** One account id for each of the eight tones, found by trying ids in turn, with the tone's name as the letters. */
+const avatarPalette = HUE_TONES.map((tone) => {
   for (let n = 0; ; n++) {
-    if (hueToneOf(`tone-${n}`) === HUE_TONES[index]) return { name, id: `tone-${n}` }
+    if (hueToneOf(`tone-${n}`) === tone) return { name: tone.name, id: `tone-${n}` }
   }
 })
 const paneWidth = ref(200)
@@ -811,49 +806,47 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
     <template v-if="view === 'marks'">
       <GallerySection
         title="Avatar"
-        note="Three candidates for the default avatar, each in the three places the product draws one: the sidebar’s account row (24px, 32px on a phone), Settings › Account (32px) and the Settings › Users list (32px, shown here only). Letters are the first of the first two words of the name, one for a single word, else the first of the email’s local part. Switch the appearance to compare light and dark."
+        note="An account’s picture until pictures arrive: its initials in white on a muted tone, a gentle gradient from top to bottom. The account’s id picks the tone from eight, so one person has the same tone in the sidebar, Settings and the Users list. The letters are the first of the first two words of the name, one for a single word or a single Chinese character, else the first of the email’s local part. 24px is the sidebar’s and the settings rail’s, 32px the phone sidebar’s, Settings › Account’s and the Users list’s. Switch the appearance to see the other scheme."
       >
-        <div class="grid grid-cols-1 gap-6 min-[1700px]:grid-cols-3">
-          <div v-for="candidate in avatarSchemes" :key="candidate.scheme" :data-testid="`avatar-${candidate.scheme}`" class="min-w-0 space-y-4 rounded-xl bg-surface p-4">
-            <div>
-              <h3 class="select-none text-[13px] font-medium text-fg-emphasis">{{ candidate.title }}</h3>
-              <p class="text-[12px] leading-4 text-fg-muted">{{ candidate.note }}</p>
-            </div>
+        <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <div class="min-w-0 space-y-4 rounded-xl bg-surface p-4">
             <div class="space-y-1">
               <div class="gallery-label">Sidebar · 24px</div>
               <div class="flex h-9 items-center gap-2 rounded-md bg-surface-base pl-2 pr-1.5">
-                <Avatar :scheme="candidate.scheme" :account-id="avatarSelf.id" :name="avatarSelf.name" :email="avatarSelf.email" :size="24" />
+                <Avatar :account-id="avatarSelf.id" :name="avatarSelf.name" :email="avatarSelf.email" :size="24" />
                 <span class="min-w-0 truncate text-chrome text-fg">{{ accountDisplayName(avatarSelf.name, avatarSelf.email) }}</span>
               </div>
               <div class="gallery-label pt-2">Sidebar on a phone · 32px</div>
               <div class="flex h-11 items-center gap-3 rounded-md bg-surface-base pl-2 pr-1.5">
-                <Avatar :scheme="candidate.scheme" :account-id="avatarSelf.id" :name="avatarSelf.name" :email="avatarSelf.email" :size="32" />
+                <Avatar :account-id="avatarSelf.id" :name="avatarSelf.name" :email="avatarSelf.email" :size="32" />
                 <span class="min-w-0 truncate text-[16px] text-fg">{{ accountDisplayName(avatarSelf.name, avatarSelf.email) }}</span>
               </div>
             </div>
             <div class="space-y-1">
+              <div class="gallery-label">The eight tones · slate, sage, clay, sand, dusk, moss, plum, steel</div>
+              <div class="flex gap-2">
+                <Avatar v-for="tone in avatarPalette" :key="tone.id" :account-id="tone.id" :name="tone.name" :size="32" />
+              </div>
+            </div>
+          </div>
+          <div class="min-w-0 space-y-4 rounded-xl bg-surface p-4">
+            <div class="space-y-1">
               <div class="gallery-label">Settings › Account · 32px</div>
               <SettingsGroup>
                 <SettingsRow label="Avatar" description="Your initials, until pictures arrive.">
-                  <Avatar :scheme="candidate.scheme" :account-id="avatarSelf.id" :name="avatarSelf.name" :email="avatarSelf.email" :size="32" />
+                  <Avatar :account-id="avatarSelf.id" :name="avatarSelf.name" :email="avatarSelf.email" :size="32" />
                 </SettingsRow>
               </SettingsGroup>
             </div>
             <div class="space-y-1">
               <div class="gallery-label">Settings › Users · 32px</div>
               <SettingsGroup>
-                <SettingsRow v-for="account in avatarAccounts" :key="account.id" :label="accountDisplayName(account.name, account.email)" :description="account.name ? account.email : undefined">
+                <SettingsRow v-for="account in avatarAccounts" :key="account.id" :label="accountDisplayName(account.name, account.email)" :description="account.name ? account.email : undefined" center-leading>
                   <template #leading>
-                    <Avatar :scheme="candidate.scheme" :account-id="account.id" :name="account.name" :email="account.email" :size="32" />
+                    <Avatar :account-id="account.id" :name="account.name" :email="account.email" :size="32" />
                   </template>
                 </SettingsRow>
               </SettingsGroup>
-            </div>
-            <div v-if="candidate.scheme === 'hue'" class="space-y-1">
-              <div class="gallery-label">The eight tones · slate, sage, clay, sand, dusk, moss, plum, steel</div>
-              <div class="flex gap-2">
-                <Avatar v-for="tone in avatarPalette" :key="tone.id" scheme="hue" :account-id="tone.id" :name="tone.name" :size="32" />
-              </div>
             </div>
           </div>
         </div>
