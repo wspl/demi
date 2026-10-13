@@ -1,7 +1,8 @@
 //! Where an entry's catalog comes from (`models.md` § Catalog sources): its
 //! configured model list, read from the entry and never cached; its vendor's
 //! list in models.dev; or its provider's directory, both through the catalog
-//! cache. And the account-wide catalog `GET /api/models` answers, each model
+//! cache. A compatible entry has no source but its configured list: empty
+//! until the user adds a model. And the account-wide catalog `GET /api/models` answers, each model
 //! with the selection the backend builds from it.
 
 use std::sync::Arc;
@@ -106,6 +107,11 @@ impl ProviderAssembly {
             EntryCredential::ApiKey(config) => {
                 if let Some(models) = &config.models {
                     return unfetched(models.0.iter().map(configured_model).collect(), Vec::new());
+                }
+                // A compatible endpoint decides its own models, so it never
+                // borrows its family's directory or a vendor's list.
+                if config.is_compatible() {
+                    return unfetched(Vec::new(), Vec::new());
                 }
                 config.vendor_id.clone()
             }

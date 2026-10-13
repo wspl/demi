@@ -30,6 +30,12 @@ pub trait ProviderFamily: Send + Sync + 'static {
         &[]
     }
 
+    /// The base URL an entry of the family that names none uses
+    /// (`providers.md` § Endpoints); none for a subscription family.
+    fn default_endpoint(&self) -> Option<&'static str> {
+        None
+    }
+
     /// The provider of one entry and account.
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError>;
 

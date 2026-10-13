@@ -91,6 +91,10 @@ pub enum ErrorCode {
     /// A subscription family is created by its login, and its entry takes
     /// only a new label.
     SubscriptionOnly,
+    /// The change does not fit the kind of API-key entry: a vendor entry's
+    /// endpoint is its vendor's and is never set, and a compatible entry's
+    /// endpoint is never removed.
+    EndpointKind,
     /// The entry does not take accounts this way: an API-key entry has none.
     AccountsUnsupported,
     /// The family has no login.
