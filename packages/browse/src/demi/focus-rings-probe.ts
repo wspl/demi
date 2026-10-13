@@ -42,8 +42,6 @@ export interface RingProbe {
   readShown(element: Element): Promise<RingReading | 'none'>
   /** The elements of the candidates the key presses did not reach. */
   unreached(): number[]
-  /** Forgets the elements read. */
-  reset(): void
 }
 
 type Box = { left: number, top: number, right: number, bottom: number }
@@ -53,7 +51,7 @@ export function ringProbe(): RingProbe {
   let list: Element[] = []
   let scope: Element | null = null
   const baseline = new WeakMap<Element, string>()
-  let read = new WeakSet<Element>()
+  const read = new WeakSet<Element>()
 
   const describe = (element: Element): string => {
     const tag = element.tagName.toLowerCase()
@@ -107,7 +105,7 @@ export function ringProbe(): RingProbe {
       || style.position === 'fixed' || style.position === 'sticky'
       || Number(style.opacity) < 1 || style.transform !== 'none' || style.filter !== 'none'
       || style.backdropFilter !== 'none' || style.isolation === 'isolate' || style.mixBlendMode !== 'normal'
-      || style.clipPath !== 'none' || style.mask !== 'none' && style.mask !== '' || /paint|layout|strict|content/.test(style.contain)
+      || style.clipPath !== 'none' || (style.mask !== 'none' && style.mask !== '') || /paint|layout|strict|content/.test(style.contain)
   }
 
   /**
@@ -356,10 +354,6 @@ export function ringProbe(): RingProbe {
     readShown: (element) => readElement(element),
     unreached() {
       return list.flatMap((element, index) => (read.has(element) ? [] : [index]))
-    },
-    reset() {
-      list = []
-      read = new WeakSet<Element>()
     },
   }
 }
