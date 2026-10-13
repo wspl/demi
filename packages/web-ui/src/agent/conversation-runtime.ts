@@ -179,28 +179,38 @@ export class ConversationRuntime {
   }
 
   /**
-   * Sends the message saved for later `id` the way the composer chose; the
-   * backend takes it off the list once the session takes it, and keeps it
-   * when the session refuses it. A steer the session refuses, as its turn
-   * ended meanwhile, goes as a message, as the composer's steer would.
-   * Answers false when the list no longer held it, as another page sent or
-   * deleted it first, and nothing was sent.
+   * Sends the message saved for later `id` the way the composer chose, as
+   * the message `turnId`; the backend takes it off the list once the session
+   * takes it, and keeps it when the session refuses it. A connection lost
+   * before the session answered fails nothing: once the conversation is open
+   * again, a send the session holds already is not sent again, and one it
+   * does not hold goes again as the same turn. A steer the session refuses,
+   * as its turn ended meanwhile, goes as a message, as the composer's steer
+   * would. Answers false when the list no longer held it, as another page
+   * sent or deleted it first, and nothing was sent.
    */
-  async sendSaved(id: string, delivery: SavedDelivery): Promise<boolean> {
+  async sendSaved(id: string, turnId: string, delivery: SavedDelivery): Promise<boolean> {
     this.options.state.lastError = null
-    const client = await this.ensureOpen()
-    try {
-      await client.sendSaved(id, delivery)
-    } catch (error) {
-      if (error instanceof SavedGoneError) {
-        return false
+    let way = delivery
+    for (;;) {
+      const client = await this.ensureOpen()
+      if (hasAcceptedSubmission(this.options.state, turnId)) {
+        return true
       }
-      if (!(error instanceof SteerRejectedError)) {
-        throw error
+      try {
+        await client.sendSaved(id, turnId, way)
+        return true
+      } catch (error) {
+        if (error instanceof SavedGoneError) {
+          return false
+        }
+        if (error instanceof SteerRejectedError) {
+          way = 'message'
+        } else if (!(error instanceof ConversationSocketError)) {
+          throw error
+        }
       }
-      return this.sendSaved(id, 'message')
     }
-    return true
   }
 
   /** Whether the session, open again after a lost connection, holds the steer `id`: pending, or in the transcript. */

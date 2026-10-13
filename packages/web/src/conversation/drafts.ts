@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { schemaRefusal } from '@demicodes/protocol'
-import { conversationSummarySchema, workflowChoiceSchema } from '../api/generated/web-api'
+import { conversationSummarySchema, draftFileSchema, workflowChoiceSchema } from '../api/generated/web-api'
 import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
 import { modelSettingsSchema } from '@demicodes/web-ui/agent/model-selection'
 import { copiedStoredFileSchema } from '@demicodes/web-ui/agent/message-input/copied-message'
@@ -43,8 +43,14 @@ export const draftSchema = z.object({
       text: z.string(),
       fileIds: z.array(z.string()),
       error: z.string().nullable(),
+      /** The message saved for later it was sent from, which a retry sends again from the list as the same turn. */
+      saved: z.string().optional(),
     }),
   ),
+  /** The messages the backend did not save, which the list shows as Not Saved until their user retries or deletes them. */
+  notSaved: z
+    .array(z.object({ id: z.string(), text: z.string(), files: z.array(draftFileSchema), reason: z.string() }))
+    .default([]),
   /**
    * The revision of the backend's draft the composer's text was built on,
    * while the backend has not confirmed a change of it; null when the

@@ -28,6 +28,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
 use demi_conversation_socket_protocol::{
+    SteerOutcome,
     ClientContent, ClientFrame, ClientFrameKind, EditOutcome, FrameError, RemoveOutcome,
     SavedDelivery, ServerFrame, TranscriptPatch, decode_client_frame,
 };
@@ -329,19 +330,32 @@ impl Shard {
             }
         };
         // A message saved for later goes as the frame the composer would
-        // send, with its id, one at a time; it leaves the list once the
-        // session takes it, and stays when the session refuses it.
+        // send, as the turn the page named, one at a time; it leaves the list
+        // once the session takes it, and stays when the session refuses it.
+        // One a send already took as that turn answers as that send did: the
+        // session holds it, so nothing is sent again.
         let (frame, saved, _sending) = match frame {
-            ClientFrame::SendSaved { id, delivery } => {
+            ClientFrame::SendSaved { id, turn_id, delivery } => {
                 let sending = self.conversations().slot(conversation).saved.acquire().await;
-                match self
-                    .services()
-                    .control
-                    .saved_message(conversation.clone(), id.clone())
-                    .await
-                {
-                    Ok(Some(message)) => (sent_saved(message, delivery), Some(id), Some(sending)),
-                    Ok(None) => return Handled::Replies(vec![saved_gone()]),
+                let control = &self.services().control;
+                match control.saved_message(conversation.clone(), id.clone()).await {
+                    Ok(Some(message)) => (
+                        sent_saved(message, turn_id.clone(), delivery),
+                        Some((id, turn_id)),
+                        Some(sending),
+                    ),
+                    Ok(None) => {
+                        return match control.sent_as(conversation.clone(), id).await {
+                            Ok(Some(turn)) if turn == turn_id => {
+                                Handled::Replies(sent_again(turn_id, delivery))
+                            }
+                            Ok(_) => Handled::Replies(vec![saved_gone()]),
+                            Err(error) => Handled::Replies(vec![refusal(
+                                ErrorCode::FrameDeliveryFailed,
+                                error.to_string(),
+                            )]),
+                        };
+                    }
                     Err(error) => {
                         return Handled::Replies(vec![refusal(
                             ErrorCode::FrameDeliveryFailed,
@@ -406,8 +420,8 @@ impl Shard {
             }
             Ok(Prepared::Deliver) => {
                 let taken = connection.handle(frame).await;
-                if let (true, Some(id)) = (taken, saved) {
-                    self.take_saved(conversation, id).await;
+                if let (true, Some((id, turn))) = (taken, saved) {
+                    self.take_saved(conversation, id, turn).await;
                 }
                 Handled::Replies(Vec::new())
             }
@@ -498,8 +512,8 @@ impl Shard {
     /// conversation's list. One removed meanwhile is gone already. A
     /// failure leaves it listed though sent; it is logged, since the send
     /// it follows has happened and has its own answer.
-    async fn take_saved(&self, conversation: &ConversationId, id: String) {
-        match self.services().control.take_saved(conversation.clone(), id).await {
+    async fn take_saved(&self, conversation: &ConversationId, id: String, turn: TurnId) {
+        match self.services().control.take_saved(conversation.clone(), id, turn).await {
             Ok(true) => self.mark(Part::Conversation(conversation.clone())),
             Ok(false) => {}
             Err(error) => tracing::error!(
@@ -670,12 +684,25 @@ fn saved_gone() -> ServerFrame {
     }
 }
 
+/// What a send of a saved message a send already took as `turn` answers: the
+/// session holds the turn, whose frames went out with the first send and
+/// come with every opening, and a steer is accepted.
+fn sent_again(turn: TurnId, delivery: SavedDelivery) -> Vec<ServerFrame> {
+    match delivery {
+        SavedDelivery::Message | SavedDelivery::Queue => Vec::new(),
+        SavedDelivery::Steer => vec![ServerFrame::SteerResult {
+            steer_id: BlockId::try_from(turn.into_string()).expect("a turn id is not empty"),
+            outcome: SteerOutcome::Accepted,
+        }],
+    }
+}
+
 /// The frame the composer would send for a saved message: a message, which
-/// waits in the queue while a turn runs, or a steer, with the saved
-/// message's id as the turn's or the steer's. Its text is split at the marks
+/// waits in the queue while a turn runs, or a steer, with `turn`, the page's
+/// id for the send, as the turn's or the steer's. Its text is split at the marks
 /// where its files stand, as the page joins a message's content, without the
 /// blank space at its ends.
-fn sent_saved(message: SavedMessage, delivery: SavedDelivery) -> ClientFrame {
+fn sent_saved(message: SavedMessage, turn: TurnId, delivery: SavedDelivery) -> ClientFrame {
     let mut files = message.files.into_iter().map(|file| match file {
         DraftFile::Upload {
             r#ref, file_name, ..
@@ -704,11 +731,11 @@ fn sent_saved(message: SavedMessage, delivery: SavedDelivery) -> ClientFrame {
     content.extend(files);
     match delivery {
         SavedDelivery::Message | SavedDelivery::Queue => ClientFrame::Send {
-            message_id: TurnId::try_from(message.id).expect("a saved message's id is not empty"),
+            message_id: turn,
             content,
         },
         SavedDelivery::Steer => ClientFrame::Steer {
-            steer_id: BlockId::try_from(message.id).expect("a saved message's id is not empty"),
+            steer_id: BlockId::try_from(turn.into_string()).expect("a turn id is not empty"),
             content,
         },
     }

@@ -19,7 +19,7 @@ import { playChannels } from '../__tests__/sync-channel'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import * as draftStorage from './drafts'
 import * as localState from '../state/local'
-import { DRAFT_SAVE_DELAY_MS } from './draft-sync'
+import { DRAFT_SAVE_DELAY_MS } from './record'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { EMPTY_TRANSCRIPT } from '@demicodes/web-ui/transport/protocol'
 import { latestBlocks, wholeHistory } from '@demicodes/web-ui/agent/history'
@@ -43,6 +43,11 @@ const stubProvider = {
   id: 'stub', kind: 'api_key' as const, providerType: 'stub', label: 'Stub',
   wireApi: null, vendorId: null, compatible: false, endpoint: null, hasApiKey: true, models: null, createdAt: '2026-09-09T00:00:00.000Z',
   details: { type: 'failed' as const, message: 'Not read in this test' },
+}
+/** The state the page read lists the stub provider entry too. */
+function addStubProvider(): void {
+  const product = useProduct()
+  product.read = { ...product.read!, providers: [...product.read!.providers, stubProvider] }
 }
 /** A catalog with the one stub model. */
 function stubCatalog() {
@@ -149,34 +154,79 @@ function draftRoute(id: string, method: string, action: boolean, body: Record<st
     }
   }
   serverDrafts.set(id, next)
-  return Response.json({ draft: next })
+  records.find((item) => item.id === id)!.draftRevision = next.revision
+  return Response.json({ draft: next, revisions: revisionsOf(id) })
 }
 
 /** The messages saved for later the backend keeps, by conversation, newest first. */
 let serverSaved: Map<string, SavedMessage[]>
+/** The answers of the edits the backend made, by their operation id. */
+let serverEdits: Map<string, unknown>
+
+/** The conversation's revisions of its draft and its list, as every write answers them. */
+function revisionsOf(id: string) {
+  return { draft: serverDrafts.get(id)?.revision ?? 0, saved: records.find((item) => item.id === id)!.savedRevision }
+}
 
 /**
  * The backend's routes of messages saved for later (`web-api.md` § Messages
  * saved for later): the list, with the revision the conversation's summary
- * carries, and a save of the composer's message, which empties the draft.
+ * carries; a save of the composer's message, which empties the draft, and a
+ * plain one, each under the page's id; an edit, kept by its operation id;
+ * and a deletion, which a message gone already answers the same.
  */
-function savedRoute(id: string, method: string, fromDraft: boolean, body: Record<string, unknown>): Response {
+function savedRoute(id: string, method: string, path: string, body: Record<string, unknown>): Response {
   const summary = records.find((item) => item.id === id)!
   const messages = serverSaved.get(id) ?? []
+  const current = serverDrafts.get(id) ?? { revision: 0, text: '', files: [], replaced: null }
+  const raise = () => {
+    summary.savedRevision += 1
+    summary.saved = serverSaved.get(id)!.length
+  }
+  const [, messageId, action] = /^\/saved(?:\/([^/]+))?(?:\/([^/]+))?$/.exec(path) ?? []
   if (method === 'GET') {
     return Response.json({ revision: summary.savedRevision, messages })
   }
-  if (!fromDraft) {
-    throw new Error(`Unexpected saved request: ${method} ${id}`)
+  if (method === 'DELETE') {
+    if (messages.some((message) => message.id === messageId)) {
+      serverSaved.set(id, messages.filter((message) => message.id !== messageId))
+      raise()
+    }
+    return Response.json({ revisions: revisionsOf(id) })
   }
-  const message: SavedMessage = { id: `saved-${messages.length + 1}`, text: body.text as string, files: [], savedAt: '2026-09-09T00:00:00.000Z' }
-  serverSaved.set(id, [message, ...messages])
-  summary.savedRevision += 1
-  summary.saved += 1
-  const current = serverDrafts.get(id) ?? { revision: 0, text: '', files: [], replaced: null }
-  const draft = { revision: current.revision + 1, text: '', files: [], replaced: current.replaced }
-  serverDrafts.set(id, draft)
-  return Response.json({ message, draft }, { status: 201 })
+  if (action === 'edit') {
+    const kept = serverEdits.get(body.op as string)
+    if (kept) {
+      return Response.json(kept)
+    }
+    const moved = messages.find((message) => message.id === messageId)
+    if (!moved) {
+      return Response.json({ requestId: 'req_test000000000001', code: 'saved_not_found', message: 'No such message saved for later' }, { status: 404 })
+    }
+    const rest = messages.filter((message) => message !== moved)
+    const draft = { revision: current.revision + 1, text: moved.text, files: moved.files, replaced: current.replaced }
+    serverDrafts.set(id, draft)
+    summary.draftRevision = draft.revision
+    serverSaved.set(id, current.text.trim() || current.files.length
+      ? [{ id: body.id as string, text: current.text, files: current.files, savedAt: '2026-09-09T00:00:00.000Z' }, ...rest]
+      : rest)
+    raise()
+    const answer = { draft, revisions: revisionsOf(id) }
+    serverEdits.set(body.op as string, answer)
+    return Response.json(answer)
+  }
+  const message: SavedMessage = { id: body.id as string, text: body.text as string, files: [], savedAt: '2026-09-09T00:00:00.000Z' }
+  if (!messages.some((each) => each.id === message.id)) {
+    serverSaved.set(id, [message, ...messages])
+    raise()
+  }
+  if (messageId === 'from-draft') {
+    const draft = { revision: current.revision + 1, text: '', files: [], replaced: current.replaced }
+    serverDrafts.set(id, draft)
+    summary.draftRevision = draft.revision
+    return Response.json({ message, draft, revisions: revisionsOf(id) }, { status: 201 })
+  }
+  return Response.json({ message, revisions: revisionsOf(id) }, { status: 201 })
 }
 
 function record(id: string, title = id): ConversationSummary {
@@ -190,6 +240,7 @@ beforeEach(async () => {
   savedPreferences = { appearance: {}, shortcuts: {} }
   serverDrafts = new Map()
   serverSaved = new Map()
+  serverEdits = new Map()
   FakeXhr.gate = null
   FakeXhr.failures = 0
   rejectCreate = false
@@ -303,9 +354,9 @@ beforeEach(async () => {
     if (draft) {
       return draftRoute(decodeURIComponent(draft[1]!), init?.method ?? 'GET', draft[2] !== undefined, body)
     }
-    const saved = /^\/api\/conversations\/([^/]+)\/saved(\/from-draft)?$/.exec(path)
+    const saved = /^\/api\/conversations\/([^/]+)(\/saved.*)$/.exec(path)
     if (saved) {
-      return savedRoute(decodeURIComponent(saved[1]!), init?.method ?? 'GET', saved[2] !== undefined, body)
+      return savedRoute(decodeURIComponent(saved[1]!), init?.method ?? 'GET', saved[2]!, body)
     }
     if (path.startsWith('/api/attachments?')) {
       // The backend holds none of these files: their bytes go next.
@@ -822,7 +873,7 @@ test('a first send whose conversation opens while the model list loads again goe
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  product.snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const asked = deferred<void>()
   const answerCreate = deferred<void>()
   /** Each model list the page asked for, answered when the test says. */
@@ -888,7 +939,7 @@ test('a first send waiting for the model list ends undelivered with the list’s
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  product.snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const asked = deferred<void>()
   const answerCreate = deferred<void>()
   /** Each model list the page asked for, answered when the test says. */
@@ -959,7 +1010,7 @@ function answerOpening(id: string, intercept: (path: string) => void = () => {})
 
 /** The conversation infers with the stub model, which the catalog lists. */
 async function chooseStubModel(conversation: ReturnType<typeof useConversations>['items'][number]): Promise<void> {
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   await useProduct().loadModels(true)
   await useConversations().changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
 }
@@ -1336,7 +1387,7 @@ test('the first send keeps the new conversation shown while its record opens', a
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -1374,7 +1425,7 @@ test('the first send creates the conversation with its settings in one request a
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const originalFetch = globalThis.fetch
   const readBack: string[] = []
   globalThis.fetch = (async (input, init) => {
@@ -1409,7 +1460,7 @@ test('a draft moves without telling anyone and is created where it moved; a conv
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) =>
     String(input).startsWith('/api/models') ? Response.json(stubCatalog()) : originalFetch(input, init)) as typeof fetch
@@ -1507,7 +1558,7 @@ test('a conversation whose turn ended meanwhile moves at once, and one whose sto
 test('a detach shows the hosts without the one it removed, with no read', async () => {
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
-  first.attachedHosts = [{ deviceId: 'laptop', name: 'laptop', cwd: null }]
+  first.attachedHosts.replace([{ deviceId: 'laptop', name: 'laptop', cwd: null, state: 'online', attachedAt: '2026-09-09T00:00:00.000Z' }])
   const originalFetch = globalThis.fetch
   const sent: string[] = []
   globalThis.fetch = (async (input, init) => {
@@ -1519,7 +1570,7 @@ test('a detach shows the hosts without the one it removed, with no read', async 
   }) as typeof fetch
   try {
     await store.detachHost(first, 'laptop')
-    expect(first.attachedHosts).toEqual([])
+    expect(first.attachedHosts.shown.value).toEqual([])
     expect(sent).toEqual([`DELETE /api/conversations/${FIRST}/hosts/laptop`])
   } finally {
     globalThis.fetch = originalFetch
@@ -1587,7 +1638,7 @@ test('a file whose capsule was deleted comes back when undo brings the capsule b
 test('a message sends its text and files in the order the composer shows them', async () => {
   const store = useConversations()
   const current = store.items[0]!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -1643,7 +1694,7 @@ test('a message sends its text and files in the order the composer shows them', 
 async function withSession(check: (current: ReturnType<typeof useConversations>['items'][number], sent: ClientContent[][]) => Promise<void>): Promise<void> {
   const store = useConversations()
   const current = store.items[0]!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const restore = answerOpening(current.id)
   const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
   const sent: ClientContent[][] = []
@@ -1903,7 +1954,7 @@ test('history remains readable during its own connection after navigation', asyn
   const cached = [{ type: 'text' as const, id: 'cached', createdAt: '2026-09-09T00:00:00.000Z', model, text: 'cached' }]
   current.history = wholeHistory(cached)
   current.draft = 'Keep the draft'
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const historyRequested = deferred<void>()
   const history = deferred<Response>()
   const connecting = deferred<void>()
@@ -2223,7 +2274,7 @@ async function startOpening(
 ) {
   records.find((item) => item.id === id)!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
   await changed(id)
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const answering = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -2372,7 +2423,7 @@ test('a new conversation whose first session cannot connect is opening, not reco
   const id = store.create()
   await store.activate(id)
   const conversation = store.items.find((item) => item.id === id)!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -3094,7 +3145,7 @@ test('the list waits for the new conversations this web browser keeps, so a relo
     expect(store.listStatus).toBe('loading')
     const now = '2026-09-09T00:00:00.000Z'
     listed.resolve({ drafts: [{
-      messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null,
+      messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null, notSaved: [],
       text: 'Fix the login bug',
       local: {
         phase: 'draft',
@@ -3127,7 +3178,7 @@ test('unsent drafts lead the list, newest first, live and after a reload whether
 
   // The drafts as this web browser's storage gives them back, in no particular order.
   const kept = [older, newer].map((id): draftStorage.SavedDraft => ({
-    messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null,
+    messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null, notSaved: [],
     text: id === older ? 'Older draft' : 'Newer draft',
     local: {
       phase: 'draft',
@@ -3234,7 +3285,7 @@ test('output that advances an open conversation\'s revision reads nothing; a rai
   records[0]!.hostsRevision = 1
   await changed(FIRST)
   const first = store.items.find((item) => item.id === FIRST)!
-  await waitFor(() => first.attachedHosts[0]?.cwd === '/work/sub', () => 'the hosts were not read again')
+  await waitFor(() => first.attachedHosts.shown.value?.[0]?.cwd === '/work/sub', () => 'the hosts were not read again')
   expect([reads('hosts'), reads('transcript'), first.load]).toEqual([2, 1, 'ready'])
 })
 
@@ -3431,35 +3482,35 @@ test('a draft another page saved shows in a composer at rest; one its user is ty
     const store = useConversations()
     const current = store.items.find((item) => item.id === FIRST)!
     await store.activate(FIRST)
-    expect([current.draft, current.draftBase]).toEqual(['Fix the login', 1])
+    expect([current.draft, current.record.revision('draft')]).toEqual(['Fix the login', 1])
 
     // Nothing typed here: the newer draft takes the composer's place.
     const shown = current.draftShown
     await savedElsewhere(FIRST, 'Fix the login test')
     await until(() => current.draft === 'Fix the login test', 'the other page\'s draft shows')
-    expect([current.draftBase, current.draftShown]).toEqual([2, shown + 1])
+    expect([current.record.revision('draft'), current.draftShown]).toEqual([2, shown + 1])
 
     // Typed here, not saved yet: the composer keeps it when another page saves.
     current.draft = 'Fix the login bug'
     await savedElsewhere(FIRST, 'Fix the login test, again')
-    await until(() => current.savedDraft?.revision === 3, 'the newer draft is read')
+    await until(() => current.record.revision('draft') === 3, 'the newer draft is read')
     expect(current.draft).toBe('Fix the login bug')
     expect(draftSaves()).toEqual([])
 
     // Half a second after the typing pauses the page saves, built on the
     // revision its text came from, so the backend keeps what it replaces.
     jest.advanceTimersByTime(DRAFT_SAVE_DELAY_MS)
-    await until(() => current.savedDraft?.revision === 4, 'the save is answered')
+    await until(() => current.record.revision('draft') === 4, 'the save is answered')
     expect(draftSaves().map((request) => request.body)).toEqual([{ base: 2, text: 'Fix the login bug', files: [] }])
-    expect([current.draft, current.draftBase, current.savedDraft?.replaced?.text]).toEqual(['Fix the login bug', 4, 'Fix the login test, again'])
+    expect([current.draft, current.record.pending('draft'), current.record.read.value?.draft.replaced?.text]).toEqual(['Fix the login bug', [], 'Fix the login test, again'])
 
     // Restore brings the replaced version back and offers the one it displaced.
     store.restoreReplaced(current)
     await until(() => current.draft === 'Fix the login test, again', 'the restored draft shows')
-    expect(current.savedDraft?.replaced?.text).toBe('Fix the login bug')
+    expect(current.record.read.value?.draft.replaced?.text).toBe('Fix the login bug')
     store.dismissReplaced(current)
-    await until(() => current.savedDraft?.replaced === null, 'the offer is dismissed')
-    expect([current.draft, current.draftBase]).toEqual(['Fix the login test, again', 6])
+    await until(() => current.record.read.value?.draft.replaced === null, 'the offer is dismissed')
+    expect([current.draft, current.record.revision('draft')]).toEqual(['Fix the login test, again', 6])
   } finally {
     jest.useRealTimers()
     signOut()
@@ -3470,7 +3521,7 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
   const signOut = signIn()
   const store = useConversations()
   const current = store.items.find((item) => item.id === FIRST)!
-  useProduct().snapshot!.providers.push(stubProvider)
+  addStubProvider()
   serverDrafts.set(FIRST, { revision: 1, text: 'Ship it', files: [], replaced: null })
   records[0]!.draftRevision = 1
   const originalFetch = globalThis.fetch
@@ -3503,8 +3554,9 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
     await sending
     await until(() => draftSaves().length === 1, 'the draft is cleared')
     expect(draftSaves()[0]!.body).toEqual({ base: 1, text: '', files: [] })
-    await until(() => current.savedDraft?.revision === 3, 'the clear is answered')
-    expect([current.draft, current.savedDraft?.text, current.savedDraft?.replaced?.text]).toEqual(['', '', 'Ship it today'])
+    await until(() => current.record.revision('draft') === 3, 'the clear is answered')
+    const read = current.record.read.value?.draft
+    expect([current.draft, read?.text, read?.replaced?.text]).toEqual(['', '', 'Ship it today'])
   } finally {
     jest.useRealTimers()
     submit.mockRestore()
@@ -3595,7 +3647,7 @@ test('a page that closes while typing leaves its text to the next page, which ta
     setActivePinia(pinia)
     signOut = signIn({
       messageEdit: null, pendingSends: [], local: null, base: 1, text: 'Fix the lo',
-      model: null, files: [], scroll: null,
+      model: null, files: [], scroll: null, notSaved: [],
     })
     const taken = spyOn(draftStorage, 'takeLastWords').mockReturnValue(words ?? null)
     jest.useFakeTimers()
@@ -3604,7 +3656,7 @@ test('a page that closes while typing leaves its text to the next page, which ta
       await connect()
       current = store.items.find((item) => item.id === FIRST)!
       await store.activate(FIRST)
-      expect([current.draft, current.draftBase]).toEqual(['Fix the login bug', 2])
+      expect([current.draft, current.record.revision('draft'), current.record.pending('draft')]).toEqual(['Fix the login bug', 2, []])
       jest.advanceTimersByTime(DRAFT_SAVE_DELAY_MS)
       await settle()
       expect(draftSaves()).toEqual([])
@@ -3641,25 +3693,26 @@ test('a child\'s usage frame sets its own record\'s usage', () => {
 })
 
 // Under 50 ms each: the backend is the stub above.
+// Under 50 ms each: the backend is the stub above.
 test('the messages saved for later show as the conversation opens, and a raised revision reads them again, once', async () => {
   serveHistory()
-  serverSaved.set(FIRST, [{ id: 'dns', text: 'Check prod’s DNS next', files: [], savedAt: '2026-09-09T00:00:00.000Z' }])
+  serverSaved.set(FIRST, [savedMessage('dns', 'Check prod’s DNS next')])
   records[0]!.savedRevision = 1
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
   const reads = (id: string) => requests.filter((item) => item.path === `/api/conversations/${id}/saved`).length
   await store.activate(FIRST)
-  await until(() => first.saved?.revision === 1, 'the list is read as the conversation opens')
-  expect(first.saved?.messages.map((message) => message.text)).toEqual(['Check prod’s DNS next'])
+  await until(() => first.record.revision('saved') === 1, 'the list is read as the conversation opens')
+  expect(listed(first)).toEqual(['Check prod’s DNS next'])
 
   // Another page saved one: the summary's revision moves ahead, the page
   // reads the list again; the same summary again reads nothing.
-  serverSaved.set(FIRST, [{ id: 'ipv6', text: 'Then the IPv6', files: [], savedAt: '2026-09-09T00:01:00.000Z' }, ...serverSaved.get(FIRST)!])
+  serverSaved.set(FIRST, [savedMessage('ipv6', 'Then the IPv6'), ...serverSaved.get(FIRST)!])
   records[0]!.savedRevision = 2
   await changed(FIRST)
   await changed(FIRST)
-  await until(() => first.saved?.revision === 2, 'the list is read again')
-  expect(first.saved?.messages.map((message) => message.id)).toEqual(['ipv6', 'dns'])
+  await until(() => first.record.revision('saved') === 2, 'the list is read again')
+  expect(listed(first)).toEqual(['Then the IPv6', 'Check prod’s DNS next'])
   await settle()
   expect(reads(FIRST)).toBe(2)
 
@@ -3670,7 +3723,78 @@ test('the messages saved for later show as the conversation opens, and a raised 
   expect(reads(SECOND)).toBe(0)
 })
 
-test('Save for Later sends the composer\'s message on the revision it was built on, empties the composer and lists it at once', async () => {
+/**
+ * Holds the writes of messages saved for later and of the conversation's
+ * record: each reaches the backend and waits for the test, which answers it
+ * with a response of its own, passes it on to the stub backend, or has the
+ * backend make it now and the answer arrive later.
+ */
+function holdWrites(options: { drafts?: boolean } = {}) {
+  const waiting: {
+    method: string
+    path: string
+    body: unknown
+    answer: (response: Response) => void
+    pass: () => Promise<void>
+    apply: () => Promise<() => void>
+  }[] = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    const method = init?.method ?? 'GET'
+    const holds = method !== 'GET' && (/\/saved(\/|$)/.test(path) || /^\/api\/conversations\/(batch|[^/]+)$/.test(path) ||
+      (options.drafts === true && path.endsWith('/draft')))
+    if (!holds) {
+      return originalFetch(input, init)
+    }
+    const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null
+    if (!path.endsWith('/draft')) {
+      requests.push({ path, body })
+    }
+    return new Promise<Response>((answer) => waiting.push({
+      method,
+      path,
+      body,
+      answer,
+      pass: async () => answer(await originalFetch(input, init)),
+      apply: async () => {
+        const response = await originalFetch(input, init)
+        return () => answer(response)
+      },
+    }))
+  }) as typeof fetch
+  return { waiting, restore: () => void (globalThis.fetch = originalFetch) }
+}
+
+const refusal = (code: string, status = 409) =>
+  Response.json({ requestId: 'req_test000000000001', code, message: `The backend refuses: ${code}` }, { status })
+const savedMessage = (id: string, text: string): SavedMessage => ({ id, text, files: [], savedAt: '2026-09-09T00:00:00.000Z' })
+/** The texts of the list the conversation's composer shows, without the messages not saved. */
+const listed = (conversation: { record: { shown: { value: { saved: SavedMessage[] } | null } } }) =>
+  (conversation.record.shown.value?.saved ?? []).map((message) => message.text)
+
+/** The conversation `FIRST` opened with its draft and its list of messages saved for later read. */
+async function openWithSaved(saved: SavedMessage[]) {
+  serveHistory()
+  serverSaved.set(FIRST, saved)
+  records[0]!.savedRevision = 1
+  const store = useConversations()
+  const first = store.items.find((item) => item.id === FIRST)!
+  await store.activate(FIRST)
+  await until(() => first.record.revision('saved') === 1 && first.record.revision('draft') === 0, 'the list and the draft are read')
+  return { store, first }
+}
+
+/** The backend's summary of `FIRST` reaches the page, which reads what changed, and holds it. */
+async function readAgain(first: { record: { revision: (part: string) => number } }): Promise<void> {
+  await changed(FIRST)
+  await until(
+    () => first.record.revision('saved') === records[0]!.savedRevision && first.record.revision('draft') === records[0]!.draftRevision,
+    'the draft and the list are read again',
+  )
+}
+
+test('Save for Later lists the composer\'s message at once under the id its request names, sent on the revision it was built on', async () => {
   const signOut = signIn()
   try {
     serveHistory()
@@ -3679,14 +3803,358 @@ test('Save for Later sends the composer\'s message on the revision it was built 
     const store = useConversations()
     const first = store.items.find((item) => item.id === FIRST)!
     await store.activate(FIRST)
-    await until(() => first.saved !== null && first.draftBase === 1, 'the draft and the list are read')
+    await until(() => first.record.revision('draft') === 1, 'the draft is read')
     first.draft = 'Check prod’s DNS next'
-    await store.saveForLater(first)
-    const save = requests.find((item) => item.path === `/api/conversations/${FIRST}/saved/from-draft`)
-    expect(save?.body).toEqual({ base: 1, text: 'Check prod’s DNS next', files: [] })
-    expect([first.draft, first.draftBase, first.saved?.messages.map((message) => message.text)])
-      .toEqual(['', 2, ['Check prod’s DNS next']])
+    const held = holdWrites()
+    try {
+      const saving = store.saveForLater(first)
+      await until(() => held.waiting.length === 1, 'the save reaches the backend')
+      expect([first.draft, listed(first)]).toEqual(['', ['Check prod’s DNS next']])
+      expect(held.waiting[0]!.body).toEqual({ id: first.record.shown.value!.saved[0]!.id, base: 1, text: 'Check prod’s DNS next', files: [] })
+      await held.waiting[0]!.pass()
+      await saving
+    } finally {
+      held.restore()
+    }
+    await readAgain(first)
+    expect([first.draft, listed(first), first.record.pending()]).toEqual(['', ['Check prod’s DNS next'], []])
   } finally {
     signOut()
+  }
+})
+
+// The reviewer's first sequence: Save A, type B before the answer, the save is refused.
+test('a save refused after its user typed on loses nothing: the message stands as Not Saved and the composer keeps what was typed', async () => {
+  const signOut = signIn()
+  const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
+  const held = holdWrites()
+  try {
+    first.draft = 'Look at the IPv6 setup'
+    const saving = store.saveForLater(first)
+    await until(() => held.waiting.length === 1, 'the save reaches the backend')
+    expect([first.draft, listed(first)]).toEqual(['', ['Look at the IPv6 setup', 'Check prod’s DNS next']])
+    first.draft = 'Then the CDN'
+    held.waiting[0]!.answer(refusal('saved_full'))
+    await saving
+    expect(first.draft).toBe('Then the CDN')
+    expect(listed(first)).toEqual(['Check prod’s DNS next'])
+    expect(first.notSaved.map(({ text }) => text)).toEqual(['Look at the IPv6 setup'])
+  } finally {
+    held.restore()
+    signOut()
+  }
+})
+
+// The reviewer's second sequence: composer D, Edit A, Edit B, A refused, B
+// accepted, B pressed while A still waits for the save of D.
+test('two edits in a row, the first refused: nothing is lost and no message is listed twice', async () => {
+  const signOut = signIn()
+  const { store, first } = await openWithSaved([savedMessage('a', 'Message A'), savedMessage('b', 'Message B')])
+  const held = holdWrites({ drafts: true })
+  try {
+    first.draft = 'Draft D'
+    await store.editSaved(first, 'a')
+    await until(() => held.waiting.length === 1, 'the save of what the composer held reaches the backend first')
+    expect(held.waiting[0]!.body).toMatchObject({ text: 'Draft D' })
+    expect([first.draft, listed(first)]).toEqual(['Message A', ['Draft D', 'Message B']])
+    await store.editSaved(first, 'b')
+    expect([first.draft, listed(first)]).toEqual(['Message B', ['Message A', 'Draft D']])
+
+    await held.waiting[0]!.pass()
+    await until(() => held.waiting.length === 2, 'the first edit reaches the backend')
+    held.waiting[1]!.answer(refusal('saved_not_found', 404))
+    await until(() => held.waiting.length === 3, 'the second edit reaches the backend')
+    // A stays listed; B's edit now moves the draft as the backend holds it, D.
+    expect([first.draft, listed(first), first.notSaved]).toEqual(['Message B', ['Draft D', 'Message A'], []])
+    await held.waiting[2]!.pass()
+    await readAgain(first)
+    expect([first.draft, listed(first), first.notSaved, first.record.pending()]).toEqual(['Message B', ['Draft D', 'Message A'], [], []])
+  } finally {
+    held.restore()
+    signOut()
+  }
+})
+
+test('an edit refused leaves the message in the list and what the composer held as Not Saved, shown once', async () => {
+  const signOut = signIn()
+  const { store, first } = await openWithSaved([savedMessage('a', 'Message A')])
+  const held = holdWrites()
+  try {
+    first.draft = 'Draft K'
+    await store.editSaved(first, 'a')
+    await until(() => held.waiting.length === 1, 'the edit reaches the backend')
+    held.waiting[0]!.answer(refusal('conversation_archived'))
+    await until(() => first.notSaved.length === 1, 'the composer\'s message stands as Not Saved')
+    expect([first.draft, listed(first), first.notSaved.map(({ text }) => text)]).toEqual(['', ['Message A'], ['Draft K']])
+  } finally {
+    held.restore()
+    signOut()
+  }
+})
+
+// The reviewer's fifth finding: the list the edit made arrives before its answer.
+test('an edit whose list is read before its answer lists what the composer held once', async () => {
+  const signOut = signIn()
+  const { store, first } = await openWithSaved([savedMessage('a', 'Message A')])
+  const held = holdWrites()
+  try {
+    first.draft = 'Draft K'
+    await store.editSaved(first, 'a')
+    await until(() => held.waiting.length === 1, 'the edit reaches the backend')
+    const answer = await held.waiting[0]!.apply()
+    await readAgain(first)
+    expect([first.draft, listed(first)]).toEqual(['Message A', ['Draft K']])
+    answer()
+    await until(() => first.record.pending().length === 0, 'the edit leaves')
+    expect([first.draft, listed(first)]).toEqual(['Message A', ['Draft K']])
+  } finally {
+    held.restore()
+    signOut()
+  }
+})
+
+test('Retry on a message not saved saves it under its own id, and it is listed as saved once read', async () => {
+  const signOut = signIn()
+  const { store, first } = await openWithSaved([])
+  const held = holdWrites()
+  try {
+    first.draft = 'Look at the IPv6 setup'
+    const saving = store.saveForLater(first)
+    await until(() => held.waiting.length === 1, 'the save reaches the backend')
+    held.waiting[0]!.answer(refusal('saved_full'))
+    await saving
+    const [row] = first.notSaved
+    store.retrySaved(first, row!.id)
+    await until(() => held.waiting.length === 2, 'the retry reaches the backend')
+    expect(held.waiting[1]!.body).toEqual({ id: row!.id, text: 'Look at the IPv6 setup', files: [] })
+    expect(listed(first)).toEqual(['Look at the IPv6 setup'])
+    await held.waiting[1]!.pass()
+    await readAgain(first)
+    expect([listed(first), first.notSaved, first.record.pending()]).toEqual([['Look at the IPv6 setup'], [], []])
+  } finally {
+    held.restore()
+    signOut()
+  }
+})
+
+/** The model the stub provider offers, chosen for `FIRST`, whose runtime does not connect. */
+async function withStubModel(first: Parameters<ReturnType<typeof useConversations>['changeModel']>[0]) {
+  addStubProvider()
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
+    if (path === `/api/conversations/${FIRST}` && init?.method === 'PATCH') {
+      return Response.json({ conversation: records[0], results: [] })
+    }
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  await useProduct().loadModels(true)
+  await useConversations().changeModel(first, { model: { providerId: 'stub', modelId: 'stub' } })
+  return () => {
+    connect.mockRestore()
+    globalThis.fetch = originalFetch
+  }
+}
+
+test('sending a saved message shows it on its way at once as a turn of its own, out of the list; one whose send fails stays on its way with Retry', async () => {
+  const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next'), savedMessage('ipv6', 'Then the IPv6')])
+  const restore = await withStubModel(first)
+  const answer = deferred<boolean>()
+  const send = spyOn(ConversationRuntime.prototype, 'sendSaved').mockImplementation(() => answer.promise)
+  try {
+    store.sendSaved(first, 'dns', 'send')
+    expect(listed(first)).toEqual(['Then the IPv6'])
+    expect(first.pendingSends.map(({ text, saved }) => ({ text, saved }))).toEqual([{ text: 'Check prod’s DNS next', saved: 'dns' }])
+    await until(() => send.mock.calls.length === 1, 'the session is asked to send it')
+    const turnId = first.pendingSends[0]!.id
+    expect(send.mock.calls[0]).toEqual(['dns', turnId, 'message'])
+    expect(turnId).not.toBe('dns')
+
+    answer.reject(new Error('The session cannot take it.'))
+    await until(() => first.pendingSends[0]?.error !== null, 'the send fails')
+    expect(listed(first)).toEqual(['Then the IPv6'])
+    expect(first.pendingSends.map(({ id, error }) => ({ id, error }))).toEqual([{ id: turnId, error: 'The session cannot take it.' }])
+  } finally {
+    send.mockRestore()
+    restore()
+  }
+})
+
+test('a saved message the session took leaves the list for good once read', async () => {
+  const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
+  const restore = await withStubModel(first)
+  const send = spyOn(ConversationRuntime.prototype, 'sendSaved').mockImplementation(async () => {
+    // The backend takes it off its list as the session takes it.
+    serverSaved.set(FIRST, [])
+    records[0]!.savedRevision += 1
+    return true
+  })
+  try {
+    store.sendSaved(first, 'dns', 'send')
+    await until(() => first.pendingSends.length === 0, 'the session holds it')
+    expect(listed(first)).toEqual([])
+    await readAgain(first)
+    expect([listed(first), first.record.pending()]).toEqual([[], []])
+  } finally {
+    send.mockRestore()
+    restore()
+  }
+})
+
+// A Send pressed on the row of a save still on its way.
+test('a message sent from the list while its save is on its way goes once the save is answered, not before', async () => {
+  const signOut = signIn()
+  const { store, first } = await openWithSaved([])
+  const restore = await withStubModel(first)
+  const held = holdWrites()
+  const send = spyOn(ConversationRuntime.prototype, 'sendSaved').mockResolvedValue(true)
+  try {
+    first.draft = 'Check prod’s DNS next'
+    const saving = store.saveForLater(first)
+    await until(() => held.waiting.length === 1, 'the save reaches the backend')
+    const id = first.record.shown.value!.saved[0]!.id
+    store.sendSaved(first, id, 'send')
+    expect([listed(first), first.pendingSends.map(({ text }) => text)]).toEqual([[], ['Check prod’s DNS next']])
+    await settle()
+    expect(send).not.toHaveBeenCalled()
+    await held.waiting[0]!.pass()
+    await saving
+    await until(() => send.mock.calls.length === 1, 'the send goes once the save is answered')
+    expect(send.mock.calls[0]![0]).toBe(id)
+    await until(() => first.pendingSends.length === 0, 'the session holds it')
+  } finally {
+    send.mockRestore()
+    held.restore()
+    restore()
+    signOut()
+  }
+})
+
+// The reviewer's second finding: a reload during a saved send, then Retry.
+test('a saved send interrupted by a reload goes again from the list as the same turn on Retry, never as a new message', async () => {
+  let signOut = signIn()
+  const kept = new Map<string, draftStorage.SavedDraft>()
+  const writes = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, id, draft) => {
+    kept.set(id, structuredClone(draft))
+  })
+  let opened = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
+  let restore = await withStubModel(opened.first)
+  const never = spyOn(ConversationRuntime.prototype, 'sendSaved').mockImplementation(() => new Promise(() => {}))
+  try {
+    opened.store.sendSaved(opened.first, 'dns', 'send')
+    await until(() => never.mock.calls.length === 1, 'the session is asked to send it')
+    const turnId = opened.first.pendingSends[0]!.id
+    expect(kept.get(FIRST)?.pendingSends).toMatchObject([{ id: turnId, saved: 'dns' }])
+    never.mockRestore()
+    restore()
+    signOut()
+    opened.store.stopAll()
+    useProduct().stop()
+    disposePinia(pinia)
+
+    // The next page: the backend still lists the message, which is on its way here.
+    pinia = createPinia()
+    setActivePinia(pinia)
+    signOut = signIn(kept.get(FIRST)!)
+    useConversations()
+    await connect()
+    opened = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
+    restore = await withStubModel(opened.first)
+    const { store, first } = opened
+    expect(listed(first)).toEqual([])
+    expect(first.pendingSends.map(({ id, saved, error }) => ({ id, saved, failed: error !== null }))).toEqual([{ id: turnId, saved: 'dns', failed: true }])
+    const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+    const again = spyOn(ConversationRuntime.prototype, 'sendSaved').mockResolvedValue(true)
+    try {
+      await store.retrySend(first, turnId)
+      expect(again.mock.calls).toEqual([['dns', turnId, 'message']])
+      expect(submit).not.toHaveBeenCalled()
+      expect(first.pendingSends).toEqual([])
+    } finally {
+      again.mockRestore()
+      submit.mockRestore()
+    }
+  } finally {
+    restore()
+    writes.mockRestore()
+    signOut()
+  }
+})
+
+// The reviewer's third finding: Undo after a deletion must not bring back a used id.
+test('a deleted saved message leaves at once with its Undo toast, and Undo saves it again under a new id; a refused deletion brings it back and the toast goes', async () => {
+  const { store, first } = await openWithSaved([savedMessage('dns', 'Check prod’s DNS next')])
+  toasts.splice(0)
+  const held = holdWrites()
+  try {
+    const refused = store.deleteSaved(first, 'dns')
+    await until(() => held.waiting.length === 1, 'the delete reaches the backend')
+    expect(listed(first)).toEqual([])
+    expect(toasts.map((toast) => toast.title)).toEqual(['Saved Message Deleted'])
+    held.waiting[0]!.answer(refusal('internal_error', 500))
+    await refused
+    expect(listed(first)).toEqual(['Check prod’s DNS next'])
+    expect(toasts.map((toast) => toast.title)).toEqual(['Could Not Delete the Message'])
+    toasts.splice(0)
+
+    const deleting = store.deleteSaved(first, 'dns')
+    await until(() => held.waiting.length === 2, 'the second delete reaches the backend')
+    toasts[0]!.action!.run()
+    expect(listed(first)).toEqual(['Check prod’s DNS next'])
+    await held.waiting[1]!.pass()
+    await deleting
+    await until(() => held.waiting.length === 3, 'the Undo reaches the backend after the delete')
+    const undo = held.waiting[2]!.body as { id: string; text: string }
+    expect(undo.text).toBe('Check prod’s DNS next')
+    expect(undo.id).not.toBe('dns')
+  } finally {
+    held.restore()
+  }
+})
+
+test('a change of the model shows at once and a refusal gives the stored settings back', async () => {
+  const { store, first } = await openWithSaved([])
+  records[0]!.model = { providerId: 'stub', modelId: 'stub', thinkingEffort: null, serviceTierId: null }
+  await changed(FIRST)
+  expect(first.model.serviceTierId).toBeNull()
+  const held = holdWrites()
+  try {
+    const changing = store.changeModel(first, { serviceTierId: 'priority' })
+    await until(() => held.waiting.length === 1, 'the change reaches the backend')
+    expect(first.model.serviceTierId).toBe('priority')
+    expect(useProduct().snapshot!.conversations[0]!.model?.serviceTierId).toBe('priority')
+    held.waiting[0]!.answer(refusal('internal_error', 500))
+    await changing
+    expect(first.model.serviceTierId).toBeNull()
+  } finally {
+    held.restore()
+  }
+})
+
+test('moving a conversation into a project on its Host shows the project at once; a refusal moves it back', async () => {
+  const { store, first } = await openWithSaved([])
+  const product = useProduct()
+  const cloud = productState({ devices: [{
+    id: 'cloud', name: 'Cloud', kind: 'managed', platform: 'linux', claimedAt: '2026-09-10T00:00:00.000Z', lastSeenAt: null,
+    state: 'online', home: null, installed: [], startCommand: null, os: null, runnerVersion: null, route: 'automatic',
+  }] }).devices
+  product.read = {
+    ...product.read!,
+    devices: cloud,
+    workspaces: [{ id: 'notes', deviceId: 'cloud', path: '/notes', name: 'notes', createdAt: '2026-09-10T00:00:00.000Z' }],
+  }
+  const held = holdWrites()
+  try {
+    // The move is on its way, and the page answers that it moved.
+    expect(await store.switchTarget(FIRST, { kind: 'workspace', workspaceId: 'notes' })).toBe(true)
+    await until(() => held.waiting.length === 1, 'the move reaches the backend')
+    expect([first.target, first.projectId, first.cwd]).toEqual([{ kind: 'workspace', workspaceId: 'notes' }, 'notes', '/notes'])
+    held.waiting[0]!.answer(refusal('internal_error', 500))
+    await until(() => first.projectId === null, 'the refusal moves it back')
+    expect(first.target).toEqual({ kind: 'cloud' })
+  } finally {
+    held.restore()
   }
 })
