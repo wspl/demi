@@ -61,6 +61,7 @@ const dotBreathing = ref(true)
 const query = ref('session cookie')
 const emptyQuery = ref('')
 const secret = ref('sk-ant-api03-3f2a9c1d7e5b4a6f8c2d1e9b')
+const accountPassword = ref('correct horse battery')
 const shortcut = ref('⌘K')
 const swatch = ref('blue')
 const tokens = ref<number | null>(200_000)
@@ -446,7 +447,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
 
       <GallerySection
         title="TextInput"
-        note="Empty, filled, focus, bare (no frame in any state), a secret with its eye, a suffix, and the 36px lg family for page forms."
+        note="Empty, filled, focus, bare (no frame in any state), a search box, an account password and a secret, each with its eye, a suffix, and the 36px lg family for page forms. Only an account password (sign-in, setup, change password) is a real password field, with its autocomplete token, so the browser offers and saves the user’s login there. Every other secret (an API key, a token, a credential’s value) is masked secret: a text field drawn as dots that browsers and password managers neither fill nor save. A filter or search box is search: it is never taken for a login’s user name."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="empty">
@@ -471,11 +472,24 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
               <template #prefix><Search :size="14" /></template>
             </TextInput>
           </GallerySpecimen>
+          <GallerySpecimen variant="search">
+            <TextInput v-model="query" placeholder="Filter settings" search>
+              <template #prefix><Search :size="14" /></template>
+            </TextInput>
+          </GallerySpecimen>
+          <GallerySpecimen variant="account password">
+            <TextInput
+              v-model="accountPassword"
+              placeholder="Password"
+              masked="password"
+              autocomplete="current-password"
+            />
+          </GallerySpecimen>
           <GallerySpecimen variant="secret">
             <TextInput
               v-model="secret"
               placeholder="sk-…"
-              secret
+              masked="secret"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="suffix">
@@ -497,7 +511,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
               v-model="secret"
               size="lg"
               placeholder="sk-…"
-              secret
+              masked="secret"
             />
           </GallerySpecimen>
         </div>

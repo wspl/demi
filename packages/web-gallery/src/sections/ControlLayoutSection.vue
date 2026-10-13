@@ -114,7 +114,7 @@ const surfaces = [
                 v-model="value"
                 :size="size"
                 :aria-label="`${width} ${size} ${variant}`"
-                :secret="variant === 'secret'"
+                :masked="variant === 'secret' ? 'secret' : undefined"
                 :disabled="variant === 'disabled'"
                 :bare="variant === 'bare'"
                 class="flex-1"
