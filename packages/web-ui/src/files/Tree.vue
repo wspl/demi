@@ -2,6 +2,7 @@
 import { computed, nextTick, onMounted, ref, useId, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { useTypeSelect } from '../composables/useTypeSelect'
+import { activeRow } from '../ui/active-row'
 import DropOutline from '../ui/DropOutline.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import Tooltip from '../ui/Tooltip.vue'
@@ -40,7 +41,7 @@ import type { SentenceText } from '../ui/ui-text'
  * happened in (`rowAt`).
  *
  * The tree takes the keyboard, focused by Tab or by a click on a row. A
- * cursor marks the row the keys act on, starting at the selected row: Up,
+ * cursor marks the row the keys act on, starting at the selected row, else the first: Up,
  * Down, Home and End move it, Right unfolds a folded directory, Left folds
  * an unfolded one or goes to the directory a row is in, and Enter activates
  * its row as a click does. Typing a name moves the cursor to the first row
@@ -227,12 +228,7 @@ const treeEl = ref<HTMLElement | null>(null)
 const treeId = useId()
 const focused = ref(false)
 const cursor = ref<string | null>(null)
-const cursorPath = computed(() => {
-  const has = (path: string | null) => path !== null && props.rows.some((row) => row.path === path)
-  if (has(cursor.value))
-    return cursor.value
-  return has(props.selected) ? props.selected : null
-})
+const cursorPath = computed(() => activeRow(props.rows.map((row) => row.path), cursor.value, props.selected))
 const cursorIndex = computed(() => props.rows.findIndex((row) => row.path === cursorPath.value))
 
 function moveCursor(path: string): void {

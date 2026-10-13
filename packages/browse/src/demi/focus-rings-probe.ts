@@ -36,7 +36,7 @@ export interface RingProbe {
   focusCandidate(index: number): Promise<boolean>
   /** Whether the focused element is the page itself or one already read: the end of a walk with Tab. */
   seen(): boolean
-  /** Reads the focused element's indicator; `none` when it has none, `skipped` when it is not shown or not focused by the keyboard. */
+  /** Reads the focused element's indicator, or its active descendant's (`aria-activedescendant`); `none` when it has none, `skipped` when it is not shown or not focused by the keyboard. */
   read(): Promise<RingReading | 'none' | 'skipped'>
   /** Reads the indicator `element` shows now, however it came by it (a selection, a state class): `none` when it shows none. */
   readShown(element: Element): Promise<RingReading | 'none'>
@@ -374,7 +374,9 @@ export function ringProbe(): RingProbe {
       if (!element.matches(':focus-visible') || !shown(element)) return 'skipped'
       // Neither is a control with a ring: a text field's focus is its caret, and a region (`data-region`) holds focus for its own keys.
       if (element.matches('textarea, input:not([type=button], [type=checkbox], [type=radio], [type=range], [type=file], [type=submit], [type=reset]), [contenteditable]:not([contenteditable="false"]), [data-region]')) return 'skipped'
-      return readElement(element)
+      // A list that keeps the focus and marks its active row (`aria-activedescendant`) shows the indicator on that row.
+      const active = element.getAttribute('aria-activedescendant')
+      return readElement((active ? document.getElementById(active) : null) ?? element)
     },
     readShown: (element) => readElement(element),
     unreached() {
