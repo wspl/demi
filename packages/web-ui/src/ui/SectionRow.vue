@@ -1,11 +1,8 @@
 <script setup lang="ts">
-import { vInkEdgeEnd } from './ink-edge'
-
 /**
  * A card's section heading line: its text at the start and, in the `end`
- * slot, `xs` icon buttons at the end. The row has no box of its own, so the
- * last button's icon ends at its content edge, where the text and figures of
- * the card around it end (`ink-edge.ts`).
+ * slot, `xs` icon buttons at the end, laid out as anything else in the card:
+ * they end at the row's content edge, where the card's text ends.
  */
 defineSlots<{
   default(): unknown
@@ -18,7 +15,7 @@ defineSlots<{
     <div class="section-row-text">
       <slot />
     </div>
-    <div v-if="$slots['end']" v-ink-edge-end class="section-row-end on-fill">
+    <div v-if="$slots['end']" class="section-row-end on-fill">
       <slot name="end" />
     </div>
   </div>
