@@ -21,12 +21,9 @@ import {
 import type { OverlayStore } from '../overlay/overlayStore'
 import AsyncRegion from '../ui/AsyncRegion.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
-import Menu from '@demicodes/web-ui/ui/Menu.vue'
-import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
 import ProviderQuota from './ProviderQuota.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
@@ -39,9 +36,10 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import AddCompatibleDialog from './AddCompatibleDialog.vue'
 import AddProviderDialog from './AddProviderDialog.vue'
 import ModelDialog from './ModelDialog.vue'
-import { defaultEndpointUrl } from './provider-defaults'
+import { endpointProblem } from './provider-defaults'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsListItem from './SettingsListItem.vue'
@@ -50,10 +48,10 @@ import SettingsRow from './SettingsRow.vue'
 import SettingsSplit from './SettingsSplit.vue'
 import {
   WIRE_API_LABELS,
+  type SettingsCompatibleDraft,
   type SettingsModelDraft,
   type SettingsModelSearch,
   type SettingsQuotaRefresh,
-  type SettingsSetupPart,
   type SettingsModelEditor,
   type SettingsProviderEntry,
   type SettingsProviderOperation,
@@ -67,11 +65,12 @@ import type { TitleText } from '../ui/ui-text'
 /**
  * Providers: a rail of providers beside the selected one. Every supported
  * subscription is always listed and manages its accounts; an API key is added from
- * the rail and edits its endpoint, key and model list on its page. Adding asks
- * only the kind: the entry joins the list at once, selected, and its page marks
- * what it still lacks (`missing`) in red with the words under the field, as a form
- * marks a field it cannot do without (`models.md` § A provider is in the list
- * from the start). Removing an entry, an account or a model asks first. Field
+ * the rail. A vendor entry shows its vendor's endpoint as plain text and lists the
+ * vendor's catalog; a compatible API edits its endpoint and lists only the models
+ * the user adds (`product.md` § Models & providers). An entry joins the list at once,
+ * selected, and what it still lacks is a plain wait, the rail's yellow dot and the
+ * words *No models yet*; red marks a failure only (`product.md` § Models &
+ * providers). Removing an entry, an account or a model asks first. Field
  * edits land on the entry itself; everything that needs the host is emitted.
  */
 const props = defineProps<{
@@ -114,7 +113,7 @@ const emit = defineEmits<{
     enabled: boolean,
   ]
   add: [vendor: SettingsVendor]
-  addEndpoint: [wireApi: SettingsWireApi]
+  addCompatible: [draft: SettingsCompatibleDraft]
   remove: [id: string]
   signIn: [provider: SettingsProviderEntry]
   /** Test the provider; a subscription names the account to test with. */
@@ -143,10 +142,6 @@ const apiKeys = computed(() =>
 const selected = computed(
   () => props.providers.find((p) => p.id === selectedId.value) ?? null,
 )
-/** Whether the selected entry still lacks `part`: its field is red, with the words under it. */
-function lacks(part: SettingsSetupPart): boolean {
-  return selected.value?.state === 'setup' && selected.value.missing?.includes(part) === true
-}
 const splitOpen = computed({
   get: () => detailOpen.value && selected.value !== null,
   set: (value: boolean) => {
@@ -278,19 +273,6 @@ function askRemoveModel(provider: SettingsProviderEntry, model: SettingsProvider
     body: [`It leaves ${provider.name}’s model list and the model menus. You can add it again with its ID.`],
     run: () => emit('removeModel', provider, model),
   })
-}
-const wireOptions = (Object.keys(WIRE_API_LABELS) as SettingsWireApi[]).map(
-  (value) => ({
-    value,
-    label: WIRE_API_LABELS[value],
-  }),
-)
-
-/** Where an entry without its own endpoint sends requests: its vendor's, else its protocol's official one. */
-function defaultBaseUrl(provider: SettingsProviderEntry): string {
-  return provider.vendorId
-    ? props.vendors.find((vendor) => vendor.id === provider.vendorId)?.baseUrl ?? ''
-    : defaultEndpointUrl(props.vendors, provider.wireApi)
 }
 
 function select(id: string) {
@@ -454,12 +436,15 @@ function accountPending(
   )
 }
 
-function selectWire(wireApi: SettingsWireApi, close: () => void): void {
-  if (selected.value) {
-    emit('change', selected.value, { wireApi })
-  }
-  close()
-}
+// A compatible API's endpoint is changed, never emptied: the entry would stop being one.
+const endpointFault = ref<string | null>(null)
+watch(selectedId, () => {
+  endpointFault.value = null
+})
+
+// Add Provider › Compatible API asks the endpoint and the key in a dialog of its own.
+const compatibleWire = ref<SettingsWireApi | null>(null)
+const compatibleOpen = ref(false)
 </script>
 
 <template>
@@ -680,58 +665,44 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   v-if="!selected.accounts.length"
                   class="flex select-none flex-col items-center gap-1.5 px-4 py-6 text-center text-[13px] text-fg-subtle"
                 >
-                  <InlineError v-if="lacks('account')" message="Sign in required" />
                   No account yet. Add one to use this provider.
                 </div>
               </template>
 
               <!-- Connection (API key) -->
               <template v-else>
-                <SettingsRow label="Base URL">
-                  <CommitTextInput
-                    :disabled="fieldsLocked(selected)"
-                    :model-value="selected.baseUrl"
-                    aria-label="Base URL"
-                    :placeholder="defaultBaseUrl(selected)"
-                    literal
-                    class="w-72 max-w-full"
-                    @commit="emit('change', selected, { baseUrl: $event })"
-                  />
+                <!-- A vendor's endpoint is its vendor's: shown, never edited. A compatible API's is the user's. -->
+                <SettingsRow v-if="!selected.compatible" label="Endpoint">
+                  <span class="min-w-0 select-text break-all text-[13px] text-fg-muted">{{
+                    selected.baseUrl
+                  }}</span>
                 </SettingsRow>
-                <SettingsRow v-if="!selected.vendorId" label="Protocol">
-                  <Dropdown
-                    size="sm"
-                    :overlay-store="overlayStore"
-                    variant="default"
-                    trigger-label="Protocol"
-                    :disabled="selected.configured !== false"
-                  >
-                    <template #trigger>{{
-                      WIRE_API_LABELS[selected.wireApi]
-                    }}</template>
-                    <template #content="{ close }">
-                      <Menu>
-                        <MenuItem
-                          v-for="w in wireOptions"
-                          :key="w.value"
-                          :label="w.label"
-                          choice
-                          :is-selected="selected.wireApi === w.value"
-                          @select="selectWire(w.value, close)"
-                        />
-                      </Menu>
+                <template v-else>
+                  <SettingsRow label="Endpoint">
+                    <template v-if="endpointFault" #detail>
+                      <InlineError :message="endpointFault" />
                     </template>
-                  </Dropdown>
-                </SettingsRow>
+                    <CommitTextInput
+                      :disabled="fieldsLocked(selected)"
+                      :model-value="selected.baseUrl"
+                      aria-label="Endpoint"
+                      literal
+                      trim
+                      :validate="endpointProblem"
+                      class="w-72 max-w-full"
+                      @problem="endpointFault = $event"
+                      @commit="emit('change', selected, { baseUrl: $event })"
+                    />
+                  </SettingsRow>
+                  <SettingsRow label="Protocol">
+                    <span class="text-[13px] text-fg-muted">{{ WIRE_API_LABELS[selected.wireApi] }}</span>
+                  </SettingsRow>
+                </template>
                 <SettingsRow
                   label="API key"
                   description="Stored encrypted on the server."
                 >
-                  <template v-if="lacks('apiKey')" #detail>
-                    <InlineError message="Required" />
-                  </template>
                   <CommitTextInput
-                    :invalid="lacks('apiKey')"
                     :disabled="fieldsLocked(selected)"
                     :model-value="selected.apiKey"
                     aria-label="API key"
@@ -906,7 +877,7 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   ></span>
                   <Segmented
                     size="sm"
-                    v-else-if="selected.vendorId"
+                    v-else-if="!selected.compatible"
                     :model-value="selected.modelSource"
                     :disabled="fieldsLocked(selected)"
                     @update:model-value="
@@ -943,7 +914,8 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                     :disabled="fieldsLocked(selected)"
                     @click="openModel('create', null)"
                 /></Tooltip>
-                <Tooltip v-if="selected.modelSource === 'catalog'" content="Refresh"
+                <!-- A compatible API has no catalog to read again: its models are the ones added. -->
+                <Tooltip v-if="!selected.compatible && selected.modelSource === 'catalog'" content="Refresh"
                   ><IconButton
                     size="sm"
                     :icon="RefreshCw"
@@ -1042,19 +1014,15 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
                   v-if="!visibleModels(selected).length"
                   class="flex select-none justify-center px-4 py-6 text-center text-[13px] text-fg-subtle"
                 >
-                  <!-- An empty list the entry cannot do without says so under Add Model, in a form's red. -->
-                  <InlineError
-                    v-if="!modelFilter && lacks('models')"
-                    message="Add at least one model"
-                  />
-                  <template v-else>{{
+                  <!-- An empty list is a plain wait, never red: nothing has failed. -->
+                  {{
                     modelFilter
                       ? 'No model matches.'
                       : selected.kind === 'subscription' &&
                           !selected.accounts.length
                         ? 'Sign in to see what this account can use.'
                         : 'No models yet.'
-                  }}</template>
+                  }}
                 </div>
               </AsyncRegion>
             </SettingsGroup>
@@ -1076,10 +1044,24 @@ function selectWire(wireApi: SettingsWireApi, close: () => void): void {
           emit('add', v)
         }
       "
-      @add-endpoint="
+      @add-compatible="
         (w) => {
           addOpen = false
-          emit('addEndpoint', w)
+          compatibleWire = w
+          compatibleOpen = true
+        }
+      "
+    />
+    <AddCompatibleDialog
+      v-if="compatibleWire"
+      :is-open="compatibleOpen"
+      :overlay-store="overlayStore"
+      :wire-api="compatibleWire"
+      @close="compatibleOpen = false"
+      @add="
+        (draft) => {
+          compatibleOpen = false
+          emit('addCompatible', draft)
         }
       "
     />

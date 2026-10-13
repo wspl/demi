@@ -18,7 +18,7 @@ const {
   report,
   change,
   addProvider,
-  addEndpoint,
+  addCompatible,
   removeProvider,
   beginLogin,
   closeLogin,
@@ -100,7 +100,7 @@ onUnmounted(() => {
         preferences.showModel(provider.id, model.id, enabled)
     "
     @add="addProvider"
-    @add-endpoint="addEndpoint"
+    @add-compatible="addCompatible"
     @remove="removeProvider"
     @sign-in="beginLogin"
     @test="test"

@@ -8,17 +8,16 @@ import ProviderLoginDialog, {
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import {
-  WIRE_API_LABELS,
+  type SettingsCompatibleDraft,
   type SettingsModelDraft,
   type SettingsQuotaRefresh,
   type SettingsProviderEntry,
   type SettingsProviderOperation,
   type SettingsProviderModel,
   type SettingsVendor,
-  type SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
 import {
-  missingParts,
+  isIncomplete,
   mockVendors,
   provider,
   searchMockModels,
@@ -40,16 +39,13 @@ const testing = ref<string | null>(null)
 
 /**
  * As the product's page shows an entry from what it holds: it is incomplete,
- * with the yellow dot and its fields red, until the last part is saved.
+ * with the yellow dot and nothing red, until the last part is saved.
  */
 function settle(entry: SettingsProviderEntry): void {
-  const missing = missingParts(entry)
-  if (missing.length) {
+  if (isIncomplete(entry)) {
     entry.state = 'setup'
-    entry.missing = missing
   } else if (entry.state === 'setup') {
     entry.state = 'ready'
-    delete entry.missing
   }
 }
 
@@ -72,7 +68,7 @@ function select(id: string) {
   s.value.providerDetailOpen = true
 }
 
-/** Adding asks only the kind: the entry joins the list at once, selected, and says what it lacks. */
+/** A vendor is picked alone: the entry joins the list at once, selected, with the vendor's own endpoint and catalog. */
 function addProvider(vendor: SettingsVendor) {
   const id = `p-${Date.now()}`
   join(provider({
@@ -89,16 +85,19 @@ function addProvider(vendor: SettingsVendor) {
   }))
 }
 
-function addEndpoint(wireApi: SettingsWireApi) {
-  const id = `p-${Date.now()}`
+/** A compatible API comes with its endpoint, and lists no model until one is added. */
+function addCompatible(draft: SettingsCompatibleDraft) {
   join(provider({
-    id,
-    name: `${WIRE_API_LABELS[wireApi]} API`,
+    id: `p-${Date.now()}`,
+    name: draft.label,
     kind: 'api_key',
     family: 'custom',
     vendorId: null,
-    wireApi,
-    baseUrl: '',
+    compatible: true,
+    wireApi: draft.wireApi,
+    baseUrl: draft.baseUrl,
+    keyConfigured: draft.apiKey !== '',
+    configured: true,
     modelSource: 'manual',
   }))
 }
@@ -474,7 +473,7 @@ function closeLogin() {
     @change="changeProvider"
     @toggle-model="(_provider, model, enabled) => (model.enabled = enabled)"
     @add="addProvider"
-    @add-endpoint="addEndpoint"
+    @add-compatible="addCompatible"
     @remove="removeProvider"
     @sign-in="beginLogin"
     @test="test"
