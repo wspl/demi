@@ -13,6 +13,7 @@ use crate::{
 };
 use demi_runner_command_packages::ServiceRegistry;
 use demi_runner_host::volumes::ManagedVolume;
+use demi_runner_jobs::scratch::Scratch;
 use demi_runner_jobs::commands::{
     contexts::{ContextPaths, Contexts},
     dispatch::Dispatcher,
@@ -162,6 +163,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         .await?;
     let installed = options.installed;
     let registered = Registered {
+        scratch: Scratch::new(&state.root),
         backend: options.backend,
         runner: options.runner,
         state: Arc::new(state),
