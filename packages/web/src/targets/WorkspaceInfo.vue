@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import WorkspaceDirectoryMenu from '@demicodes/web-ui/hosts/WorkspaceDirectoryMenu.vue'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
-import { useMoveQuestion } from '@demicodes/web-ui/hosts/move-question'
+import { useMoveQuestion, workToStop } from '@demicodes/web-ui/hosts/move-question'
 import { homePath } from '@demicodes/web-ui/files/paths'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import type { ConversationTarget } from '../api/generated/web-api'
@@ -11,7 +11,7 @@ import { useResources } from '../state/resources'
 import { hostKindOf, hostLabel } from '../state/hosts'
 import { browserHosts, fileSourceFor, placesFor } from '../devices/files'
 import { useConversations } from '../conversation/store'
-import { executionFor, moveLocked } from './execution'
+import { executionFor, moveLock } from './execution'
 import HostMenu from './HostMenu.vue'
 import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 
@@ -19,9 +19,9 @@ import type { HostChoice } from '@demicodes/web-ui/hosts/types'
  * The header's place: the Host the conversation runs on and its directory
  * (`product.md` § Where a conversation runs). Every move the two menus
  * start, to another Host or another directory, comes through `move`, which
- * asks first when the conversation has messages; so does one the offline
- * primary Host's card above the composer starts, through `choose`, once
- * the conversation's work is idle.
+ * asks first when the conversation has messages, and to stop the agent
+ * first while it works; so does one the offline primary Host's card above
+ * the composer starts, through `choose`.
  */
 const props = defineProps<{
   project?: Project
@@ -31,7 +31,7 @@ const resources = useResources()
 const conversations = useConversations()
 const directory = ref<InstanceType<typeof WorkspaceDirectoryMenu>>()
 const execution = computed(() => executionFor(props.conversation))
-const locked = computed(() => moveLocked(props.conversation, conversations.pendingChanges))
+const locked = computed(() => moveLock(props.conversation, conversations.pendingChanges))
 const recentDirectories = computed(() =>
   resources.recentProjectIds
     .flatMap(
@@ -86,23 +86,33 @@ function sameTarget(a: ConversationTarget, b: ConversationTarget): boolean {
 }
 
 /**
- * Moves the conversation to `target`: at once while it has sent nothing,
- * otherwise once the user answers the dialog. Answers whether it moved.
+ * Moves the conversation to `target`: at once while it has sent nothing and
+ * is idle, otherwise once the user answers the dialog; while the agent works
+ * the answer stops it first, and the move follows once the session is idle.
+ * Answers whether it moved.
  */
 function move(target: ConversationTarget): Promise<boolean> {
-  if (locked.value) {
+  if (locked.value !== undefined) {
     return Promise.resolve(false)
   }
   // Where it runs already is no move.
   if (sameTarget(target, props.conversation.target)) {
     return Promise.resolve(true)
   }
-  if (props.conversation.persistence !== 'synced') {
+  const stops = workToStop(props.conversation)
+  if (!stops && props.conversation.persistence !== 'synced') {
     return conversations.switchTarget(props.conversation.id, target)
   }
   return moveQuestion.ask(
-    { ...place(target), from: execution.value.name, fromCloud: execution.value.kind === 'cloud' },
-    (tell) => conversations.switchTarget(props.conversation.id, target, tell),
+    {
+      ...place(target),
+      from: execution.value.name,
+      fromCloud: execution.value.kind === 'cloud',
+      ...(stops ? { stops } : {}),
+    },
+    (tell) => stops
+      ? conversations.switchTargetAfterStop(props.conversation, target, tell)
+      : conversations.switchTarget(props.conversation.id, target, tell),
   )
 }
 
@@ -164,7 +174,7 @@ defineExpose({ choose })
     :workspace-name="execution.workspaceName"
     :selected-project-id="project?.id"
     :device-id="execution.deviceId"
-    :locked="locked"
+    :locked="locked !== undefined"
     :browse-enabled="execution.kind !== 'cloud'"
     :recent-directories="recentDirectories"
     :hosts="hosts"
