@@ -1,4 +1,5 @@
 import { createSharedComposable, useEventListener } from '@vueuse/core'
+import { focusByPage } from '../ui/focus-by-page'
 
 /**
  * What had the focus before it went to nothing, as a press on something that
@@ -47,7 +48,7 @@ export function useFocusReturn(holds: (el: Element) => boolean): {
     const active = document.activeElement
     if (active !== null && active !== document.body && !holds(active))
       return
-    target.focus({ preventScroll: true })
+    focusByPage(target, { preventScroll: true })
   }
 
   return { open, close }

@@ -10,6 +10,7 @@ import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
 import { focusedByKeyboard } from '@demicodes/web-ui/ui/active-row'
+import { focusByPage } from '@demicodes/web-ui/ui/focus-by-page'
 import { FOLD_MS } from '@demicodes/web-ui/ui/fold'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { copyConversationId } from '../agent/copy-conversation-id'
@@ -444,13 +445,15 @@ function rowMenuOpenFor(id: string): boolean {
 function submitRename(id: string, title: string): void {
   renamingId.value = null
   emit('rename', id, title)
-  listRef.value?.focus()
+  if (listRef.value)
+    focusByPage(listRef.value)
 }
 
 // A cancelled rename gives the keys back to the list too, as a submitted one does.
 function cancelRename(): void {
   renamingId.value = null
-  listRef.value?.focus()
+  if (listRef.value)
+    focusByPage(listRef.value)
 }
 
 function selectProjectConversations(project: SidebarProject): void {

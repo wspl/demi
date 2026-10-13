@@ -8,6 +8,7 @@ import { useFocusReturn } from '../overlay/focusReturn'
 import { createOverlayFamily, overlayFamilyKey, overlayOwnerKey } from '../overlay/overlayFamily'
 import { useBackClose } from '../overlay/back-close'
 import { dragCloses, dragVelocity } from './drag-close'
+import { focusByPage } from './focus-by-page'
 import { inSheetKey } from './sheet-context'
 import { stackAbove } from '../overlay/stacking'
 
@@ -80,7 +81,7 @@ watch(() => props.open, (open) => {
     // The content may take the focus itself as it mounts, as a menu does; otherwise the sheet holds it.
     void nextTick(() => {
       if (panel.value && !panel.value.contains(document.activeElement))
-        panel.value.focus({ preventScroll: true })
+        focusByPage(panel.value, { preventScroll: true })
     })
   } else {
     focusReturn.close()

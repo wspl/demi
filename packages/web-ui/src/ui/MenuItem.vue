@@ -12,6 +12,7 @@ import Tooltip from './Tooltip.vue'
 import TruncatedText from './TruncatedText.vue'
 import { ICON_PX } from './icon-metrics'
 import { disabledTooltip } from './disabled'
+import { focusByPage } from './focus-by-page'
 import type { SentenceText, TitleText } from './ui-text'
 import {
   createSubmenuController,
@@ -116,7 +117,9 @@ function enterSubmenu(): boolean {
 
 /** Gives the keys back to this row's menu, the panel still showing once the submenu closes. */
 function focusOwnMenu(): void {
-  triggerRef.value?.closest<HTMLElement>('[role=menu]')?.focus({ preventScroll: true })
+  const menu = triggerRef.value?.closest<HTMLElement>('[role=menu]')
+  if (menu)
+    focusByPage(menu, { preventScroll: true })
 }
 
 // However the submenu that held the keys closes (Left Arrow, Escape, the pointer opening another),
