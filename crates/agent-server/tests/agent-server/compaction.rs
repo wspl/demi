@@ -15,7 +15,9 @@ use demi_agent_transcript::testing::SequentialIds;
 use demi_conversation_socket_protocol::{ClientFrame, ClientFrameKind, ServerFrame};
 use demi_host_interface::CommandSet;
 use demi_provider_common::testing::{FixedClock, ScriptedRuntime, Turn, event};
-use demi_shared_types::{Block, ContextRowKind, EXECUTION_SOURCE, NodeId, SessionPhase};
+use demi_shared_types::{
+    Block, ContextRowKind, EXECUTION_SOURCE, NodeId, SessionPhase, WORKING_DIRECTORY_SOURCE,
+};
 use serde_json::json;
 
 use crate::support::{
@@ -187,36 +189,8 @@ async fn a_pass_names_the_command_and_the_subagent_that_still_run() {
         "Check the migrations",
         [held(&gate, vec![event::text("checked"), event::response(1, 1)])],
     );
-    let providers = Rc::new(ScriptedProviders::default());
-    providers.provide_runtime("stub", model.clone());
-    let store = MemoryTreeStore::new();
-    let server = AgentServer::new(ServerDeps {
-        toolsets: Rc::new(Toolset {
-            commands: Rc::new(CommandSet::new()),
-            revision: Rc::from("none"),
-        }),
-        subagents: Rc::new(SubagentSettings {
-            enabled: true,
-            max_live: None,
-            max_depth: None,
-            profiles: Vec::new(),
-        }),
-        instructions: Rc::from("system prompt"),
-        guide: Rc::from("harness guide"),
-        hosts: Rc::new(LiveHosts),
-        context: Rc::new([]),
-        providers,
-        shells: Rc::new(ScriptedShells::default()),
-        stores: {
-            let store = store.clone();
-            Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>)
-        },
-        clock: Arc::new(FixedClock("2026-10-11T12:00:00.000Z".parse().unwrap())),
-        ids: Rc::new(SequentialIds::new("id")),
-        config: ServerConfig::default(),
-        status_changed: Rc::new(|_| {}),
-    });
-    let mut client = TestClient::connect(&server, &conversation(), "/workspace");
+    let (server, store) = tree_server(&model);
+    let mut client = TestClient::connect(&server, &conversation());
     client.send(open()).await;
     client.next_until(is_pending_steers).await;
     let session = server
@@ -301,7 +275,7 @@ async fn a_subagent_reports_its_own_usage_and_compact_names_it() {
     providers.provide_runtime("stub", model.clone());
     let store = MemoryTreeStore::new();
     let server = scripted_host_server(providers, Rc::new(ScriptedShells::default()), store.clone());
-    let mut page = TestClient::connect(&server, &conversation(), "/workspace");
+    let mut page = TestClient::connect(&server, &conversation());
     page.send(open()).await;
     page.next_until(is_pending_steers).await;
     let spawned = agent(&server, &conversation(), "spawn", json!({ "prompt": "task serve" })).await;
@@ -316,7 +290,7 @@ async fn a_subagent_reports_its_own_usage_and_compact_names_it() {
     .await;
 
     // A page that opens is told the root's usage and the live child's.
-    let mut opening = TestClient::connect(&server, &conversation(), "/workspace");
+    let mut opening = TestClient::connect(&server, &conversation());
     opening.send(open()).await;
     let handshake = opening.next_until(is_usage_of(&child, 60_000)).await;
     let nodes: Vec<&NodeId> = handshake
@@ -356,5 +330,114 @@ async fn a_subagent_reports_its_own_usage_and_compact_names_it() {
             command: ClientFrameKind::Compact,
             reason: "The agent has ended".into(),
         })
+    );
+}
+
+/// A server whose tree `model` answers, its nodes' shells on the scripted
+/// Host, whose directory is `/workspace`, and its store.
+fn tree_server(model: &Model) -> (Rc<AgentServer<LiveHosts>>, Rc<MemoryTreeStore>) {
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide_runtime("stub", model.clone());
+    let store = MemoryTreeStore::new();
+    let server = AgentServer::new(ServerDeps {
+        toolsets: Rc::new(Toolset {
+            commands: Rc::new(CommandSet::new()),
+            revision: Rc::from("none"),
+        }),
+        subagents: Rc::new(SubagentSettings {
+            enabled: true,
+            max_live: None,
+            max_depth: None,
+            profiles: Vec::new(),
+        }),
+        instructions: Rc::from("system prompt"),
+        guide: Rc::from("harness guide"),
+        hosts: Rc::default(),
+        context: Rc::new([]),
+        providers,
+        shells: Rc::new(ScriptedShells::default()),
+        stores: {
+            let store = store.clone();
+            Rc::new(move |_: &NodeId| store.clone() as Rc<dyn AgentTreeStore>)
+        },
+        clock: Arc::new(FixedClock("2026-10-11T12:00:00.000Z".parse().unwrap())),
+        ids: Rc::new(SequentialIds::new("id")),
+        config: ServerConfig::default(),
+        status_changed: Rc::new(|_| {}),
+    });
+    (server, store)
+}
+
+/// A child learns its working directory before its first request, and
+/// again after a pass compacted what told it: the request after the pass
+/// carries a `working_directory` block that names the directory.
+// One tree and a child whose command runs on, on a paused clock, which the
+// command's quiet start-up waits on: a few milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_childs_working_directory_is_told_again_after_a_pass() {
+    let model = Model::default();
+    model.child(
+        "Survey the code",
+        [
+            // The command runs on, which keeps the child live.
+            Turn::Events(vec![event::tool_call(
+                "call-1",
+                "shell",
+                json!({"script": "serve", "description": "Serve the docs", "intervalMs": null}),
+            )]),
+            answer("serving", 10),
+            answer("Survey the code: the summary", 10),
+            answer("still serving", 10),
+        ],
+    );
+    let (server, store) = tree_server(&model);
+    let mut client = TestClient::connect(&server, &conversation());
+    client.send(open()).await;
+    client.next_until(is_pending_steers).await;
+    let spawned = agent(
+        &server,
+        &conversation(),
+        "spawn",
+        json!({"prompt": "Survey the code", "description": "survey"}),
+    )
+    .await;
+    let child = named_node(&store, &spawned);
+    let session = server
+        .node(&conversation(), &child)
+        .expect("the child is live")
+        .session()
+        .clone();
+    let requests = || model.requests_of("Survey the code");
+    while !(requests().len() == 2 && session.phase() == SessionPhase::Idle) {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    let told = "Your working directory is /workspace: ";
+    assert!(request_text(&requests()[0]).contains(told), "{:?}", requests()[0]);
+
+    session.compact().unwrap().await.unwrap();
+    let number = store.record(&child).expect("the child is stored").number;
+    agent(
+        &server,
+        &conversation(),
+        "send",
+        json!({"id": number.to_string(), "message": "How far?"}),
+    )
+    .await;
+    until(|| requests().len() == 4).await;
+    let after = requests().pop().unwrap();
+    assert!(request_text(&after).contains(told), "{}", request_text(&after));
+    let blocks = session.transcript().blocks;
+    let boundary = blocks
+        .iter()
+        .rposition(|block| matches!(block, Block::CompactionBoundary(_)))
+        .expect("the pass left its boundary");
+    assert!(
+        blocks[boundary..].iter().any(|block| matches!(
+            block,
+            Block::Context(context) if context.source == WORKING_DIRECTORY_SOURCE
+                && context.cwd.as_deref() == Some("/workspace")
+        )),
+        "{:?}",
+        kinds(&blocks)
     );
 }

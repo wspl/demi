@@ -126,7 +126,7 @@ fn calls_notices_and_receipts_are_one_run_until_what_the_reader_reads() {
             outcome: CompletionOutcome::Completed,
         },
     );
-    log.push_context(turn(), &test_model(), "host".into(), "Moved.".into(), Vec::new());
+    log.push_context(turn(), &test_model(), "host".into(), "Moved.".into(), Vec::new(), None);
     call(&mut log, "d");
     call(&mut log, "e");
     assert_eq!(

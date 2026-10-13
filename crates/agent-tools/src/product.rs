@@ -8,6 +8,7 @@ use std::num::NonZeroU32;
 use std::rc::Rc;
 
 use demi_conversation_socket_protocol::JobModel;
+use demi_agent_store::Placement;
 use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
 use demi_shared_types::{
     InstructionEntry, ModelSelection, NodeId, ProviderModel, THINKING_OFF, TurnId,
@@ -253,8 +254,10 @@ pub struct NodeContext<'a> {
     /// The conversation's root node. Every node of a tree runs on the
     /// conversation's execution target, which belongs to the root.
     pub root: &'a NodeId,
-    /// The node's working directory.
-    pub cwd: &'a str,
+    /// A child's working directory now (`subagents.md` § Working
+    /// directory); none for the root, whose directory is the
+    /// conversation's.
+    pub cwd: Option<&'a str>,
 }
 
 /// Where a conversation's nodes run. Its futures run on the user's shard, so
@@ -279,6 +282,18 @@ pub trait HostResolver: 'static {
             HostErrorKind::Unavailable,
             "this agent runs no shell tools",
         ))
+    }
+
+    /// Where the conversation works now: its primary Host's device and its
+    /// directory there, which a child's working directory is read against
+    /// (`subagents.md` § Working directory). By default its Host's key and
+    /// the directory the Host starts its work in ([`Host::default_cwd`]).
+    async fn placement(&self, context: NodeContext<'_>) -> Result<Placement, HostError> {
+        let host = self.host(context).await?;
+        Ok(Placement {
+            device: Some(host.key().to_string()),
+            directory: host.default_cwd().to_owned(),
+        })
     }
 }
 
