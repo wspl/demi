@@ -22,7 +22,7 @@ import MessageEditor from './message-editor/MessageEditor.vue'
 import { showToast } from '../infra/toast'
 import ComposerShell from './ComposerShell.vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
-import type { UsageLimits } from './context-usage'
+import { COMPACT_AFTER_TURN, type UsageLimits } from './context-usage'
 import ModelSelector from './ModelSelector.vue'
 import { composerModel, type ModelSettings, type ModelSettingsChange } from './model-selection'
 import type { ContextLimitChange } from './context-limit'
@@ -321,7 +321,7 @@ const compactUnavailable = computed(() => {
     return 'Compaction is available after the edit.'
   }
   if (props.running) {
-    return 'Compaction is available once the turn ends.'
+    return COMPACT_AFTER_TURN
   }
   return null
 })

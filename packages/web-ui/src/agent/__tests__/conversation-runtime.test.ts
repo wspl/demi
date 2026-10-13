@@ -11,6 +11,7 @@ import { clientHarness, createdAt, model, userBlock } from './agent-harness'
 
 function state(): RuntimeState {
   return {
+    id: 'conversation',
     history: EMPTY_TRANSCRIPT,
     phase: 'idle',
     queue: [],
@@ -56,8 +57,11 @@ test('the usage the composer shows is the one the session reports, not one read 
   try {
     // A response before the compaction still measures the history the summary replaced.
     h.receive({ type: 'transcript_reset', start: 0, length: 0, version: { epoch: 'epoch', revision: 1 }, blocks: [] })
-    h.receive({ type: 'context_usage', usage: { tokens: 6_000, window: 100_000, compactFrom: 50_000, rows: [] } })
+    h.receive({ type: 'context_usage', node: 'conversation', usage: { tokens: 6_000, window: 100_000, compactFrom: 50_000, rows: [] } })
     expect(current.contextUsage).toEqual({ tokens: 6_000, window: 100_000, compactFrom: 50_000, rows: [] })
+    // A subagent's usage is its record's, never the composer's.
+    h.receive({ type: 'context_usage', node: 'child', usage: { tokens: 70_000, window: 100_000, compactFrom: 50_000, rows: [] } })
+    expect(current.contextUsage?.tokens).toBe(6_000)
   } finally {
     runtime.dispose()
   }

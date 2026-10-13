@@ -558,7 +558,7 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
     for frame in [
         ClientFrame::Retry {},
         ClientFrame::Resume {},
-        ClientFrame::Compact {},
+        ClientFrame::Compact { node: None },
     ] {
         let kind = frame.kind();
         client.send(frame).await;

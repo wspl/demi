@@ -146,6 +146,7 @@ pub fn runs_on(
 ) -> JobModel {
     let tier = selection.service_tier_id.as_deref();
     JobModel {
+        provider_id: selection.provider_id.clone(),
         provider: entry.unwrap_or(&selection.provider_id).to_owned(),
         model: catalog.map_or(&selection.model.name, |model| &model.display_name).clone(),
         effort: selection.thinking_effort().map(|effort| {

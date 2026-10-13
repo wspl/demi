@@ -67,6 +67,7 @@ import GalleryMessageFiles from '../components/GalleryMessageFiles.vue'
 import GalleryAgentLinks from '../components/GalleryAgentLinks.vue'
 import { attachmentMarkdown, edgedImagesMarkdown, fiveMediaMarkdown, listAttachmentMarkdown, loneImageMarkdown, twoMediaMarkdown } from '../fixtures/attachments'
 import { productWould } from '../product-would'
+import { useAgentContext } from '../agent-context'
 import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { sidebarEntries } from '@demicodes/web-ui/plugins/page'
@@ -101,7 +102,7 @@ import AgentStatusBar from '@demicodes/web-ui/agent/AgentStatusBar.vue'
 import RunEndTag from '@demicodes/web-ui/agent/blocks/RunEndTag.vue'
 import TerminalChip from '@demicodes/web-ui/agent/TerminalChip.vue'
 import TerminalPanel from '@demicodes/web-ui/agent/TerminalPanel.vue'
-import { firstRunningSubagentId } from '@demicodes/web-ui/agent/subagents'
+import { agentCompaction, firstRunningSubagentId } from '@demicodes/web-ui/agent/subagents'
 import GalleryCachedSessions from '../components/GalleryCachedSessions.vue'
 import GalleryTranscriptEntrance from '../components/GalleryTranscriptEntrance.vue'
 import GalleryHistoryWindow from '../components/GalleryHistoryWindow.vue'
@@ -344,6 +345,8 @@ const exhibitAgentId = ref<string | null>(firstRunningSubagentId(agents))
 const exhibitTerminalId = ref<string | null>(firstRunningTerminalId(terminals))
 /** One child per variant of the line that says what a child runs on. */
 const runLines = [workSubagent(), ...gallerySubagents()]
+/** What the children's context cards show and do beside their usage. */
+const agentContext = useAgentContext()
 const runLineVariants: Record<string, string> = {
   'ag-suite': 'running · profile',
   'ag-cookie': 'running · no profile',
@@ -2901,7 +2904,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'windows'">
       <GallerySection
         title="Agents"
-        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Close Tab for a finished one, the other disabled. A child's last row reads its own phase: Find the cookie assertion ended its turn while its search runs on, so it shows no Requesting row, while Check the logout path waits for its model. Stop Agent stops the child at once; a command it still runs stays in the Running window as Stopping…, its tab's mark a spinner, until its runner says that it ended, here 3 seconds later: stop Find the cookie assertion and open the Terminals window below. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Along the window's bottom edge a thin bar, in the secondary text color under its own divider, says what the shown tab's child is doing and runs on: its state and how long it has run, counting while it runs, Forked from agent N for a fork, and on the right its profile, model, effort and Fast (What an Agent Runs On). Completed opens the searchable finished list, each child's profile a tag after its description, none for no profile, then how long it ran; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. It stands with the media viewer a screenshot in a child’s transcript opens in the order they opened, the newest in front: a press outside every window, here anywhere on the page but a window, closes the newest alone, as Escape does, and a second press the next. Close (×), or Escape with the focus in it, closes it too, and Run Them Again opens it again."
+        note="Half-session inspect. Tabs are running children; a click only selects one, and nothing on a tab stops it. A right-click on a tab, or the Menu key or Shift+F10 on a focused one, opens its menu: Stop Agent for a running child, Close Tab for a finished one, the other disabled. A child's last row reads its own phase: Find the cookie assertion ended its turn while its search runs on, so it shows no Requesting row, while Check the logout path waits for its model. Stop Agent stops the child at once; a command it still runs stays in the Running window as Stopping…, its tab's mark a spinner, until its runner says that it ended, here 3 seconds later: stop Find the cookie assertion and open the Terminals window below. The More button at the strip’s end, and a right-click on the strip’s empty area, open the strip’s menu: Stop All, disabled once nothing runs. Along the window's bottom edge a thin bar, in the secondary text color under its own divider, says what the shown tab's child is doing and runs on: its state and how long it has run, counting while it runs, Forked from agent N for a fork, and on the right its profile, model, effort and Fast (What an Agent Runs On), then the composer's context indicator for the child's own context, its text as far from the window's edges as the transcript's. Its card is the composer's, filled from the child, with the usage limits of the account the child runs on; its Compact compacts that child, here a toast, and waits while the child's turn runs. Completed opens the searchable finished list, each child's profile a tag after its description, none for no profile, then how long it ran; the child picked there shows as a tab after the running ones, and picking another replaces it in place, without motion. With no child running the window opens empty, never on a child the user did not pick; closing the last finished tab leaves it empty. It stands with the media viewer a screenshot in a child’s transcript opens in the order they opened, the newest in front: a press outside every window, here anywhere on the page but a window, closes the newest alone, as Escape does, and a second press the next. Close (×), or Escape with the focus in it, closes it too, and Run Them Again opens it again."
       >
         <div class="mb-3 flex flex-wrap gap-2">
           <Button variant="ghost" size="sm" @click="resetWindows">Run Them Again</Button>
@@ -2913,6 +2916,7 @@ onBeforeUnmount(() => {
             :agents="agents"
             @abort="sessionFlow.abortSubagents"
             @abort-agent="sessionFlow.abortSubagent"
+            v-bind="agentContext.panel"
           />
         </div>
       </GallerySection>
@@ -2922,16 +2926,55 @@ onBeforeUnmount(() => {
       >
         <GalleryReceipts :agents="agents" @abort="sessionFlow.abortSubagents" @abort-agent="sessionFlow.abortSubagent">
           <GallerySpecimen v-for="run in runLines" :key="run.id" :variant="runLineVariants[run.id] ?? run.name" wide>
-            <AgentStatusBar :run="run" />
+            <AgentStatusBar
+              :run="run"
+              :usage="run.contextUsage"
+              v-bind="agentCompaction(run)"
+              :instructions="[]"
+              :limits="agentContext.limits.value"
+              @compact="agentContext.compact"
+              @open-instruction="agentContext.openInstruction"
+              @refresh-limits="agentContext.refresh"
+            />
           </GallerySpecimen>
           <GallerySpecimen variant="room for everything · 40rem">
-            <AgentStatusBar class="w-[40rem]" :run="runLines[2]!" />
+            <AgentStatusBar
+              class="w-[40rem]"
+              :run="runLines[2]!"
+              :usage="runLines[2]!.contextUsage"
+              v-bind="agentCompaction(runLines[2]!)"
+              :instructions="[]"
+              :limits="agentContext.limits.value"
+              @compact="agentContext.compact"
+              @open-instruction="agentContext.openInstruction"
+              @refresh-limits="agentContext.refresh"
+            />
           </GallerySpecimen>
           <GallerySpecimen variant="narrower · Forked from gives way · 30rem">
-            <AgentStatusBar class="w-[30rem]" :run="runLines[2]!" />
+            <AgentStatusBar
+              class="w-[30rem]"
+              :run="runLines[2]!"
+              :usage="runLines[2]!.contextUsage"
+              v-bind="agentCompaction(runLines[2]!)"
+              :instructions="[]"
+              :limits="agentContext.limits.value"
+              @compact="agentContext.compact"
+              @open-instruction="agentContext.openInstruction"
+              @refresh-limits="agentContext.refresh"
+            />
           </GallerySpecimen>
           <GallerySpecimen variant="narrowest · the model's name gives way · 20rem">
-            <AgentStatusBar class="w-[20rem]" :run="runLines[2]!" />
+            <AgentStatusBar
+              class="w-[20rem]"
+              :run="runLines[2]!"
+              :usage="runLines[2]!.contextUsage"
+              v-bind="agentCompaction(runLines[2]!)"
+              :instructions="[]"
+              :limits="agentContext.limits.value"
+              @compact="agentContext.compact"
+              @open-instruction="agentContext.openInstruction"
+              @refresh-limits="agentContext.refresh"
+            />
           </GallerySpecimen>
         </GalleryReceipts>
       </GallerySection>
@@ -2949,6 +2992,7 @@ onBeforeUnmount(() => {
             :agents="briefAgents"
             @abort="stopBriefAgent"
             @abort-agent="stopBriefAgent"
+            v-bind="agentContext.panel"
           />
         </div>
       </GallerySection>
@@ -3041,6 +3085,7 @@ onBeforeUnmount(() => {
                 :terminals="terminals"
                 @abort="sessionFlow.abortSubagents"
                 @abort-agent="sessionFlow.abortSubagent"
+                v-bind="agentContext.panel"
               />
             </template>
           </SessionSurface>
@@ -3281,6 +3326,7 @@ onBeforeUnmount(() => {
                 @send-queued="sessionFlow.sendQueued"
                 @recall-steer="sessionFlow.recallSteer"
                 @interrupt-pending-steer="sessionFlow.interruptPendingSteer"
+                v-bind="agentContext.session"
               >
                 <template #composer>
                   <GalleryComposer
@@ -3623,6 +3669,7 @@ onBeforeUnmount(() => {
         @send-queued="sessionFlow.sendQueued"
         @recall-steer="sessionFlow.recallSteer"
         @interrupt-pending-steer="sessionFlow.interruptPendingSteer"
+        v-bind="agentContext.session"
       >
         <template #composer>
           <GalleryComposer

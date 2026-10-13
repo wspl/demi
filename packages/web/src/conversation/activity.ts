@@ -51,6 +51,7 @@ export function applyConversationEvent(
         pendingCalls: [],
         waitingSince: null,
         failures: {},
+        contextUsage: null,
       })
     }
   } else if (
@@ -77,6 +78,12 @@ export function applyConversationEvent(
     const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
     if (child) {
       child.sessionPhase = event.phase
+    }
+  } else if (event.type === 'context_usage') {
+    // The root's usage is the runtime's; no child has the root's id.
+    const child = conversation.subagents.find((agent) => agent.id === event.node)
+    if (child) {
+      child.contextUsage = event.usage
     }
   } else if (event.type === 'waiting' && event.subagentId !== undefined) {
     const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
