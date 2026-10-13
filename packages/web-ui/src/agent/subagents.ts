@@ -59,15 +59,14 @@ export interface SubagentRecord extends AgentRun {
 }
 
 /**
- * Where a child's context card stands on Compact: whether the child
- * compacts now, and why Compact cannot run apart from the usage. A closed
- * child has no session to compact; a running turn compacts after it ends,
- * while a child idle beside a command it left running may compact.
+ * Where a running child's context card stands on Compact: whether the child
+ * compacts now, and why Compact cannot run apart from the usage. A running
+ * turn compacts after it ends, while a child idle beside a command it left
+ * running may compact. An ended child has no context card at all
+ * (`subagents.md` § What an agent runs on); the backend refuses to compact
+ * its node.
  */
 export function agentCompaction(agent: SubagentRecord): { compacting: boolean, unavailableReason: string | null } {
-  if (agent.phase !== 'running') {
-    return { compacting: false, unavailableReason: 'The agent has ended.' }
-  }
   return {
     compacting: agent.sessionPhase === 'compacting',
     unavailableReason: agent.sessionPhase === 'running' ? COMPACT_AFTER_TURN : null,
