@@ -722,6 +722,128 @@ test('first send failure preserves the conversation and retries its UUID and mes
   ])
 })
 
+// A product check sent the first message of a new conversation right after
+// the page loaded, and it failed with "No available model for this
+// conversation.": the providers changed while the record was made, and the
+// conversation opened on the model list's load that the change replaced.
+test('a first send whose conversation opens while the model list loads again goes once the list answers', async () => {
+  const store = useConversations()
+  const product = useProduct()
+  const sync = channels.last()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  product.snapshot!.providers.push(stubProvider)
+  const asked = deferred<void>()
+  const answerCreate = deferred<void>()
+  /** Each model list the page asked for, answered when the test says. */
+  const lists: ReturnType<typeof deferred<Response>>[] = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) {
+      const list = deferred<Response>()
+      // An aborted request ends as the web browser ends it.
+      init?.signal?.addEventListener('abort', () => list.reject(init.signal!.reason), { once: true })
+      lists.push(list)
+      return list.promise
+    }
+    if (path === '/api/conversations') {
+      asked.resolve()
+      await answerCreate.promise
+    }
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+  try {
+    const loaded = product.loadModels(true)
+    await waitFor(() => lists.length === 1)
+    lists[0]!.resolve(Response.json(stubCatalog()))
+    await loaded
+    await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
+    conversation.draft = 'First message'
+    const sending = store.send(conversation)
+    await asked.promise
+    // The entry is renamed while the record is made: the list loads again.
+    const renamed = [{ ...stubProvider, label: 'Stub Account' }]
+    sync.send({ type: 'providers', providers: renamed })
+    await waitFor(() => lists.length === 2)
+    answerCreate.resolve()
+    // The conversation opens: its socket's connection is made beside its reads.
+    await waitFor(() => channels.opened.some((channel) => channel.url.endsWith(`/${id}/stream`)))
+    // The entry's account is read again, which loads the list once more.
+    sync.send({ type: 'providers', providers: renamed })
+    await waitFor(() => lists.length === 3)
+    // The replaced load has ended; the event loop turns once, which a send
+    // that did not wait for the list needed to fail.
+    await new Promise((resolve) => setImmediate(resolve))
+    expect(conversation.pendingSends.map((pending) => pending.error)).toEqual([null])
+    expect(submit).not.toHaveBeenCalled()
+    lists[2]!.resolve(Response.json(stubCatalog()))
+    await sending
+    expect(conversation.pendingSends.map((pending) => pending.error)).toEqual([])
+    expect(submit).toHaveBeenCalledTimes(1)
+  } finally {
+    submit.mockRestore()
+    connect.mockRestore()
+    globalThis.fetch = originalFetch
+  }
+})
+
+// A model list that fails while a message waits for it is why the message
+// did not go, and the message says so (`web-application.md` § Model discovery).
+test('a first send waiting for the model list ends undelivered with the list’s failure when it fails', async () => {
+  const store = useConversations()
+  const product = useProduct()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  product.snapshot!.providers.push(stubProvider)
+  const asked = deferred<void>()
+  const answerCreate = deferred<void>()
+  /** Each model list the page asked for, answered when the test says. */
+  const lists: ReturnType<typeof deferred<Response>>[] = []
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) {
+      const list = deferred<Response>()
+      lists.push(list)
+      return list.promise
+    }
+    if (path === '/api/conversations') {
+      asked.resolve()
+      await answerCreate.promise
+    }
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+  try {
+    const loaded = product.loadModels(true)
+    await waitFor(() => lists.length === 1)
+    lists[0]!.resolve(Response.json(stubCatalog()))
+    await loaded
+    await store.changeModel(conversation, { model: { providerId: 'stub', modelId: 'stub' } })
+    conversation.draft = 'First message'
+    const sending = store.send(conversation)
+    await asked.promise
+    // The entry is renamed while the record is made: the list loads again, and fails.
+    channels.last().send({ type: 'providers', providers: [{ ...stubProvider, label: 'Stub Account' }] })
+    await waitFor(() => lists.length === 2)
+    answerCreate.resolve()
+    lists[1]!.resolve(Response.json({ code: 'internal_error', message: 'Catalog offline' }, { status: 500 }))
+    await sending
+    expect(conversation.pendingSends.map((pending) => pending.error)).toEqual(['Couldn’t load the models: Catalog offline'])
+    expect(submit).not.toHaveBeenCalled()
+  } finally {
+    submit.mockRestore()
+    connect.mockRestore()
+    globalThis.fetch = originalFetch
+  }
+})
+
 /**
  * Answers what opening the conversation `id` reads, beside the backend's own
  * routes, after `intercept` had its look at each request; gives the backend
