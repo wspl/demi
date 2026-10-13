@@ -887,46 +887,6 @@ html[data-theme="light"] .file-pill {
   margin-right: calc((var(--menu-row-h) - var(--spacing-hit-xs)) / 2 - var(--menu-row-px));
 }
 
-/* A row whose actions replace its suffix while the pointer is on it or the
-   focus is in it: both stand in one cell, so the row's width does not change.
-   A phone has no hover, so there the actions show at rest (`ui/phone.ts`). */
-.menu-cell-swap {
-  display: grid;
-  justify-items: end;
-  align-items: center;
-}
-
-.menu-cell-swap > * {
-  grid-area: 1 / 1;
-}
-
-.menu-swap-actions {
-  opacity: 0;
-  pointer-events: none;
-}
-
-.menu-row:hover .menu-swap-actions,
-.menu-row:focus-within .menu-swap-actions {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-.menu-row:hover .menu-swap-rest,
-.menu-row:focus-within .menu-swap-rest {
-  visibility: hidden;
-}
-
-@media (max-width: 767px) {
-  .menu-swap-actions {
-    opacity: 1;
-    pointer-events: auto;
-  }
-
-  .menu-swap-rest {
-    display: none;
-  }
-}
-
 /* The composer's lift reaches no further than the 12px its dock keeps around
    it (SessionSurface), so the surface's edge never cuts it: every
    --shadow-float stays within 12px to the sides and below. */
@@ -945,6 +905,7 @@ html[data-theme="light"] .file-pill {
   --composer-shell-radius: calc(var(--composer-shell-height) / 2);
   --composer-line: calc(var(--agent-text) * var(--agent-leading));
   --composer-attach-gap: 8px;
+  --composer-below-gap: calc(var(--spacing) * 1);
   --composer-editor-pad-top: 16px;
   --composer-editor-pad-x: 16px;
   --composer-editor-pad-bottom: 12px;
@@ -971,7 +932,7 @@ html[data-theme="light"] .file-pill {
   align-items: center;
   justify-content: flex-end;
   gap: calc(var(--spacing) * 1);
-  margin-top: calc(var(--spacing) * 1);
+  margin-top: var(--composer-below-gap);
   /* The row's last control stands over the send button: both are a chip
      wide, so the box's inset puts their centres on one line. */
   padding-inline-end: var(--composer-inset);
@@ -984,9 +945,10 @@ html[data-theme="light"] .file-pill {
   padding-inline-start: var(--composer-inset);
 }
 
-/* A list under the box (the drafts), one step under the row above it. */
+/* A list under the box (the drafts) stands as far under the row as the row
+   stands under the box. */
 .composer-list {
-  margin-top: calc(var(--spacing) * 2);
+  margin-top: var(--composer-below-gap);
 }
 
 .composer-attach {
