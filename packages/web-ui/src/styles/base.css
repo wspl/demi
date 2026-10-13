@@ -1307,6 +1307,12 @@ html[data-theme="light"] .file-pill {
   border-radius: 0.3em;
 }
 
+/* ASCII punctuation right after the name (`markdown/render.ts`) stays
+   against it: "main agent;", not "main agent ;". */
+.icon-link-tight {
+  padding-inline-end: 0;
+}
+
 /* A link to an agent opens a window rather than a page, so it acts as a
    button, but it flows as words do (`subagents.md` § Linking an agent): a long
    name wraps at the line's end, its first line starting where the text before

@@ -126,16 +126,27 @@ export function conversationFiles(conversationId: string): ConversationFileServi
   const workspace = computed(() => source.value && root.value
     ? { source: source.value, root: root.value, name: name.value }
     : null)
-  const changes = computed(() => {
-    if (!root.value || deviceId.value === null) {
+  // One change set per working tree the views show: the conversation's, and each directory a child works in.
+  const trees = new Map<string, ReturnType<typeof keptChangeSet>>()
+  function treeChanges(directory: string | undefined) {
+    const host = deviceId.value
+    const conversationRoot = root.value
+    if (!conversationRoot || host === null) {
       return null
     }
-    const files = hostFiles(deviceId.value)
-    return keptChangeSet(workingTreeReads(conversationId), root.value, {
-      files,
-      watch: watcher.channel(deviceId.value, files),
-    })
-  })
+    const tree = directory ?? conversationRoot
+    const key = `${host}\0${tree}`
+    let set = trees.get(key)
+    if (!set) {
+      const files = hostFiles(host)
+      set = keptChangeSet(workingTreeReads(conversationId, tree === conversationRoot ? undefined : tree), tree, {
+        files,
+        watch: watcher.channel(host, files),
+      })
+      trees.set(key, set)
+    }
+    return set
+  }
 
   const service: ConversationFileService = {
     get workspace() {
@@ -144,8 +155,8 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     get root() {
       return root.value
     },
-    get changes(): ChangeSetSource {
-      return changes.value ?? emptyChangeSet
+    changes(directory): ChangeSetSource {
+      return treeChanges(directory) ?? emptyChangeSet
     },
     edit: readEditCopies,
     request(node, request) {
@@ -153,12 +164,12 @@ export function conversationFiles(conversationId: string): ConversationFileServi
       const conversation = conversations.items.find((item) => item.id === conversationId)
       return conversation ? findRequest(conversation, node, request) : null
     },
-    showChanges() {
-      // The list shows for the calling component while it lives, for the Host and root it has now.
+    showChanges(directory) {
+      // The list shows for the calling component while it lives, for the Host and working tree it has now.
       const scope = effectScope()
       const onScreen = useOnScreen()
       scope.run(() => {
-        watch(changes, (set, _previous, onCleanup) => {
+        watch(() => treeChanges(directory?.()), (set, _previous, onCleanup) => {
           const showing = set?.show()
           // The list follows the Host only while the component is on screen.
           const following = watch(onScreen, (shown) => (shown ? showing?.back() : showing?.away()), { immediate: true })

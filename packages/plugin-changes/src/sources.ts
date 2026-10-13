@@ -1,6 +1,6 @@
 import { computed, type ComputedRef } from 'vue'
 import { sameRequestFiles, type ChangeSources, type ConversationFileService, type RequestFile } from '@demicodes/plugin-sdk'
-import type { ChangeData } from './data'
+import { viewDirectory, type ChangeData } from './data'
 
 const NO_FILES: readonly RequestFile[] = []
 
@@ -20,7 +20,7 @@ export function useChangeSources(files: ConversationFileService, data: () => Cha
     return previous && sameRequestFiles(previous, next) ? previous : next
   })
   return computed(() => ({
-    uncommitted: files.changes,
+    uncommitted: files.changes(viewDirectory(data())),
     conversation: requestFiles.value ? { files: requestFiles.value, read: files.edit } : null,
   }))
 }

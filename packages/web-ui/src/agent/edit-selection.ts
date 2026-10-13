@@ -22,11 +22,17 @@ export function useEditSelection(): () => EditSelectionHandler | undefined {
   return inject(editSelectionKey, () => undefined)
 }
 
-/** One agent's transcript as its rows see it: whose it is, and its requests. */
+/** One agent's transcript as its rows see it: whose it is, its requests and where it wrote. */
 export interface TranscriptContext {
   /** The agent: null for the conversation's own, a subagent's id otherwise. */
   node: string | null
   requests(): TranscriptRequests
+  /**
+   * The directory the agent wrote the block `blockId` in, which its relative
+   * paths read against (`blockDirectories`); null for the conversation's own
+   * agent, whose directory is the conversation's.
+   */
+  directory(blockId: string): string | null
 }
 const transcriptKey: InjectionKey<TranscriptContext> = Symbol('transcript')
 

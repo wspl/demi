@@ -25,7 +25,9 @@ const files = computed(() => callPills(props.block))
  */
 function selection(path: string) {
   const call = storedShellView(props.block)?.commandId
-  return transcript && call ? pillSelection(transcript.node, transcript.requests(), props.block, call, path) : null
+  return transcript && call
+    ? pillSelection(transcript.node, transcript.requests(), props.block, call, path, transcript.directory(props.block.id))
+    : null
 }
 function selectable(path: string): boolean {
   return select() !== undefined && selection(path) !== null

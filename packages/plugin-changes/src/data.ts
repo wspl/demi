@@ -70,7 +70,7 @@ function step(data: ChangeData): ChangeStep {
 
 function sameRequest(a: RequestEditSelection | null, b: RequestEditSelection | null): boolean {
   return a === b || (a !== null && b !== null && a.node === b.node && a.request === b.request
-    && a.file === b.file && sameEditRef(a.edit, b.edit))
+    && a.file === b.file && a.root === b.root && sameEditRef(a.edit, b.edit))
 }
 
 /** `data` showing `next`, the step it showed kept for Back; the same step again changes nothing. */
@@ -125,4 +125,13 @@ export function goForward(data: ChangeData): ChangeData {
     return data
   }
   return { ...next, forward: data.forward.slice(0, -1), back: [...data.back, step(data)] }
+}
+
+/**
+ * The working tree the view shows: the directory its request was opened for
+ * (`file-previews.md` § The File view's bars), the conversation's when it
+ * names none.
+ */
+export function viewDirectory(data: ChangeStep): string | undefined {
+  return data.request?.root
 }

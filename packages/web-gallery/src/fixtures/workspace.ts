@@ -22,6 +22,13 @@ import { WatchChannel } from '@demicodes/web-ui/files/watch-channel'
  */
 export const WORKSPACE_ROOT = '/Users/alex/Projects/demi'
 
+/**
+ * Another checkout of the project, where a child of the conversation works
+ * (`subagents.md` § Working directory): it has files named as the
+ * conversation's own, with the contents of its own branch.
+ */
+export const SLOT_ROOT = '/Users/alex/Projects/demi-slots/2'
+
 const at = new Date(Date.UTC(2026, 8, 12, 9, 30)).toISOString()
 
 /**
@@ -392,6 +399,19 @@ function tree(): MemoryDirectory {
   })
 }
 
+/** The other checkout's files: the cookie renamed on its branch, and the readme. */
+function slotTree(): MemoryDirectory {
+  return dir({
+    src: dir({
+      auth: dir({
+        'cookie.ts': textFile(`export const COOKIE = 'session'\n`, at),
+        'session.ts': textFile(`export * from './cookie'\n`, at),
+      }),
+    }),
+    'README.md': textFile('# Demi\n\nThis checkout renames the session cookie.\n', at),
+  })
+}
+
 /** A generated file of about `lines` lines in the language its extension names, so a diff has room for several hunks. */
 function generated(path: string, lines: number, seed = 1): string {
   const name = baseName(path)
@@ -628,7 +648,7 @@ export async function gallerySides(path: string): Promise<ChangeSides> {
  * for. A failure follows a first list that read, as a refresh that failed
  * would.
  */
-export function createGalleryChangeSet(latencyMs: number, listing: GalleryChangeListing = {}) {
+export function createGalleryChangeSet(latencyMs: number, listing: GalleryChangeListing = {}, tree: { root: string; changed: WorkingTreeChange[] } = { root: WORKSPACE_ROOT, changed: changedFiles }) {
   const files = new HostFiles()
   // A simulated Host's watch answers the change set's subscriptions, and
   // each read carries its number, so what was read stays current.
@@ -644,7 +664,7 @@ export function createGalleryChangeSet(latencyMs: number, listing: GalleryChange
       if (listing.failure)
         setTimeout(() => set.refresh(), 0)
       const list = {
-        files: listing.unavailable ? [] : changedFiles,
+        files: listing.unavailable ? [] : tree.changed,
         truncated: listing.truncated ?? false,
         repository: !listing.unavailable,
         version: null,
@@ -657,10 +677,16 @@ export function createGalleryChangeSet(latencyMs: number, listing: GalleryChange
       return { value: { ...await gallerySides(path), version: null }, readAt }
     },
     committed: committedContents,
-  }, WORKSPACE_ROOT, { files, watch: new WatchChannel(files, host.open, 'simulated file watch') })
+  }, tree.root, { files, watch: new WatchChannel(files, host.open, 'simulated file watch') })
   // The gallery's working tree shows for the page's lifetime.
   set.show()
   return set
+}
+
+/** The working tree of the other checkout a child works in: the cookie file the child renamed. */
+export function createSlotChangeSet(latencyMs: number) {
+  const cookie = changedFiles.find((change) => change.path === 'src/auth/cookie.ts')
+  return createGalleryChangeSet(latencyMs, {}, { root: SLOT_ROOT, changed: cookie ? [cookie] : [] })
 }
 
 /**
@@ -675,7 +701,7 @@ export function createGalleryWorkspace(latencyMs = 200, watch: 'live' | 'unavail
 } {
   const root = tree()
   // The workspace sits under the home directory the laptop fixtures use.
-  const home = dir({ Projects: dir({ demi: root }) })
+  const home = dir({ Projects: dir({ demi: root, 'demi-slots': dir({ 2: slotTree() }) }) })
   const source = createMemoryFileSource({
     platform: 'macos',
     home: '/Users/alex',

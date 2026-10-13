@@ -5,13 +5,16 @@ import { changeSidesSchema, workingTreeChangesSchema } from '../api/generated/we
 import { fileBrowserError, rawFileContents, readAtOf } from '../api/files'
 
 /**
- * How the page reads the uncommitted changes of a conversation's execution
- * directory, each a request (`web-api.md` § File text and working tree
+ * How the page reads the uncommitted changes of a working tree, the
+ * conversation's execution directory or the `directory` a child works in,
+ * each a request (`web-api.md` § File text and working tree
  * changes): the list, both sides of one file, and the committed side's
  * bytes. The conversation's files service keeps what they answer.
  */
-export function workingTreeReads(conversationId: string): ChangeReads {
+export function workingTreeReads(conversationId: string, directory?: string): ChangeReads {
   const id = encodeURIComponent(conversationId)
+  // The routes read the conversation's directory unless a request names another.
+  const tree: Record<string, string> = directory === undefined ? {} : { directory }
   // Each read names the version the page holds: an unchanged answer is a
   // 304 without its content.
   const held = (version: string | null) => version === null
@@ -20,7 +23,7 @@ export function workingTreeReads(conversationId: string): ChangeReads {
   return {
     async list(version) {
       try {
-        const response = await apiRequest(`/conversations/${id}/changes`, held(version))
+        const response = await apiRequest(`/conversations/${id}/changes${directory === undefined ? '' : `?${new URLSearchParams(tree)}`}`, held(version))
         const readAt = readAtOf(response.headers)
         if (response.status === 304)
           return { unchanged: true, readAt }
@@ -38,7 +41,7 @@ export function workingTreeReads(conversationId: string): ChangeReads {
     },
     async sides(path, version) {
       try {
-        const response = await apiRequest(`/conversations/${id}/changes/file?${new URLSearchParams({ path })}`, held(version))
+        const response = await apiRequest(`/conversations/${id}/changes/file?${new URLSearchParams({ path, ...tree })}`, held(version))
         const readAt = readAtOf(response.headers)
         if (response.status === 304)
           return { unchanged: true, readAt }
@@ -49,7 +52,7 @@ export function workingTreeReads(conversationId: string): ChangeReads {
         throw fileBrowserError(error)
       }
     },
-    committed: rawFileContents(`/conversations/${id}/changes/raw`),
+    committed: rawFileContents(`/conversations/${id}/changes/raw`, tree),
   }
 }
 
