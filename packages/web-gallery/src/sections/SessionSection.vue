@@ -191,6 +191,7 @@ import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import GalleryAgentsChip from '../components/GalleryAgentsChip.vue'
 import GalleryCommandReports from '../components/GalleryCommandReports.vue'
 import GalleryComposer from '../components/GalleryComposer.vue'
+import { sevenDrafts, twoDrafts } from '../fixtures/drafts'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GalleryContextLimit from '../components/GalleryContextLimit.vue'
 import GallerySection from '../components/GallerySection.vue'
@@ -1733,6 +1734,60 @@ onBeforeUnmount(() => {
               :archived="composerArchived"
               @restore="composerArchived = false"
             />
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Drafts"
+        note="A draft is a message the user keeps to send later, and nothing sends it but the user. While the message holds text or files, Save as Draft (⌘S) stands left of Stop and Send; it keeps the whole message, its files included, and empties the composer. The entry under the composer, at the left of the model’s row, reads 1 Draft or 3 Drafts and is absent while there is none. Pressed, it opens the list under the composer, which rises to make room: about four rows tall, the fifth half in view, scrolling within. A row shows the message’s first line, its files’ count and when it was saved; pressing it edits the draft. While the pointer is on a row, Edit, Send and Delete stand in place of the count and the time, at its end; on a phone they show at rest. Edit puts the draft in the composer and takes it off the list; a composer holding a message first saves that one as a draft, so nothing is lost. Send sends it as the composer would, steering or queueing while the agent works, and a toast says Sent. Delete removes it at once, with Undo in a toast. Here the drafts are the specimen’s own state; the product keeps them on the server, per conversation."
+      >
+        <div class="specimen-stack specimen-stack-loose">
+          <GallerySpecimen variant="no drafts · type, then Save as Draft or ⌘S" wide>
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              draft="Check prod’s DNS next."
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="one draft · closed" wide>
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              :drafts="twoDrafts.slice(0, 1)"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="two drafts · closed, with a message to save" wide>
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              draft="Check prod’s DNS next."
+              :drafts="twoDrafts"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="seven drafts · open, the composer risen" wide>
+            <div class="flex min-h-[19rem] flex-col justify-end p-3">
+              <GalleryComposer
+                placeholder="Ask Demi…"
+                :drafts="sevenDrafts"
+                drafts-open
+              />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="running · Stop beside Save as Draft and Send" wide>
+            <GalleryComposer
+              placeholder="Ask Demi…"
+              running
+              draft="Then check the IPv6 records too."
+              :drafts="twoDrafts"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="narrow · open" wide>
+            <div class="flex min-h-[19rem] max-w-full resize-x flex-col justify-end overflow-hidden p-3" style="width: 367px; min-width: 15.5rem">
+              <GalleryComposer
+                placeholder="Ask Demi…"
+                draft="Check prod’s DNS next."
+                :drafts="sevenDrafts"
+                drafts-open
+              />
+            </div>
           </GallerySpecimen>
         </div>
       </GallerySection>
