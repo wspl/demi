@@ -73,8 +73,8 @@ const emit = defineEmits<{
   delete: [ids: string[]]
   /** Settings, on a section when an entry names one (`archived`, or an entry's own). */
   openSettings: [section?: string]
-  /** The phone mark at the foot: sign in on a phone by a QR code. */
-  signInOnPhone: []
+  /** The phone mark at the foot: hand off to a phone by a QR code. */
+  handOffToPhone: []
   signOut: []
   retryList: []
 }>()
@@ -643,13 +643,13 @@ function selectProjectConversations(project: SidebarProject): void {
         @sign-out="emit('signOut')"
       />
       <!-- A page that is itself on a phone has no phone to hand the account to. -->
-      <Tooltip v-if="!phone" content="Sign In on Phone" placement="top">
+      <Tooltip v-if="!phone" content="Hand Off to Phone" placement="top">
         <IconButton
           :icon="Smartphone"
           :size="phone ? 'lg' : 'md'"
           variant="ghost"
-          aria-label="Sign In on Phone"
-          @click="emit('signInOnPhone')"
+          aria-label="Hand Off to Phone"
+          @click="emit('handOffToPhone')"
         />
       </Tooltip>
       <Tooltip content="Settings" placement="right">

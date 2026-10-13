@@ -13,14 +13,14 @@ import { hiddenUsername } from '../ui/field-autofill'
 import { timeLeft, type HandoffCodeView, type HandoffHost, type HandoffVerifyOutcome } from './handoff'
 
 /**
- * Sign In on Your Phone (`product.md` § User system). Opening it asks the
+ * Hand Off to Your Phone (`product.md` § User system). Opening it asks the
  * host for a code; when the backend wants the user to confirm it is them
  * first, the confirmation step comes before it: the password, red with
  * Required or the host's sentence under it as other forms are, or Use
  * Passkey where the host offers one. The code step shows the code's URL as
  * a QR code and the time left; an expired one offers Show New Code, which
- * asks again. Once the host names the browser the code signed in, the
- * dialog says so and closes by itself a moment later.
+ * asks again. Once the host names the browser the code was handed off to,
+ * the dialog says so and closes by itself a moment later.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -34,7 +34,7 @@ const emit = defineEmits<{
   close: []
 }>()
 
-/** How long the dialog says the phone signed in before it closes. */
+/** How long the dialog says it handed off to the phone before it closes. */
 const CLOSE_AFTER_MS = 1600
 
 type Step =
@@ -168,8 +168,8 @@ async function usePasskey(): Promise<void> {
 }
 
 const left = computed(() => (step.value.kind === 'code' ? timeLeft(step.value.code.deadline, now.value) : null))
-const signedInWith = computed(() =>
-  step.value.kind === 'code' ? props.host.signedInWith(step.value.code.id) : null,
+const handedOffTo = computed(() =>
+  step.value.kind === 'code' ? props.host.handedOffTo(step.value.code.id) : null,
 )
 watch(left, (value) => {
   // An expired code needs no clock until a new one shows.
@@ -178,7 +178,7 @@ watch(left, (value) => {
     ticking = null
   }
 })
-watch(signedInWith, (name) => {
+watch(handedOffTo, (name) => {
   if (name !== null && closing === null) {
     if (ticking !== null) {
       clearInterval(ticking)
@@ -196,12 +196,12 @@ watch(signedInWith, (name) => {
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Sign In on Your Phone"
+    label="Hand Off to Your Phone"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Sign In on Your Phone</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">Hand Off to Your Phone</h3>
         <p v-if="step.kind === 'verify'" class="mt-0.5 text-[13px] leading-5 text-fg-muted">
           Confirm it’s you. Your phone then opens this page, signed in to this account.
         </p>
@@ -237,7 +237,7 @@ watch(signedInWith, (name) => {
       <div v-else-if="step.kind === 'code'" class="flex flex-col items-center gap-3 pb-1">
         <!-- The QR library's own SVG of the code: paths only, never the URL's text. -->
         <div
-          v-if="signedInWith === null"
+          v-if="handedOffTo === null"
           class="flex size-48 items-center justify-center rounded-xl bg-white p-3 [&>svg]:size-full"
           :class="{ 'opacity-15': left === null }"
           role="img"
@@ -247,9 +247,9 @@ watch(signedInWith, (name) => {
         />
         <div v-else class="flex size-48 flex-col items-center justify-center gap-3 text-center" role="status">
           <CircleCheck :size="40" class="text-on-success" />
-          <p class="text-[13px] leading-5 text-fg">{{ signedInWith }} is signed in.</p>
+          <p class="text-[13px] leading-5 text-fg">Handed off to {{ handedOffTo }}.</p>
         </div>
-        <template v-if="signedInWith === null">
+        <template v-if="handedOffTo === null">
           <p v-if="left !== null" class="select-none text-center text-[13px] leading-5 text-fg-muted">
             Scan with your phone’s camera.
             <span class="block text-[12px] tabular-nums text-fg-subtle">Expires in {{ left }}</span>
@@ -269,7 +269,7 @@ watch(signedInWith, (name) => {
           Continue
         </Button>
       </template>
-      <template v-else-if="step.kind === 'code' && left === null && signedInWith === null">
+      <template v-else-if="step.kind === 'code' && left === null && handedOffTo === null">
         <Button @click="emit('close')">Cancel</Button>
         <Button variant="primary" @click="start">Show New Code</Button>
       </template>

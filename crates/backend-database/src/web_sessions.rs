@@ -191,6 +191,23 @@ impl ControlService {
         .await
     }
 
+    /// Records on the session `token` names that the handoff code `handoff`
+    /// opened its account on it.
+    pub async fn record_handoff_on_web_session(
+        &self,
+        token: TokenHash,
+        handoff: HandoffId,
+    ) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "UPDATE web_sessions SET handoff_id = ?1 WHERE token_hash = ?2",
+                params![handoff.as_str(), token.as_str()],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
     /// Marks the session `token` names verified now.
     pub async fn verify_web_session(&self, token: TokenHash) -> Result<(), StorageError> {
         self.call(move |connection, now| {

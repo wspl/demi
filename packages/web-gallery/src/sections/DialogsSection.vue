@@ -88,16 +88,16 @@ function openFound(close: () => void, row: SearchRow): void {
 }
 
 /**
- * Sign In on Your Phone, opened on each of its steps; Open again starts the
+ * Hand Off to Your Phone, opened on each of its steps; Open again starts the
  * specimen over, on its step.
  */
 const handoffSpecimens = ref(
   (
     [
       ['Confirm · password, or Use Passkey; wrong is refused', 'verify'],
-      ['Code · Sign In on the Phone stands in for its camera', 'code'],
+      ['Code · Scan on the Phone stands in for its camera', 'code'],
       ['Expired · Show New Code asks for another', 'expired'],
-      ['Signed in · the dialog closes a moment later', 'signedIn'],
+      ['Handed off · the dialog closes a moment later', 'handedOff'],
     ] as [string, HandoffSpecimenStart][]
   ).map(([variant, start]) => ({ variant, start, ...galleryHandoff(start) })),
 )
@@ -307,8 +307,8 @@ const resetPhases: {
 
     <template v-if="view === 'account'">
       <GallerySection
-        title="Sign In on Your Phone"
-        note="The phone mark at the sidebar’s foot opens it. The backend decides whether the user confirms it is them first: with the password, or a passkey where the account has one, which holds five minutes. The code is a QR code of the backend’s address with the page the window shows; it lasts ten minutes, and an expired one offers Show New Code. Once the phone signs in, the dialog names its browser and closes by itself."
+        title="Hand Off to Your Phone"
+        note="The phone mark at the sidebar’s foot opens it. The backend decides whether the user confirms it is them first: with the password, or a passkey where the account has one, which holds five minutes. The code is a QR code of the backend’s address with the page the window shows; it lasts ten minutes, and an expired one offers Show New Code. Once the phone opens the page, signed in anew or in the session it had, the dialog says Handed off to its browser and closes by itself."
       >
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="(item, index) in handoffSpecimens" :key="item.variant" wide :variant="item.variant">
@@ -322,7 +322,7 @@ const resetPhases: {
                   @close="close"
                 />
               </GalleryDialogFrame>
-              <Button v-if="item.start === 'code'" size="sm" @click="item.phoneSignsIn()">Sign In on the Phone</Button>
+              <Button v-if="item.start === 'code'" size="sm" @click="item.phoneScans()">Scan on the Phone</Button>
             </div>
           </GallerySpecimen>
         </div>
