@@ -282,6 +282,36 @@ the default execution policy does not refuse it).
    device are not touched. On Windows, where a running program's file cannot
    be deleted, a process the runner starts as it exits removes the directory.
 
+An agent pairs a computer it reaches, such as one it can `ssh` to, without
+the user typing the code. `demi host install-command` prints the install
+command, the one Add Device shows, for each system or for the one
+`--system` names; the agent runs it on the computer, reads the pairing code
+the installer shows, and passes it to `demi host pair <code>`. The backend
+claims the code for the conversation's user as Add Device does, and attaches
+the new device to the conversation, so `demi host shell --host` reaches it
+at once ([Conversation commands](sessions-and-targets.md#attached-hosts)):
+
+```
+agent                          the computer                   backend
+  │ ssh … '<install command>' ──▶ runner starts, waits
+  │ ◀── "Enter this pairing code in Add Device: WCXP-…"
+  │ demi host pair WCXP-… ─────────────────────────────────────▶ claim
+  │                               runner gets its device token ◀┘
+  │ ◀── "Paired as DESKTOP-PLU; attached as DESKTOP-PLU"
+```
+
+The code is proof enough: it reaches only the runner's output and its log,
+which only an account that runs commands on that computer reads, so an
+agent holding it already controls the computer. A code that expired or was
+never issued is refused with a sentence that says to read the newest code
+the installer shows, since the runner receives a new one when a code
+expires.
+
+The backend composes the install commands from its public URL, as it
+composes a device's `startCommand`; the Add Device dialog and `demi host
+install-command` show the same text
+([Web API](../product/web-api.md#workspaces-devices-and-attached-hosts)).
+
 Revoking a device in Settings removes its runner too. The backend sends the
 connected runner `revoked` before it closes the connection, and the runner
 removes itself as `run uninstall` does, without asking the backend again; its

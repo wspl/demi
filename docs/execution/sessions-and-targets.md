@@ -232,7 +232,7 @@ as the primary Host exchanges the two.
 `demi host shell --host <name|id> <script>` verifies ownership and the conversation
 binding before starting a job. A sleeping Cloud device wakes for work; attachment
 alone does not keep it running. `demi host attach` attaches a paired
-device; the Cloud becomes attached when it is a departed primary target. A
+device, and `demi host pair` attaches the device it pairs; the Cloud becomes attached when it is a departed primary target. A
 new conversation's draft has no attached hosts, and the target it leaves
 when the user moves it is not attached, since nothing has run there.
 
@@ -268,6 +268,8 @@ conversation:
 | `demi conversation move --out` | Moves it out of its project, to the same directory on the same Host | `conversation.organize` |
 | `demi conversation create-project <name> [<directory>]` | Makes a project of a directory on the primary Host, its shell's directory by default, and moves this conversation into it | `conversation.organize` |
 | `demi host devices` | Lists the user's paired devices and the Cloud, with their states | `host.devices` |
+| `demi host install-command [--system linux\|macos\|windows]` | Prints the command that installs the runner on a computer, as Add Device shows it; it holds no credential | none |
+| `demi host pair <code> [--name <alias>]` | Pairs the computer whose installer shows `<code>` with the user's account and attaches it to this conversation ([Installation, pairing and removal](runner.md#installation-pairing-and-removal)) | `host.devices` |
 | `demi host attach <device> [--name <alias>]` | Attaches a device to this conversation | `host.devices` |
 | `demi host detach <host>` | Detaches one | `host.devices` |
 
@@ -276,7 +278,7 @@ The categories:
 | Id | Action | Description |
 | --- | --- | --- |
 | `conversation.organize` | organize conversations | Organize Conversations lets the agents of this conversation rename it, list your projects, make a project of a directory, and move this conversation into or out of one. Projects show in your sidebar on every device. |
-| `host.devices` | manage devices | Manage Devices lets the agents of this conversation list your devices, and attach them to this conversation or detach them. The agents run commands as you on an attached device. |
+| `host.devices` | manage devices | Manage Devices lets the agents of this conversation list your devices, attach them to this conversation or detach them, and pair a computer they can run commands on with your account. The agents run commands as you on an attached device. |
 
 `move` and `create-project` change where the conversation runs, and make a
 [pending move](#switch-the-primary-target) that applies when the tree is next
