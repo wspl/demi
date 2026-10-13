@@ -26,6 +26,7 @@ pub mod permissions;
 pub mod plugins;
 pub mod providers;
 pub mod query;
+pub mod saved;
 pub mod search;
 pub mod sessions;
 pub mod settings;

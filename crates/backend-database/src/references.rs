@@ -1,7 +1,8 @@
 //! What names a user's blobs (`storage.md` § Deleting a conversation): the
 //! records a collection of the user's namespace reads before it removes a
 //! blob. In the control database, the drafts of the user's conversations and
-//! the plugins' values and Host directories; in each of the user's
+//! the messages they keep saved for later, and the plugins' values and Host
+//! directories; in each of the user's
 //! conversation databases, its blocks with their media and edit copies, the
 //! messages its checkpoints keep queued, the attachments the agent uploaded
 //! and the records of its commands' outputs. An upload

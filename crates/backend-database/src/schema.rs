@@ -62,8 +62,9 @@ impl ReadBlob for NoBlobs {
 /// development build a server keeps data of (`upgrades.md` § A development
 /// build on a server): 0.1.22-dev.20261011T123543Z's, the one with the
 /// plugins' secrets before a request had a read state, the one with the
-/// users' credentials before passkeys, and the one with passkeys before
-/// the signed-in browsers. The schemas with the subagent
+/// users' credentials before passkeys, the one with passkeys before the
+/// signed-in browsers, and the one with the signed-in browsers before the
+/// messages saved for later. The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
 /// and the server's migrate through them.
@@ -134,8 +135,44 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.passkeys.sql"),
             migration: Migration::Sql(CONTROL_FROM_PASSKEYS),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.signed-in-browsers.sql"),
+            migration: Migration::Sql(CONTROL_FROM_SIGNED_IN_BROWSERS),
+        },
     ],
 };
+
+/// From the control schema with the signed-in browsers to the one with the
+/// messages saved for later (`storage.md` § Control records): a new table,
+/// empty, and each draft's row gains the revision of the list, 0 while
+/// nothing was saved. The drafts' table is rebuilt, since SQLite adds a
+/// column only after its last.
+const CONTROL_FROM_SIGNED_IN_BROWSERS: &str = "
+CREATE TABLE conversation_drafts_next (
+  conversation_id   TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  revision          INTEGER NOT NULL CHECK (revision >= 1),
+  document          TEXT NOT NULL,
+  written           INTEGER NOT NULL CHECK (written BETWEEN 1 AND revision),
+  replaced_revision INTEGER,
+  replaced          TEXT,
+  saved_revision    INTEGER NOT NULL CHECK (saved_revision >= 0),
+  updated_at        INTEGER NOT NULL,
+  CHECK ((replaced IS NULL) = (replaced_revision IS NULL))
+) STRICT;
+INSERT INTO conversation_drafts_next
+  (conversation_id, revision, document, written, replaced_revision, replaced, saved_revision, updated_at)
+  SELECT conversation_id, revision, document, written, replaced_revision, replaced, 0, updated_at
+  FROM conversation_drafts;
+DROP TABLE conversation_drafts;
+ALTER TABLE conversation_drafts_next RENAME TO conversation_drafts;
+CREATE TABLE saved_messages (
+  id              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  saved_at        INTEGER NOT NULL,
+  document        TEXT NOT NULL
+) STRICT;
+CREATE INDEX saved_messages_of_conversation ON saved_messages (conversation_id, saved_at);
+";
 
 /// From the control schema with passkeys to the one with the signed-in
 /// browsers and handoff codes (`storage.md` § Control records): each
@@ -1636,7 +1673,8 @@ CREATE TABLE conversation_panels (
 -- A conversation's draft: its text and files with the revision they were
 -- written at, and the version a save replaced with the revision that version
 -- had. The row stays when the draft is emptied, so a revision is never used
--- twice.
+-- twice. It holds the revision of the conversation's messages saved for
+-- later too, which every save, edit, send and removal of one raises.
 CREATE TABLE conversation_drafts (
   conversation_id   TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
   revision          INTEGER NOT NULL CHECK (revision >= 1),
@@ -1644,9 +1682,20 @@ CREATE TABLE conversation_drafts (
   written           INTEGER NOT NULL CHECK (written BETWEEN 1 AND revision),
   replaced_revision INTEGER,
   replaced          TEXT,
+  saved_revision    INTEGER NOT NULL CHECK (saved_revision >= 0),
   updated_at        INTEGER NOT NULL,
   CHECK ((replaced IS NULL) = (replaced_revision IS NULL))
 ) STRICT;
+
+-- A conversation's messages saved for later: each one's text and files as
+-- one JSON document, as a draft holds them.
+CREATE TABLE saved_messages (
+  id              TEXT PRIMARY KEY,
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  saved_at        INTEGER NOT NULL,
+  document        TEXT NOT NULL
+) STRICT;
+CREATE INDEX saved_messages_of_conversation ON saved_messages (conversation_id, saved_at);
 
 -- A conversation's requests (permissions.md § Requests), each of a kind: a
 -- permission request is a command an agent ran without the grants of its

@@ -177,6 +177,15 @@ pub struct ConversationSummary {
     /// this is higher than the revision it holds.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub draft_revision: u64,
+    /// How many messages the conversation keeps saved for later
+    /// (`web-api.md` § Messages saved for later).
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub saved: u64,
+    /// The revision of that list, 0 before its first change: a page that
+    /// shows the conversation reads the list again when this is higher than
+    /// the revision it holds.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub saved_revision: u64,
     /// The revision of the conversation's work panel, 0 before its first
     /// change (`web-api.md` § Work panel state), read the same way.
     #[garde(range(max = MAX_SAFE_INTEGER))]
