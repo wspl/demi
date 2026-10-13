@@ -250,6 +250,9 @@ export function waitWhileRestarting(connect: () => void): ReconnectWait {
   return wait(RESTART_WAIT_MS * (1 + Math.random()), connect)
 }
 
+/** The page's return check that has not run yet, if any. */
+let returnCheck: Promise<void> | null = null
+
 /**
  * The page came back: it became visible again, or came back online. Once
  * it has read what its sockets hold, each open socket that has brought
@@ -263,7 +266,11 @@ export function waitWhileRestarting(connect: () => void): ReconnectWait {
  * ended. Resolves once the check ran.
  */
 export function pageReturned(): Promise<void> {
-  return new Promise((resolve) => {
+  // One check serves every sign of the return that comes before it runs.
+  if (returnCheck !== null) {
+    return returnCheck
+  }
+  const check = new Promise<void>((resolve) => {
     afterQueuedTasks(() => {
       for (const check of [...watched]) {
         check()
@@ -271,9 +278,22 @@ export function pageReturned(): Promise<void> {
       connectWaiting()
       // Left to run: it only connects the sockets that wait by then.
       setTimeout(connectWaiting, 0)
+      returnCheck = null
       resolve()
     })
   })
+  returnCheck = check
+  return check
+}
+
+/**
+ * The page's return check while it is pending, else null. A request made as
+ * the page returns waits for it, so that it goes on a socket the check found
+ * alive or on the new one, never on one the check is about to replace
+ * (`web-application.md` § A request the drop interrupts).
+ */
+export function pendingReturnCheck(): Promise<void> | null {
+  return returnCheck
 }
 
 /**
