@@ -8,7 +8,7 @@ use std::process::Stdio;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
-use demi_command_protocol::testing::built_program;
+use demi_command_protocol::testing::{BUILD_PROGRAMS, built_program};
 use demi_host_interface::SpawnEnv;
 use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Child;
@@ -65,6 +65,8 @@ impl Default for RunnerProcessOptions {
 
 /// A runner process with its home and state.
 pub struct RunnerProcess {
+    /// The runner executable it starts, again after each stop.
+    program: PathBuf,
     home: tempfile::TempDir,
     home_path: String,
     state: tempfile::TempDir,
@@ -80,6 +82,15 @@ impl RunnerProcess {
     /// Starts a runner for the backend at `backend`, such as
     /// `http://127.0.0.1:3271`.
     pub fn start(backend: &str, options: RunnerProcessOptions) -> Self {
+        Self::start_program(runner_binary(), backend, options)
+    }
+
+    /// [`RunnerProcess::start`] with `program` as the runner, which a caller
+    /// that starts runners from a task of its own, as a Cloud stand-in does,
+    /// resolves on the test's thread first: there [`runner_binary`]'s refusal
+    /// of a stale program stops the test at once, where in the task it would
+    /// leave whoever waits on the task waiting.
+    pub fn start_program(program: PathBuf, backend: &str, options: RunnerProcessOptions) -> Self {
         let home = tempfile::tempdir().expect("a temporary home");
         let home_path = std::fs::canonicalize(home.path())
             .expect("the home has a real path")
@@ -92,6 +103,7 @@ impl RunnerProcess {
             write_token(state.path(), token);
         }
         let mut process = Self {
+            program,
             home,
             home_path,
             state,
@@ -123,6 +135,7 @@ impl RunnerProcess {
     /// Another runner set up as this one: the same home, state and backend.
     pub fn command(&self) -> tokio::process::Command {
         runner_command(
+            &self.program,
             &self.home_path,
             self.state.path(),
             &self.backend,
@@ -250,8 +263,8 @@ impl RunnerProcess {
         command.stdout(Stdio::piped()).stderr(Stdio::piped());
         let mut child = command.spawn().unwrap_or_else(|error| {
             panic!(
-                "start {}: {error}; build it with cargo build --workspace --features demi-runner/test-fixtures",
-                runner_binary().display()
+                "start {}: {error}; build it with {BUILD_PROGRAMS}",
+                self.program.display()
             )
         });
         let outputs = [
@@ -304,15 +317,16 @@ fn write_token(state: &Path, token: &str) {
     writeln!(file, "{token}").expect("the runner token can be written");
 }
 
-/// The runner's command line for a device: its home, its state and its
-/// backend.
+/// The runner's command line for a device: its program, its home, its
+/// state and its backend.
 fn runner_command(
+    program: &Path,
     home: &str,
     state: &Path,
     backend: &str,
     options: &RunnerProcessOptions,
 ) -> tokio::process::Command {
-    let mut command = tokio::process::Command::new(runner_binary());
+    let mut command = tokio::process::Command::new(program);
     match &options.env {
         SpawnEnv::Inherit => {}
         SpawnEnv::Exactly(variables) => {

@@ -5,7 +5,8 @@
 //! device run one at a time, in arrival order; a device's first wake makes
 //! its storage. It records every call, and a test can hold a reset, fail
 //! one, keep a wake from starting its runner, or kill a runner as a crash
-//! would, which the manager reports as a death to every connection; its
+//! would, which the manager reports as a death to every connection; a call
+//! whose handling panics is answered with the panic, never left waiting; its
 //! `reconcile` keeps the sandboxes that run, as the real manager's does. It
 //! mounts no image and isolates nothing: a stop clears the runner's state
 //! but its log and its job directories, as a Cloud's `/run/demi` goes with
@@ -13,15 +14,17 @@
 //! them too; both keep its home.
 
 use std::collections::{BTreeMap, HashMap};
+use std::panic::AssertUnwindSafe;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
+use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions, runner_binary};
 use demi_host_interface::SpawnEnv;
 use demi_machine_manager_protocol::{
     BaseVersion, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState,
     WIRE_VERSION, decode_request, encode_line,
 };
+use futures_util::FutureExt as _;
 use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::{Notify, Semaphore, broadcast, mpsc, watch};
@@ -52,6 +55,9 @@ pub struct Script {
     /// The artifact cache each Cloud runner that starts from now on uses,
     /// as `DEMI_ARTIFACTS`; none keeps its own in its state.
     pub artifacts: Option<String>,
+    /// The executable each Cloud runner that starts from now on runs; the
+    /// workspace's `demi-runner` unless set.
+    pub runner: Option<PathBuf>,
     /// The configured base, as after the server's upgrade; [`BASE`] unless
     /// set. A new Cloud and a reset take it; a Cloud made earlier keeps its
     /// own.
@@ -76,6 +82,10 @@ struct State {
 }
 
 struct Shared {
+    /// The workspace's `demi-runner`, found when the manager starts, on the
+    /// test's thread, so that a missing or stale build stops the test there
+    /// rather than in the task of a call.
+    runner: PathBuf,
     state: Mutex<State>,
     deaths: broadcast::Sender<String>,
     /// Told of each call as it arrives, for a test that waits for one.
@@ -117,6 +127,7 @@ impl ScriptedManager {
         let listener = UnixListener::bind(&socket).unwrap();
         let (deaths, _) = broadcast::channel(64);
         let shared = Arc::new(Shared {
+            runner: runner_binary(),
             state: Mutex::new(State::default()),
             deaths,
             arrived: watch::Sender::new(()),
@@ -320,14 +331,22 @@ async fn connection(stream: UnixStream, shared: Arc<Shared>) {
         };
         let (shared, lines) = (shared.clone(), lines.clone());
         requests.push(AbortOnDropHandle::new(tokio::spawn(async move {
-            let response = match handle(&shared, request.call).await {
-                Ok(result) => MachineResponse::Ok {
+            // A call whose handling panics is answered with the panic, so
+            // that the backend's wait for it ends with the reason instead of
+            // never.
+            let handled = AssertUnwindSafe(handle(&shared, request.call)).catch_unwind().await;
+            let response = match handled {
+                Ok(Ok(result)) => MachineResponse::Ok {
                     id: request.id,
                     result,
                 },
-                Err(message) => MachineResponse::Error {
+                Ok(Err(message)) => MachineResponse::Error {
                     id: request.id,
                     message,
+                },
+                Err(panic) => MachineResponse::Error {
+                    id: request.id,
+                    message: panic_message(panic.as_ref()),
                 },
             };
             // A connection that closed discards its replies.
@@ -340,6 +359,15 @@ async fn connection(stream: UnixStream, shared: Arc<Shared>) {
         let _ = request.await;
     }
     let _ = writer.await;
+}
+
+/// What a panic said: its formatted message, or its literal one.
+fn panic_message(panic: &(dyn std::any::Any + Send)) -> String {
+    panic
+        .downcast_ref::<String>()
+        .cloned()
+        .or_else(|| panic.downcast_ref::<&str>().map(|message| (*message).to_owned()))
+        .unwrap_or_else(|| "the manager's handler panicked".into())
 }
 
 async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::Value, String> {
@@ -396,9 +424,10 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let worker = shared.worker(&device);
             let _turn = worker.acquire().await.unwrap();
             shared.record(format!("wake:{device}"));
-            let (silent, env, taken) = {
+            let (silent, env, program, taken) = {
                 let mut state = shared.lock();
                 let silent = state.script.silent_wake;
+                let program = state.script.runner.clone().unwrap_or_else(|| shared.runner.clone());
                 let artifacts = state
                     .script
                     .artifacts
@@ -419,7 +448,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                     image: image(1, &base, None, VOLUME_BYTES, VOLUME_BYTES),
                     generations: 1,
                 });
-                (silent, env, guest.runner.take())
+                (silent, env, program, guest.runner.take())
             };
             let backend = params.boot.backend_url.to_string();
             let token = params.boot.device_token.expose().to_owned();
@@ -443,7 +472,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                         token: Some(token),
                         managed: true,
                     };
-                    Some(RunnerProcess::start(&backend, options))
+                    Some(RunnerProcess::start_program(program, &backend, options))
                 }
             };
             shared.lock().guests.get_mut(&device).unwrap().runner = runner;
