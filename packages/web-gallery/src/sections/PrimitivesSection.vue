@@ -275,7 +275,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
 
       <GallerySection
         title="Working"
-        note="No click goes unanswered. A control given an action that returns a promise shows that it works until the promise settles, with no flag of the caller’s. A button shows the spinner over its label and keeps its size; an icon button shows it in place of its icon; a menu item closes its menu and the row it acts on shows the spinner (a choice, which keeps the menu open, shows it in its own gutter); a row action shows it on its row. A second press of the same action meanwhile does nothing, and Cancel and the other controls stay usable. Each specimen waits 0.9 s, as a request would."
+        note="No click goes unanswered. A control is bound to an operation, an action on one target, and its handler returns the operation’s promise: the page keeps the running operations, not the control, so a menu or a dialog opened again shows the operation working and a press meanwhile starts nothing. A button keeps its look, a danger button its red, and shows the spinner in place of its icon or beside its label; an icon button shows it in place of its icon; a menu item closes its menu and the row of its target shows the spinner, and the item opened again shows it too (a choice, which keeps the menu open, shows it in its check gutter); a row action shows it on its row. Operations that exclude each other on one target, such as a dialog’s Save and Delete, form a group: while one works the other cannot be pressed, and Cancel always can. Closing a dialog while it works leaves the progress on its row. Each specimen waits 0.9 s, the menu and the dialog 3 s."
       >
         <GalleryWorkingControls />
       </GallerySection>

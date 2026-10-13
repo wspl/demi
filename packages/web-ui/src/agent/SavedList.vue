@@ -3,7 +3,7 @@ import { ArrowUp, Paperclip, Pencil, Trash2 } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import MenuItem from '../ui/MenuItem.vue'
-import type { Action } from '../ui/pending-action'
+import type { Action } from '../ui/operations'
 import ScrollArea from '../ui/ScrollArea.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import type { SavedRow } from './saved'
@@ -26,6 +26,11 @@ defineProps<{
   onSend?: Action<[id: string]>
   onDelete?: Action<[id: string]>
 }>()
+
+/** Edit, Send and Delete of one saved message exclude each other (`operations.ts`). */
+function onSaved(action: 'edit' | 'send' | 'delete', id: string) {
+  return { action, target: `saved:${id}`, group: 'saved' }
+}
 </script>
 
 <template>
@@ -35,6 +40,7 @@ defineProps<{
         v-for="row in rows"
         :key="row.id"
         iconless
+        :operation="onSaved('edit', row.id)"
         @select="onEdit?.(row.id)"
       >
         <span class="min-w-0 truncate">{{ row.preview }}</span>
@@ -49,6 +55,7 @@ defineProps<{
               variant="ghost"
               size="xs"
               aria-label="Edit"
+              :operation="onSaved('edit', row.id)"
               @click.stop="onEdit?.(row.id)"
             />
           </Tooltip>
@@ -58,6 +65,7 @@ defineProps<{
               variant="ghost"
               size="xs"
               aria-label="Send"
+              :operation="onSaved('send', row.id)"
               @click.stop="onSend?.(row.id)"
             />
           </Tooltip>
@@ -67,6 +75,7 @@ defineProps<{
               variant="ghost"
               size="xs"
               aria-label="Delete"
+              :operation="onSaved('delete', row.id)"
               @click.stop="onDelete?.(row.id)"
             />
           </Tooltip>

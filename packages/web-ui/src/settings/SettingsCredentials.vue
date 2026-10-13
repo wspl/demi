@@ -10,6 +10,7 @@ import RelativeTime from '../ui/RelativeTime.vue'
 import Tag from '../ui/Tag.vue'
 import { formatMoment } from '../ui/dates'
 import CredentialDialog from './CredentialDialog.vue'
+import { answerInDialog } from './dialog-work'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -56,37 +57,40 @@ function failed(error: unknown): ShownError {
   return formError(error, { invalid_body: null, credential_name_taken: null })
 }
 
-async function save(draft: SettingsCredentialDraft): Promise<void> {
+/** The credential as the target of its Save and Delete, one group of operations (`operations.ts`). */
+function credentialTarget(id: string | null): string {
+  return `credential:${id ?? 'new'}`
+}
+
+/** The dialog of credential `id`, if it is the one open: the answer to its work goes there and nowhere else. */
+function shownEditor(id: string | null): Editor | null {
   const current = editor.value
-  if (!current) {
-    return
-  }
-  current.error = null
-  try {
-    await props.saveCredential(current.credential?.id ?? null, draft)
-    current.open = false
-  } catch (error) {
-    current.error = failed(error)
-  }
+  return current?.open && (current.credential?.id ?? null) === id ? current : null
+}
+
+function save(draft: SettingsCredentialDraft): Promise<void> {
+  const id = editor.value?.credential?.id ?? null
+  return answerInDialog(() => shownEditor(id), 'Could Not Save the Credential', failed, () => props.saveCredential(id, draft))
 }
 
 /** Deleting asks first, over the credential's dialog. */
 const deleteOpen = ref(false)
 
 async function remove(): Promise<void> {
-  const current = editor.value
-  if (!current?.credential) {
+  const id = editor.value?.credential?.id
+  if (!id) {
     return
   }
-  current.error = null
-  try {
-    await props.deleteCredential(current.credential.id)
-    current.open = false
-  } catch (error) {
-    current.error = failed(error)
-  } finally {
+  await answerInDialog(() => shownEditor(id), 'Could Not Delete the Credential', failed, () => props.deleteCredential(id))
+  // The question closes with its answer, if it still asks about this credential.
+  if (editor.value?.credential?.id === id) {
     deleteOpen.value = false
   }
+}
+
+/** Save and Delete exclude each other on one credential: while one works, the other cannot be pressed. */
+function editing(action: 'save' | 'delete', id: string | null) {
+  return { action, target: credentialTarget(id), group: 'edit' }
 }
 
 /** What the user has revealed, by credential: its values and the secret fields shown. */
@@ -152,6 +156,7 @@ const empty = computed(() => props.credentials.length === 0)
         <SettingsRow
           :label="credential.name"
           :description="credential.note || undefined"
+          :target="credentialTarget(credential.id)"
           interactive
           isolate-controls
           @click="open(credential)"
@@ -216,6 +221,8 @@ const empty = computed(() => props.credentials.length === 0)
       :overlay-store="overlayStore"
       :credential="editor.credential"
       :error="editor.error"
+      :save-operation="editing('save', editor.credential?.id ?? null)"
+      :delete-operation="editing('delete', editor.credential?.id ?? null)"
       @close="editor.open = false"
       @save="save"
       @delete="deleteOpen = true"
@@ -225,6 +232,7 @@ const empty = computed(() => props.credentials.length === 0)
       :overlay-store="overlayStore"
       :title="`Delete the credential “${editor?.credential?.name ?? ''}”?`"
       action="Delete"
+      :operation="editing('delete', editor?.credential?.id ?? null)"
       @close="deleteOpen = false"
       @confirm="remove"
     >

@@ -82,7 +82,7 @@ export { treeLayout } from '@demicodes/web-ui/files/tree-layout'
 // Components: settings, controls, progress, navigation, files and icons.
 export { default as AddressBar } from '@demicodes/web-ui/agent/AddressBar.vue'
 export { default as Button } from '@demicodes/web-ui/ui/Button.vue'
-export type { Action } from '@demicodes/web-ui/ui/pending-action'
+export type { Action, Operation } from '@demicodes/web-ui/ui/operations'
 export { default as ChangeView } from '@demicodes/web-ui/files/ChangeView.vue'
 export { default as ConfirmDialog } from '@demicodes/web-ui/ui/ConfirmDialog.vue'
 export { default as Dialog } from '@demicodes/web-ui/ui/Dialog.vue'

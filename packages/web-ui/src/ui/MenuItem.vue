@@ -7,7 +7,7 @@ import { Check, ChevronRight } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import HighlightText from './HighlightText.vue'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
-import { usePendingAction, type Action } from './pending-action'
+import { useOperationControl, type Action, type Operation } from './operations'
 import Popover from './Popover.vue'
 import { inSheetKey } from './sheet-context'
 import Tooltip from './Tooltip.vue'
@@ -64,20 +64,25 @@ const props = defineProps<{
    */
   pointerless?: boolean
   /**
-   * What choosing the row does; it may return a promise. An action row closes
-   * its menu at once, and the row the menu belongs to works until the promise
-   * settles (`provideRowWork`); a choice row, which keeps the menu open,
-   * shows the spinner in its own check gutter. A second choice meanwhile
-   * does nothing.
+   * What choosing the row does; it may return the promise of its
+   * `operation`'s work. An action row closes its menu at once, and the row
+   * of the operation's target shows it working (`provideRowTarget`).
    */
   onSelect?: Action
+  /**
+   * The operation choosing the row starts (`operations.ts`): while it runs,
+   * the row, drawn again in a menu opened again, shows the spinner in its
+   * icon's place, or in a choice's check gutter, and choosing it starts
+   * nothing; another of its group is not choosable meanwhile.
+   */
+  operation?: Operation
 }>()
 
 
 const slots = useSlots()
-const { pending, showsWork, press } = usePendingAction(true)
+const { running, blocked, press } = useOperationControl(() => props.operation, true)
 const isChoice = computed(() => props.choice === true)
-const isDisabled = computed(() => props.disabled === true)
+const isDisabled = computed(() => props.disabled === true || (blocked.value && !running.value))
 const tooltipContent = computed(() => disabledTooltip(isDisabled.value, props.disabledReason) ?? props.hint)
 const menuIconless = inject(
   menuIconlessKey,
@@ -90,7 +95,12 @@ const showsSubmenu = computed(() => props.hasSubmenu || slots.submenu != null)
 const hasActions = computed(() => slots.actions != null)
 const hasSuffix = computed(
   () =>
-    slots.suffix != null || hasActions.value || isChoice.value || showsSubmenu.value || !!props.shortcut
+    slots.suffix != null ||
+    hasActions.value ||
+    isChoice.value ||
+    showsSubmenu.value ||
+    !!props.shortcut ||
+    (running.value && !showIconGutter.value)
 )
 
 const triggerRef = ref<HTMLElement | null>(null)
@@ -187,6 +197,7 @@ function handleClick(event: MouseEvent) {
     openSubmenu()
     return
   }
+  // While its operation runs, the press starts nothing (`operations.start`) and the menu closes as after any choice.
   press(props.onSelect)
   if (
     shouldDismissMenuTree({
@@ -244,6 +255,7 @@ const toneClass = computed(() => {
       :class="toneClass"
       :aria-checked="isChoice ? isSelected : undefined"
       :aria-disabled="isDisabled || undefined"
+      :aria-busy="running || undefined"
       :aria-haspopup="showsSubmenu ? 'menu' : undefined"
       :aria-expanded="showsSubmenu ? submenuOpen : undefined"
       @click="handleClick"
@@ -255,9 +267,10 @@ const toneClass = computed(() => {
         class="menu-cell-gutter relative flex size-4 shrink-0 items-center justify-center"
         :class="faded ? 'faded' : ''"
       >
+        <IndeterminateSpinner v-if="running && !isChoice" :size="ICON_PX.in28" />
         <component
           :is="icon"
-          v-if="icon"
+          v-else-if="icon"
           :size="ICON_PX.in28"
         />
         <!-- The dot rides the icon's corner, or stands alone in the gutter. -->
@@ -280,10 +293,10 @@ const toneClass = computed(() => {
         </span>
         <slot v-else name="suffix">
           <span
-            v-if="isChoice"
+            v-if="isChoice || (running && !showIconGutter)"
             class="flex size-3.5 shrink-0 items-center justify-center"
           >
-            <IndeterminateSpinner v-if="pending && showsWork" :size="14" class="text-fg-muted" />
+            <IndeterminateSpinner v-if="running" :size="14" class="text-fg-muted" />
             <Check
               v-else-if="isSelected"
               :size="ICON_PX.in28"

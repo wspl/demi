@@ -16,7 +16,6 @@ const product = useProduct()
 const preferences = usePreferences()
 const navigation = useConversationNavigation()
 const message = ref<ShownError | null>(null)
-const pending = ref(false)
 const deviceById = (id: string) =>
   resources.devices.find((device) => device.id === id) ?? null
 
@@ -25,11 +24,8 @@ function close() {
   message.value = null
 }
 
-async function create(draft: WorkspaceDraft) {
-  if (pending.value) {
-    return
-  }
-  pending.value = true
+/** Create: the dialog's button works until the project is made; done, the dialog closes if it is still open. */
+async function create(draft: WorkspaceDraft): Promise<void> {
   message.value = null
   try {
     await navigation.createProject(
@@ -45,11 +41,11 @@ async function create(draft: WorkspaceDraft) {
             name: baseName(draft.path) || 'Workspace',
           },
     )
-    close()
+    if (resources.targetOpen) {
+      close()
+    }
   } catch (error) {
     message.value = shownError(error)
-  } finally {
-    pending.value = false
   }
 }
 </script>
@@ -58,7 +54,6 @@ async function create(draft: WorkspaceDraft) {
   <WorkspaceDialog
     :is-open="resources.targetOpen"
     :overlay-store="appOverlayStore"
-    :pending="pending"
     :load="product.load"
     @retry="product.reconnect"
     :devices="resources.devices"

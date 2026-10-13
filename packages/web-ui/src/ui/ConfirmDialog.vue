@@ -2,7 +2,7 @@
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from './Button.vue'
 import Dialog from './Dialog.vue'
-import type { Action } from './pending-action'
+import type { Action, Operation } from './operations'
 import type { HeadlineText, TitleText } from './ui-text'
 
 /**
@@ -13,8 +13,10 @@ import type { HeadlineText, TitleText } from './ui-text'
  * safe answer, the default button, and closes; the action is the danger
  * button, which takes a click (Dialog). Nothing the user
  * set up disappears on one click (`product.md`). The action is the caller's
- * `onConfirm`, which returns the promise of the work: the danger button shows
- * it until it settles, and the caller closes the dialog then.
+ * `onConfirm`, which returns the promise of its `operation`'s work: the
+ * danger button shows it while it runs, the dialog opened again included,
+ * and the caller closes the dialog then if it is still this one's. Cancel
+ * closes it meanwhile without stopping the work.
  */
 defineProps<{
   isOpen: boolean
@@ -25,6 +27,8 @@ defineProps<{
   /** What goes with it, named one per line; content, not UI text. */
   goes?: readonly string[]
   onConfirm?: Action
+  /** What the action does, to what (`operations.ts`). */
+  operation?: Operation
 }>()
 
 const emit = defineEmits<{
@@ -56,7 +60,7 @@ const emit = defineEmits<{
     </div>
     <template #footer>
       <!-- Cancel is the default, last: Return and the opening focus never destroy (Dialog). -->
-      <Button variant="danger" @click="onConfirm?.()">{{ action }}</Button>
+      <Button variant="danger" :operation="operation" @click="onConfirm?.()">{{ action }}</Button>
       <Button variant="primary" @click="emit('close')">Cancel</Button>
     </template>
   </Dialog>

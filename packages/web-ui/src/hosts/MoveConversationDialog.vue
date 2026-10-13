@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
-import { stopSentence, type MoveQuestion } from './move-question'
+import { stopSentence, type MoveAnswers, type MoveQuestion } from './move-question'
 
 /**
  * The question before a conversation that has messages moves
@@ -13,8 +13,9 @@ import { stopSentence, type MoveQuestion } from './move-question'
  * While the agent works the first line says what stops and the answers read
  * Stop and Move and Stop, Move and Tell Agent: they stop the work, and the
  * move follows once it is idle.
- * While the host carries the move out, `busy` keeps the dialog open;
- * `useMoveQuestion` holds its state. It stacks on a directory picker it is
+ * While the host carries the move out, the answer chosen shows that it
+ * works and the other cannot be pressed (`answers`); Cancel closes the
+ * dialog and the move goes on. `useMoveQuestion` holds its state. It stacks on a directory picker it is
  * asked from, which stays for another choice when the move is cancelled,
  * and replaces the host menu it is asked from.
  */
@@ -22,8 +23,8 @@ const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   question: MoveQuestion | null
-  /** Which answer is being carried out. */
-  busy?: 'move' | 'tell' | null
+  /** What each answer does (`useMoveQuestion`). */
+  answers?: MoveAnswers
 }>()
 
 const emit = defineEmits<{
@@ -64,12 +65,11 @@ const title = computed(() => {
       </div>
     </div>
     <template #footer>
-      <Button :disabled="!!busy" @click="emit('close')">Cancel</Button>
-      <Button :disabled="!!busy" :loading="busy === 'move'" @click="emit('move', false)">{{ question?.stops ? 'Stop and Move' : 'Move' }}</Button>
+      <Button @click="emit('close')">Cancel</Button>
+      <Button :operation="answers?.move" @click="emit('move', false)">{{ question?.stops ? 'Stop and Move' : 'Move' }}</Button>
       <Button
         variant="primary"
-        :disabled="!!busy"
-        :loading="busy === 'tell'"
+        :operation="answers?.tell"
         @click="emit('move', true)"
       >
         {{ question?.stops ? 'Stop, Move and Tell Agent' : 'Move and Tell Agent' }}

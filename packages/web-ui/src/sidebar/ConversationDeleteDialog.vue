@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
-import type { Action } from '../ui/pending-action'
+import type { Action } from '../ui/operations'
 
 /**
  * The question before conversations are deleted for good (`product.md`

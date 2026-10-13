@@ -2,7 +2,8 @@
 import { ChevronsDownUp, ChevronsUpDown, ListChecks, SquarePen, Trash2 } from '@lucide/vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
-import type { Action } from '@demicodes/web-ui/ui/pending-action'
+import type { Action } from '@demicodes/web-ui/ui/operations'
+import { projectTarget } from './project-hosts'
 import type { SidebarProject } from './types'
 
 defineProps<{
@@ -43,6 +44,7 @@ const emit = defineEmits<{
     :icon="Trash2"
     label="Remove Project"
     is-danger
+    :operation="{ action: 'remove', target: projectTarget(project.id) }"
     @select="onRemove?.()"
   />
 </template>

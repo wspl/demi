@@ -41,7 +41,9 @@ import AddProviderDialog from './AddProviderDialog.vue'
 import ModelDialog from './ModelDialog.vue'
 import { endpointProblem } from './provider-defaults'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
-import type { Action } from '../ui/pending-action'
+import { operations, type Action, type Operation } from '../ui/operations'
+import { answerInDialog } from './dialog-work'
+import { providerOperation, providerTarget } from './provider-operations'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsListItem from './SettingsListItem.vue'
 import SettingsPage from './SettingsPage.vue'
@@ -89,11 +91,6 @@ const props = defineProps<{
   vendorLoad?: 'loading' | 'ready' | 'failed'
   modelLoad?: 'loading' | 'ready' | 'failed'
   overlayStore: OverlayStore
-  /** The provider whose connection test is running. */
-  operations?: Record<string, SettingsProviderOperation>
-  testing?: string | null
-  /** The provider whose model list is being fetched. */
-  refreshing?: string | null
   refreshingUsage?: Record<string, Record<string, SettingsQuotaRefresh>>
   /** The vendor's words for each account's last manual usage refresh that failed, by provider and account. */
   usageFailures?: Record<string, Record<string, ShownError>>
@@ -208,8 +205,17 @@ const providerBadgeLabel = {
  * one, and the host saves an edit once it ends.
  */
 function fieldsLocked(provider: SettingsProviderEntry): boolean {
-  const kind = props.operations?.[provider.id]?.kind
-  return kind === 'saving' || kind === 'removing'
+  return runs(provider.id, { kind: 'saving' }) || runs(provider.id, { kind: 'removing' })
+}
+
+/** Whether the provider's operation runs (`operations.ts`, `provider-operations.ts`). */
+function runs(id: string, operation: SettingsProviderOperation): boolean {
+  return operations.runs(providerOperation(id, operation))
+}
+
+/** Whether the provider does something now: one thing at a time, so its other operations wait. */
+function busy(id: string): boolean {
+  return operations.blocked(providerOperation(id, { kind: 'saving' }))
 }
 
 /**
@@ -220,6 +226,8 @@ const confirming = ref<{
   title: string
   action: TitleText
   body: string[]
+  /** What the answer does, to what: the question shows it working, asked again included. */
+  operation: Operation
   run: () => unknown
 } | null>(null)
 const confirmOpen = ref(false)
@@ -229,11 +237,19 @@ function ask(question: NonNullable<typeof confirming.value>): void {
   confirmOpen.value = true
 }
 
+/** The answer: the question closes once its work is done, if it still asks the same of the same thing. */
 async function confirm(): Promise<void> {
+  const question = confirming.value
+  if (!question) {
+    return
+  }
   try {
-    await confirming.value?.run()
+    await question.run()
   } finally {
-    confirmOpen.value = false
+    const shown = confirming.value
+    if (shown?.operation.action === question.operation.action && shown.operation.target === question.operation.target) {
+      confirmOpen.value = false
+    }
   }
 }
 
@@ -247,6 +263,7 @@ function askRemoveProvider(provider: SettingsProviderEntry): void {
         : `Its API key and its ${countUnlessOne(provider.models.length, 'model')} go with it.`,
       'Conversations that use one of its models keep their history, and their next message needs another model.',
     ],
+    operation: providerOperation(provider.id, { kind: 'removing' }),
     run: () => props.onRemove?.(provider.id),
   })
 }
@@ -270,6 +287,7 @@ function askRemoveAccount(
     title: `Remove the account “${account.label}”?`,
     action: 'Remove',
     body: [effect, 'Demi forgets its sign-in. You can add it again with Add Account.'],
+    operation: providerOperation(provider.id, { kind: 'account', accountId: account.id, action: 'remove' }),
     run: () => props.onRemoveAccount?.(provider, account.id),
   })
 }
@@ -279,6 +297,8 @@ function askRemoveModel(provider: SettingsProviderEntry, model: SettingsProvider
     title: `Remove the model “${model.name || model.id}”?`,
     action: 'Remove',
     body: [`It leaves ${provider.name}’s model list and the model menus. You can add it again with its ID.`],
+    // Of its own group: the list's save waits for what the provider does, rather than being refused.
+    operation: { action: `removeModel:${model.id}`, target: providerTarget(provider.id) },
     run: () => props.onRemoveModel?.(provider, model),
   })
 }
@@ -302,17 +322,16 @@ function rename(name: string) {
 }
 
 function isTesting(provider: SettingsProviderEntry): boolean {
-  return props.testing === provider.id || props.operations?.[provider.id]?.kind === 'testing'
+  return runs(provider.id, { kind: 'testing' })
 }
 
 // An account's test ends in a toast: its button has no row to show the answer in.
 const testingAccounts = computed(() =>
-  props.providers.flatMap((provider) => {
-    const operation = props.operations?.[provider.id]
-    return operation?.kind === 'account' && operation.action === 'test'
-      ? [{ providerId: provider.id, accountId: operation.accountId }]
-      : []
-  }),
+  props.providers.flatMap((provider) =>
+    (provider.accounts ?? [])
+      .filter((account) => accountPending(provider.id, account.id, 'test'))
+      .map((account) => ({ providerId: provider.id, accountId: account.id })),
+  ),
 )
 watch(testingAccounts, (now, before) => {
   for (const tested of before) {
@@ -408,35 +427,38 @@ function openModel(
   }
 }
 
-async function saveModel(draft: SettingsModelDraft) {
+/** Saving a model, of its own group: it waits for what the provider does, rather than being refused. */
+function modelSaving(editor: SettingsModelEditor): Operation {
+  return { action: `saveModel:${editor.original?.id ?? 'new'}`, target: providerTarget(editor.providerId) }
+}
+
+/** The model dialog of `editor`'s model, if it is the one open: the answer to its save goes there. */
+function shownModelEditor(providerId: string, modelId: string | null): SettingsModelEditor | null {
+  const shown = modelEditor.value
+  return shown?.open && shown.providerId === providerId && (shown.original?.id ?? null) === modelId ? shown : null
+}
+
+function saveModel(draft: SettingsModelDraft): Promise<void> {
   const editor = modelEditor.value
   const provider = props.providers.find(
     (entry) => entry.id === editor?.providerId,
   )
   if (!editor || !provider) {
-    return
+    return Promise.resolve()
   }
   editor.model = draft
-  editor.error = null
-  try {
-    await props.saveModel(provider, draft, editor.original)
-    editor.open = false
-  } catch (error) {
-    // A refused field of the model is the user's to correct in the dialog.
-    editor.error = formError(error, { invalid_body: null })
-  }
-}
-function accountPending(
-  providerId: string,
-  accountId: string,
-  action: 'remove' | 'test' | 'usage',
-): boolean {
-  const operation = props.operations?.[providerId]
-  return (
-    operation?.kind === 'account' &&
-    operation.accountId === accountId &&
-    operation.action === action
+  const original = editor.original
+  // A refused field of the model is the user's to correct in the dialog.
+  return answerInDialog(
+    () => shownModelEditor(provider.id, original?.id ?? null),
+    'Could Not Save the Model',
+    (error) => formError(error, { invalid_body: null }),
+    () => props.saveModel(provider, draft, original),
   )
+}
+
+function accountPending(providerId: string, accountId: string, action: 'remove' | 'test'): boolean {
+  return runs(providerId, { kind: 'account', accountId, action })
 }
 
 // A compatible API's endpoint is changed, never emptied: the entry would stop being one.
@@ -500,8 +522,8 @@ const compatibleOpen = ref(false)
             :badge-label="providerBadgeLabel[p.state]"
             :muted="!p.enabled"
             removable
-            :removing="operations?.[p.id]?.kind === 'removing'"
-            :remove-disabled="!!operations?.[p.id]"
+            :removing="runs(p.id, { kind: 'removing' })"
+            :remove-disabled="busy(p.id)"
             @select="select(p.id)"
             @remove="askRemoveProvider(p)"
           >
@@ -553,7 +575,7 @@ const compatibleOpen = ref(false)
                     </template>
                     <div class="ml-auto flex items-center gap-1.5">
                       <span
-                        v-if="operations?.[selected.id]?.kind === 'saving'"
+                        v-if="runs(selected.id, { kind: 'saving' })"
                         class="flex items-center gap-1 text-[12px] text-fg-subtle"
                         role="status"
                         ><IndeterminateSpinner :size="12" /> Saving…</span
@@ -612,7 +634,7 @@ const compatibleOpen = ref(false)
                   <Button
                     size="sm"
                     v-if="!account.active"
-                    :disabled="!!operations?.[selected.id]"
+                    :disabled="busy(selected.id)"
                     @click="emit('activateAccount', selected, account.id)"
                     >Activate</Button
                   >
@@ -624,7 +646,7 @@ const compatibleOpen = ref(false)
                       aria-label="Refresh usage"
                       spin-on-click
                       :spinning="refreshingUsage?.[selected.id]?.[account.id] === 'manual'"
-                      :disabled="!!operations?.[selected.id] || refreshingUsage?.[selected.id]?.[account.id] === 'manual'"
+                      :disabled="busy(selected.id) || refreshingUsage?.[selected.id]?.[account.id] === 'manual'"
                       @click="emit('refreshUsage', selected, account.id)"
                   /></Tooltip>
                   <!-- The test asks with this account, in use or not; its answer is a toast,
@@ -634,11 +656,8 @@ const compatibleOpen = ref(false)
                       size="sm"
                       :icon="Plug"
                       aria-label="Test connection"
-                      :loading="accountPending(selected.id, account.id, 'test')"
-                      :disabled="
-                        (!!operations?.[selected.id] && !accountPending(selected.id, account.id, 'test')) ||
-                        !selected.models.some((model) => model.enabled)
-                      "
+                      :operation="providerOperation(selected.id, { kind: 'account', accountId: account.id, action: 'test' })"
+                      :disabled="!selected.models.some((model) => model.enabled)"
                       :disabled-reason="testBlockReason"
                       @click="emit('test', selected, account.id)"
                   /></Tooltip>
@@ -648,13 +667,7 @@ const compatibleOpen = ref(false)
                       :icon="Trash2"
                       variant="danger"
                       aria-label="Remove"
-                      :loading="
-                        accountPending(selected.id, account.id, 'remove')
-                      "
-                      :disabled="
-                        !!operations?.[selected.id] &&
-                        !accountPending(selected.id, account.id, 'remove')
-                      "
+                      :operation="providerOperation(selected.id, { kind: 'account', accountId: account.id, action: 'remove' })"
                       @click="askRemoveAccount(selected, account)"
                   /></Tooltip>
                 </SettingsRow>
@@ -722,8 +735,7 @@ const compatibleOpen = ref(false)
                 <template
                   v-if="
                     selected.detail &&
-                    testing !== selected.id &&
-                    operations?.[selected.id]?.kind !== 'testing'
+                    !isTesting(selected)
                   "
                   #detail
                 >
@@ -732,10 +744,7 @@ const compatibleOpen = ref(false)
                   </p>
                 </template>
                 <span
-                  v-if="
-                    testing === selected.id ||
-                    operations?.[selected.id]?.kind === 'testing'
-                  "
+                  v-if="isTesting(selected)"
                   class="flex items-center gap-1.5 text-[12px] text-fg-subtle"
                   ><IndeterminateSpinner :size="ICON_PX.in24" />
                   Testing…</span
@@ -769,7 +778,7 @@ const compatibleOpen = ref(false)
                     aria-label="Test connection"
                     :disabled="
                       selected.configured === false ||
-                      !!operations?.[selected.id] ||
+                      busy(selected.id) ||
                       !selected.models.some((model) => model.enabled)
                     "
                     :disabled-reason="testBlockReason"
@@ -797,8 +806,8 @@ const compatibleOpen = ref(false)
                     :icon="RefreshCw"
                     aria-label="Check for updates"
                     spin-on-click
-                    :spinning="operations?.[selected.id]?.kind === 'cli'"
-                    :disabled="!!operations?.[selected.id] && operations[selected.id]?.kind !== 'cli'"
+                    :spinning="runs(selected.id, { kind: 'cli' })"
+                    :disabled="busy(selected.id) && !runs(selected.id, { kind: 'cli' })"
                     @click="emit('checkCli', selected)"
                 /></Tooltip>
               </SettingsRow>
@@ -832,7 +841,7 @@ const compatibleOpen = ref(false)
                 <Button
                   v-else
                   size="sm"
-                  :disabled="!!operations?.[selected.id] && operations[selected.id]?.kind !== 'cli'"
+                  :operation="providerOperation(selected.id, { kind: 'cli' })"
                   @click="onInstallCli?.(selected)"
                   >Install</Button
                 >
@@ -864,10 +873,10 @@ const compatibleOpen = ref(false)
                         size="sm"
                         :icon="RefreshCw"
                         spin-on-click
-                        :spinning="refreshing === selected.id"
+                        :spinning="runs(selected.id, { kind: 'refreshing' })"
                         :disabled="
                           selected.configured === false ||
-                          refreshing === selected.id
+                          runs(selected.id, { kind: 'refreshing' })
                         "
                         aria-label="Refresh"
                         @click="emit('refresh', selected)" /></Tooltip
@@ -917,10 +926,10 @@ const compatibleOpen = ref(false)
                     size="sm"
                     :icon="RefreshCw"
                     spin-on-click
-                    :spinning="refreshing === selected.id"
+                    :spinning="runs(selected.id, { kind: 'refreshing' })"
                     :disabled="
                       selected.configured === false ||
-                      refreshing === selected.id
+                      runs(selected.id, { kind: 'refreshing' })
                     "
                     aria-label="Refresh"
                     @click="emit('refresh', selected)"
@@ -1067,6 +1076,7 @@ const compatibleOpen = ref(false)
       :overlay-store="overlayStore"
       :title="confirming?.title ?? ''"
       :action="confirming?.action ?? 'Remove'"
+      :operation="confirming?.operation"
       @close="confirmOpen = false"
       @confirm="confirm"
     >
@@ -1078,6 +1088,7 @@ const compatibleOpen = ref(false)
       :overlay-store="overlayStore"
       :mode="modelEditor.mode"
       :error="modelEditor.error"
+      :operation="modelSaving(modelEditor)"
       :model="modelEditor.model"
       :search="dialogSearch"
       @close="modelEditor.open = false"

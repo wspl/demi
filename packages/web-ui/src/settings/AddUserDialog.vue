@@ -6,7 +6,7 @@ import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import InlineError from '../ui/InlineError.vue'
-import type { Action } from '../ui/pending-action'
+import type { Action, Operation } from '../ui/operations'
 import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import TextInput from '../ui/TextInput.vue'
@@ -29,6 +29,8 @@ const props = defineProps<{
   /** The roles the administrator may give, first the default. */
   roles: readonly SettingsNewUser['role'][]
   onSubmit?: Action<[user: SettingsNewUser]>
+  /** What Add User does (`operations.ts`). */
+  operation?: Operation
   /** The host's refusal of the last submit. */
   error?: { kind: 'emailTaken' } | ({ kind: 'failed' } & ShownError)
 }>()
@@ -117,7 +119,7 @@ function submit(): unknown {
     </div>
     <template #footer>
       <Button @click="emit('close')">Cancel</Button>
-      <Button variant="primary" :disabled="!canSubmit" @click="submit">Add User</Button>
+      <Button variant="primary" :disabled="!canSubmit" :operation="operation" @click="submit">Add User</Button>
     </template>
   </Dialog>
 </template>

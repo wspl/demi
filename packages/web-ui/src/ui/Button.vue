@@ -3,7 +3,7 @@ import { computed, ref, useAttrs } from 'vue'
 import { blockUnavailableButtonEvent, pressOnKey } from './button-events'
 import { useButtonIconSpin } from './button-icon-spin'
 import { disabledTooltip } from './disabled'
-import { usePendingAction } from './pending-action'
+import { useOperationControl, type Operation } from './operations'
 import Tooltip from './Tooltip.vue'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
 import type { SentenceText } from './ui-text'
@@ -34,10 +34,13 @@ const props = withDefaults(
     variant?: 'default' | 'primary' | 'ghost' | 'danger'
     disabled?: boolean
     /**
-     * Shows the spinner for work the caller's state owns. A press whose
-     * handler returns a promise shows it by itself until it settles, so a
-     * handler keeps no flag for that (`pending-action.ts`).
+     * The operation the press starts (`operations.ts`): the button shows the
+     * spinner while it runs, whenever it is drawn, and a press while its
+     * group runs on its target starts nothing. The press's handler returns
+     * the operation's promise; it keeps no flag of its own.
      */
+    operation?: Operation
+    /** Shows the spinner for work the caller's state owns, such as a reset's phases. */
     loading?: boolean
     /** Why it is disabled, as a tooltip; only read while `disabled`. */
     disabledReason?: SentenceText
@@ -65,10 +68,12 @@ const { rotating, onClick: spinOnPress } = useButtonIconSpin(
   props,
   () => emit('spinEnd'),
 )
-// A press whose handler returns a promise works until it settles; a second press meanwhile does nothing.
-const { pending, showsWork, press } = usePendingAction(false)
-const working = computed(() => props.loading === true || (pending.value && showsWork))
-const unavailable = computed(() => props.disabled === true || props.loading === true || pending.value)
+// The press starts the button's operation; a press while its group runs starts nothing.
+const { running, blocked, press } = useOperationControl(() => props.operation, false)
+const working = computed(() => props.loading === true || running.value)
+const unavailable = computed(() => props.disabled === true || props.loading === true || blocked.value)
+/** The spinner takes a leading icon's size, which follows the button's. */
+const spinnerPx = computed(() => (props.size === 'xs' ? 10 : props.size === 'sm' ? 12 : 14))
 
 defineExpose({
   /** Presses the button as a click does, for a shortcut that stands for it: refused while it is disabled or working. */
@@ -145,31 +150,21 @@ const sizeClass = computed(() => {
                   pressed ? 'text-fg-emphasis' : 'hover:text-fg-emphasis',
                 ],
         disabled ? 'pointer-events-none cursor-not-allowed opacity-40' : '',
+        blocked && !working ? 'opacity-40' : '',
       ]"
     >
-      <slot />
-      <span
-        v-if="working"
-        class="button-loading-indicator absolute inset-0 flex items-center justify-center"
-        aria-hidden="true"
-      >
-        <IndeterminateSpinner />
+      <!-- The spinner takes the place of a leading icon, or stands beside the label; the button keeps its look. -->
+      <span v-if="working" class="button-spinner flex shrink-0" aria-hidden="true">
+        <IndeterminateSpinner :size="spinnerPx" />
       </span>
+      <slot />
     </span>
   </Tooltip>
 </template>
 
 <style scoped>
-[data-loading] :deep(> :not(.button-loading-indicator)) {
-  opacity: 0;
-}
-[data-loading] {
-  color: transparent !important;
-}
-.button-loading-indicator {
-  color: var(--color-fg-muted);
-}
-.btn-primary .button-loading-indicator {
-  color: white;
+/* A leading icon gives its place to the spinner. */
+.button-spinner + :deep(svg) {
+  display: none;
 }
 </style>

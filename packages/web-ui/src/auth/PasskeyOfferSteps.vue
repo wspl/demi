@@ -9,6 +9,7 @@ import InlineError from '../ui/InlineError.vue'
 import TextInput from '../ui/TextInput.vue'
 import { deviceSystem, unlockSentence, useDeviceReport } from './device-unlock'
 import WizardStep from '../ui/WizardStep.vue'
+import { useOpening } from '../ui/operations'
 
 /**
  * The steps of the offer to add a passkey, which a wizard frames: the offer
@@ -88,6 +89,10 @@ function answer(): void {
   }
 }
 
+const opening = useOpening(() => props.isOpen)
+/** Add Passkey and Continue are one operation, whichever step shows it. */
+const adding = { action: 'add', target: 'passkey:offer' }
+
 function notNow(): void {
   answer()
   emit('close')
@@ -101,7 +106,12 @@ async function addPasskey(): Promise<void> {
   }
   answer()
   error.value = null
+  const stillShown = opening.shownNow()
   const outcome = await props.add(step.value === 'password' ? password.value : null)
+  // Its answer is for the wizard it was asked in, not one opened since.
+  if (!stillShown()) {
+    return
+  }
   switch (outcome.kind) {
     case 'added':
       emit('close')
@@ -134,7 +144,7 @@ async function addPasskey(): Promise<void> {
     <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
     <template #actions>
       <Button @click="notNow">Not Now</Button>
-      <Button variant="primary" @click="addPasskey">Add Passkey</Button>
+      <Button variant="primary" :operation="adding" @click="addPasskey">Add Passkey</Button>
     </template>
   </WizardStep>
   <WizardStep
@@ -158,7 +168,7 @@ async function addPasskey(): Promise<void> {
     <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
     <template #actions>
       <Button @click="notNow">Not Now</Button>
-      <Button ref="continueButton" variant="primary" @click="addPasskey">Continue</Button>
+      <Button ref="continueButton" variant="primary" :operation="adding" @click="addPasskey">Continue</Button>
     </template>
   </WizardStep>
   <WizardStep

@@ -148,7 +148,15 @@ async function submit(): Promise<void> {
       </form>
       <template #actions>
         <Button @click="emit('signOut')">Sign Out</Button>
-        <Button ref="chooseButton" variant="primary" :disabled="!canSubmit" @click="submit">Choose Password</Button>
+        <Button
+          ref="chooseButton"
+          variant="primary"
+          :disabled="!canSubmit"
+          :operation="{ action: 'choose', target: 'account:password' }"
+          @click="submit"
+        >
+          Choose Password
+        </Button>
       </template>
     </WizardStep>
     <PasskeyOfferSteps

@@ -8,7 +8,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
-import type { Action } from '@demicodes/web-ui/ui/pending-action'
+import type { Action, Operation } from '@demicodes/web-ui/ui/operations'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
@@ -36,6 +36,8 @@ import { formatTokens } from '../ui/token-count'
 const props = defineProps<{
   /** Saves the model; Add or Save works until it settles. */
   onSave?: Action<[model: SettingsModelDraft]>
+  /** What Add or Save does, to which model (`operations.ts`). */
+  operation?: Operation
   /** Why the last save failed, with the request it came from. */
   error?: ShownError | null
   isOpen: boolean
@@ -377,6 +379,7 @@ const canSave = computed(() => {
       <Button
         variant="primary"
         :disabled="!canSave"
+        :operation="operation"
         @click="onSave?.(clone(draft))"
         >{{ mode === 'create' ? 'Add' : 'Save' }}</Button
       >

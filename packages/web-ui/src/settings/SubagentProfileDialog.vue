@@ -18,7 +18,7 @@ import { buildReasoningState, reasoningOptionLabel } from '../agent/reasoning'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
 import Dropdown from '../ui/Dropdown.vue'
-import type { Action } from '../ui/pending-action'
+import type { Action, Operation } from '../ui/operations'
 import ScrollArea from '../ui/ScrollArea.vue'
 import InlineError from '../ui/InlineError.vue'
 import Switch from '../ui/Switch.vue'
@@ -51,6 +51,9 @@ const props = defineProps<{
   catalogModels: Record<string, ModelInfo[]>
   /** Saves the profile; Save works until it settles. */
   onSave?: Action<[draft: SettingsSubagentDraft]>
+  /** What Save does, and what Delete does, one group on the profile (`operations.ts`): while one works, the other cannot be pressed. */
+  saveOperation?: Operation
+  deleteOperation?: Operation
   /** Why the last save failed, with the request it came from. */
   error?: ShownError | null
 }>()
@@ -226,11 +229,11 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
       <InlineError v-if="error" class="px-5 pt-3" :message="error.message" :request-id="error.requestId" />
     </div>
     <template v-if="mode === 'edit'" #footer-leading>
-      <Button variant="danger" @click="emit('delete')">Delete</Button>
+      <Button variant="danger" :operation="deleteOperation" @click="emit('delete')">Delete</Button>
     </template>
     <template #footer>
       <Button @click="emit('close')">Cancel</Button>
-      <Button variant="primary" :disabled="!canSave" @click="save">
+      <Button variant="primary" :disabled="!canSave" :operation="saveOperation" @click="save">
         {{ mode === 'create' ? 'Create Profile' : 'Save' }}
       </Button>
     </template>

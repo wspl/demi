@@ -18,7 +18,7 @@ import SettingsDevicePage from './SettingsDevicePage.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import type { Action } from '../ui/pending-action'
+import type { Action } from '../ui/operations'
 import type { SettingsDevice } from './types'
 
 /**

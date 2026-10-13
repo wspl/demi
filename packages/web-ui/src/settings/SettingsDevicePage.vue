@@ -37,7 +37,7 @@ import type { SentenceText } from '../ui/ui-text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import type { Action } from '../ui/pending-action'
+import type { Action } from '../ui/operations'
 import type { SettingsDevice } from './types'
 
 /**
@@ -197,11 +197,17 @@ const details = computed(() => {
 const detailsOpen = ref(false)
 const renameOpen = ref(false)
 const revokeOpen = ref(false)
+/** Revoking the device, as an operation on it (`operations.ts`): Revoke… shows it while it runs, the page shown again included. */
+const revoking = computed(() => ({ action: 'revoke', target: `device:${device.value?.id ?? ''}` }))
+/** Revoke confirmed: once it is done, the question closes, if it still asks about this device. */
 async function revoke(): Promise<void> {
+  const id = device.value?.id
   try {
     await props.onRevoke?.()
   } finally {
-    revokeOpen.value = false
+    if (device.value?.id === id) {
+      revokeOpen.value = false
+    }
   }
 }
 </script>
@@ -277,7 +283,7 @@ async function revoke(): Promise<void> {
 
     <SettingsGroup v-if="device">
       <SettingsRow label="Revoke this device">
-        <Button size="sm" variant="danger" @click="revokeOpen = true">Revoke…</Button>
+        <Button size="sm" variant="danger" :operation="revoking" @click="revokeOpen = true">Revoke…</Button>
       </SettingsRow>
     </SettingsGroup>
 
@@ -302,6 +308,7 @@ async function revoke(): Promise<void> {
       :device="device?.name ?? ''"
       :projects="projects ?? []"
       :home="device?.home"
+      :operation="revoking"
       @close="revokeOpen = false"
       @revoke="revoke"
     />
