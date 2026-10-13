@@ -86,6 +86,8 @@ demi agent profiles show <name>
 demi agent profiles create <name> --description <line> [model options] [--no-spawning] [--disabled] [< instructions.txt]
 demi agent profiles edit <name> [--name <new>] [--description <line>] [model options] [--spawning|--no-spawning] [--enabled|--disabled] [--no-instructions] [< instructions.txt]
 demi agent profiles delete <name>
+demi agent workflows list
+demi agent workflows check <file>
 ```
 
 `demi agent spawn` reads a task brief from stdin, creates a persisted child, and
@@ -627,6 +629,17 @@ next spawn on its agents can start `explore` and `reviewer`.
   workflows from the conversation's [file watch](../product/web-api.md#file-watch),
   so a workflow added, changed or removed shows at once, with no polling. A file
   that does not parse is listed as unavailable with the parse error.
+- **How the model learns the format.** `demi agent workflows --help` is
+  where the format is written: where workflow files live, each field, and a
+  whole example, kept with the parser that reads them. `demi agent workflows
+  list` lists the project's workflows as the menu does, the conversation's
+  choice marked and a file that does not parse with its error; `demi agent
+  workflows check <file>` parses a file with that same parser and names the
+  line and field that are wrong, so a model that writes one checks it before
+  it reports. The `demi agent` group's description, which the capability
+  index shows, names the project's workflows, so a model asked to write or
+  change one reads the help first, as it does for any command it has not
+  used; neither the format nor a skill is in the prompt.
 - **What the model sees.** With a workflow chosen, `demi agent profiles list`
   shows the workflow's name, then its profiles as it shows the user's ([What the model sees](#what-the-model-sees)); with No Subagents, the line
   that subagents are turned off for this conversation.
