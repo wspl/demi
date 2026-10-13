@@ -486,6 +486,51 @@ function conversationPlugin(host: PageHost, plugin: string, conversation: string
   }
 }
 
+/**
+ * The readers of one plugin's user state over one host that cannot read it
+ * now. The refusal is one fact however many components read the state: it
+ * is told once, when the first reader stops reading, and told again only
+ * after every reader read again or went.
+ */
+class UserStateRefusals {
+  private refusing = 0
+
+  constructor(private readonly plugin: string) {}
+
+  begin(refusal: PluginCallError | null): void {
+    this.refusing += 1
+    if (this.refusing === 1) {
+      // What did not read is for a developer, in the console.
+      reportError('Could Not Read the Plugin’s Data', refusal, {
+        userVisible: true,
+        message: 'Reloading the page may help.',
+        detail: `the user state of the ${this.plugin} plugin`,
+      })
+    }
+  }
+
+  end(): void {
+    this.refusing -= 1
+  }
+}
+
+const refusalsByHost = new WeakMap<PageHost, Map<string, UserStateRefusals>>()
+
+/** The refusals of `plugin`'s user state over `host`, which all its readers share. */
+function userStateRefusals(host: PageHost, plugin: string): UserStateRefusals {
+  let byPlugin = refusalsByHost.get(host)
+  if (!byPlugin) {
+    byPlugin = new Map()
+    refusalsByHost.set(host, byPlugin)
+  }
+  let refusals = byPlugin.get(plugin)
+  if (!refusals) {
+    refusals = new UserStateRefusals(plugin)
+    byPlugin.set(plugin, refusals)
+  }
+  return refusals
+}
+
 /** The context of `page` over `host`: its own plugin, and the panel tabs of its own kinds. */
 export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
   const own = (kind: string) => {
@@ -512,21 +557,23 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
       state<T>(schema: z.ZodType<T>) {
         const state = readState(() => host.userState(page.plugin), schema)
         // The user state has no place of its own on a page, so the page
-        // says once, in a toast, that it stopped reading it. What did not
-        // read is for a developer, in the console.
-        watch(
-          () => state.refusal.value !== null,
-          (refused) => {
-            if (refused) {
-              reportError('Could Not Read the Plugin’s Data', state.refusal.value, {
-                userVisible: true,
-                message: 'Reloading the page may help.',
-                detail: `the user state of the ${page.plugin} plugin`,
-              })
-            }
-          },
-          { immediate: true, flush: 'sync' },
-        )
+        // says once, in a toast, that it stopped reading it, however many
+        // components read it (`userStateRefusals`).
+        const refusals = userStateRefusals(host, page.plugin)
+        let counted = false
+        const settle = (refused: boolean) => {
+          if (refused === counted) {
+            return
+          }
+          counted = refused
+          if (refused) {
+            refusals.begin(state.refusal.value)
+          } else {
+            refusals.end()
+          }
+        }
+        watch(() => state.refusal.value !== null, settle, { immediate: true, flush: 'sync' })
+        onScopeDispose(() => settle(false))
         return computed(() => state.value.value)
       },
       call: (method, params, result, options) =>
