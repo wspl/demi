@@ -6,8 +6,47 @@ import type { HostMenuHost } from '../hosts/types'
 /** Sidebar conversation list, or a session that is not reconnecting. */
 export type ListLoad = 'ready' | 'loading' | 'failed'
 
-/** Loading covers an uncached opening and its handshake; cached navigation preserves the phase. */
-export type SessionLoad = ListLoad | 'reconnecting'
+/**
+ * How far the conversation's opening has come (`web-application.md` § Opening
+ * a conversation shows in two steps), and the state of its connection since:
+ * - `loading`: its history or its agents are not read yet; the pane says it
+ *   loads.
+ * - `opening`: the first step. The transcript and everything that names its
+ *   agents show; the session is opening, and nothing only the live session
+ *   knows shows yet.
+ * - `connecting`: the first step, whose session could not be reached yet and
+ *   is tried again; the transcript's tail says it connects.
+ * - `ready`: the second step, the session open and shown; or a conversation
+ *   that opens no session, which stops at the first step.
+ * - `reconnecting`: an open session whose connection was lost; what it showed
+ *   stays while it is tried again.
+ * - `failed`: the opening failed, or the session refused to open.
+ */
+export type SessionLoad = ListLoad | 'opening' | 'connecting' | 'reconnecting'
+
+/**
+ * Whether the session has told the conversation's turn, which the Resume
+ * chip reads: not while a first opening has yet to open it, nor once it
+ * failed; a reconnection keeps what the session told.
+ */
+export function sessionShown(load: SessionLoad): boolean {
+  return load === 'ready' || load === 'reconnecting'
+}
+
+/**
+ * Whether the conversation shows its transcript: from the first step of its
+ * opening on, with its agents, the composer, its marking read and a reveal
+ * of a message in it (`web-application.md` § Opening a conversation shows in
+ * two steps), unless its opening failed.
+ */
+export function transcriptShown(load: SessionLoad): boolean {
+  return load !== 'loading' && load !== 'failed'
+}
+
+/** Whether the conversation is still opening for the first time: what joins it now is not new. */
+export function isOpening(load: SessionLoad): boolean {
+  return load === 'loading' || load === 'opening' || load === 'connecting'
+}
 
 /**
  * What the session pane shows instead of the transcript. `empty` is an open
@@ -19,8 +58,8 @@ export type SessionStatusKind = 'loading' | 'failed' | 'empty' | 'missing' | 'no
 
 /**
  * The pane that replaces the transcript. `loading` always wins so a restore
- * never reads as an empty conversation, even with cached blocks. Reconnecting keeps the transcript
- * (or an empty list) and uses the same tail row as Requesting. A failure with
+ * never reads as an empty conversation, even with cached blocks. Connecting and reconnecting
+ * keep the transcript (or an empty list) and say so in the tail row. A failure with
  * history in memory also keeps the transcript: the dock's notice names the
  * failure and offers Retry, and nothing the reader already had disappears.
  */
@@ -34,20 +73,10 @@ export function sessionPaneStatus(
   if (load === 'failed') {
     return hasTranscript ? null : 'failed'
   }
-  if (load === 'reconnecting') {
+  if (load === 'reconnecting' || load === 'connecting') {
     return null
   }
   return hasTranscript ? null : 'empty'
-}
-
-/**
- * Whether the dock's chips (Agents, Running, Resume) show. A conversation that opens holds what
- * its reads brought, the transcript, its agents and its commands, before its handshake lands;
- * the pane says it loads until then, and the chips come with the transcript in one change
- * (`web-application.md` § Responding to the user).
- */
-export function dockChipsShown(load: SessionLoad): boolean {
-  return load !== 'loading'
 }
 
 /** A session-level failure told at the tail of the transcript. */
