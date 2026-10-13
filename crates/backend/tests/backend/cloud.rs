@@ -1034,6 +1034,33 @@ async fn a_boot_whose_runner_never_connects_fails_saves_what_it_started_and_says
     backend.close().await;
 }
 
+/// A Cloud whose runner cannot start, here because its executable is
+/// missing, fails its wake at once and says why: the manager answers the
+/// wake with the reason rather than never, so the request that woke the
+/// Cloud is refused instead of waiting for ever.
+#[tokio::test]
+async fn a_wake_whose_runner_cannot_start_fails_at_once_and_says_why() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    create(&backend, &master, FIRST).await;
+    let nowhere = tempfile::tempdir().unwrap();
+    let missing = nowhere.path().join("demi-runner");
+    harness
+        .manager
+        .script(|script| script.runner = Some(missing.clone()));
+    let listing = format!("/api/conversations/{FIRST}/fs");
+    let refused = tokio::time::timeout(PATIENCE, backend.get(&listing, Some(&master)))
+        .await
+        .expect("the wake is answered");
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::SERVICE_UNAVAILABLE, ErrorCode::CloudUnavailable)
+    );
+    let message = refused.error().message;
+    assert!(message.contains(&missing.display().to_string()), "{message}");
+    backend.close().await;
+}
+
 #[tokio::test]
 async fn the_clouds_device_log_answers_while_it_runs_and_a_stopped_cloud_says_so_without_waking() {
     let mut harness = Harness::new();

@@ -3,6 +3,7 @@
 //! itself and the operations of the runner's native fixture service.
 
 use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 
 /// The operations of the runner's native fixture service
 /// (`crates/runner/tests/fixtures/service.rs`), which the runner's and
@@ -52,10 +53,13 @@ pub fn built_program(name: &str) -> PathBuf {
 /// fail as a runner of another wire, or pass on its old behavior. Cargo
 /// writes beside each program it places the files it was built from, its
 /// dep-info `<name>.d`; a program older than one of them is stale, as Cargo
-/// itself judges it, and this panics at once with the build that renews it.
-/// Neither Cargo's `CARGO_BIN_EXE_<name>`, which only covers the test's own
-/// package, nor its artifact dependencies, unstable (`-Z bindeps`), can make
-/// Cargo build another package's program for a test.
+/// itself judges it, and this panics at once with what it saw, the program's
+/// and the newest source's times, and the build that renews it. Call it on
+/// the test's own thread: a panic in a task the test does not await leaves
+/// whoever waits on that task waiting. Neither Cargo's
+/// `CARGO_BIN_EXE_<name>`, which only covers the test's own package, nor its
+/// artifact dependencies, unstable (`-Z bindeps`), can make Cargo build
+/// another package's program for a test.
 pub fn current_program(directory: &Path, name: &str) -> PathBuf {
     let program = directory.join(format!("{name}{}", std::env::consts::EXE_SUFFIX));
     if let Some(problem) = staleness(&program) {
@@ -65,7 +69,8 @@ pub fn current_program(directory: &Path, name: &str) -> PathBuf {
 }
 
 /// Why `program` does not match the sources it is built from, if it does
-/// not.
+/// not: what was seen, so that a report of a false alarm can be checked
+/// against Cargo's own view.
 fn staleness(program: &Path) -> Option<String> {
     let Ok(built) = std::fs::metadata(program).and_then(|metadata| metadata.modified()) else {
         return Some(format!("{} is not built", program.display()));
@@ -76,22 +81,34 @@ fn staleness(program: &Path) -> Option<String> {
     // The first rule names the program and, after `: `, its sources, each
     // space in a path escaped with a backslash.
     let (_, sources) = info.lines().next()?.split_once(": ")?;
-    sources_of(sources).into_iter().find_map(|source| {
-        let changed = std::fs::metadata(&source).and_then(|metadata| metadata.modified());
-        match changed {
-            Ok(changed) if changed <= built => None,
-            Ok(_) => Some(format!(
-                "{} is older than {}, which it is built from",
-                program.display(),
-                source.display()
-            )),
-            Err(_) => Some(format!(
+    let mut newest: Option<(SystemTime, PathBuf)> = None;
+    for source in sources_of(sources) {
+        let Ok(changed) = std::fs::metadata(&source).and_then(|metadata| metadata.modified()) else {
+            return Some(format!(
                 "{} is built from {}, which is gone",
                 program.display(),
                 source.display()
-            )),
+            ));
+        };
+        if newest.as_ref().is_none_or(|(time, _)| changed > *time) {
+            newest = Some((changed, source));
         }
-    })
+    }
+    let (changed, source) = newest.filter(|(changed, _)| *changed > built)?;
+    Some(format!(
+        "{} (modified {}) is older than {} (modified {}), the newest of the files its dep-info {} names",
+        program.display(),
+        moment(built),
+        source.display(),
+        moment(changed),
+        program.with_extension("d").display()
+    ))
+}
+
+/// A file's modification time as a reader compares it, such as
+/// `2026-10-13T06:27:00.411234Z`.
+fn moment(time: SystemTime) -> String {
+    jiff::Timestamp::try_from(time).map_or_else(|_| format!("{time:?}"), |time| time.to_string())
 }
 
 /// The paths of a dep-info rule's prerequisites.
