@@ -13,6 +13,11 @@ const localStateSchema = z.object({
   asideShare: z.number().min(0).max(1).optional(),
   /** The dock windows' (Agents, Running) height as a share of the session area's; one for both. */
   dockWindowShare: z.number().min(0).max(1).optional(),
+  /**
+   * Whether this browser was offered a passkey and answered, by either
+   * button: it is not offered again here (`product.md` § User system).
+   */
+  passkeyOfferAnswered: z.boolean().optional(),
   /** Whether the work panel is open, keyed by conversation id. */
   workPanelOpen: z.record(z.string(), z.boolean()).optional(),
   /** What this page's work panel selected, tabs' ids and pinned kinds', the newest last, keyed by conversation id. */

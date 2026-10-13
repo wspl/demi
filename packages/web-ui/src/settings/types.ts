@@ -391,15 +391,25 @@ export interface SettingsPasskey {
 }
 
 /**
- * How adding a passkey ended: added; refused for the password, said under
- * its field; the browser's prompt dismissed, which says nothing; or failed,
- * said under the dialog's fields.
+ * How adding a passkey with the account's password ended: added; refused for
+ * the password, said under its field; the browser's prompt dismissed, which
+ * says nothing; the browser's password manager holds a passkey of the
+ * account already, which `message` says and which is no failure; or
+ * failed, said under the dialog's fields.
  */
 export type PasskeyAddOutcome =
   | { kind: 'added' }
   | { kind: 'wrongPassword'; message: string }
   | { kind: 'dismissed' }
+  | { kind: 'held'; message: string }
   | ({ kind: 'failed' } & ShownError)
+
+/**
+ * How adding a passkey without the password ended: as with it, or the
+ * backend wants the session confirmed first, as it does five minutes after
+ * the last sign-in.
+ */
+export type PasskeyOfferOutcome = PasskeyAddOutcome | { kind: 'needsPassword' }
 
 /** The account's passkeys and what the host does with them, for Settings › Account. */
 export interface SettingsPasskeyHost {
