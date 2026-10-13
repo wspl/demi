@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
+import { KeyRound, ScanFace } from '@lucide/vue'
 import type { ShownError } from '../infra/errors'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { PasskeyOfferOutcome } from '../settings/types'
@@ -22,8 +23,8 @@ import WizardStep from '../ui/WizardStep.vue'
  * Add Passkey asks the host to add one without the password, which a sign-in
  * of the last five minutes has already proved; once those have passed the
  * host answers it needs the password, and the step asks for it. A password
- * manager that holds a passkey of the account says so, and the step
- * says it too: not a failure. A dismissed browser prompt leaves the step as
+ * manager that holds a passkey of the account says so, in the step
+ * *Passkey Ready*: not a failure. A dismissed browser prompt leaves the step as
  * it was, for another try; a failure is said in the step. Not Now, Escape and
  * the scrim leave it.
  *
@@ -136,6 +137,7 @@ async function addPasskey(): Promise<void> {
     <WizardStep
       v-if="step === 'ask'"
       title="Use Face ID next time?"
+      :icon="ScanFace"
       message="A passkey signs you in to Demi without your password."
     >
       <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
@@ -147,6 +149,7 @@ async function addPasskey(): Promise<void> {
     <WizardStep
       v-else-if="step === 'password'"
       title="Enter Your Password"
+      :icon="KeyRound"
       message="Confirm it is you to add the passkey."
     >
       <form class="flex flex-col gap-2" @submit.prevent="addPasskey">
@@ -168,9 +171,14 @@ async function addPasskey(): Promise<void> {
         <Button variant="primary" :loading="busy" @click="addPasskey">Continue</Button>
       </template>
     </WizardStep>
-    <WizardStep v-else title="This phone already has a passkey for Demi.">
+    <WizardStep
+      v-else
+      title="Passkey Ready"
+      message="Your password manager already has a passkey for Demi."
+      :icon="KeyRound"
+    >
       <template #actions>
-        <Button variant="primary" @click="emit('close')">OK</Button>
+        <Button variant="primary" @click="emit('close')">Continue</Button>
       </template>
     </WizardStep>
   </Wizard>
