@@ -373,7 +373,8 @@ provider reported:
 Only the blocks after the anchor, or from the boundary on without one, are
 weighed, so only their media's bytes matter to the estimate.
 
-The page shows this estimate, never one of its own: the session reports it
+The page shows this estimate, never one of its own: every node's session,
+a subagent's as the root's, reports it
 with the window in use and the estimate from which the user may compact
 (`context_usage`, [Server frames](runtime.md#server-frames)) after each
 provider response, after each pass that compacted, and when an action ends.
