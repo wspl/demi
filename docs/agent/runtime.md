@@ -2000,7 +2000,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `pending_calls` | The calls the model is writing, each `{ toolUseId, toolName, description }`, `description` null until written, and `subagentId` when they are a subagent's ([Calls being written](#calls-being-written)) |
 | `retry_scheduled` | The attempt, the delay in milliseconds, the code and the diagnostics of a failure being retried ([Retries](failures-and-recovery.md#retries)) |
 | `waiting` | `waitedMs`, how long a node had waited for the model's answer when the frame left, or null when it waits for none, and `subagentId` when the node is a subagent: when a wait starts or ends, and on open for each node ([Waiting for the model](#waiting-for-the-model)) |
-| `error` | A message, a code and diagnostics: a failed turn, a refused frame, or a failed save |
+| `error` | A message, a code and diagnostics: a failed turn, a refused frame, or a failed save; `requestId`, the socket's ([Request IDs and the server log](../backend/backend.md#request-ids-and-the-server-log)) |
 | `rejected` | The refused command and the reason |
 | `subagent`, `subagent_transcript_reset`, `subagent_transcript_patch` | Subagent lifecycle and transcripts ([Protocol](subagents.md#protocol)) |
 | `closed` | The connection is detached: its tree was disposed, or it sent `close` while attached to none |
