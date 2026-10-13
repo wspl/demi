@@ -92,6 +92,6 @@ before you add or change a test.
 ## License
 
 By contributing, you agree that your contributions are licensed under the
-project's license, the [Apache License 2.0 with the Commons Clause](LICENSE),
+project's license, the [Demi License](LICENSE),
 and that The Demi Authors may also license them to others under other terms,
 including the commercial licenses that allow selling Demi.

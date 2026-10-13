@@ -84,12 +84,12 @@ change must follow.
 
 ## License
 
-Demi is source-available under the [Apache License 2.0 with the Commons
-Clause](LICENSE). You may use it, change it and run it, a company included,
-for its own people. You may not sell it: offering Demi, or a product or
-service whose value comes entirely or substantially from it, to others for a
-fee, as a hosted service, a packaged product, or paid hosting, consulting or
-support, needs a commercial license.
+Demi is licensed under the [Demi License](LICENSE): the Apache License 2.0
+with additional conditions. You may use it, change it and run it, a company
+included, for its own people, and charge others for deploying, integrating
+or supporting Demi they run themselves. Offering Demi to others for a fee,
+as a hosted or multi-tenant service or as a product that is substantially
+Demi, needs a commercial license.
 
 For a commercial license, write to [support@demi.sh](mailto:support@demi.sh).
 
