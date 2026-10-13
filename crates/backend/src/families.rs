@@ -39,6 +39,10 @@ impl ProviderFamily for AnthropicFamily {
         CredentialKind::ApiKey
     }
 
+    fn default_endpoint(&self) -> Option<&'static str> {
+        Some(AnthropicConfig::DEFAULT_BASE_URL)
+    }
+
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
         let FamilyCredential::ApiKey(settings) = args.credential else {
             return Err(FamilyError::WrongCredential);
@@ -65,6 +69,10 @@ impl ProviderFamily for OpenAiFamily {
         &[WireApi::Responses, WireApi::ChatCompletions]
     }
 
+    fn default_endpoint(&self) -> Option<&'static str> {
+        Some(OpenAiConfig::DEFAULT_BASE_URL)
+    }
+
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
         let FamilyCredential::ApiKey(settings) = args.credential else {
             return Err(FamilyError::WrongCredential);
@@ -86,6 +94,10 @@ struct GoogleFamily;
 impl ProviderFamily for GoogleFamily {
     fn credential(&self) -> CredentialKind {
         CredentialKind::ApiKey
+    }
+
+    fn default_endpoint(&self) -> Option<&'static str> {
+        Some(GoogleConfig::DEFAULT_BASE_URL)
     }
 
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {

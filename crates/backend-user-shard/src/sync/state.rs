@@ -212,7 +212,7 @@ impl Shard {
                 },
             };
             ProviderState {
-                provider: entry.dto(),
+                provider: services.assembly.provider_dto(entry),
                 details,
             }
         }))
