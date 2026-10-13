@@ -7,7 +7,7 @@ import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
-import { claimDevice, useDeviceInstallation } from '../devices/pairing'
+import { claimDevice, useInstallCommands } from '../devices/pairing'
 import { useDeviceSettings } from './devices'
 import { useSettingsAddress } from './address'
 import { directStatus, measureDirect, tryDirect, watchDirect } from '../direct'
@@ -16,7 +16,7 @@ import { changeDeviceSchema } from '../api/generated/web-api'
 const resources = useResources()
 const product = useProduct()
 const settings = useDeviceSettings()
-const installation = useDeviceInstallation()
+const installCommands = useInstallCommands()
 const address = useSettingsAddress()
 const { cloud, reset, revoking } = storeToRefs(settings)
 const { revoke, rename, setRoute, resetCloud } = settings
@@ -80,7 +80,7 @@ watch(
     :reset-pending="reset.status === 'pending'"
     :reset-error="reset.status === 'failed' ? reset.message : null"
     :overlay-store="appOverlayStore"
-    :installation="installation"
+    :install-commands="installCommands"
     :claim-device="claimDevice"
     @retry="product.reconnect"
     @reset-cloud="resetCloud"

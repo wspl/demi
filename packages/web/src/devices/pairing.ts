@@ -1,21 +1,13 @@
 import { computed, type ComputedRef } from 'vue'
 import type { PairingResult } from '@demicodes/web-ui/devices/pairing'
-import { deviceInstallationAt, type DeviceInstallation } from '@demicodes/web-ui/devices/installation'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
-import { deviceAnswerSchema, type Claim } from '../api/generated/web-api'
+import { deviceAnswerSchema, type Claim, type InstallCommands } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
 
-/**
- * The backend's installers, at the public URL the product state names, not at
- * the page's own origin, which in development is Vite's; null until the state
- * has loaded.
- */
-export function useDeviceInstallation(): ComputedRef<DeviceInstallation | null> {
+/** The install commands the product state carries; null until it has loaded. */
+export function useInstallCommands(): ComputedRef<InstallCommands | null> {
   const product = useProduct()
-  return computed(() => {
-    const publicUrl = product.snapshot?.publicUrl
-    return publicUrl ? deviceInstallationAt(publicUrl) : null
-  })
+  return computed(() => product.snapshot?.installCommands ?? null)
 }
 
 export async function claimDevice(

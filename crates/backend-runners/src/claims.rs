@@ -9,6 +9,9 @@ use std::collections::{HashMap, VecDeque};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
+use demi_backend_database::StorageError;
+use demi_backend_database::accounts::TokenHash;
+use demi_backend_database::control::ControlService;
 use demi_backend_database::devices::DeviceRecord;
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::RunnerInfo;
@@ -17,7 +20,7 @@ use demi_web_api_protocol::ids::UserId;
 use tokio::sync::oneshot;
 use tokio::time::Instant;
 
-use crate::codes::ClaimCode;
+use crate::codes::{ClaimCode, new_device_token};
 
 /// The window claim attempts are counted in.
 const ATTEMPT_WINDOW: Duration = Duration::from_secs(60);
@@ -48,6 +51,20 @@ pub struct PendingRunner {
     grant: oneshot::Sender<ClaimGrant>,
 }
 
+/// Why a claim paired no device.
+#[derive(Debug, thiserror::Error)]
+pub enum ClaimRefusal {
+    /// The user tried as many codes as a minute allows.
+    #[error("too many claim attempts")]
+    TooManyAttempts,
+    /// No runner waits under the code: it expired, was claimed, or was
+    /// never issued.
+    #[error("unknown or expired pairing code")]
+    UnknownCode,
+    #[error(transparent)]
+    Storage(#[from] StorageError),
+}
+
 /// What a claim hands its runner: the device made for it, the token only
 /// the runner receives, and where the device's answer goes once the runner's
 /// socket is bound in the user's shard.
@@ -73,7 +90,7 @@ impl PendingClaims {
 
     /// Counts a claim attempt of `user`, unless the user made the most a
     /// minute allows already: then false, and nothing is counted.
-    pub fn attempt(&self, user: &UserId) -> bool {
+    fn attempt(&self, user: &UserId) -> bool {
         let now = Instant::now();
         let mut state = self.lock();
         let attempts = state.attempts.entry(user.clone()).or_default();
@@ -90,9 +107,47 @@ impl PendingClaims {
         true
     }
 
+    /// Pairs the runner waiting under `code`, spelled as a person types it,
+    /// with `user`: the device is made, its token goes to that runner alone,
+    /// and the answer is the device once the runner's socket is bound in the
+    /// user's shard. Add Device's `POST /devices/claim` and `demi host pair`
+    /// both claim this way.
+    pub async fn claim(
+        &self,
+        control: &ControlService,
+        user: &UserId,
+        code: &str,
+    ) -> Result<DeviceDto, ClaimRefusal> {
+        if !self.attempt(user) {
+            return Err(ClaimRefusal::TooManyAttempts);
+        }
+        let pending = ClaimCode::parse(code)
+            .and_then(|code| self.take(&code))
+            .ok_or(ClaimRefusal::UnknownCode)?;
+        let token = new_device_token();
+        let device = control
+            .create_device(
+                user.clone(),
+                pending.runner.name.clone(),
+                pending.runner.platform,
+                TokenHash::of(token.expose()),
+            )
+            .await?;
+        let id = device.id.clone();
+        match pending.grant(device, token).await {
+            Ok(device) => Ok(device),
+            Err(_) => {
+                // The runner went away before it held its token: the device
+                // it would have been goes too.
+                control.delete_device(id).await?;
+                Err(ClaimRefusal::UnknownCode)
+            }
+        }
+    }
+
     /// The runner waiting under `code`, which only this claim holds from now
     /// on.
-    pub fn take(&self, code: &ClaimCode) -> Option<PendingRunner> {
+    fn take(&self, code: &ClaimCode) -> Option<PendingRunner> {
         let waiting = self.lock().waiting.remove(code)?;
         Some(PendingRunner {
             runner: waiting.runner,

@@ -22,6 +22,11 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
     workspaces: [],
     devices: [],
     publicUrl: 'http://127.0.0.1:3271/',
+    installCommands: {
+      linux: "curl --proto '=http' -sSf 'http://127.0.0.1:3271/install.sh' | sh",
+      macos: "curl --proto '=http' -sSf 'http://127.0.0.1:3271/install.sh' | sh",
+      windows: "irm 'http://127.0.0.1:3271/install.ps1' | iex",
+    },
     stunUrls: [],
     runnerRelease: null,
     conversations: [],

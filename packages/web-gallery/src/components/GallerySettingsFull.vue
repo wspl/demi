@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { demoDeviceInstallation, demoDeviceReport } from '../fixtures/device-installation'
+import { demoInstallCommands, demoDeviceReport } from '../fixtures/device-installation'
 import { DEMO_RUNNER_RELEASE, galleryDevices, useGalleryDevices } from '../fixtures/devices'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
@@ -323,7 +323,7 @@ function resetShortcuts() {
     :runner-release="DEMO_RUNNER_RELEASE"
     :projects="s.deviceProjects"
     :overlay-store="appOverlayStore"
-    :installation="demoDeviceInstallation"
+    :install-commands="demoInstallCommands"
     :claim-device="devices.claim"
     :name-max-length="64"
     @show="devices.shown.value = $event"
