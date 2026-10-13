@@ -37,7 +37,7 @@ use tokio_util::task::AbortOnDropHandle;
 use crate::input::{self, ControlRequest, ControlResponse, Input, MCP_SERVER, McpReply};
 use crate::mcp::{self, Mcp, McpEvent};
 use crate::mirror::Mirror;
-use crate::output::{ControlRequestLine, Line};
+use crate::output::{ControlRequestLine, LastCall, Line};
 use crate::placement::{CliSite, ConfigDir, Placed, Placement};
 use crate::session::SessionFile;
 use crate::account::expiring;
@@ -180,6 +180,8 @@ pub(crate) enum Waited {
 pub(crate) struct LiveCli {
     shared: Arc<Shared>,
     key: ProcessKey,
+    /// The CLI executable's path, which names its version.
+    pub(crate) executable: String,
     /// The access token the process holds, and when it expires.
     pub(crate) token: Secret,
     expires_at: Timestamp,
@@ -206,6 +208,8 @@ pub(crate) struct LiveCli {
     pub(crate) writing: HashMap<u64, String>,
     /// The batch the last run yielded, whose results the next run delivers.
     pub(crate) held: Vec<ToolCall>,
+    /// The usage of the latest API call, which the turn's response carries.
+    pub(crate) last_call: LastCall,
     pub(crate) mcp: Option<Mcp>,
     /// Which block each entry the process mirrors belongs to.
     pub(crate) mirror: Mirror,
@@ -247,7 +251,11 @@ impl LiveCli {
             .await?
         };
         let session_build = building.elapsed();
+        // The site the placement chose names the executable, and with it the
+        // version, that the error a run logs names.
+        let executable = RefCell::new(String::new());
         let start = |site: &CliSite| {
+            executable.replace(site.executable.clone());
             let start = cli::start(site, request, &token, &file);
             // The environment and the descriptors are left out: a
             // descriptor holds the token.
@@ -284,6 +292,7 @@ impl LiveCli {
         Ok(Self {
             shared: shared.clone(),
             key: ProcessKey::of(request),
+            executable: executable.into_inner(),
             token,
             expires_at,
             config: Some(config),
@@ -305,6 +314,7 @@ impl LiveCli {
             collecting: Vec::new(),
             writing: HashMap::new(),
             held: Vec::new(),
+            last_call: LastCall::default(),
             mcp,
             mirror: Mirror::default(),
             started: Some(StartTiming {
