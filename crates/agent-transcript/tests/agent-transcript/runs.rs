@@ -162,6 +162,18 @@ fn text_the_users_words_and_decisions_end_a_run() {
 }
 
 #[test]
+fn redacted_reasoning_is_a_step_of_its_run() {
+    // The model's reasoning arrives redacted, then it thinks and runs a
+    // command: one run, named after the redacted reasoning that opened it.
+    let mut log = log();
+    log.push_user(turn(), &test_model(), text("Go"), None);
+    log.push_redacted_thinking(&test_model(), "opaque".into());
+    log.open_thinking(&test_model(), "Plan.".into());
+    call(&mut log, "a");
+    assert_eq!(runs(&log), [None, Some(1), Some(1), Some(1)]);
+}
+
+#[test]
 fn the_steps_after_the_systems_resume_join_the_run_before_it() {
     // A deploy command is lost when the backend restarts, the turn
     // resumes, and the agent runs four more commands: one run.

@@ -12,7 +12,7 @@ use demi_provider_common::quota::MemorySnapshots;
 use demi_provider_common::{
     ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
 };
-use demi_shared_types::{ThinkingConfig, TokenUsage};
+use demi_shared_types::{ThinkingConfig, ThinkingSummary, TokenUsage};
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
 
@@ -124,6 +124,110 @@ async fn a_turn_whose_stream_reports_no_calls_usage_gives_a_response_without_usa
         }
     );
     assert_eq!(events, [text("hello"), ProviderEvent::Response(None)]);
+}
+
+/// The CLI shows the model's thinking as the vendor's summary whenever
+/// thinking is on, whatever the selection's summary says; with thinking
+/// turned off it is asked for no display (`claude-code.md` § Requests over
+/// stream-json).
+// Six runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn the_cli_streams_summarized_thinking_whenever_thinking_is_on() {
+    let effort = |summary| ThinkingConfig::Effort {
+        effort: "high".into(),
+        summary,
+    };
+    for (thinking, display) in [
+        (Some(effort(None)), Some("summarized")),
+        (Some(effort(Some(ThinkingSummary::Off))), Some("summarized")),
+        (None, Some("summarized")),
+        (
+            Some(ThinkingConfig::Adaptive {
+                effort: "high".into(),
+            }),
+            Some("summarized"),
+        ),
+        (
+            Some(ThinkingConfig::Budget {
+                budget_tokens: 4_000,
+            }),
+            Some("summarized"),
+        ),
+        (Some(ThinkingConfig::Disabled {}), None),
+    ] {
+        let provider = provider().await;
+        let (placement, mut starts) = ScriptedPlacement::new();
+        let mut runtime = runtime_of(&provider, &placement);
+        let request = InferenceRequest {
+            thinking: thinking.clone(),
+            ..request_without_tools(vec![user("hi")])
+        };
+        let (_, cli) = tokio::join!(all_events(runtime.run(request)), async {
+            let cli = starts.next().await;
+            cli.text("hello");
+            cli.result(1, 1);
+            cli
+        });
+        let args = &cli.spawn.args;
+        let asked = args
+            .iter()
+            .position(|arg| arg == "--thinking-display")
+            .map(|flag| args[flag + 1].as_str());
+        assert_eq!(asked, display, "{thinking:?}");
+        runtime.close().await;
+    }
+}
+
+/// A turn of Claude Code 2.1.296 run with `--thinking-display summarized`
+/// on Opus: the thinking block's `thinking_delta`s carry its summary, and
+/// the whole message printed after them repeats it. The agent sees one
+/// thinking block, its text streamed once, before the answer.
+// One run of a recorded stream: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn summarized_thinking_streams_as_one_thinking_block_whose_text_comes_once() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let (events, _cli) = tokio::join!(
+        all_events(runtime.run(request_without_tools(vec![user("hi")]))),
+        async {
+            let cli = starts.next().await;
+            for line in include_str!("fixtures/summarized-thinking.jsonl").lines() {
+                cli.say_text(&format!("{line}\n"));
+            }
+            cli
+        }
+    );
+    let starts = events
+        .iter()
+        .filter(|event| matches!(event, ProviderEvent::ThinkingStart))
+        .count();
+    assert_eq!(starts, 1, "{events:?}");
+    let first_text = events
+        .iter()
+        .position(|event| matches!(event, ProviderEvent::TextDelta(_)))
+        .unwrap();
+    let mut pieces = 0;
+    let mut thinking = String::new();
+    for (at, event) in events.iter().enumerate() {
+        if let ProviderEvent::ThinkingDelta(piece) = event {
+            assert!(at < first_text, "{events:?}");
+            pieces += 1;
+            thinking.push_str(piece);
+        }
+    }
+    assert!(pieces > 1, "the summary streams in pieces: {events:?}");
+    assert_eq!(
+        thinking,
+        "This is a simple question without any document request, so I can just answer it directly.\n\n"
+    );
+    let signatures = events
+        .iter()
+        .filter(|event| matches!(event, ProviderEvent::ThinkingSignature(_)))
+        .count();
+    assert_eq!(signatures, 1, "{events:?}");
+    assert!(matches!(events.last(), Some(ProviderEvent::Response(Some(_)))), "{events:?}");
+    runtime.close().await;
 }
 
 fn text(text: &str) -> ProviderEvent {
@@ -242,6 +346,8 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
         "system",
         "--effort",
         "high",
+        "--thinking-display",
+        "summarized",
     ]
     .into_iter()
     .map(String::from)
