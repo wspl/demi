@@ -1271,6 +1271,12 @@ empty until he adds `claude-sonnet-4-6` with Add Model. An entry stays the
 kind it was added as: a vendor entry's endpoint is never edited, and a
 compatible entry's endpoint and protocol always can be.
 
+Red marks a failure only: a key the vendor refused, an endpoint that did
+not answer, a catalog that could not be read. An entry just added has failed
+at nothing, so it shows no error; a compatible entry with no models yet says
+*No models yet* in plain text with Add Model, and an entry nobody has tested
+shows no status until it is tested or used.
+
 Entries can be renamed, edited, or removed. A vendor entry's models can be
 replaced by a manual list; clearing it returns to the vendor's catalog. Labels need not be unique.
 Provider configuration stores explicit endpoint and model overrides. Fetched
