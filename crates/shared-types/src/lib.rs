@@ -31,6 +31,7 @@ mod schema;
 mod session;
 mod time;
 mod view;
+mod workflow;
 
 pub use agent_message::{
     AgentMessage, AgentMessageEvent, CompletionId, CompletionOutcome, NotCompletionId,
@@ -78,6 +79,7 @@ pub use quota::{
 };
 pub use read_at::ReadAt;
 pub use schema::Nullable;
+pub use workflow::WorkflowChoice;
 pub use session::{
     ContextRow, ContextRowKind, ContextUsage, PendingCall, PendingSteer,
     QueuedMessage, SessionPhase,

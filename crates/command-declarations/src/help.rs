@@ -250,6 +250,9 @@ impl<B> Node<B> {
             }
         }
         if let Node::Group(group) = self {
+            if let Some(details) = &group.details {
+                lines.extend([String::new(), details.clone()]);
+            }
             lines.extend([String::new(), "Subcommands:".into()]);
             for child in &group.subcommands {
                 lines.push(format!("  {path} {} — {}", child.name(), child.summary()));

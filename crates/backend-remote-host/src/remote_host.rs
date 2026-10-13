@@ -517,8 +517,9 @@ impl RemoteHost {
     /// Looks at several paths with one request (`runner.md` § Host
     /// operations): each answers what is there, in the order of `paths`.
     /// A path the Host could not read answers so; a failure that is not
-    /// about one path fails the look.
-    pub async fn look(&self, paths: &[LookAt]) -> Result<Vec<Look>, HostError> {
+    /// about one path fails the look. The Host's number before it looked
+    /// comes with the answers.
+    pub async fn look(&self, paths: &[LookAt]) -> Result<(Vec<Look>, ReadAt), HostError> {
         let link = self.link()?;
         let _lease = self.admit()?;
         let wire_paths: Vec<wire::LookPath> = paths
@@ -553,14 +554,14 @@ impl RemoteHost {
                 .await?;
             (answer, Bytes::new())
         };
-        let Answer::Fs(FsResult::Look(looked), _) = answer else {
+        let Answer::Fs(FsResult::Look(looked), read_at) = answer else {
             return Err(mismatch());
         };
         if looked.len() != paths.len() {
             return Err(protocol("the runner answered another number of paths"));
         }
         let mut offset: usize = 0;
-        looked
+        let looks = looked
             .into_iter()
             .map(|looked| {
                 Ok(match looked {
@@ -587,7 +588,8 @@ impl RemoteHost {
                     }
                 })
             })
-            .collect()
+            .collect::<Result<_, HostError>>()?;
+        Ok((looks, read_at))
     }
 
     /// The uncommitted changes under `root` (`runner.md` § Working tree),

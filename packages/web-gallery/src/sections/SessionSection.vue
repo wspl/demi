@@ -195,6 +195,7 @@ import GalleryAgentsChip from '../components/GalleryAgentsChip.vue'
 import GalleryCommandReports from '../components/GalleryCommandReports.vue'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import { sevenSaved, twoSaved } from '../fixtures/saved'
+import { noWorkflows, projectWorkflows } from '../fixtures/workflows'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GalleryContextLimit from '../components/GalleryContextLimit.vue'
 import GallerySection from '../components/GallerySection.vue'
@@ -1785,6 +1786,52 @@ onBeforeUnmount(() => {
                 draft="Check the server’s DNS next."
                 :saved="sevenSaved"
                 saved-open
+              />
+            </div>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Workflow Menu"
+        note="The composer’s lower left has the Workflow menu, which shows the conversation’s choice (product.md § A conversation’s workflow). Default follows Settings › Subagents; No Subagents turns subagents off for this conversation; each workflow the project keeps in .demi/workflows/ is an option of its own, by its name. A file that does not read stands in the menu with why, as its tip, and cannot be chosen. A chosen workflow that is gone shows a warning beside its id, and the menu lists it with why until another is chosen. The choice shows at once, and applies from the next spawn. In a narrow composer the menu keeps its mark alone, with the choice as its tip. Here choosing changes the specimen’s own choice; the product keeps it with the conversation, and lists the workflows from the conversation’s file watch."
+      >
+        <div class="specimen-stack specimen-stack-loose">
+          <GallerySpecimen variant="Default · a project with workflows" wide>
+            <GalleryComposer placeholder="Ask anything…" :workflows="projectWorkflows" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="Review Team chosen, with one saved message" wide>
+            <GalleryComposer
+              placeholder="Ask anything…"
+              :workflows="projectWorkflows"
+              :workflow-choice="{ type: 'workflow', id: 'review' }"
+              :saved="twoSaved.slice(0, 1)"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="the chosen workflow is gone" wide>
+            <GalleryComposer
+              placeholder="Ask anything…"
+              :workflows="projectWorkflows"
+              :workflow-choice="{ type: 'workflow', id: 'explore' }"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="no workflows · No Subagents chosen" wide>
+            <GalleryComposer
+              placeholder="Ask anything…"
+              :workflows="noWorkflows"
+              :workflow-choice="{ type: 'none' }"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="reading the workflows" wide>
+            <GalleryComposer placeholder="Ask anything…" :workflows="{ state: 'reading' }" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="narrow" wide>
+            <div class="flex max-w-full resize-x flex-col justify-end overflow-hidden p-3" style="width: 367px; min-width: 15.5rem">
+              <GalleryComposer
+                placeholder="Ask anything…"
+                :workflows="projectWorkflows"
+                :workflow-choice="{ type: 'workflow', id: 'review' }"
+                :saved="twoSaved"
               />
             </div>
           </GallerySpecimen>

@@ -3,6 +3,7 @@ import type { PlaceholderText } from '@demicodes/web-ui/ui/ui-text'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { previewMediaType, type ContextUsage, type UserContentBlock } from '@demicodes/protocol'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
+import type { WorkflowChoice, WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
 import { isEmptyMessage, joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
 import {
@@ -107,6 +108,13 @@ const props = withDefaults(
     saved?: SeedSaved[]
     /** Their list starts open. */
     savedOpen?: boolean
+    /**
+     * The Workflow menu: the project's workflows and the choice the
+     * specimen starts with, Default without one; choosing changes the
+     * specimen's own choice, as the product's record would.
+     */
+    workflows?: WorkflowList
+    workflowChoice?: WorkflowChoice
   }>(),
   {
     draft: '',
@@ -254,10 +262,15 @@ const composerProps = computed(() => {
     working: _working,
     saved: _saved,
     savedOpen: _savedOpen,
+    workflows: _workflows,
+    workflowChoice: _workflowChoice,
     ...rest
   } = props
   return rest
 })
+/** The specimen's Workflow menu choice, which the menu changes at once. */
+const workflowChoice = ref<WorkflowChoice>(props.workflowChoice ?? { type: 'default' })
+const workflow = computed(() => props.workflows ? { choice: workflowChoice.value, list: props.workflows } : null)
 
 /** Pictures of sent files stay loadable while the transcript shows them; they go with the page. */
 const sentPictures: string[] = []
@@ -676,6 +689,8 @@ onBeforeUnmount(() => {
     :replaced="replacedVersion && { markdown: replacedVersion.text, fileNames: replacedVersion.files.map((file) => file.name) }"
     :draft-shown="shown"
     :saved="savedRows"
+    :workflow="workflow"
+    @change-workflow="workflowChoice = $event"
     v-model:saved-open="savedOpen"
     @save-for-later="saveForLater"
     @edit-saved="editSaved"

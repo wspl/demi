@@ -53,9 +53,11 @@ export const GONE_MESSAGE = 'It is no longer there.'
  * § What the service keeps): a file's text or description its `file`, a
  * listing its folder's names or details, the changes list its working tree,
  * a changed file's sides its `file` and its repository's `head`, and its
- * committed contents the `head` alone.
+ * committed contents the `head` alone; an `answer` of the backend that
+ * reads several files, such as a project's workflows, what its last answer
+ * names (`KeptSpec.subjects`).
  */
-export type KeptKind = 'listing' | 'text' | 'description' | 'changes' | 'sides' | 'committed'
+export type KeptKind = 'listing' | 'text' | 'description' | 'changes' | 'sides' | 'committed' | 'answer'
 
 /**
  * What the last answer was: a value; nothing at the path; a file that is
@@ -152,6 +154,8 @@ export interface KeptSpec<T> {
   version?(value: T): string | null
   /** The watch of the view's route, which carries the subscriptions the entry takes; none without one. */
   watch?: WatchChannel | null
+  /** For an `answer`: what the answer `value` depends on, none before the first. */
+  subjects?(value: T | undefined): Subject[]
 }
 
 /** How a view reads an entry: through the route of the place that shows it. */
@@ -289,6 +293,8 @@ class Entry<T> {
         return root === undefined ? [{ kind: 'file', path }] : [{ kind: 'file', path }, { kind: 'head', path: root }]
       case 'committed':
         return root === undefined ? [] : [{ kind: 'head', path: root }]
+      case 'answer':
+        return this.spec.subjects?.(this.state.value) ?? []
     }
   }
 
@@ -423,6 +429,9 @@ export class HostFiles implements WatchListener {
           entry.state.answer = 'value'
           entry.version = entry.spec.version?.(value) ?? null
           this.measure(entry, entry.spec.size(value))
+          // An answer names what it depends on: the entry follows that now.
+          if (entry.spec.kind === 'answer')
+            this.subscribe(entry as Entry<unknown>, null)
         }
         entry.state.failure = null
         answered = true

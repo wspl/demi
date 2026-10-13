@@ -276,6 +276,12 @@ impl Shard {
             };
             changes.push((settings_fields, ConversationChange::Settings(change)));
         }
+        if let Some(workflow) = patch.workflow {
+            changes.push((
+                vec![PatchField::Workflow],
+                RecordChange::Workflow(workflow).into(),
+            ));
+        }
         if let Some(target) = patch.target {
             changes.push((vec![PatchField::Target], ConversationChange::Target(target)));
         }
