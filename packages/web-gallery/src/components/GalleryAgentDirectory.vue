@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue'
+import DockWindowArea from '@demicodes/web-ui/agent/DockWindowArea.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
+import { dockWindowShare } from '../dock-window-share'
 import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import { provideMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -52,7 +54,7 @@ function stop(): void {
     <div class="flex flex-wrap gap-2">
       <Button variant="ghost" size="sm" :disabled="open" @click="open = true">Open Again</Button>
     </div>
-    <div class="relative h-[26rem] min-h-0">
+    <DockWindowArea v-model:share="dockWindowShare" class="h-[26rem]">
       <SubagentPanel
         v-model:open="open"
         v-model:active-id="activeId"
@@ -61,7 +63,7 @@ function stop(): void {
         @abort-agent="stop"
         v-bind="agentContext.panel"
       />
-    </div>
+    </DockWindowArea>
     <div class="h-[26rem] overflow-hidden rounded-lg border border-line">
       <GalleryWorkPanel :work="work" @close="work.open.value = false" />
     </div>

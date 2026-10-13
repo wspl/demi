@@ -1,9 +1,20 @@
 <script setup lang="ts">
 import { computed, provide, ref } from 'vue'
 import { useElementSize } from '@vueuse/core'
+import DockWindowArea from './DockWindowArea.vue'
+import { DOCK_WINDOW_SHARE } from './dock-window'
 import SessionBottomVeil from './SessionBottomVeil.vue'
 import { sessionCoverKey } from './session-cover'
 
+/** The share of this area's height the dock's windows keep (`dock-window.ts`); the host keeps it. */
+const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_WINDOW_SHARE.default })
+const emit = defineEmits<{
+  /** The share of a dock window settled by a drag, a key or a double-click. */
+  dockWindowResizeEnd: [share: number]
+}>()
+
+const surfaceRef = ref<HTMLDivElement>()
+const { height: areaHeight } = useElementSize(surfaceRef, { width: 0, height: 0 }, { box: 'border-box' })
 const bottomAreaRef = ref<HTMLDivElement>()
 // Border-box: the dock's full footprint, its own padding included.
 const { height: dockFootprint } = useElementSize(
@@ -29,20 +40,22 @@ defineExpose({ dockHeight })
        and its dock alike; the space either side, --session-gutter, is padding
        inside the full-width scroller, so the scrollbar stays at the edge. -->
   <div
+    ref="surfaceRef"
     class="relative h-full flex-1 overflow-hidden bg-surface [container-type:inline-size]"
     style="--session-gutter: max(0px, calc((100cqw - 50rem) / 2))"
   >
     <slot />
-    <div
+    <!-- The dock's windows stand on the dock, in the room above it up to the session's top. -->
+    <DockWindowArea
       v-if="$slots.overDock"
-      class="pointer-events-none absolute inset-x-[calc(var(--session-gutter)+0.75rem)] z-20 min-h-0 pb-2"
-      :style="{ bottom: `${dockFootprint}px`, height: '50%' }"
+      v-model:share="dockWindowShare"
+      class="absolute inset-x-[calc(var(--session-gutter)+0.75rem)] top-0 z-20"
+      :style="{ bottom: `${dockFootprint}px` }"
+      :area="areaHeight"
+      @resize-end="emit('dockWindowResizeEnd', $event)"
     >
-      <!-- A panel here is in the column already: a transcript inside it takes no gutter again. -->
-      <div class="relative h-full min-h-0 [--session-gutter:0px]">
-        <slot name="overDock" />
-      </div>
-    </div>
+      <slot name="overDock" />
+    </DockWindowArea>
     <!-- No stacking context of its own: the veil stays under a panel the dock opened, and the
          dock, with what stands over its top, above it. -->
     <div
