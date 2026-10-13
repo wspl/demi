@@ -183,9 +183,14 @@ page                                    backend
 - **A passkey names its account by the user's id,** never the email, so an
   email change keeps it. The page tells the browser what changed where it
   supports WebAuthn's signal methods: the account's current email and its
-  accepted passkeys after a sign-in and an email change, and an unknown
-  passkey when a sign-in names one the account no longer has or the user
-  removes one, so the password manager follows.
+  accepted passkeys whenever it learns them, on every load included, and an
+  unknown passkey when a sign-in names one the account no longer has or the
+  user removes one, so the password manager follows. A failed pick from the
+  email field's autofill is not offered again until the user presses Sign
+  In with Passkey, so a failing passkey cannot loop.
+- **Development serves no passkeys by default:** `bun xtask dev` answers at
+  `127.0.0.1`, an IP address. A check of passkeys starts the backend with a
+  `localhost` public URL and opens the page at `localhost`.
 - **Challenges live in the control database,** since a sign-in's two
   requests may reach different workers. Issuing one removes the expired ones;
   with 1000 waiting, the options request answers 429. A failed passkey
