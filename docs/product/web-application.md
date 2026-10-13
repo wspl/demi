@@ -487,6 +487,21 @@ when the backend restarts while the conversation opens, follows the same
 rule; a session that refuses to open, answering `open` with an `error` or a
 `rejected`, shows the conversation as failed instead.
 
+#### A request the drop interrupts
+
+A request the page sent on a conversation socket that drops before the
+session answers it is neither refused nor sent again. For example, the user
+presses Stop on her phone as it loses its network; the page cannot tell
+whether the session stopped the turn, so it shows a toast, *Connection Lost*
+with *Demi may not have received your request. Check the conversation once
+it reconnects.*, and the reopened socket's snapshot shows whether the turn
+stopped. Sending it again could do it twice, such as a Retry that runs the
+turn twice. A request the session had taken before the drop, such as a
+Resume that was running, says nothing: the snapshot shows how it went. And
+a request made as the page returns waits for the return's check, so it goes
+on a socket the check found alive or on the new one, never on one the check
+is about to replace.
+
 #### What a reopened socket brings back
 
 A socket that opens again brings the state it feeds as it is now, whole,
