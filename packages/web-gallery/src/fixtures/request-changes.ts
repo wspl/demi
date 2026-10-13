@@ -3,7 +3,7 @@ import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { demoModel, inRun, listedFile, listedFiles, ownLists, shellView, uncopiedFile, withLists } from './blocks'
 import { editCopies } from './blobs'
 import { ago } from './time'
-import { WORKSPACE_ROOT } from './workspace'
+import { SLOT_ROOT, WORKSPACE_ROOT } from './workspace'
 
 /**
  * Requests whose calls changed files (`edit-tracking.md` § Delivery to the
@@ -264,4 +264,34 @@ export function subagentParentBlocks(): Block[] {
 /** A call shown on its own, in a request of its own, as its pills open it. */
 export function standaloneRequest(block: Block): Block[] {
   return [user(`${block.id}-request`, 700_000, 'Fix the cookie rename.'), ...inRun(ownLists(block))]
+}
+
+/** The child that works in another checkout (`subagents.md` § Working directory). */
+export const SLOT_NODE = 'gallery-slot'
+
+/** A `working_directory` block, as the runtime appends one before a child's first request and after each change. */
+function workingDirectory(id: string, offsetMs: number, cwd: string): Block {
+  return { type: 'context', id, turnId: id, createdAt: ago(offsetMs), model: demoModel, source: 'working_directory', text: `Working directory: ${cwd}`, cwd }
+}
+
+/**
+ * A child spawned into another checkout: it edits that checkout's
+ * src/auth/cookie.ts, links it, then moves into src/auth and links
+ * cookie.ts again by its short name. Both links name a file the
+ * conversation's directory has too; each reads against the directory the
+ * child wrote it in.
+ */
+export function slotBlocks(): Block[] {
+  const edit = shell('slot-edit', 290_000, 'demi file edit src/auth/cookie.ts', 'Rename the cookie in this checkout', [
+    file(`${SLOT_ROOT}/src/auth/cookie.ts`, 'modified', COOKIE, { added: 1, removed: 1 }),
+  ])
+  return [
+    workingDirectory('slot-dir', 300_000, SLOT_ROOT),
+    user('slot-user', 300_000, 'Rename the sid cookie to session in this checkout, and tell me where.', 'You are a subagent of the conversation’s agent.'),
+    ...inRun(ownLists(edit)),
+    text('slot-edited', 280_000, 'Renamed the cookie in [src/auth/cookie.ts](src/auth/cookie.ts) of this checkout.'),
+    ...inRun(shell('slot-cwd', 270_000, 'demi agent cwd src/auth', 'Move into the auth folder')),
+    workingDirectory('slot-dir-auth', 269_000, `${SLOT_ROOT}/src/auth`),
+    text('slot-reply', 260_000, 'From here [cookie.ts](cookie.ts) is the same file: the cookie is `session` now.'),
+  ]
 }

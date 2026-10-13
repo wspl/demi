@@ -136,9 +136,10 @@ function browserError(error: unknown): never {
  * tree changes): `endpoint` serves `?path=`, with `version` and `download`,
  * and answers `HEAD` with a file's size, modification time and version.
  */
-export function rawFileContents(endpoint: string): ContentReads {
+export function rawFileContents(endpoint: string, fixed: Record<string, string> = {}): ContentReads {
   return {
     url: (path, options = {}) => apiUrl(`${endpoint}?${new URLSearchParams({
+      ...fixed,
       path,
       ...(options.version ? { version: options.version } : {}),
       ...(options.download ? { download: 'true' } : {}),
@@ -146,7 +147,7 @@ export function rawFileContents(endpoint: string): ContentReads {
     async describe(path) {
       let response: Response
       try {
-        response = await apiRequest(`${endpoint}?${new URLSearchParams({ path })}`, { method: 'HEAD' })
+        response = await apiRequest(`${endpoint}?${new URLSearchParams({ ...fixed, path })}`, { method: 'HEAD' })
       } catch (error) {
         browserError(error)
       }
@@ -161,7 +162,7 @@ export function rawFileContents(endpoint: string): ContentReads {
     },
     // One byte range, which the route answers with exactly those bytes.
     async readStart(path, length, options = {}) {
-      const query = new URLSearchParams({ path, ...(options.version ? { version: options.version } : {}) })
+      const query = new URLSearchParams({ ...fixed, path, ...(options.version ? { version: options.version } : {}) })
       let response: Response
       try {
         response = await apiRequest(`${endpoint}?${query}`, {

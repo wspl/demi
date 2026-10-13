@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { formatSpan } from '@demicodes/utils'
+import { Folder } from '@lucide/vue'
+import { baseName, formatSpan } from '@demicodes/utils'
 import type { ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import StatusBarSegment from '../ui/StatusBarSegment.vue'
 import StatusDot from '../ui/StatusDot.vue'
@@ -12,6 +13,7 @@ import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import { agentPhaseWords, useMessageAgents } from './agent-links'
 import type { UsageLimits } from './context-usage'
 import { useElapsedTime } from '../composables/useElapsedTime'
+import { useMessageFiles } from '../markdown/message-files'
 import { statusTone } from './conversation-status'
 import { isSubagentRunning, runEffortWords, subagentStatus, type AgentRun } from './subagents'
 
@@ -19,14 +21,16 @@ import { isSubagentRunning, runEffortWords, subagentStatus, type AgentRun } from
  * The thin bar along the Agents window's bottom edge that says what the
  * shown child is doing and runs on (`subagents.md` § What an agent runs on),
  * in the secondary text color under its own top divider, made of segments as
- * an editor's status bar is: the state and time, *Forked from agent N*, the
- * profile, the model with its effort, and the context indicator. A segment
- * that acts when pressed, the forked-from link and the context indicator,
- * shows a hover background over its whole extent; the others only explain.
+ * an editor's status bar is: the state and time, the folder it works in,
+ * *Forked from agent N*, the profile, the model with its effort, and the
+ * context indicator. A segment that acts when pressed, the folder, the
+ * forked-from link and the context indicator, shows a hover background over
+ * its whole extent; the others only explain.
  * The text keeps the transcript's distance from the window's left and right
  * edges, `--agent-pad-x`, which the outer segments' own padding is taken
  * from; on a phone the bar is 36px tall and its text 15px, as a tab's. Where
- * the room runs out, *Forked from* gives way first, then the model's name,
+ * the room runs out, *Forked from* gives way first, then the model's name
+ * and the folder's name, which leaves its icon and its tip,
  * by the bar's own width; the state and the time always stay. An ended
  * child's session is closed, so its bar has no context indicator.
  */
@@ -64,6 +68,12 @@ function openForked(): void {
   if (props.run.forkedFrom !== null)
     agents()?.open(props.run.forkedFrom)
 }
+// The folder opens the File view on the child's directory where a plugin opens files.
+const files = useMessageFiles()
+const openFolder = computed(() => {
+  const open = files()?.open
+  return open ? () => open({ path: '', line: null, root: props.run.cwd }) : null
+})
 const forked = computed(() => (props.run.forkedFrom === null ? null : agents()?.find(props.run.forkedFrom) ?? null))
 </script>
 
@@ -76,7 +86,16 @@ const forked = computed(() => (props.run.forkedFrom === null ? null : agents()?.
         <span class="text-fg-faint" aria-hidden="true">·</span>
         <span class="tabular-nums">{{ time }}</span>
       </StatusBarSegment>
-      <!-- Where it works, a folder segment, stands here after the state (`subagents.md` § What an agent runs on). -->
+      <!-- Where it works: the directory's own name, its whole path in the tip (`subagents.md` § What an agent runs on). -->
+      <Tooltip tag="span" class="flex min-w-0" wide>
+        <StatusBarSegment :acting="openFolder !== null" class="min-w-0" @click="openFolder?.()">
+          <Folder :size="ICON_PX.in28" class="shrink-0" aria-hidden="true" />
+          <span class="hidden max-w-40 truncate @min-[28rem]:inline">{{ baseName(run.cwd) }}</span>
+        </StatusBarSegment>
+        <template #overlay>
+          <div>{{ run.cwd }}</div>
+        </template>
+      </Tooltip>
       <!-- A fork of an agent the conversation does not have names it and acts on nothing. -->
       <template v-if="run.forkedFrom !== null">
         <StatusBarSegment v-if="forked" acting class="hidden @min-[40rem]:flex" @click="openForked">

@@ -32,11 +32,14 @@ import { highlightFound } from '../ui/found-highlight'
 import { provideTranscript } from './edit-selection'
 import { useOpenRuns } from './open-runs'
 import { storedRequests } from '../files/request-changes'
+import { blockDirectories } from './working-directory'
 
 const props = withDefaults(defineProps<{
   conversationId: string
   /** The agent whose transcript this is: null for the conversation's own, a subagent's id otherwise. */
   node?: string | null
+  /** A subagent's working directory now, which its relative paths read against; absent for the conversation's own agent. */
+  cwd?: string
   blocks: Block[]
   /** The calls the model is writing, shown after the transcript. */
   pendingCalls?: PendingCall[]
@@ -164,11 +167,14 @@ const mutedIds = computed(() => messageEditSuffixIds(renderBlocks.value, props.e
 // Every streamed delta re-renders the visible rows; the lookup must not rescan the transcript per row.
 // The transcript's requests, which its rows' file pills read for what each opens.
 const requests = computed(() => storedRequests(props.blocks))
+// Where a subagent wrote each block, from the working directory blocks of its transcript.
+const directories = computed(() => props.cwd === undefined ? null : blockDirectories(props.blocks, props.cwd))
 provideTranscript({
   get node() {
     return props.node ?? null
   },
   requests: () => requests.value,
+  directory: (blockId) => directories.value?.get(blockId) ?? props.cwd ?? null,
 })
 const transcriptIndexById = computed(
   () =>

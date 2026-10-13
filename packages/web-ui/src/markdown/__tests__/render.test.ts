@@ -108,6 +108,26 @@ test('a link to an agent shows its mark and opens it; a number the conversation 
   expect(renderMarkdown('[File icons](agent:4)')).toBe('<p>File icons</p>\n')
 })
 
+test('a link that starts with an icon keeps no space before ASCII punctuation that follows it, and keeps it before full-width punctuation', () => {
+  const agents: MessageAgents = {
+    find: (number) => ({ number, description: 'cwd check', run: null }),
+    open: () => {},
+  }
+  const classes = (markdown: string) => [...renderMarkdown(markdown, { files, agents }).matchAll(/class="((?:agent-link )?icon-link[^"]*)"/g)].map((match) => match[1])
+  // "cwd check;" reads as written, not "cwd check ;".
+  expect(classes('Ask [cwd check](agent:4); then [the notes](notes.md), and [more](agent:5).')).toEqual([
+    'agent-link icon-link icon-link-tight', 'icon-link icon-link-tight', 'agent-link icon-link icon-link-tight',
+  ])
+  // A word after the link, and full-width punctuation, which carries its own space, keep the link's.
+  expect(classes('Ask [cwd check](agent:4) first, and 告诉[负责的 Agent](agent:5)：好。')).toEqual([
+    'agent-link icon-link', 'agent-link icon-link',
+  ])
+  // Nested in a list item and a table's cell.
+  expect(classes('- see [cwd check](agent:4);\n\n| a |\n| - |\n| [cwd check](agent:4), |')).toEqual([
+    'agent-link icon-link icon-link-tight', 'agent-link icon-link icon-link-tight',
+  ])
+})
+
 test('task boxes are read-only, and HTML shows as text', () => {
   const html = renderMarkdown('- [x] done\n- [ ] open\n\n<b>bold</b>', { files })
   expect(html).toContain('<input type="checkbox" disabled checked>')

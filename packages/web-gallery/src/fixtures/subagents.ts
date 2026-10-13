@@ -4,6 +4,8 @@ import { demoModel, inRun, screenshotTool, shellView, thinkingText } from './blo
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './catalog'
 import { ago } from './time'
+import { SLOT_NODE, slotBlocks } from './request-changes'
+import { SLOT_ROOT, WORKSPACE_ROOT } from './workspace'
 
 function user(id: string, createdAt: string, text: string): Block {
   return {
@@ -82,15 +84,15 @@ const HAIKU: JobModel = { providerId: 'anthropic', provider: 'Anthropic', model:
 
 /**
  * What a gallery child runs on (`subagents.md` § What an agent runs on): its
- * profile, none for the inherit profile, its model, and its round and fork
- * when they are not the first and none.
+ * profile, none for the inherit profile, its model, and its round, fork and
+ * working directory when they are not the first, none and the conversation's.
  */
 function runsOn(
   profile: string | null,
   model: JobModel,
-  more: Partial<Pick<AgentRun, 'round' | 'forkedFrom'>> = {},
-): Pick<AgentRun, 'profile' | 'model' | 'round' | 'forkedFrom'> {
-  return { profile, model, round: 1, forkedFrom: null, ...more }
+  more: Partial<Pick<AgentRun, 'round' | 'forkedFrom' | 'cwd'>> = {},
+): Pick<AgentRun, 'profile' | 'model' | 'round' | 'forkedFrom' | 'cwd'> {
+  return { profile, model, round: 1, forkedFrom: null, cwd: WORKSPACE_ROOT, ...more }
 }
 
 /** What Check the logout path tells its parent while it works. */
@@ -272,7 +274,7 @@ export function gallerySubagents(): SubagentRecord[] {
       id: 'ag-logout',
       number: 2,
       name: 'Check the logout path',
-      ...runsOn('frontend', { ...SONNET, effort: 'high', fast: true }, { forkedFrom: 1 }),
+      ...runsOn('frontend', { ...SONNET, effort: 'high', fast: true }, { forkedFrom: 1, cwd: SLOT_ROOT }),
       phase: 'running',
       sessionPhase: 'running',
       contextUsage: usageAt(0.22),
@@ -487,5 +489,27 @@ export function briefSubagent(): SubagentRecord {
       user('ag-flake-user', ago(30_000), RESEARCH_BRIEF),
       text('ag-flake-text', ago(20_000), 'I will start with the cookie assertions, then the fixture server.'),
     ]),
+  }
+}
+
+/**
+ * A child spawned into another checkout (`subagents.md` § Working
+ * directory): its links and its file change name that checkout's files, and
+ * the folder in its status bar is where it works now.
+ */
+export function slotSubagent(): SubagentRecord {
+  return {
+    id: SLOT_NODE,
+    number: 9,
+    name: 'Rename the cookie in the slot',
+    ...runsOn('frontend', SONNET, { cwd: `${SLOT_ROOT}/src/auth` }),
+    phase: 'running',
+    sessionPhase: 'running',
+    contextUsage: usageAt(0.18),
+    startedAt: ago(300_000),
+    failures: {},
+    pendingCalls: [],
+    waitingSince: null,
+    history: wholeHistory(slotBlocks()),
   }
 }

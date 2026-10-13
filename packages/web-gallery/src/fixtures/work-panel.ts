@@ -20,21 +20,24 @@ import {
   type AnyPluginPage,
   type ConversationFileService,
 } from '@demicodes/web-ui/plugins/page'
+import type { ChangeSetSource } from '@demicodes/web-ui/files/changes'
 import { PLUGIN_PAGES } from '../generated/pages'
 import { productWould } from '../product-would'
 import { readGalleryEdit } from './blobs'
 import { galleryRequest } from './transcripts'
 import { galleryBrowser, type GalleryBrowser } from './live-browser'
 import { GalleryPanel, galleryBrowserPlugin } from './panel'
-import type { createGalleryWorkspace } from './workspace'
+import { createSlotChangeSet, type createGalleryWorkspace } from './workspace'
 import { browserPlugin, galleryPageHost } from './plugins'
 
 /** The gallery workspace as the work panel's kinds read a conversation's files. */
 export function galleryFiles(workspace: ReturnType<typeof createGalleryWorkspace>): ConversationFileService {
+  // The other checkout's working tree, made once a view shows it.
+  let slot: ChangeSetSource | null = null
   return {
     workspace: { source: workspace.source, root: workspace.root },
     root: workspace.root,
-    changes: workspace.changes,
+    changes: (directory) => directory === undefined || directory === workspace.root ? workspace.changes : (slot ??= createSlotChangeSet(200)),
     edit: readGalleryEdit,
     request: galleryRequest,
     // The gallery's working tree changes only when a specimen changes it.
