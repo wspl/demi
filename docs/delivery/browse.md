@@ -125,6 +125,11 @@ conversation no longer runs, its subagents and background jobs included.
 - **A browser that stops answering** for 5 seconds ends the call, whatever
   the script waits on, with "the browser did not answer"; the tool kills it,
   and the next call starts a new one.
+- **Focus rings.** `demi.focusRings({ root, name, shots })` Tabs through the
+  page, then focuses what Tab skips, and reports each focus ring an ancestor
+  clips or an element above covers, with the side and pixels cut and a
+  picture of each; `demi.focusRings.of(locator)` reads a ring a state
+  draws, such as a selected capsule.
 - **Conditions.** `demi.emulate({ viewport, scale, theme, device, locale,
   timeZone })` applies to the page as it is, without reloading it, and
   returns once the page has drawn a frame under them; the theme reaches the

@@ -146,7 +146,12 @@ Every control is reachable with Tab, in the order it reads, icon buttons
 included: a message's copy and fork, a row's actions, a window's close. The
 control that has the keyboard's focus shows the focus ring, and only a
 keyboard focus does (`:focus-visible`), so a click leaves no ring; Enter and
-Space act on it as a click does. A disabled control is skipped. One web-ui
+Space act on it as a click does. The ring is shown whole wherever the control
+stands: one ring for every focusable element, drawn outside the control, and
+inside it within a box that clips, such as a scroller, a folding section or
+a bubble, so no edge ever cuts it; a selected state that shows the ring draws
+the same one. The browse tool's `demi.focusRings` finds any ring a page cuts
+or covers ([Product checks](../delivery/browse.md)). A disabled control is skipped. One web-ui
 primitive per kind of control owns this, so no caller makes a control
 focusable by hand.
 
