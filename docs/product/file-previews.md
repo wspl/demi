@@ -162,6 +162,20 @@ since a digit follows it, and both dollar signs show as typed. Inline math
 may touch the text around it, as Chinese writing does: `面积为$x^2$平方米`
 renders `x^2` as math.
 
+A reply that streams renders a block at a time, so the work of each update
+is the reply's last block, not the whole reply. The reply's source splits
+into top-level blocks where a blank line ends one outside a code fence or a
+math block; every block before the last is settled, rendered once, sanitized
+once and kept in the page unchanged, together with the files and images it
+names, and only the last block renders again as text arrives. A settled
+block is never rendered again while the reply streams, so its elements stay
+the same nodes and the page lays out only what changed. When the reply
+ends, it renders once whole, which catches what only the whole reply
+decides, such as a link whose reference is defined further down; a
+difference that render finds replaces only the blocks it changes. For
+example, an essay of forty paragraphs streams with thirty-nine settled
+paragraphs on the page and one that grows.
+
 HTML inside the Markdown renders after it is sanitized
 ([Keeping file content inert](#keeping-file-content-inert)), so README layouts
 such as a centered logo or a `<details>` block look as their authors meant.
