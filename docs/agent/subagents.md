@@ -557,27 +557,26 @@ can use." ([Categories](permissions.md#categories)). `profiles list` and
 ### Workflows of a project
 
 A project can keep **workflows** in its repository: each a group of
-subagent profiles with guidance on how to split the work between them and
-limits, so a team shares how its work is split and each conversation picks
+subagent profiles with the instructions that go with them, how to split the
+work between them, and limits, so a team shares how its work is split and each conversation picks
 one. For example,
 `~/app` holds `.demi/workflows/review.yaml`:
 
 ```yaml
 name: Review Team
-guidance: |
+instructions: |
   Have reviewer check every change before you report it.
   Use explore for any search across more than one package.
 maxSubagents: 4
 maxDepth: 1
 profiles:
-  explore:
+  - id: explore
     description: Use for finding code and call sites; it reports and changes nothing.
     model: claude-haiku-4-5
     effort: low
-    spawning: false
     instructions: |
       Read and report where things are. Never change a file.
-  reviewer:
+  - id: reviewer
     description: Use to review a finished change before reporting it.
     instructions: |
       Review the diff for bugs and missed cases; change nothing.
@@ -585,25 +584,33 @@ profiles:
 
 In a conversation on `~/app/web`, the Workflow menu at the composer's lower
 left offers **Default**, **No Subagents** and **Review Team**. Alex picks Review Team:
-from the next spawn on, the conversation's agents see `explore` and
-`reviewer` with the guidance above them, and no more than four run at once.
+the root reads the workflow's instructions with the project's, and from the
+next spawn on its agents can start `explore` and `reviewer`, no more than
+four at once.
 
 - **Where.** The workflow files are `.demi/workflows/*.yaml` of the nearest
   directory that has a `.demi/workflows/` directory, searched from the
   conversation's working directory up to the root of its git repository as
   [instruction files](instructions.md#which-files-are-read) are. A file's
   name without `.yaml` is its id; `name` is what the menu shows.
-- **A workflow** holds `name` (1 to 60 characters), `guidance` (optional, up to
-  65,536 characters), `maxSubagents` and `maxDepth` (optional, as the
-  [limits](#limits) are), and `profiles`, a map of profile names to
+- **A workflow** holds `name` (1 to 60 characters), `instructions`
+  (optional, up to 65,536 characters), `maxSubagents` and `maxDepth`
+  (optional, as the [limits](#limits) are), and `profiles`, a list of
   profiles. A profile has the fields of a user's profile
-  ([Profiles](#profiles)): its name is the map's key, `description`,
-  `instructions` (optional), `spawning` (default `false`), and its model as
-  `model`, a model id, with `effort` and `tier` (optional; without a model
-  the child inherits its parent's). A model id is looked for in the user's
-  provider entries in their order, the first entry whose catalog has it
-  taking it; one no entry has makes the profile unavailable, as a
-  profile's missing model does.
+  ([Profiles](#profiles)): `id`, its name, unique in the list,
+  `description`, `instructions` (optional), `spawning` (default `false`),
+  and its model as `model`, a model id, with `effort` and `tier` (optional;
+  without a model the child inherits its parent's). A model id is looked
+  for in the user's provider entries in their order, the first entry whose
+  catalog has it taking it; one no entry has makes the profile unavailable,
+  as a profile's missing model does.
+- **Its instructions** are the root's: they join the
+  [instructions block](instructions.md#what-the-model-receives) as an element
+  of their own, `<workflow name="Review Team">`, after the project's files,
+  so the root follows them from its next request, as it follows an edited
+  `AGENTS.md`; choosing another workflow or No Subagents removes them the
+  same way. Each profile's own `instructions` are its child's, as a user's
+  profile's are.
 - **The menu** is the conversation's choice, kept with the conversation as
   its model is. **Default**, which a new conversation starts with, applies
   the user's Subagents settings. **No Subagents** turns subagents off for this
@@ -626,8 +633,7 @@ from the next spawn on, the conversation's agents see `explore` and
   so a workflow added, changed or removed shows at once, with no polling. A file
   that does not parse is listed as unavailable with the parse error.
 - **What the model sees.** With a workflow chosen, `demi agent profiles list`
-  shows the workflow's name and guidance, then its profiles as it shows the
-  user's ([What the model sees](#what-the-model-sees)); with No Subagents, the line
+  shows the workflow's name, then its profiles as it shows the user's ([What the model sees](#what-the-model-sees)); with No Subagents, the line
   that subagents are turned off for this conversation.
 
 ### Limits
