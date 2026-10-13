@@ -471,12 +471,13 @@ The Agents and Running chips each open a window over the session, as an
 editor's bottom panel opens. Its windows, and the windows they open, such as
 the media viewer over a screenshot in a subagent's transcript or the
 terminal of a running command, stand in the order they opened, the newest in
-front. A press outside every window, on the transcript, the sidebar or empty
-space, closes the newest window alone, as Escape does, and still does what it
-does there, so a click on a link closes the window and follows the link. A
-second press closes the next one. A press in a window closes nothing, and
-neither does one in the dock, the composer, its chips and the cards above
-them, where the user types to the agent while watching the window. A
+front. A press outside every window, on the transcript, the sidebar, the composer,
+the dock's empty space or the cards above it, closes the newest window
+alone, as Escape does, and still does what it does there, so a click on a
+link closes the window and follows the link, and a click in the message
+puts the caret there. A second press closes the next one. A press in a
+window closes nothing. Typing does not close a window: a user whose caret
+is already in the message types while watching it. A
 control that opens or changes one of these windows, a thumbnail, an
 attachment, an agent link or a receipt's sender, acts as that window's own
 control rather than as a press outside it: a second thumbnail shows its
