@@ -36,9 +36,18 @@ export interface MarkdownBlocksOptions<T> {
 }
 
 /**
- * The text of each node a render added, as the render made it, before a
- * fade wrapped any of its text: a node the next render makes the same stays
- * in the page, with its fades going on, and only the others are replaced.
+ * A node as a render makes it, to compare a node in the page with the one a
+ * new render makes in its place.
+ */
+function asRendered(node: ChildNode): string {
+  return node instanceof Element ? node.outerHTML : `${node.nodeType}:${node.textContent}`
+}
+
+/**
+ * Each fresh node of a render as the render made it, before a fade wrapped
+ * any of its text: a node in the page that is that now, its fades over and
+ * unwrapped, stays, and only the others are replaced. One whose fades are
+ * still going on, or split it, is not what the render made, and is replaced.
  */
 const renderedAs = new WeakMap<ChildNode, string>()
 
@@ -117,7 +126,7 @@ export function useMarkdownBlocks<T>(options: MarkdownBlocksOptions<T>): void {
     const holder = document.createElement('div')
     holder.innerHTML = block.html.value
     for (const node of holder.childNodes)
-      renderedAs.set(node, node instanceof Element ? node.outerHTML : `${node.nodeType}:${node.textContent}`)
+      renderedAs.set(node, asRendered(node))
     const within = steps
       .filter((step) => step.end > block.start)
       .map((step) => ({ ...step, start: Math.max(0, step.start - block.start), end: step.end - block.start }))
@@ -178,14 +187,15 @@ export function useMarkdownBlocks<T>(options: MarkdownBlocksOptions<T>): void {
 
 /**
  * Puts `fresh` in `parent` before `before`, in place of `old`, keeping each
- * old node that stands where a fresh one renders the same, and answers the
- * nodes placed.
+ * old node that stands where a fresh one is now what that one was rendered
+ * as, and answers the nodes placed. A fade that ran over a top-level text
+ * split it, so its first piece alone is never taken for the whole.
  */
 function place(parent: Node, old: readonly ChildNode[], fresh: readonly ChildNode[], before: ChildNode | null): ChildNode[] {
   const placed = fresh.map((node, index) => {
     const was = old[index]
     const as = renderedAs.get(node)
-    return was !== undefined && as !== undefined && renderedAs.get(was) === as ? was : node
+    return was !== undefined && as !== undefined && asRendered(was) === as ? was : node
   })
   const keep = new Set(placed)
   for (const node of old) {
