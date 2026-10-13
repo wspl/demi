@@ -1407,7 +1407,8 @@ later one is the current value of one part of it that changed:
 | `conversation_deleted` | `id`, the conversation's id | It is deleted ([Deleting a conversation](../backend/storage.md#deleting-a-conversation)) |
 | `conversation_order` | `ids`, the id of every conversation, in the product state's order | A conversation is created, forked, moved, pinned or unpinned, archived or restored |
 | `preferences` | `preferences` | A preferences patch |
-| `user` | `user` | The nickname or the email address changes |
+| `user` | `user` | The nickname or the email address changes, or the owner chooses the password |
+| `users` | `users`, as `GET /api/users` lists them; sent only to the master's and admins' channels | An account is added, changed, reset, disabled or enabled, signs in, or chooses its password |
 | `workspaces` | `workspaces`, in the user's order | A workspace is created, renamed, moved or deleted |
 | `devices` | `devices`, the paired ones and the Cloud's, each with its state, `online`, `updating` or `offline` ([Runner updates](../execution/runner.md#runner-updates)), as an attached Host's state also reads, and for a paired device its `startCommand`, the command that starts its runner again ([Installation, pairing and removal](../execution/runner.md#installation-pairing-and-removal)) | A device is paired or revoked, its runner connects, disconnects or starts or ends an update, its runner's installed artifacts change, or the Cloud's device is made |
 | `providers` | `providers`, each with its details | An entry the user infers with, or an account of it, is created, changed or removed, a sign-in completes, an account's credential is renewed, or its quota snapshot is stored |

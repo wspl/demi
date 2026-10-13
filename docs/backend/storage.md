@@ -141,9 +141,11 @@ input, which the multi-worker control service also relies on
   stores an id, a hash of the session token, user identity, expiry, the browser
   and system it signed in from, when it signed in, when it was last active
   (written at most once an hour), when it was last verified, and the
-  handoff code that made it, if one did; a login deletes expired sessions.
-  `handoff_codes` keeps one live code per user: its SHA-256, the path it
-  opens, its expiry and whether it was spent. `email_challenges` stores one pending
+  handoff code that made it, if one did, with the administrator who issued
+  it when it was a sign-in code; a login deletes expired sessions.
+  `handoff_codes` keeps one live code of each kind per user, a handoff code
+  and an administrator's sign-in code: its kind, its SHA-256, the path it
+  opens, its issuer, its expiry and whether it was spent. `email_challenges` stores one pending
   address-change challenge per user, including code hash, password hash at
   issue, expiry, send time, and failed-attempt count. Confirming the challenge
   updates the email and consumes the challenge in one transaction. Account
