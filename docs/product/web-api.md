@@ -747,7 +747,11 @@ Passkeys ([User system](product.md#user-system),
   such as `Safari on macOS`.
   `PATCH /api/auth/passkeys/:id` renames one with `{ name }` (1–80
   characters after trimming), and `DELETE /api/auth/passkeys/:id` removes
-  it, both 204. The synchronization channel's `passkeys` part carries the
+  it, both 204; an id the account has no passkey of answers 404
+  `passkey_not_found`. On a backend that offers no passkeys every passkey
+  route answers 409 `passkeys_unavailable`. Adding answers as signing in
+  does: an expired or used challenge 401 `passkey_expired`, a failed check
+  or a passkey the account already has 401 `invalid_credentials`. The synchronization channel's `passkeys` part carries the
   list, so Settings on another page follows.
 - The public `GET /api/setup` answer carries `passkeyRpId`, the relying
   party's id, the public URL's host name, or null when this backend offers
