@@ -26,6 +26,11 @@ import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
 import DeviceIcon from '@demicodes/web-ui/devices/DeviceIcon.vue'
 import ContextUsageIndicator from '@demicodes/web-ui/agent/ContextUsageIndicator.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
+import Avatar from '@demicodes/web-ui/ui/Avatar.vue'
+import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
+import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
+import { HUE_TONES, hueToneOf } from '@demicodes/web-ui/ui/avatar-tone'
+import { accountDisplayName } from '@demicodes/web-ui/auth/account-display'
 import { providerLogo, vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
@@ -47,6 +52,26 @@ const vendorMarks = [
   { label: 'OpenAI', src: vendorLogo('openai') },
   { label: 'Ollama', src: vendorLogo('ollama') },
 ]
+/** The three candidate default avatars, compared in the three places the product draws one. */
+const avatarSchemes = [
+  { scheme: 'contacts', title: 'A · Contacts Gray', note: 'One gray gradient for everyone, as macOS Contacts draws it.' },
+  { scheme: 'hue', title: 'B · Muted Hue', note: 'A muted tone the account id picks, so people tell apart in a list.' },
+  { scheme: 'ink', title: 'C · Ink', note: 'The text color as a disc, the surface color for the letters.' },
+] as const
+const avatarAccounts = [
+  { id: 'acc-1', name: 'Alex Morgan', email: 'alex@example.com' },
+  { id: 'acc-2', name: 'Priya', email: 'priya@example.com' },
+  { id: 'acc-3', name: '李雷', email: 'lei@example.com' },
+  { id: 'acc-4', name: '', email: 'o\u2019neil@example.com' },
+  { id: 'acc-5', name: 'Bo', email: 'bo@example.com' },
+] as const
+const avatarSelf = avatarAccounts[0]
+/** One account id for each of the hue scheme's eight tones, found by trying ids in turn. */
+const avatarPalette = ['Slate', 'Sage', 'Clay', 'Sand', 'Dusk', 'Moss', 'Plum', 'Steel'].map((name, index) => {
+  for (let n = 0; ; n++) {
+    if (hueToneOf(`tone-${n}`) === HUE_TONES[index]) return { name, id: `tone-${n}` }
+  }
+})
 const paneWidth = ref(200)
 const paneHeight = ref(96)
 
@@ -784,6 +809,56 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
     </template>
 
     <template v-if="view === 'marks'">
+      <GallerySection
+        title="Avatar"
+        note="Three candidates for the default avatar, each in the three places the product draws one: the sidebar’s account row (24px, 32px on a phone), Settings › Account (32px) and the Settings › Users list (32px, shown here only). Letters are the first of the first two words of the name, one for a single word, else the first of the email’s local part. Switch the appearance to compare light and dark."
+      >
+        <div class="grid grid-cols-1 gap-6 min-[1700px]:grid-cols-3">
+          <div v-for="candidate in avatarSchemes" :key="candidate.scheme" :data-testid="`avatar-${candidate.scheme}`" class="min-w-0 space-y-4 rounded-xl bg-surface p-4">
+            <div>
+              <h3 class="select-none text-[13px] font-medium text-fg-emphasis">{{ candidate.title }}</h3>
+              <p class="text-[12px] leading-4 text-fg-muted">{{ candidate.note }}</p>
+            </div>
+            <div class="space-y-1">
+              <div class="gallery-label">Sidebar · 24px</div>
+              <div class="flex h-9 items-center gap-2 rounded-md bg-surface-base pl-2 pr-1.5">
+                <Avatar :scheme="candidate.scheme" :account-id="avatarSelf.id" :name="avatarSelf.name" :email="avatarSelf.email" :size="24" />
+                <span class="min-w-0 truncate text-chrome text-fg">{{ accountDisplayName(avatarSelf.name, avatarSelf.email) }}</span>
+              </div>
+              <div class="gallery-label pt-2">Sidebar on a phone · 32px</div>
+              <div class="flex h-11 items-center gap-3 rounded-md bg-surface-base pl-2 pr-1.5">
+                <Avatar :scheme="candidate.scheme" :account-id="avatarSelf.id" :name="avatarSelf.name" :email="avatarSelf.email" :size="32" />
+                <span class="min-w-0 truncate text-[16px] text-fg">{{ accountDisplayName(avatarSelf.name, avatarSelf.email) }}</span>
+              </div>
+            </div>
+            <div class="space-y-1">
+              <div class="gallery-label">Settings › Account · 32px</div>
+              <SettingsGroup>
+                <SettingsRow label="Avatar" description="Your initials, until pictures arrive.">
+                  <Avatar :scheme="candidate.scheme" :account-id="avatarSelf.id" :name="avatarSelf.name" :email="avatarSelf.email" :size="32" />
+                </SettingsRow>
+              </SettingsGroup>
+            </div>
+            <div class="space-y-1">
+              <div class="gallery-label">Settings › Users · 32px</div>
+              <SettingsGroup>
+                <SettingsRow v-for="account in avatarAccounts" :key="account.id" :label="accountDisplayName(account.name, account.email)" :description="account.name ? account.email : undefined">
+                  <template #leading>
+                    <Avatar :scheme="candidate.scheme" :account-id="account.id" :name="account.name" :email="account.email" :size="32" />
+                  </template>
+                </SettingsRow>
+              </SettingsGroup>
+            </div>
+            <div v-if="candidate.scheme === 'hue'" class="space-y-1">
+              <div class="gallery-label">The eight tones · slate, sage, clay, sand, dusk, moss, plum, steel</div>
+              <div class="flex gap-2">
+                <Avatar v-for="tone in avatarPalette" :key="tone.id" scheme="hue" :account-id="tone.id" :name="tone.name" :size="32" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </GallerySection>
+
       <GallerySection
         title="StatusDot"
         note="The product’s one dot for a status. A running thing breathes the same everywhere (the sidebar row, a tab’s corner, the status bar, the dock’s chips): the opacity runs 0.35 to 1 and the size 0.8 to 1.15 over 2.4 seconds. Under the system’s Reduce Motion setting the dot stays still at full opacity. The ring is the settled mark that holds a dot’s place."
