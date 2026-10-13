@@ -795,8 +795,9 @@ pub enum ToolCallStatus {
 serde_plain::derive_display_from_serialize!(ToolCallStatus);
 serde_plain::derive_fromstr_from_deserialize!(ToolCallStatus);
 
-/// The usage of one completed provider request, which anchors the context
-/// estimate.
+/// One completed provider request, with the usage of its last call to the
+/// model, which anchors the context estimate; none when the provider
+/// reported none, and then it anchors nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ResponseBlock {
@@ -807,7 +808,8 @@ pub struct ResponseBlock {
     #[garde(dive)]
     pub model: ModelSelection,
     #[garde(dive)]
-    pub usage: TokenUsage,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<TokenUsage>,
 }
 
 /// A failed request or an interrupted turn (`failures-and-recovery.md`

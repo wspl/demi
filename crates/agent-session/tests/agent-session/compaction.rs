@@ -1740,12 +1740,12 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_summarizes_wha
         Turn::Events(vec![
             event::tool_call("call-1", "count", json!({})),
             // Only the cache write puts the usage over the threshold of 500.
-            ProviderEvent::Response(TokenUsage {
+            ProviderEvent::Response(Some(TokenUsage {
                 input_tokens: 1,
                 output_tokens: 1,
                 cache_read_tokens: 0,
                 cache_write_tokens: 850,
-            }),
+            })),
         ]),
         answer("tool summary"),
         answer("continued"),
@@ -1810,7 +1810,72 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_summarizes_wha
     );
     // The usage is recorded with its cache, and no request carries it.
     assert!(
-        matches!(&blocks[3], Block::Response(response) if response.usage.cache_write_tokens == 850)
+        matches!(&blocks[3], Block::Response(response) if response.usage.is_some_and(|usage| usage.cache_write_tokens == 850))
+    );
+}
+
+// Two turns of one scripted request each: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_response_without_usage_compacts_nothing_and_leaves_the_estimate_on_the_usage_before_it() {
+    // The second response reports no usage, as Claude Code's does when its
+    // stream held no call's own count: it is recorded without one, starts no
+    // pass, and the estimate stays anchored on the first response's 400
+    // tokens, never on none.
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![event::text("one"), event::response(400, 0)]),
+        Turn::Events(vec![event::text("two"), ProviderEvent::Response(None)]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = small_session(&provider, vec![], &store).await;
+    session.send(text("first"), turn("t1")).unwrap().await.unwrap();
+
+    session.send(text("second"), turn("t2")).unwrap().await.unwrap();
+
+    let blocks = session.transcript().blocks;
+    assert_eq!(
+        kinds(&blocks),
+        ["user", "text", "response", "user", "text", "response"]
+    );
+    assert!(matches!(&blocks[5], Block::Response(response) if response.usage.is_none()));
+    let usage = session.context_usage().await.unwrap();
+    assert!(usage.tokens > 400, "{usage:?}");
+    assert_eq!(provider.remaining(), 0);
+}
+
+// One turn of two scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_response_that_reports_more_input_than_the_models_window_compacts_nothing() {
+    // 1,100 tokens of input cannot be one request's in a window of 1,000,
+    // as when a provider sums the calls of its run: the round goes on
+    // without a pass, where its usage would otherwise be over the threshold
+    // of 500.
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![
+            event::tool_call("call-1", "count", json!({})),
+            ProviderEvent::Response(Some(TokenUsage {
+                input_tokens: 100,
+                output_tokens: 1,
+                cache_read_tokens: 600,
+                cache_write_tokens: 400,
+            })),
+        ]),
+        answer("continued"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (count, runs) = counted("count", "counted");
+    let session = small_session(&provider, vec![count], &store).await;
+
+    session
+        .send(text("use the tool"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    assert_eq!(runs.get(), 1);
+    assert_eq!(provider.remaining(), 0);
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        ["user", "tool_call:completed", "response", "text", "response"]
     );
 }
 

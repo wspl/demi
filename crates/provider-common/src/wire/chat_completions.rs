@@ -318,7 +318,7 @@ impl Mapper {
         let end = match reason.as_str() {
             "stop" | "tool_calls" => {
                 self.flush(out);
-                out.push(ProviderEvent::Response(self.usage));
+                out.push(ProviderEvent::Response(Some(self.usage)));
                 return;
             }
             "length" => EarlyEnd::OutputLimit,

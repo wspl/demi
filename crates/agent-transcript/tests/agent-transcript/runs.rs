@@ -115,7 +115,7 @@ fn calls_notices_and_receipts_are_one_run_until_what_the_reader_reads() {
     log.open_thinking(&test_model(), "Plan.".into());
     call(&mut log, "a");
     call(&mut log, "b");
-    log.push_response(&test_model(), TokenUsage::default());
+    log.push_response(&test_model(), Some(TokenUsage::default()));
     call(&mut log, "c");
     report(&mut log, "progress", false);
     report(&mut log, "end", true);

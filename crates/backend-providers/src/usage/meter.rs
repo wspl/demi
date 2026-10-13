@@ -97,7 +97,7 @@ impl ProviderRuntime for MeteredRuntime {
                 let ledger = ledger.clone();
                 let model = model.clone();
                 async move {
-                    if let ProviderEvent::Response(usage) = &event {
+                    if let ProviderEvent::Response(Some(usage)) = &event {
                         ledger.record(model, *usage).await;
                     }
                     event
