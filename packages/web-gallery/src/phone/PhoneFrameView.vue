@@ -11,7 +11,7 @@ import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/typ
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { providePageHost, sidebarEntries, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
-import { callTerminal } from '@demicodes/web-ui/agent/terminals'
+import { useCallTerminals } from '@demicodes/web-ui/agent/terminals'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import ChoosePasswordWizard from '@demicodes/web-ui/auth/ChoosePasswordWizard.vue'
 import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
@@ -82,7 +82,8 @@ const flow = useTurnFlow({
   terminals: reactive(galleryTerminals()),
 })
 const session = flow.state
-provideLiveCalls((toolUseId) => callTerminal(session.terminals, undefined, toolUseId))
+const commandOf = useCallTerminals(() => session.terminals)
+provideLiveCalls((toolUseId) => commandOf(undefined, toolUseId))
 
 /** A file a message names opens in the panel, full screen, as the product opens it. */
 const files = galleryConversationFiles(workspace.source, ({ path, line }) => {

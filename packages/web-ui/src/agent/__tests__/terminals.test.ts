@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test'
+import { computed, reactive } from 'vue'
+import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { Block } from '@demicodes/protocol'
 import { createdAt, model } from './agent-harness'
 import {
   LIVE_OUTPUT_CHARS,
-  callTerminal,
-  dockTerminals,
   firstRunningTerminalId,
   followFrame,
   followLiveOutput,
@@ -17,6 +17,8 @@ import {
   terminalPanelTabs,
   terminalStatus,
   terminalWrite,
+  useCallTerminals,
+  useDockTerminals,
   type TerminalRecord,
 } from '../terminals'
 import { commandEndMark, runningTime } from '../command-end'
@@ -135,25 +137,153 @@ function call(toolUseId: string, status: 'executing' | 'completed'): Block {
   }
 }
 
+/** A transcript the page holds whole, its blocks one window. */
+function held(blocks: Block[]): HeldTranscript {
+  return { length: blocks.length, windows: [{ start: 0, blocks }] }
+}
+
 test('a command shows under its running call, and in the dock once the call returned', () => {
   const rootCommand = terminal({ id: 'root', title: 'R', phase: 'running', toolUseId: 'call-1' })
   const childCommand = terminal({ id: 'child', title: 'C', phase: 'running', toolUseId: 'call-1', subagentId: 'agent' })
   const stored = terminal({ id: 'stored', title: 'S', phase: 'exited' })
-  const terminals = [stored, rootCommand, childCommand]
-  const root = [call('call-1', 'executing')]
-  const child = [call('call-1', 'completed')]
-  const blocksOf = (subagentId: string | undefined) => (subagentId === 'agent' ? child : root)
-  expect(callTerminal(terminals, undefined, 'call-1')?.id).toBe('root')
-  expect(callTerminal(terminals, 'agent', 'call-1')?.id).toBe('child')
-  expect(callTerminal(terminals, 'other', 'call-1')).toBeUndefined()
-  // The root's call still runs; the child's returned, and its command is the dock's.
-  expect(dockTerminals(terminals, blocksOf).map((item) => item.id)).toEqual(['stored', 'child'])
+  const orphan = terminal({ id: 'orphan', title: 'O', phase: 'exited', toolUseId: 'call-1', subagentId: 'gone' })
+  const state = reactive({
+    terminals: [stored, rootCommand, childCommand, orphan],
+    history: held([call('call-1', 'executing')]),
+    subagents: [{ id: 'agent', history: held([call('call-1', 'completed')]) }],
+  })
+  const commandOf = useCallTerminals(() => state.terminals)
+  const dock = useDockTerminals(() => state)
+  expect(commandOf(undefined, 'call-1')?.id).toBe('root')
+  expect(commandOf('agent', 'call-1')?.id).toBe('child')
+  expect(commandOf('other', 'call-1')).toBeUndefined()
+  // The root's call still runs; the child's returned, and its command is the
+  // dock's, as are a command no call is known of and one of a child no
+  // longer listed.
+  expect(dock.value.map((item) => item.id)).toEqual(['stored', 'child', 'orphan'])
+  // Once the root's call returns, its command joins the dock.
+  state.history = held([call('call-1', 'completed')])
+  expect(dock.value.map((item) => item.id)).toEqual(['stored', 'root', 'child', 'orphan'])
   // A model that reuses a call's id: the latest call and the latest command are the ones that run.
   const again = terminal({ id: 'again', title: 'R2', phase: 'running', toolUseId: 'call-1' })
-  expect(callTerminal([rootCommand, again], undefined, 'call-1')?.id).toBe('again')
-  expect(
-    dockTerminals([again], () => [call('call-1', 'executing'), call('call-1', 'completed')]).map((item) => item.id),
-  ).toEqual(['again'])
+  state.terminals = [rootCommand, again]
+  expect(commandOf(undefined, 'call-1')?.id).toBe('again')
+  state.history = held([call('call-1', 'completed'), call('call-1', 'executing')])
+  expect(dock.value.map((item) => item.id)).toEqual([])
+  state.history = held([call('call-1', 'executing'), call('call-1', 'completed')])
+  expect(dock.value.map((item) => item.id)).toEqual(['root', 'again'])
+})
+
+// The dock and the rows keep what they found between changes; each change
+// the store makes must reach them, never leave them showing what was.
+test('the dock and the rows follow every change to a child, its transcript and the commands', () => {
+  const first = terminal({ id: 'first', title: 'F', phase: 'running', toolUseId: 'call-1', subagentId: 'agent' })
+  const second = terminal({ id: 'second', title: 'S', phase: 'running', toolUseId: 'call-1', subagentId: 'agent' })
+  const state = reactive({
+    terminals: [first, second],
+    history: held([]),
+    subagents: [{ id: 'agent', history: held([call('call-1', 'executing')]) }],
+  })
+  const commandOf = useCallTerminals(() => state.terminals)
+  const dock = useDockTerminals(() => state)
+  const row = computed(() => commandOf('agent', 'call-1')?.id)
+  expect(dock.value.map((item) => item.id)).toEqual([])
+  expect(row.value).toBe('second')
+  // The child's transcript replaced whole: its call returned.
+  state.subagents[0]!.history = held([call('call-1', 'completed')])
+  expect(dock.value.map((item) => item.id)).toEqual(['first', 'second'])
+  // The child's record replaced by one whose call runs again.
+  state.subagents = [{ id: 'agent', history: held([call('call-1', 'executing')]) }]
+  expect(dock.value.map((item) => item.id)).toEqual([])
+  // The child's record removed: its commands are the dock's.
+  state.subagents = []
+  expect(dock.value.map((item) => item.id)).toEqual(['first', 'second'])
+  state.subagents = [{ id: 'agent', history: held([call('call-1', 'executing')]) }]
+  expect(dock.value.map((item) => item.id)).toEqual([])
+  // A command's call id changed: the row finds the other one, and the
+  // command, no longer under a running call, joins the dock.
+  state.terminals[1]!.toolUseId = 'call-2'
+  expect(row.value).toBe('first')
+  expect(commandOf('agent', 'call-2')?.id).toBe('second')
+  expect(dock.value.map((item) => item.id)).toEqual(['second'])
+  // The latest command of a call removed: the row falls back to the one
+  // before it, and to none once that goes too.
+  state.terminals[1]!.toolUseId = 'call-1'
+  expect(row.value).toBe('second')
+  state.terminals.pop()
+  expect(row.value).toBe('first')
+  state.terminals.pop()
+  expect(row.value).toBeUndefined()
+})
+
+/** `items`, counting each element a reader reads in `reads[label]`, under the store's reactive proxy. */
+function counted<T>(items: T[], reads: Record<string, number>, label: string): T[] {
+  reads[label] = 0
+  return new Proxy(items, {
+    get(target, key, receiver) {
+      if (typeof key === 'string' && /^\d+$/.test(key)) {
+        reads[label]! += 1
+      }
+      return Reflect.get(target, key, receiver)
+    },
+  })
+}
+
+// The trace of a long conversation (hundreds of commands, ~200 children)
+// spent seconds rescanning every transcript once per command on each
+// streamed patch. The dock and the rows read each command and each block a
+// bounded number of times, and a patch to one transcript rescans only it.
+// Costs a few milliseconds.
+test('the dock and the rows read each command and block a bounded number of times, however many there are', () => {
+  const agents = ['root', 'a1', 'a2', 'a3']
+  const blocksPerAgent = 300
+  const reads: Record<string, number> = {}
+  // Every block is a call that started a command; every 50th still runs.
+  const blocksOf = (agent: string) => Array.from({ length: blocksPerAgent }, (_, index) =>
+    call(`${agent}-${index}`, index % 50 === 0 ? 'executing' : 'completed'))
+  const commands = agents.flatMap((agent) => Array.from({ length: blocksPerAgent }, (_, index) => terminal({
+    id: `${agent}-${index}`,
+    title: 'T',
+    phase: 'running',
+    toolUseId: `${agent}-${index}`,
+    ...(agent === 'root' ? {} : { subagentId: agent }),
+  })))
+  const state = reactive({
+    terminals: counted(commands, reads, 'terminals'),
+    history: held(counted(blocksOf('root'), reads, 'root')),
+    subagents: agents.slice(1).map((agent) => ({ id: agent, history: held(counted(blocksOf(agent), reads, agent)) })),
+  })
+  const dock = useDockTerminals(() => state)
+  expect(dock.value.length).toBe(commands.length - agents.length * (blocksPerAgent / 50))
+  // Each block once, each command a bounded number of times.
+  for (const agent of agents) {
+    expect(reads[agent]).toBeLessThanOrEqual(blocksPerAgent)
+  }
+  expect(reads.terminals).toBeLessThanOrEqual(2 * commands.length)
+
+  // A streamed patch to the root's transcript rescans the root's blocks only.
+  for (const label of Object.keys(reads)) {
+    reads[label] = 0
+  }
+  state.history = held(counted([...blocksOf('root'), call('root-new', 'executing')], reads, 'root'))
+  expect(dock.value.length).toBe(commands.length - agents.length * (blocksPerAgent / 50))
+  expect(reads.root).toBeLessThanOrEqual(blocksPerAgent + 1)
+  for (const agent of agents.slice(1)) {
+    expect(reads[agent]).toBe(0)
+  }
+
+  // Every row looks up its command: the list is read once for all of them,
+  // and a frame that changes one command's output re-reads it for none.
+  reads.terminals = 0
+  const commandOf = useCallTerminals(() => state.terminals)
+  const rows = commands.map((command) => computed(() => commandOf(command.subagentId, command.toolUseId!)?.phase))
+  expect(rows.every((row) => row.value === 'running')).toBe(true)
+  expect(reads.terminals).toBeLessThanOrEqual(2 * commands.length)
+  reads.terminals = 0
+  Object.assign(state.terminals[0]!, { phase: 'exited', output: 'done' })
+  expect(rows[0]!.value).toBe('exited')
+  expect(rows.slice(1).every((row) => row.value === 'running')).toBe(true)
+  expect(reads.terminals).toBeLessThanOrEqual(1)
 })
 
 // `runtime.md` § Rendering boundary: a command's terminal opens with its

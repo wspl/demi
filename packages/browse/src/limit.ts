@@ -19,3 +19,23 @@ export async function withinLimit<T>(work: Promise<T>, ms: number): Promise<T | 
     clearTimeout(timer)
   }
 }
+
+/** The longest delay a timer holds; a longer one fires at once. */
+const LONGEST_TIMER_MS = 2 ** 31 - 1
+
+/**
+ * `--limit` (browse.md § A call) in milliseconds: seconds, or minutes with
+ * an `m`. Throws, saying why, for anything else, and for a limit longer
+ * than a timer holds, which would end the call as it starts.
+ */
+export function parseCallLimit(text: string): number {
+  const limit = /^(\d+(?:\.\d+)?)(s|m)?$/.exec(text)
+  if (!limit) {
+    throw new Error(`--limit takes seconds or minutes, such as 90 or 15m, not ${text}`)
+  }
+  const ms = Math.round(Number(limit[1]) * (limit[2] === 'm' ? 60_000 : 1_000))
+  if (ms > LONGEST_TIMER_MS) {
+    throw new Error(`--limit takes at most 24 days, not ${text}; it counts seconds, or minutes with an m`)
+  }
+  return ms
+}
