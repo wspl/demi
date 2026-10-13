@@ -155,9 +155,9 @@ const ringColor = computed(() => {
     return 'text-fg-subtle'
   if (ratio.value >= 0.9)
     return 'text-on-danger'
-  if (ratio.value >= 0.7)
+  if (ratio.value >= 0.75)
     return 'text-on-warning'
-  return 'text-fg-muted'
+  return 'text-on-accent'
 })
 </script>
 
