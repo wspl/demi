@@ -1226,9 +1226,6 @@ model's name; the state and time always stay.
   its bar ends with the model and effort, whether it ended before the page
   opened or while it watched. The bar's text keeps the same distance from the
   window's left and right edges as the transcript's content above it.
-- **An agent link and a receipt's name**, pointed at, show the two groups
-  on one line and nothing more: the link's own text already names the
-  child, and the state is the line's own first word.
 - **The Completed menu** shows each child's profile tag after its
   description, and its time.
 
