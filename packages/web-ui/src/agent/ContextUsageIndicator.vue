@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { FileText, RefreshCw, UserRound } from '@lucide/vue'
+import { FileText, Network, RefreshCw, UserRound } from '@lucide/vue'
 import type { ContextRowKind, ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import ProviderQuota from '../settings/ProviderQuota.vue'
 import Button from '../ui/Button.vue'
@@ -300,7 +300,8 @@ const ringColor = computed(() => {
                           class="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-hover"
                           @click="openEntry(row.entry, close)"
                         >
-                          <UserRound v-if="row.path === null" :size="14" class="shrink-0 text-fg-subtle" />
+                          <UserRound v-if="row.entry.kind === 'personal'" :size="14" class="shrink-0 text-fg-subtle" />
+                          <Network v-else-if="row.entry.kind === 'workflow'" :size="14" class="shrink-0 text-fg-subtle" />
                           <FileText v-else :size="14" class="shrink-0 text-fg-subtle" />
                           <span class="min-w-0 flex-1 truncate text-fg-body">{{ row.label }}</span>
                         </button>

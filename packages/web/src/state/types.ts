@@ -18,7 +18,7 @@ import type { SendWay } from '@demicodes/web-ui/agent/send-way'
 import type { SessionLoad } from '@demicodes/web-ui/agent/session-status'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import type { ConversationDraft, ConversationTarget, DeviceKind, SavedList } from '../api/generated/web-api'
+import type { ConversationDraft, ConversationTarget, DeviceKind, SavedList, WorkflowChoice } from '../api/generated/web-api'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { SavedDraft, SavedFile } from '../conversation/drafts'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
@@ -57,6 +57,12 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /** When the root began to wait for the model's answer, as `Date.now()`; null when it waits for none (`runtime.md` § Waiting for the model). */
   waitingSince: number | null
   model: ModelSettings
+  /**
+   * The Workflow menu choice of a conversation without a record, which its
+   * first send gives it (`subagents.md` § Workflows of a project); one with
+   * a record holds its choice there.
+   */
+  workflow: WorkflowChoice
   lastError: ShownError | null
   /** The composer's Markdown, a mark where each file's capsule stands. */
   draft: string

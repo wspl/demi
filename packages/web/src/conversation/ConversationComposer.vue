@@ -113,11 +113,12 @@ const execution = computed(() => executionFor(props.conversation))
  * the record.
  */
 const record = computed(() => product.snapshot?.conversations.find((item) => item.id === props.conversation.id) ?? null)
-const workflowList = useConversationWorkflows(
-  () => props.conversation.id,
-  () => record.value ? resources.deviceById(execution.value.deviceId)?.id ?? null : null,
-)
-const workflow = computed(() => record.value ? { choice: record.value.workflow, list: workflowList.value } : null)
+const workflowList = useConversationWorkflows(() => props.conversation)
+/** The record's choice, with the changes on their way; a new conversation's own before its first send. */
+const workflow = computed(() => ({
+  choice: record.value?.workflow ?? props.conversation.workflow,
+  list: workflowList.value,
+}))
 // A reset holds the conversations that cannot work without the Cloud: it is
 // their target, or where their provider's process runs. The account snapshot
 // the page polls says when it ends, and the input returns by itself.
