@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { z } from 'zod'
 import SettingsSkills from './SettingsSkills.vue'
 import type { AddSourceAnswer, SettingsSkillDraft, SettingsSkillSource } from './types'
-import { PluginCallError, pendingCalls, usePage, type HeadlineText } from '@demicodes/plugin-sdk'
+import { PluginCallError, usePage, type HeadlineText } from '@demicodes/plugin-sdk'
 import {
   addedSourceSchema,
   skillsStateSchema,
@@ -51,17 +51,15 @@ onMounted(() => {
   })
 })
 
-/** The sources with a call in flight, whose switches wait for it. */
-const calls = pendingCalls(page.errors)
-
-/** Calls `method` for `source`, which answers nothing; a refusal says why in a toast. */
-function change(
-  source: string,
-  method: string,
-  params: SourceCall | SetEnabled | SetSourceEnabled,
-  couldNot: HeadlineText,
-): Promise<void> {
-  return calls.run(source, couldNot, () => plugin.call(method, params, z.null()))
+/**
+ * Calls `method`, which answers nothing; a refusal says why in a toast. Its
+ * control's operation (`page.operation`) runs until the call is answered.
+ */
+function change(method: string, params: SourceCall | SetEnabled | SetSourceEnabled, couldNot: HeadlineText): Promise<void> {
+  return plugin.call(method, params, z.null()).then(
+    () => {},
+    (error: unknown) => page.errors.report(couldNot, error),
+  )
 }
 
 /** The refusals that are about the origin typed, which the dialog says under its field (`skills.md` § The page). */
@@ -85,12 +83,12 @@ async function add(draft: SettingsSkillDraft): Promise<AddSourceAnswer> {
   <SettingsSkills
     v-model:open="openIds"
     :sources="sources"
-    :pending="calls.pending.value"
+    :operation="page.operation"
     :overlay-store="page.overlays"
     :add-source="add"
-    @update="(source) => change(source, 'update_source', { source }, 'Could Not Update the Source')"
-    @remove="(source) => change(source, 'remove_source', { source }, 'Could Not Remove the Source')"
-    @switch="(source, skill, enabled) => change(source, 'set_enabled', { source, skill, enabled }, 'Could Not Switch the Skill')"
-    @switch-source="(source, enabled) => change(source, 'set_source_enabled', { source, enabled }, 'Could Not Switch the Skills')"
+    @update="(source) => change('update_source', { source }, 'Could Not Update the Source')"
+    @remove="(source) => change('remove_source', { source }, 'Could Not Remove the Source')"
+    @switch="(source, skill, enabled) => change('set_enabled', { source, skill, enabled }, 'Could Not Switch the Skill')"
+    @switch-source="(source, enabled) => change('set_source_enabled', { source, enabled }, 'Could Not Switch the Skills')"
   />
 </template>
