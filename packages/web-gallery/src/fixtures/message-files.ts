@@ -21,7 +21,7 @@ function isFile(root: MemoryDirectory, path: string): boolean {
 export function galleryConversationFiles(source: MemoryFileSource, open: NonNullable<ConversationFiles['open']>): ConversationFiles {
   return {
     home: source.home,
-    imageUrl: (path) => source.contents.url(path),
+    contents: source.contents,
     attachment: galleryAttachment,
     codeFiles: (paths) => new Set(paths.filter((path) => isFile(source.root, path))),
     open,

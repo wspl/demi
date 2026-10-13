@@ -1,5 +1,6 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { expect, test } from 'bun:test'
+import type { FileContents } from '../../files/types'
 import type { MessageFiles } from '../types'
 
 // A click on what a message shows (`file-previews.md` § Files named in
@@ -14,15 +15,25 @@ const { openMessageLink } = await import('../message-files')
 const { renderMarkdown } = await import('../render')
 
 const opened: string[] = []
+/** The Host's kept files, which a message's Host images show; never read here. */
+const contents: FileContents = {
+  url: (path) => `/raw?path=${encodeURIComponent(path)}`,
+  describe: () => new Promise(() => {}),
+  showDescription: () => { throw new Error('Rendering shows no file') },
+}
+
 const files: MessageFiles = {
   cwd: '/work',
-  imageUrl: (path) => `/raw?path=${encodeURIComponent(path)}`,
+  contents,
   open: (target) => void opened.push(target.path),
 }
 
+/** The Host images of a message as the page shows them once their files are read. */
+const hostImages = new Map([['/work/out/chart.png', { state: 'shown' as const, src: '/raw?path=%2Fwork%2Fout%2Fchart.png&version=v1' }]])
+
 /** Renders `markdown` into the page, clicks the first `selector` match and says what the viewer then shows. */
 function click(markdown: string, selector: string) {
-  document.body.innerHTML = renderMarkdown(markdown, { files })
+  document.body.innerHTML = renderMarkdown(markdown, { files, hostImages })
   const viewer = createMediaViewer(() => ({ page: { width: 1440, height: 900 }, pixelRatio: 1 }))
   opened.length = 0
   const target = document.querySelector(selector)
@@ -34,9 +45,9 @@ function click(markdown: string, selector: string) {
   return { shown: viewer.shown.value, opened: [...opened], prevented: event.defaultPrevented }
 }
 
-test('a click on a Host image opens it in the media viewer, not the File view', () => {
+test('a click on a Host image opens its file in the media viewer, which shows the version the message shows, not the File view', () => {
   const result = click('![The page](out/chart.png)', 'img')
-  expect(result.shown).toMatchObject({ kind: 'image', src: `/raw?path=${encodeURIComponent('/work/out/chart.png')}`, name: 'The page' })
+  expect(result.shown).toMatchObject({ kind: 'image', file: { path: '/work/out/chart.png', contents }, name: 'The page' })
   expect(result.opened).toEqual([])
 })
 

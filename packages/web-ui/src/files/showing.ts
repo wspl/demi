@@ -1,4 +1,4 @@
-import { computed, shallowRef, watch, type ComputedRef } from 'vue'
+import { computed, onScopeDispose, shallowRef, watch, type ComputedRef } from 'vue'
 import type { Showing, ShownEntry } from './file-cache'
 import { followOnScreen } from './on-screen'
 
@@ -34,4 +34,46 @@ export function useShowing<O, T>(
     entry: computed(() => current.value?.entry ?? null),
     retry: () => current.value?.retry() ?? Promise.resolve(),
   }
+}
+
+/**
+ * Shows the entry at each of `paths` of what `owner` gives, through `open`,
+ * while the calling component's scope lives, as `useShowing` shows one: a
+ * path that stays keeps its hold, one that leaves is let go, and a new
+ * owner shows them all anew. It follows the entries only while the
+ * component's views are on screen.
+ */
+export function useShowings<O, T>(
+  owner: () => O | null | undefined,
+  paths: () => readonly string[],
+  open: (owner: O, path: string) => Showing<T>,
+): ComputedRef<ReadonlyMap<string, ShownEntry<T>>> {
+  const held = shallowRef<ReadonlyMap<string, Showing<T>>>(new Map())
+  /** The owner `held` was shown from. */
+  let heldOwner: O | null | undefined
+  const wanted = computed(() => [...new Set(paths())])
+  // Compared by the paths they name, so a render that names the same ones holds what it held.
+  const named = computed(() => [...wanted.value].sort().join('\0'))
+  watch([owner, named], ([shownOwner]) => {
+    const kept = shownOwner === heldOwner ? held.value : new Map<string, Showing<T>>()
+    const next = new Map<string, Showing<T>>()
+    if (shownOwner != null) {
+      for (const path of wanted.value)
+        next.set(path, kept.get(path) ?? open(shownOwner, path))
+    }
+    // The new ones are shown before the old are let go, so an entry both hold keeps its subscriptions.
+    const holding = new Set(next.values())
+    for (const showing of held.value.values()) {
+      if (!holding.has(showing))
+        showing.release()
+    }
+    heldOwner = shownOwner
+    held.value = next
+  }, { immediate: true })
+  onScopeDispose(() => {
+    for (const showing of held.value.values())
+      showing.release()
+  })
+  followOnScreen(() => [...held.value.values()])
+  return computed(() => new Map([...held.value].map(([path, showing]) => [path, showing.entry])))
 }

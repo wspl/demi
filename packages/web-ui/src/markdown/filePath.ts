@@ -113,15 +113,16 @@ export function isLikelyFilePath(rawPath: string): boolean {
 }
 
 /**
- * Where an image a message names loads from: the web, a `data:` URL or the
- * conversation's Host. Null for a target that loads nothing, which shows its
- * alt text. A click on it shows it large in the media viewer.
+ * Where an image a message names loads from: a web image or a `data:` URL
+ * from its `url`, a Host image from the file at `path`, in the version the
+ * page keeps of it (`useHostImages`). Null for a target that loads nothing,
+ * which shows its alt text. A click on it shows it large in the media viewer.
  */
-export function messageImage(target: string, files: MessageFiles | undefined): { src: string } | null {
+export function messageImage(target: string, files: MessageFiles | undefined): { url: string } | { path: string } | null {
   if (isHttpUrl(target) || target.startsWith('data:'))
-    return { src: target }
+    return { url: target }
   if (!files)
     return null
   const path = messageHostPath(target, files)
-  return path === null ? null : { src: files.imageUrl(path) }
+  return path === null ? null : { path }
 }
