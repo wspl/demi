@@ -2122,12 +2122,13 @@ connection A --+                    +--> A's outbox: events, and A's replies
 connection B --+                    +--> B's outbox: events, and B's replies
 ```
 
-- A page that opens a conversation without a copy of it shows the
-  transcript, the phase, the pending steers and the wait together, once its
-  handshake is applied, so a reload never draws a moment without the
-  steers or with a clock at 0s. When the conversation opens no session, as
-  an archived one or one without a usable model, or the model list has not
-  answered when the transcript arrives, it shows the transcript at once.
+- A page that opens a conversation without a copy of it shows it in two
+  steps ([Opening a conversation](../product/web-application.md#conversations)):
+  the transcript with its agents once both are read, then the phase, the
+  queue, the pending steers, the wait and the running commands together
+  once its handshake is applied, so a reload never draws a moment without
+  the steers or with a clock at 0s. A conversation that opens no session,
+  archived or without a usable model, stops at the first.
 - A tree has any number of attached connections. `open` attaches its
   connection without detaching another, and the connection receives its own
   handshake ([Order and delivery](#order-and-delivery)), then every event of

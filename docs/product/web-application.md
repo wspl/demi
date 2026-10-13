@@ -457,7 +457,10 @@ models: …*, and Retry.
 its history and its agents have both been read, the transcript and
 everything that names its agents appear together: the messages, the agent
 links in them, the dock's Agents chip, the Agents window and its Completed
-menu; until then the pane says it loads and none of them shows. Then, when
+menu, and the composer, whose message sent meanwhile goes once the session
+opens; the conversation is marked read, and a search result or a report's
+command opens at its place; until then the pane says it loads and none of
+them shows. Then, when
 the session opens, what only the live session knows joins them: the turn's
 phase, running commands, the Running and Resume chips, the context use.
 Until that second step, the conversation's status, in the sidebar's dot
