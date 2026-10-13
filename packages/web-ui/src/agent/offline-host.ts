@@ -1,4 +1,5 @@
 import type { DeviceStart } from '../devices/installation'
+import type { MoveLock } from '../hosts/move-question'
 import type { HostDeviceOption, HostMenuHost } from '../hosts/types'
 
 /**
@@ -15,6 +16,6 @@ export interface OfflineHost {
   devices: HostDeviceOption[]
   /** In a project: choosing a device opens its directory picker. */
   chooseDirectory?: boolean
-  /** The conversation cannot move now, as while its work runs. */
-  locked?: boolean
+  /** Why the conversation cannot move now: archived, or a move under way. */
+  locked?: MoveLock
 }
