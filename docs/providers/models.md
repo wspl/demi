@@ -170,7 +170,7 @@ entry without one uses its family's default endpoint
 ([Endpoints](providers.md#endpoints)). The page knows whether a key is saved
 from the entry's `hasApiKey`, and shows the masked key only then. What it
 lacks is shown plainly, never in red, since nothing failed
-([Models & providers](../product/product.md#models--providers)): an empty key
+([Models & providers](../product/product.md#provider-management)): an empty key
 field, *No models yet* with Add Model, and a subscription's Sign In row.
 
 An incomplete entry wears the yellow dot in the providers list, the same
