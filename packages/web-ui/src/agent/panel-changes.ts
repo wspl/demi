@@ -1,4 +1,5 @@
-import { computed, shallowRef, type ComputedRef } from 'vue'
+import { computed, type ComputedRef } from 'vue'
+import { Slot, type SlotChange } from '../infra/slot'
 import { removeTabs, type PanelTab } from './panel-tabs'
 
 /**
@@ -92,31 +93,32 @@ export function dataChanges(before: unknown, after: Record<string, unknown>): Re
   return fields
 }
 
-/** A change of the page's that is not in the panel it read yet: waiting to go, sent, or answered with the revision it named. */
-interface Pending {
+/** A change of the page's that is not in the panel it read yet, and the request it will go in. */
+interface Unsent {
   change: PanelChange
-  answered: number | null
-  sent: boolean
+  shown: SlotChange<PanelTab[]>
 }
 
 /**
  * The work panel's tabs as a page shows them (`web-application.md` § Work
- * panel): the panel it last read, with its own changes that are not in it yet
- * applied on top. A change shows at once; the changes made while none is on
- * its way go together, in order, as one request, so Close Others is one
- * request (`web-application.md` § Requests for one action). An answer that
- * changed the panel one revision past the one the page holds is the panel
- * with the request in it; the panel is read only when an answer, or the
- * summary, names a revision past the one the page then holds, which says
- * another change came in between (`web-api.md` § Work panel state). A change leaves once a panel at least as new as its
- * answer is held, so a panel read after a removal never brings the tab back.
- * A request the backend refuses leaves at once, and the panel shows as the
- * backend has it.
+ * panel): a slot (`infra/slot`) of the panel it last read, its revision the
+ * panel's, with the page's own changes that are not in it yet on top. A
+ * change shows at once; the changes made while none is on its way go
+ * together, in order, as one request, so Close Others is one request
+ * (`web-application.md` § Requests for one action). An answer that changed
+ * the panel one revision past the one the page holds is the panel with the
+ * request in it; the panel is read only when an answer, or the summary,
+ * names a revision past the one the page then holds, which says another
+ * change came in between (`web-api.md` § Work panel state). A change leaves
+ * once a panel at least as new as its answer is held, so a panel read after
+ * a removal never brings the tab back. A request the backend refuses leaves
+ * at once, and the panel shows as the backend has it.
  */
 export class PanelTabs {
-  private readonly confirmed = shallowRef<PanelRead | null>(null)
-  /** The page's changes not yet in the panel it holds, oldest first. */
-  private readonly pending = shallowRef<Pending[]>([])
+  /** Before the first read the panel is empty, so a change shows over it. */
+  private readonly slot = new Slot<PanelTab[]>([])
+  /** The changes made and not yet sent, oldest first. */
+  private unsent: Unsent[] = []
   private sending = false
   private started = false
   /** The newest revision the page heard of: an answer's, or the summary's. */
@@ -129,19 +131,17 @@ export class PanelTabs {
     /** Reports a change the backend refused, or a read that failed. */
     private readonly refused: (error: unknown) => void,
   ) {
-    this.tabs = computed(() =>
-      this.pending.value.reduce((tabs, entry) => applyPanelChange(tabs, entry.change), this.confirmed.value?.tabs ?? []),
-    )
+    this.tabs = computed(() => this.slot.value.value ?? [])
   }
 
   /** The revision of the panel last read; -1 before the first read. */
   get revision(): number {
-    return this.confirmed.value?.revision ?? -1
+    return this.slot.revision
   }
 
   /** Whether the panel was read once. */
   get read(): boolean {
-    return this.confirmed.value !== null
+    return this.slot.read.value !== null
   }
 
   /**
@@ -159,7 +159,10 @@ export class PanelTabs {
 
   /** Shows `changes` at once and sends them, together, after the changes before them. */
   change(...changes: PanelChange[]): void {
-    this.pending.value = [...this.pending.value, ...changes.map((change) => ({ change, answered: null, sent: false }))]
+    this.unsent.push(...changes.map((change) => ({
+      change,
+      shown: this.slot.change((tabs) => applyPanelChange(tabs, change)),
+    })))
     void this.flush()
   }
 
@@ -187,16 +190,7 @@ export class PanelTabs {
 
   /** Takes a panel read anywhere: an older one than the panel held changes nothing. */
   receive(panel: PanelRead): void {
-    if (this.confirmed.value !== null && panel.revision <= this.confirmed.value.revision) {
-      return
-    }
-    this.confirmed.value = panel
-    this.prune()
-  }
-
-  private prune(): void {
-    const revision = this.revision
-    this.pending.value = this.pending.value.filter((entry) => entry.answered === null || entry.answered > revision)
+    this.slot.replace(panel.tabs, { revision: panel.revision })
   }
 
   private async flush(): Promise<void> {
@@ -206,38 +200,33 @@ export class PanelTabs {
     this.sending = true
     try {
       for (;;) {
-        const batch = this.pending.value.filter((entry) => !entry.sent)
+        const batch = this.unsent.splice(0)
         if (batch.length === 0) {
           return
         }
-        for (const entry of batch) {
-          entry.sent = true
-        }
+        const shown = batch.map((entry) => entry.shown)
+        this.slot.send(shown)
         let answer: PanelAnswer
         try {
           answer = await this.backend.send(batch.map((entry) => entry.change))
         } catch (error) {
-          this.pending.value = this.pending.value.filter((entry) => !batch.includes(entry))
+          this.slot.drop(shown)
           this.refused(error)
           continue
         }
-        for (const entry of batch) {
-          entry.answered = answer.revision
-        }
         this.known = Math.max(this.known, answer.revision)
-        const held = this.confirmed.value
-        if (held !== null && answer.changed && answer.revision === held.revision + 1) {
-          // The request alone made this revision: the panel is the one held with it.
-          this.confirmed.value = {
-            revision: answer.revision,
-            tabs: batch.reduce((tabs, entry) => applyPanelChange(tabs, entry.change), held.tabs),
-          }
-        }
+        // A request that alone made the next revision leaves the panel as the
+        // tabs held with it; any other answer waits for the panel it names.
+        const alone = this.read && answer.changed && answer.revision === this.revision + 1
+        const read = this.read
+        this.slot.land(shown, {
+          revision: answer.revision,
+          ...(alone ? { value: (tabs: PanelTab[]) => batch.reduce((next, entry) => applyPanelChange(next, entry.change), tabs) } : {}),
+        })
         // Another change came in between, or after: only then is the panel read.
-        if (held !== null && this.known > this.revision) {
+        if (read && this.known > this.revision) {
           await this.refresh()
         }
-        this.prune()
       }
     } finally {
       this.sending = false
