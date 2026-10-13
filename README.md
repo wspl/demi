@@ -89,7 +89,8 @@ with additional conditions. You may use it, change it and run it, a company
 included, for its own people, and charge others for deploying, integrating
 or supporting Demi they run themselves. Offering Demi to others for a fee,
 as a hosted or multi-tenant service or as a product that is substantially
-Demi, needs a commercial license.
+Demi, needs a commercial license, and so does removing or changing the Demi
+name, logo or copyright notices the web front end shows.
 
 For a commercial license, write to [support@demi.sh](mailto:support@demi.sh).
 
