@@ -54,7 +54,8 @@ A password an administrator chose is the account's only until its owner
 chooses one. An account made by Add User…, and one whose password an
 administrator reset, chooses its own password the next time its owner signs
 in, by that password on a computer or by a sign-in code on a phone: before
-anything else the page asks *Choose Your Password*, a new password and its
+anything else the page asks *Choose Your Password*, the first step of a
+wizard ([Responding to the user](web-application.md#responding-to-the-user)), a new password and its
 confirmation, without the current one, and nothing else of the product
 opens until it is chosen; every session of the account asks the same,
 and Sign Out is the one other way out. A password chosen there is then
@@ -159,7 +160,7 @@ phone.
   password chooses it first ([Administrators manage accounts](#user-system)).
   A sign-in by a code counts as the phone's confirmation, as a password sign-in does, so for five minutes
   the phone adds a passkey without asking the password again. The page the
-  code opens offers it once on that browser, *Use Face ID next time?* with
+  code opens offers it once on that browser, as a one-step wizard, *Use Face ID next time?* with
   Add Passkey and Not Now, and not again on that browser whichever is
   pressed; a phone whose password manager already holds a passkey of the
   account answers so, and the page says *This phone already has a passkey
