@@ -471,7 +471,12 @@ history was read, says that it connects, and never shows the second step's
 parts from before. The agents list the history read returns is the live
 tree's own when the conversation runs, the same list the session's
 `subagents` frame then sends, so the second step never takes back an agent
-the first showed ([Protocol](../agent/subagents.md#protocol)). A
+the first showed ([Protocol](../agent/subagents.md#protocol)), unless the
+tree really changed between the two, as when an edit removed a subagent,
+which the second step then shows. Every first session of a conversation is
+an opening: a new conversation's first send, one restored from the
+archive, and a Retry after a failed opening, which shows nothing of the
+earlier attempt while it loads again. A
 conversation that opens no session, archived or with no model, stops at the
 first step.
 
