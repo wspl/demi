@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, provide, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
@@ -14,6 +14,8 @@ import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
 import { callTerminal } from '@demicodes/web-ui/agent/terminals'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
+import { deviceReportKey } from '@demicodes/web-ui/auth/device-unlock'
+import { DEVICE_REPORTS } from '../fixtures/device-reports'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryHostMenu from '../components/GalleryHostMenu.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
@@ -49,6 +51,11 @@ const agentContext = useAgentContext()
  */
 const route = useRoute()
 const scene = typeof route.query.scene === 'string' ? route.query.scene : 'conversation'
+// A scene may speak of another system than the iframe's own browser (`?system=android`).
+const system = typeof route.query.system === 'string' ? DEVICE_REPORTS[route.query.system] : undefined
+if (system) {
+  provide(deviceReportKey, system.report)
+}
 
 const root = document.documentElement
 root.style.setProperty('--safe-top', '59px')
