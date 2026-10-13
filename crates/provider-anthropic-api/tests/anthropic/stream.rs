@@ -50,8 +50,9 @@ async fn a_stream_maps_thinking_text_tool_use_and_usage() {
         delta(2, json!({ "type": "input_json_delta", "partial_json": "{\"path\":" })),
         delta(2, json!({ "type": "input_json_delta", "partial_json": "\"a.ts\"}" })),
         block_stop(2),
-        // A count reported as zero keeps the one reported before.
-        json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "input_tokens": 0, "output_tokens": 5 } }),
+        // The delta's counts are the call's: one it leaves out, or states
+        // as null, is message_start's; one it states, even 0, is its own.
+        json!({ "type": "message_delta", "delta": { "stop_reason": "tool_use" }, "usage": { "input_tokens": null, "cache_creation_input_tokens": 0, "output_tokens": 5 } }),
         message_stop(),
     ]))
     .await;
@@ -84,8 +85,28 @@ async fn a_stream_maps_thinking_text_tool_use_and_usage() {
                 input_tokens: 12,
                 output_tokens: 5,
                 cache_read_tokens: 2,
-                cache_write_tokens: 1,
+                cache_write_tokens: 0,
             })),
+        ]
+    );
+}
+
+#[tokio::test]
+async fn a_message_whose_delta_states_no_usage_reports_none() {
+    // message_start's counts alone are not the call's: its output count is
+    // a placeholder until message_delta states the call's.
+    let events = events_of(recorded(&[
+        json!({ "type": "message_start", "message": { "usage": { "input_tokens": 7, "output_tokens": 1 } } }),
+        delta(0, json!({ "type": "text_delta", "text": "hi" })),
+        json!({ "type": "message_delta", "delta": { "stop_reason": "end_turn" } }),
+        message_stop(),
+    ]))
+    .await;
+    assert_eq!(
+        events,
+        [
+            ProviderEvent::TextDelta("hi".into()),
+            ProviderEvent::Response(None),
         ]
     );
 }
@@ -171,7 +192,7 @@ async fn events_and_blocks_the_provider_does_not_map_are_skipped() {
         "data: {\"type\":\"message_stop\"}\n\n",
     )))
     .await;
-    assert_eq!(events, [ProviderEvent::Response(Some(TokenUsage::default()))]);
+    assert_eq!(events, [ProviderEvent::Response(None)]);
 }
 
 #[tokio::test]
