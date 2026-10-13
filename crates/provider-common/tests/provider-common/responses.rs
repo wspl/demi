@@ -26,6 +26,7 @@ fn vendor(reader: demi_provider_common::FailureReader) -> Vendor {
         label: "Codex",
         reader,
         clock: Arc::new(FixedClock(NOW.parse::<Timestamp>().unwrap())),
+        model: "gpt-5-codex".into(),
     }
 }
 
@@ -175,10 +176,9 @@ async fn a_finished_items_text_is_emitted_only_when_no_delta_streamed_it() {
             "no"
         ]
     );
-    assert_eq!(
-        events.last(),
-        Some(&ProviderEvent::Response(Some(TokenUsage::default())))
-    );
+    // A completion without usage gives a response without usage, never
+    // zeros.
+    assert_eq!(events.last(), Some(&ProviderEvent::Response(None)));
 }
 
 #[tokio::test]

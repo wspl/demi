@@ -1,10 +1,12 @@
 //! The building blocks every HTTP provider decodes its vendor's answers with
 //! (`providers.md` § Reading vendor input): server-sent event framing, the
 //! two-step decode of payloads tagged by `type`, fields Demi only reports,
-//! and the OpenAI-shaped Responses and Chat Completions streams with their
-//! mappers onto a run's events.
+//! the OpenAI-shaped Responses and Chat Completions streams with their
+//! mappers onto a run's events, and the token counts of the Anthropic
+//! Messages stream.
 
 pub mod chat_completions;
+pub mod messages;
 pub mod responses;
 mod sse;
 mod tagged;
@@ -30,13 +32,15 @@ pub mod __private {
 
 /// The vendor a shared stream mapper reads for: its name in the failures the
 /// mapper composes, such as `Codex stream error`, the reader that finds the
-/// wait in its failure records, and the clock that says when a failure was
-/// received.
+/// wait in its failure records, the clock that says when a failure was
+/// received, and the model the run asked for, which a response without usage
+/// names in its log.
 #[derive(Clone)]
 pub struct Vendor {
     pub label: &'static str,
     pub reader: FailureReader,
     pub clock: Arc<dyn Clock>,
+    pub model: String,
 }
 
 /// The usage an OpenAI-shaped API reports, whose input count includes what

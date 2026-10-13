@@ -33,6 +33,7 @@ pub(crate) fn run(
             return;
         }
         let ids = RequestIds::of(&request);
+        let model = request.model_id.clone();
         let body = encode_body(LABEL, move || request::encode(&request));
         let body = tokio::select! {
             biased;
@@ -108,6 +109,7 @@ pub(crate) fn run(
             label: LABEL,
             reader: read_http_failure,
             clock: shared.clock.clone(),
+            model,
         };
         let mut events = std::pin::pin!(chat_completions::map_sse(response.bytes_stream(), vendor, cancel));
         while let Some(event) = events.next().await {
