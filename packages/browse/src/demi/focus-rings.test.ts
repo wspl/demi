@@ -1,0 +1,73 @@
+// `demi.focusRings` over a page with one focus indicator of each kind the
+// check finds and two it must not: in the slot's kind of browser, started in
+// a temporary slot, about a second.
+import { afterAll, expect, test } from 'bun:test'
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { chromium } from 'playwright'
+import { Browser } from '../browser'
+import { slotPorts, type Slot } from '../slot'
+import type { Tool } from '../tool'
+import { focusRings } from './focus-rings'
+
+const root = mkdtempSync(join(tmpdir(), 'browse-rings-'))
+const slot: Slot = { root, number: 0, ports: slotPorts(0), folder: join(root, '.cache/browse') }
+mkdirSync(slot.folder, { recursive: true })
+const browser = new Browser(slot, () => undefined)
+
+afterAll(async () => {
+  await browser.close()
+  rmSync(root, { recursive: true, force: true })
+})
+
+const PAGE = `
+<style>
+  body { margin: 40px; }
+  button { outline: none; margin: 0 24px 24px 0; }
+  .stack button { margin: 0; }
+  button:focus-visible { outline: 2px solid blue; outline-offset: 1px; }
+  .clip { overflow: hidden; width: 200px; height: 80px; background: #eee; margin-bottom: 24px; }
+  .padded { padding: 4px; }
+  .inset:focus-visible { outline-offset: -2px; }
+  .ring:focus-visible { outline: none; box-shadow: 0 0 0 2px blue; }
+  .stack { position: relative; height: 40px; }
+  #under { width: 50px; }
+  .stack .cover { position: absolute; z-index: 5; left: 50px; top: 0; width: 140px; height: 40px; background: #ccc; }
+</style>
+<div class="clip"><button id="flush">Flush</button></div>
+<div class="clip padded"><button id="padded">Padded</button></div>
+<div class="clip"><button id="inset" class="inset">Inset</button></div>
+<div class="clip"><button id="shadow" class="ring">Shadow</button></div>
+<div class="stack"><button id="under">Under</button><div class="cover"></div></div>
+<button id="free">Free</button>
+<button id="skipped" tabindex="-1">Skipped by Tab</button>`
+
+test.skipIf(!existsSync(chromium.executablePath()))(
+  'focus rings: an outline or a ring an ancestor clips or an element covers is reported with its side and its pixels, the rest is not',
+  async () => {
+    const lines: string[] = []
+    const tool: Tool = {
+      slot,
+      browser,
+      network: () => Promise.reject(new Error('focusRings needs no network')),
+      print: (line) => lines.push(line),
+      env: {},
+      wrote: () => undefined,
+      release: () => undefined,
+      endServer: () => undefined,
+    }
+    const page = await browser.page()
+    await page.setContent(PAGE)
+    const report = await focusRings(tool, { shots: false })
+    const found = report.offenders.map((offender) => [
+      offender.element.split(' ')[1], offender.reached, offender.findings.map((finding) => [finding.kind, finding.by, finding.cuts]),
+    ])
+    expect(found).toEqual([
+      ['"Flush"', 'Tab', [['clipped', 'div.clip', { top: 3, right: 0, bottom: 0, left: 3 }]]],
+      ['"Shadow"', 'Tab', [['clipped', 'div.clip', { top: 2, right: 0, bottom: 0, left: 2 }]]],
+      ['"Under"', 'Tab', [['covered', 'div.cover', { top: 0, right: 3, bottom: 0, left: 0 }]]],
+    ])
+    expect(report.checked).toBe(7)
+  },
+)
