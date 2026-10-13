@@ -915,8 +915,8 @@ Runner process
 ```
 
 Each job starts a fresh login shell in the directory its request names, which
-for a conversation's command is always the conversation's working directory
-on that Host ([Running shell tools](../agent/runtime.md#running-shell-tools)).
+for a conversation's command on its primary Host is the working directory of
+the agent that ran it, and on an attached Host that Host's starting directory ([Running shell tools](../agent/runtime.md#running-shell-tools)).
 Brush loads the system profile and first readable user login profile. The
 runner then restores its execution context and places command aliases first
 in PATH. Nothing of an earlier job carries over, neither its directory nor its

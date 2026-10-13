@@ -993,8 +993,11 @@ checkout's file, not the root's.
   changes it (`demi conversation move`,
   [Conversation commands](../execution/sessions-and-targets.md#attached-hosts)).
 - **A child's starts as its parent's,** the parent's at the spawn or fork,
-  or the directory `--cwd` names, read against the parent's. Changing a
-  parent's later changes no child's.
+  or the directory `--cwd` names, read against the parent's, which must
+  exist on the primary Host as for `demi agent cwd`. Changing a parent's
+  later changes no child's. Its first request already carries a `context`
+  block naming its directory, since the execution context names the
+  conversation's.
 - **`demi agent cwd <dir>`** changes the calling child's directory, read
   against its current one, from its next `shell` call on; the directory must
   exist on the primary Host, or the command is refused and nothing changes.
@@ -1003,6 +1006,17 @@ checkout's file, not the root's.
   the node's directory. Called by the root, a change is refused with
   *The main agent works in the conversation's directory; move the
   conversation with `demi conversation move` to work elsewhere.*
+- **A move puts the children back.** When the conversation moves or its
+  primary Host changes, every child's directory becomes the conversation's
+  new one, and a `context` block tells each so: an absolute path of the old
+  Host names nothing on the new one.
+- **The child's own files follow it:** its instructions and its project
+  skills are read from its directory
+  ([Which files are read](instructions.md#which-files-are-read)), so a child
+  in another checkout follows that checkout's `AGENTS.md`.
+- **`demi agent show` and `list` name it:** `show` gives a `cwd` line; `list`
+  adds the directory after the description, relative to the conversation's
+  when inside it.
 - **Attached Hosts are not affected.** A command on an attached Host starts
   in that Host's starting directory, whatever the node's directory is.
 - **It is kept with the node,** so a reopened conversation restores it and a
@@ -1034,7 +1048,7 @@ session's inference transcript is only its own transcript frames.
 
 | Server frame | Fields | Sent |
 | --- | --- | --- |
-| `subagent` | `event` (`started` or `closed`), `job` | When a child starts (spawn, resume, or restore) and when it closes |
+| `subagent` | `event` (`started`, `changed` or `closed`), `job` | When a child starts (spawn, resume, or restore), when its record changes, as when it moves to another directory, and when it closes |
 | `subagent_transcript_reset` | `subagentId`, `start`, `blocks` from that index on, `length`, `revision`, optional `failures` | After `started`, and for every live child when a page opens the conversation or syncs its transcript; it starts at the child's latest page ([Where a reset starts](runtime.md#where-a-reset-starts)) |
 | `subagent_transcript_patch` | `subagentId`, `patches`, `revision`, optional `failures` | When a child's transcript changes |
 
