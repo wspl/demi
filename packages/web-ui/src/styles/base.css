@@ -891,7 +891,7 @@ html[data-theme="light"] .file-pill {
    Inset is padding, not grid tracks, so column-gap cannot push the + off-center.
    Attach-to-field space is on the editor side — never steal from the left inset.
    Editor stays on one node; capsule vs expanded only changes grid placement. */
-.composer-shell {
+.composer-frame {
   --composer-shell-height: 44px;
   --composer-chip: var(--spacing-hit);
   --composer-inset: calc((var(--composer-shell-height) - var(--composer-chip)) / 2);
@@ -907,10 +907,27 @@ html[data-theme="light"] .file-pill {
     + var(--composer-editor-pad-top)
     + var(--composer-editor-pad-bottom)
   );
+}
+
+.composer-shell {
   display: grid;
   align-items: center;
   column-gap: 0.25rem;
   border-radius: var(--composer-shell-radius);
+}
+
+/* The row under the box: the model, then the context, at its right edge. It
+   stands one step under the box, inside the 12px the dock keeps around the
+   composer. */
+.composer-below {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: calc(var(--spacing) * 1);
+  margin-top: calc(var(--spacing) * 1);
+  /* The row's last control stands over the send button: both are a chip
+     wide, so the box's inset puts their centres on one line. */
+  padding-inline-end: var(--composer-inset);
 }
 
 .composer-attach {
@@ -924,9 +941,6 @@ html[data-theme="light"] .file-pill {
   grid-area: editor;
   min-width: 0;
 }
-.composer-model {
-  grid-area: model;
-}
 .composer-actions {
   grid-area: actions;
 }
@@ -934,23 +948,23 @@ html[data-theme="light"] .file-pill {
 .composer-shell-capsule {
   height: var(--composer-shell-height);
   padding: var(--composer-inset);
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  grid-template-areas: "attach editor model actions";
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-areas: "attach editor actions";
 }
 
 .composer-shell-expanded {
   align-items: start;
   row-gap: 0.25rem;
   padding: 0 var(--composer-inset) var(--composer-inset);
-  grid-template-columns: auto auto minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas:
-    "editor editor editor editor"
-    "attach model ruler actions";
+    "editor editor editor"
+    "attach ruler actions";
 }
 
 /* What one line offers the text, measured where the editor stands on one
    line: its own cell, which the ruler lies in without taking height, and in
-   the open shell the free column of the lower row — the same four items, so
+   the open shell the free column of the lower row — the same two items, so
    the same width, down to the editor's start margin. */
 .composer-line-ruler {
   grid-area: editor;
@@ -964,7 +978,6 @@ html[data-theme="light"] .file-pill {
 }
 
 .composer-shell-expanded .composer-attach,
-.composer-shell-expanded .composer-model,
 .composer-shell-expanded .composer-actions {
   align-self: center;
 }
