@@ -65,9 +65,10 @@ a code is offered the passkey alone.
 Administrators manage accounts in Settings › Users, which only the master
 and admins see, as macOS's Users & Groups or a GitHub organization's
 People. For example, Ana, an admin, adds Bo for a new colleague: Add User…
-asks his email, his role and a first password, which she types or has made
-for her and copies, and Bo signs in with it and changes it in Settings ›
-Account. When Bo leaves, she disables his account.
+asks his email and his role, and shows the first password the server made
+for him, with Copy, beside a sign-in code; Bo's phone reads the code, or he
+signs in with the password on his computer, and either way he chooses his
+own password first. When Bo leaves, she disables his account.
 
 - **The list** has one row per account: its nickname and email, its role,
   and when it was last active, with *Disabled* on a disabled one and
@@ -75,14 +76,18 @@ Account. When Bo leaves, she disables his account.
   user's own row is marked *You*. A row has a ··· menu with what the user
   may do to that account, and none on the user's own or on one of a role
   not below theirs.
-- **Reset Password…** sets a password the administrator types or has made
-  and copies; the account's sessions and passkeys stay, and its owner
-  chooses a new password at once, as above.
+- **A first password** is always made by the server, 20 random letters and
+  digits, never typed by an administrator: its owner replaces it at once
+  anyway. Add User… and **Reset Password…** both end on it, with Copy, New
+  Password, which makes another and stops the one shown, and a sign-in
+  code beside it. A reset keeps the account's sessions and passkeys, and its
+  owner chooses a new password at once, as above. The password is shown
+  only there: an administrator who lost it makes a new one.
 - **Sign-In Code…** shows a QR code that signs a phone in to that account,
   as a handoff code does: good for ten minutes and once, ending the
   account's earlier sign-in code, and asking the administrator's own
-  confirmation as Hand Off to Phone does. Add User… shows it too once the
-  account is made, so the new user's phone is signed in and adds a passkey
+  confirmation as Hand Off to Phone does, Add User… and Reset Password…
+  asking it the same way. Add User… shows it too once the account is made, so the new user's phone is signed in and adds a passkey
   there and then. The account's list of signed-in browsers names the
   administrator on a browser signed in this way, *Signed in with a code
   from Ana*. It grants no more than a password reset does, which already
