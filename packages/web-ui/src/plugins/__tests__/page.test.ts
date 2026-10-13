@@ -152,6 +152,39 @@ test('a user state the page cannot read is reported once, and the page goes on w
   for (const toast of [...toasts]) dismissToast(toast.id)
 })
 
+test("a plugin's user state the page cannot read toasts once however many components read it", () => {
+  for (const toast of [...toasts]) dismissToast(toast.id)
+  const logged = spyOn(console, 'error').mockImplementation(() => {})
+  const sent = shallowRef<unknown>({ sources: [{ id: 'src_1', updateAvailable: false }] })
+  // One page of the shell reads the state in two places, and a second page
+  // context over the same host, as a second window of the settings would
+  // make, reads it as well.
+  const shared = host({ userState: () => sent.value })
+  const first = pageContext(shared, definePage({ plugin: 'skills' }))
+  const second = pageContext(shared, definePage({ plugin: 'skills' }))
+  const readers = [effectScope(), effectScope(), effectScope()]
+  readers[0]!.run(() => first.plugin.state(skillsState))
+  readers[1]!.run(() => first.plugin.state(skillsState))
+  readers[2]!.run(() => second.plugin.state(skillsState))
+
+  sent.value = { sources: [{ id: 'src_2' }] }
+  expect(toasts.map((toast) => toast.title)).toEqual(['Could Not Read the Plugin’s Data'])
+
+  // A reader that goes while the others still cannot read says nothing more.
+  readers[0]!.stop()
+  readers[1]!.stop()
+  sent.value = { sources: [{ id: 'src_3' }] }
+  expect(toasts).toHaveLength(1)
+
+  // Once the state reads again, its next refusal is news.
+  sent.value = { sources: [{ id: 'src_3', updateAvailable: false }] }
+  sent.value = { sources: [{ id: 'src_4' }] }
+  expect(toasts).toHaveLength(2)
+  readers[2]!.stop()
+  logged.mockRestore()
+  for (const toast of [...toasts]) dismissToast(toast.id)
+})
+
 test('a call its caller dropped, as a panel that closed, is neither a toast nor a defect', () => {
   for (const toast of [...toasts]) dismissToast(toast.id)
   const logged = spyOn(console, 'error').mockImplementation(() => {})
