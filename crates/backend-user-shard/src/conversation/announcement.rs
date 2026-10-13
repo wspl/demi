@@ -41,6 +41,10 @@ const SWITCHED: &str = "[Execution target switched]";
 /// § Standard utilities).
 const UTILITIES: &str = "Standard utilities (sed, grep, cp, ls, find, …) are GNU's on every host";
 
+/// Where the agent keeps the files only it needs (`runner.md` § Scratch
+/// directory), which every block says after where shells start.
+const SCRATCH: &str = "Files only you need (screenshots, probe scripts) go in $DEMI_SCRATCH, which shows as no change and lasts as long as the conversation.";
+
 /// Where a Mac keeps its own, BSD utilities, which a block for a Mac adds.
 const MACOS_UTILITIES: &str = "macOS's own are in /usr/bin";
 
@@ -205,9 +209,9 @@ impl Shard {
 
     /// The primary Host as the model reads it: its name, its operating
     /// system with its architecture as its runner last reported them, the
-    /// directory its shells start in, and that its standard utilities are
-    /// GNU's, with where a Mac's own are and what a Windows Host's shell
-    /// is. A Host whose runner never connected, such as a Cloud not made
+    /// directory its shells start in, where the files only the agent needs
+    /// go, and that its standard utilities are GNU's, with where a Mac's own
+    /// are and what a Windows Host's shell is. A Host whose runner never connected, such as a Cloud not made
     /// yet, is named without its system.
     async fn primary_host_line(&self, target: &ExecutionTarget) -> Result<String, StorageError> {
         let (device, name) = self.primary_host(target).await?;
@@ -221,7 +225,7 @@ impl Shard {
             None => name,
         };
         Ok(format!(
-            "Primary host: {host}. Shells start in {}. {utilities}",
+            "Primary host: {host}. Shells start in {}. {SCRATCH} {utilities}",
             target.path()
         ))
     }
@@ -406,7 +410,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             block.lines().nth(1).unwrap(),
-            r"Primary host: ALEX-PC, Windows 11 Pro (build 26100) (x86_64). Shells start in C:\Users\ana. Standard utilities (sed, grep, cp, ls, find, …) are GNU's on every host. Shells are bash (Demi's own, not Git Bash or WSL); Windows programs such as cmd, powershell and git run by name. Write paths as C:/Users/…, not /c/Users/…; quote a path with backslashes."
+            r"Primary host: ALEX-PC, Windows 11 Pro (build 26100) (x86_64). Shells start in C:\Users\ana. Files only you need (screenshots, probe scripts) go in $DEMI_SCRATCH, which shows as no change and lasts as long as the conversation. Standard utilities (sed, grep, cp, ls, find, …) are GNU's on every host. Shells are bash (Demi's own, not Git Bash or WSL); Windows programs such as cmd, powershell and git run by name. Write paths as C:/Users/…, not /c/Users/…; quote a path with backslashes."
         );
     }
 }
