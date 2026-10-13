@@ -1549,12 +1549,12 @@ impl ProviderRuntime for KeyedRuntime {
             }
             stream::iter([
                 ProviderEvent::TextDelta(format!("{key}:{count}")),
-                ProviderEvent::Response(TokenUsage {
+                ProviderEvent::Response(Some(TokenUsage {
                     input_tokens: 1,
                     output_tokens: output,
                     cache_read_tokens: 0,
                     cache_write_tokens: 0,
-                }),
+                })),
             ])
         })
         .flatten()

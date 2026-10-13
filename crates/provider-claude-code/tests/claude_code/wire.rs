@@ -29,17 +29,22 @@ async fn answer(lines: Vec<Value>) -> (Vec<ProviderEvent>, Vec<Signal>) {
     (events, cli.signals())
 }
 
+/// The end of the turn's last call, whose usage the response carries.
+fn call_end() -> Value {
+    json!({ "type": "stream_event", "event": { "type": "message_delta", "usage": { "input_tokens": 1, "output_tokens": 1 } } })
+}
+
 fn done() -> Value {
-    json!({ "type": "result", "usage": { "input_tokens": 1, "output_tokens": 1 } })
+    json!({ "type": "result", "usage": { "input_tokens": 3, "output_tokens": 3 } })
 }
 
 fn response() -> ProviderEvent {
-    ProviderEvent::Response(TokenUsage {
+    ProviderEvent::Response(Some(TokenUsage {
         input_tokens: 1,
         output_tokens: 1,
         cache_read_tokens: 0,
         cache_write_tokens: 0,
-    })
+    }))
 }
 
 fn failure(events: &[ProviderEvent]) -> &ProviderFailure {
@@ -59,6 +64,7 @@ async fn a_whole_message_gives_its_text_and_reasoning_until_the_process_streams(
             { "type": "text", "text": "" },
             { "type": "text", "text": "hello" },
         ] } }),
+        call_end(),
         done(),
     ])
     .await;
@@ -92,7 +98,7 @@ async fn streamed_pieces_become_events_and_the_whole_message_after_them_repeats_
         json!({ "type": "stream_event", "event": { "type": "content_block_start", "index": 2, "content_block": { "type": "tool_use", "id": "toolu_1", "name": "mcp__main__shell_exec", "input": {} } } }),
         json!({ "type": "stream_event", "event": { "type": "content_block_delta", "index": 2, "delta": { "type": "input_json_delta", "partial_json": "{\"descr" } } }),
         json!({ "type": "stream_event", "event": { "type": "content_block_delta", "index": 3, "delta": { "type": "input_json_delta", "partial_json": "{" } } }),
-        json!({ "type": "stream_event", "event": { "type": "message_delta", "usage": { "output_tokens": 3 } } }),
+        call_end(),
         json!({ "type": "assistant", "message": { "content": [{ "type": "text", "text": "hi" }] } }),
         json!({ "type": "stream_event", "event": { "type": "message_stop" } }),
         json!({ "type": "rate_limit_event", "rate_limit_info": { "status": "allowed" } }),
@@ -173,6 +179,7 @@ async fn a_call_of_a_tool_the_request_does_not_offer_is_the_clis_to_answer_and_t
         }] } }),
         json!({ "type": "stream_event", "event": { "type": "message_start", "message": { "content": [] } } }),
         json!({ "type": "stream_event", "event": { "type": "content_block_delta", "delta": { "type": "text_delta", "text": "Corrected." } } }),
+        call_end(),
         json!({ "type": "stream_event", "event": { "type": "message_stop" } }),
         done(),
     ])

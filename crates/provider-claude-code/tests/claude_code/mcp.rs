@@ -19,12 +19,12 @@ fn call(id: &str, script: &str) -> ProviderEvent {
 }
 
 fn usage(input: u64, output: u64) -> ProviderEvent {
-    ProviderEvent::Response(TokenUsage {
+    ProviderEvent::Response(Some(TokenUsage {
         input_tokens: input,
         output_tokens: output,
         cache_read_tokens: 0,
         cache_write_tokens: 0,
-    })
+    }))
 }
 
 #[tokio::test(flavor = "local")]

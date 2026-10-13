@@ -389,6 +389,7 @@ fn run(
                         let Some(event) = line.event() else {
                             continue;
                         };
+                        live.last_call.observe(&event);
                         if let StreamEvent::MessageStop(_) = event {
                             live.writing.clear();
                             if live.collecting.is_empty() {
@@ -430,6 +431,7 @@ fn run(
                     }
                     Some(Line::Result(line)) => {
                         live.collecting.clear();
+                        let usage = live.last_call.take();
                         let end = line.end();
                         // The vendor refused the process's token, before
                         // anything of the attempt reached the agent: the
@@ -447,9 +449,19 @@ fn run(
                             live.close().await;
                             continue 'attempt;
                         }
+                        // Without a call's own count the response reports
+                        // none: the result's usage sums the turn's calls,
+                        // which no request measured. The executable's path
+                        // names the CLI's version.
+                        if matches!(end, TurnEnd::Answered) && usage.is_none() {
+                            tracing::error!(
+                                executable = %live.executable,
+                                "Claude Code ended a turn whose stream reported no API call's usage; the response reports none"
+                            );
+                        }
                         runtime.live = Some(live);
                         match end {
-                            TurnEnd::Answered(usage) => yield ProviderEvent::Response(usage),
+                            TurnEnd::Answered => yield ProviderEvent::Response(usage),
                             TurnEnd::Failed { message, code, status } => {
                                 let mut failure = ProviderFailure {
                                     code,
