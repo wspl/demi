@@ -77,7 +77,7 @@ fn response() -> Block {
         id: id("response"),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),
-        usage: TokenUsage::default(),
+        usage: Some(TokenUsage::default()),
     })
 }
 

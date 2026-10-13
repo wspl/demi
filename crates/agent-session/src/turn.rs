@@ -20,7 +20,7 @@ use demi_agent_transcript::{
 use demi_provider_common::{
     ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
 };
-use demi_shared_types::{Block, BlockId, Model, ModelSelection, ShellToolView, ToolView};
+use demi_shared_types::{Block, BlockId, ModelSelection, ShellToolView, ToolView};
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
@@ -260,7 +260,6 @@ async fn stream(
         let start = s.read(|core| core.transcript.blocks().len());
         let model = s.read(|core| core.model.clone());
         let window = cancel.guard(compaction::window_in_use(s, &model)).await?;
-        let model = model.model;
         let mut runtime = s
             .update(|core| core.take_runtime())
             .expect("the provider runtime is in its slot between runs");
@@ -418,7 +417,7 @@ async fn read(
     s: &SessionShared,
     cancel: &TurnCancel,
     window: Option<u64>,
-    model: &Model,
+    model: &ModelSelection,
     mut events: ProviderRun<'_>,
     request_cancel: &CancellationToken,
 ) -> Result<Result<bool, ProviderFailure>, TurnError> {
@@ -471,7 +470,7 @@ async fn read(
                 if completes_text {
                     complete_text(s);
                 }
-                if let ProviderEvent::Response(usage) = &event {
+                if let ProviderEvent::Response(Some(usage)) = &event {
                     recover |= s.config.compaction.reached(window, model, usage);
                 }
                 s.update(|core| core.apply_event(event, thinking_started));

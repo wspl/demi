@@ -222,12 +222,12 @@ async fn a_new_process_resumes_the_blocks_with_the_clis_entries_as_they_were_and
     });
     assert_eq!(
         events,
-        [ProviderEvent::Response(TokenUsage {
+        [ProviderEvent::Response(Some(TokenUsage {
             input_tokens: 3,
             output_tokens: 1,
             cache_read_tokens: 0,
             cache_write_tokens: 0,
-        })]
+        }))]
     );
     // The process waits for Demi's MCP server before it answers what the
     // session ends with, so that request offers the tools.
@@ -599,12 +599,12 @@ async fn each_entry_the_cli_mirrors_goes_to_its_block_and_one_of_no_block_to_the
                 of: EntriesOf::Output(0),
                 entries: vec![answered],
             },
-            ProviderEvent::Response(TokenUsage {
+            ProviderEvent::Response(Some(TokenUsage {
                 input_tokens: 2,
                 output_tokens: 2,
                 cache_read_tokens: 0,
                 cache_write_tokens: 0,
-            }),
+            })),
         ]
     );
     runtime.close().await;

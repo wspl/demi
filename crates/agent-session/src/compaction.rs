@@ -157,15 +157,33 @@ impl CompactionConfig {
         Some(token_threshold(window, model.output_limit))
     }
 
-    /// Whether one request's usage reached the threshold of `model`, whose
-    /// window in use is `window`.
-    pub(crate) fn reached(&self, window: Option<u64>, model: &Model, usage: &TokenUsage) -> bool {
-        let used = usage.input_tokens
-            + usage.output_tokens
-            + usage.cache_read_tokens
-            + usage.cache_write_tokens;
-        self.threshold(window, model)
-            .is_some_and(|threshold| used >= threshold)
+    /// Whether one response's usage reached the threshold of `model`, whose
+    /// window in use is `window`. An input above the model's own window
+    /// cannot be one call's, so it reaches nothing and is logged with its
+    /// provider: a provider that misreports is found rather than compacting
+    /// every turn (`compaction.md` § When compaction runs).
+    pub(crate) fn reached(
+        &self,
+        window: Option<u64>,
+        model: &ModelSelection,
+        usage: &TokenUsage,
+    ) -> bool {
+        let input = usage.input_tokens + usage.cache_read_tokens + usage.cache_write_tokens;
+        let model_window = u64::from(model.model.context_window);
+        if model_window > 0 && input > model_window {
+            tracing::error!(
+                provider = %model.provider_id,
+                model = %model.model.id,
+                input_tokens = usage.input_tokens,
+                cache_read_tokens = usage.cache_read_tokens,
+                cache_write_tokens = usage.cache_write_tokens,
+                context_window = model_window,
+                "a response reported more input than its model's context window; it triggers no compaction"
+            );
+            return false;
+        }
+        self.threshold(window, &model.model)
+            .is_some_and(|threshold| input + usage.output_tokens >= threshold)
     }
 
     /// Whether a request of `size` reaches a size threshold of a vendor that

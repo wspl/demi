@@ -691,8 +691,16 @@ impl Cli {
         self.say(json!({ "type": "stream_event", "event": { "type": "message_stop" } }));
     }
 
-    /// The turn's end, with `input` and `output` tokens.
+    /// The turn's end after a call of `input` and `output` tokens: the
+    /// call's `message_delta`, then the result.
     pub fn result(&self, input: u64, output: u64) {
+        self.say(json!({
+            "type": "stream_event",
+            "event": {
+                "type": "message_delta",
+                "usage": { "input_tokens": input, "output_tokens": output },
+            },
+        }));
         self.say(json!({
             "type": "result",
             "subtype": "success",

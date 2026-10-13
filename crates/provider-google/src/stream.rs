@@ -168,7 +168,7 @@ impl Mapper {
         };
         let (end, reason) = match ending {
             Ending::Finished(reason) if reason == "STOP" => {
-                return ProviderEvent::Response(self.usage);
+                return ProviderEvent::Response(Some(self.usage));
             }
             Ending::Finished(reason) => match reason.as_str() {
                 "MAX_TOKENS" => (EarlyEnd::OutputLimit, reason),
