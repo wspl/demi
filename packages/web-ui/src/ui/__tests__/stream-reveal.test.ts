@@ -202,6 +202,25 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     expect(opacity).toBe(0)
   })
 
+  // A render can stay in the page after its fades end, as the blocks of a
+  // reply that has settled do: it is then as it was rendered, without the
+  // fades' spans or class.
+  test('a finished fade leaves the render as it was', async () => {
+    const result = await (await page()).evaluate(async (fadeMs) => {
+      const wrap: typeof wrapSteps = Reflect.get(window, 'wrapSteps')
+      const message = document.createElement('div')
+      message.innerHTML = '<p>Run <code>bun test</code> first.</p>\n<ul>\n<li>One step</li>\n<li class="task">Two</li>\n</ul>\n'
+      const rendered = message.innerHTML
+      document.body.append(message)
+      // Shown almost a fade ago, so its fades end in a few milliseconds.
+      wrap(message, 'Run `bun test` first.\n\n- One step\n- Two', [{ start: 0, end: 40, at: performance.now() - fadeMs + 20 }])
+      const fading = message.querySelectorAll('.stream-ink').length
+      await Promise.all(message.getAnimations({ subtree: true }).map((animation) => animation.finished))
+      return { fading: fading > 0, same: message.innerHTML === rendered }
+    }, STREAM_PACE.fadeMs)
+    expect(result).toEqual({ fading: true, same: true })
+  })
+
   // Characters the page's regular expressions scan while `wrapSteps` lays out
   // the fades of a reply's last steps, counted by the regular expressions' own
   // `exec`: the same for a reply twice as long, as a frame reads only the

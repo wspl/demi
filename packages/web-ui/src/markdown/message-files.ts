@@ -1,4 +1,4 @@
-import { inject, provide, type InjectionKey } from 'vue'
+import { computed, inject, provide, type ComputedRef, type InjectionKey } from 'vue'
 import { transcriptRowOf, type MediaSequence, type MediaViewerState } from '../files/media-viewer'
 import { messagePicture } from './media-run'
 import { HOST_FILE_ATTRIBUTE } from './render'
@@ -19,6 +19,29 @@ export function provideMessageFiles(files: () => MessageFiles | undefined): void
 /** The conversation's files, or none outside a conversation. */
 export function useMessageFiles(): () => MessageFiles | undefined {
   return inject(messageFilesKey, () => undefined)
+}
+
+/**
+ * `files` as a render reads them: the same object while it reads the same
+ * of them, its directory, its Host's home, its kept files and which of its
+ * services there are. Their owners make a new object each time the
+ * conversation changes, which is each time a reply's text grows, and a
+ * streaming reply's settled blocks would render again with each
+ * (`useMarkdownBlocks`). The services read what they read when called, so
+ * the first object's serve as well as the next's.
+ */
+export function useRenderedFiles(files: () => MessageFiles | undefined): ComputedRef<MessageFiles | undefined> {
+  return computed((previous) => {
+    const next = files()
+    const same = previous !== undefined && next !== undefined
+      && previous.cwd === next.cwd
+      && previous.home === next.home
+      && previous.contents === next.contents
+      && !previous.open === !next.open
+      && !previous.codeFiles === !next.codeFiles
+      && !previous.attachment === !next.attachment
+    return same ? previous : next
+  })
 }
 
 /**
