@@ -86,7 +86,12 @@ export function nextStepEnd(text: string, from: number, ceiling: number, safe: (
   return ceiling
 }
 
-const MARKDOWN_SYNTAX = /^ {0,3}(?:`{3,}|~{3,}).*$|^ {0,3}(?:-{3,}|\|?(?: *:?-+:? *\|)+(?: *:?-+:? *)?) *$|^ {0,3}\| *|(?<=^ {0,3}\|.*?) *\| *|\]\([^)]*\)|^ {0,3}(?:#{1,6} |> ?|[-*+] |\d+[.)] )|[*_~`[\]\n]/gm
+// Each mark it finds lies within one line, and reads nothing of the lines
+// before it, which `stepMarks` relies on. A table's inner pipe is matched
+// before the look back for the row's leading pipe, so the look back runs at a
+// pipe, never at every character of a long paragraph, which made a line's
+// count grow as the square of its length.
+const MARKDOWN_SYNTAX = /^ {0,3}(?:`{3,}|~{3,}).*$|^ {0,3}(?:-{3,}|\|?(?: *:?-+:? *\|)+(?: *:?-+:? *)?) *$|^ {0,3}\| *| *\|(?<=^ {0,3}\|.*\|) *|\]\([^)\n]*\)|^ {0,3}(?:#{1,6} |> ?|[-*+] |\d+[.)] )|[*_~`[\]\n]/gm
 
 /**
  * About how many characters `source`, a slice of markdown, renders as, line
@@ -98,6 +103,32 @@ const MARKDOWN_SYNTAX = /^ {0,3}(?:`{3,}|~{3,}).*$|^ {0,3}(?:-{3,}|\|?(?: *:?-+:
  */
 export function renderedLength(source: string): number {
   return source.replace(MARKDOWN_SYNTAX, '').length
+}
+
+/** A fading step's extent in the render, and when it was shown. */
+export interface StepMark {
+  /** How many rendered characters, counted back from the render's end, the step and those after it show. */
+  fromEnd: number
+  at: number
+}
+
+/**
+ * The marks of `steps`, the steps of `text` still fading, latest first. A
+ * step's extent is the rendered length of the text from its start to the
+ * end, read in the context of its line, so a step that starts within a line,
+ * such as a table's row, counts as the whole line does. As the syntax
+ * `renderedLength` leaves out never reads past its own line, the count starts
+ * at the line the earliest step starts in: a frame reads the last lines of a
+ * reply, never the whole of it.
+ */
+export function stepMarks(text: string, steps: readonly RevealStep[]): StepMark[] {
+  const latestFirst = steps.toSorted((a, b) => b.start - a.start)
+  const earliest = latestFirst.at(-1)
+  if (!earliest)
+    return []
+  const lineStart = earliest.start === 0 ? 0 : text.lastIndexOf('\n', earliest.start - 1) + 1
+  const total = renderedLength(text.slice(lineStart))
+  return latestFirst.map((step) => ({ fromEnd: total - renderedLength(text.slice(lineStart, step.start)), at: step.at }))
 }
 
 /**
@@ -276,15 +307,9 @@ export function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly Re
   if (prefersReducedMotion())
     return
   const now = performance.now()
-  const fadingSteps = shownSteps.filter((step) => now - step.at < STREAM_PACE.fadeMs && step.start < text.length)
-  if (fadingSteps.length === 0)
+  const marks = stepMarks(text, shownSteps.filter((step) => now - step.at < STREAM_PACE.fadeMs && step.start < text.length))
+  if (marks.length === 0)
     return
-  // Counted as the whole text less what comes before the step, so a step that
-  // starts within a line, such as a table's row, is read in that line's context.
-  const total = renderedLength(text)
-  const marks = fadingSteps
-    .toSorted((a, b) => b.start - a.start)
-    .map((step) => ({ fromEnd: total - renderedLength(text.slice(0, step.start)), at: step.at }))
 
   // Which step shows each piece of text, read before the render changes.
   const pieces: Piece[] = []
@@ -322,17 +347,24 @@ export function wrapSteps(el: HTMLElement, text: string, shownSteps: readonly Re
   }
 
   // The painting elements whose first character a fading step shows, each
-  // fading with that step unless an element around it already does.
+  // fading with that step unless an element around it already does. They are
+  // the ancestors of the text nodes those steps start in, so they are found
+  // from those nodes, never by a search of the whole reply; taken in the
+  // order of the page, outermost first, an element's fade is known before
+  // the elements inside it ask whether one around them fades.
   const fading = new Map<Element, number>()
-  for (const element of el.querySelectorAll(OWN_PAINT)) {
-    const first = firstReplyText(element)
-    const step = first ? firstMarks.get(first) : undefined
-    if (step === undefined)
-      continue
-    if (fadingAround(element, el, fading)?.[1] === step)
-      continue
-    fading.set(element, step)
-    fade(element, marks[step]!.at)
+  for (const [node, step] of [...firstMarks].reverse()) {
+    const painting: Element[] = []
+    for (let element = node.parentElement; element && element !== el; element = element.parentElement) {
+      if (element.matches(OWN_PAINT) && firstReplyText(element) === node)
+        painting.push(element)
+    }
+    for (const element of painting.reverse()) {
+      if (fadingAround(element, el, fading)?.[1] === step)
+        continue
+      fading.set(element, step)
+      fade(element, marks[step]!.at)
+    }
   }
 
   for (const { node, start, end, mark: step } of pieces) {

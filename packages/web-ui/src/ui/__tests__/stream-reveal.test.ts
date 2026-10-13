@@ -12,6 +12,7 @@ import {
   startOfLast,
   STREAM_PACE,
   stepInterval,
+  stepMarks,
   wrapSteps,
 } from '../stream-reveal'
 
@@ -62,6 +63,51 @@ test('a step\'s rendered length leaves out its marks and line breaks, and finds 
   expect(renderedLength('```ts\nconst a = 1\n```')).toBe('const a = 1'.length)
   expect(renderedLength('| a | b |\n|---|:-:|\n| c | d |\n\n---\n\na | b')).toBe('abcda | b'.length)
   expect(startOfLast('ab\ncd', 3)).toBe(1)
+})
+
+/** A deterministic source of numbers in [0, 1), so a failing case is found again. */
+function seeded(seed: number): () => number {
+  let state = seed
+  return () => {
+    state = (state + 0x6d2b79f5) | 0
+    let t = Math.imul(state ^ (state >>> 15), 1 | state)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/** Markdown of every construct `renderedLength` reads, in random order and indents. */
+function randomMarkdown(random: () => number): string {
+  const pick = <T>(items: readonly T[]): T => items[Math.floor(random() * items.length)]!
+  const words = ['alpha', 'beta', 'x', '**bold**', '*it*', '_em_', '`code`', '~~gone~~', '[link](https://e.x/a)', '[a](x "t\nu")', '[', ']', '|', '(', ')', '#', '>', '-', '1.']
+  const phrase = () => Array.from({ length: 1 + Math.floor(random() * 5) }, () => pick(words)).join(pick([' ', ' ', '']))
+  const lines = [
+    () => phrase(),
+    () => `${'#'.repeat(1 + Math.floor(random() * 7))} ${phrase()}`,
+    () => `${pick(['> ', '>', '> > '])}${phrase()}`,
+    () => `${pick(['- ', '* ', '+ ', '1. ', '12) ', '- - '])}${phrase()}`,
+    () => pick(['```', '```ts', '~~~', '````md', '``']),
+    () => pick(['---', '-----', '- - -', '***']),
+    () => pick(['| a | b |', '|---|:-:|', '---|---', '| c | d |', 'c | d', '|:--|', `| ${phrase()} | ${phrase()} |`]),
+    () => '',
+  ]
+  return Array.from({ length: 1 + Math.floor(random() * 30) }, () => ' '.repeat(Math.floor(random() * 5)) + pick(lines)()).join('\n')
+}
+
+// Cost: a thousand random replies, about 20 ms.
+test('a step\'s extent read from its line on is the extent read from the reply\'s start', () => {
+  const random = seeded(7)
+  for (let sample = 0; sample < 1000; sample += 1) {
+    const text = randomMarkdown(random)
+    if (!text)
+      continue
+    const starts = [...new Set(Array.from({ length: 1 + Math.floor(random() * 6) }, () => Math.floor(random() * text.length)))].toSorted((a, b) => a - b)
+    const steps = starts.map((start, index) => ({ start, end: starts[index + 1] ?? text.length, at: index }))
+    // The extent as the whole reply less what comes before the step.
+    const total = renderedLength(text)
+    const expected = steps.toReversed().map((step) => ({ fromEnd: total - renderedLength(text.slice(0, step.start)), at: step.at }))
+    expect({ text, steps, marks: stepMarks(text, steps) }).toEqual({ text, steps, marks: expected })
+  }
 })
 
 test('holdIncompleteMarkdown parks a block\'s opening line until its first text', () => {
@@ -154,6 +200,42 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
       }))
     }))
     expect(opacity).toBe(0)
+  })
+
+  // Characters the page's regular expressions scan while `wrapSteps` lays out
+  // the fades of a reply's last steps, counted by the regular expressions' own
+  // `exec`: the same for a reply twice as long, as a frame reads only the
+  // lines its steps are on. Before, each frame read the whole reply once per
+  // fading step. Cost: one page, a few milliseconds.
+  test('a frame of a streaming reply reads its last lines, whatever its length', async () => {
+    const scanned = await (await page()).evaluate(() => {
+      const wrap: typeof wrapSteps = Reflect.get(window, 'wrapSteps')
+      const exec = RegExp.prototype.exec
+      return [200, 400].map((paragraphs) => {
+        const lines = Array.from({ length: paragraphs }, (_, n) => `Paragraph ${n} goes on about **the matter** at some length, as an essay does.`)
+        const source = lines.join('\n\n')
+        const message = document.createElement('div')
+        message.innerHTML = lines.map((line) => `<p>${line.replaceAll(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</p>`).join('\n')
+        document.body.append(message)
+        // Eight steps of 22 characters, the last two lines, still fading.
+        const now = performance.now()
+        const steps = Array.from({ length: 8 }, (_, index) => ({ start: source.length - (8 - index) * 22, end: source.length - (7 - index) * 22, at: now }))
+        let count = 0
+        RegExp.prototype.exec = function (this: RegExp, input: string) {
+          const from = this.global || this.sticky ? this.lastIndex : 0
+          const result = exec.call(this, input)
+          count += (result ? result.index + result[0].length : input.length) - from
+          return result
+        }
+        try {
+          wrap(message, source, steps)
+        } finally {
+          RegExp.prototype.exec = exec
+        }
+        return count
+      })
+    })
+    expect(scanned[1]).toBe(scanned[0]!)
   })
 
   // Each case: a reply's source, its render (as the message renderer writes
