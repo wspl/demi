@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { ref } from 'vue'
 import { z } from 'zod'
-import { PluginCallError, pendingCalls, usePage } from '@demicodes/plugin-sdk'
+import { PluginCallError, usePage, type HeadlineText } from '@demicodes/plugin-sdk'
 import SettingsWebSearch from './SettingsWebSearch.vue'
 import {
   signInStartedSchema,
+  webReasonSchema,
   webStateSchema,
   type RemoveKey,
   type SaveKey,
@@ -16,14 +17,13 @@ import {
 /**
  * The web plugin's settings section (`web.md` § Settings › Web Search) over
  * the plugin's state and methods. Every change comes back with the state the
- * plugin sends to each of the user's pages.
+ * plugin sends to each of the user's pages. Each button's call is an
+ * operation of the page (`page.operation`): the button works until the call
+ * is answered, and a press meanwhile starts nothing.
  */
 const page = usePage()
 const plugin = page.plugin
 const state = plugin.state(webStateSchema)
-
-/** The rows with a call in flight: a call for a row already in flight is not made again. */
-const calls = pendingCalls(page.errors)
 
 const keyDraft = ref('')
 /** Why the key typed was not saved, which the row says under the field. */
@@ -35,34 +35,41 @@ const KEY_REFUSALS: Record<WebReason, string> = {
   exa_unavailable: 'Exa did not answer the search that checks the key. Try again.',
 }
 
+/** `call`, whose failure a toast reports as `couldNot`. */
+function reported(call: Promise<unknown>, couldNot: HeadlineText): Promise<void> {
+  return call.then(
+    () => {},
+    (error: unknown) => page.errors.report(couldNot, error),
+  )
+}
+
 function signIn(): Promise<void> {
   // The tab opens in this click and goes to Exa once the plugin answers.
   const url = plugin.call('sign_in', {} satisfies SignIn, signInStartedSchema).then((started) => started.url)
-  return calls.run('account', 'Could Not Start the Exa Sign-In', () => page.links.open(url))
+  return reported(page.links.open(url), 'Could Not Start the Exa Sign-In')
 }
 
 function signOut(): Promise<void> {
-  return calls.run('account', 'Could Not Sign Out of Exa', () => plugin.call('sign_out', {} satisfies SignOut, z.null()))
+  return reported(plugin.call('sign_out', {} satisfies SignOut, z.null()), 'Could Not Sign Out of Exa')
 }
 
-function saveKey(key: string): Promise<void> {
+async function saveKey(key: string): Promise<void> {
   keyProblem.value = undefined
-  return calls.run('key', 'Could Not Save the Key', async () => {
-    try {
-      await plugin.call('save_key', { key } satisfies SaveKey, z.null())
-      keyDraft.value = ''
-    } catch (error) {
-      if (error instanceof PluginCallError && error.reason in KEY_REFUSALS) {
-        keyProblem.value = KEY_REFUSALS[error.reason as WebReason]
-        return
-      }
-      throw error
+  try {
+    await plugin.call('save_key', { key } satisfies SaveKey, z.null())
+    keyDraft.value = ''
+  } catch (error) {
+    const reason = error instanceof PluginCallError ? webReasonSchema.safeParse(error.reason) : null
+    if (reason?.success) {
+      keyProblem.value = KEY_REFUSALS[reason.data]
+      return
     }
-  })
+    page.errors.report('Could Not Save the Key', error)
+  }
 }
 
 function removeKey(): Promise<void> {
-  return calls.run('key', 'Could Not Remove the Key', () => plugin.call('remove_key', {} satisfies RemoveKey, z.null()))
+  return reported(plugin.call('remove_key', {} satisfies RemoveKey, z.null()), 'Could Not Remove the Key')
 }
 </script>
 
@@ -71,6 +78,7 @@ function removeKey(): Promise<void> {
     v-model:key-draft="keyDraft"
     :state="state"
     :key-problem="keyProblem"
+    :operation="page.operation"
     @sign-in="signIn"
     @sign-out="signOut"
     @save-key="saveKey"

@@ -4,6 +4,7 @@ import {
   type Action,
   Button,
   InlineError,
+  type PageContext,
   SettingsGroup,
   SettingsPage,
   SettingsRow,
@@ -22,6 +23,13 @@ const props = defineProps<{
   state: WebState | null
   /** Why the key typed was not saved, under the field. */
   keyProblem?: SentenceText
+  /**
+   * The page's operation of a method on what a key names
+   * (`PageContext.operation`), which each button shows working whenever it
+   * is drawn. Without it a button's work is its own, while it stays, as in
+   * a specimen that pins one state.
+   */
+  operation?: PageContext['operation']
   /** What each button does; it returns the call's promise, and the button works until it settles. */
   onSignIn?: Action
   onSignOut?: Action
@@ -59,12 +67,14 @@ function save(): unknown {
         <Button
           v-if="account"
           size="sm"
+          :operation="operation?.('sign_out', 'account')"
           @click="onSignOut?.()"
           >Sign Out</Button
         >
         <Button
           v-else
           size="sm"
+          :operation="operation?.('sign_in', 'account')"
           @click="onSignIn?.()"
           >Sign In</Button
         >
@@ -83,6 +93,7 @@ function save(): unknown {
           <span class="font-mono text-chrome text-fg-muted">••••{{ key.lastFour }}</span>
           <Button
             size="sm"
+            :operation="operation?.('remove_key', 'key')"
             @click="onRemoveKey?.()"
             >Remove</Button
           >
@@ -102,6 +113,7 @@ function save(): unknown {
             ref="saveButton"
             size="sm"
             :disabled="!keyDraft"
+            :operation="operation?.('save_key', 'key')"
             @click="save"
             >Save</Button
           >
