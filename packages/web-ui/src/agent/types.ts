@@ -1,4 +1,5 @@
 import type { ContextUsage, InstructionEntry, PendingCall, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { ShownError } from '../infra/errors'
 import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { PendingAction } from './activity-slot'
 import type { SessionLoad } from './session-status'
@@ -58,7 +59,7 @@ export interface ConversationState {
   waitingSince: number | null
   /** The conversation's model settings, which its composer shows. */
   model: ModelSettings
-  lastError: string | null
+  lastError: ShownError | null
   /** History restore and the live socket. A new conversation starts `ready`. */
   load: SessionLoad
   /** A recovery sent and not yet acknowledged by a `phase` event; the tail row says Requesting meanwhile. */

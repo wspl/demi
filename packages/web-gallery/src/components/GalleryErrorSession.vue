@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { requestFailure } from '../fixtures/request-failures'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { reactive } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
@@ -117,7 +118,7 @@ const cases: SessionCase[] = [
   {
     variant: 'Initial load failed · nothing to keep',
     note: 'The backend answered the transcript read with its own error, here that it could not read the conversation’s database. The status pane replaces the transcript and carries the reason, in the page’s words, and Retry; the backend’s message, which names its files, goes to the console. Nothing else says it; there is no composer. A read that cannot reach the backend never ends here: it waits under the banner, as the next specimen shows.',
-    session: state('initial', { load: 'failed', lastError: CONVERSATION_UNREADABLE }),
+    session: state('initial', { load: 'failed', lastError: requestFailure(CONVERSATION_UNREADABLE) }),
     composer: 'none',
   },
   {
@@ -150,7 +151,7 @@ const cases: SessionCase[] = [
     variant: 'Generation failed · error record',
     note: 'The record at the tail carries the message, the diagnostics, Copy and Retry. The dock adds nothing.',
     session: state('generation', {
-      lastError: 'Anthropic API request failed with HTTP 529: Overloaded.',
+      lastError: { message: 'Anthropic API request failed with HTTP 529: Overloaded.', requestId: null },
       blocks: [...shortTranscriptBlocks(), generationErrorBlock()],
     }),
     composer: 'default',
@@ -192,7 +193,7 @@ const cases: SessionCase[] = [
     variant: 'Request refused · no record',
     note: 'The server refused a request without writing a record. A notice at the tail says so; there is nothing to retry.',
     session: state('refused', {
-      lastError: 'The request was refused: another view holds this conversation.',
+      lastError: requestFailure('The request was refused: another view holds this conversation.'),
       blocks: shortTranscriptBlocks(),
     }),
     composer: 'default',

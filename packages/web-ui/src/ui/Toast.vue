@@ -5,6 +5,7 @@ import type { ToastTone } from '../infra/toast'
 import { ICON_PX } from './icon-metrics'
 import Button from './Button.vue'
 import IconButton from './IconButton.vue'
+import RequestIdLine from './RequestIdLine.vue'
 import type { HeadlineText, SentenceText, TitleText } from './ui-text'
 
 defineProps<{
@@ -13,6 +14,8 @@ defineProps<{
   tone: ToastTone
   /** The label of its one action, which emits `act`. */
   action?: TitleText
+  /** The request a failure came from, named under the message. */
+  requestId?: string | null
 }>()
 
 /** Each tone's mark: a check for success, an i for a fact, a cross for a failure. */
@@ -47,6 +50,7 @@ const emit = defineEmits<{
         v-if="message"
         class="text-[12px] leading-4 whitespace-pre-line text-fg-muted"
       >{{ message }}</div>
+      <RequestIdLine v-if="requestId" class="text-fg-subtle" :request-id="requestId" />
       <Button
         v-if="action"
         class="mt-2"

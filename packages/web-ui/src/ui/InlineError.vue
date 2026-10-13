@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CircleX, X } from '@lucide/vue'
 import IconButton from './IconButton.vue'
+import RequestIdLine from './RequestIdLine.vue'
 import type { SentenceText } from './ui-text'
 
 /**
@@ -16,9 +17,12 @@ import type { SentenceText } from './ui-text'
 withDefaults(
   defineProps<{
     message: SentenceText
+    /** The request the failure came from, named under the message. */
+    requestId?: string | null
     dismissible?: boolean
   }>(),
   {
+    requestId: null,
     dismissible: false,
   },
 )
@@ -36,7 +40,10 @@ defineEmits<{
     <span class="flex h-4 shrink-0 items-center" aria-hidden="true">
       <CircleX :size="12" />
     </span>
-    <p class="min-w-0 whitespace-pre-line break-words">{{ message }}</p>
+    <div class="min-w-0">
+      <p class="whitespace-pre-line break-words">{{ message }}</p>
+      <RequestIdLine v-if="requestId" class="text-fg-muted" :request-id="requestId" />
+    </div>
     <IconButton
       v-if="dismissible"
       :icon="X"

@@ -252,6 +252,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       >
         <ErrorNotice
           :label="block.failure.label"
+          :request-id="block.failure.requestId"
           :action="block.failure.retry ? 'Retry' : undefined"
           @action="emit('retryLoad')"
         />

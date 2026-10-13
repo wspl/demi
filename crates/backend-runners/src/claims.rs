@@ -5,7 +5,7 @@
 //! runner's socket moves into the user's shard. Each user may try ten codes
 //! a minute.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -18,7 +18,8 @@ use demi_runner_protocol::wire::RunnerInfo;
 use demi_web_api_protocol::devices::DeviceDto;
 use demi_web_api_protocol::ids::UserId;
 use tokio::sync::oneshot;
-use tokio::time::Instant;
+
+use demi_shared_gates::RateWindow;
 
 use crate::codes::{ClaimCode, new_device_token};
 
@@ -27,16 +28,16 @@ const ATTEMPT_WINDOW: Duration = Duration::from_secs(60);
 
 /// The runners waiting to be paired, and each user's recent claims.
 pub struct PendingClaims {
-    /// A `std` mutex: the edge's threads share the waiting runners and the
-    /// attempt windows, and no section awaits.
+    /// A `std` mutex: the edge's threads share the waiting runners, and no
+    /// section awaits.
     state: Mutex<State>,
-    attempts_per_minute: usize,
+    /// Each user's claims within the last minute.
+    attempts: RateWindow<UserId>,
 }
 
 #[derive(Default)]
 struct State {
     waiting: HashMap<ClaimCode, Waiting>,
-    attempts: HashMap<UserId, VecDeque<Instant>>,
     closed: bool,
 }
 
@@ -78,7 +79,7 @@ impl PendingClaims {
     pub fn new(attempts_per_minute: usize) -> Self {
         Self {
             state: Mutex::default(),
-            attempts_per_minute,
+            attempts: RateWindow::new(attempts_per_minute, ATTEMPT_WINDOW),
         }
     }
 
@@ -86,25 +87,6 @@ impl PendingClaims {
         // No section panics while it holds the lock, so a poisoned one still
         // holds whole records.
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
-    }
-
-    /// Counts a claim attempt of `user`, unless the user made the most a
-    /// minute allows already: then false, and nothing is counted.
-    fn attempt(&self, user: &UserId) -> bool {
-        let now = Instant::now();
-        let mut state = self.lock();
-        let attempts = state.attempts.entry(user.clone()).or_default();
-        while attempts
-            .front()
-            .is_some_and(|at| now.duration_since(*at) >= ATTEMPT_WINDOW)
-        {
-            attempts.pop_front();
-        }
-        if attempts.len() >= self.attempts_per_minute {
-            return false;
-        }
-        attempts.push_back(now);
-        true
     }
 
     /// Pairs the runner waiting under `code`, spelled as a person types it,
@@ -118,7 +100,7 @@ impl PendingClaims {
         user: &UserId,
         code: &str,
     ) -> Result<DeviceDto, ClaimRefusal> {
-        if !self.attempt(user) {
+        if !self.attempts.attempt(user) {
             return Err(ClaimRefusal::TooManyAttempts);
         }
         let pending = ClaimCode::parse(code)
@@ -201,29 +183,5 @@ impl PendingRunner {
             bound,
         });
         answer
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn user(name: &str) -> UserId {
-        UserId::try_from(name).unwrap()
-    }
-
-    #[tokio::test(start_paused = true)]
-    async fn each_user_may_try_so_many_codes_a_minute() {
-        let claims = PendingClaims::new(2);
-        let (ana, ben) = (user("ana"), user("ben"));
-        assert!(claims.attempt(&ana));
-        tokio::time::advance(Duration::from_secs(30)).await;
-        assert!(claims.attempt(&ana));
-        assert!(!claims.attempt(&ana));
-        assert!(claims.attempt(&ben));
-        // The first attempt leaves the window, and one more fits.
-        tokio::time::advance(Duration::from_secs(30)).await;
-        assert!(claims.attempt(&ana));
-        assert!(!claims.attempt(&ana));
     }
 }

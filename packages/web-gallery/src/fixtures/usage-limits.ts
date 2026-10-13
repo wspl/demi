@@ -1,4 +1,6 @@
 import { computed, ref } from 'vue'
+import { requestFailure } from './request-failures'
+import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import type { UsageLimits } from '@demicodes/web-ui/agent/context-usage'
 import { DAY, HOUR, MINUTE, ahead } from './time'
 
@@ -15,7 +17,7 @@ export function useCardLimits(accountLabel: string, failure: string | null = nul
     { id: 'limit:weekly_scoped:Fable', label: '7d Fable', used: 81, max: 100, resetsAt: ahead(12 * DAY) },
   ])
   const refreshing = ref(false)
-  const error = ref<string | null>(null)
+  const error = ref<ShownError | null>(null)
   const limits = computed<UsageLimits>(() => ({
     accountLabel,
     autoRefresh: true,
@@ -39,7 +41,7 @@ export function useCardLimits(accountLabel: string, failure: string | null = nul
     window.setTimeout(() => {
       refreshing.value = false
       if (failure) {
-        error.value = failure
+        error.value = requestFailure(failure)
       } else {
         answer()
       }

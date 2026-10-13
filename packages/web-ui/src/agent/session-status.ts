@@ -1,4 +1,5 @@
 import type { SentenceText } from '../ui/ui-text'
+import type { ShownError } from '../infra/errors'
 import { isCompactionDivider } from './visible-blocks'
 import type { HostMenuHost } from '../hosts/types'
 
@@ -44,6 +45,8 @@ export interface SessionFailureNotice {
   label: SentenceText
   /** Retry reopens the session; a refused request has nothing to reopen. */
   retry: boolean
+  /** The request the failure came from, such as the socket that refused a frame. */
+  requestId: string | null
 }
 
 /**
@@ -53,7 +56,7 @@ export interface SessionFailureNotice {
  */
 export function sessionFailureNotice(
   load: SessionLoad,
-  lastError: string | null,
+  lastError: ShownError | null,
   hasTranscript: boolean,
   tailIsErrorRecord: boolean,
 ): SessionFailureNotice | null {
@@ -61,12 +64,12 @@ export function sessionFailureNotice(
     return null
   }
   if (load === 'failed') {
-    return hasTranscript ? { label: lastError, retry: true } : null
+    return hasTranscript ? { label: lastError.message, retry: true, requestId: lastError.requestId } : null
   }
   if (load === 'loading' || tailIsErrorRecord) {
     return null
   }
-  return { label: lastError, retry: false }
+  return { label: lastError.message, retry: false, requestId: lastError.requestId }
 }
 
 /** The chat route when the sidebar list is not ready, or the id is unknown. */

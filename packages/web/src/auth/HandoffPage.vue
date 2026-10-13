@@ -32,7 +32,7 @@ onMounted(async () => {
       phase.value = { kind: 'expired' }
       break
     case 'failed':
-      phase.value = { kind: 'failed', message: spent.message }
+      phase.value = spent
       break
   }
 })

@@ -55,7 +55,7 @@ beforeEach(() => {
       return new Response(null, { status: 204 })
     }
     if (request === 'POST /api/conversations/c-1/fork') {
-      return Response.json({ code: 'fork_conflict', message: 'Another fork is on its way' }, { status: 409 })
+      return Response.json({ requestId: 'req_test000000000001', code: 'fork_conflict', message: 'Another fork is on its way' }, { status: 409 })
     }
     throw new Error(`Unexpected request: ${request}`)
   }) as typeof fetch

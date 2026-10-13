@@ -1,4 +1,5 @@
 /** Presentation models for the settings surfaces. Hosts map their own state onto these. */
+import type { ShownError } from '../infra/errors'
 import { VIDEO_FILE_EXTENSIONS } from '@demicodes/protocol'
 import type { Component } from 'vue'
 import type { ModelSettings } from '../agent/model-selection'
@@ -288,7 +289,7 @@ export interface SettingsModelEditor {
   model: SettingsModelDraft
   original: SettingsProviderModel | null
   open: boolean
-  status: { kind: 'idle' | 'saving' } | { kind: 'failed'; message: string }
+  status: { kind: 'idle' | 'saving' } | ({ kind: 'failed' } & ShownError)
 }
 
 export type ProviderLoginPhase =
@@ -316,10 +317,7 @@ export type ProviderLoginPhase =
       /** Whether requests now go out on it: a first account is, one added beside another is not. */
       active: boolean
     }
-  | {
-      kind: 'failed'
-      message: SentenceText
-    }
+  | ({ kind: 'failed' } & ShownError)
 
 export type SettingsProviderOperation =
   | { kind: 'saving' | 'testing' | 'refreshing' | 'removing' | 'cli' }
@@ -401,7 +399,7 @@ export type PasskeyAddOutcome =
   | { kind: 'added' }
   | { kind: 'wrongPassword'; message: string }
   | { kind: 'dismissed' }
-  | { kind: 'failed'; message: string }
+  | ({ kind: 'failed' } & ShownError)
 
 /** The account's passkeys and what the host does with them, for Settings › Account. */
 export interface SettingsPasskeyHost {

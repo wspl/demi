@@ -14,7 +14,7 @@ import {
   type MessageEditHost,
   type MessageEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import { reportError, shownError } from '@demicodes/web-ui/infra/errors'
 import { CONVERSATION_UNREADABLE } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
@@ -55,7 +55,7 @@ import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demi
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
 import { loadDraft } from '../api/drafts'
 import { deleteSaved as deleteSavedRequest, loadSaved, postSaved } from '../api/saved'
-import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
+import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   attachedHostsSchema,
   batchAnswerSchema,
@@ -1130,9 +1130,10 @@ export const useConversations = defineStore('conversations', () => {
   function failOpening(conversation: Conversation, error: unknown): void {
     console.error('The conversation did not open', error)
     conversation.load = 'failed'
-    conversation.lastError = error instanceof ApiError && error.code === 'conversation_unreadable'
-      ? CONVERSATION_UNREADABLE
-      : error instanceof Error ? error.message : String(error)
+    conversation.lastError = shownError(
+      error,
+      error instanceof ApiError && error.code === 'conversation_unreadable' ? CONVERSATION_UNREADABLE : undefined,
+    )
   }
 
   /**
@@ -1298,7 +1299,7 @@ export const useConversations = defineStore('conversations', () => {
       // (`web-application.md` § Model discovery).
       const failure = product.catalogFailure
       throw new Error(
-        conversation.lastError ??
+        conversation.lastError?.message ??
           (failure === null ? 'No available model for this conversation.' : `Couldn’t load the models: ${failure}`),
       )
     }
@@ -1450,6 +1451,7 @@ export const useConversations = defineStore('conversations', () => {
           })
           const result = await readResponse(response, batchAnswerSchema)
           signal.throwIfAborted()
+          const requestId = response.headers.get(REQUEST_ID_HEADER)
           const refusals: Refusal[] = []
           for (const item of result.results) {
             const change = shownChanges.get(item.id)
@@ -1457,7 +1459,7 @@ export const useConversations = defineStore('conversations', () => {
             const title = items.value.find((conversation) => conversation.id === item.id)?.title ?? item.id
             if (item.status === 'refused') {
               change?.drop()
-              refusals.push({ title, reasons: [item.message] })
+              refusals.push({ title, reasons: [item.message], requestId })
               continue
             }
             const answer = { type: 'conversation', conversation: item.conversation } as const
@@ -1470,7 +1472,7 @@ export const useConversations = defineStore('conversations', () => {
               change.land(answer)
             }
             if (failed.length) {
-              refusals.push({ title, reasons: failed.map((field) => field.message) })
+              refusals.push({ title, reasons: failed.map((field) => field.message), requestId })
             } else {
               changed.push(item.id)
             }
@@ -1563,7 +1565,8 @@ export const useConversations = defineStore('conversations', () => {
               throw error
             }
             removal.drop()
-            refusals.push({ title: titles.get(id) ?? id, reasons: [error instanceof Error ? error.message : String(error)] })
+            const { message, requestId } = shownError(error)
+            refusals.push({ title: titles.get(id) ?? id, reasons: [message], requestId })
             continue
           }
           // The deletion lands; the channel brings it to every other page.

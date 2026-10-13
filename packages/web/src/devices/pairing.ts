@@ -34,6 +34,7 @@ export async function claimDevice(
       return {
         ok: false,
         code: error.code,
+        requestId: error.requestId,
       }
     }
     throw error

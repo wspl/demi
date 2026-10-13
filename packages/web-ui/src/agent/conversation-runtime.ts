@@ -1,4 +1,5 @@
 import { shallowRef, triggerRef } from 'vue'
+import { shownError } from '../infra/errors'
 import {
   SavedGoneError,
   SessionError,
@@ -439,8 +440,7 @@ export class ConversationRuntime {
           this.client.value = null
           this.opening = null
           this.options.state.load = 'failed'
-          this.options.state.lastError =
-            error instanceof Error ? error.message : String(error)
+          this.options.state.lastError = shownError(error)
           throw error
         }
       }
@@ -566,12 +566,12 @@ export class ConversationRuntime {
         }
         break
       case 'error':
-        state.lastError = event.message
+        state.lastError = { message: event.message, requestId: event.requestId ?? null }
         break
       case 'rejected':
         // A saved message another page sent first is the caller's to tell.
         if (event.command !== 'send_saved') {
-          state.lastError = event.reason
+          state.lastError = { message: event.reason, requestId: null }
         }
         this.settlePendingAction()
         break

@@ -19,6 +19,7 @@ use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_clouds;
 use demi_backend_database::StorageError;
+use demi_backend_database::server_log::ServerLog;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, runner_socket, web_build};
 use demi_backend_user_shard::conversation::search::index_at_start;
 use demi_backend_user_shard::conversation::{
@@ -395,6 +396,7 @@ impl Backend {
                 public_url: config.public_url,
                 origin_dropped: AtomicBool::new(false),
             }),
+            log: ServerLog::of(&config.data_dir),
         };
         let runner_socket = match config.runner_socket.as_deref().map(runner_socket).transpose() {
             Ok(socket) => socket.flatten(),

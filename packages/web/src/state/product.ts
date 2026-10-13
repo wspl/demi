@@ -1,6 +1,7 @@
 import { computed, ref, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
+import { schemaRefusal } from '@demicodes/protocol'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { browserOnline, openSocket, reconnectNow, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { connectionProblem } from '@demicodes/web-ui/transport/connection'
@@ -390,7 +391,7 @@ export const useProduct = defineStore('product', () => {
       }
       // A message outside the contract changes nothing; a new connection
       // starts again from a snapshot. The console says what did not read.
-      reportError('Could not read a message of the synchronization channel.', z.prettifyError(parsed.error))
+      reportError('Could not read a message of the synchronization channel.', schemaRefusal(parsed.error))
       replace()
     }
     channel.onclose = (close) => {

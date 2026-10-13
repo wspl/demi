@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import RequestIdLine from '../ui/RequestIdLine.vue'
+import { shownError, type ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
 import Button from '../ui/Button.vue'
 import TextArea from '../ui/TextArea.vue'
@@ -22,7 +24,7 @@ const props = defineProps<{
 const LIMIT = 65_536
 
 const draft = ref(props.text)
-const status = ref<{ kind: 'idle' | 'saving' } | { kind: 'failed'; message: string }>({ kind: 'idle' })
+const status = ref<{ kind: 'idle' | 'saving' } | ({ kind: 'failed' } & ShownError)>({ kind: 'idle' })
 
 // Another page's save, or this one's answer, replaces a draft the user has not changed.
 let shown = props.text
@@ -46,7 +48,7 @@ async function submit(): Promise<void> {
     await props.save(draft.value)
     status.value = { kind: 'idle' }
   } catch (error) {
-    status.value = { kind: 'failed', message: error instanceof Error ? error.message : String(error) }
+    status.value = { kind: 'failed', ...shownError(error) }
   }
 }
 </script>
@@ -81,7 +83,10 @@ async function submit(): Promise<void> {
           @keydown.ctrl.enter.prevent="submit"
         />
         <div class="flex items-start justify-between gap-3 text-[12px] leading-4">
-          <span v-if="status.kind === 'failed'" class="text-on-danger">{{ status.message }}</span>
+          <div v-if="status.kind === 'failed'" class="min-w-0">
+            <p class="text-on-danger">{{ status.message }}</p>
+            <RequestIdLine v-if="status.requestId" class="text-fg-muted" :request-id="status.requestId" />
+          </div>
           <span v-else />
           <span class="shrink-0 tabular-nums" :class="tooLong ? 'text-on-danger' : 'text-fg-subtle'">
             {{ length.toLocaleString('en-US') }} / {{ LIMIT.toLocaleString('en-US') }}

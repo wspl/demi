@@ -1,4 +1,5 @@
 import type { Ref } from 'vue'
+import type { ShownError } from '../infra/errors'
 import { useLocalStorage } from '@vueuse/core'
 import type { ContextRowKind, ContextUsage } from '@demicodes/protocol'
 import type { SettingsQuotaWindow } from '../settings/types'
@@ -151,6 +152,6 @@ export interface UsageLimits {
   autoRefresh: boolean
   /** A manual refresh runs: the card's button turns and the windows stay as they were. */
   refreshing?: boolean
-  /** The vendor's words for the last manual refresh that failed, shown under the header until the next answer. */
-  error?: string | null
+  /** The vendor's words for the last manual refresh that failed, with its request, shown under the header until the next answer. */
+  error?: ShownError | null
 }

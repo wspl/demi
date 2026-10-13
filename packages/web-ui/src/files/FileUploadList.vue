@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import RequestIdLine from '../ui/RequestIdLine.vue'
 import { computed } from 'vue'
 import { Check, CircleX, RotateCw, X } from '@lucide/vue'
 import Button from '../ui/Button.vue'
@@ -156,6 +157,11 @@ const FAILURES_LISTED = 8
               </Tooltip>
               <TruncatedText v-else :text="facts(upload)" />
             </div>
+            <RequestIdLine
+              v-if="upload.state.phase === 'failed' && upload.state.failures.length === 1 && upload.state.failures[0]!.requestId"
+              class="text-fg-subtle"
+              :request-id="upload.state.failures[0]!.requestId"
+            />
           </div>
         </li>
       </ul>

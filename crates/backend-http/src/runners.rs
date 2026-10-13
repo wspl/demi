@@ -29,6 +29,7 @@ use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::MAX_MESSAGE_BYTES;
 use demi_web_api_protocol::devices::DeviceKind;
 use futures_util::StreamExt as _;
+use tracing::Instrument as _;
 
 use super::AppState;
 use super::error::ApiError;
@@ -56,10 +57,12 @@ pub(super) async fn socket(
         );
         return Ok(answer.into_response());
     }
+    // The runner's socket logs under the request ID of its upgrade.
+    let span = tracing::Span::current();
     Ok(upgrade
         .max_message_size(MAX_MESSAGE_BYTES)
         .max_frame_size(MAX_MESSAGE_BYTES)
-        .on_upgrade(move |socket| accept(state.services, state.shards, socket)))
+        .on_upgrade(move |socket| accept(state.services, state.shards, socket).instrument(span)))
 }
 
 /// The update a runner must make before its socket opens: none from a

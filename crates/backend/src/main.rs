@@ -7,6 +7,7 @@ use std::process::ExitCode;
 
 use clap::{CommandFactory as _, Parser as _};
 use demi_backend::{Backend, BackendConfig, Config, StartError, publish_commands};
+use demi_backend_database::server_log;
 use demi_backend_runners::native::NativeCatalog;
 use tokio::signal::unix::{Signal, SignalKind, signal};
 use tokio_util::sync::CancellationToken;
@@ -34,10 +35,6 @@ fn main() -> ExitCode {
         );
         return ExitCode::FAILURE;
     }
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
-        .with(config.log.clone())
-        .init();
     let runtime = match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -68,7 +65,7 @@ async fn run(config: Config) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut settings = match config.backend(&release) {
+    let settings = match config.backend(&release) {
         Ok(settings) => settings,
         Err(error) => {
             eprintln!("demi-backend: {error}");
@@ -80,7 +77,34 @@ async fn run(config: Config) -> ExitCode {
     if config.check_config {
         return ExitCode::SUCCESS;
     }
-    settings.native = match publish(&settings, &release, &mut stop).await {
+    // What `DEMI_LOG` selects goes to standard error, which the process
+    // supervisor keeps, and to the server log in the data directory
+    // (`backend.md` § Request IDs and the server log).
+    let (log, log_layer) = match server_log::open(&settings.data_dir) {
+        Ok(log) => log,
+        Err(error) => {
+            eprintln!("demi-backend: the server log cannot start: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer().with_writer(std::io::stderr))
+        .with(log_layer)
+        .with(config.log.clone())
+        .init();
+    let served = serve(&config, settings, &release, &mut stop).await;
+    log.close().await;
+    served
+}
+
+/// Starts the backend and serves until a stop signal, then shuts it down.
+async fn serve(
+    config: &Config,
+    mut settings: BackendConfig,
+    release: &Path,
+    stop: &mut StopSignals,
+) -> ExitCode {
+    settings.native = match publish(&settings, release, stop).await {
         Ok(native) => native,
         Err(error) => {
             eprintln!("demi-backend: {error}");

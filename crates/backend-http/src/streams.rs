@@ -75,7 +75,7 @@ pub(super) async fn open(
         .await??;
     let (stream, plugin_off) = opened.ok_or_else(unknown)?;
     // An upgrade that never completes drops the stream, which ends it.
-    Ok(page_socket(upgrade).on_upgrade(move |socket| {
+    Ok(page_socket(upgrade, move |socket| {
         relay(socket, tuning, origin, stream, plugin_off)
     }))
 }
