@@ -40,6 +40,16 @@ export function sessionPaneStatus(
   return hasTranscript ? null : 'empty'
 }
 
+/**
+ * Whether the dock's chips (Agents, Running, Resume) show. A conversation that opens holds what
+ * its reads brought, the transcript, its agents and its commands, before its handshake lands;
+ * the pane says it loads until then, and the chips come with the transcript in one change
+ * (`web-application.md` § Responding to the user).
+ */
+export function dockChipsShown(load: SessionLoad): boolean {
+  return load !== 'loading'
+}
+
 /** A session-level failure told at the tail of the transcript. */
 export interface SessionFailureNotice {
   label: SentenceText
