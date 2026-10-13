@@ -26,9 +26,11 @@ import { isSubagentRunning, runEffortWords, subagentStatus, type AgentRun } from
  * context indicator. A segment that acts when pressed, the folder, the
  * forked-from link and the context indicator, shows a hover background over
  * its whole extent; the others only explain.
- * The text keeps the transcript's distance from the window's left and right
- * edges, `--agent-pad-x`, which the outer segments' own padding is taken
- * from; on a phone the bar is 36px tall and its text 15px, as a tab's. Where
+ * The segments run close to the window's ends (`.status-bar`): the bar's
+ * inset is the same on every side, and the first and last text stands as far
+ * from the window's side as the window's corner is round, never at the
+ * transcript's wide indent; on a phone the bar is 36px tall and its text
+ * 15px, as a tab's. Where
  * the room runs out, *Forked from* gives way first, then the model's name
  * and the folder's name, which leaves its icon and its tip,
  * by the bar's own width; the state and the time always stay. An ended
@@ -78,8 +80,8 @@ const forked = computed(() => (props.run.forkedFrom === null ? null : agents()?.
 </script>
 
 <template>
-  <div class="@container flex h-8 phone:h-9 shrink-0 items-stretch border-t border-line px-[var(--agent-pad-x,2rem)] text-chrome phone:text-[15px] text-fg-muted">
-    <div class="-ml-1.5 flex shrink-0 items-stretch">
+  <div class="status-bar @container flex h-8 phone:h-9 shrink-0 items-stretch border-t border-line text-chrome phone:text-[15px] text-fg-muted">
+    <div class="flex shrink-0 items-stretch">
       <StatusBarSegment>
         <StatusDot v-if="tone" :tone="tone" :breathing="run.phase === 'running'" />
         <span>{{ agentPhaseWords(run.phase) }}</span>
@@ -106,7 +108,7 @@ const forked = computed(() => (props.run.forkedFrom === null ? null : agents()?.
         <StatusBarSegment v-else class="hidden @min-[40rem]:flex">Forked from agent {{ run.forkedFrom }}</StatusBarSegment>
       </template>
     </div>
-    <div class="-mr-1.5 ml-auto flex min-w-0 items-stretch">
+    <div class="ml-auto flex min-w-0 items-stretch">
       <StatusBarSegment v-if="run.profile">
         <Tag>{{ run.profile }}</Tag>
       </StatusBarSegment>
