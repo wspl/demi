@@ -197,7 +197,36 @@ page                                    backend
   sign-in is not counted toward the address lockout, since a signature
   cannot be guessed.
 
-Setup, login and passkey sign-in are public entrances. Runner and pipe routes use device
+A handoff code gives a phone a session of the account that made it
+([User system](../product/product.md#user-system)):
+
+```
+laptop page                        backend                         phone
+  │ POST /api/auth/verify ─────────▶ the session is verified for 5 minutes
+  │ POST /api/auth/handoff/code ───▶ a code: 256 random bits, its SHA-256
+  │ ◀── url  https://demi.example/handoff#<code>   kept with `to`, 10 min, once
+  │ shows the QR code                                   camera opens the URL
+  │                                 ◀── POST /api/auth/handoff { code }
+  │                                  code spent, new session, cookie set
+  │ ◀── sync: a session made by this code                    goes to `to`
+```
+
+- **The code travels after `#`,** which a browser never sends to a server,
+  so no access log or proxy holds it; the handoff page reads it and posts
+  it.
+- **`to` is a path of the product,** checked when the code is made and
+  again when it is spent, so a code never sends a phone to another site.
+- **Verification belongs to the session,** the time the user last proved
+  it was them on it, by password or passkey; making a code needs one in
+  the last five minutes. A passkey that verifies must be one of the
+  session's own account.
+- **The laptop learns of the spending from the account's sessions,** the
+  sync channel's `sessions` part, whose new session names the code that
+  made it; it never asks.
+- **Signing a session out** deletes it and closes its synchronization
+  channel and conversation sockets as an expired session's are closed.
+
+Setup, login, passkey sign-in and spending a handoff code are public entrances. Runner and pipe routes use device
 credentials instead of the session cookie. Public installer downloads carry no
 credential. The synchronization channel checks the
 session cookie itself, since the gate would renew the session and the channel

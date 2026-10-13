@@ -132,8 +132,12 @@ input, which the multi-worker control service also relies on
 - **Identity:** `users` stores case-insensitively unique email, nickname,
   password hash, role, and creation time. A partial unique index admits one
   master, so two concurrent setups cannot both create one. `web_sessions`
-  stores a hash of the session token, user identity, and expiry; a login
-  deletes expired sessions. `email_challenges` stores one pending
+  stores a hash of the session token, user identity, expiry, the browser
+  and system it signed in from, when it signed in, when it was last active
+  (written at most once an hour), when it was last verified, and the
+  handoff code that made it, if one did; a login deletes expired sessions.
+  `handoff_codes` keeps one live code per user: its SHA-256, the path it
+  opens, its expiry and whether it was spent. `email_challenges` stores one pending
   address-change challenge per user, including code hash, password hash at
   issue, expiry, send time, and failed-attempt count. Confirming the challenge
   updates the email and consumes the challenge in one transaction. Account
