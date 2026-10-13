@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { KeyRound, ScanFace } from '@lucide/vue'
+import { KeyRound } from '@lucide/vue'
 import type { ShownError } from '../infra/errors'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { PasskeyOfferOutcome } from '../settings/types'
@@ -8,12 +8,13 @@ import Button from '../ui/Button.vue'
 import { hiddenUsername } from '../ui/field-autofill'
 import InlineError from '../ui/InlineError.vue'
 import TextInput from '../ui/TextInput.vue'
+import { deviceSystem, unlockSentence, useDeviceReport } from './device-unlock'
 import Wizard from '../ui/Wizard.vue'
 import WizardStep from '../ui/WizardStep.vue'
 
 /**
- * The offer to add a passkey (`product.md` § User system), *Use Face ID next
- * time?* with Add Passkey and Not Now: a one-step wizard
+ * The offer to add a passkey (`product.md` § User system), *Use a passkey
+ * next time?* with Add Passkey and Not Now: a one-step wizard
  * (`web-application.md` § Responding to the user), which a host opens once
  * on a browser after a sign-in that has just proved the user: a handoff
  * code's, a password chosen at the first sign-in. It is a wizard of one
@@ -30,8 +31,11 @@ import WizardStep from '../ui/WizardStep.vue'
  *
  * `answered` is emitted once, when Add Passkey or a way out is first used,
  * for the host to remember that the browser was asked; `close` when the
- * wizard is done. It does not know the browser's wording: on a device without
- * Face ID the browser's own prompt names its method.
+ * wizard is done. The sentence under the title names how this device unlocks,
+ * from the browser's system (`device-unlock.ts`): Face ID or Touch ID on an
+ * iPhone or iPad, Touch ID on a Mac, Windows Hello, an Android's fingerprint,
+ * face or screen lock, else the screen lock; the symbol is a key on every
+ * device. The browser's own prompt then names its method.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -45,6 +49,9 @@ const emit = defineEmits<{
   answered: []
   close: []
 }>()
+
+// What the device unlocks with, from the browser's system: said in the first step.
+const unlock = unlockSentence(deviceSystem(useDeviceReport()))
 
 type Step = 'ask' | 'password' | 'held'
 const step = ref<Step>('ask')
@@ -136,9 +143,9 @@ async function addPasskey(): Promise<void> {
   >
     <WizardStep
       v-if="step === 'ask'"
-      title="Use Face ID next time?"
-      :icon="ScanFace"
-      message="A passkey signs you in to Demi without your password."
+      title="Use a passkey next time?"
+      :icon="KeyRound"
+      :message="unlock"
     >
       <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
       <template #actions>

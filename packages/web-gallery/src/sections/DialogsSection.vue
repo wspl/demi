@@ -11,6 +11,9 @@ import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { galleryHandoff, type HandoffSpecimenStart } from '../fixtures/handoff'
 import { galleryPasskeyOffer, type PasskeyOfferScript } from '../fixtures/passkey-offer'
+import { DEVICE_REPORTS } from '../fixtures/device-reports'
+import type { DeviceReport } from '@demicodes/web-ui/auth/device-unlock'
+import GalleryDeviceReport from '../components/GalleryDeviceReport.vue'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
@@ -110,14 +113,22 @@ function restartHandoff(index: number): void {
   handoffSpecimens.value[index] = { ...specimen, ...galleryHandoff(specimen.start) }
 }
 /** The passkey offer, one specimen for each way the browser can answer Add Passkey. */
-const passkeyOffers: { variant: string; add: ReturnType<typeof galleryPasskeyOffer> }[] = (
-  [
-    ['Adds · the browser saves the passkey, and the wizard closes', 'adds'],
-    ['Stale sign-in · Add Passkey asks for the password; wrong is refused', 'needsPassword'],
-    ['Passkey Ready · the password manager holds a passkey of the account', 'held'],
-    ['Fails · the backend could not verify it', 'fails'],
-  ] as [string, PasskeyOfferScript][]
-).map(([variant, script]) => ({ variant, add: galleryPasskeyOffer(script) }))
+const passkeyOffers = [
+  ...(
+    [
+      ['Adds · the browser saves the passkey, and the wizard closes', 'adds'],
+      ['Stale sign-in · Add Passkey asks for the password; wrong is refused', 'needsPassword'],
+      ['Passkey Ready · the password manager holds a passkey of the account', 'held'],
+      ['Fails · the backend could not verify it', 'fails'],
+    ] as [string, PasskeyOfferScript][]
+  ).map(([variant, script]) => ({ variant, add: galleryPasskeyOffer(script), report: undefined as DeviceReport | undefined })),
+  // The sentence under the title names the system's unlock, each as that browser reports itself.
+  ...Object.values(DEVICE_REPORTS).map(({ label, report }) => ({
+    variant: `${label} · the unlock the sentence names`,
+    add: galleryPasskeyOffer('adds'),
+    report,
+  })),
+]
 const emailPhases: { variant: string; phase: ChangeEmailPhase }[] = [
   { variant: 'form', phase: { kind: 'form', currentEmail: 'zan@example.com' } },
   { variant: 'form · busy', phase: { kind: 'form', currentEmail: 'zan@example.com', busy: true } },
@@ -343,19 +354,21 @@ const resetPhases: {
       </GallerySection>
       <GallerySection
         title="Passkey Offer"
-        note="A wizard of one step (Responding to the user): on a computer one dialog at the centre over the dimmed page, on a phone the whole screen (Phone page). A host opens it once on a browser, after a sign-in that has just proved the user: a handoff code’s, a password chosen at the first sign-in. Add Passkey adds without the password while the sign-in is fresh; Not Now, Escape and the scrim leave it, and either answer is remembered on that browser, so the wizard does not come back. A password manager that holds a passkey of the account says so, which is no failure."
+        note="A wizard of one step (Responding to the user): on a computer one dialog at the centre over the dimmed page, on a phone the whole screen (Phone page). A host opens it once on a browser, after a sign-in that has just proved the user: a handoff code’s, a password chosen at the first sign-in. Add Passkey adds without the password while the sign-in is fresh; Not Now, Escape and the scrim leave it, and either answer is remembered on that browser, so the wizard does not come back. The sentence under the title names how the device unlocks, from the browser’s system: one specimen for each. A password manager that holds a passkey of the account says so, which is no failure."
       >
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="item in passkeyOffers" :key="item.variant" wide :variant="item.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
-              <PasskeyOffer
-                :is-open="open"
-                :overlay-store="appOverlayStore"
-                :add="item.add"
-                email="zan@example.com"
-                @answered="productWould('Remember the Answer on This Browser')"
-                @close="close"
-              />
+              <GalleryDeviceReport :report="item.report">
+                <PasskeyOffer
+                  :is-open="open"
+                  :overlay-store="appOverlayStore"
+                  :add="item.add"
+                  email="zan@example.com"
+                  @answered="productWould('Remember the Answer on This Browser')"
+                  @close="close"
+                />
+              </GalleryDeviceReport>
             </GalleryDialogFrame>
           </GallerySpecimen>
         </div>
