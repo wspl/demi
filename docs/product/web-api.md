@@ -853,7 +853,9 @@ Verification, handoff codes and sessions ([Authentication and ownership](../back
   an account whose `choosesPassword` is true sends `{ next }` alone. While
   it is true, every route of the account other than `GET /api/auth/me`,
   this one, `POST /api/auth/logout` and the passkey routes answers 403
-  `password_choice_required`, and no socket of it opens.
+  `password_choice_required`, no conversation socket of it opens, and its
+  synchronization channel carries the account alone, whose change tells
+  every page of it that the password was chosen.
 - `POST /api/auth/email` takes `{ email, password }`, checks the current password,
   and sends a six-digit code to the new address. Its 202 response contains
   `{ challenge: { id, email, expiresAt } }`; the code is never returned.
