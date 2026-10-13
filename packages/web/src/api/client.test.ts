@@ -21,6 +21,8 @@ const user = {
   nickname: 'Person',
   role: 'user' as const,
   createdAt: '2026-09-09T00:00:00.000Z',
+  disabled: false,
+  choosesPassword: false,
 }
 let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>

@@ -14,7 +14,7 @@ import GallerySkillsCalls from '../components/GallerySkillsCalls.vue'
 import GalleryWebSearchCalls from '../components/GalleryWebSearchCalls.vue'
 import GalleryWebSearchShowcase from '../components/GalleryWebSearchShowcase.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
-import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
+import { SETTINGS_SECTIONS, withUsersSection } from '@demicodes/web-ui/settings/sections'
 import GallerySettingsProviders from '../components/GallerySettingsProviders.vue'
 import { createSettingsState, gallerySessions, incompleteProviders, mockProviders } from '../fixtures/settings'
 import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
@@ -22,6 +22,8 @@ import { PLUGIN_PAGES } from '../generated/pages'
 import { providePageHost, withPluginSections } from '@demicodes/web-ui/plugins/page'
 import { useGalleryView } from '../gallery-views'
 import GalleryCredentials from '../components/GalleryCredentials.vue'
+import GalleryUsers from '../components/GalleryUsers.vue'
+import { createUsersState } from '../fixtures/users'
 import GallerySubagents from '../components/GallerySubagents.vue'
 import CredentialDialog from '@demicodes/web-ui/settings/CredentialDialog.vue'
 import type { SettingsCredentialDraft } from '@demicodes/web-ui/settings/types'
@@ -120,6 +122,10 @@ const anatomy: [string, string][] = [
     'A plugin’s section, under Agent in the settings dialog only, while the Web plugin is on; the app’s sidebar has no entry for it, as for Providers. It holds the user’s Exa account, signed in or not, the API key, typed and checked or saved and shown by its last four characters, and which of them searches use. The specimens below pin each state and run the calls.'
   ],
   [
+    'Users',
+    'Under Workspace, only for the master and admins. One row per account: nickname with You on the user’s own, Disabled on a disabled one and Hasn’t Chosen a Password on one still to choose its own (a new account, or one an administrator reset), then email, role and when it was last active. A row’s ··· menu has only what the user may do to that account: an admin has Reset Password…, Sign-In Code…, Sign Out Everywhere… and Disable Account… on users and nothing on a peer, the master or their own row; the master also has Change Role… and nothing on their own. A disabled account has Enable Account, which asks nothing, in place of the last three. Sign-In Code… shows the Hand Off to Your Phone dialog’s QR code for the account, after the administrator’s own confirmation. Add User… asks the email and the role; the server makes the first password, which the last step shows with Copy and New Password beside the sign-in code. Reset Password… asks first and ends on the same last step. Add User…, Reset Password… and Sign-In Code… ask the administrator’s own confirmation when the session was not verified in the last five minutes.'
+  ],
+  [
     'Data',
     'The rail entry is disabled with an In development tooltip because every control on the page is deferred. The Data & Privacy specimen below shows its page.'
   ],
@@ -170,11 +176,19 @@ providePageHost(
     { openLink: openExaSignIn },
   ),
 )
+// The full mock's user is the master, whose rail lists Users.
 const sections = computed(() =>
-  withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, (plugin) =>
-    full.plugins.some((entry) => entry.id === plugin && entry.enabled),
+  withUsersSection(
+    withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, (plugin) =>
+      full.plugins.some((entry) => entry.id === plugin && entry.enabled),
+    ),
+    'master',
   ),
 )
+/** The Users specimens: the master's page, an admin's, and the master's at phone width. */
+const usersAsMaster = createUsersState('zan')
+const usersAsAdmin = createUsersState('ana')
+const usersNarrow = createUsersState('zan')
 const fullTab = ref<SettingsTab | null>('models')
 const fullNarrowTab = ref<SettingsTab | null>(null)
 // Each pinned dialog closes from its own Close and opens again in place from Open,
@@ -294,6 +308,27 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             />
           </div>
         </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Users"
+        note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width. Every control acts on its own specimen: Add User… adds a row (zan@example.com is taken, and the new row comes with its password and QR code in its last step; Lena and Joe show the new-account and disabled looks), Change Role… moves a user to admin, Reset Password… marks the account as still to choose its password, the first of those needing a confirmation asks for a password (any but wrong confirms), and Disable Account… and Sign Out Everywhere… toast what the product would do to the account’s sessions. As the admin, Ana, there is no Change Role…, and the master’s row, the other admin’s and her own have no menu."
+      >
+        <GallerySpecimen variant="Master" wide>
+          <div class="@container w-full max-w-2xl rounded-xl border border-line bg-surface-dialog p-6">
+            <GalleryUsers :state="usersAsMaster" />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="Admin" wide>
+          <div class="@container w-full max-w-2xl rounded-xl border border-line bg-surface-dialog p-6">
+            <GalleryUsers :state="usersAsAdmin" />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="Narrow · 360px">
+          <div class="@container w-[360px] max-w-full rounded-xl border border-line bg-surface-dialog p-4">
+            <GalleryUsers :state="usersNarrow" />
+          </div>
+        </GallerySpecimen>
       </GallerySection>
 
       <GallerySection

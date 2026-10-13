@@ -57,6 +57,15 @@ pub struct OpenedSession {
     pub expires_at: Timestamp,
 }
 
+/// How spending a handoff or sign-in code went.
+pub enum Spend {
+    /// The code is unknown, expired or spent.
+    Unknown,
+    /// The code's account is disabled, which refuses every sign-in.
+    Disabled,
+    Opened(HandedOff),
+}
+
 /// A handoff code just spent: the phone's session, its account, and the
 /// page it opens.
 pub struct HandedOff {
@@ -118,7 +127,7 @@ impl WebSessions {
         &self,
         user: UserId,
         user_agent: Option<&str>,
-        handoff: Option<HandoffId>,
+        handoff: Option<(HandoffId, Option<UserId>)>,
     ) -> Result<OpenedSession, StorageError> {
         let token = hex::encode(rand::random::<[u8; 32]>());
         let name = user_agent
@@ -193,11 +202,14 @@ impl WebSessions {
     }
 
     /// A new handoff code of `user`, which opens `to` at the backend's
-    /// public URL `public`, in place of the user's previous one. The caller
-    /// checked the session's verification.
+    /// public URL `public`, in place of the user's previous one; with
+    /// `issued_by`, a sign-in code the administrator makes for the account,
+    /// in place of its previous sign-in code. The caller checked the
+    /// session's verification.
     pub async fn make_handoff(
         &self,
         user: &UserId,
+        issued_by: Option<&UserId>,
         to: ProductPath,
         public: &Url,
     ) -> Result<HandoffCode, StorageError> {
@@ -208,6 +220,7 @@ impl WebSessions {
             user: user.clone(),
             code: TokenHash::of(&code),
             to,
+            issued_by: issued_by.cloned(),
         };
         self.control.issue_handoff_code(issue, HANDOFF_LIFETIME).await?;
         let mut url = public.join("/handoff").expect("a path joins any HTTP URL");
@@ -225,17 +238,25 @@ impl WebSessions {
     /// Spends the handoff `code` from the browser `user_agent` names, whose
     /// cookie holds the session token `current`, if any: a live session of
     /// the code's account is kept and carries the code; any other is ended
-    /// and the account signed in anew. `None` when the code is unknown,
-    /// expired or spent.
+    /// and the account signed in anew. A code of a disabled account is
+    /// spent and signs nobody in.
     pub async fn spend_handoff(
         &self,
         code: &str,
         current: Option<&str>,
         user_agent: Option<&str>,
-    ) -> Result<Option<HandedOff>, StorageError> {
+    ) -> Result<Spend, StorageError> {
         let Some(spent) = self.control.spend_handoff_code(TokenHash::of(code)).await? else {
-            return Ok(None);
+            return Ok(Spend::Unknown);
         };
+        let disabled = self
+            .control
+            .account(spent.user.clone())
+            .await?
+            .is_none_or(|account| account.user.disabled);
+        if disabled {
+            return Ok(Spend::Disabled);
+        }
         let mut ended = None;
         if let Some(token) = current.map(TokenHash::of) {
             match self.check(&token).await? {
@@ -243,7 +264,7 @@ impl WebSessions {
                     self.control
                         .record_handoff_on_web_session(token, spent.id)
                         .await?;
-                    return Ok(Some(HandedOff {
+                    return Ok(Spend::Opened(HandedOff {
                         session: PhoneSession::Kept,
                         user: spent.user,
                         to: spent.to,
@@ -260,9 +281,9 @@ impl WebSessions {
             }
         }
         let session = self
-            .open_made_by(spent.user.clone(), user_agent, Some(spent.id))
+            .open_made_by(spent.user.clone(), user_agent, Some((spent.id, spent.issued_by)))
             .await?;
-        Ok(Some(HandedOff {
+        Ok(Spend::Opened(HandedOff {
             session: PhoneSession::Opened { session, ended },
             user: spent.user,
             to: spent.to,

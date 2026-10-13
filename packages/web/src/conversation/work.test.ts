@@ -44,6 +44,8 @@ function signIn(id: string): void {
     nickname: id,
     role: 'master',
     createdAt: '2026-09-18T00:00:00.000Z',
+    disabled: false,
+    choosesPassword: false,
   } })
   useSession().current = { status: 'signedIn', user }
 }

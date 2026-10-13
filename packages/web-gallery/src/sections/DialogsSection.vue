@@ -7,6 +7,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ChangeEmailDialog, { type ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import ChangePasswordDialog, { type ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
 import HandoffDialog from '@demicodes/web-ui/auth/HandoffDialog.vue'
+import ChoosePasswordWizard from '@demicodes/web-ui/auth/ChoosePasswordWizard.vue'
 import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { galleryHandoff, type HandoffSpecimenStart } from '../fixtures/handoff'
@@ -14,6 +15,7 @@ import { galleryPasskeyOffer, type PasskeyOfferScript } from '../fixtures/passke
 import { DEVICE_REPORTS } from '../fixtures/device-reports'
 import type { DeviceReport } from '@demicodes/web-ui/auth/device-unlock'
 import GalleryDeviceReport from '../components/GalleryDeviceReport.vue'
+import { galleryPasswordChoice, type PasswordChoiceScript } from '../fixtures/password-choice'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
@@ -129,6 +131,14 @@ const passkeyOffers = [
     report,
   })),
 ]
+/** Choose Your Password, one specimen for each way it can go on or end. */
+const passwordChoices: { variant: string; choose: ReturnType<typeof galleryPasswordChoice>; offer: boolean }[] = (
+  [
+    ['With the passkey offer · the choice goes on into the offer, in the same dialog', 'saves', true],
+    ['Without passkeys · the choice ends the wizard', 'saves', false],
+    ['Refused · the backend could not save it, which the step says', 'fails', true],
+  ] as [string, PasswordChoiceScript, boolean][]
+).map(([variant, script, offer]) => ({ variant, choose: galleryPasswordChoice(script), offer }))
 const emailPhases: { variant: string; phase: ChangeEmailPhase }[] = [
   { variant: 'form', phase: { kind: 'form', currentEmail: 'zan@example.com' } },
   { variant: 'form · busy', phase: { kind: 'form', currentEmail: 'zan@example.com', busy: true } },
@@ -369,6 +379,28 @@ const resetPhases: {
                   @close="close"
                 />
               </GalleryDeviceReport>
+            </GalleryDialogFrame>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+      <GallerySection
+        title="Choose Your Password"
+        note="What an account an administrator made or reset sees at its next sign-in, before anything else of the product opens: a wizard (Responding to the user), on a computer one dialog at the centre over the dimmed page, on a phone the whole screen (Phone page). Its first step asks a new password and its confirmation, without the current one, and has no close button, since it cannot be skipped; Sign Out is the one other way out. Where passkeys are offered, the passkey offer follows in the same dialog and may be left; its answer is remembered on that browser. Type a short or a differing password to see what is said under the fields."
+      >
+        <div class="grid items-start gap-6 lg:grid-cols-2">
+          <GallerySpecimen v-for="item in passwordChoices" :key="item.variant" wide :variant="item.variant">
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <ChoosePasswordWizard
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                email="bo@example.com"
+                :choose="item.choose"
+                :offer="item.offer"
+                :add="galleryPasskeyOffer('adds')"
+                @answered="productWould('Remember the Answer on This Browser')"
+                @done="close"
+                @sign-out="productWould('Sign Out and Open the Sign-In Page')"
+              />
             </GalleryDialogFrame>
           </GallerySpecimen>
         </div>

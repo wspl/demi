@@ -68,7 +68,9 @@ export function onSessionExpired(handler: () => void): () => void {
 }
 
 export function notifySessionExpired(code: ErrorCode): void {
-  if (code === 'unauthenticated') {
+  // A request an account still to choose its password sent is refused as a
+  // session that ended is: the page asks who it is and shows what it finds.
+  if (code === 'unauthenticated' || code === 'password_choice_required') {
     notifySessionEnded()
   }
 }

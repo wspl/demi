@@ -105,6 +105,24 @@ pub(crate) async fn accept(services: Arc<Services>, shards: Shards, mut socket: 
         }
     };
     let owner = device.user.clone();
+    // The devices of a disabled account cannot reach the backend: its
+    // runners are turned away without a word and connect again, so enabling
+    // the account brings them back.
+    match services.control.account(owner.clone()).await {
+        Ok(Some(account)) if !account.user.disabled => {}
+        Ok(_) => {
+            tracing::info!(device = %device.id, "closing a runner connection of a disabled account");
+            return;
+        }
+        Err(error) => {
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "a runner's owner could not be read"
+            );
+            refuse(socket, &runner, HelloErrorCode::Internal, "the device could not be read").await;
+            return;
+        }
+    }
     let adopted = shards
         .of(&owner)
         .adopt(move |shard| async move { shard.adopt_runner(device, runner, kept, socket).await })

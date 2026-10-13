@@ -197,7 +197,7 @@ impl RawRunner {
     }
 
     /// Reads until the backend closed the socket.
-    async fn closed(&mut self) {
+    pub(crate) async fn closed(&mut self) {
         while self.next().await.is_some() {}
     }
 

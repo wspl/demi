@@ -41,6 +41,7 @@ import { useProduct } from './state/product'
 import { usePasskeySignals } from './auth/passkeys'
 import { useSessions } from './auth/handoff'
 import { usePasskeyOffer } from './auth/passkey-offer'
+import PasswordChoice from './auth/PasswordChoice.vue'
 provideBlobUrl(blobUrl)
 /** How many recent conversations the search window lists before the user types. */
 const RECENT_CONVERSATIONS = 20
@@ -346,6 +347,10 @@ useAppShortcuts(
         />
       </template>
     </SidebarLayout>
+  </div>
+  <!-- An account still to choose its password sees the wizard over a blank page, whatever it opened. -->
+  <div v-else-if="session.current.status === 'choosingPassword' && route.path !== '/handoff'" class="h-full bg-surface-base">
+    <PasswordChoice />
   </div>
   <div v-else class="h-full">
     <RouterView />

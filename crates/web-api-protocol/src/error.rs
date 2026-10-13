@@ -269,6 +269,12 @@ pub enum ErrorCode {
     InvalidOrder,
     /// No account has that id.
     UserNotFound,
+    /// The account is disabled, which refuses every sign-in, by a password,
+    /// a passkey, a handoff code or a sign-in code.
+    AccountDisabled,
+    /// The account's owner must choose a password before anything else of
+    /// the product opens.
+    PasswordChoiceRequired,
     /// The caller has no subagent profile of that id.
     ProfileNotFound,
     /// Another of the caller's subagent profiles has the name.
