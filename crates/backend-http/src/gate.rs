@@ -13,8 +13,12 @@ use axum::http::{HeaderMap, HeaderName, HeaderValue, StatusCode};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Response};
 use axum_extra::extract::CookieJar;
+use demi_backend_database::accounts::TokenHash;
+use demi_backend_page_sync::Part;
+use demi_shared_types::Timestamp;
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::sessions::SessionId;
 use url::Url;
 
 use super::Site;
@@ -131,6 +135,29 @@ impl<S: Send + Sync> FromRequestParts<S> for AuthUser {
     }
 }
 
+/// The session the gate resolved the caller's cookie to: its token's hash,
+/// its id, when it expires unless a request renews it, and when it was last
+/// verified.
+#[derive(Debug, Clone)]
+pub(super) struct CurrentSession {
+    pub(super) token: TokenHash,
+    pub(super) id: SessionId,
+    pub(super) expires_at: Timestamp,
+    pub(super) verified_at: Option<Timestamp>,
+}
+
+impl<S: Send + Sync> FromRequestParts<S> for CurrentSession {
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, _: &S) -> Result<Self, ApiError> {
+        parts
+            .extensions
+            .get::<CurrentSession>()
+            .cloned()
+            .ok_or_else(ApiError::unauthenticated)
+    }
+}
+
 /// A signed-in administrator: the master or an admin. Any other caller
 /// answers 403 `forbidden`.
 #[derive(Debug, Clone)]
@@ -150,10 +177,11 @@ impl<S: Send + Sync> FromRequestParts<S> for AdminUser {
     }
 }
 
-/// Passes a request whose cookie names a live session, with its user, and
-/// renews the cookie with the session. A missing or expired session answers
-/// 401 `unauthenticated`, and a cookie that names no live session is
-/// cleared.
+/// Passes a request whose cookie names a live session, with its user and
+/// the session, and renews the cookie with the session. A missing or
+/// expired session answers 401 `unauthenticated`, and a cookie that names
+/// no live session is cleared. A request that wrote the session's last
+/// activity marks the account's sessions for its pages.
 pub(super) async fn session(
     State(services): State<Arc<Services>>,
     jar: CookieJar,
@@ -174,6 +202,15 @@ pub(super) async fn session(
         }
         Err(error) => return ApiError::from(error).into_response(),
     };
+    if session.active {
+        services.sync.mark(&session.user.id, Part::Sessions);
+    }
+    request.extensions_mut().insert(CurrentSession {
+        token: TokenHash::of(&token),
+        id: session.id,
+        expires_at: session.expires_at,
+        verified_at: session.verified_at,
+    });
     request.extensions_mut().insert(AuthUser(session.user));
     let response = next.run(request).await;
     // A handler that sets the session cookie itself, as logout removes it,

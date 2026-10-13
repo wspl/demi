@@ -26,6 +26,8 @@ import { PLUGIN_PAGES } from '../generated/pages'
 import { createSettingsState } from '../fixtures/settings'
 import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
 import { productWould } from '../product-would'
+import HandoffDialog from '@demicodes/web-ui/auth/HandoffDialog.vue'
+import { galleryHandoff } from '../fixtures/handoff'
 import { demoAccount, demoConversations, demoProjects, emailOnlyAccount, longEmailAccount } from '../sidebar/sidebar-data'
 
 const projects = ref(demoProjects())
@@ -70,6 +72,13 @@ const entriesWithoutSkills = sidebarEntries(PLUGIN_PAGES, (plugin) => plugin !==
 /** What the product does with a pinned specimen's entry: settings, on the section the entry names. */
 function wouldOpenSettings(section?: string): void {
   productWould(section ? `Open ${section} Settings` : 'Open Settings')
+}
+
+/** Sign In on Your Phone, which the live sidebar opens; the other specimens say they would. */
+const handoffOpen = ref(false)
+const handoff = galleryHandoff('verify')
+function wouldSignInOnPhone(): void {
+  productWould('Open Sign In on Your Phone')
 }
 
 const anatomy: [string, string][] = [
@@ -521,6 +530,7 @@ onBeforeUnmount(() => {
             @archive="dropMany"
             @delete="deleteMany"
             @open-settings="openSettings"
+            @sign-in-on-phone="handoffOpen = true"
             @sign-out="productWould('Sign Out')"
           />
           </template>
@@ -542,6 +552,13 @@ onBeforeUnmount(() => {
             >
               <GallerySettingsFull :tab="section ?? ''" :state="settings" />
             </SettingsDialog>
+            <HandoffDialog
+              :is-open="handoffOpen"
+              :overlay-store="appOverlayStore"
+              :host="handoff.host"
+              :email="demoAccount.email"
+              @close="handoffOpen = false"
+            />
           </template>
           </SidebarLayout>
         </div>
@@ -576,6 +593,7 @@ onBeforeUnmount(() => {
                 @remove-project="productWould('Remove the Project')"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
+                @sign-in-on-phone="wouldSignInOnPhone"
                 @select="selectFold"
                 @reorder="(request) => productWould(request.kind === 'project' ? 'Move the Project' : 'Move the Conversation')"
                 @rename="(id, title) => (foldConversations = foldConversations.map((c) => (c.id === id ? { ...c, title } : c)))"
@@ -612,6 +630,7 @@ onBeforeUnmount(() => {
                 @add-project="productWould('Add a Project')"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
+                @sign-in-on-phone="wouldSignInOnPhone"
                 @select="(id) => (hoverActive = id)"
                 @reorder="(request) => productWould(request.kind === 'project' ? 'Move the Project' : 'Move the Conversation')"
                 @rename="(id, title) => (hoverConversations = hoverConversations.map((c) => (c.id === id ? { ...c, title } : c)))"
@@ -657,6 +676,7 @@ onBeforeUnmount(() => {
                 @remove-project="(id) => (markProjectList = markProjectList.filter((project) => project.id !== id))"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
+                @sign-in-on-phone="wouldSignInOnPhone"
                 @select="(id) => (markActive = id)"
                 @reorder="(request) => productWould(request.kind === 'project' ? 'Move the Project' : 'Move the Conversation')"
                 @rename="(id, title) => (markConversations = markConversations.map((c) => (c.id === id ? { ...c, title } : c)))"
@@ -695,6 +715,7 @@ onBeforeUnmount(() => {
                 @add-project="productWould('Add a Project')"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
+                @sign-in-on-phone="wouldSignInOnPhone"
                 @select="selectStatus"
                 @reorder="(request) => productWould(request.kind === 'project' ? 'Move the Project' : 'Move the Conversation')"
                 @rename="(id, title) => (statusConversations = statusConversations.map((c) => (c.id === id ? { ...c, title } : c)))"
@@ -735,6 +756,7 @@ onBeforeUnmount(() => {
               @add-project="productWould('Add a Project')"
               @open-settings="wouldOpenSettings"
               @sign-out="productWould('Sign Out')"
+              @sign-in-on-phone="wouldSignInOnPhone"
             />
           </div>
         </GallerySpecimen>
@@ -757,6 +779,9 @@ onBeforeUnmount(() => {
               :conversations="[]"
               :active-id="null"
               list-status="loading"
+              @open-settings="wouldOpenSettings"
+              @sign-in-on-phone="wouldSignInOnPhone"
+              @sign-out="productWould('Sign Out')"
             />
           </div>
         </GallerySpecimen>
@@ -782,6 +807,9 @@ onBeforeUnmount(() => {
               :active-id="recoveredActive"
               :list-status="recoveredStatus"
               @retry-list="retrySidebar"
+              @open-settings="wouldOpenSettings"
+              @sign-in-on-phone="wouldSignInOnPhone"
+              @sign-out="productWould('Sign Out')"
               @select="(id) => (recoveredActive = id)"
               @archive="(ids) => (recoveredConversations = without(recoveredConversations, ids))"
               @delete="(ids) => (recoveredConversations = without(recoveredConversations, ids))"
@@ -800,6 +828,9 @@ onBeforeUnmount(() => {
               :conversations="[]"
               :active-id="null"
               @create="create"
+              @open-settings="wouldOpenSettings"
+              @sign-in-on-phone="wouldSignInOnPhone"
+              @sign-out="productWould('Sign Out')"
             />
           </div>
         </GallerySpecimen>
@@ -834,6 +865,7 @@ onBeforeUnmount(() => {
               @add-project="productWould('Add a Project')"
               @open-settings="wouldOpenSettings"
               @sign-out="productWould('Sign Out')"
+              @sign-in-on-phone="wouldSignInOnPhone"
             />
           </div>
         </GallerySpecimen>

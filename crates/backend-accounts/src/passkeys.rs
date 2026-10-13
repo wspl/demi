@@ -28,6 +28,8 @@ use webauthn_rs::prelude::{
 use webauthn_rs_core::internals::AuthenticatorData;
 use webauthn_rs_core::proto::{Registration, ResidentKeyRequirement};
 
+use crate::user_agent::browser_and_system;
+
 /// A challenge lasts five minutes, and at most 1000 wait at once.
 pub const CHALLENGE_LIMITS: ChallengeLimits = ChallengeLimits {
     lifetime: SignedDuration::from_mins(5),
@@ -92,6 +94,8 @@ pub enum Refusal {
     Expired,
     /// No account has the passkey the browser signed with.
     UnknownPasskey(PasskeyId),
+    /// The passkey is another account's than the one it must verify.
+    OtherAccount,
     /// The browser's answer did not pass a check.
     Failed,
 }
@@ -118,12 +122,15 @@ pub async fn start_sign_in(
 }
 
 /// Checks the browser's answer to the challenge `id` and answers the
-/// account it signs in, recording the passkey's use.
+/// account it signs in, recording the passkey's use. A verification of the
+/// session of `account` takes only a passkey of that account; a sign-in
+/// passes none.
 pub async fn finish_sign_in(
     control: &ControlService,
     party: &RelyingParty,
     id: PasskeyChallengeId,
     credential: &PublicKeyCredential,
+    account: Option<&UserId>,
 ) -> Result<Result<UserId, Refusal>, PasskeyError> {
     let Some(ChallengeState::SignIn(state)) = control.take_passkey_challenge(id).await? else {
         return Ok(Err(Refusal::Expired));
@@ -137,6 +144,9 @@ pub async fn finish_sign_in(
     let Some(record) = control.passkey(passkey_id.clone()).await? else {
         return Ok(Err(Refusal::UnknownPasskey(passkey_id)));
     };
+    if account.is_some_and(|account| *account != record.user) {
+        return Ok(Err(Refusal::OtherAccount));
+    }
     // The handle the authenticator keeps beside the passkey names the
     // account it was made for.
     if user_handle(&record.user) != Some(handle) {
@@ -234,7 +244,8 @@ pub async fn finish_registration(
     let name = aaguid(credential)
         .and_then(manager_name)
         .map(str::to_owned)
-        .unwrap_or_else(|| browser_and_system(user_agent.unwrap_or_default()));
+        .or_else(|| browser_and_system(user_agent.unwrap_or_default()))
+        .unwrap_or_else(|| "Passkey".to_owned());
     // A credential id another account has already is refused, as
     // `webauthn-rs` asks of its caller.
     match control
@@ -331,77 +342,4 @@ fn manager_name(aaguid: Uuid) -> Option<&'static str> {
         .iter()
         .find(|(known, _)| *known == aaguid)
         .map(|(_, name)| *name)
-}
-
-/// The browser and system a User-Agent names, such as `Safari on macOS`:
-/// their families, in the order that tells them apart (Edge's names Chrome
-/// and Safari too, Chrome's Safari), never their versions; `Passkey` when it
-/// names neither.
-fn browser_and_system(user_agent: &str) -> String {
-    const BROWSERS: [(&[&str], &str); 6] = [
-        (&["Edg/", "EdgA/", "EdgiOS/"], "Edge"),
-        (&["OPR/"], "Opera"),
-        (&["SamsungBrowser/"], "Samsung Internet"),
-        (&["Firefox/", "FxiOS/"], "Firefox"),
-        (&["Chrome/", "CriOS/"], "Chrome"),
-        (&["Safari/"], "Safari"),
-    ];
-    const SYSTEMS: [(&[&str], &str); 7] = [
-        (&["iPhone"], "iOS"),
-        (&["iPad"], "iPadOS"),
-        (&["Android"], "Android"),
-        (&["CrOS"], "ChromeOS"),
-        (&["Windows"], "Windows"),
-        (&["Macintosh"], "macOS"),
-        (&["Linux"], "Linux"),
-    ];
-    let find = |families: &[(&[&str], &'static str)]| {
-        families
-            .iter()
-            .find(|(marks, _)| marks.iter().any(|mark| user_agent.contains(mark)))
-            .map(|(_, name)| *name)
-    };
-    match (find(&BROWSERS), find(&SYSTEMS)) {
-        (Some(browser), Some(system)) => format!("{browser} on {system}"),
-        (Some(name), None) | (None, Some(name)) => name.to_owned(),
-        (None, None) => "Passkey".to_owned(),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn a_passkey_without_a_known_manager_is_named_for_its_browser_and_system() {
-        for (user_agent, name) in [
-            (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15",
-                "Safari on macOS",
-            ),
-            (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36",
-                "Chrome on Windows",
-            ),
-            (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36 Edg/141.0.0.0",
-                "Edge on Windows",
-            ),
-            (
-                "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/141.0 Mobile/15E148 Safari/604.1",
-                "Chrome on iOS",
-            ),
-            (
-                "Mozilla/5.0 (X11; Linux x86_64; rv:140.0) Gecko/20100101 Firefox/140.0",
-                "Firefox on Linux",
-            ),
-            (
-                "Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36",
-                "Chrome on Android",
-            ),
-            ("curl/8.7.1", "Passkey"),
-        ] {
-            assert_eq!(browser_and_system(user_agent), name, "{user_agent}");
-        }
-    }
 }

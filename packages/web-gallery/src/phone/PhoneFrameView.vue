@@ -218,6 +218,7 @@ onMounted(async () => {
           @add-project="productWould('Add a Project')"
           @remove-project="(id) => (projects = projects.filter((project) => project.id !== id))"
           @open-settings="settingsOpen = true"
+          @sign-in-on-phone="productWould('Open Sign In on Your Phone')"
           @sign-out="productWould('Sign Out')"
         />
       </template>

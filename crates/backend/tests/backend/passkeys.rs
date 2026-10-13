@@ -388,3 +388,61 @@ async fn a_development_page_on_another_port_adds_a_passkey() {
     .await;
     assert_eq!(elsewhere.refusal(), (StatusCode::FORBIDDEN, ErrorCode::ForbiddenOrigin));
 }
+
+/// Verifying a session for a handoff code (`web-api.md` § Account API)
+/// takes a passkey of the session's own account: another account's is
+/// refused without its id, which the page would tell the browser to forget.
+#[tokio::test]
+async fn a_session_verifies_only_with_a_passkey_of_its_own_account() {
+    let harness = harness();
+    let (backend, master) = harness.start_set_up().await;
+    harness.add_user("bob@example.test", "bob's password", Role::User);
+    let bob = backend.login("bob@example.test", "bob's password").await;
+    let mut bobs = Manager::new(BITWARDEN);
+    let options: Value = add_options(&backend, &bob, "bob's password").await.json();
+    let credential = bobs.create(&options["options"]).await;
+    let added = backend
+        .post(
+            "/api/auth/passkeys",
+            Some(&bob),
+            json!({ "challengeId": options["challengeId"], "credential": credential }),
+        )
+        .await;
+    assert_eq!(added.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&added.body));
+    let mut masters = Manager::new(BITWARDEN);
+    let added = add(&backend, &master, &mut masters, SAFARI).await;
+    assert_eq!(added.status, StatusCode::CREATED);
+    // The sign-in's own verification has lapsed.
+    harness.clock.advance(jiff::SignedDuration::from_mins(5));
+
+    let verify_with = async |manager: &mut Manager| {
+        let options = backend
+            .post("/api/auth/verify/passkey/options", Some(&master), json!({}))
+            .await;
+        assert_eq!(options.status, StatusCode::OK, "{}", String::from_utf8_lossy(&options.body));
+        let options: Value = options.json();
+        let credential = manager.sign(&options["options"]).await;
+        backend
+            .post(
+                "/api/auth/verify/passkey",
+                Some(&master),
+                json!({ "challengeId": options["challengeId"], "credential": credential }),
+            )
+            .await
+    };
+    let others = verify_with(&mut bobs).await;
+    assert_eq!(others.refusal(), (StatusCode::UNAUTHORIZED, ErrorCode::UnknownPasskey));
+    assert_eq!(others.error().credential_id, None);
+    let unverified = backend
+        .post("/api/auth/handoff/code", Some(&master), json!({ "to": "/chat" }))
+        .await;
+    assert_eq!(unverified.refusal(), (StatusCode::FORBIDDEN, ErrorCode::VerificationRequired));
+
+    let own = verify_with(&mut masters).await;
+    assert_eq!(own.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&own.body));
+    let made = backend
+        .post("/api/auth/handoff/code", Some(&master), json!({ "to": "/chat" }))
+        .await;
+    assert_eq!(made.status, StatusCode::OK, "{}", String::from_utf8_lossy(&made.body));
+    backend.close().await;
+}
