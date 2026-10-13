@@ -502,8 +502,8 @@ impl Mapper {
             }
             ResponsesEvent::Completed(completed) => {
                 let usage = completed.response.and_then(|response| response.usage);
-                let usage = usage.map(|usage| usage.token_usage()).unwrap_or_default();
-                out.push(ProviderEvent::Response(Some(usage)));
+                let usage = usage.map(|usage| usage.token_usage());
+                out.push(ProviderEvent::response(usage, self.vendor.label, &self.vendor.model));
                 true
             }
             ResponsesEvent::Failed(failed) => {

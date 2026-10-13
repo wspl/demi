@@ -111,7 +111,7 @@ fn answer(wire: WireApi) -> (MockResponse, Vec<ProviderEvent>) {
         WireApi::ChatCompletions => {
             let chunk = sse_body(&[json!({ "choices": [{ "delta": { "content": "hi" }, "finish_reason": "stop" }] })]);
             let body = format!("{chunk}data: [DONE]\n\n");
-            let events = vec![text, ProviderEvent::Response(Some(TokenUsage::default()))];
+            let events = vec![text, ProviderEvent::Response(None)];
             (MockResponse::event_stream(body), events)
         }
     }

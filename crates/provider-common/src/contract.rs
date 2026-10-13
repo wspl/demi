@@ -489,7 +489,8 @@ pub enum ProviderEvent {
     ToolCall(ToolCall),
     /// The run's end, with the usage of its final API call: the context the
     /// next request carries, never a total over the turn. None when the
-    /// vendor reported no call's own usage; nothing stands in for it.
+    /// vendor reported no call's own usage; nothing stands in for it. An HTTP
+    /// provider makes it with [`ProviderEvent::response`].
     Response(Option<TokenUsage>),
     /// The run's failure; it is the run's last event.
     Error(ProviderFailure),
@@ -502,6 +503,23 @@ pub enum ProviderEvent {
         of: EntriesOf,
         entries: Vec<serde_json::Value>,
     },
+}
+
+impl ProviderEvent {
+    /// The run's end with the usage the vendor sent for it, if any. A
+    /// response without usage logs an error naming the provider and the
+    /// model: the vendor left out what it is asked for, and the context
+    /// estimate and the usage ledger go without this response's counts.
+    pub fn response(usage: Option<TokenUsage>, provider: &str, model: &str) -> Self {
+        if usage.is_none() {
+            tracing::error!(
+                provider,
+                model,
+                "the vendor sent no usage for a response; the response reports none"
+            );
+        }
+        Self::Response(usage)
+    }
 }
 
 /// The block entries belong to.
