@@ -14,7 +14,8 @@ import { transferCopiedMessage } from './message-input/copied-message'
  * The box holds the attach control, the message and the actions; the `below`
  * slot is a row under it, on the right, for what belongs to the conversation
  * and not to the message (the model, the context), aligned to the box's right
- * edge.
+ * edge. Its `below-start` slot is the same row's left end, for what lists
+ * the conversation's drafts; the `list` slot is a panel under that row.
  *
  * The message's line comes first. The editor slot hears what the line offers
  * its text (`line`), so a message that outgrows it opens the shell instead of
@@ -89,7 +90,13 @@ const showDrop = computed(() => props.dropping === true || dragOver.value)
       />
     </div>
     <div class="composer-below">
+      <div v-if="$slots['below-start']" class="composer-below-start">
+        <slot name="below-start" />
+      </div>
       <slot name="below" />
+    </div>
+    <div v-if="$slots['list']" class="composer-list">
+      <slot name="list" />
     </div>
   </div>
 </template>

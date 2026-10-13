@@ -47,6 +47,12 @@ const props = defineProps<{
   /** What the row stands for, as a tooltip, such as a place's full path; a disabled row's reason comes first. */
   hint?: SentenceText
   shortcut?: string
+  /**
+   * The `actions` show only while the pointer is on the row or the focus is
+   * in it (always on a phone, which has no hover), in place of the `suffix`,
+   * which shows otherwise: the row keeps one cell for both.
+   */
+  revealActions?: boolean
   /** A choice row: shows the check gutter, reports aria-checked, and keeps the menu tree open. */
   choice?: boolean
   isSelected?: boolean
@@ -265,9 +271,16 @@ const toneClass = computed(() => {
       <span
         v-if="hasSuffix"
         class="menu-cell-suffix flex items-center justify-end"
+        :class="revealActions && hasActions ? 'menu-cell-swap' : ''"
       >
+        <template v-if="revealActions && hasActions">
+          <span class="menu-swap-rest"><slot name="suffix" /></span>
+          <span class="menu-cell-actions menu-swap-actions on-fill">
+            <slot name="actions" />
+          </span>
+        </template>
         <!-- Trailing `xs` icon buttons go here, never in `suffix`: this cell owns their inset from the row's edge. -->
-        <span v-if="hasActions" class="menu-cell-actions on-fill">
+        <span v-else-if="hasActions" class="menu-cell-actions on-fill">
           <slot name="actions" />
         </span>
         <slot v-else name="suffix">

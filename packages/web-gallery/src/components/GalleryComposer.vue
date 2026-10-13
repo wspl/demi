@@ -12,6 +12,9 @@ import {
   type PasteHost,
 } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { showToast } from '@demicodes/web-ui/infra/toast'
+import { createId } from '@demicodes/utils'
+import type { DraftRow } from '@demicodes/web-ui/agent/drafts'
+import { draftPreview } from '@demicodes/web-ui/agent/message-input/draft-preview'
 import type { MessageEditState } from '@demicodes/web-ui/agent/message-editing'
 import RemoteFilePicker from '@demicodes/web-ui/files/RemoteFilePicker.vue'
 import type { OfflineHost } from '@demicodes/web-ui/agent/offline-host'
@@ -41,12 +44,13 @@ import type { ModelInfo, ProviderInfo } from '@demicodes/web-ui/transport/protoc
 import { demoProviders, usageAt } from '../fixtures/catalog'
 import { composerModels, setGalleryContextLimit, withContextLimits } from '../fixtures/context-limits'
 import { productWould } from '../product-would'
-import type { SendWay, SendWhileRunning } from '@demicodes/web-ui/agent/send-way'
+import { chooseSendWay, type SendWay, type SendWhileRunning } from '@demicodes/web-ui/agent/send-way'
 import { galleryMessages } from '../fixtures/send-while-running'
 import { demoInstructions, demoOpenInstruction } from '../fixtures/instructions'
 import type { SentMessage, RecallComposer } from '../turn-flow'
 import { createGalleryRemoteFileHosts } from '../fixtures/files'
 import { galleryUploads } from '../fixtures/upload-sweep'
+import type { SeedDraft } from '../fixtures/drafts'
 
 const props = withDefaults(
   defineProps<{
@@ -96,6 +100,10 @@ const props = withDefaults(
     onQueue?: (content: UserContentBlock[], message: SentMessage) => void
     /** The specimen's flow, whose Recall gives a message back into this composer, as the product's does. */
     flow?: { attachComposer(host: RecallComposer): () => void }
+    /** The drafts the specimen starts with, newest first; Save as Draft adds to them. */
+    drafts?: SeedDraft[]
+    /** The drafts' list starts open. */
+    draftsOpen?: boolean
   }>(),
   {
     draft: '',
@@ -125,6 +133,28 @@ interface DraftVersion {
   text: string
   files: ComposerAttachment[]
 }
+/** A saved draft as the product's server keeps it: the message, its files and when it was saved. */
+interface SavedDraft {
+  id: string
+  markdown: string
+  files: ComposerAttachment[]
+  savedAt: string
+}
+const savedDrafts = ref<SavedDraft[]>(
+  (props.drafts ?? []).map((seed) => ({
+    id: createId(),
+    markdown: seed.text,
+    files: (seed.files ?? []).map((item) => composerAttachment(item)),
+    savedAt: new Date(Date.now() - seed.minutesAgo * 60_000).toISOString(),
+  })),
+)
+const draftsOpen = ref(props.draftsOpen === true)
+const draftRows = computed<DraftRow[]>(() => savedDrafts.value.map((saved) => ({
+  id: saved.id,
+  preview: draftPreview(saved.markdown, saved.files.map((file) => file.name)),
+  attachmentCount: saved.files.length,
+  savedAt: saved.savedAt,
+})))
 /** The version a later save replaced, as the product's backend keeps it. */
 const replacedVersion = ref<DraftVersion | null>(
   props.replaced ? { text: props.replaced, files: [] } : null,
@@ -208,6 +238,8 @@ const composerProps = computed(() => {
     flow: _flow,
     sendWhileRunning: _sendWhileRunning,
     offlineHost: _offlineHost,
+    drafts: _drafts,
+    draftsOpen: _draftsOpen,
     ...rest
   } = props
   return rest
@@ -290,6 +322,95 @@ function submit(way: SendWay) {
   while (attached.value.length) {
     forget(attached.value[0]!.id, false)
   }
+}
+
+/**
+ * Keeps the message as a draft at the top of the list and empties the
+ * composer, as the product's Save as Draft does: its files go with it, their
+ * uploads going on. A composer holding nothing saves nothing.
+ */
+function saveDraft() {
+  if (isEmptyMessage(draft.value, carried.value.length)) {
+    return
+  }
+  const files = carried.value.flatMap((id) => attached.value.filter((item) => item.id === id))
+  // What the composer held only for an undo goes.
+  for (const item of attached.value.filter((file) => !carried.value.includes(file.id))) {
+    forget(item.id, true)
+  }
+  savedDrafts.value = [
+    { id: createId(), markdown: draft.value, files, savedAt: new Date().toISOString() },
+    ...savedDrafts.value,
+  ]
+  draft.value = ''
+  carried.value = []
+  attached.value = []
+  composer.value?.focusDraft()
+}
+
+/** Takes a draft off the list, and gives it back at its place. */
+function takeDraft(id: string): { saved: SavedDraft; index: number } | undefined {
+  const index = savedDrafts.value.findIndex((saved) => saved.id === id)
+  const saved = savedDrafts.value[index]
+  if (!saved) {
+    return undefined
+  }
+  savedDrafts.value = savedDrafts.value.filter((each) => each.id !== id)
+  return { saved, index }
+}
+
+/**
+ * Puts a draft in the composer and takes it off the list; a composer holding
+ * a message saves that one as a draft first, so nothing is lost.
+ */
+function editDraft(id: string) {
+  const taken = takeDraft(id)
+  if (!taken) {
+    return
+  }
+  saveDraft()
+  attached.value = [...taken.saved.files]
+  carried.value = taken.saved.files.map((file) => file.id)
+  draft.value = taken.saved.markdown
+  shown.value += 1
+  composer.value?.focusDraft()
+}
+
+/** Sends a draft as the composer would, steering or queueing while the agent works, and takes it off the list. */
+function sendDraft(id: string) {
+  const taken = takeDraft(id)
+  if (!taken) {
+    return
+  }
+  const way = chooseSendWay(
+    props.running === true || props.compacting === true,
+    props.sendWhileRunning ?? galleryMessages.sendWhileRunning,
+    false,
+  )
+  handOn(taken.saved.markdown, taken.saved.files, way)
+  if (way === 'send') {
+    showToast({ title: 'Sent', tone: 'success' })
+  }
+}
+
+/** Removes a draft at once, with Undo in a toast that puts it back at its place. */
+function deleteDraft(id: string) {
+  const taken = takeDraft(id)
+  if (!taken) {
+    return
+  }
+  showToast({
+    title: 'Draft Deleted',
+    tone: 'neutral',
+    action: {
+      label: 'Undo',
+      run: () => {
+        const next = [...savedDrafts.value]
+        next.splice(Math.min(taken.index, next.length), 0, taken.saved)
+        savedDrafts.value = next
+      },
+    },
+  })
 }
 
 /**
@@ -547,6 +668,12 @@ onBeforeUnmount(() => {
     :instructions="demoInstructions"
     :replaced="replacedVersion && { markdown: replacedVersion.text, fileNames: replacedVersion.files.map((file) => file.name) }"
     :draft-shown="shown"
+    :drafts="draftRows"
+    v-model:drafts-open="draftsOpen"
+    @save-draft="saveDraft"
+    @edit-draft="editDraft"
+    @send-draft="sendDraft"
+    @delete-draft="deleteDraft"
     :plugins-changed="pluginsChanged"
     :reloading="reloading"
     :offline-host="offlineHost"
