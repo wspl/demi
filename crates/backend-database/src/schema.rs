@@ -150,13 +150,15 @@ pub(crate) const CONTROL: Schema = Schema {
 /// From the control schema with the messages saved for later to the one
 /// with administered accounts (`storage.md` § Control records): an account
 /// is enabled and has chosen its own password, as every account that
-/// exists did; a session was not made by an administrator's code; each
+/// exists did, and was last active when its latest session was; a session was not made by an administrator's code; each
 /// user's one handoff code becomes their handoff code of its kind, and
 /// no sign-in code exists. The codes' table is rebuilt, since SQLite changes
 /// a primary key only so.
 const CONTROL_FROM_SAVED_MESSAGES: &str = "
 ALTER TABLE users ADD COLUMN disabled INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1));
 ALTER TABLE users ADD COLUMN chooses_password INTEGER NOT NULL DEFAULT 0 CHECK (chooses_password IN (0, 1));
+ALTER TABLE users ADD COLUMN last_active_at INTEGER;
+UPDATE users SET last_active_at = (SELECT max(last_active_at) FROM web_sessions WHERE user_id = users.id);
 ALTER TABLE web_sessions ADD COLUMN issued_by TEXT REFERENCES users (id);
 CREATE TABLE handoff_codes_new (
   user_id    TEXT NOT NULL REFERENCES users (id),
@@ -1379,7 +1381,9 @@ CREATE TABLE users (
   -- A disabled account is signed out and refused every sign-in; nothing of it is removed.
   disabled      INTEGER NOT NULL DEFAULT 0 CHECK (disabled IN (0, 1)),
   -- True until the owner of an account an administrator made or reset chooses its own password.
-  chooses_password INTEGER NOT NULL DEFAULT 0 CHECK (chooses_password IN (0, 1))
+  chooses_password INTEGER NOT NULL DEFAULT 0 CHECK (chooses_password IN (0, 1)),
+  -- Written with a session's last activity, so it outlives the sessions; none before the first sign-in.
+  last_active_at INTEGER
 ) STRICT;
 CREATE UNIQUE INDEX users_one_master ON users (role) WHERE role = 'master';
 
@@ -3398,6 +3402,14 @@ mod tests {
             users,
             [("u1".to_owned(), false, false), ("u2".to_owned(), false, false)]
         );
+        let active: Vec<(String, Option<i64>)> = connection
+            .prepare("SELECT id, last_active_at FROM users ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(active, [("u1".to_owned(), None), ("u2".to_owned(), Some(4))]);
         let session: (String, Option<String>) = connection
             .query_row("SELECT name, issued_by FROM web_sessions WHERE id = 's1'", [], |row| {
                 Ok((row.get(0)?, row.get(1)?))

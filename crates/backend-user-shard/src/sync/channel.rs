@@ -13,7 +13,7 @@ use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_page_sync::{Part, Registration};
 use demi_shared_types::Timestamp;
-use demi_web_api_protocol::auth::UserDto;
+use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::state::SyncEvent;
 use futures_util::StreamExt as _;
 
@@ -125,6 +125,52 @@ impl Channel<'_> {
     /// Sends the product state, then every part that changes, until the
     /// channel ends.
     async fn serve(&mut self) -> Result<Infallible, End> {
+        // An account still to choose its password sees the account alone, until
+        // it is chosen, on this page or another (`web-api.md` § Account API).
+        let mut choosing = self.session.user.chooses_password;
+        if choosing {
+            let user = self.session.user.clone();
+            self.send(&SyncEvent::User { user }).await?;
+        } else {
+            self.send_snapshot().await?;
+        }
+        loop {
+            let woke = tokio::select! {
+                () = self.registration.marked() => Woke::Marked,
+                () = self.page.silent() => Woke::Heartbeat,
+            };
+            self.check_session().await?;
+            match woke {
+                Woke::Marked => {
+                    #[cfg(feature = "testing")]
+                    self.shard
+                        .services()
+                        .syncs
+                        .pass(super::SyncStep::Changes)
+                        .await;
+                    let marked = self.registration.take();
+                    if marked.session_ended {
+                        return Err(End::SessionEnded);
+                    }
+                    for part in &marked.parts {
+                        if choosing && *part != Part::User {
+                            continue;
+                        }
+                        self.send_part(part).await?;
+                        if choosing && !self.session.user.chooses_password {
+                            // The choice landed: the rest of the state follows.
+                            choosing = false;
+                            self.send_snapshot().await?;
+                        }
+                    }
+                }
+                Woke::Heartbeat => self.send(&SyncEvent::Heartbeat).await?,
+            }
+        }
+    }
+
+    /// Reads the whole product state now and sends it.
+    async fn send_snapshot(&mut self) -> Result<(), End> {
         let state = self
             .shard
             .product_state(self.session.user.clone(), &self.session.token)
@@ -145,32 +191,7 @@ impl Channel<'_> {
         self.send(&SyncEvent::Snapshot {
             state: Box::new(state),
         })
-        .await?;
-        loop {
-            let woke = tokio::select! {
-                () = self.registration.marked() => Woke::Marked,
-                () = self.page.silent() => Woke::Heartbeat,
-            };
-            self.check_session().await?;
-            match woke {
-                Woke::Marked => {
-                    #[cfg(feature = "testing")]
-                    self.shard
-                        .services()
-                        .syncs
-                        .pass(super::SyncStep::Changes)
-                        .await;
-                    let marked = self.registration.take();
-                    if marked.session_ended {
-                        return Err(End::SessionEnded);
-                    }
-                    for part in &marked.parts {
-                        self.send_part(part).await?;
-                    }
-                }
-                Woke::Heartbeat => self.send(&SyncEvent::Heartbeat).await?,
-            }
-        }
+        .await
     }
 
     /// Ends the channel once its session expired. Past the expiry it knew,
@@ -213,10 +234,17 @@ impl Channel<'_> {
         let Some(event) = read else {
             return Ok(());
         };
+        let mut promoted = false;
         if let SyncEvent::User { user } = &event {
+            // An account made an admin starts to see the accounts.
+            promoted = self.session.user.role == Role::User && user.role != Role::User;
             self.session.user = user.clone();
         }
-        self.send(&event).await
+        self.send(&event).await?;
+        if promoted {
+            Box::pin(self.send_part(&Part::Users)).await?;
+        }
+        Ok(())
     }
 
     async fn send(&mut self, event: &SyncEvent) -> Result<(), End> {

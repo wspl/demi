@@ -124,6 +124,7 @@ pub(super) async fn sign_in(
     services.sync.mark(&user, Part::Passkeys);
     let session = services.sessions.open(user.clone(), user_agent(&headers)).await?;
     services.sync.mark(&user, Part::Sessions);
+    services.sync.mark_everyone(&Part::Users);
     let jar = jar.add(cookies::session(&session.token, session.expires_at, https));
     Ok((jar, Json(Identity { user: account.user })).into_response())
 }

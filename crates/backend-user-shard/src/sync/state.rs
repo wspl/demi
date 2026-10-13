@@ -10,7 +10,7 @@ use demi_backend_database::accounts::TokenHash;
 use demi_backend_page_sync::Part;
 use demi_backend_runners::install::install_commands;
 use demi_plugin_interface::PluginError;
-use demi_web_api_protocol::auth::UserDto;
+use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::providers::{ProviderReading, ProviderState};
 use demi_web_api_protocol::state::{ProductState, SyncEvent};
 use futures_util::future::join_all;
@@ -61,6 +61,10 @@ impl Shard {
         let credentials = self.credential_list().await?;
         let passkeys = passkey_list(&services.control, self.user()).await?;
         let sessions = services.sessions.list(self.user(), reader).await?.sessions;
+        let users = match user.role {
+            Role::User => None,
+            Role::Master | Role::Admin => Some(services.control.users().await?),
+        };
         let plugins = self.plugins().entries().await?;
         let plugin_states = self.plugins().page_states().await?;
         let public_url = services
@@ -90,6 +94,7 @@ impl Shard {
             passkeys,
             passkey_rp_id: relying_party_id(public_url).map(str::to_owned),
             sessions,
+            users,
             plugins,
             plugin_states,
             web_build: services.web_build.clone(),
@@ -160,6 +165,15 @@ impl Shard {
             Part::Sessions => SyncEvent::Sessions {
                 sessions: self.services().sessions.list(self.user(), reader).await?.sessions,
             },
+            Part::Users => {
+                // A user's channel never carries the accounts.
+                if user.role == Role::User {
+                    return Ok(None);
+                }
+                SyncEvent::Users {
+                    users: control.users().await?,
+                }
+            }
             Part::Plugins => SyncEvent::Plugins {
                 plugins: self.plugins().entries().await?,
             },

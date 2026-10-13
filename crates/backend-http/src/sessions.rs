@@ -169,6 +169,7 @@ pub(super) async fn spend_code(
         }
     };
     services.sync.mark(&handed.user, Part::Sessions);
+    services.sync.mark_everyone(&Part::Users);
     let answer = Json(HandoffAnswer { to: handed.to });
     match handed.session {
         PhoneSession::Kept => Ok(answer.into_response()),
