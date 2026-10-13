@@ -938,14 +938,14 @@ html[data-theme="light"] .file-pill {
   padding-inline-end: var(--composer-inset);
 }
 
-/* What stands at the row's left edge, such as the drafts' entry, level with
+/* What stands at the row's left edge, such as the saved messages' entry, level with
    the box's attach control the way the last control is with the send button. */
 .composer-below-start {
   margin-inline-end: auto;
   padding-inline-start: var(--composer-inset);
 }
 
-/* A list under the box (the drafts) stands as far under the row as the row
+/* A list under the box (the saved messages) stands as far under the row as the row
    stands under the box. */
 .composer-list {
   margin-top: var(--composer-below-gap);

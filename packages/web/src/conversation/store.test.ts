@@ -12,7 +12,7 @@ import { nextTick, toRaw, watch } from 'vue'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
-import type { AttachedHost, ConversationDraft, ConversationSummary, DraftFile, Preferences } from '../api/generated/web-api'
+import type { AttachedHost, ConversationDraft, ConversationSummary, DraftFile, Preferences, SavedMessage } from '../api/generated/web-api'
 import { useSession } from '../auth/session'
 import { conversationSummary, productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
@@ -148,6 +148,33 @@ function draftRoute(id: string, method: string, action: boolean, body: Record<st
   return Response.json({ draft: next })
 }
 
+/** The messages saved for later the backend keeps, by conversation, newest first. */
+let serverSaved: Map<string, SavedMessage[]>
+
+/**
+ * The backend's routes of messages saved for later (`web-api.md` § Messages
+ * saved for later): the list, with the revision the conversation's summary
+ * carries, and a save of the composer's message, which empties the draft.
+ */
+function savedRoute(id: string, method: string, fromDraft: boolean, body: Record<string, unknown>): Response {
+  const summary = records.find((item) => item.id === id)!
+  const messages = serverSaved.get(id) ?? []
+  if (method === 'GET') {
+    return Response.json({ revision: summary.savedRevision, messages })
+  }
+  if (!fromDraft) {
+    throw new Error(`Unexpected saved request: ${method} ${id}`)
+  }
+  const message: SavedMessage = { id: `saved-${messages.length + 1}`, text: body.text as string, files: [], savedAt: '2026-09-09T00:00:00.000Z' }
+  serverSaved.set(id, [message, ...messages])
+  summary.savedRevision += 1
+  summary.saved += 1
+  const current = serverDrafts.get(id) ?? { revision: 0, text: '', files: [], replaced: null }
+  const draft = { revision: current.revision + 1, text: '', files: [], replaced: current.replaced }
+  serverDrafts.set(id, draft)
+  return Response.json({ message, draft }, { status: 201 })
+}
+
 function record(id: string, title = id): ConversationSummary {
   return conversationSummary(id, title, { cwd: `/home/demi/sessions/${id}` })
 }
@@ -158,6 +185,7 @@ beforeEach(async () => {
   records = [record(FIRST, 'first'), record(SECOND, 'second')]
   savedPreferences = { appearance: {}, shortcuts: {} }
   serverDrafts = new Map()
+  serverSaved = new Map()
   FakeXhr.gate = null
   FakeXhr.failures = 0
   rejectCreate = false
@@ -254,6 +282,10 @@ beforeEach(async () => {
     const draft = /^\/api\/conversations\/([^/]+)\/draft(\/replaced)?$/.exec(path)
     if (draft) {
       return draftRoute(decodeURIComponent(draft[1]!), init?.method ?? 'GET', draft[2] !== undefined, body)
+    }
+    const saved = /^\/api\/conversations\/([^/]+)\/saved(\/from-draft)?$/.exec(path)
+    if (saved) {
+      return savedRoute(decodeURIComponent(saved[1]!), init?.method ?? 'GET', saved[2] !== undefined, body)
     }
     if (path.startsWith('/api/attachments?')) {
       // The backend holds none of these files: their bytes go next.
@@ -2911,4 +2943,55 @@ test('a child\'s usage frame sets its own record\'s usage', () => {
   applyConversationEvent(conversation, { type: 'context_usage', node: conversation.id, usage: { ...usage, tokens: 1_000 } })
   expect(conversation.subagents.find((agent) => agent.id === 'child')!.contextUsage).toEqual(usage)
   expect(conversation.contextUsage).toBeNull()
+})
+
+// Under 50 ms each: the backend is the stub above.
+test('the messages saved for later show as the conversation opens, and a raised revision reads them again, once', async () => {
+  serveHistory()
+  serverSaved.set(FIRST, [{ id: 'dns', text: 'Check prod’s DNS next', files: [], savedAt: '2026-09-09T00:00:00.000Z' }])
+  records[0]!.savedRevision = 1
+  const store = useConversations()
+  const first = store.items.find((item) => item.id === FIRST)!
+  const reads = (id: string) => requests.filter((item) => item.path === `/api/conversations/${id}/saved`).length
+  await store.activate(FIRST)
+  await until(() => first.saved?.revision === 1, 'the list is read as the conversation opens')
+  expect(first.saved?.messages.map((message) => message.text)).toEqual(['Check prod’s DNS next'])
+
+  // Another page saved one: the summary's revision moves ahead, the page
+  // reads the list again; the same summary again reads nothing.
+  serverSaved.set(FIRST, [{ id: 'ipv6', text: 'Then the IPv6', files: [], savedAt: '2026-09-09T00:01:00.000Z' }, ...serverSaved.get(FIRST)!])
+  records[0]!.savedRevision = 2
+  await changed(FIRST)
+  await changed(FIRST)
+  await until(() => first.saved?.revision === 2, 'the list is read again')
+  expect(first.saved?.messages.map((message) => message.id)).toEqual(['ipv6', 'dns'])
+  await settle()
+  expect(reads(FIRST)).toBe(2)
+
+  // A conversation this page never opened reads nothing.
+  records[1]!.savedRevision = 1
+  await changed(SECOND)
+  await settle()
+  expect(reads(SECOND)).toBe(0)
+})
+
+test('Save for Later sends the composer\'s message on the revision it was built on, empties the composer and lists it at once', async () => {
+  const signOut = signIn()
+  try {
+    serveHistory()
+    serverDrafts.set(FIRST, { revision: 1, text: 'Check prod’s DNS', files: [], replaced: null })
+    records[0]!.draftRevision = 1
+    const store = useConversations()
+    const first = store.items.find((item) => item.id === FIRST)!
+    await store.activate(FIRST)
+    await until(() => first.saved !== null && first.draftBase === 1, 'the draft and the list are read')
+    first.draft = 'Check prod’s DNS next'
+    await store.saveForLater(first)
+    const save = requests.find((item) => item.path === `/api/conversations/${FIRST}/saved/from-draft`)
+    expect(save?.body).toEqual({ base: 1, text: 'Check prod’s DNS next', files: [] })
+    expect([first.draft, first.draftBase, first.saved?.messages.map((message) => message.text)])
+      .toEqual(['', 2, ['Check prod’s DNS next']])
+  } finally {
+    signOut()
+  }
 })
