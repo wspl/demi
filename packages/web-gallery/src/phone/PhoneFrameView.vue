@@ -13,12 +13,14 @@ import { providePageHost, sidebarEntries, withPluginSections } from '@demicodes/
 import { provideLiveCalls } from '@demicodes/web-ui/agent/live-calls'
 import { callTerminal } from '@demicodes/web-ui/agent/terminals'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
+import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
 import GalleryComposer from '../components/GalleryComposer.vue'
 import GalleryHostMenu from '../components/GalleryHostMenu.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
 import { galleryBrowser } from '../fixtures/live-browser'
+import { galleryPasskeyOffer } from '../fixtures/passkey-offer'
 import { galleryConversationFiles } from '../fixtures/message-files'
 import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
 import { createSettingsState } from '../fixtures/settings'
@@ -89,6 +91,9 @@ const primaryHost = computed<HostMenuHost>(() => {
   const device = devices.find((item) => item.id === primaryId)!
   return { id: device.id, name: device.name, kind: 'device', state: device.state }
 })
+
+/** The passkey offer after a handoff, which the scene of that name shows: the whole screen. */
+const passkeyOfferOpen = ref(scene === 'passkey')
 
 const sidebarOpen = ref(false)
 const projects = ref(demoProjects())
@@ -270,6 +275,14 @@ onMounted(async () => {
         <GalleryWorkPanel :work="work" @close="work.open.value = false" />
       </template>
       <template #dialogs>
+        <PasskeyOffer
+          :is-open="passkeyOfferOpen"
+          :overlay-store="appOverlayStore"
+          :add="galleryPasskeyOffer('adds')"
+          email="zan@example.com"
+          @answered="productWould('Remember the Answer on This Browser')"
+          @close="passkeyOfferOpen = false"
+        />
         <SettingsDialog
           v-slot="{ section }"
           v-model:tab="settingsTab"

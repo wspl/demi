@@ -240,6 +240,12 @@ export const useResources = defineStore('resources', () => {
       local.value.dockWindowShare = share
     },
   })
+  const passkeyOfferAnswered = computed({
+    get: () => local.value.passkeyOfferAnswered ?? false,
+    set: (answered: boolean) => {
+      local.value.passkeyOfferAnswered = answered
+    },
+  })
   const recentProjectIds = computed(() => local.value.recentProjects)
 
   function rememberProject(id: string): void {
@@ -329,6 +335,7 @@ export const useResources = defineStore('resources', () => {
     sidebarWidth,
     asideShare,
     dockWindowShare,
+    passkeyOfferAnswered,
     deviceById,
     conversationDevice,
     recentProjectIds,

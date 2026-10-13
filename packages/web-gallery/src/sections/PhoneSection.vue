@@ -9,6 +9,8 @@ const CONVERSATION = [
   { scene: 'title', label: 'The title sheet' },
   { scene: 'drawer', label: 'The sidebar' },
   { scene: 'model', label: 'The model picker' },
+  { scene: 'passkey', label: 'The passkey offer after a handoff' },
+  { scene: 'passkey', label: 'The passkey offer after a handoff' },
 ]
 /** How many phones have loaded: the next one loads then, so that the app's files load once, not all at once. */
 const loaded = ref(0)
