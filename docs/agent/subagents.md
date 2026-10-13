@@ -1100,7 +1100,15 @@ order, `subagent` with `started` and `subagent_transcript_reset`. A page
 learns of the subagents that no longer run from the conversation's list of
 subagents, and reads a subagent's transcript, live or not, by its pages when
 it shows it ([Conversation history](../product/web-api.md#conversation-history)). A transcript
-sync replays the live children the same way. The web app's two frames for
+sync replays the live children the same way.
+
+A page that opens again after its connection dropped names in its `open`
+the children it holds as live, `live: [subagentId]`. For each of them that
+no longer runs, the handshake sends `subagent` with `closed` and its final
+job, then `subagent_transcript_reset` with its latest page, so a child that
+ended while the page was away shows as it ended, as the root's transcript
+catches up from the edge the page held. A child the page never held is
+learned from the list as on a first open. The web app's two frames for
 stopping children are described in [Abort](#abort).
 
 ## Sequence
