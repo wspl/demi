@@ -60,6 +60,9 @@ pub struct TestProduct {
     /// For each request, whether the plugin had been asked by the time the
     /// execution context, which takes a moment, answered.
     pub plugin_asked_meanwhile: RefCell<Vec<bool>>,
+    /// Holds the next read of where the conversation works until the gate
+    /// opens, as a Host that is slow to answer; the read takes it.
+    pub placement_hold: RefCell<Option<Gate>>,
 }
 
 /// A plugin's context source: it answers its text once per node.
@@ -96,6 +99,7 @@ impl Default for TestProduct {
             }),
             context: RefCell::default(),
             seen: RefCell::default(),
+            placement_hold: RefCell::default(),
             plugin: None,
             plugin_asked_meanwhile: RefCell::default(),
         }
@@ -107,6 +111,12 @@ impl HostResolver for TestProduct {
     type Host = NoHost;
 
     async fn placement(&self, _context: NodeContext<'_>) -> Result<Placement, HostError> {
+        let hold = self.placement_hold.borrow_mut().take();
+        if let Some(hold) = hold {
+            let mut opened = hold.0.subscribe();
+            // The gate lives in the test that holds the read.
+            let _ = opened.wait_for(|open| *open).await;
+        }
         Ok(Placement {
             device: None,
             directory: "/workspace".to_owned(),

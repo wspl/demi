@@ -11,7 +11,7 @@ mod supervisor;
 
 use std::{
     cell::{Cell, RefCell},
-    collections::{BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap},
     rc::{Rc, Weak},
     sync::Arc,
     time::Duration,
@@ -32,7 +32,7 @@ use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
 pub(crate) use self::profiles::{Deleted, ProfileAnswer, ProfileListing};
 pub(crate) use self::supervisor::{ShownAgent, StartInput, TreeEntry};
-use self::{live::LiveOutput, supervisor::Child};
+use self::{live::LiveOutput, supervisor::{Child, Summary}};
 use super::{AgentServer, ResolveError, commands, connection::Outbox};
 use crate::{
     Node,
@@ -47,6 +47,11 @@ pub struct Tree<H: HostResolver> {
     /// directory (`subagents.md` § Topology and the agent directory). A
     /// closing child stays until its close is complete.
     children: RefCell<HashMap<NodeId, Rc<Child<H>>>>,
+    /// Every child of the tree, live and closed, by number: read from the
+    /// store when the tree opens, and changed in the step that changes a
+    /// child, so an open's snapshot lists them without an await
+    /// (`subagents.md` § Protocol).
+    summaries: RefCell<BTreeMap<u64, Summary>>,
     /// Bumped whenever a child starts or closes, which every supervision
     /// and the eviction watch.
     changes: watch::Sender<u64>,
@@ -265,6 +270,18 @@ impl<H: HostResolver> Tree<H> {
         let stored = Origin::stored(store.as_ref(), root)
             .await
             .map_err(AssembleError::from)?;
+        let mut summaries = BTreeMap::new();
+        for (record, model) in store.subagents().await.map_err(AssembleError::from)? {
+            let runs_on = deps.subagents.runs_on(&model).await;
+            summaries.insert(
+                record.number,
+                Summary {
+                    record,
+                    runs_on,
+                    revision: 0,
+                },
+            );
+        }
         let origin = stored.unwrap_or_else(|| Origin::New {
             record: NodeRecord::root(root.clone(), deps.clock.now()),
             model: model.clone(),
@@ -345,6 +362,7 @@ impl<H: HostResolver> Tree<H> {
                 server: Rc::downgrade(server),
                 root: Rc::new(assembled.node),
                 children: RefCell::new(HashMap::new()),
+                summaries: RefCell::new(summaries),
                 changes,
                 starts: KeyedSerialGate::new(),
                 starting: RefCell::new(HashMap::new()),
@@ -387,21 +405,20 @@ impl<H: HostResolver> Tree<H> {
             .map(|child| child.node().clone())
     }
 
-    /// The `context_usage` of each live node whose session can tell it
-    /// without reading a blob (`compaction.md` § Context estimate): the
-    /// root's, then each live child's, depth first in spawn order.
+    /// The `context_usage` of each live node, the root's, then each live
+    /// child's, depth first in spawn order: none for a node whose session
+    /// cannot tell it without reading a blob (`compaction.md` § Context
+    /// estimate), so the page shows no figure from before.
     pub(crate) async fn held_context_usage(&self) -> Vec<ServerFrame> {
         let nodes: Vec<Rc<Node<H>>> = std::iter::once(self.root.clone())
             .chain(self.descendants().iter().map(|child| child.node().clone()))
             .collect();
         let mut frames = Vec::new();
         for node in nodes {
-            if let Some(usage) = node.session().held_context_usage().await {
-                frames.push(ServerFrame::ContextUsage {
-                    node: node.id().clone(),
-                    usage,
-                });
-            }
+            frames.push(ServerFrame::ContextUsage {
+                node: node.id().clone(),
+                usage: node.session().held_context_usage().await,
+            });
         }
         frames
     }
@@ -601,9 +618,10 @@ impl<H: HostResolver> Tree<H> {
     /// Attaches a connection beside the others and sends it the open
     /// handshake in one step, so nothing happens to the tree between
     /// `opened` and the last live command: the root's snapshot frames, its
-    /// transcript from the blocks the page holds (`from`, `edge`), then each
-    /// live child's `started` and transcript, depth first in spawn order,
-    /// then the view of each live command of the tree.
+    /// transcript from the blocks the page holds (`from`, `edge`), the
+    /// summary of every child, then each live child's `started` and
+    /// transcript, depth first in spawn order, then the view of each live
+    /// command of the tree.
     pub(crate) fn attach(
         &self,
         connection: u64,
@@ -637,6 +655,9 @@ impl<H: HostResolver> Tree<H> {
             ServerFrame::Waiting {
                 subagent_id: None,
                 waited_ms: session.waited_ms(),
+            },
+            ServerFrame::Subagents {
+                subagents: self.subagent_summaries(placement),
             },
         ];
         for frame in root
@@ -803,7 +824,7 @@ fn frame_of(root: &NodeId, event: &SessionEvent) -> Option<ServerFrame> {
         },
         SessionEvent::ContextUsageChanged { usage } => ServerFrame::ContextUsage {
             node: root.clone(),
-            usage: usage.clone(),
+            usage: Some(usage.clone()),
         },
         SessionEvent::QueueChanged { queue } => ServerFrame::Queue {
             queue: queue.clone(),
