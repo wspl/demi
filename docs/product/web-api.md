@@ -632,10 +632,11 @@ draft's are ([Conversation drafts](#conversation-drafts)).
   one mark per file answers 400 `invalid_body`, a message over 256 KiB 413
   `too_large`, and a conversation with 200 saved messages 409
   `saved_full`.
-- `POST /api/conversations/:id/saved/:messageId/edit` moves the message into
+- `POST /api/conversations/:id/saved/:messageId/edit` takes `{ id }`, the
+  page's UUID for the message the draft becomes, and moves the message into
   the conversation's draft, and the draft's text and files, when it holds
-  any, into a message saved for later, in one transaction, and answers
-  `{ draft }`.
+  any, into a message saved for later under that id, in one transaction,
+  and answers `{ draft }`. Sent again, it answers as the first did.
 - `DELETE /api/conversations/:id/saved/:messageId` removes one and answers
   204; Undo saves it again with `POST`, its uploads kept as the composer's
   are kept until saved ([Blob references](../backend/storage.md)).
