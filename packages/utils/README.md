@@ -20,4 +20,4 @@ package imports it rather than writing its own copy.
 import { createId, deferred, truncate } from '@demicodes/utils'
 ```
 
-Part of [Demi](../../README.md). Apache-2.0.
+Part of [Demi](../../README.md). Apache License 2.0 with the Commons Clause; see [LICENSE](LICENSE).

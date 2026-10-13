@@ -20,7 +20,7 @@
   "scripts": {
     "build": "tsdown"
   },
-  "license": "Apache-2.0",
+  "license": "SEE LICENSE IN LICENSE",
   "publishConfig": {
     "access": "public"
   },

@@ -11,7 +11,7 @@
     "@demicodes/web-ui": "workspace:^",
     "vue": "^3.5.38"
   },
-  "license": "Apache-2.0",
+  "license": "SEE LICENSE IN LICENSE",
   "scripts": {
     "typecheck": "bun ../../scripts/typecheck-vue.ts tsconfig.json"
   },
