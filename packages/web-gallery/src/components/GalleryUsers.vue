@@ -12,8 +12,8 @@ import { productWould } from '../product-would'
  * the product's does, then changes the list: Add User adds a row that has
  * not signed in yet (an address another row has is refused), Change Role and
  * Disable Account change the row, and the product would end the sessions of
- * an account signed out, which a toast says. Reset Password has nothing to
- * show beyond the dialog closing.
+ * an account signed out, which a toast says. Reset Password marks the account
+ * as still to choose its password.
  */
 const props = defineProps<{
   state: UsersState
@@ -37,6 +37,12 @@ onBeforeUnmount(() => {
   }
 })
 
+/** The nickname an account made by an address starts with: its name before the @, capitalized. */
+function nicknameOf(email: string): string {
+  const name = email.split('@')[0] ?? email
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
+
 let added = 0
 /** The accounts made here, whose first sign-in code the Add User dialog shows without asking the administrator again. */
 const justAdded = new Set<string>()
@@ -55,18 +61,23 @@ const host = computed<SettingsUsersHost>(() => ({
     added += 1
     props.state.users.push({
       id: `added-${added}`,
-      nickname: draft.email.split('@')[0] ?? draft.email,
+      nickname: nicknameOf(draft.email),
       email: draft.email.toLowerCase(),
       role: draft.role,
       disabled: false,
+      choosesPassword: true,
       lastActiveAt: null,
     })
     const id = `added-${added}`
     justAdded.add(id)
     return { kind: 'added', id }
   },
-  resetPassword: async () => {
+  resetPassword: async (id) => {
     await beat()
+    const user = find(id)
+    if (user) {
+      user.choosesPassword = true
+    }
   },
   setRole: async (id, role) => {
     await beat()

@@ -52,7 +52,7 @@ function submit(): void {
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Reset Password</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          Set a new password for {{ name }}. Their signed-in browsers and passkeys stay.
+          Set a new password for {{ name }}, who chooses their own at the next sign-in. Their signed-in browsers and passkeys stay.
         </p>
       </header>
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
