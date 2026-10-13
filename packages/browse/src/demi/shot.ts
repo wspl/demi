@@ -83,14 +83,37 @@ export async function shot(tool: Tool, name: string | undefined, options: ShotOp
   return path
 }
 
-/** Waits up to two seconds for the page's finite animations and transitions to end. */
+/**
+ * Waits up to two seconds for the page's finite animations and transitions
+ * to end, those the next frames start included: a change the script just
+ * made, such as a click that opens a drawer, starts its transition only
+ * when the page draws again (Vue's Transition, two frames later), and an
+ * animation that ends may start another. A hidden page draws no frame and
+ * runs no transition, so it is taken as it is.
+ */
 async function settle(page: Page): Promise<void> {
-  // Spinners and other endless animations never end, so only finite ones are waited for.
   await page.evaluate(async (limit) => {
-    const finite = document.getAnimations().filter((animation) => animation.effect?.getComputedTiming().iterations !== Infinity)
-    await Promise.race([
-      Promise.allSettled(finite.map((animation) => animation.finished)),
-      new Promise((resolve) => setTimeout(resolve, limit)),
-    ])
+    if (document.visibilityState === 'hidden') {
+      return
+    }
+    const end = performance.now() + limit
+    /** Resolves when `wait` does, or at the end of the limit. */
+    const until = (wait: Promise<unknown>) => new Promise<void>((resolve) => {
+      const timer = setTimeout(resolve, Math.max(0, end - performance.now()))
+      void wait.then(() => {
+        clearTimeout(timer)
+        resolve()
+      })
+    })
+    const frame = () => until(new Promise((resolve) => requestAnimationFrame(resolve)))
+    // Spinners and other endless animations never end, and a paused one waits for the page, so only finite running ones count.
+    const running = () => document.getAnimations()
+      .filter((animation) => animation.playState === 'running' && animation.effect?.getComputedTiming().iterations !== Infinity)
+    await frame()
+    await frame()
+    for (let now = running(); now.length > 0 && performance.now() < end; now = running()) {
+      await until(Promise.allSettled(now.map((animation) => animation.finished)))
+      await frame()
+    }
   }, SETTLE_MS)
 }
