@@ -340,13 +340,13 @@ thinking setting.
   process waits for that server before it answers the session's last input,
   whose request would otherwise carry no tools;
 - the request's model, system prompt and thinking effort;
-- the thinking display, `--thinking-display summarized`, or `omitted` when
-  the model selection's summary is `off`: without it the CLI leaves the
-  display to the vendor, which sends every thinking block empty, and the
-  page says Requesting through the whole of the model's thinking, since
-  reasoning it cannot show ends no wait
-  ([Waiting for the model](../agent/runtime.md#waiting-for-the-model)). A
-  summarized block's text arrives in its `thinking_delta`s;
+- the thinking display, always `--thinking-display summarized`, the most
+  detailed the vendor gives, whatever the selection's summary says, which
+  the provider does not offer: without it the CLI leaves the display to
+  the vendor, which sends every thinking block empty. A summarized block's
+  text arrives in its `thinking_delta`s, and the block's start ends the
+  page's Requesting at once
+  ([Waiting for the model](../agent/runtime.md#waiting-for-the-model));
 - stream-json input and output with partial messages, so reasoning and text
   stream as they are generated;
 - the account's access token on a file descriptor, the process's private

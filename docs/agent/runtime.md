@@ -1855,11 +1855,14 @@ starts again.
   again. The agent's retries of the same request continue it
   ([Retries](failures-and-recovery.md#retries)): the clock runs on across
   them.
-- **When it ends.** The first output a page shows ends it: reasoning, text, a
-  whole call, or a call being written once its title is written
-  ([Calls being written](#calls-being-written)). Redacted reasoning, which a
-  page does not show, does not end it, nor does a request that ended showing
-  nothing. The end of the turn's action ends it, however it ends. A
+- **When it ends.** The first output of the model ends it: reasoning, with
+  text or without, as soon as its block starts, text, a whole call, or a
+  call being written once its title is written
+  ([Calls being written](#calls-being-written)). Reasoning whose text the
+  vendor withholds, redacted or empty, ends it too: the page shows the
+  *Thinking* row for it ([Work groups](#work-groups)), so a model that
+  thinks never reads as one that has not answered. A request that ended
+  showing nothing does not end it. The end of the turn's action ends it, however it ends. A
   compaction pauses it: the page shows the compaction meanwhile, and the
   wait starts again when the compaction ends.
 - **What a page receives.** Each start and end is a `waiting` frame:
