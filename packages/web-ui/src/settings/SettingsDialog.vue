@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { accountDisplayName } from '../auth/account-display'
 import Avatar from '../ui/Avatar.vue'
@@ -94,6 +94,38 @@ function back(): void {
 const query = ref('')
 const filtered = computed(() => filterSettings(shownSections.value, query.value))
 
+/** The rail's scroller. It is there while the dialog is open. */
+const rail = ref<InstanceType<typeof ScrollArea>>()
+
+/**
+ * Keeps the open section's row in view, as a sidebar does when it shows: a
+ * dialog that opens on a section lower in the list scrolls just far enough
+ * to show it, and a list that fits stays at its top. Nothing scrolls while
+ * the row is whole in view, so a click on a visible row never moves the list.
+ * The row is scrolled inside the rail's scroller alone, which ends below the
+ * filter, so it never lands under it.
+ */
+// `items` is a source too: a section a plugin adds comes after the first draw.
+watch([() => rail.value?.el, shown, narrow, items], ([viewport, section, isNarrow]) => {
+  if (!viewport || !section || isNarrow)
+    return
+  viewport.querySelector(`[data-section="${CSS.escape(section)}"]`)?.scrollIntoView({ block: 'nearest' })
+}, { flush: 'post' })
+
+/**
+ * Going back to the list on a narrow dialog shows the section just left, as iOS
+ * Settings does. The list keeps the position it had while hidden, which already
+ * shows the row; a dialog that opened on the section (an address) never showed the
+ * list, so its row is scrolled into view.
+ */
+watch(tab, (now, before) => {
+  if (now !== null || !before || !narrow.value)
+    return
+  nextTick(() => {
+    rail.value?.el?.querySelector(`[data-section="${CSS.escape(before)}"]`)?.scrollIntoView({ block: 'nearest' })
+  })
+})
+
 /** The page, where a setting the filter opened is looked for. */
 const page = ref<HTMLElement>()
 let finding: AbortController | null = null
@@ -187,6 +219,7 @@ const displayName = computed(() =>
           </TextInput>
           <!-- The list spans the rail edge to edge; its thumb is drawn over the content, taking no room. -->
           <ScrollArea
+            ref="rail"
             class="-mx-3 min-h-0 flex-1"
             viewport-class="px-3"
           >
@@ -208,6 +241,7 @@ const displayName = computed(() =>
                 </div>
                 <template v-for="match in group.matches" :key="match.item.id">
                   <SidebarNavItem
+                    :data-section="match.item.id"
                     :icon="match.item.icon"
                     :label="match.item.label"
                     :size="narrow ? 'lg' : 'md'"
