@@ -249,7 +249,12 @@ one user message after it, the summary instruction: the vendor reads all but
 the newest part from its cache, whenever the window ends
 ([Prompt cache](../providers/providers.md#prompt-cache)). The instruction
 names where the window ends by quoting the start of the first block after
-it, and says that what follows is kept as written.
+it, and says that what follows is kept as written. When the history ends
+with input of the user's, such as the eleventh message or a tool's result,
+the instruction is one more text block of that same user message, never a
+message of its own: the Claude Code CLI joins two user messages in a row by
+adding a line break to the first one's last text, which changes a block the
+vendor cached (CLI 2.1.296, three runs of three against a scripted vendor).
 The instruction and the note before the summary are the only texts that
 exist for compaction:
 
