@@ -584,8 +584,9 @@ or a subagent ends, the work it waits for wakes it.
   one the backend took up again after a restart
   ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)),
   restores the tree, as an `open` does, to tell its node. A root whose last
-  turn was interrupted holds its reports as it holds its agent input, until
-  the user resumes it.
+  turn was interrupted ended it with an `error` block, so it holds its
+  reports and its agent input as any failed root does
+  ([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)).
 - **Children.** A subagent whose background commands still run stays live,
   as one with live children does, and closes once they have ended and it
   has answered ([Result](subagents.md#result)).
