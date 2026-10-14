@@ -275,8 +275,8 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             }
             // First of all: until it leaves, the terminal reaches it.
             #[cfg(unix)]
-            if log {
-                console::leave_terminal()?;
+            if log && let console::Departure::Restarted = console::leave_terminal()? {
+                return Ok(0);
             }
             (installation, managed_boot, name, managed, artifacts, log, false)
         }
