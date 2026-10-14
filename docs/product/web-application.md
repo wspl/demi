@@ -757,6 +757,11 @@ the page shows the banner "Demi is restarting" and connects again
       from the backend                     goes on where it was
 ```
 
+- **A newer build's storage.** A tab of an older build whose browser
+  storage a newer build has upgraded, as another tab's newer page does,
+  loads itself again, as it does when the channel tells it of another
+  build: it never writes in a shape the newer build has left behind, and
+  its unsaved drafts are in that storage already.
 - **The connection banner.** When the backend cannot be reached, the page
   says so in a banner across the top of the app, as Slack and Linear do, and
   everything under it stays readable: the conversation, its panel, the
