@@ -412,9 +412,10 @@ impl ControlService {
 
     /// Sets what `change` names of `device`; none when there is no such
     /// device. A conversation that reaches the device, as an attached host
-    /// or as its primary one, calls it by its name, so a new name advances
-    /// the execution context of each, and the attached hosts' revision of
-    /// those it is attached to; the answer names those conversations.
+    /// or as its primary one, calls it by its name, which its attached
+    /// hosts' names count, so a new name advances the execution context and
+    /// the attached hosts' revision of each; the answer names those
+    /// conversations.
     pub async fn change_device(
         &self,
         device: DeviceId,
@@ -434,36 +435,22 @@ impl ControlService {
                     params![change.name, change.route.map(|route| route.to_string()), device.as_str()],
                     |row| Ok(device_row(row)),
                 )??;
-            let mut conversations = Vec::new();
-            if changed.name != before.name {
-                let mut renamed = |sql: &str| -> Result<(), StorageError> {
-                    let mut statement = transaction.prepare_cached(sql)?;
-                    let mut rows = statement.query([device.as_str()])?;
-                    while let Some(row) = rows.next()? {
-                        let id = decode(
-                            "conversations",
-                            "id",
-                            ConversationId::try_from(row.get::<_, String>(0)?.as_str()),
-                        )?;
-                        if !conversations.contains(&id) {
-                            conversations.push(id);
-                        }
-                    }
-                    Ok(())
-                };
-                renamed(
-                    "UPDATE conversations SET context_version = context_version + 1,
-                       hosts_revision = hosts_revision + 1
-                     WHERE id IN (SELECT conversation_id FROM conversation_hosts WHERE device_id = ?1)
-                     RETURNING id",
-                )?;
-                renamed(
-                    "UPDATE conversations SET context_version = context_version + 1
-                     WHERE target_device_id = ?1
-                       OR target_workspace_id IN (SELECT id FROM workspaces WHERE device_id = ?1)
-                     RETURNING id",
-                )?;
-            }
+            let conversations = if changed.name == before.name {
+                Vec::new()
+            } else {
+                transaction
+                    .prepare_cached(
+                        "UPDATE conversations SET context_version = context_version + 1,
+                           hosts_revision = hosts_revision + 1
+                         WHERE id IN (SELECT conversation_id FROM conversation_hosts WHERE device_id = ?1)
+                           OR target_device_id = ?1
+                           OR target_workspace_id IN (SELECT id FROM workspaces WHERE device_id = ?1)
+                         RETURNING id",
+                    )?
+                    .query_map([device.as_str()], |row| row.get::<_, String>(0))?
+                    .map(|id| decode("conversations", "id", ConversationId::try_from(id?.as_str())))
+                    .collect::<Result<Vec<_>, _>>()?
+            };
             transaction.commit()?;
             Ok(Some(ChangedDevice {
                 device: changed,
