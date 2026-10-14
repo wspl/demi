@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Network, TriangleAlert } from '@lucide/vue'
+import { Network, TriangleAlert, UserRoundX, Workflow } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Dropdown from '../ui/Dropdown.vue'
 import Menu from '../ui/Menu.vue'
@@ -68,6 +68,7 @@ function choose(choice: WorkflowChoice | null, close: () => void) {
         <MenuItem
           v-for="row in fixed"
           :key="row.key"
+          :icon="row.key === 'none' ? UserRoundX : Network"
           :label="row.label"
           choice
           :is-selected="row.selected"
@@ -78,6 +79,7 @@ function choose(choice: WorkflowChoice | null, close: () => void) {
           <MenuItem
             v-for="row in listed"
             :key="row.key"
+            :icon="Workflow"
             :label="row.label"
             choice
             :is-selected="row.selected"
