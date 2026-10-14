@@ -30,7 +30,7 @@ pub fn configured_model(model: &ConfiguredModel) -> ProviderModel {
         id: model.id.as_str().to_owned(),
         display_name: model.display_name.as_str().to_owned(),
         description: None,
-        context_window: Some(model.context_window),
+        context_window: model.context_window,
         output_limit: model.output_limit,
         supports_tools: Some(true),
         accepted_extensions: model.accepted_extensions.clone(),

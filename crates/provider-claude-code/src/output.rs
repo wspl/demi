@@ -14,6 +14,8 @@ use std::collections::HashMap;
 use demi_shared_types::TokenUsage;
 use serde::Deserialize;
 
+use crate::failure::USAGE_LIMIT;
+
 tagged_wire! {
     /// One line of the CLI's output.
     pub(crate) enum Line {
@@ -295,6 +297,10 @@ pub(crate) struct ResultLine {
     /// The vendor's HTTP status, when the failure is a call it refused.
     #[serde(default)]
     api_error_status: Option<u16>,
+    /// The CLI's cause of a refused call, such as its account's usage limit
+    /// ([`USAGE_LIMIT`]).
+    #[serde(default)]
+    api_error: ReportedString,
 }
 
 /// The token counts of the CLI's latest API call, which the response
@@ -479,12 +485,18 @@ impl ResultLine {
                 parts.join("\n")
             };
             let status = self.api_error_status;
-            // The CLI words every call the vendor refused `API Error:
-            // <status> …`, which its words alone read as a server error; the
-            // status decides, as for any HTTP failure.
-            let code = match status {
-                Some(status) => ErrorCode::from_http(status, &message),
-                None => ErrorCode::classify(None, &message),
+            // The CLI's own sign of a used-up account comes first, whatever
+            // the status. Otherwise the status decides, as for any HTTP
+            // failure: the CLI words every call the vendor refused `API
+            // Error: <status> …`, which its words alone read as a server
+            // error.
+            let code = if self.api_error.as_deref() == Some(USAGE_LIMIT) {
+                Some(ErrorCode::UsageLimit)
+            } else {
+                match status {
+                    Some(status) => ErrorCode::from_http(status, &message),
+                    None => ErrorCode::classify(None, &message),
+                }
             };
             return TurnEnd::Failed {
                 message,

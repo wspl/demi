@@ -49,9 +49,11 @@ pub(crate) fn run(
                 return;
             }
         };
-        let send = http
-            .post(shared.url.clone())
-            .header(AUTHORIZATION, shared.authorization.clone())
+        let mut send = http.post(shared.url.clone());
+        if let Some(authorization) = &shared.authorization {
+            send = send.header(AUTHORIZATION, authorization.clone());
+        }
+        let send = send
             .header(CONTENT_TYPE, "application/json")
             .header(ACCEPT, "text/event-stream")
             .body(body)

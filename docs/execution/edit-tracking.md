@@ -416,7 +416,7 @@ together. For example, Alex opens it on `~/shop`, checked out on
   recently committed branch that has it. A commit on no local branch shows
   alone, its files above and the list replaced by *This commit is on no
   branch*; one the repository does not have says *No commit 3f2a9c1 in
-  ~/shop*. The agent's guide says how to link a commit
+  /home/kim/shop*. The agent's guide says how to link a commit
   ([System prompt](../agent/system-prompt.md)).
 
 The Change tab keeps its mode and selection when the user leaves it and

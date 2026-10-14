@@ -521,7 +521,7 @@ async fn setup(http: &reqwest::Client, origin: &str, account: &Account) -> Resul
 /// configured model.
 fn echo_entry(echo: &str) -> serde_json::Value {
     json!({
-        "source": "custom",
+        "source": "compatible",
         "providerType": "anthropic",
         "label": "Echo",
         "apiKey": "sk-ant-echo",

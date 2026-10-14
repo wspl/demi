@@ -5,7 +5,6 @@
 
 mod cancellation;
 mod failures;
-mod metadata;
 mod request;
 
 use std::sync::Arc;
@@ -30,7 +29,7 @@ pub(crate) fn provider_at(
     policy: VendorPolicy,
 ) -> OpenAiProvider {
     let config = OpenAiConfig {
-        api_key: Secret::try_from("sk-test".to_owned()).unwrap(),
+        api_key: Some(Secret::try_from("sk-test".to_owned()).unwrap()),
         base_url: Some(vendor.url(base).parse().unwrap()),
         wire,
         policy,

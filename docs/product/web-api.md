@@ -1095,7 +1095,7 @@ request. A change of an entry, its accounts included, holds the entry while it
 runs; another change meanwhile answers 409 `provider_busy`.
 
 API providers accept `models` as a complete manual list of 0–1000 entries; an empty list leaves the entry [incomplete](../providers/models.md#a-provider-is-in-the-list-from-the-start). Each entry supplies
-`id`, `displayName`, positive `contextWindow`, nullable `outputLimit`,
+`id`, `displayName`, `contextWindow`, positive or null when unknown, nullable `outputLimit`,
 `thinkingEfforts`, nullable `acceptedExtensions` (without dots) and nullable
 `fastTier`. IDs must be unique and output limits cannot exceed context length.
 `models: null` on PATCH explicitly returns to the live catalog; refreshing never
@@ -1872,7 +1872,8 @@ and `changes/commit?commit=` answer the runner's `git_branches`, `git_log`
 and `git_commit` ([Runner](../execution/runner.md#working-tree)) for the
 same directory and with the same `directory` query as `changes`;
 `changes/file` and `changes/raw` take `commit` to read a file as that commit
-has it. `ENOENT` answers 404 `not_found`, and `ambiguous` 409 `ambiguous`.
+has it, and `changes/file` takes `from`, a renamed file's earlier path, whose
+content is the diff's old side, in both modes. `ENOENT` answers 404 `not_found`, and `ambiguous` 409 `ambiguous`.
 
 `GET /api/conversations/:id/changes` lists the uncommitted changes of the
 conversation's execution directory, or of the directory `?directory=` names

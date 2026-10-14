@@ -1339,6 +1339,7 @@ mod tests {
         let control = ControlService::open(
             &data.path().join("control.sqlite"),
             Arc::new(demi_shared_types::SystemClock),
+            std::sync::Arc::new(crate::providers::NoSealedConfigs),
         )
         .await
         .unwrap();
@@ -1458,6 +1459,7 @@ mod tests {
         let control = ControlService::open(
             &data.path().join("control.sqlite"),
             Arc::new(demi_shared_types::SystemClock),
+            std::sync::Arc::new(crate::providers::NoSealedConfigs),
         )
         .await
         .unwrap();
@@ -1562,6 +1564,7 @@ mod tests {
         let control = ControlService::open(
             &data.path().join("control.sqlite"),
             Arc::new(demi_shared_types::SystemClock),
+            std::sync::Arc::new(crate::providers::NoSealedConfigs),
         )
         .await
         .unwrap();
@@ -1646,6 +1649,7 @@ mod tests {
         let control = ControlService::open(
             &data.path().join("control.sqlite"),
             Arc::new(demi_shared_types::SystemClock),
+            std::sync::Arc::new(crate::providers::NoSealedConfigs),
         )
         .await
         .unwrap();
@@ -1731,6 +1735,7 @@ mod tests {
         let control = ControlService::open(
             &data.path().join("control.sqlite"),
             Arc::new(demi_shared_types::SystemClock),
+            std::sync::Arc::new(crate::providers::NoSealedConfigs),
         )
         .await
         .unwrap();

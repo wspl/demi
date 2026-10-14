@@ -137,7 +137,7 @@ impl Family {
         };
         let openai = |wire| {
             let config = OpenAiConfig {
-                api_key: Secret::try_from("sk-test".to_owned()).unwrap(),
+                api_key: Some(Secret::try_from("sk-test".to_owned()).unwrap()),
                 base_url: Some(vendor.url("/v1").parse().unwrap()),
                 wire,
                 policy: VendorPolicy::default(),
@@ -147,7 +147,7 @@ impl Family {
         let runtime = match self {
             Self::Anthropic => {
                 let config = AnthropicConfig {
-                    api_key: Secret::try_from("sk-ant-test".to_owned()).unwrap(),
+                    api_key: Some(Secret::try_from("sk-ant-test".to_owned()).unwrap()),
                     base_url: Some(vendor.url("/v1").parse().unwrap()),
                     policy: VendorPolicy::default(),
                 };
@@ -157,7 +157,7 @@ impl Family {
             Self::ChatCompletions => openai(WireApi::ChatCompletions).runtime(env),
             Self::Google => {
                 let config = GoogleConfig {
-                    api_key: Secret::try_from("google-key".to_owned()).unwrap(),
+                    api_key: Some(Secret::try_from("google-key".to_owned()).unwrap()),
                     base_url: Some(vendor.url("/v1beta").parse().unwrap()),
                 };
                 GoogleProvider::new(config, clock).runtime(env)

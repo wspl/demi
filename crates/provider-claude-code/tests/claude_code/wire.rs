@@ -268,38 +268,17 @@ async fn a_call_the_vendor_refused_fails_the_run_once_with_the_code_of_its_http_
     }
 }
 
-/// A subscription's usage limit names no wait in the CLI's words, so its
-/// failure waits until the account's used-up window resets, as the quota the
-/// CLI's `rate_limit_event` lines report says (`failures-and-recovery.md` §
-/// Reading a failure), the latest of them when several are used up: far
-/// beyond the retry ceiling, so the agent does not retry it. The stored record reads the same `retryAt`, and a refusal of the
-/// same status that is not the usage limit names none.
+/// The CLI's own sign of a used-up account, `api_error:
+/// usage_limit_reached` on its `result` line, is a usage limit whatever the
+/// status, which the agent does not retry, and it waits until the reset its
+/// refused call names on the assistant line the CLI makes up for it
+/// (`failures-and-recovery.md`), never the account's quota. A 429 the CLI
+/// says only throttles is a rate limit, though its words mention a usage
+/// limit and its quota event says rejected. The lines are the CLI 2.1.296's
+/// against a scripted vendor (investigation 285).
 #[tokio::test(flavor = "local")]
-async fn a_usage_limit_waits_until_the_used_up_window_of_the_accounts_quota_resets() {
+async fn a_usage_limit_is_the_clis_cause_and_waits_until_the_reset_its_refusal_names() {
     let provider = provider().await;
-    let limited = |api_error: Option<&str>| {
-        let words = "You've hit your session limit · resets 10am (UTC)";
-        let mut result = json!({ "type": "result", "subtype": "success", "is_error": true,
-            "result": words, "api_error_status": 429 });
-        if let Some(api_error) = api_error {
-            result["api_error"] = json!(api_error);
-        }
-        vec![
-            // The windows as the refused call's headers report them: the
-            // session window used up, the weekly one not.
-            json!({ "type": "rate_limit_event", "rate_limit_info": {
-                "status": "rejected", "rateLimitType": "five_hour", "utilization": 1.0,
-                "resetsAt": 1790244000,
-                "unifiedWindows": {
-                    "five_hour": { "utilization": 1.0, "resetsAt": 1790244000 },
-                    "seven_day": { "utilization": 0.4, "resetsAt": 1790740800 },
-                },
-            } }),
-            json!({ "type": "assistant", "error": "rate_limit", "message": {
-                "model": "<synthetic>", "content": [{ "type": "text", "text": words }] } }),
-            result,
-        ]
-    };
     let run = |lines: Vec<Value>| {
         let provider = &provider;
         async move {
@@ -317,28 +296,80 @@ async fn a_usage_limit_waits_until_the_used_up_window_of_the_accounts_quota_rese
             events
         }
     };
+    // The refused call's own reset, 10:00, and NOW is 08:00.
+    let info = json!({ "status": "rejected", "resetsAt": 1790244000, "rateLimitType": "five_hour",
+        "isUsingOverage": false });
+    let session = |words: &str, info: Value| {
+        let notice = json!({ "type": "assistant", "error": "rate_limit", "is_api_error_message": true,
+            "api_error": "usage_limit_reached", "api_error_params": { "rate_limit_info": info },
+            "message": { "model": "<synthetic>", "content": [{ "type": "text", "text": words }] } });
+        let result = json!({ "type": "result", "subtype": "success", "is_error": true,
+            "api_error_status": 429, "api_error": "usage_limit_reached", "result": words });
+        (notice, result)
+    };
 
-    let events = run(limited(Some("usage_limit_reached"))).await;
+    // An older quota reading names another used-up window, resetting at
+    // 12:00; the refusal's own reset decides.
+    let stale = json!({ "type": "rate_limit_event", "rate_limit_info": {
+        "status": "rejected", "rateLimitType": "seven_day", "utilization": 1.0, "resetsAt": 1790251200 } });
+    let (notice, result) = session("You've hit your session limit · resets 10am (UTC)", info.clone());
+    let events = run(vec![stale, notice.clone(), result.clone()]).await;
     let failed = failure(&events);
-    assert_eq!(failed.code, Some(ErrorCode::RateLimit));
-    // NOW is 08:00; the session window resets at 10:00.
+    assert_eq!(failed.code, Some(ErrorCode::UsageLimit));
     assert_eq!(failed.retry_after, Some(std::time::Duration::from_secs(2 * 3600)));
     let diagnostics = failed.diagnostics.as_deref().unwrap();
+    assert_eq!(diagnostics.upstream, Some(format!("{notice}\n{result}")));
     let facts = provider.read_failure(diagnostics, NOW.parse().unwrap());
     assert_eq!(facts.retry_at, Some("2026-09-24T10:00:00Z".parse().unwrap()));
 
-    // With the weekly Opus window used up too, until 12:00, the request
-    // succeeds only once both have reset: the latest reset counts.
-    let mut both = limited(Some("usage_limit_reached"));
-    both[0]["rate_limit_info"]["unifiedWindows"]["seven_day_opus"] =
-        json!({ "utilization": 1.0, "resetsAt": 1790251200 });
-    let events = run(both).await;
-    let failed = failure(&events);
-    assert_eq!(failed.retry_after, Some(std::time::Duration::from_secs(4 * 3600)));
+    // Either the window or the usage credits lift the limit: the earlier
+    // reset of those the refusal names, the credits' at 09:00 here, or the
+    // credits' alone.
+    let (notice, result) = session(
+        "You're out of extra usage · resets 9am (UTC)",
+        json!({ "status": "rejected", "resetsAt": 1790244000, "rateLimitType": "overage",
+            "overageResetsAt": 1790240400, "isUsingOverage": false }),
+    );
+    let failed = failure(&run(vec![notice, result]).await).clone();
+    assert_eq!(failed.retry_after, Some(std::time::Duration::from_secs(3600)));
+    let (notice, result) = session(
+        "You're out of extra usage · resets 9am (UTC)",
+        json!({ "status": "rejected", "rateLimitType": "overage", "overageResetsAt": 1790240400,
+            "isUsingOverage": false }),
+    );
+    let failed = failure(&run(vec![notice, result]).await).clone();
+    assert_eq!(failed.retry_after, Some(std::time::Duration::from_secs(3600)));
 
-    // The same refusal without the CLI's usage-limit cause is a rate limit
-    // like any other, retried after the standard waits.
-    let events = run(limited(None)).await;
+    // Whatever the status says.
+    let (notice, mut result) = session("You've hit your weekly limit", info);
+    result.as_object_mut().unwrap().remove("api_error_status");
+    let events = run(vec![notice, result]).await;
+    assert_eq!(failure(&events).code, Some(ErrorCode::UsageLimit));
+
+    // A member whose use its admin turned off is a usage limit too, and
+    // names no reset: it waits for the user.
+    let (notice, result) = session(
+        "Your usage allocation has been disabled by your admin · ask your admin for a higher limit",
+        json!({ "status": "rejected", "overageStatus": "rejected",
+            "overageDisabledReason": "member_level_disabled", "isUsingOverage": false }),
+    );
+    let events = run(vec![notice, result]).await;
+    let failed = failure(&events);
+    assert_eq!(failed.code, Some(ErrorCode::UsageLimit));
+    assert_eq!(failed.retry_after, None);
+    let facts = provider.read_failure(failed.diagnostics.as_deref().unwrap(), NOW.parse().unwrap());
+    assert_eq!(facts.retry_at, None);
+
+    // A bare 429 only throttles, and is retried after the standard waits.
+    let words = "API Error: Server is temporarily limiting requests (not your usage limit) · Synthetic refusal";
+    let events = run(vec![
+        json!({ "type": "rate_limit_event", "rate_limit_info": { "status": "rejected", "isUsingOverage": false } }),
+        json!({ "type": "assistant", "error": "rate_limit", "is_api_error_message": true,
+            "message": { "model": "<synthetic>", "content": [{ "type": "text", "text": words }] } }),
+        json!({ "type": "result", "subtype": "success", "is_error": true, "api_error_status": 429,
+            "result": words }),
+    ])
+    .await;
     let failed = failure(&events);
     assert_eq!(failed.code, Some(ErrorCode::RateLimit));
     assert_eq!(failed.retry_after, None);

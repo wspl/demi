@@ -310,7 +310,7 @@ pub(crate) async fn tree_among(
             "/api/providers",
             Some(&master),
             json!({
-                "source": "custom", "providerType": "tree", "label": "Tree", "apiKey": "k",
+                "source": "family", "providerType": "tree", "label": "Tree", "apiKey": "k",
                 "models": [
                     {
                         "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": null,
@@ -806,7 +806,7 @@ async fn a_profiles_context_replaces_the_users_limit_for_its_children_alone() {
             "/api/providers",
             Some(&master),
             json!({
-                "source": "custom", "providerType": "tree", "label": "Wide", "apiKey": "k",
+                "source": "family", "providerType": "tree", "label": "Wide", "apiKey": "k",
                 "models": [{
                     "id": "wide", "displayName": "Wide", "contextWindow": 1000000, "outputLimit": null,
                     "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
@@ -944,7 +944,7 @@ async fn a_profiles_context_stays_while_its_model_offers_it_and_goes_with_the_pa
             "/api/providers",
             Some(&master),
             json!({
-                "source": "custom", "providerType": "tree", "label": "Wide", "apiKey": "k",
+                "source": "family", "providerType": "tree", "label": "Wide", "apiKey": "k",
                 "models": [
                     {
                         "id": "wide", "displayName": "Wide", "contextWindow": 1000000, "outputLimit": null,
@@ -1028,7 +1028,7 @@ async fn a_childs_job_says_what_its_round_runs_on_in_the_menus_names() {
             "/api/providers",
             Some(&master),
             json!({
-                "source": "custom", "providerType": "tree", "label": "Quick", "apiKey": "k",
+                "source": "family", "providerType": "tree", "label": "Quick", "apiKey": "k",
                 "models": [{
                     "id": "n", "displayName": "N", "contextWindow": 100000, "outputLimit": null,
                     "thinkingEfforts": ["low", "high"], "acceptedExtensions": null,
@@ -1250,7 +1250,7 @@ async fn a_reset_holds_a_conversation_whose_subagent_infers_with_a_provider_on_t
             "/api/providers",
             Some(&master),
             json!({
-                "source": "custom", "providerType": "tree-process", "label": "On the Cloud",
+                "source": "family", "providerType": "tree-process", "label": "On the Cloud",
                 "apiKey": "k",
                 "models": [{
                     "id": "c", "displayName": "C", "contextWindow": 100000, "outputLimit": null,
