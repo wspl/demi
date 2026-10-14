@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { Copy, Folder, Pencil, Plus, Settings, Trash2 } from '@lucide/vue'
+import { Archive, Brain, Copy, Cpu, Folder, Pencil, Layers, Pin, Play, Plus, Server, Settings, Trash2, Zap } from '@lucide/vue'
+import type { Component } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
 import { showToast } from '@demicodes/web-ui/infra/toast'
@@ -33,6 +34,8 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { reactive, ref } from 'vue'
+import { effortIcon } from '@demicodes/web-ui/agent/reasoning'
+import { THINKING_OFF } from '@demicodes/web-ui/agent/model-selection'
 import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
 import MoveConversationDialog from '@demicodes/web-ui/hosts/MoveConversationDialog.vue'
 import { useMoveQuestion, type WorkToStop } from '@demicodes/web-ui/hosts/move-question'
@@ -92,6 +95,8 @@ const statusSelected = ref('mac')
 interface MenuChoice {
   id: string
   label: TitleText
+  /** The mark a menu of these choices shows, where one fits. */
+  icon?: Component
 }
 
 const items: MenuChoice[] = [
@@ -224,6 +229,7 @@ const submenuModel = ref('sonnet')
 const submenuFast = ref(false)
 const submenuReasoning = ref(2)
 const submenuReasoningLabels = ['Off', 'Low', 'Medium', 'High'] as const
+const submenuReasoningEfforts = [THINKING_OFF, 'low', 'medium', 'high'] as const
 const triggerDefaultClosed = ref(false)
 const triggerDefaultOpen = ref(true)
 const triggerGhostClosed = ref(false)
@@ -231,9 +237,9 @@ const triggerGhostOpen = ref(true)
 const triggerSmClosed = ref(false)
 
 const effortItems: MenuChoice[] = [
-  { id: 'low', label: 'Low' },
-  { id: 'medium', label: 'Medium' },
-  { id: 'high', label: 'High' },
+  { id: 'low', icon: effortIcon('low'), label: 'Low' },
+  { id: 'medium', icon: effortIcon('medium'), label: 'Medium' },
+  { id: 'high', icon: effortIcon('high'), label: 'High' },
 ]
 const submenuModels: MenuChoice[] = [
   { id: 'sonnet', label: 'Claude Sonnet' },
@@ -339,7 +345,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
 
       <GallerySection
         title="Menu"
-        note="Actions, choices, submenus, tall, and filter. A checked choice shows its check where the menu puts it, which the menu decides from its rows, as macOS does: with no icons the check takes the leading slot, the other rows keeping its width empty so labels align; with icons the icon keeps the leading slot and the check goes to the trailing end. A caller only says which row is checked. Enabled choices use normal text; being unselected does not dim them. Disabled rows keep their status dot and explain why they cannot be chosen. Paired devices show online status. Cloud shows no connection or lifecycle status and remains selectable while asleep; operations wake it automatically. Keys: Up and Down Arrow move, typing a name jumps to it, Return chooses; Right Arrow or Return opens a submenu, Left Arrow or Escape closes it. A group’s first row scrolls into view with its heading. When a menu closes, the focus returns to its opener, or to what had it before when the opener takes no focus; a click on another control keeps it."
+        note="Actions, choices, submenus, tall, and filter. An item carries an icon when one fits, as macOS, Finder and VS Code menus give Copy a copy mark and Delete a trash can: a command its action, a setting its own mark, a level its meter; within one menu all items have an icon or none do, and a menu of pure values, such as numbers, names or models under their vendor, has none. A checked choice shows its check where the menu puts it, which the menu decides from its rows, as macOS does: with no icons the check takes the leading slot, the other rows keeping its width empty so labels align; with icons the icon keeps the leading slot and the check goes to the trailing end. A caller only says which row is checked. Enabled choices use normal text; being unselected does not dim them. Disabled rows keep their status dot and explain why they cannot be chosen. Paired devices show online status. Cloud shows no connection or lifecycle status and remains selectable while asleep; operations wake it automatically. Keys: Up and Down Arrow move, typing a name jumps to it, Return chooses; Right Arrow or Return opens a submenu, Left Arrow or Escape closes it. A group’s first row scrolls into view with its heading. When a menu closes, the focus returns to its opener, or to what had it before when the opener takes no focus; a click on another control keeps it."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="actions">
@@ -363,8 +369,9 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                 is-danger
                 @select="productWould('Delete')"
               />
-              <MenuItem label="Disabled" disabled />
+              <MenuItem :icon="Archive" label="Disabled" disabled />
               <MenuItem
+                :icon="Play"
                 label="Running"
                 disabled
                 disabled-reason="The session is still running"
@@ -445,9 +452,9 @@ function openSharedMenu(row: string, event: MouseEvent): void {
           </GallerySpecimen>
         </div>
         <GalleryOverlayWell size="wide">
-          <GallerySpecimen variant="iconless · submenu">
+          <GallerySpecimen variant="icons · submenus">
             <Menu :autofocus="false">
-              <MenuItem label="Fast Mode" @select="submenuFast = !submenuFast">
+              <MenuItem :icon="Zap" label="Fast Mode" @select="submenuFast = !submenuFast">
                 <template #suffix>
                   <Switch
                     v-model="submenuFast"
@@ -458,6 +465,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
               </MenuItem>
               <MenuItem
                 submenu-open
+                :icon="Brain"
                 label="Reasoning"
                 :value="submenuReasoningLabels[submenuReasoning]"
               >
@@ -466,6 +474,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                     <MenuItem
                       v-for="(label, index) in submenuReasoningLabels"
                       :key="label"
+                      :icon="effortIcon(submenuReasoningEfforts[index]!)"
                       :label="label" choice
                       :is-selected="submenuReasoning === index"
                       @select="submenuReasoning = index"
@@ -474,6 +483,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                 </template>
               </MenuItem>
               <MenuItem
+                :icon="Cpu"
                 label="Model"
                 :value="itemLabel(submenuModel, submenuModels)"
               >
@@ -550,6 +560,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
           <GallerySpecimen variant="label/value · columns">
             <Menu :autofocus="false">
               <MenuItem
+                :icon="Brain"
                 label="Reasoning"
                 :value="itemLabel(columnsEffort, effortItems)"
               >
@@ -558,6 +569,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                     <MenuItem
                       v-for="item in effortItems"
                       :key="item.id"
+                      :icon="item.icon"
                       :label="item.label"
                       choice
                       :is-selected="item.id === columnsEffort"
@@ -567,6 +579,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                 </template>
               </MenuItem>
               <MenuItem
+                :icon="Cpu"
                 label="Model"
                 :value="itemLabel(columnsModel, submenuModels)"
               >
@@ -584,11 +597,13 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                 </template>
               </MenuItem>
               <MenuItem
+                :icon="Layers"
                 label="A Much Longer Label"
                 :value="columnsLonger ? 'On' : 'Off'"
                 @select="columnsLonger = !columnsLonger"
               />
               <MenuItem
+                :icon="Server"
                 label="Provider"
                 value="Anthropic"
                 @select="productWould('Open the Provider Settings')"
@@ -597,14 +612,15 @@ function openSharedMenu(row: string, event: MouseEvent): void {
           </GallerySpecimen>
           <GallerySpecimen variant="shortcuts · columns">
             <Menu :autofocus="false">
-              <MenuItem label="Rename" shortcut="↵" @select="productWould('Rename')" />
+              <MenuItem :icon="Pencil" label="Rename" shortcut="↵" @select="productWould('Rename')" />
               <MenuItem
+                :icon="Copy"
                 label="Duplicate Conversation"
                 shortcut="⌘D"
                 @select="productWould('Duplicate Conversation')"
               />
-              <MenuItem label="Pin" shortcut="⌘⇧P" @select="productWould('Pin')" />
-              <MenuItem label="Archive" @select="productWould('Archive')" />
+              <MenuItem :icon="Pin" label="Pin" shortcut="⌘⇧P" @select="productWould('Pin')" />
+              <MenuItem :icon="Archive" label="Archive" @select="productWould('Archive')" />
             </Menu>
           </GallerySpecimen>
         </div>
@@ -706,8 +722,8 @@ function openSharedMenu(row: string, event: MouseEvent): void {
               <template #trigger>Menu</template>
               <template #content="{ close }">
                 <Menu @click="close">
-                  <MenuItem label="Rename" shortcut="↵" @select="productWould('Rename')" />
-                  <MenuItem label="Duplicate" shortcut="⌘D" @select="productWould('Duplicate')" />
+                  <MenuItem :icon="Pencil" label="Rename" shortcut="↵" @select="productWould('Rename')" />
+                  <MenuItem :icon="Copy" label="Duplicate" shortcut="⌘D" @select="productWould('Duplicate')" />
                   <MenuDivider />
                   <MenuItem
                     label="Delete"
@@ -747,6 +763,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                   <MenuItem
                     v-for="item in effortItems"
                     :key="item.id"
+                    :icon="item.icon"
                     :label="item.label" choice
                     :is-selected="item.id === dropdownEffortSelected"
                     @select="dropdownEffortSelected = item.id; close()"
@@ -764,8 +781,8 @@ function openSharedMenu(row: string, event: MouseEvent): void {
               <template #trigger>Menu</template>
               <template #content="{ close }">
                 <Menu @click="close">
-                  <MenuItem label="Rename" shortcut="↵" @select="productWould('Rename')" />
-                  <MenuItem label="Duplicate" shortcut="⌘D" @select="productWould('Duplicate')" />
+                  <MenuItem :icon="Pencil" label="Rename" shortcut="↵" @select="productWould('Rename')" />
+                  <MenuItem :icon="Copy" label="Duplicate" shortcut="⌘D" @select="productWould('Duplicate')" />
                 </Menu>
               </template>
             </Dropdown>
@@ -932,7 +949,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                 shortcut="↵"
                 @select="productWould('Rename')"
               />
-              <MenuItem label="New Tab" @select="productWould('New Tab')" />
+              <MenuItem :icon="Plus" label="New Tab" @select="productWould('New Tab')" />
               <MenuDivider />
               <MenuItem
                 :icon="Trash2"
@@ -1183,6 +1200,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                         <Menu @click="close">
                           <MenuItem
                             submenu-open
+                            :icon="Brain"
                             label="Reasoning"
                             :value="itemLabel(layersReasoning, effortItems)"
                           >
@@ -1191,6 +1209,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                                 <MenuItem
                                   v-for="item in effortItems"
                                   :key="item.id"
+                                  :icon="item.icon"
                                   :label="item.label"
                                   choice
                                   :is-selected="layersReasoning === item.id"
@@ -1200,6 +1219,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                             </template>
                           </MenuItem>
                           <MenuItem
+                            :icon="Cpu"
                             label="Model"
                             :value="itemLabel(layersModel, submenuModels)"
                           >

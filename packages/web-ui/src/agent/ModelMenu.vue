@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Brain, CornerLeftUp, Cpu, Layers, Zap } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import type { ContextLimitChange } from './context-limit'
 import { modelSwitch, type ModelSettings, type ModelSettingsChange } from './model-selection'
@@ -78,6 +79,7 @@ function selectParent() {
   <Menu>
     <template v-if="rows.parent">
       <MenuItem
+        :icon="CornerLeftUp"
         label="Parent’s Model"
         choice
         :is-selected="rows.parent.selected"
@@ -87,6 +89,7 @@ function selectParent() {
     </template>
     <MenuItem
       v-if="rows.fast"
+      :icon="Zap"
       label="Fast Mode"
       @select="setFast(!rows.fast.on)"
     >
@@ -101,6 +104,7 @@ function selectParent() {
     </MenuItem>
     <MenuItem
       v-if="rows.reasoning"
+      :icon="Brain"
       label="Reasoning"
       :value="rows.reasoning.value"
     >
@@ -109,6 +113,7 @@ function selectParent() {
           <MenuItem
             v-for="option in rows.reasoning.options"
             :key="option.label"
+            :icon="option.icon"
             :label="option.label"
             choice
             :is-selected="option.selected"
@@ -119,6 +124,7 @@ function selectParent() {
     </MenuItem>
     <MenuItem
       v-if="context"
+      :icon="Layers"
       label="Context"
       :value="context.value"
     >
@@ -130,7 +136,7 @@ function selectParent() {
       </template>
     </MenuItem>
     <MenuDivider v-if="rows.fast || rows.reasoning || context" />
-    <MenuItem label="Model" :value="rows.model.value">
+    <MenuItem :icon="Cpu" label="Model" :value="rows.model.value">
       <template #submenu>
         <Menu>
           <MenuGroup

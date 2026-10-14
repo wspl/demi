@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Diff, Eye, FileOutput, History, RefreshCw } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Diff, Eye, FileOutput, Files, History, Pencil, RefreshCw } from '@lucide/vue'
 import DiffEditor from '../editor/components/DiffEditor.vue'
 import type { DocumentPlace } from '../markdown/document'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -221,8 +221,8 @@ const nextEdit = computed(() => {
 })
 const editLabel = computed(() => editAt.value === null ? 'All Changes' : `Edit ${editAt.value + 1} / ${edits.value.length}`)
 const editItems = computed(() => [
-  ...(allChanges.value ? [{ id: 'all', label: 'All Changes' }] : []),
-  ...edits.value.map((entry, index) => ({ id: String(index), label: entry.title, value: `Edit ${index + 1}` })),
+  ...(allChanges.value ? [{ id: 'all', icon: Files, label: 'All Changes' }] : []),
+  ...edits.value.map((entry, index) => ({ id: String(index), icon: Pencil, label: entry.title, value: `Edit ${index + 1}` })),
 ])
 
 function showEdit(target: RequestEdit | null | undefined): void {

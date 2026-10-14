@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { GitBranch } from '@lucide/vue'
+import { GitBranch, GitCommitHorizontal } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Dropdown from '../ui/Dropdown.vue'
 import { ICON_PX } from '../ui/icon-metrics'
@@ -32,9 +32,10 @@ const items = computed(() => {
   if (!list)
     return []
   return [
-    ...(list.head ? [{ id: HEAD, label: shownBranchName(null, list) }] : []),
+    ...(list.head ? [{ id: HEAD, icon: GitCommitHorizontal, label: shownBranchName(null, list) }] : []),
     ...list.branches.map((branch) => ({
       id: branch,
+      icon: GitBranch,
       label: branch,
       ...(branch === list.current ? { value: 'Checked Out' } : {}),
     })),

@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from 'vue'
-import { ChevronLeft, Copy, PanelRightClose, Plus, X } from '@lucide/vue'
+import { computed, ref, shallowRef, watch, type Component } from 'vue'
+import { ArrowLeftToLine, ArrowRightToLine, ChevronLeft, Copy, CopyX, PanelRightClose, Plus, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
@@ -103,10 +103,10 @@ function openMenu(event: MouseEvent, id: string): void {
 }
 
 /** The tab menu's commands that close several tabs at once. */
-const closeManyItems: readonly { scope: Exclude<TabCloseScope, 'self'>; label: TitleText }[] = [
-  { scope: 'others', label: 'Close Others' },
-  { scope: 'right', label: 'Close to the Right' },
-  { scope: 'left', label: 'Close to the Left' },
+const closeManyItems: readonly { scope: Exclude<TabCloseScope, 'self'>; label: TitleText; icon: Component }[] = [
+  { scope: 'others', label: 'Close Others', icon: CopyX },
+  { scope: 'right', label: 'Close to the Right', icon: ArrowRightToLine },
+  { scope: 'left', label: 'Close to the Left', icon: ArrowLeftToLine },
 ]
 
 function closeScope(scope: TabCloseScope): void {
@@ -278,6 +278,7 @@ function reorder(from: number, to: number): void {
         <MenuItem
           v-for="item in closeManyItems"
           :key="item.scope"
+          :icon="item.icon"
           :label="item.label"
           :disabled="!menuId || tabsToClose(panel.tabs, menuId, item.scope).length === 0"
           @select="closeScope(item.scope)"
