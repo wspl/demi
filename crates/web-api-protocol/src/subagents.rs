@@ -63,6 +63,13 @@ pub struct SubagentProfile {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ModelSettings>")]
     pub model: Option<ModelSettings>,
+    /// The tokens of the profile's own Context, its model's full window or
+    /// a limit the window offers, which its children use in place of the
+    /// user's limit (`subagents.md` § Profiles); null for the user's limit,
+    /// and always null without a model of its own.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u32>")]
+    pub context_limit: Option<u32>,
     /// The text added to a child's system prompt after the product's; null
     /// for none.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -119,6 +126,12 @@ pub struct NewProfile {
     #[schemars(with = "Nullable<ModelSettings>")]
     #[garde(dive)]
     pub model: Option<ModelSettings>,
+    /// Null for the user's limit; otherwise the model's full window or a
+    /// limit it offers, in tokens, which needs a model of the profile's own.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u32>")]
+    #[garde(skip)]
+    pub context_limit: Option<u32>,
     /// Null for no instructions added to the product's.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
@@ -130,7 +143,9 @@ pub struct NewProfile {
 
 /// `PATCH /subagents/profiles/:id`: the fields it names change, and the
 /// others stay. `model` and `instructions` are whole values: a null model
-/// is the parent's, and null instructions add none.
+/// is the parent's, and null instructions add none. A null `contextLimit`
+/// is the user's limit; a model changed without one keeps the profile's
+/// while the new model offers it, and the parent's model takes none.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProfilePatch {
@@ -158,6 +173,14 @@ pub struct ProfilePatch {
     #[schemars(with = "Option<ModelSettings>")]
     #[garde(dive)]
     pub model: Option<Option<ModelSettings>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<u32>")]
+    #[garde(skip)]
+    pub context_limit: Option<Option<u32>>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

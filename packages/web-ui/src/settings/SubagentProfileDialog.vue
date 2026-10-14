@@ -5,7 +5,8 @@ import { TriangleAlert, Zap } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import ModelMenu from '../agent/ModelMenu.vue'
-import type { ContextLimitChange } from '../agent/context-limit'
+import ContextMenu from '../agent/ContextMenu.vue'
+import { profileContextChoice, profileContextOptions } from '../agent/context-limit'
 import { isFastMode } from '../agent/fast-mode'
 import {
   applyModelChange,
@@ -32,9 +33,10 @@ import type { SettingsSubagentDraft } from './types'
 /**
  * One subagent profile, created or edited in its own dialog: its name and
  * when to use it, its model, chosen with the composer's own model menu with
- * Parent’s Model at its top, the instructions it adds to Demi's own, and
- * whether its children may spawn. The host saves; a refusal shows under the
- * fields, and the draft stays.
+ * Parent’s Model at its top, its Context while the model is its own and
+ * offers a choice, the instructions it adds to Demi's own, and whether its
+ * children may spawn. The host saves; a refusal shows under the fields, and
+ * the draft stays.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -61,8 +63,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
   delete: []
-  /** The user's context limit on a model, for all their conversations with it, as the composer's menu sets it. */
-  contextLimit: [change: ContextLimitChange]
 }>()
 
 /** The draft as the dialog edits it: blank instructions stand for none. */
@@ -71,6 +71,7 @@ function fields(profile: SettingsSubagentDraft) {
     name: profile.name,
     description: profile.description,
     model: profile.model,
+    contextLimit: profile.contextLimit,
     instructions: profile.instructions ?? '',
     canSpawn: profile.canSpawn,
   }
@@ -111,8 +112,43 @@ const modelLabel = computed(() => {
 })
 const missing = computed(() => profileMissing(draft.value.model, props.providers, props.catalogModels))
 
+/** The catalog's entry for the profile's own model; none for the parent's or a model that is gone. */
+function ownModel(settings: ModelSettings | null): ModelInfo | null {
+  if (!settings) {
+    return null
+  }
+  return (props.catalogModels[settings.providerId] ?? []).find((model) => model.id === settings.modelId) ?? null
+}
+
+/** The Context control, while the profile's own model offers a choice: its options, the chosen one marked. */
+const context = computed(() => {
+  const model = ownModel(draft.value.model)
+  const options = model ? profileContextOptions(model) : []
+  if (!model || options.length === 0) {
+    return null
+  }
+  const chosen = profileContextChoice(model, draft.value.contextLimit)
+  const marked = options.map((option) => ({ ...option, selected: option.tokens === chosen }))
+  return { options: marked, label: marked.find((option) => option.selected)?.label ?? '' }
+})
+
+/** Another model keeps the profile's Context while it offers it, as the backend does; the parent's keeps none. */
+function keepContext(): void {
+  const model = ownModel(draft.value.model)
+  const offered = model && profileContextOptions(model).some((option) => option.tokens === draft.value.contextLimit)
+  if (!offered) {
+    draft.value.contextLimit = null
+  }
+}
+
 function changeModel(change: ModelSettingsChange): void {
   draft.value.model = applyModelChange(draft.value.model ?? initialModelSettings(), change)
+  keepContext()
+}
+
+function chooseParentModel(): void {
+  draft.value.model = null
+  keepContext()
 }
 
 /** What breaks the name rule, said under the field as the name is typed. */
@@ -133,6 +169,7 @@ function save(): unknown {
     name: draft.value.name.trim(),
     description: draft.value.description.trim(),
     model,
+    contextLimit: model ? draft.value.contextLimit : null,
     instructions: draft.value.instructions.trim() === '' ? null : draft.value.instructions,
     canSpawn: draft.value.canSpawn,
   })
@@ -203,9 +240,32 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
                   :models="models"
                   :settings="draft.model"
                   parent-model
-                  @parent-model="draft.model = null"
+                  without-context
+                  @parent-model="chooseParentModel"
                   @change="changeModel"
-                  @context-limit="emit('contextLimit', $event)"
+                />
+              </template>
+            </Dropdown>
+          </SettingsRow>
+          <SettingsRow
+            v-if="context"
+            label="Context"
+            description="The context window its subagents use. Default follows your context limit on the model."
+          >
+            <Dropdown
+              :overlay-store="overlayStore"
+              variant="field"
+              size="sm"
+              width="shrink"
+              trigger-label="Context"
+            >
+              <template #trigger>
+                <span class="min-w-0 truncate">{{ context.label }}</span>
+              </template>
+              <template #content>
+                <ContextMenu
+                  :options="context.options"
+                  @select="draft.contextLimit = context.options[$event].tokens"
                 />
               </template>
             </Dropdown>

@@ -29,6 +29,7 @@ use crate::support::{
 /// A profile on the parent's model.
 fn research() -> Profile {
     Profile {
+        context_limit: None,
         name: "research".into(),
         description: "Finds out why.".into(),
         model: None,
@@ -41,6 +42,7 @@ fn research() -> Profile {
 /// A profile on the provider `other`'s `other-model`.
 fn frontend() -> Profile {
     Profile {
+        context_limit: None,
         name: "frontend".into(),
         description: "Writes the web app.".into(),
         model: Some(ProfileModel {

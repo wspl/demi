@@ -3,7 +3,9 @@
 //! written, and how a patch merges into a stored profile. The model a body
 //! names is checked against its entry's catalog by the user's shard.
 
-use demi_shared_types::is_blank;
+use std::fmt;
+
+use demi_shared_types::{context_word, is_blank, offered_contexts, offers_context};
 use demi_web_api_protocol::subagents::{NewProfile, ProfilePatch, SubagentProfile};
 
 /// The name no profile takes: omitting `--profile` selects the inherit
@@ -33,6 +35,63 @@ pub enum ProfileTextError {
     Instructions,
 }
 
+/// Why a profile's Context is refused (`subagents.md` § Profiles): it needs
+/// a model of the profile's own, and one the model's window offers.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum ContextRefusal {
+    #[error(
+        "context: the profile inherits the parent's model, which follows the user's context limit; give the profile a model of its own first"
+    )]
+    NoModel,
+    #[error("{0}")]
+    NotOffered(NotOffered),
+}
+
+/// A Context of `tokens` that the model `model`, of a window of `window`,
+/// does not offer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotOffered {
+    pub model: String,
+    pub tokens: u32,
+    pub window: u32,
+}
+
+impl fmt::Display for NotOffered {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { model, tokens, window } = self;
+        let word = context_word(*tokens);
+        match offered_contexts(*window) {
+            Some(offered) => write!(
+                f,
+                "context: model \"{model}\" does not offer {word}; it offers {offered}, or default for the user's limit"
+            ),
+            None => write!(
+                f,
+                "context: model \"{model}\" has a window of {} and offers no choice of context; use default",
+                context_word(*window)
+            ),
+        }
+    }
+}
+
+/// Checks a profile's Context `tokens`, none for the user's limit, against
+/// its model `model` with that model's window, none for the parent's model.
+pub fn check_context(model: Option<(&str, u32)>, tokens: Option<u32>) -> Result<(), ContextRefusal> {
+    let Some(tokens) = tokens else {
+        return Ok(());
+    };
+    let (model, window) = model.ok_or(ContextRefusal::NoModel)?;
+    if offers_context(window, tokens) {
+        Ok(())
+    } else {
+        Err(ContextRefusal::NotOffered(NotOffered {
+            model: model.to_owned(),
+            tokens,
+            window,
+        }))
+    }
+}
+
 /// Checks a new profile's name and texts.
 pub fn check_new(profile: &NewProfile) -> Result<(), ProfileTextError> {
     check_name(&profile.name)?;
@@ -58,13 +117,24 @@ pub fn check_patch(patch: &ProfilePatch) -> Result<(), ProfileTextError> {
 }
 
 /// `profile` with `patch` applied: each field the patch names replaces the
-/// stored one, `model` and `instructions` whole, and the others stay.
-pub fn merge(profile: SubagentProfile, patch: ProfilePatch) -> SubagentProfile {
+/// stored one, `model` and `instructions` whole, and the others stay. A
+/// patch that changes the model and names no Context keeps the stored one
+/// while `window`, the new model's, offers it, and the parent's model,
+/// whose window is none, keeps none.
+pub fn merge(profile: SubagentProfile, patch: ProfilePatch, window: Option<u32>) -> SubagentProfile {
+    let context_limit = match (patch.context_limit, &patch.model) {
+        (Some(chosen), _) => chosen,
+        (None, Some(_)) => profile
+            .context_limit
+            .filter(|tokens| window.is_some_and(|window| offers_context(window, *tokens))),
+        (None, None) => profile.context_limit,
+    };
     SubagentProfile {
         id: profile.id,
         name: patch.name.unwrap_or(profile.name),
         description: patch.description.unwrap_or(profile.description),
         model: patch.model.unwrap_or(profile.model),
+        context_limit,
         instructions: patch.instructions.unwrap_or(profile.instructions),
         can_spawn: patch.can_spawn.unwrap_or(profile.can_spawn),
         enabled: patch.enabled.unwrap_or(profile.enabled),
