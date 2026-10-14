@@ -75,7 +75,7 @@ function selectParent() {
 </script>
 
 <template>
-  <Menu iconless>
+  <Menu>
     <template v-if="rows.parent">
       <MenuItem
         label="Parent’s Model"
@@ -105,7 +105,7 @@ function selectParent() {
       :value="rows.reasoning.value"
     >
       <template #submenu>
-        <Menu iconless>
+        <Menu>
           <MenuItem
             v-for="option in rows.reasoning.options"
             :key="option.label"
@@ -132,7 +132,7 @@ function selectParent() {
     <MenuDivider v-if="rows.fast || rows.reasoning || context" />
     <MenuItem label="Model" :value="rows.model.value">
       <template #submenu>
-        <Menu iconless>
+        <Menu>
           <MenuGroup
             v-for="group in rows.model.groups"
             :key="group.provider.id"
