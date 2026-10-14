@@ -1173,6 +1173,7 @@ pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> Check
             intervals: Vec::new(),
             model: test_model(),
             edits: Vec::new(),
+            account: None,
         },
         block_count: blocks.len(),
         changed_blocks: blocks.into_iter().enumerate().collect(),

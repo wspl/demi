@@ -212,7 +212,8 @@
         { "kind": "otherContext", "tokens": 150, "estimated": true },
         { "kind": "compactionBuffer", "tokens": 33000, "estimated": false },
         { "kind": "freeSpace", "tokens": 44000, "estimated": false }
-      ]
+      ],
+      "account": "cred-1"
     }
   },
   {

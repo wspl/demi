@@ -301,6 +301,8 @@ pub async fn request_title(
         // A title request is no session's: nothing extends it.
         prompt_cache: PromptCache::Off,
         cancel: cancel.clone(),
+        // No agent's: the entry's rotation picks one for this request alone.
+        account: None,
     };
     let mut events = runtime.run(request);
     let mut answer = String::new();

@@ -1354,6 +1354,34 @@ export function usageLimitErrorBlock(id: string, resetsAt: string): Block {
 }
 
 /**
+ * The line an agent's move to another account leaves when its account
+ * reached its 5-hour session limit, which resets at `resetsAt`, and the
+ * answer the same request then got from the next account
+ * (`providers.md` § Account rotation).
+ */
+export function accountSwitchBlocks(resetsAt: string): Block[] {
+  return [
+    {
+      type: 'account_switch',
+      id: 'account-switch',
+      createdAt: iso(30_000),
+      model: demoModel,
+      from: 'alex@example.com',
+      to: 'sam@example.com',
+      window: '5h session',
+      resetsAt,
+    },
+    {
+      type: 'text',
+      id: 'account-switch-answer',
+      createdAt: iso(34_000),
+      model: demoModel,
+      text: 'The board now opens every empty neighbor when a blank cell is revealed.',
+    },
+  ]
+}
+
+/**
  * The record a turn ends with when its Host went offline and no later call
  * ran there: Demi's fact, which leaves the turn unfinished, and Resume waits
  * for the device.

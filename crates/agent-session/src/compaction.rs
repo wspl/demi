@@ -385,6 +385,10 @@ fn usage_at(
         window,
         compact_from: window.map(|window| share(window, MANUAL_COMPACTION_PERCENT)),
         rows: breakdown::rows(core, prompt, &text, tokens, window),
+        account: core
+            .account
+            .as_ref()
+            .map(|account| account.credential_id.clone()),
     })
 }
 
@@ -569,6 +573,10 @@ pub(super) async fn run_pass(
                     core.transcript
                         .push_compaction_marker(&model, boundary, compacted_tokens);
                     core.commit();
+                    // The next request writes its prefix anew in any case,
+                    // so the agent takes an account again for it
+                    // (`providers.md` § Account rotation).
+                    core.take_account(None);
                     if let Some(text) = running_text(&running) {
                         core.push_context(NewContext {
                             source: EXECUTION_SOURCE.to_owned(),
@@ -811,6 +819,9 @@ fn session_copy(s: &Rc<SessionShared>, history: Vec<Block>, media: HeldMedia) ->
         inputs: InputQueue::default(),
         watched: Watched::default(),
         edits: Vec::new(),
+        // The summary request extends the history the agent's account has
+        // cached.
+        account: core.account.clone(),
         one_request: true,
         ids: s.ids.clone(),
         clock: core.clock(),

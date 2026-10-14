@@ -1817,5 +1817,67 @@
     },
     "boundaryId": "cb1",
     "compactedTokens": 180000
+  },
+  {
+    "type": "account_switch",
+    "id": "as1",
+    "createdAt": "2026-09-21T14:13:20.000Z",
+    "model": {
+      "providerId": "anthropic",
+      "model": {
+        "id": "claude-sonnet-4-5",
+        "name": "Claude Sonnet 4.5",
+        "contextWindow": 200000,
+        "outputLimit": 64000,
+        "thinking": [
+          {
+            "type": "adaptive",
+            "efforts": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          {
+            "type": "budget",
+            "minBudgetTokens": 1024,
+            "maxBudgetTokens": null,
+            "defaultBudgetTokens": null
+          },
+          {
+            "type": "effort",
+            "efforts": [
+              "low",
+              "high"
+            ],
+            "summaries": [
+              "auto",
+              "detailed"
+            ],
+            "defaultSummary": "auto"
+          },
+          {
+            "type": "disabled"
+          }
+        ],
+        "acceptedExtensions": [
+          "png",
+          "jpg",
+          "jpeg",
+          "gif",
+          "webp",
+          "pdf"
+        ]
+      },
+      "thinking": {
+        "type": "adaptive",
+        "effort": "high"
+      },
+      "serviceTierId": null
+    },
+    "from": "alex@example.com",
+    "to": "sam@example.com",
+    "window": "5h session",
+    "resetsAt": "2026-09-21T21:00:00.000Z"
   }
 ]

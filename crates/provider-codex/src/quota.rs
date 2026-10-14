@@ -197,6 +197,11 @@ fn window_of(
         limit: None,
         unit: Some(QuotaUnit::Percent),
         resets_at,
+        // A length the vendor states in fractions of a second is none.
+        period_seconds: minutes
+            .map(|minutes| minutes * 60.0)
+            .filter(|seconds| *seconds >= 1.0 && seconds.fract() == 0.0)
+            .map(|seconds| seconds as u64),
         severity: severity(used_percent),
         scope: None,
     }

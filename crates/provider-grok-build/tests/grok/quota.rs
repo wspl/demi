@@ -61,6 +61,7 @@ async fn the_probe_asks_the_subscription_and_the_credits_billing_together() {
             limit: Some(20_000.0),
             unit: Some(QuotaUnit::Credits),
             resets_at: Some("2026-08-01T00:00:00.000Z".parse().unwrap()),
+            period_seconds: None,
             severity: Some(QuotaSeverity::Normal),
             scope: None,
         }]

@@ -75,7 +75,8 @@ impl ReadBlob for NoBlobs {
 /// saved messages were kept, the one with them before an attached host
 /// went by its device's name, the one with device names before a
 /// subagent profile had a Context of its own, and the one with a profile's
-/// Context before an API-key entry's sealed configuration had a format.
+/// Context before an API-key entry's sealed configuration had a format,
+/// and the one with that format before account rotation.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -175,8 +176,27 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.profile-contexts.sql"),
             migration: Migration::Reseal(control_sealed_config_format_2),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.config-format-2.sql"),
+            migration: Migration::Sql(CONTROL_FROM_CONFIG_FORMAT_2),
+        },
     ],
 };
+
+/// From the control schema whose API-key entries sealed configuration
+/// format 2 to the one with account rotation (`providers.md` § Account
+/// rotation): every entry keeps its manual rotation, and each entry's
+/// accounts keep the order they were listed in, by their ids.
+const CONTROL_FROM_CONFIG_FORMAT_2: &str = "
+ALTER TABLE providers ADD COLUMN rotation TEXT NOT NULL DEFAULT 'manual'
+    CHECK (rotation IN ('manual', 'in_order', 'balanced')
+      AND (credential_kind = 'subscription' OR rotation = 'manual'));
+ALTER TABLE provider_credentials ADD COLUMN position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0);
+UPDATE provider_credentials SET position = (
+  SELECT count(*) FROM provider_credentials AS earlier
+  WHERE earlier.provider_id = provider_credentials.provider_id AND earlier.id < provider_credentials.id
+);
+";
 
 /// From the control schema whose API-key entries sealed their bare
 /// configuration, format 1, to provider configuration format 2, which
@@ -607,7 +627,7 @@ CREATE TABLE plugin_oauth_clients (
 /// child's row kept its working directory, through the one with child
 /// directories before a node kept its profile's Context, and through the
 /// one of format 6 before a shell call marked the paths outside its
-/// agent's directory.
+/// agent's directory, and the one of format 7 before account rotation.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -659,8 +679,20 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.context-limits.sql"),
             migration: Migration::Code(views_with_outside_paths),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.block-format-7.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_BLOCK_FORMAT_7),
+        },
     ],
 };
+
+/// From the conversation schema of transcript block format 7 and checkpoint
+/// state format 3 to block format 8, which adds the `account_switch` block,
+/// and state format 4, which keeps an agent's account (`providers.md`
+/// § Account rotation). Every stored block and state is one of the new
+/// formats as it is: none switched accounts, and none has taken an account
+/// of its own yet.
+const CONVERSATION_FROM_BLOCK_FORMAT_7: &str = "";
 
 /// From the conversation schema of transcript block format 6 to format 7,
 /// in which a shell call's own files mark the paths outside its agent's
@@ -1523,7 +1555,17 @@ pub mod testing {
     /// that schema, with the rows of this one in the columns both have, and
     /// that schema's version. Its values stay as this build wrote them.
     pub fn store_as_shipped(path: &Path, kind: DatabaseKind) {
-        let shipped = kind.schema().history.last().expect("a schema has a history");
+        store_as_shipped_before(path, kind, 0);
+    }
+
+    /// The same, as the schema shipped `newer` schemas before the last one
+    /// in the history, for a test of a migration that the schemas shipped
+    /// since have moved away from the end of the history.
+    pub fn store_as_shipped_before(path: &Path, kind: DatabaseKind, newer: usize) {
+        let history = kind.schema().history;
+        let shipped = history
+            .get(history.len().checked_sub(newer + 1).expect("the history goes back that far"))
+            .expect("a schema has a history");
         let earlier = path.with_extension("shipped");
         let connection = Connection::open(&earlier).expect("a database opens beside it");
         connection
@@ -2223,6 +2265,11 @@ CREATE TABLE providers (
   config               BLOB,
   active_credential_id TEXT,
   created_at           INTEGER NOT NULL,
+  -- Which account each agent uses (providers.md § Account rotation); an
+  -- API-key entry's is always manual.
+  rotation             TEXT NOT NULL DEFAULT 'manual'
+    CHECK (rotation IN ('manual', 'in_order', 'balanced')
+      AND (credential_kind = 'subscription' OR rotation = 'manual')),
   CHECK ((credential_kind = 'api_key') = (config IS NOT NULL)),
   CHECK (credential_kind = 'subscription' OR active_credential_id IS NULL)
 ) STRICT;
@@ -2241,6 +2288,8 @@ CREATE TABLE provider_credentials (
   version      INTEGER NOT NULL CHECK (version >= 1),
   quota        TEXT,
   updated_at   INTEGER NOT NULL,
+  -- The account's place in its entry's list, which In Order follows.
+  position     INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
   PRIMARY KEY (provider_id, id)
 ) STRICT;
 CREATE UNIQUE INDEX provider_credentials_identity ON provider_credentials (provider_id, identity_key)
@@ -2301,7 +2350,7 @@ CREATE TABLE nodes (
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
   -- The session's checkpoint state as JSON, with whether a Stop holds its
   -- waiting input until the user's next action.
-  -- nodes.state: checkpoint state format 3
+  -- nodes.state: checkpoint state format 4
   state            TEXT NOT NULL,
   block_count      INTEGER NOT NULL CHECK (block_count >= 0),
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
@@ -2337,11 +2386,11 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 7.
+-- blocks.block: transcript block format 8.
 CREATE TABLE blocks (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx     INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 7
+  -- blocks.block: transcript block format 8
   block   TEXT NOT NULL,
   PRIMARY KEY (node_id, idx)
 ) STRICT;

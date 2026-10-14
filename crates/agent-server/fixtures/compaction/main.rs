@@ -723,6 +723,7 @@ fn idle_state(model: ModelSelection) -> CheckpointState {
         intervals: Vec::new(),
         model,
         edits: Vec::new(),
+        account: None,
     }
 }
 

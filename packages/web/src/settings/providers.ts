@@ -30,6 +30,7 @@ import {
   providerAnswerSchema,
   providerCliSchema,
   testResultSchema,
+  type AccountOrder,
   type ActivateAccount,
   type ConfiguredModel,
   type CreateProvider,
@@ -328,6 +329,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         ...(changes.wireApi !== undefined ? protocol(changes.wireApi) : {}),
         ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl || null } : {}),
         ...(changes.apiKey !== undefined ? { apiKey: changes.apiKey || null } : {}),
+        ...(changes.rotation !== undefined ? { rotation: changes.rotation } : {}),
         ...(changes.modelSource
           ? {
               models:
@@ -605,12 +607,56 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   /**
+   * Puts the provider's accounts in the order the user dragged them to: the
+   * list shows it at once, the change is sent after the provider's earlier
+   * writes, and a refusal puts the list back with a toast.
+   */
+  function reorderAccounts(provider: SettingsProviderEntry, ids: string[]): Promise<void> {
+    const shown = product.change('providers', (state) => ({
+      ...state,
+      providers: state.providers.map((entry) =>
+        entry.id === provider.id && entry.details.type === 'read'
+          ? {
+              ...entry,
+              details: {
+                ...entry.details,
+                accounts: ids.flatMap((id) => {
+                  const account = entry.details.type === 'read'
+                    ? entry.details.accounts.find((candidate) => candidate.id === id)
+                    : undefined
+                  return account ? [account] : []
+                }),
+              },
+            }
+          : entry,
+      ),
+    }))
+    const current = lifetime
+    return writes
+      .run(provider.id, async () => {
+        current.signal.throwIfAborted()
+        shown.send()
+        await apiRequest(`/providers/${encodeURIComponent(provider.id)}/accounts/order`, {
+          method: 'PUT',
+          signal: current.signal,
+          ...jsonBody({ credentialIds: ids } satisfies AccountOrder),
+        })
+        shown.land()
+      })
+      .catch((error) => {
+        shown.drop()
+        report('Could Not Reorder the Accounts', error)
+      })
+  }
+
+  /**
    * Makes `id` the provider's active account as the user presses Activate:
    * the Active mark moves at once (it is a switch, `web-application.md`
    * § Responding to the user), the change is sent after the provider's
-   * earlier writes, and a refusal moves the mark back with a toast.
+   * earlier writes, and a refusal moves the mark back with a toast. Answers
+   * whether the account became active.
    */
-  function activateAccount(provider: SettingsProviderEntry, id: string): Promise<void> {
+  function activateAccount(provider: SettingsProviderEntry, id: string): Promise<boolean> {
     const shown = product.change('providers', (state) => ({
       ...state,
       providers: state.providers.map((entry) =>
@@ -630,10 +676,12 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           ...jsonBody({ credentialId: id } satisfies ActivateAccount),
         })
         shown.land()
+        return true
       })
       .catch((error) => {
         shown.drop()
         report('Could Not Switch Accounts', error)
+        return false
       })
   }
 
@@ -915,6 +963,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     refresh,
     removeAccount,
     activateAccount,
+    reorderAccounts,
     saveModel,
     saveModels,
     searchModels,

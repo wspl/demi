@@ -292,6 +292,17 @@ pub struct Preferences {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub resume_at_retry: Option<bool>,
+    /// Whether the user went on past the dialog about using several
+    /// subscription accounts (`providers.md` § Account rotation), which then
+    /// never shows again. Absent means no.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub multi_account_warned: Option<bool>,
     /// The limit the user set on the context window of each model, in
     /// tokens, by provider entry id and then model id (`models.md` § Context
     /// limit); a model it does not name uses its full window.
@@ -455,6 +466,17 @@ pub struct PreferencesPatch {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub resume_at_retry: Option<bool>,
+    /// Whether the user went on past the dialog about using several
+    /// subscription accounts (`providers.md` § Account rotation), which then
+    /// never shows again. Absent means no.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub multi_account_warned: Option<bool>,
     /// One model's context limit; the other models keep theirs.
     #[serde(
         default,

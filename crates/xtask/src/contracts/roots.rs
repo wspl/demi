@@ -127,6 +127,7 @@ pub fn web() -> Vec<Root> {
         receives::<providers::VendorCatalog>(),
         receives::<providers::Accounts>(),
         sends::<providers::ActivateAccount>(),
+        sends::<providers::AccountOrder>(),
         receives::<providers::ActiveAccount>(),
         receives::<providers::RemovedAccount>(),
         sends::<providers::SubscriptionLogin>(),

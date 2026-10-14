@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import {
-  TAB_DRAG_PX,
   TAB_TRANSITION,
   TAB_WIDTH_MS,
   afterEnterTab,
@@ -9,8 +8,6 @@ import {
   beforeEnterTab,
   beforeLeaveTab,
   cutMarkCover,
-  dragShift,
-  dragTarget,
   enterTab,
   isLeavingTab,
   fadeRoom,
@@ -20,6 +17,7 @@ import {
   stripGap,
   tabsChanged,
 } from './tab-strip'
+import { DRAG_START_PX, dragShift, dragTarget } from '../ui/drag-order'
 import { usePhone } from '../ui/phone'
 
 /** The edge fades' width; a revealed tab is scrolled clear of them. */
@@ -376,7 +374,7 @@ function onPointermove(event: PointerEvent): void {
   }
   const dx = event.clientX - held.startX
   if (!held.moving) {
-    if (Math.abs(dx) < TAB_DRAG_PX) {
+    if (Math.abs(dx) < DRAG_START_PX) {
       return
     }
     held.moving = true

@@ -165,6 +165,11 @@ async fn run_action(s: &Rc<SessionShared>, started: StartedAction) {
     }
     drop(lease);
     s.update(|core| {
+        // Nothing of the action runs any more; its requests have put the
+        // runtime back in its slot.
+        if let Some(runtime) = core.provider.held_mut() {
+            runtime.idle();
+        }
         // The action may have changed the history, and the token of a kept
         // process may be about to expire.
         core.ask_ahead(Ahead::Ended);

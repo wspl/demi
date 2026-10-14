@@ -12,6 +12,7 @@ import { executionFor, primaryHostOf } from '../targets/execution'
 import { useConversations } from './store'
 import { useConversationNavigation } from './navigation'
 import { useResources } from '../state/resources'
+import { useProviderSettings } from '../settings/providers'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useWorkPanel } from './work'
@@ -25,6 +26,19 @@ import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import type { Conversation } from '../state/types'
 
 const store = useConversations()
+const providerSettings = useProviderSettings()
+
+/**
+ * Continue with another account after a usage limit, without rotation: the
+ * account becomes the entry's active one, as Activate in Settings makes it,
+ * then the turn resumes on it (`providers.md` § Account rotation).
+ */
+async function continueWith(conversation: Parameters<typeof store.start>[0], providerId: string, credentialId: string): Promise<void> {
+  const provider = providerSettings.providers.find((entry) => entry.id === providerId)
+  if (provider && (await providerSettings.activateAccount(provider, credentialId))) {
+    store.start(conversation)
+  }
+}
 const resources = useResources()
 // The share follows the drag live in the page and reaches the preferences once it settles.
 const dockWindowShare = ref(resources.dockWindowShare)
@@ -256,6 +270,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :removing="conversation.removing"
     @retry-submission="store.retrySend(conversation, $event)"
     @retry="store.start(conversation)"
+    @continue-with="(providerId, credentialId) => conversation && continueWith(conversation, providerId, credentialId)"
     @rename="store.rename(conversation.id, $event)"
     :listed="conversation.persistence === 'synced' && !conversation.archived ? { pinned: conversation.pinned } : undefined"
     @pin="void store.pin([conversation.id], $event)"

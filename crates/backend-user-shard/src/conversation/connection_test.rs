@@ -101,6 +101,7 @@ impl Shard {
             // A connection test is no session's: nothing extends it.
             prompt_cache: PromptCache::Off,
             cancel: request_cancel.clone(),
+            account: None,
         };
         // The first event decides: a failure is the provider's refusal, and
         // anything else shows that it answers.
