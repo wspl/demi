@@ -27,7 +27,7 @@ use demi_backend_providers::llm::catalog_cache::ModelCatalogCache;
 use demi_backend_providers::llm::claude_releases::ClaudeReleases;
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::llm::vendors::VendorCatalog;
-use demi_backend_providers::vault::entries::Vault;
+use demi_backend_providers::vault::entries::{ConfigReseal, Vault};
 use demi_backend_providers::vault::logins::{LoginFlows, LoginTiming};
 use demi_backend_providers::vault::operations::ProviderOperations;
 use demi_backend_providers::vault::quotas::AccountQuotas;
@@ -241,13 +241,20 @@ pub enum CloseError {
 }
 
 impl Storage {
-    /// The databases in `data_dir`, beside the object store `objects`.
+    /// The databases in `data_dir`, beside the object store `objects`; an
+    /// earlier control database's sealed values are migrated under `vault`.
     pub async fn open(
         data_dir: &Path,
         clock: Arc<dyn Clock>,
         objects: Arc<dyn ObjectStore>,
+        vault: VaultKey,
     ) -> Result<Self, StorageError> {
-        let control = ControlService::open(&data_dir.join(CONTROL_DATABASE), clock.clone()).await?;
+        let control = ControlService::open(
+            &data_dir.join(CONTROL_DATABASE),
+            clock.clone(),
+            Arc::new(ConfigReseal::new(vault)),
+        )
+        .await?;
         let rest = async {
             let blobs = BlobStores::new(objects, clock.clone());
             let conversations = ConversationStores::open(
@@ -331,8 +338,6 @@ impl Services {
             .map_err(ServicesError::Http)?;
         let sync = SyncRegistry::default();
         let vault = Vault::new(control.clone(), keys.vault, settings.mode, sync.clone());
-        // Before anything reads an entry's configuration.
-        vault.migrate_configs().await?;
         let models_dev = ModelsDevClient::new(
             http.clone(),
             providers.models_dev_url,
@@ -439,11 +444,11 @@ impl Services {
             .await
             .unwrap()
             .store;
-        let storage = Storage::open(data, clock.clone(), objects).await.unwrap();
         let keys = ServiceKeys {
             vault: VaultKey::new(rand::random()),
             email_codes: CodeKey::new(rand::random()),
         };
+        let storage = Storage::open(data, clock.clone(), objects, keys.vault.clone()).await.unwrap();
         let providers = ProviderSetup {
             families: FamilyRegistry::default(),
             models_dev_url: ModelsDevClient::DEFAULT_URL.parse().unwrap(),

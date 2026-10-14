@@ -52,7 +52,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   const product = useProduct()
   const modelEditor = ref<SettingsModelEditor | null>(null)
   const edits = ref<Record<string, Partial<SettingsProviderEntry>>>({})
-  const manualDrafts = ref<Record<string, SettingsProviderModel[]>>({})
   const refreshingUsage = ref<Record<string, Record<string, SettingsQuotaRefresh>>>({})
   /** The vendor's words for the last manual usage refresh that failed, per provider and account, until that account's next answer; the surfaces show them, no toast does. */
   const usageFailures = ref<Record<string, Record<string, ShownError>>>({})
@@ -82,12 +81,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       ...testResults.value[provider.id],
       ...(provider.cliPackage === null ? {} : { cli: clis.value[provider.id] ?? null }),
       ...edits.value[provider.id],
-      ...(manualDrafts.value[provider.id]
-        ? {
-            modelSource: 'manual' as const,
-            models: manualDrafts.value[provider.id],
-          }
-        : {}),
     }))
     const subscriptions = (product.vendors?.subscriptions ?? []).map(
       (subscription) =>
@@ -275,9 +268,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   function modelConfig(model: SettingsModelDraft): ConfiguredModel {
-    if (model.contextWindow === null) {
-      throw new Error(`Enter a context window for ${model.name || model.id}.`)
-    }
     return {
       id: model.id,
       displayName: model.name || model.id,
@@ -330,28 +320,14 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       void untilIdle(provider.id).then(() => change(provider, {}))
       return
     }
-    perform(provider.id, { kind: 'saving' }, async (signal) => {
-      if (changes.modelSource === 'manual') {
-        manualDrafts.value[provider.id] = provider.models.map((model) => ({
-          ...model,
-        }))
-        if (
-          !provider.models.length ||
-          provider.models.some((model) => model.contextWindow === null)
-        ) {
-          return
-        }
-      }
-      if (changes.modelSource === 'catalog') {
-        delete manualDrafts.value[provider.id]
-      }
+    perform(provider.id, { kind: 'saving' }, async () => {
       await patch(provider, {
         ...(changes.name !== undefined ? { label: changes.name } : {}),
-        // Only a compatible API's protocol and endpoint are edited, and the
-        // page never empties its endpoint.
+        // Only a compatible API's protocol and endpoint are edited; an
+        // emptied endpoint or key is removed, as the API's null does.
         ...(changes.wireApi !== undefined ? protocol(changes.wireApi) : {}),
-        ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl } : {}),
-        ...(changes.apiKey ? { apiKey: changes.apiKey } : {}),
+        ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl || null } : {}),
+        ...(changes.apiKey !== undefined ? { apiKey: changes.apiKey || null } : {}),
         ...(changes.modelSource
           ? {
               models:
@@ -361,9 +337,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
             }
           : {}),
       })
-      if (changes.modelSource) {
-        delete manualDrafts.value[provider.id]
-      }
       delete edits.value[provider.id]
     })
   }
@@ -382,19 +355,11 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     provider: SettingsProviderEntry,
     models: SettingsProviderModel[],
   ): Promise<void> {
-    // A model added before its context window is known, as Custom adds one,
-    // stays in the page's list, marked unknown, until Edit Model gives it
-    // one: the backend keeps only models it can infer with.
-    if (models.some((model) => model.contextWindow === null)) {
-      manualDrafts.value[provider.id] = models
-      return
-    }
     // A model saved during a test, a refresh or another save waits for it to
     // end, and for an edit queued behind it, rather than being refused.
     const save = async (signal: AbortSignal) => {
       signal.throwIfAborted()
       await patch(provider, { models: models.map(modelConfig) })
-      delete manualDrafts.value[provider.id]
       delete edits.value[provider.id]
     }
     do {
@@ -921,7 +886,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       dismissed.value = []
       edits.value = {}
       modelEditor.value = null
-      manualDrafts.value = {}
       testResults.value = {}
       refreshingUsage.value = {}
       usageFailures.value = {}

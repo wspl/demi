@@ -120,13 +120,13 @@ const canSave = computed(() => {
   return (
     model.id.trim().length > 0 &&
     idProblem.value === null &&
-    model.contextWindow !== null &&
-    Number.isInteger(model.contextWindow) &&
-    model.contextWindow > 0 &&
+    // An unknown window, as a model added by Custom has, is no fault.
+    (model.contextWindow === null ||
+      (Number.isInteger(model.contextWindow) && model.contextWindow > 0)) &&
     (model.outputLimit === null ||
       (Number.isInteger(model.outputLimit) &&
         model.outputLimit > 0 &&
-        model.outputLimit <= model.contextWindow))
+        (model.contextWindow === null || model.outputLimit <= model.contextWindow)))
   )
 })
 

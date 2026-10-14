@@ -121,3 +121,97 @@ test('a match chosen in Add Model is added with a free id and opens in Edit Mode
     app.unmount()
   }
 })
+
+/** The page over `providers`, `proxy` selected, its host's saves and changes recorded. */
+function mountPage(providers: { value: SettingsProviderEntry[] }, hooks: {
+  saved?: { draft: SettingsModelDraft; original: string | null }[]
+  changed?: Partial<SettingsProviderEntry>[]
+}) {
+  const element = document.createElement('div')
+  document.body.append(element)
+  const app = createApp({
+    render: () =>
+      h(SettingsProvidersPage, {
+        providers: providers.value,
+        vendors: [],
+        overlayStore: createOverlayStore(),
+        selectedId: 'proxy',
+        detailOpen: true,
+        saveModel: async (provider: SettingsProviderEntry, draft: SettingsModelDraft, original: { id: string } | null) => {
+          hooks.saved?.push({ draft, original: original?.id ?? null })
+          const models = original
+            ? provider.models.map((entry) => (entry.id === original.id ? { ...draft, enabled: entry.enabled } : entry))
+            : [...provider.models, { ...draft, enabled: true }]
+          providers.value = [{ ...provider, models }]
+        },
+        searchModels: async () => [],
+        onChange: (_provider: SettingsProviderEntry, changes: Partial<SettingsProviderEntry>) => {
+          hooks.changed?.push(changes)
+        },
+      }),
+  })
+  app.mount(element)
+  return app
+}
+
+// Custom adds a model whose id and name are the text typed, its window
+// unknown, and Edit Model saves it so (`models.md` § Model fields). Cost:
+// the search's 150 ms pause, and tens of milliseconds besides.
+test('Custom adds the typed model at once without a context window, and Edit Model saves it as it is', async () => {
+  const saved: { draft: SettingsModelDraft; original: string | null }[] = []
+  const providers = shallowRef([{ ...proxy, models: [] }])
+  const app = mountPage(providers, { saved })
+  try {
+    await until(() => button('Add Model') !== undefined, 'the page shows Add Model')
+    button('Add Model')!.click()
+    await until(() => document.querySelector('[role="dialog"] input') !== null, 'Add Model opens')
+    type(document.querySelector<HTMLInputElement>('[role="dialog"] input')!, 'my-model')
+    const custom = () =>
+      [...document.querySelectorAll<HTMLElement>('[role^="menuitem"], [role="option"]')].find((option) =>
+        option.textContent?.includes('Custom'),
+      )
+    await until(() => custom() !== undefined, 'Custom is offered')
+    custom()!.click()
+
+    await until(() => input('Model ID') !== null, 'Edit Model opens')
+    const added: SettingsModelDraft = {
+      id: 'my-model', name: 'my-model', contextWindow: null, outputLimit: null, efforts: [], extensions: [], fastTier: null,
+    }
+    expect(saved).toEqual([{ draft: added, original: null }])
+    type(input('Name')!, 'My Model')
+    await until(() => !disabled(button('Save')!), 'Save takes a model without a window')
+    button('Save')!.click()
+    await until(() => input('Model ID') === null, 'Edit Model closes')
+    expect(saved[1]).toEqual({ draft: { ...added, name: 'My Model' }, original: 'my-model' })
+  } finally {
+    app.unmount()
+  }
+})
+
+// Emptying the saved key or endpoint and leaving the field removes it, as
+// the API's null does; leaving the key's field as it was keeps the key
+// (`models.md` § Adding a model from models.dev). Tens of milliseconds.
+test('a saved key or endpoint emptied and left is removed, and a key field left as it was keeps the key', async () => {
+  const changed: Partial<SettingsProviderEntry>[] = []
+  const providers = shallowRef([{ ...proxy, keyConfigured: true }])
+  const app = mountPage(providers, { changed })
+  try {
+    await until(() => input('API key') !== null, 'the page shows the key')
+    const key = input('API key')!
+    key.focus()
+    key.dispatchEvent(new FocusEvent('focus'))
+    key.blur()
+    key.dispatchEvent(new FocusEvent('blur'))
+    expect(changed).toEqual([])
+
+    type(key, '')
+    key.dispatchEvent(new FocusEvent('blur'))
+    const endpoint = input('Endpoint')!
+    type(endpoint, '')
+    endpoint.dispatchEvent(new FocusEvent('blur'))
+    await until(() => changed.length === 2, 'both removals are sent')
+    expect(changed).toEqual([{ apiKey: '' }, { baseUrl: '' }])
+  } finally {
+    app.unmount()
+  }
+})

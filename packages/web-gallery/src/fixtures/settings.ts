@@ -710,16 +710,15 @@ export function incompleteProviders(): MockProvider[] {
 /**
  * Whether the entry lacks a part it cannot infer without, as the backend
  * says (`models.md` § A provider is in the list from the start): a vendor's
- * key, a compatible API's endpoint, whose key is optional, a model it can
- * save, or a subscription's account.
+ * key, a compatible API's endpoint, whose key is optional, a model, or a
+ * subscription's account.
  */
 export function isIncomplete(entry: SettingsProviderEntry): boolean {
   if (entry.kind === 'subscription') {
     return !entry.accounts.length
   }
   const reaches = entry.compatible ? entry.baseUrl !== '' : entry.keyConfigured === true
-  // A model without a context window stays on the page, not in the saved list.
-  return !reaches || !entry.models.some((model) => model.contextWindow !== null)
+  return !reaches || !entry.models.length
 }
 
 /** The models.dev models the Add Model specimens search, as the backend's search answers. */

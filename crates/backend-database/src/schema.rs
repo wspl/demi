@@ -15,9 +15,11 @@ use sha2::{Digest, Sha256};
 use demi_agent_store::CheckpointState;
 use bytes::Bytes;
 use demi_shared_types::{BlobRef, ReportEvent};
+use demi_web_api_protocol::ids::ProviderId;
 
 use super::StorageError;
 use super::columns::{decode, json, to_json};
+use super::providers::{NoSealedConfigs, ResealConfigs};
 
 /// A database's schema: its SQL, whose digest names it, and the schemas
 /// that published releases shipped before it, oldest first.
@@ -39,6 +41,9 @@ pub(crate) enum Migration {
     /// A change SQL cannot express, such as re-encoding a stored value,
     /// which may read the blobs the database's values name.
     Code(fn(&Transaction<'_>, &dyn ReadBlob) -> rusqlite::Result<()>),
+    /// A change that re-encodes sealed values, which only their owner can
+    /// open and seal again.
+    Reseal(fn(&Transaction<'_>, &dyn ResealConfigs) -> rusqlite::Result<()>),
 }
 
 /// How a migration reads the bytes of a blob a database's values name, in
@@ -68,8 +73,10 @@ impl ReadBlob for NoBlobs {
 /// accounts, the one with administered accounts before a conversation's
 /// workflow, the one with the workflow before the edits and sends of
 /// saved messages were kept, the one with them before an attached host
-/// went by its device's name, and the one with device names before a
-/// subagent profile had a Context of its own. The schemas with the subagent
+/// went by its device's name, the one with device names before a
+/// subagent profile had a Context of its own, and the one with a profile's
+/// Context before an API-key entry's sealed configuration had a format.
+/// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
 /// and the server's migrate through them.
@@ -164,8 +171,45 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.device-names.sql"),
             migration: Migration::Sql(CONTROL_FROM_DEVICE_NAMES),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.profile-contexts.sql"),
+            migration: Migration::Reseal(control_sealed_config_format_2),
+        },
     ],
 };
+
+/// From the control schema whose API-key entries sealed their bare
+/// configuration, format 1, to provider configuration format 2, which
+/// tells a compatible entry by its naming no vendor (`models.md` § A
+/// provider is in the list from the start). The vault opens, decodes and
+/// checks each one and seals it again; one it cannot read stops the
+/// migration, so the database stays as it was.
+fn control_sealed_config_format_2(
+    transaction: &Transaction<'_>,
+    seals: &dyn ResealConfigs,
+) -> rusqlite::Result<()> {
+    let rows = transaction
+        .prepare("SELECT id, provider_type, config FROM providers WHERE config IS NOT NULL")?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, Vec<u8>>(2)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update = transaction.prepare("UPDATE providers SET config = ?2 WHERE id = ?1")?;
+    for (id, family, sealed) in rows {
+        let entry = decode("providers", "id", ProviderId::try_from(id.clone())).map_err(corrupt)?;
+        let resealed = seals
+            .provider_config(&entry, &family, &sealed)
+            .map_err(|reason| {
+                corrupt(StorageError::Corrupt {
+                    table: "providers",
+                    column: "config",
+                    reason: format!("entry {id}: {reason}"),
+                })
+            })?;
+        update.execute(rusqlite::params![id, resealed])?;
+    }
+    Ok(())
+}
 
 /// From the control schema in which an attached host goes by its device's
 /// name to the one in which a subagent profile has a Context of its own
@@ -1510,13 +1554,25 @@ impl Schema {
     /// in the history, and accepts one that records this schema's version,
     /// each in one transaction. Any other database was made by a newer
     /// release or another build of Demi: it is refused, never changed.
+    #[cfg(test)]
     pub(crate) fn apply(
         &self,
         connection: &mut Connection,
         path: &Path,
         blobs: &dyn ReadBlob,
     ) -> Result<(), StorageError> {
-        self.apply_with(connection, path, blobs, || {})
+        self.migrate(connection, path, blobs, &NoSealedConfigs, || {})
+    }
+
+    /// [`Schema::apply`] for a database whose migrations re-encode sealed
+    /// values with `seals`: the control database.
+    pub(crate) fn apply_sealed(
+        &self,
+        connection: &mut Connection,
+        path: &Path,
+        seals: &dyn ResealConfigs,
+    ) -> Result<(), StorageError> {
+        self.migrate(connection, path, &NoBlobs, seals, || {})
     }
 
     /// [`Schema::apply`], which calls `migrating` once its transaction holds
@@ -1528,6 +1584,17 @@ impl Schema {
         connection: &mut Connection,
         path: &Path,
         blobs: &dyn ReadBlob,
+        migrating: impl FnOnce(),
+    ) -> Result<(), StorageError> {
+        self.migrate(connection, path, blobs, &NoSealedConfigs, migrating)
+    }
+
+    fn migrate(
+        &self,
+        connection: &mut Connection,
+        path: &Path,
+        blobs: &dyn ReadBlob,
+        seals: &dyn ResealConfigs,
         migrating: impl FnOnce(),
     ) -> Result<(), StorageError> {
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
@@ -1549,6 +1616,7 @@ impl Schema {
                 let migrated = match shipped.migration {
                     Migration::Sql(sql) => transaction.execute_batch(sql),
                     Migration::Code(migrate) => migrate(&transaction, blobs),
+                    Migration::Reseal(migrate) => migrate(&transaction, seals),
                 };
                 migrated.map_err(|source| StorageError::Migration {
                     path: path.to_owned(),
@@ -2082,6 +2150,7 @@ CREATE TABLE managed_operations (
 -- active account, a sealed secret per subscription account, and one
 -- subscription entry per owner and family. The active account is not a
 -- foreign key: removing an account clears it in the same transaction.
+-- providers.config: provider configuration format 2, sealed.
 CREATE TABLE providers (
   id                   TEXT PRIMARY KEY,
   owner_user_id        TEXT NOT NULL REFERENCES users (id),
@@ -2602,6 +2671,84 @@ mod tests {
         );
     }
 
+    /// Every API-key entry's sealed configuration of the schema before
+    /// provider configuration format 2 is sealed again by the vault's side,
+    /// a subscription entry's left alone, in the one transaction that
+    /// records the current version; one configuration it cannot read stops
+    /// the migration and leaves every row and the version as they were.
+    /// Planted defect this catches: an unreadable configuration skipped,
+    /// which leaves a format 1 value that no read of the new format decodes,
+    /// or a migration that commits the rows it resealed before it.
+    /// One small database each, milliseconds.
+    #[test]
+    fn sealed_configurations_are_resealed_together_or_not_at_all() {
+        struct Prefixed;
+        impl ResealConfigs for Prefixed {
+            fn provider_config(&self, id: &ProviderId, family: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
+                if sealed == b"unreadable" {
+                    return Err("the configuration does not open".to_owned());
+                }
+                Ok([format!("{id}/{family}:").as_bytes(), sealed].concat())
+            }
+        }
+        let released = |configs: &[(&str, &[u8])]| {
+            let (directory, path, connection) =
+                database(include_str!("schema/control-0.1.22-dev.profile-contexts.sql"));
+            connection.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+            for (id, config) in configs {
+                connection
+                    .execute(
+                        "INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, config, created_at)
+                         VALUES (?1, 'u', 'anthropic', 'api_key', 'Anthropic', ?2, 1)",
+                        rusqlite::params![id, config],
+                    )
+                    .unwrap();
+            }
+            connection
+                .execute(
+                    "INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, created_at)
+                     VALUES ('s', 'u', 'claude-code', 'subscription', 'Claude Code', 1)",
+                    [],
+                )
+                .unwrap();
+            (directory, path, connection)
+        };
+        let configs = |connection: &Connection| {
+            connection
+                .prepare("SELECT id, config FROM providers ORDER BY id")
+                .unwrap()
+                .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<Vec<u8>>>(1)?)))
+                .unwrap()
+                .collect::<rusqlite::Result<Vec<_>>>()
+                .unwrap()
+        };
+        let version = |connection: &Connection| -> i32 {
+            connection.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap()
+        };
+
+        let (_directory, path, mut connection) = released(&[("a", b"one"), ("b", b"two")]);
+        CONTROL.apply_sealed(&mut connection, &path, &Prefixed).unwrap();
+        assert_eq!(version(&connection), CONTROL.version());
+        assert_eq!(
+            configs(&connection),
+            [
+                ("a".to_owned(), Some(b"a/anthropic:one".to_vec())),
+                ("b".to_owned(), Some(b"b/anthropic:two".to_vec())),
+                ("s".to_owned(), None),
+            ]
+        );
+
+        let (_directory, path, mut connection) = released(&[("a", b"one"), ("b", b"unreadable")]);
+        let before = configs(&connection);
+        let refused = CONTROL.apply_sealed(&mut connection, &path, &Prefixed);
+        assert!(matches!(refused, Err(StorageError::Migration { .. })), "{refused:?}");
+        assert_eq!(
+            version(&connection),
+            version_of(include_str!("schema/control-0.1.22-dev.profile-contexts.sql"))
+        );
+        assert_eq!(configs(&connection), before);
+    }
+
     /// The attached hosts of a database that stored their names lose them
     /// and keep the order those names gave them, and a Fork's attached hosts
     /// read without theirs.
@@ -2709,6 +2856,7 @@ mod tests {
         let control = crate::control::ControlService::open(
             &path,
             std::sync::Arc::new(demi_shared_types::SystemClock),
+            std::sync::Arc::new(crate::providers::NoSealedConfigs),
         )
         .await
         .unwrap();

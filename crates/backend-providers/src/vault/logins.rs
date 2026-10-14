@@ -1162,6 +1162,7 @@ mod tests {
         let control = ControlService::open(
             &data.path().join("control.sqlite"),
             Arc::new(demi_shared_types::SystemClock),
+            std::sync::Arc::new(demi_backend_database::providers::NoSealedConfigs),
         )
         .await
         .unwrap();

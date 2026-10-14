@@ -185,7 +185,7 @@ impl World {
         harness.shards = Some(ShardPlacement::Inline);
         let (backend, master) = harness.start_set_up().await;
         let body = json!({
-            "source": "custom", "providerType": "limited", "label": "Limited", "apiKey": "k",
+            "source": "family", "providerType": "limited", "label": "Limited", "apiKey": "k",
             "models": [configured(4_000)]
         });
         let provider = entry(&backend, &master, body).await;

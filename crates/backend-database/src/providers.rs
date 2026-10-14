@@ -30,6 +30,28 @@ pub struct CatalogRecord {
     pub catalog: ProviderModelList,
 }
 
+/// What the control migration that re-encodes the API-key entries' sealed
+/// configurations (`storage.md` § Schemas and migrations) works with: the
+/// vault, which alone holds the key they are sealed under and knows their
+/// format.
+pub trait ResealConfigs: Send + Sync {
+    /// Entry `id` of `family`'s configuration `sealed`, opened, decoded and
+    /// checked in the format the schema before names, and sealed again in
+    /// the format of the schema after it; an error, which never quotes the
+    /// configuration, says why it cannot be read.
+    fn provider_config(&self, id: &ProviderId, family: &str, sealed: &[u8]) -> Result<Vec<u8>, String>;
+}
+
+/// A database that holds no sealed configuration a migration re-encodes,
+/// such as a conversation's.
+pub struct NoSealedConfigs;
+
+impl ResealConfigs for NoSealedConfigs {
+    fn provider_config(&self, id: &ProviderId, _: &str, _: &[u8]) -> Result<Vec<u8>, String> {
+        Err(format!("no key opens the configuration of entry {id} here"))
+    }
+}
+
 /// A `providers` row: an entry with its configuration still sealed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderRow {
@@ -159,23 +181,6 @@ impl ControlService {
                 "SELECT {PROVIDER_COLUMNS} FROM providers WHERE owner_user_id = ?1 ORDER BY created_at, rowid"
             ))?;
             let mut rows = statement.query([owner.as_str()])?;
-            let mut providers = Vec::new();
-            while let Some(row) = rows.next()? {
-                providers.push(provider_row(row)?);
-            }
-            Ok(providers)
-        })
-        .await
-    }
-
-    /// Every API-key entry of the instance, whoever owns it, for the vault's
-    /// migration of their sealed configurations.
-    pub async fn api_key_providers(&self) -> Result<Vec<ProviderRow>, StorageError> {
-        self.call(move |connection, _| {
-            let mut statement = connection.prepare_cached(&format!(
-                "SELECT {PROVIDER_COLUMNS} FROM providers WHERE credential_kind = 'api_key' ORDER BY created_at, rowid"
-            ))?;
-            let mut rows = statement.query([])?;
             let mut providers = Vec::new();
             while let Some(row) = rows.next()? {
                 providers.push(provider_row(row)?);

@@ -212,7 +212,61 @@ test('adding a compatible API sends only its kind, and its protocol changes by f
   expect(sent).toEqual([{ providerType: 'openai', wireApi: 'chat-completions' }, { providerType: 'anthropic' }])
 })
 
-test('a model added before its context window is known stays on the page until Edit Model gives it one', async () => {
+test('a model Custom adds is saved at once without a context window, and a reload keeps it', async () => {
+  const sent: Record<string, unknown>[] = []
+  write = async (body) => {
+    sent.push(body)
+    // The backend keeps the list, and its catalog lists it as configured.
+    const models = body.models as { id: string; displayName: string; contextWindow: number | null }[]
+    state.providers[0]!.models = models as never
+    catalogProviders = [{
+      providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
+      warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
+      availability: { type: 'available' },
+      models: models.map((model) => ({
+        id: model.id, displayName: model.displayName, description: null, contextWindow: model.contextWindow,
+        outputLimit: null, supportsTools: true, acceptedExtensions: null, supportsReasoning: false,
+        supportedThinkingEfforts: [], canDisableThinking: null, serviceTiers: [], defaultServiceTierId: null, cost: null,
+        selection: {
+          providerId: 'configured', thinking: null, serviceTierId: null,
+          model: { id: model.id, name: model.displayName, contextWindow: 0, outputLimit: null, thinking: [], acceptedExtensions: null },
+        },
+      })),
+    }]
+    return Response.json({})
+  }
+  const settings = useProviderSettings()
+  const entry = () => settings.providers.find((provider) => provider.id === 'configured')!
+  await settings.saveModel(entry(), {
+    id: 'my-model', name: 'my-model', contextWindow: null, outputLimit: null, efforts: [], extensions: null, fastTier: null,
+  }, null)
+  await idle()
+  expect(sent).toEqual([{
+    models: [{
+      id: 'my-model', displayName: 'my-model', contextWindow: null, outputLimit: null,
+      thinkingEfforts: [], acceptedExtensions: null, fastTier: null,
+    }],
+  }])
+
+  // A new page reads it back from the backend, its window still unknown.
+  useProduct().stop()
+  disposePinia(pinia)
+  channels.restore()
+  pinia = createPinia()
+  setActivePinia(pinia)
+  channels = playChannels()
+  useProduct().start()
+  channels.last().connect(state)
+  const reloaded = useProviderSettings()
+  await waitFor(
+    () => reloaded.providers.find((provider) => provider.id === 'configured')?.models.length === 1,
+    () => 'the saved model was not listed after the reload',
+  )
+  expect(reloaded.providers.find((provider) => provider.id === 'configured')!.models.map((model) => [model.id, model.contextWindow]))
+    .toEqual([['my-model', null]])
+})
+
+test('emptying a saved key or endpoint and leaving it removes them', async () => {
   const settings = useProviderSettings()
   const sent: Record<string, unknown>[] = []
   write = async (body) => {
@@ -220,23 +274,11 @@ test('a model added before its context window is known stays on the page until E
     return Response.json({})
   }
   const entry = () => settings.providers.find((provider) => provider.id === 'configured')!
-  const custom = {
-    id: 'my-model', name: 'my-model', contextWindow: null, outputLimit: null, efforts: [], extensions: [], fastTier: null,
-  }
-  // Custom adds the model at once: it is in the list, unknown, and nothing is sent yet.
-  await settings.saveModel(entry(), custom, null)
-  expect(entry().models.map((model) => [model.id, model.contextWindow])).toEqual([['my-model', null]])
-  expect(sent).toEqual([])
-
-  // Edit Model's Save with a context window and a new id saves the list.
-  await settings.saveModel(entry(), { ...custom, id: 'mine', contextWindow: 128_000 }, entry().models[0]!)
+  settings.change(entry(), { apiKey: '' })
   await idle()
-  expect(sent).toEqual([{
-    models: [{
-      id: 'mine', displayName: 'my-model', contextWindow: 128_000, outputLimit: null,
-      thinkingEfforts: [], acceptedExtensions: [], fastTier: null,
-    }],
-  }])
+  settings.change(entry(), { baseUrl: '' })
+  await idle()
+  expect(sent).toEqual([{ apiKey: null }, { baseUrl: null }])
 })
 
 test('the page shows an entry’s kind and effective endpoint as the read model says them, and a compatible API’s list is its own', async () => {
