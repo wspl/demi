@@ -1,3 +1,6 @@
+<!-- Instructions for the coding agents that work in this repository. Human
+contributors start with CONTRIBUTING.md. -->
+
 # Working Principles
 
 - The system serves the interface, and the interface serves the user; never the reverse. Design the interaction first, by the principle of least astonishment and the industry's consensus, with a precedent in mainstream software (browsers, Finder, macOS's own apps); then design the system to deliver it. An interaction that follows from what the mechanism makes easy, or that no mainstream software has, is wrong however correct its mechanism is.

@@ -8,8 +8,9 @@ backported maintenance branches yet.
 ## Reporting a vulnerability
 
 Please report security issues **privately** — do not open a public issue or PR
-that discloses the problem. If the repository is on GitHub, use a private security
-advisory ("Report a vulnerability"); otherwise contact the maintainers directly.
+that discloses the problem. Use GitHub's private security advisory on this
+repository ("Report a vulnerability" under Security), or write to
+[support@demi.sh](mailto:support@demi.sh).
 Include a description, affected versions/packages, and a reproduction if possible.
 We aim to acknowledge reports promptly and coordinate a fix and disclosure.
 
