@@ -227,8 +227,10 @@ The conversation's agents attach the devices their work needs, with
 no way to attach one by hand, and the user detaches one from the header's
 menu ([Where a conversation runs](../product/product.md#where-a-conversation-runs)).
 Each device appears once across the primary and attached bindings.
-Aliases begin with device names, or the name `demi host attach --name`
-gives, and use numeric suffixes for collisions. Choosing an attached device
+An attached host goes by its device's name, the one the user sees in the
+header's menu and in Settings, with a numeric suffix when two names collide;
+nobody names it otherwise, so the user never meets a host under a name the
+agent made up, such as `lark` for `dc03-pff-200`. Choosing an attached device
 as the primary Host exchanges the two.
 
 `demi host list` reports accessible primary and attached hosts.
@@ -272,8 +274,8 @@ conversation:
 | `demi conversation create-project <name> [<directory>]` | Makes a project of a directory on the primary Host, its shell's directory by default, and moves this conversation into it | `conversation.organize` |
 | `demi host devices` | Lists the user's paired devices and the Cloud, with their states | `host.devices` |
 | `demi host install-command [--system linux\|macos\|windows]` | Prints the command that installs the runner on a computer, as Add Device shows it; it holds no credential | none |
-| `demi host pair <code> [--name <alias>]` | Pairs the computer whose installer shows `<code>` with the user's account and attaches it to this conversation ([Installation, pairing and removal](runner.md#installation-pairing-and-removal)) | `host.devices` |
-| `demi host attach <device> [--name <alias>]` | Attaches a device to this conversation | `host.devices` |
+| `demi host pair <code>` | Pairs the computer whose installer shows `<code>` with the user's account and attaches it to this conversation ([Installation, pairing and removal](runner.md#installation-pairing-and-removal)) | `host.devices` |
+| `demi host attach <device>` | Attaches a device to this conversation | `host.devices` |
 | `demi host detach <host>` | Detaches one | `host.devices` |
 
 The categories:
