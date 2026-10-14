@@ -481,6 +481,7 @@ prompt, on the conversation's Host with the root's commands, and its
 | Name | The `--profile` value: 1 to 40 lowercase letters, digits and hyphens, starting with a letter, unique among the user's profiles. `default` is reserved for the inherit profile below, and no profile can take it. |
 | Description | When the agent should use the profile: one line of 1 to 500 characters, which `demi agent profiles list` shows the model ([What the model sees](#what-the-model-sees)). |
 | Model | Inherit, the parent's model selection; or model settings of the user's own: a provider entry of the user's scope, one model of its catalog, an effort the model lists or thinking off, and a service tier, with the meanings of a conversation's ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)). The effort is always explicit: a profile saved without one takes the first effort the model lists. The entry may be the parent's or any other. |
+| Context | Only with a model of the profile's own: the user's [context limit](../providers/models.md#context-limit) for that model, the default; or the profile's own choice of what the model offers, its full window, 500K, 300K or 200K, as the model menu's Context row offers them. A profile's choice applies to its children alone and replaces the user's limit for them; it is kept while the model's window offers it, else the full window is used, as a stored limit is. For example, a profile on a model of 1,000,000 tokens with Context 500K gives its children a window of 500,000 tokens, which their compaction and their usage indicator use, while the user's conversations on that model keep 1M. |
 | Instructions | None, or text of 1 to 65,536 characters added to the child's system prompt after the product's, which it never replaces: the child is always Demi, with Demi's identity, harness guide, tool rules, capability index and model identity, and the profile says what this kind of subagent is for and how it should work, such as *Read and report; never change a file* ([System prompt](system-prompt.md)). |
 | Spawning | Whether children of this profile may spawn children of their own. |
 | Enabled | Whether the profile can be used now. A new profile starts enabled; the user turns it off to keep its configuration without letting agents use it. |
@@ -536,7 +537,9 @@ the composer's model menu as the user has it now.
 The model options are `--model <id>`, a model `demi providers list` lists, with
 `--provider <entry>`, the entry's name or id, needed only when more than one
 entry offers that id; `--effort <effort|off>` and `--tier <tier|default>`;
-and, on `edit`, `--model parent`, which makes the profile inherit the
+`--context <full|500K|300K|200K|default>`, where `default` follows the user's
+limit, refused without a model of the profile's own or for a limit the model
+does not offer; and, on `edit`, `--model parent`, which makes the profile inherit the
 parent's model again. A profile created without `--model` inherits it. The
 checks are the settings page's, with the same words: a name that is taken or
 malformed, `default`, an effort or tier the model does not offer, a model the
@@ -574,6 +577,7 @@ profiles:
     description: Use for finding code and call sites; it reports and changes nothing.
     model: claude-haiku-4-5
     effort: low
+    context: 200K
     instructions: |
       Read and report where things are. Never change a file.
   - id: reviewer
