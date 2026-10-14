@@ -6,6 +6,7 @@ pub use demi_runner_protocol::files::{
     DirectoryEntry, FileWatchMessage, FileWatchRequest, MAX_OUTSIDE_SUBSCRIPTIONS,
     MAX_PAGE_SUBSCRIPTIONS, PageSubscription, RefusedReason, SubscriptionKind,
 };
+pub use demi_runner_protocol::wire::{GitBranches, GitCommit, GitLog};
 use demi_runner_protocol::wire::GitChanges;
 use demi_shared_types::Nullable;
 use garde::Validate;
@@ -282,23 +283,73 @@ pub struct ChangesQuery {
     pub directory: Option<AbsolutePath>,
 }
 
-/// `?path=&directory=` of a working tree file: `path` is relative to
-/// `directory`, the conversation's execution directory when omitted.
+/// `?path=&directory=&commit=` of a working tree file: `path` is relative to
+/// `directory`, the conversation's execution directory when omitted; with
+/// `commit`, the file as that commit has it against its first parent.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct TreeFileQuery {
     pub path: TreePath,
     #[serde(default)]
     pub directory: Option<AbsolutePath>,
+    #[serde(default)]
+    pub commit: Option<CommitName>,
 }
 
-/// `?path=&directory=&download=` of the committed side of a working tree file.
+/// `?path=&directory=&commit=&download=` of the committed side of a working
+/// tree file: the last commit's, or `commit`'s.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct CommittedFileQuery {
     pub path: TreePath,
     #[serde(default)]
     pub directory: Option<AbsolutePath>,
     #[serde(default)]
+    pub commit: Option<CommitName>,
+    #[serde(default)]
     pub download: StrictBool,
+}
+
+/// `?directory=&branch=&after=` of a page of a branch's history: HEAD's
+/// without `branch`, from the newest without `after` (`web-api.md` § File
+/// text and working tree changes).
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+pub struct LogQuery {
+    #[serde(default)]
+    pub directory: Option<AbsolutePath>,
+    #[serde(default)]
+    pub branch: Option<NonEmptyPath>,
+    #[serde(default)]
+    pub after: Option<CommitName>,
+}
+
+/// `?directory=&commit=` of one commit.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct CommitQuery {
+    #[serde(default)]
+    pub directory: Option<AbsolutePath>,
+    pub commit: CommitName,
+}
+
+/// A commit's id or an abbreviation of it: 7 to 64 hex digits.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[serde(try_from = "String")]
+pub struct CommitName(String);
+
+impl CommitName {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl TryFrom<String> for CommitName {
+    type Error = &'static str;
+
+    fn try_from(name: String) -> Result<Self, &'static str> {
+        if (7..=64).contains(&name.len()) && name.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            Ok(Self(name))
+        } else {
+            Err("commit must be 7 to 64 hex digits")
+        }
+    }
 }
 
 /// A nonempty query text, such as a path or an ETag.

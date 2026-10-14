@@ -29,7 +29,7 @@ const messageFiles = galleryConversationFiles(workspace.source, ({ path, line, r
   productWould(path === ''
     ? `Open the Folder ${baseName(root ?? workspace.root)}`
     : `Open ${baseName(path)}${line === null ? '' : ` at Line ${line}`}${where}`)
-})
+}, ({ commit }) => productWould(`Show Commit ${commit} in Change`))
 provideMessageFiles(() => ({ ...messageFiles, cwd: workspace.root }))
 const mediaViewer = provideMediaViewer()
 const route = useRoute()

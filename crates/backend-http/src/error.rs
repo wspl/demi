@@ -222,6 +222,20 @@ impl ApiError {
         }
     }
 
+    /// A Host's failure of a history read (`web-api.md` § File text and
+    /// working tree changes): a commit or a branch the repository does not
+    /// have is 404 `not_found`, and otherwise as a working-tree operation's.
+    pub(crate) fn history(error: HostError) -> Self {
+        if error.code() != Some("ENOENT") {
+            return Self::working_tree(error);
+        }
+        let answered = Self::new(StatusCode::NOT_FOUND, ErrorCode::NotFound, error.message);
+        match error.read_at {
+            Some(read_at) => answered.with_read_at(read_at),
+            None => answered,
+        }
+    }
+
     /// A Host's failure of a working-tree operation: the runner's git codes,
     /// and otherwise as a file operation's.
     pub(crate) fn working_tree(error: HostError) -> Self {
@@ -236,6 +250,7 @@ impl ApiError {
             Some("not_repository") => {
                 Self::new(StatusCode::CONFLICT, ErrorCode::NotRepository, message)
             }
+            Some("ambiguous") => Self::new(StatusCode::CONFLICT, ErrorCode::Ambiguous, message),
             Some("too_large") => Self::new(
                 StatusCode::PAYLOAD_TOO_LARGE,
                 ErrorCode::FileTooLarge,

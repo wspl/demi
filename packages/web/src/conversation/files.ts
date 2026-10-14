@@ -2,13 +2,14 @@ import { computed, effectScope, onScopeDispose, watch } from 'vue'
 import { useOnScreen } from '@demicodes/web-ui/files/on-screen'
 import { emptyChangeSet, type ChangeSetSource } from '@demicodes/web-ui/files/changes'
 import { findRequest } from '@demicodes/web-ui/files/request-changes'
-import { keptChangeSet } from '@demicodes/web-ui/files/kept-source'
+import { keptChangeSet, keptHistory } from '@demicodes/web-ui/files/kept-source'
+import type { CommitHistorySource } from '@demicodes/web-ui/files/history'
 import type { ConversationFileService } from '@demicodes/web-ui/plugins/page'
 import type { FileBrowserSource } from '@demicodes/web-ui/files/types'
 import { conversationFileRoutes, fileSource, hostFiles } from '../api/files'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
-import { readEditCopies, workingTreeReads } from './changes'
+import { historyReads, readEditCopies, workingTreeReads } from './changes'
 import { ConversationWatch } from './file-watch'
 import { directRoute } from '../direct'
 import { directFileReads, directWatchLink } from '../direct/operations'
@@ -147,6 +148,27 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     }
     return set
   }
+  // One history per working tree the views show, as for its changes.
+  const histories = new Map<string, CommitHistorySource>()
+  function treeHistory(directory: string | undefined): CommitHistorySource | null {
+    const host = deviceId.value
+    const conversationRoot = root.value
+    if (!conversationRoot || host === null) {
+      return null
+    }
+    const tree = directory ?? conversationRoot
+    const key = `${host}\0${tree}`
+    let history = histories.get(key)
+    if (!history) {
+      const files = hostFiles(host)
+      history = keptHistory(historyReads(conversationId, tree === conversationRoot ? undefined : tree), tree, {
+        files,
+        watch: watcher.channel(host, files),
+      })
+      histories.set(key, history)
+    }
+    return history
+  }
 
   const service: ConversationFileService = {
     get workspace() {
@@ -158,6 +180,7 @@ export function conversationFiles(conversationId: string): ConversationFileServi
     changes(directory): ChangeSetSource {
       return treeChanges(directory) ?? emptyChangeSet
     },
+    history: treeHistory,
     edit: readEditCopies,
     request(node, request) {
       // The conversation's transcripts as the page holds them: its own agent's and each subagent's.

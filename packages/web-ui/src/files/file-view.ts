@@ -10,3 +10,9 @@ export const TREE_MOTION_MS = 200
 
 /** The least the view keeps beside a docked tree, in px; a narrower frame hides the tree instead. */
 export const CONTENT_MIN_WIDTH = 320
+
+/** The commit list's height under the Change view's files, in px: what it opens at, and the least each pane keeps. */
+export const COMMITS_HEIGHT = {
+  min: 96,
+  default: 240,
+} as const

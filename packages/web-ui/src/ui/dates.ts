@@ -41,6 +41,27 @@ export function formatUntil(timestamp: string, now: Date | number): string {
   return moment.isAfter(now) ? moment.from(now) : 'in a few seconds'
 }
 
+/**
+ * How long ago a moment was, as a list of commits says it beside each: "now"
+ * within a minute, then "5m", "2h", "3d", "4w", then the day it was, "Sep
+ * 2", with the year when it is not `now`'s.
+ */
+export function formatAge(timestamp: string, now: Date | number): string {
+  const moment = dayjs(timestamp)
+  const past = Math.max(0, dayjs(now).diff(moment))
+  if (past < MINUTE_MS)
+    return 'now'
+  if (past < HOUR_MS)
+    return `${Math.floor(past / MINUTE_MS)}m`
+  if (past < DAY_MS)
+    return `${Math.floor(past / HOUR_MS)}h`
+  if (past < WEEK_MS)
+    return `${Math.floor(past / DAY_MS)}d`
+  if (past < 5 * WEEK_MS)
+    return `${Math.floor(past / WEEK_MS)}w`
+  return moment.format(byYear(moment, now instanceof Date ? now : new Date(now), MONTH_DAY, MONTH_DAY_YEAR))
+}
+
 /** A day in the interface's English: "October 7, 2026". */
 export function formatDay(timestamp: string): string {
   return dayjs(timestamp).format('MMMM D, YYYY')

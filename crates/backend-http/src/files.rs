@@ -23,7 +23,7 @@ use demi_runner_protocol::files::protected_path;
 use demi_shared_types::preview_media_type;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::{
-    AbsolutePath, ChangeSides, ChangesQuery, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryQuery,
+    AbsolutePath, ChangeSides, ChangesQuery, CommitName, CommitQuery, CommittedFileQuery, CreateDirectory, CreatedDirectory, Directory, DirectoryQuery, LogQuery,
     ExistingFiles, FileExistence, FileQuery, FileText, RawFileQuery, RemoveQuery, TreeFileQuery,
     UploadQuery, WorkingTreeChanges,
 };
@@ -436,22 +436,132 @@ pub(super) async fn changes(
     Ok(read_answer(&read_at, unless_held(&headers, &changes)))
 }
 
+/// The local branches of the working tree's repository and the one checked
+/// out (`web-api.md` § File text and working tree changes).
+pub(super) async fn branches(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    QueryParams(ChangesQuery { directory }): QueryParams<ChangesQuery>,
+) -> Result<Response, ApiError> {
+    let (branches, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
+        host.host
+            .git_branches(&tree_root(host, directory))
+            .await
+            .map_err(ApiError::history)
+    })
+    .await?;
+    Ok(read_answer(&read_at, unless_held(&headers, &branches)))
+}
+
+/// One page of a branch's first-parent history.
+pub(super) async fn log(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    QueryParams(LogQuery { directory, branch, after }): QueryParams<LogQuery>,
+) -> Result<Response, ApiError> {
+    let (log, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
+        host.host
+            .git_log(
+                &tree_root(host, directory),
+                branch.as_ref().map(|branch| branch.as_str()),
+                after.as_ref().map(CommitName::as_str),
+            )
+            .await
+            .map_err(ApiError::history)
+    })
+    .await?;
+    Ok(read_answer(&read_at, unless_held(&headers, &log)))
+}
+
+/// One commit: its files against its first parent and the branches it is on.
+pub(super) async fn commit(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    QueryParams(CommitQuery { directory, commit }): QueryParams<CommitQuery>,
+) -> Result<Response, ApiError> {
+    let (commit, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
+        host.host
+            .git_commit(&tree_root(host, directory), commit.as_str())
+            .await
+            .map_err(ApiError::history)
+    })
+    .await?;
+    Ok(read_answer(&read_at, unless_held(&headers, &commit)))
+}
+
+/// A commit's file's two sides as text: its first parent's, empty for a
+/// file the commit added or a root commit, and the commit's, empty for a
+/// file it deleted.
+async fn commit_sides(
+    host: &ConversationHost,
+    root: &str,
+    path: &str,
+    commit: &str,
+) -> Result<(ChangeSides, Option<ReadAt>), ApiError> {
+    // The page after the commit starts with its first parent.
+    let (log, log_at) = host
+        .host
+        .git_log(root, None, Some(commit))
+        .await
+        .map_err(ApiError::history)?;
+    let parent = log.commits.first().map(|parent| parent.id.clone());
+    let (before, after) = tokio::join!(
+        async {
+            match &parent {
+                Some(parent) => Some(host.host.git_show(root, path, Some(parent)).await),
+                None => None,
+            }
+        },
+        host.host.git_show(root, path, Some(commit)),
+    );
+    let side = |read: Result<(bytes::Bytes, ReadAt), HostError>| match read {
+        Ok((bytes, _)) => text_of(Vec::from(bytes)).map_err(ApiError::from),
+        Err(error) if error.code() == Some("ENOENT") => Ok(String::new()),
+        Err(error) => Err(ApiError::working_tree(error)),
+    };
+    let read_at = [Some(&log_at), before.as_ref().and_then(|read| read.as_ref().ok().map(|(_, at)| at)), after.as_ref().ok().map(|(_, at)| at)]
+        .into_iter()
+        .flatten()
+        .cloned()
+        .reduce(ReadAt::earlier);
+    let answered = |error: ApiError| match &read_at {
+        Some(read_at) => error.with_read_at(read_at.clone()),
+        None => error,
+    };
+    let original = match before {
+        Some(read) => side(read).map_err(answered)?,
+        None => String::new(),
+    };
+    let modified = side(after).map_err(answered)?;
+    Ok((ChangeSides { original, modified }, read_at))
+}
+
 /// One changed file's two sides as text: the last commit's, empty for a
-/// new file, and the working tree's, empty for a deleted one.
+/// new file, and the working tree's, empty for a deleted one; or with
+/// `commit`, that commit's change of it.
 pub(super) async fn changed_file(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     headers: HeaderMap,
     Path(id): Path<String>,
-    QueryParams(TreeFileQuery { path, directory }): QueryParams<TreeFileQuery>,
+    QueryParams(TreeFileQuery { path, directory, commit }): QueryParams<TreeFileQuery>,
 ) -> Result<Response, ApiError> {
     let (sides, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
+        if let Some(commit) = commit {
+            return commit_sides(host, &tree_root(host, directory), path.as_str(), commit.as_str()).await;
+        }
         // The two sides do not wait for each other (`runner.md` § Host
         // operations).
         let root = tree_root(host, directory);
         let working = format!("{root}/{}", path.as_str());
         let (committed, working) = tokio::join!(
-            host.host.git_show(&root, path.as_str()),
+            host.host.git_show(&root, path.as_str(), None),
             read_working_side(&host.host, &working),
         );
         // The answer holds what both reads hold from the earlier one on.
@@ -524,20 +634,21 @@ fn unless_held(headers: &HeaderMap, value: &impl serde::Serialize) -> Response {
         .into_response()
 }
 
-/// A changed file's last committed bytes, by range. Git's copy is read whole
-/// on the runner and is at most 8 MiB, so it is held here and served whole.
+/// A changed file's last committed bytes, or a commit's, by range. Git's
+/// copy is read whole on the runner and is at most 8 MiB, so it is held here
+/// and served whole.
 pub(super) async fn committed(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     method: Method,
     headers: HeaderMap,
     Path(id): Path<String>,
-    QueryParams(CommittedFileQuery { path, directory, download }): QueryParams<CommittedFileQuery>,
+    QueryParams(CommittedFileQuery { path, directory, commit, download }): QueryParams<CommittedFileQuery>,
 ) -> Result<Response, ApiError> {
     let tree_path = path.as_str().to_owned();
     let (bytes, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
         host.host
-            .git_show(&tree_root(host, directory), &tree_path)
+            .git_show(&tree_root(host, directory), &tree_path, commit.as_ref().map(CommitName::as_str))
             .await
             .map_err(ApiError::working_tree)
     })

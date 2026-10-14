@@ -1,7 +1,8 @@
+import { z } from 'zod'
 import type { ReadCallChange } from '@demicodes/web-ui/files/changes'
-import type { ChangeReads } from '@demicodes/web-ui/files/kept-source'
+import type { ChangeReads, HistoryReads } from '@demicodes/web-ui/files/kept-source'
 import { ApiError, apiRequest, readResponse } from '../api/client'
-import { changeSidesSchema, workingTreeChangesSchema } from '../api/generated/web-api'
+import { changeSidesSchema, gitBranchesSchema, gitCommitSchema, gitLogSchema, workingTreeChangesSchema } from '../api/generated/web-api'
 import { fileBrowserError, rawFileContents, readAtOf } from '../api/files'
 
 /**
@@ -53,6 +54,35 @@ export function workingTreeReads(conversationId: string, directory?: string): Ch
       }
     },
     committed: rawFileContents(`/conversations/${id}/changes/raw`, tree),
+  }
+}
+
+/**
+ * How the page reads the history of the repository a working tree is in,
+ * the conversation's execution directory or the `directory` a child works
+ * in, each a request (`web-api.md` § File text and working tree changes):
+ * its branches, a page of a branch's commits, one commit, one of its files'
+ * two sides, and a commit's files' bytes.
+ */
+export function historyReads(conversationId: string, directory?: string): HistoryReads {
+  const id = encodeURIComponent(conversationId)
+  const tree: Record<string, string> = directory === undefined ? {} : { directory }
+  async function read<T>(route: string, query: Record<string, string>, schema: z.ZodType<T>) {
+    try {
+      const search = new URLSearchParams({ ...query, ...tree })
+      const response = await apiRequest(`/conversations/${id}/changes/${route}${search.size > 0 ? `?${search}` : ''}`)
+      return { value: await readResponse(response, schema), readAt: readAtOf(response.headers) }
+    } catch (error) {
+      // A branch deleted or a commit the repository lacks is an answer, not found.
+      throw fileBrowserError(error)
+    }
+  }
+  return {
+    branches: () => read('branches', {}, gitBranchesSchema),
+    log: (branch, after) => read('log', { ...(branch === null ? {} : { branch }), ...(after === '' ? {} : { after }) }, gitLogSchema),
+    commit: (commit) => read('commit', { commit }, gitCommitSchema),
+    sides: (commit, path) => read('file', { commit, path }, changeSidesSchema),
+    contents: (commit) => rawFileContents(`/conversations/${id}/changes/raw`, { ...tree, commit }),
   }
 }
 
