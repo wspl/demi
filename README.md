@@ -52,11 +52,22 @@ You need:
   Cloudflare then serves HTTPS, and the server needs no certificate and no
   proxy of its own.
 
-Then run, with your domain:
+Then run the installer on the server:
+
+```sh
+curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
+```
+
+It asks for your domain; whether every user uses the admin's model providers
+(`shared`) or each user sets up their own (`isolated`); and the address to
+listen on: `0.0.0.0:80` for Cloudflare's proxy.
+
+To install without questions, for example from a script or by an AI agent,
+pass every answer as a parameter:
 
 ```sh
 curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh \
-  | sudo bash -s -- --domain demi.example.com --listen 0.0.0.0:80
+  | sudo bash -s -- --domain demi.example.com --mode isolated --listen 0.0.0.0:80
 ```
 
 With Flexible, Cloudflare reaches the server over plain HTTP. To encrypt that
