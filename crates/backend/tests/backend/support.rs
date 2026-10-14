@@ -889,6 +889,13 @@ impl TestBackend {
         SyncChannel { socket }
     }
 
+    /// Waits until `session`'s user's login `login` has ended, whatever a
+    /// page's channel is held at.
+    pub async fn until_login_ended(&self, session: &Session, login: &str) {
+        let login = demi_web_api_protocol::ids::LoginId::try_from(login.to_owned()).unwrap();
+        self.backend.until_login_ended(&session.user.id, &login).await;
+    }
+
     /// The file gate of `session`'s user's conversation `conversation`.
     pub async fn file_gate(
         &self,

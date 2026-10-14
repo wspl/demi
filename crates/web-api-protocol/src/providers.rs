@@ -553,7 +553,11 @@ pub enum LoginState {
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<String>")]
         code_error: Option<String>,
-        expires_at: Timestamp,
+        /// Null while the login is `preparing`, until it knows its kind and
+        /// so its lifetime, which counts from its start.
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<Timestamp>")]
+        expires_at: Option<Timestamp>,
     },
     /// The login stored its account: `credentialId`, which is the entry's
     /// active account only when the entry had none.

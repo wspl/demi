@@ -383,7 +383,14 @@ function submitCode(code: string) {
   if (phase?.kind !== 'code') {
     return
   }
-  login.value!.phase = { kind: 'code', url: phase.url, expiresAt: phase.expiresAt, submitted: true }
+  // The sign-in takes the code at once, as the product's answers its number.
+  login.value!.phase = {
+    kind: 'code',
+    url: phase.url,
+    expiresAt: phase.expiresAt,
+    submitted: true,
+    taken: (phase.taken ?? 0) + 1,
+  }
   loginTimer = window.setTimeout(() => {
     if (login.value?.phase.kind !== 'code') {
       return

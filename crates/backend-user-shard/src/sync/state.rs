@@ -36,6 +36,11 @@ impl Shard {
         reader: &TokenHash,
     ) -> Result<ProductState, StateError> {
         let services = self.services();
+        // The logins before the providers: a login that completed after
+        // this read is learned from the logins part, and its account is
+        // then read below or with that part (`web-api.md` § Subscription
+        // logins).
+        let logins = services.logins.listed(self.user());
         let preferences = services.control.preferences(self.user().clone()).await?;
         let providers = self.provider_states(&user).await?;
         let workspaces = services.control.workspaces(self.user().clone()).await?;
@@ -43,7 +48,6 @@ impl Shard {
         let mut conversations = self.conversation_summaries(false).await?;
         conversations.extend(self.conversation_summaries(true).await?);
         let cloud = self.cloud_shard().cloud_status().await?;
-        let logins = services.logins.listed(self.user());
         let runner_release = match services.runner_releases.current().await {
             Ok(release) => release.map(|release| release.release),
             Err(error) => {
@@ -222,6 +226,8 @@ impl Shard {
             }
         }))
         .await;
+        #[cfg(feature = "testing")]
+        services.syncs.pass(super::SyncStep::Providers).await;
         Ok(providers)
     }
 }
