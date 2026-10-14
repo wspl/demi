@@ -15,7 +15,7 @@ use crate::devices::{DeviceDto, InstallCommands, StunUrl};
 use crate::ids::ConversationId;
 use crate::passkeys::{PasskeyDto, PasskeyList};
 use crate::plugins::PluginEntry;
-use crate::providers::ProviderState;
+use crate::providers::{ListedLogin, ProviderState};
 use crate::sessions::SessionDto;
 use crate::settings::{InstanceMode, Preferences};
 use crate::subagents::SubagentSettings;
@@ -58,6 +58,9 @@ pub struct ProductState {
     pub runner_release: Option<String>,
     pub conversations: Vec<ConversationSummary>,
     pub cloud: CloudStatus,
+    /// The user's sign-ins that run or ended within ten minutes, in the
+    /// order they started, as the `logins` message carries them.
+    pub logins: Vec<ListedLogin>,
     pub subagents: SubagentSettings,
     /// The user's personal instructions; empty when they have none.
     pub instructions: String,
@@ -153,6 +156,13 @@ pub enum SyncEvent {
     },
     Cloud {
         cloud: CloudStatus,
+    },
+    /// A sign-in of the user's started, moved to another stage, showed its
+    /// link or code, took or refused a code, completed, failed, was
+    /// cancelled or was dropped: the user's sign-ins that run or ended
+    /// within ten minutes.
+    Logins {
+        logins: Vec<ListedLogin>,
     },
     /// The user turned subagents on or off, or created, changed, enabled,
     /// disabled or deleted a profile.

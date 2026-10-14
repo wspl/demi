@@ -318,21 +318,36 @@ export interface SettingsModelEditor {
   error: ShownError | null
 }
 
+/**
+ * What a sign-in waits for before it has a link or a code to show
+ * (`claude-code.md` § Accounts and sign-in): the vendor, the user's Cloud,
+ * the command-line tool's install on it, or its start.
+ */
+export type ProviderLoginStage = 'preparing' | 'waiting_for_cloud' | 'installing' | 'starting' | 'waiting_for_user'
+
 export type ProviderLoginPhase =
-  | { kind: 'starting' }
+  | { kind: 'starting'; stage: ProviderLoginStage }
   | {
       kind: 'device'
       url: string
       code: string
-      expiresIn?: string
+      /** When the sign-in ends unless the user finishes it, on the page's clock, which the dialog counts down to. */
+      expiresAt?: number
     }
   | {
       /** The vendor's own sign-in: the user signs in at `url` and pastes back the code the page shows. */
       kind: 'code'
       url: string
-      expiresIn?: string
+      /** As a device sign-in's. */
+      expiresAt?: number
       /** The pasted code is with the sign-in, which is finishing. */
       submitted: boolean
+      /**
+       * The number the sign-in gave the code this page pasted last, once it
+       * answered; a new one empties the field, which nothing else does while
+       * the sign-in waits for a code, another page's paste included.
+       */
+      taken?: number
       /** Why the sign-in refused the last code, in the vendor's words; it waits for another. */
       error?: SentenceText
     }

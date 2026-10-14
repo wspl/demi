@@ -869,6 +869,15 @@ impl TestBackend {
         self.backend.hold_hellos(step)
     }
 
+    /// Holds every failed turn's resume at its retry time at `step` from now
+    /// on, until the hold is released or dropped.
+    pub fn hold_retries(
+        &self,
+        step: demi_backend_user_shard::holds::RetryStep,
+    ) -> demi_backend_user_shard::holds::StepHold {
+        self.backend.hold_retries(step)
+    }
+
     /// Holds every page's synchronization channel at `step` from now on,
     /// until the hold is released or dropped.
     pub fn hold_sync(
@@ -887,6 +896,13 @@ impl TestBackend {
         headers.insert("origin", self.url.parse().unwrap());
         let (socket, _) = tokio_tungstenite::connect_async(request).await.unwrap();
         SyncChannel { socket }
+    }
+
+    /// Waits until `session`'s user's login `login` has ended, whatever a
+    /// page's channel is held at.
+    pub async fn until_login_ended(&self, session: &Session, login: &str) {
+        let login = demi_web_api_protocol::ids::LoginId::try_from(login.to_owned()).unwrap();
+        self.backend.until_login_ended(&session.user.id, &login).await;
     }
 
     /// The file gate of `session`'s user's conversation `conversation`.
@@ -1453,5 +1469,44 @@ impl Plugin for SignIns {
                 request => unreachable!("the fixture is asked {request:?}"),
             }
         })
+    }
+}
+
+/// The backend's server log as `main` sets it up, for this test's thread and
+/// the shard threads its backend starts, until it is closed.
+///
+/// Its subscriber is the thread's, while other tests run beside it with none.
+/// tracing-core decides once per call site whether anyone listens, when the
+/// site is first hit, and while one dispatcher alone is registered it asks
+/// only the default of the thread that hit it: a site another test's thread
+/// hit first, with no subscriber, would never log here. A second registered
+/// dispatcher, which listens to nothing, makes it ask every dispatcher, so
+/// each event is offered to the subscriber of the thread that logs it.
+pub struct ServerLogCapture {
+    writer: demi_backend_database::server_log::ServerLogWriter,
+    _default: tracing::subscriber::DefaultGuard,
+    _second: tracing::Dispatch,
+}
+
+impl ServerLogCapture {
+    pub fn open(harness: &Harness) -> Self {
+        use tracing_subscriber::layer::SubscriberExt as _;
+        let (writer, layer) = demi_backend_database::server_log::open(&harness.data_dir()).unwrap();
+        let second = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
+        let default = tracing::subscriber::set_default(
+            tracing_subscriber::registry()
+                .with(layer)
+                .with(tracing_subscriber::filter::LevelFilter::INFO),
+        );
+        Self {
+            writer,
+            _default: default,
+            _second: second,
+        }
+    }
+
+    /// Writes what was logged and stops the writer.
+    pub async fn close(self) {
+        self.writer.close().await;
     }
 }

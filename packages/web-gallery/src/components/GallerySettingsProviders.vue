@@ -6,6 +6,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ProviderLoginDialog, {
   type ProviderLoginPhase,
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
+import type { ProviderLoginStage } from '@demicodes/web-ui/settings/types'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import {
   type SettingsModelDraft,
@@ -329,17 +330,25 @@ function beginLogin(p: SettingsProviderEntry) {
   const mock = p as MockProvider
   login.value = {
     provider: p,
-    phase: { kind: 'starting' },
+    phase: { kind: 'starting', stage: 'preparing' },
   }
-  loginTimer = window.setTimeout(() => {
+  // As the product's: a Claude sign-in waits for the Cloud and the command-line tool's start first.
+  const stages: ProviderLoginStage[] = mock.family === 'claude-code' ? ['waiting_for_cloud', 'starting'] : []
+  const next = () => {
     if (!login.value) {
+      return
+    }
+    const stage = stages.shift()
+    if (stage) {
+      login.value.phase = { kind: 'starting', stage }
+      loginTimer = window.setTimeout(next, 1200)
       return
     }
     if (mock.family === 'claude-code') {
       login.value.phase = {
         kind: 'code',
         url: 'https://claude.com/cai/oauth/authorize?code=true',
-        expiresIn: '15 min',
+        expiresAt: Date.now() + 15 * 60_000,
         submitted: false,
       }
       return
@@ -349,7 +358,7 @@ function beginLogin(p: SettingsProviderEntry) {
       kind: 'device',
       url: grok ? 'https://accounts.x.ai/device' : 'https://auth.openai.com/codex/device',
       code: grok ? 'QK4P-9TWD' : 'HXRV-7K2M',
-      expiresIn: '10 min',
+      expiresAt: Date.now() + 10 * 60_000,
     }
     loginTimer = window.setTimeout(() => {
       if (!login.value) {
@@ -362,7 +371,8 @@ function beginLogin(p: SettingsProviderEntry) {
         active: login.value.provider.accounts.length === 0,
       }
     }, 4000)
-  }, 900)
+  }
+  loginTimer = window.setTimeout(next, 900)
 }
 
 /**
@@ -375,7 +385,14 @@ function submitCode(code: string) {
   if (phase?.kind !== 'code') {
     return
   }
-  login.value!.phase = { kind: 'code', url: phase.url, expiresIn: phase.expiresIn, submitted: true }
+  // The sign-in takes the code at once, as the product's answers its number.
+  login.value!.phase = {
+    kind: 'code',
+    url: phase.url,
+    expiresAt: phase.expiresAt,
+    submitted: true,
+    taken: (phase.taken ?? 0) + 1,
+  }
   loginTimer = window.setTimeout(() => {
     if (login.value?.phase.kind !== 'code') {
       return
@@ -410,16 +427,22 @@ function openUrl(url: string) {
 
 function closeLogin() {
   window.clearTimeout(loginTimer)
-  if (login.value?.phase.kind === 'done') {
+  const phase = login.value?.phase
+  if (login.value && phase?.kind === 'done') {
     const p = login.value.provider
-    for (const a of p.accounts) {
-      a.active = false
+    // As the product's: the account added is the active one only when the
+    // dialog said so, for the provider's first account.
+    if (phase.active) {
+      for (const a of p.accounts) {
+        a.active = false
+      }
     }
+    const [label = phase.account, plan = ''] = phase.account.split(' · ')
     p.accounts.push({
       id: `a-${Date.now()}`,
-      label: 'alex@example.com',
-      plan: 'Plus',
-      active: true,
+      label,
+      plan,
+      active: phase.active,
       quota: [
         {
           id: 'hour',

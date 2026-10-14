@@ -7,17 +7,18 @@
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_provider_common::quota::{ProbeCost, QuotaError};
 use demi_provider_common::testing::{MockResponse, MockVendor};
-use demi_shared_types::{QuotaWindow, SnapshotSource};
+use demi_shared_types::{LoginStage, QuotaWindow, SnapshotSource};
+use demi_backend_user_shard::sync::SyncStep;
+use demi_web_api_protocol::state::SyncEvent;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{
     Accounts, ActiveAccount, CredentialKind, LoginAnswer, LoginStarted, LoginState,
-    RemovedAccount,
+    ProviderReading, RemovedAccount,
     ProbeCost as ProbeCostDto, ProviderAnswer, ProviderDetails, ProviderDto, Providers,
     QuotaAnswer, QuotaCapability, VendorCatalog,
 };
@@ -26,7 +27,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::families::{Directory, LoginScript, QuotaScript, ScriptedSubscription};
-use crate::support::{Harness, Session, TestBackend};
+use crate::support::{Harness, Session, SyncChannel, TestBackend};
 
 pub(crate) struct Scripts {
     pub(crate) login: Arc<LoginScript>,
@@ -97,23 +98,51 @@ pub(crate) async fn login_state(backend: &TestBackend, session: &Session, id: &s
         .login
 }
 
-/// The login's state once `settled` says it has moved on, polled for up to
-/// thirty seconds: a Claude sign-in may first wake the Cloud and install its
-/// CLI there.
+/// The login's state once `settled` says it has moved on, as the vault
+/// announces it to the session's pages: in the product state, then in each
+/// `logins` message.
 pub(crate) async fn awaited(
     backend: &TestBackend,
     session: &Session,
     id: &str,
     settled: impl Fn(&LoginState) -> bool,
 ) -> LoginState {
-    for _ in 0..3000 {
-        let state = login_state(backend, session, id).await;
-        if settled(&state) {
-            return state;
+    let mut page = backend.sync(session).await;
+    let mut logins = page.snapshot().await.logins;
+    loop {
+        let login = logins.into_iter().find(|login| login.id.as_str() == id);
+        if let Some(login) = login.filter(|login| settled(&login.login)) {
+            return login.login;
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        logins = loop {
+            if let SyncEvent::Logins { logins } = page.next().await {
+                break logins;
+            }
+        };
     }
-    panic!("login {id} did not settle");
+}
+
+/// The stages login `id` is announced at on `page`, a channel past its
+/// snapshot, in their order, until it ends, and how it ended. Stages the
+/// vault passes between two messages are not seen.
+pub(crate) async fn followed(page: &mut SyncChannel, id: &str) -> (Vec<LoginStage>, LoginState) {
+    let mut stages = Vec::new();
+    loop {
+        let SyncEvent::Logins { logins } = page.next().await else {
+            continue;
+        };
+        let Some(login) = logins.into_iter().find(|login| login.id.as_str() == id) else {
+            continue;
+        };
+        match login.login {
+            LoginState::Pending { stage, .. } => {
+                if stages.last() != Some(&stage) {
+                    stages.push(stage);
+                }
+            }
+            ended => return (stages, ended),
+        }
+    }
 }
 
 pub(crate) fn ended(state: &LoginState) -> bool {
@@ -245,7 +274,7 @@ async fn signed_in_accounts_are_sealed_selected_explicitly_and_hidden_from_who_o
 }
 
 #[tokio::test]
-async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing() {
+async fn simultaneous_first_logins_share_one_login_which_publishes_one_entry() {
     let scripts = scripts(Some(ProbeCost::Free));
     // The catalog this scenario reads lists the vendors of a models.dev
     // document that names none.
@@ -279,20 +308,27 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
             "{body}"
         );
     }
-    let first = start_login(
-        &backend,
-        &master,
-        login,
-        json!({ "providerType": "device", "label": "Work" }),
-    )
-    .await;
-    let second = start_login(
-        &backend,
-        &master,
-        login,
-        json!({ "providerType": "device", "label": "Competing" }),
-    )
-    .await;
+    // Two tabs press Add Account at the same moment: the login that makes
+    // the entry holds it, and the other start names that login.
+    let (one, other) = tokio::join!(
+        backend.post(login, Some(&master), json!({ "providerType": "device", "label": "Work" })),
+        backend.post(login, Some(&master), json!({ "providerType": "device", "label": "Competing" })),
+    );
+    let (started, refused) = if one.status == StatusCode::ACCEPTED {
+        (one, other)
+    } else {
+        (other, one)
+    };
+    assert_eq!(started.status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&started.body));
+    let first = started.json::<LoginStarted>().login.id.into_string();
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ProviderBusy)
+    );
+    assert_eq!(
+        refused.error().login_id.map(|id| id.into_string()),
+        Some(first.clone())
+    );
     let pending = awaited(&backend, &master, &first, |state| {
         matches!(
             state,
@@ -306,13 +342,15 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
     assert_eq!(
         pending,
         LoginState::Pending {
+            stage: LoginStage::WaitingForUser,
             verification_url: Some("https://verify.example/device".into()),
             user_code: Some("ABCD-1234".into()),
             needs_code: false,
+            codes_taken: 0,
             code_error: None,
             // The vault's end, ten minutes from the start on the harness's
             // clock.
-            expires_at: "2026-09-24T08:10:00.000Z".parse().unwrap(),
+            expires_at: Some("2026-09-24T08:10:00.000Z".parse().unwrap()),
         }
     );
 
@@ -330,26 +368,23 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
     );
 
     scripts.login.approve(true);
-    let outcomes = [
-        awaited(&backend, &master, &first, ended).await,
-        awaited(&backend, &master, &second, ended).await,
-    ];
-    let completed: Vec<&LoginState> = outcomes
-        .iter()
-        .filter(|state| matches!(state, LoginState::Completed { .. }))
-        .collect();
-    assert_eq!(completed.len(), 1, "{outcomes:?}");
+    let completed = awaited(&backend, &master, &first, ended).await;
     let LoginState::Completed {
         provider_id,
         credential_id,
-    } = completed[0]
+    } = &completed
     else {
-        unreachable!();
+        panic!("the login did not complete: {completed:?}");
     };
-    assert!(outcomes.iter().any(|state| matches!(
-        state,
-        LoginState::Failed { message } if message == "This scope already has a device subscription"
-    )));
+    // The entry is no longer held once the login ended: a start now finds
+    // the entry there.
+    assert_eq!(
+        backend
+            .post(login, Some(&master), json!({ "providerType": "device" }))
+            .await
+            .refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ProviderExists)
+    );
     let providers = backend
         .get("/api/providers", Some(&master))
         .await
@@ -488,18 +523,31 @@ async fn a_login_into_an_entry_holds_it_until_it_ends_and_cancelling_stops_it_at
             busy.refusal(),
             (StatusCode::CONFLICT, ErrorCode::ProviderBusy)
         );
+        // A change of another kind names no login.
+        assert_eq!(busy.error().login_id, None);
     }
+    // A second start names the running login, which the page opens rather
+    // than a second one.
+    let again = backend
+        .post(&format!("{path}/accounts/login"), Some(&master), json!({}))
+        .await;
+    assert_eq!(
+        again.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ProviderBusy)
+    );
+    assert_eq!(
+        again.error().login_id.map(|login| login.into_string()),
+        Some(id.clone())
+    );
     let cancelled = backend
         .delete(&format!("/api/providers/subscription-login/{id}"), &master)
         .await;
     assert_eq!(cancelled.status, StatusCode::NO_CONTENT);
     assert_eq!(scripts.login.cancelled.load(Ordering::SeqCst), 1);
-    assert_eq!(
+    assert!(matches!(
         login_state(&backend, &master, &id).await,
-        LoginState::Failed {
-            message: "The login was cancelled".into()
-        }
-    );
+        LoginState::Cancelled
+    ));
     assert_eq!(
         backend
             .patch(&path, &master, json!({ "label": "Ready" }))
@@ -749,5 +797,92 @@ async fn removing_the_active_account_selects_the_next_and_the_last_leaves_none()
     });
     assert!(refused, "{turn:?}");
     assert_eq!(runs.calls().len(), 2);
+    backend.close().await;
+}
+
+/// Follows `page` until it learns that login `login` ended, and answers how,
+/// asserting that no message tells it a completion before it has the
+/// account: in the same snapshot, or in a message it received earlier.
+async fn learned_end(page: &mut SyncChannel, login: &str) -> LoginState {
+    let mut providers = Vec::new();
+    loop {
+        let logins = match page.next().await {
+            SyncEvent::Snapshot { state } => {
+                providers = state.providers;
+                state.logins
+            }
+            SyncEvent::Providers { providers: now } => {
+                providers = now;
+                continue;
+            }
+            SyncEvent::Logins { logins } => logins,
+            _ => continue,
+        };
+        let Some(state) = logins.into_iter().find(|listed| listed.id.as_str() == login).map(|listed| listed.login) else {
+            continue;
+        };
+        if let LoginState::Completed {
+            provider_id,
+            credential_id,
+        } = &state
+        {
+            let listed = providers.iter().any(|provider| {
+                provider.provider.id == *provider_id
+                    && matches!(&provider.details, ProviderReading::Read(details)
+                        if details.accounts.iter().any(|account| account.account.id == credential_id.as_str()))
+            });
+            assert!(listed, "the page learned the completion before its account: {providers:?}");
+        }
+        if ended(&state) {
+            return state;
+        }
+    }
+}
+
+// A fraction of a second: two logins complete just after a page's channel
+// read the providers, once in the snapshot and once as a part.
+#[tokio::test]
+async fn a_page_learns_a_login_completed_no_sooner_than_its_account() {
+    let scripts = scripts(Some(ProbeCost::Free));
+    let harness = Harness::new().with_families(scripts.families.clone());
+    let (backend, master) = harness.start_set_up().await;
+    let entry = device_entry(&backend, &master, &scripts).await;
+    let login = format!("/api/providers/{}/accounts/login", entry.id);
+
+    // A page opens, and the login completes once the snapshot has read the
+    // providers.
+    scripts.login.approve(false);
+    scripts.login.signs_in("second");
+    let id = start_login(&backend, &master, &login, json!({})).await;
+    let providers = backend.hold_sync(SyncStep::Providers);
+    let mut page = backend.sync(&master).await;
+    providers.until_arrived(1).await;
+    scripts.login.approve(true);
+    backend.until_login_ended(&master, &id).await;
+    providers.release();
+    assert!(matches!(learned_end(&mut page, &id).await, LoginState::Completed { .. }));
+
+    // A change of the providers and the next login's progress wake the page
+    // together, and the login completes once the page has read the providers.
+    scripts.login.approve(false);
+    scripts.login.signs_in("third");
+    let changes = backend.hold_sync(SyncStep::Changes);
+    let created = backend
+        .post(
+            "/api/providers",
+            Some(&master),
+            json!({ "source": "custom", "providerType": "openai", "wireApi": "chat-completions", "label": "Lab", "baseUrl": "http://lab.example/v1" }),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    changes.until_arrived(1).await;
+    let id = start_login(&backend, &master, &login, json!({})).await;
+    let providers = backend.hold_sync(SyncStep::Providers);
+    changes.release();
+    providers.until_arrived(1).await;
+    scripts.login.approve(true);
+    backend.until_login_ended(&master, &id).await;
+    providers.release();
+    assert!(matches!(learned_end(&mut page, &id).await, LoginState::Completed { .. }));
     backend.close().await;
 }

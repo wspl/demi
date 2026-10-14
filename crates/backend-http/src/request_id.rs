@@ -53,6 +53,12 @@ pub(crate) fn current() -> Option<RequestId> {
     CURRENT.try_with(Clone::clone).ok()
 }
 
+/// The ID of the request being answered; outside the edge's [`assign`], as
+/// in a unit test that calls a handler, an ID no request had.
+pub(crate) fn current_or_new() -> RequestId {
+    current().unwrap_or_else(generate)
+}
+
 /// Names the request: its extensions carry the ID for the span and the
 /// handlers, the answer is built where [`current`] reads it, and the
 /// response carries it in `X-Request-Id`.

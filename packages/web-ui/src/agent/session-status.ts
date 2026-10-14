@@ -169,9 +169,10 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
  * § Recovering an unfinished turn), from the record that ended the last
  * turn among the visible `blocks`: an error resumes, the user's own Stop
  * continues, and anything else is finished or still running. An error that
- * ended no turn, such as a Compact whose summary request failed, and a
- * compaction's boundary and marker leave the turn before them as it was
- * (`failures-and-recovery.md` § The unfinished turn). Both are the
+ * ended no turn, such as a Compact whose summary request failed, a
+ * compaction's boundary and marker, and the agent messages and command
+ * reports a failed turn took after it ended leave the turn before them as it
+ * was (`failures-and-recovery.md` § The unfinished turn). Both are the
  * session's `resume`; the word tells the cause.
  */
 export function turnRecovery(
@@ -203,13 +204,31 @@ interface RecordCandidate {
   type: string
   outsideTurn?: boolean
   code?: string | null
+  placement?: string
 }
 
 /** The record that ended the last turn among `blocks`, or the block that ended it otherwise. */
 function turnRecord<T extends RecordCandidate>(blocks: readonly T[]): T | undefined {
   return blocks.findLast(
-    (block) => !isCompactionDivider(block) && !(block.type === 'error' && block.outsideTurn),
+    (block) => !isCompactionDivider(block)
+      && !(block.type === 'error' && block.outsideTurn)
+      && !isLateInput(block),
   )
+}
+
+/**
+ * Whether the transcript ends with an error record, read past the agent
+ * messages and command reports a failed root's turn took after it ended
+ * (`failures-and-recovery.md` § The unfinished turn): the record still says
+ * the failure, so nothing below repeats it.
+ */
+export function endsWithErrorRecord(blocks: readonly RecordCandidate[]): boolean {
+  return blocks.findLast((block) => !isLateInput(block))?.type === 'error'
+}
+
+/** Input a turn takes without opening one: an agent message, or command reports placed as a steer. */
+function isLateInput(block: RecordCandidate): boolean {
+  return block.type === 'agent_message' || (block.type === 'wakeup' && block.placement === 'steer')
 }
 
 /**
