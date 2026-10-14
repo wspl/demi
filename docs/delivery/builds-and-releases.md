@@ -484,7 +484,9 @@ bun xtask server-release --output .cache/server/0.1.3 --files .cache/server/0.1.
 
 ### Licenses in a release
 
-Every release carries `LICENSE` and `NOTICE` from the repository's root and
+Every release carries `LICENSE` (the Apache License 2.0), `LICENSE-DEMI` (the
+Demi License, which covers the server and the web app) and `NOTICE` from the
+repository's root and
 `THIRD-PARTY-NOTICES`, which the release step generates from what the
 release really contains: for each Rust crate linked into a shipped program,
 the vendored ones included, and each npm package bundled into `web/`, its
@@ -493,8 +495,8 @@ naming where their source is. `bun xtask notices` writes the file
 into the built web app as `third-party-notices.txt`, from cargo-about's
 reading of each shipped program's crates and from Vite's list of the
 packages its bundle holds; the server release's root holds `LICENSE`,
-`NOTICE` and a copy of it as `THIRD-PARTY-NOTICES`, every GitHub release
-has the three as assets, and the web front end shows the web app's copy at
+`LICENSE-DEMI`, `NOTICE` and a copy of it as `THIRD-PARTY-NOTICES`, every GitHub release
+has the four as assets, and the web front end shows the web app's copy at
 Settings › About › Acknowledgements, beside the version it was built as. A
 server release always has a web app, so it always has the notices. A
 dependency whose license the generator cannot read, or whose license is not

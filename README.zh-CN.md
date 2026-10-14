@@ -140,7 +140,7 @@ curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | su
 
 | | Demi | [Pi](https://github.com/earendil-works/pi) | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | [OpenHands](https://github.com/OpenHands/OpenHands) | [opencode](https://github.com/anomalyco/opencode) | [Orca](https://github.com/stablyai/orca) | [herdr](https://github.com/herdrdev/herdr) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| 源⁠代⁠码 | 公开（[Demi License](LICENSE)） | MIT | MIT | MIT | MIT | MIT | Apache-2.0 |
+| 源⁠代⁠码 | Apache-2.0；服务器和网页应用为 [Demi License](LICENSE-DEMI) | MIT | MIT | MIT | MIT | MIT | Apache-2.0 |
 | Harness | 自研 | 自研 | 自研 | 自研，或套壳 ACP Agent | 自研 | 套壳 Claude Code、Codex、OpenCode、Pi 等 | 套壳 Claude Code、Codex、OpenCode、Pi 等 |
 | 使⁠用⁠界⁠面 | 多用户网页应用，任意设备 | 终端 | 本地网页与终端 | 网页 | 终端、网页、桌面 | 桌面应用，配套手机应用 | 终端界面 |
 | 对⁠话⁠存⁠放 | 集中在你的服务器上 | 各台机器各自保存 | 各台机器各自保存 | 各个后端各自保存 | 各台机器或服务器各自保存 | 各台机器各自保存 | 各台机器各自保存 |
@@ -175,11 +175,13 @@ curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | su
 
 ## 许可证
 
-Demi 采用 [Demi License](LICENSE) 发布，即在 Apache License 2.0 基础上附加了以下条件：
+Demi 的大部分代码采用 [Apache License 2.0](LICENSE) 发布，包括 Agent 运行时、模型提供方、装在你机器上的 Runner、命令、插件及其 SDK、各类协议和文档，可以用于任何用途。
 
-- **免费使用**：可以使用、修改和运行 Demi，包括在公司内部供自己的团队使用。
+服务器和网页应用（`crates/backend*`、`crates/server`、`crates/machine-manager`、`packages/web`、`packages/web-ui` 和 `packages/web-gallery`）采用 [Demi License](LICENSE-DEMI) 发布，即在 Apache License 2.0 基础上附加了以下条件：
+
+- **免费使用**：可以使用、修改和运行，包括在公司内部供自己的团队使用。
 - **可提供商业支持**：可以为他人自行运行的 Demi 提供收费的部署、集成或支持服务。
-- **不得转售为服务**：不得将 Demi 作为收费的托管服务或多租户服务提供给他人，也不得提供实质上就是 Demi 的产品。
+- **不得转售为服务**：不得将其作为收费的托管服务或多租户服务提供给他人，也不得提供实质上就是 Demi 的产品。
 - **保留品牌**：不得删除或修改网页应用中的 Demi 名称、Logo 或版权声明。
 
 其他用途请联系 [support@demi.sh](mailto:support@demi.sh)。

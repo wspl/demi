@@ -193,7 +193,7 @@ As of October 2026, based on each product's documentation.
 
 | | Demi | [Pi](https://github.com/earendil-works/pi) | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | [OpenHands](https://github.com/OpenHands/OpenHands) | [opencode](https://github.com/anomalyco/opencode) | [Orca](https://github.com/stablyai/orca) | [herdr](https://github.com/herdrdev/herdr) |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| Source code | Public ([Demi License](LICENSE)) | MIT | MIT | MIT | MIT | MIT | Apache-2.0 |
+| Source code | Apache-2.0; server and web app [Demi License](LICENSE-DEMI) | MIT | MIT | MIT | MIT | MIT | Apache-2.0 |
 | Harness | Its own | Its own | Its own | Its own, or wraps ACP agents | Its own | Wraps Claude Code, Codex, OpenCode, Pi and others | Wraps Claude Code, Codex, OpenCode, Pi and others |
 | Interface | Web app for many users, on any device | Terminal | Local web app and terminal | Web app | Terminal, web, desktop | Desktop app, mobile companion | Terminal UI |
 | Where conversations live | On your server, one place for all devices | On each machine | On each machine | On each backend | On each machine or server | On each machine | On each machine |
@@ -227,14 +227,21 @@ As of October 2026, based on each product's documentation.
 
 ## License
 
-Demi is released under the [Demi License](LICENSE), which is the Apache License
-2.0 with additional conditions:
+Most of Demi is released under the [Apache License 2.0](LICENSE): the agent
+runtime, the model providers, the runner you install on your machines, the
+commands, the plugins and their SDK, the protocols and the docs. Use them for
+anything.
 
-- **Free to use**: Use, modify and run Demi, including at your company for your
-  own team.
+The server and the web app (`crates/backend*`, `crates/server`,
+`crates/machine-manager`, `packages/web`, `packages/web-ui` and
+`packages/web-gallery`) are released under the [Demi License](LICENSE-DEMI),
+which is the Apache License 2.0 with additional conditions:
+
+- **Free to use**: Use, modify and run them, including at your company for
+  your own team.
 - **Free to support**: Charge for deploying, integrating or supporting Demi
   that others run themselves.
-- **Not for resale as a service**: Don't offer Demi to others for a fee as a
+- **Not for resale as a service**: Don't offer them to others for a fee as a
   hosted or multi-tenant service, or as a product that is substantially Demi.
 - **Keep the branding**: Don't remove or change the Demi name, logo or
   copyright notices in the web app.

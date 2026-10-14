@@ -1,9 +1,11 @@
 Demi
 Copyright 2026 The Demi Authors
 
-Licensed under the Demi License (see LICENSE): the Apache License, Version
-2.0, with additional conditions. You may use, modify and run Demi, a company
-included for its own people. You may not offer it to others for a fee, as a
-hosted service or a product, nor remove the Demi name, logo or copyright
-notices from its web front end, unless The Demi Authors permit it in writing
+Licensed under the Apache License, Version 2.0 (see LICENSE), except the
+server and the web front end, which LICENSE-DEMI lists and licenses under the
+Demi License: the Apache License, Version 2.0, with additional conditions.
+Under them you may use, modify and run those parts, a company included for
+its own people. You may not offer them to others for a fee, as a hosted
+service or a product, nor remove the Demi name, logo or copyright notices
+from the web front end, unless The Demi Authors permit it in writing
 (support@demi.sh).
