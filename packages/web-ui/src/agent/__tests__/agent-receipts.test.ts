@@ -39,7 +39,7 @@ test('the rows the user’s decisions and Demi make keep their wording and name 
     ({ id: 'p1', recipientId: 'conversation-1', timestamp: '2026-10-11T12:00:00.000Z', content: 'Body.', event })
   expect(receiptRow(plain({ type: 'permission', outcome: 'allowed', action: 'manage skills' })))
     .toEqual({ notice: 'You allowed this conversation to manage skills', title: null, subject: false, tag: null })
-  expect(receiptRow(plain({ type: 'moved', host: 'MacBook Pro', path: '/Users/alex/app', home: '/Users/zan' })))
+  expect(receiptRow(plain({ type: 'moved', host: 'MacBook Pro', path: '/Users/alex/app', home: '/Users/alex' })))
     .toEqual({ notice: 'You moved this conversation to MacBook Pro · ~/app', title: null, subject: false, tag: null })
   expect(receiptOrigin(plain({ type: 'move_failed', reason: 'the project no longer exists' }))).toBeNull()
 })

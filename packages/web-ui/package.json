@@ -1,6 +1,7 @@
 {
   "name": "@demicodes/web-ui",
   "version": "0.24.0",
+  "private": true,
   "type": "module",
   "files": [
     "src"

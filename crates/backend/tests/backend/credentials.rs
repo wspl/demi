@@ -163,7 +163,7 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
         id,
         json!({
             "decision": "allow",
-            "credential": { "values": { "key": SECRET, "user": "zan" }, "keep": "1h" }
+            "credential": { "values": { "key": SECRET, "user": "alex" }, "keep": "1h" }
         }),
     )
     .await;
@@ -198,9 +198,9 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
     );
     socket.chat("m2", "What credentials are there?").await;
     let shown = last_asked(&scripts, FIRST);
-    assert!(shown.contains("user (visible: User): zan"), "{shown}");
+    assert!(shown.contains("user (visible: User): alex"), "{shown}");
     assert!(shown.contains("this conversation may use it"), "{shown}");
-    assert!(shown.contains(r#"\"value\":\"zan\""#), "{shown}");
+    assert!(shown.contains(r#"\"value\":\"alex\""#), "{shown}");
     assert!(!shown.contains(SECRET), "{shown}");
 
     // Nothing else holds the value: the transcript, a page's channel and
@@ -214,7 +214,7 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
         .await;
     let frames = serde_json::to_string(&frames).unwrap();
     assert!(frames.contains("Deploy key"), "{frames}");
-    assert!(frames.contains(r#""value":"zan""#), "the visible value reaches the page: {frames}");
+    assert!(frames.contains(r#""value":"alex""#), "the visible value reaches the page: {frames}");
     assert!(!frames.contains(SECRET), "{frames}");
 
     // A credential of the waiting request's name, whatever its case, saved
