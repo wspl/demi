@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { upperFirst } from '@demicodes/utils'
+import { Cable, Server, WandSparkles } from '@lucide/vue'
+import type { Component } from 'vue'
 import Button from '../ui/Button.vue'
 import DetailsSheet from '../ui/DetailsSheet.vue'
 import Dropdown from '../ui/Dropdown.vue'
@@ -72,6 +74,7 @@ const emit = defineEmits<{
 }>()
 
 const ROUTES: readonly DeviceRoute[] = ['automatic', 'direct', 'server']
+const ROUTE_ICONS: Record<DeviceRoute, Component> = { automatic: WandSparkles, direct: Cable, server: Server }
 
 const device = computed(() => (props.page.kind === 'device' ? props.page.device : null))
 const report = computed<DeviceReport>(() => (props.page.kind === 'device' ? props.page.device : props.page.report))
@@ -243,6 +246,7 @@ async function revoke(): Promise<void> {
               <MenuItem
                 v-for="route in ROUTES"
                 :key="route"
+                :icon="ROUTE_ICONS[route]"
                 :label="DEVICE_ROUTE_LABEL[route]"
                 choice
                 :is-selected="device.direct.route === route"

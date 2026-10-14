@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import type { Component } from 'vue'
+import { ShieldCheck, User } from '@lucide/vue'
 import type { ShownError } from '../infra/errors'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
@@ -40,6 +42,8 @@ const emit = defineEmits<{
   /** A field changed, so the host's refusal of the last submit no longer applies. */
   edit: []
 }>()
+
+const ROLE_ICONS: Record<SettingsNewUser['role'], Component> = { admin: ShieldCheck, user: User }
 
 const email = ref('')
 const role = ref<SettingsNewUser['role']>('user')
@@ -104,6 +108,7 @@ function submit(): unknown {
                 <MenuItem
                   v-for="choice in roles"
                   :key="choice"
+                  :icon="ROLE_ICONS[choice]"
                   :label="ROLE_LABEL[choice]"
                   choice
                   :is-selected="role === choice"

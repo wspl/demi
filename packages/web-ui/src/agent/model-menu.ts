@@ -1,3 +1,4 @@
+import type { Component } from 'vue'
 import type { ModelInfo, ModelServiceTier, ProviderInfo } from '../transport/protocol'
 import type { TitleText } from '../ui/ui-text'
 import { formatTokens } from '../ui/token-count'
@@ -22,7 +23,7 @@ export interface ModelMenuRows {
   /** Reasoning, for a model that lists efforts: Off when it can turn thinking off, then each effort. */
   reasoning: {
     value: string
-    options: { label: TitleText; effort: string; selected: boolean }[]
+    options: { label: TitleText; effort: string; icon: Component; selected: boolean }[]
   } | null
   /** Context, for a model whose window offers limits: the full window, then each limit. */
   context: {

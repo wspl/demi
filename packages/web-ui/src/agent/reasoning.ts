@@ -1,3 +1,5 @@
+import type { Component } from 'vue'
+import { Battery, BatteryCharging, BatteryFull, BatteryLow, BatteryMedium, Gauge } from '@lucide/vue'
 import { upperFirst } from '@demicodes/utils'
 import type { ModelInfo } from '../transport/protocol'
 import { firstEffort, THINKING_OFF } from './model-selection'
@@ -7,6 +9,18 @@ export interface ReasoningOption {
   label: TitleText
   /** The effort the option chooses: one the model lists, or thinking off. */
   effort: string
+  /** A charge that rises with the effort, as a level meter does. */
+  icon: Component
+}
+
+const EFFORT_ICONS: Record<string, Component> = {
+  [THINKING_OFF]: Battery,
+  minimal: BatteryLow,
+  low: BatteryLow,
+  medium: BatteryMedium,
+  high: BatteryFull,
+  xhigh: BatteryCharging,
+  max: BatteryCharging,
 }
 
 export interface ReasoningState {
@@ -18,6 +32,11 @@ export interface ReasoningState {
   options: ReasoningOption[]
   /** The effort settings that name none hold on this model: its first. */
   firstEffort: string
+}
+
+/** The charge of an effort, or of thinking off; an effort the table does not name reads as a plain gauge. */
+export function effortIcon(effort: string): Component {
+  return EFFORT_ICONS[effort] ?? Gauge
 }
 
 /** An effort as the model menu names it: `high` is High. */
@@ -32,9 +51,10 @@ export function buildReasoningState(model: ModelInfo | null | undefined): Reason
   const effortOptions = model.reasoning.efforts.map((effort): ReasoningOption => ({
     label: effortWord(effort),
     effort,
+    icon: effortIcon(effort),
   }))
   const options: ReasoningOption[] = model.reasoning.canDisable
-    ? [{ label: 'Off', effort: THINKING_OFF }, ...effortOptions]
+    ? [{ label: 'Off', effort: THINKING_OFF, icon: effortIcon(THINKING_OFF) }, ...effortOptions]
     : effortOptions
   return { options, firstEffort: first }
 }
