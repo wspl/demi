@@ -89,7 +89,7 @@ wants to know: when it works again. The diagnostics therefore carry
 
 | `source` | Where the failure came from | `upstream` |
 | --- | --- | --- |
-| `stream` | An error event inside a streamed response, or a frame Demi could not decode | The frame's text as received: the SSE `data` payload, the WebSocket message, or a CLI's output line |
+| `stream` | An error event inside a streamed response, or a frame Demi could not decode | The frame's text as received: the SSE `data` payload, the WebSocket message, or a CLI's output line; for Claude Code, its failing assistant line and its `result` line as received, joined by a newline, since the reset time is only on the first and `api_error` on both |
 | `http` | A request the vendor answered with a failure status | JSON `{ "status", "headers", "body" }`: the status code; every response header as a `[name, value]` pair, with the name in lowercase, sorted by name, and a repeated header kept as separate pairs in the order they arrived; and the body text as received |
 | `transport`, `unknown` | No answer from the vendor | Absent |
 
