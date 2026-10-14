@@ -239,10 +239,15 @@ function show(target: string) {
   folderCreation.value = 'idle'
 }
 
+/** Shows the folder at `target`; the one shown now is listed again, as its path entered again asks. */
 function goTo(target: string) {
   const next = normalizePath(target)
-  history.push(next)
-  syncHistory()
+  if (next === path.value) {
+    void listing.retry()
+  } else {
+    history.push(next)
+    syncHistory()
+  }
   show(next)
 }
 

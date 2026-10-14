@@ -460,3 +460,32 @@ test('the link shown, opened again from the tree, reads its file again: a target
     view.unmount()
   }
 })
+
+test('Enter on the path bar with the path shown reads the link again, as a web browser loads its page again', async () => {
+  const backend = host({ '/w': [linked('old.log', '/srv/old.log', { kind: 'file' })] }, { '/w/old.log': 'Built.\n' })
+  const view = show('/w/old.log')
+  /** Enters the path the bar shows, unchanged. */
+  const enterSamePath = async () => {
+    document.querySelector<HTMLElement>('[role=navigation][aria-label="Current path"]')!.click()
+    await until(() => document.querySelector('input[aria-label="Path"]') !== null, 'the path bar turns into a field')
+    const field = document.querySelector<HTMLInputElement>('input[aria-label="Path"]')!
+    expect(field.value).toBe('/w/old.log')
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  }
+  try {
+    await until(shows('Built.'), 'the file shows')
+    // The target goes: the same path entered says so, as the link's.
+    backend.folders['/w'] = [linked('old.log', '/srv/old.log', { kind: 'missing' })]
+    delete backend.texts['/w/old.log']
+    await enterSamePath()
+    await until(shows('Symbolic link to /srv/old.log, which does not exist.'), 'the gone target is said')
+    // It comes back: entered again, the file shows.
+    backend.folders['/w'] = [linked('old.log', '/srv/old.log', { kind: 'file' })]
+    backend.texts['/w/old.log'] = 'Built again.\n'
+    await enterSamePath()
+    await until(shows('Built again.'), 'the file shows again')
+    expect(view.shown.value).toBe('/w/old.log')
+  } finally {
+    view.unmount()
+  }
+})
