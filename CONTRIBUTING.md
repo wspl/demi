@@ -126,7 +126,10 @@ before you add or change a test.
 
 ## License
 
-By contributing, you agree that your contributions are licensed under the
-project's license, the [Demi License](LICENSE),
-and that The Demi Authors may also license them to others under other terms,
-including terms that permit what the license otherwise forbids.
+Contributions are licensed under the license of the part they change. Most of
+Demi is under the [Apache License 2.0](LICENSE), and a contribution there is
+licensed under it, as its section 5 says. A contribution to the server or the
+web app, the parts [LICENSE-DEMI](LICENSE-DEMI) lists, is licensed under the
+Demi License, and you agree that The Demi Authors may also license it to
+others under other terms, including terms that permit what that license
+otherwise forbids.

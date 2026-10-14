@@ -1,0 +1,52 @@
+Demi License
+
+The Demi License covers these parts of Demi, the "Licensed Parts":
+
+- the server: `crates/backend`, every crate in a directory whose name starts
+  with `crates/backend-`, `crates/server` and `crates/machine-manager`;
+- the web front end: `packages/web`, `packages/web-ui` and
+  `packages/web-gallery`.
+
+Each of these directories holds a LICENSE file that names this license.
+Everything else in Demi, such as the agent runtime, the model providers, the
+runner, the commands, the plugins, the protocols and the documentation, is
+licensed under the Apache License, Version 2.0 (LICENSE) alone, without the
+conditions below.
+
+The Licensed Parts are licensed under the Apache License, Version 2.0
+(LICENSE), with the following additional conditions. Where they differ from
+the Apache License, these conditions prevail. They apply to the Licensed
+Parts, to modified versions of them, and to any work that includes them, such
+as Demi's server release, as far as that work uses the Licensed Parts.
+
+1. Use. You may use, copy, modify and run the Licensed Parts for any purpose,
+   including inside a company or other organization, for its own people and
+   its own business. You may charge others for services around Demi that
+   they run for themselves, such as deployment, integration, consulting and
+   support.
+
+2. Selling. Unless The Demi Authors permit it in writing, you may not offer
+   the Licensed Parts, a modified version of them, or a work that includes
+   them, to third parties for a fee or other consideration: neither by
+   operating it as a hosted or multi-tenant service that they use, nor by
+   selling, licensing or bundling it as a product whose functionality is
+   substantially Demi's. To ask for permission, write to support@demi.sh.
+
+3. Branding. When you run or distribute Demi's web front end, you may not
+   remove, hide or change the Demi name, logo or copyright notices it shows,
+   nor present it under another name, unless The Demi Authors permit it in
+   writing. The names and marks of Demi otherwise remain subject to
+   section 6 of the Apache License.
+
+4. Contributions. By contributing to the Licensed Parts, you agree that
+   The Demi Authors may use your contribution under these terms and may also
+   license it to others under other terms, including terms that permit what
+   condition 2 or 3 forbids. Contributions to the rest of Demi are licensed
+   under the Apache License, Version 2.0, as its section 5 says.
+
+5. Versions of Demi released under the Apache License 2.0 alone, before
+   these conditions, keep that license, and so do the versions released
+   under the earlier Demi License that covered all of Demi, as far as the
+   parts outside the Licensed Parts are concerned.
+
+Copyright 2026 The Demi Authors
