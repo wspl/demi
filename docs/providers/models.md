@@ -548,10 +548,10 @@ of either keeps the cache.
 ### Context limit
 
 The window Demi uses for a model is the model's context window, unless the
-user limited it. For example, Claude Opus on a user's Claude Code entry has a
+user limited it. For example, Claude Opus 5.5 on a user's Claude Code entry has a
 window of 1,000,000 tokens. The user sets its Context to 300K in the model
 menu of one conversation. From then on every conversation of that user that
-infers with Claude Opus on that entry compacts at 240,000 tokens instead of
+infers with Claude Opus 5.5 on that entry compacts at 240,000 tokens instead of
 800,000, and its usage indicator counts against 300K. A conversation that
 switches to GPT-5.5 uses GPT-5.5's own setting, and another user of the same
 shared instance still has 1M.
@@ -646,7 +646,7 @@ whose modalities are only `text` reads none, and one the catalog gives no
 modalities for has a null list. The modalities say what the model reads,
 kind by kind; models.dev's single attachment flag does not, since most
 models it marks read images but no PDF: `deepseek-v4-flash` takes `text` and
-`image`, `claude-sonnet-4-5` `text`, `image` and `pdf`. A model
+`image`, `claude-sonnet-5-5` `text`, `image` and `pdf`. A model
 whose catalog states its exact types, such as a model of a configured list,
 uses them instead, including an empty list or null. A provider's catalog
 lists only the types its wire carries in a message: `grok-build` and `codex`

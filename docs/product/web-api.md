@@ -970,7 +970,7 @@ Commands receive it in their
 `contextLimits` holds the user's
 [context limits](../providers/models.md#context-limit), by provider entry id
 and then model id, each in tokens, such as
-`{ "<entry id>": { "claude-opus-4-8": 300000 } }`; a model it does not name
+`{ "<entry id>": { "claude-opus-5-5": 300000 } }`; a model it does not name
 uses its full window. A patch changes one model's limit with
 `contextLimit: { providerId, modelId, tokens }`: 500000, 300000 or 200000
 stores that limit, null removes it, and any other number is refused. The
