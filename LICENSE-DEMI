@@ -4,12 +4,12 @@ The Demi License covers these parts of Demi, the "Licensed Parts":
 
 - the server: `crates/backend`, every crate in a directory whose name starts
   with `crates/backend-`, `crates/server` and `crates/machine-manager`;
-- the web front end: `packages/web`, `packages/web-ui` and
-  `packages/web-gallery`.
+- the web front end: `packages/web`, the web app itself.
 
 Each of these directories holds a LICENSE file that names this license.
 Everything else in Demi, such as the agent runtime, the model providers, the
-runner, the commands, the plugins, the protocols and the documentation, is
+runner, the commands, the plugins, the UI component library
+(`packages/web-ui`) and its gallery, the protocols and the documentation, is
 licensed under the Apache License, Version 2.0 (LICENSE) alone, without the
 conditions below.
 
