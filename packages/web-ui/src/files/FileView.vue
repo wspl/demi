@@ -19,7 +19,7 @@ import TreeFrame from './TreeFrame.vue'
 import { downloadUrl } from './download'
 import { fileBar, type ShownFile } from './file-bar'
 import { TREE_WIDTH } from './file-view'
-import { formatBytes } from './format'
+import { formatBytes, linkDescription } from './format'
 import { baseName } from '@demicodes/utils'
 import { normalizePath, parentPath } from './paths'
 import { hasSourceView, MISSING_FILE, previewKind, TOO_LARGE_NOTE } from './preview'
@@ -179,11 +179,14 @@ const startNote = computed(() => start.value?.phase === 'ready'
 
 /**
  * What the region says while it shows no file: none chosen, a read on its
- * way, that nothing is at the path, or why the read failed. Retry stands
- * under the last two, and the region loads until its read ends.
+ * way, that nothing is at the path, a link's target that is not there, or
+ * why the read failed. Retry stands under the failures, and the region
+ * loads until its read ends.
  */
 const placeholder = computed(() => {
   const current = state.value
+  if (brokenLink.value)
+    return { status: 'failed' as const, icon: MISSING_FILE.icon, label: `${linkDescription(brokenLink.value)}.`, detail: null, requestId: null }
   if (current.phase === 'missing')
     return { status: 'failed' as const, icon: MISSING_FILE.icon, label: MISSING_FILE.label, detail: null, requestId: null }
   if (current.phase === 'failed')
@@ -222,6 +225,26 @@ const shownFile = computed<ShownFile>(() => {
       return { as: 'reading' }
   }
 })
+/**
+ * The folder of a file whose read found nothing there, which says whether
+ * the file is a symbolic link whose target is missing; it is listed only
+ * then, and is usually the tree's own, kept already.
+ */
+const folder = useShowing(
+  () => props.source,
+  () => props.path !== null && shownFile.value.as === 'missing' ? parentPath(props.path) : null,
+  (source, path) => source.showListing(path),
+)
+/** The file, when it is a link to nothing: the view says so where the file would be (`file-previews.md` § Symbolic links). */
+const brokenLink = computed(() => {
+  const path = props.path
+  const entries = folder.entry.value?.value
+  if (path === null || !entries)
+    return null
+  const link = entries.find((entry) => entry.name === baseName(path))?.link
+  return link?.missing ? link : null
+})
+
 /** The file's bar; Download only where the source serves files' bytes. */
 const bar = computed(() => {
   if (props.path === null)
@@ -362,7 +385,7 @@ onBeforeUnmount(() => {
       <RegionNote v-if="startNote" :icon="FileText" :label="startNote" action="Download" @action="download" />
       <div class="min-h-0 flex-1">
         <FilePreview
-          v-if="media && path && source.contents"
+          v-if="media && path && source.contents && !brokenLink"
           :key="path"
           :path="path"
           :kind="media"

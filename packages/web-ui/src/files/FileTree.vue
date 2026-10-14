@@ -15,6 +15,7 @@ import ContextMenu from '../ui/ContextMenu.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import FileUploadList from './FileUploadList.vue'
+import LinkMark from './LinkMark.vue'
 import { failureShown } from './file-cache'
 import { followOnScreen } from './on-screen'
 import Tree from './Tree.vue'
@@ -30,7 +31,7 @@ import {
   type UploadItem,
 } from './file-uploads'
 import type { TreeDropTarget, TreeRow } from './tree'
-import type { FileBrowserEntry, FileBrowserFailure, FileBrowserSource, Showing } from './types'
+import type { FileBrowserEntry, FileBrowserFailure, FileBrowserLink, FileBrowserSource, Showing } from './types'
 import { baseName } from '@demicodes/utils'
 import { joinPath, normalizePath, parentPath, relativePath } from './paths'
 import { DEFAULT_SORT, sortEntries } from './file-browser-state'
@@ -197,8 +198,15 @@ function entriesOf(entry: Listing | undefined): FileBrowserEntry[] {
   return sortEntries(entry?.showing?.entry.value ?? [], DEFAULT_SORT)
 }
 
-const rows = computed<TreeRow[]>(() => {
-  const out: TreeRow[] = []
+/**
+ * The rows the open directories show, and where each symbolic link among
+ * them points. A link to a directory is a directory row whose listing is the
+ * link's own path, so it unfolds at any depth, level by level, a link back
+ * to a folder above it included (`file-previews.md` § Symbolic links).
+ */
+const laidOut = computed(() => {
+  const rows: TreeRow[] = []
+  const links = new Map<string, FileBrowserLink>()
   const walk = (dir: string, depth: number, parent: string | null): void => {
     const entry = listings.get(dir)
     if (!entry?.open) {
@@ -207,15 +215,19 @@ const rows = computed<TreeRow[]>(() => {
     for (const item of entriesOf(entry)) {
       const path = joinPath(dir, item.name)
       const open = item.isDirectory && listings.get(path)?.open === true
-      out.push({ path, name: item.name, isDirectory: item.isDirectory, depth, parent, open })
+      rows.push({ path, name: item.name, isDirectory: item.isDirectory, depth, parent, open })
+      if (item.link) {
+        links.set(path, item.link)
+      }
       if (open) {
         walk(path, depth + 1, path)
       }
     }
   }
   walk(normalizePath(props.root), 0, null)
-  return out
+  return { rows, links }
 })
+const rows = computed(() => laidOut.value.rows)
 
 const selectedPath = computed(() => (props.selected ? normalizePath(props.selected) : null))
 const rootListing = computed(() => listings.get(normalizePath(props.root)))
@@ -503,6 +515,11 @@ defineExpose({
           class="ml-auto shrink-0 text-fg-faint"
           :size="12"
           :stroke-width="1.5"
+        />
+        <LinkMark
+          v-if="laidOut.links.has(row.path)"
+          :class="isLoading(row) ? 'ml-1' : 'ml-auto'"
+          :link="laidOut.links.get(row.path)!"
         />
       </template>
       <template #empty>

@@ -156,3 +156,58 @@ async fn filesystem_wire_preserves_binary_dates_links_and_error_codes() {
     assert_eq!(error["type"], "fs_error");
     assert_eq!(error["code"], "ENOENT");
 }
+
+/// A listing names each symbolic link's target as written and what is
+/// there after every link on the way, and a link that leads nowhere is
+/// `missing`, never a failure of the listing (`runner.md` § Host
+/// operations).
+// Cost: a temporary directory; a few milliseconds.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_listing_says_where_each_link_points_and_never_fails_for_one() {
+    use std::os::unix::fs::symlink;
+    use wire::LinkTargetKind::{Directory, File, Missing};
+
+    let root = tempfile::tempdir().unwrap();
+    let at = |name: &str| root.path().join(name);
+    std::fs::write(at("notes.txt"), "four").unwrap();
+    std::fs::create_dir(at("shared")).unwrap();
+    symlink("notes.txt", at("to-file")).unwrap();
+    symlink("shared", at("to-dir")).unwrap();
+    let gone = at("gone.log").to_string_lossy().into_owned();
+    symlink(&gone, at("broken")).unwrap();
+    symlink("loop-b", at("loop-a")).unwrap();
+    symlink("loop-a", at("loop-b")).unwrap();
+    symlink("to-dir", at("chain")).unwrap();
+
+    let mut entries = call::<Vec<wire::DirEntry>>(
+        Inbound::FsReaddir {
+            id: "test".into(),
+            path: ".".into(),
+            cwd: None,
+        },
+        root.path(),
+    )
+    .await;
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    let listed: Vec<_> = entries
+        .iter()
+        .map(|entry| {
+            let link = entry.link.as_ref().map(|link| (link.target.as_str(), link.target_kind));
+            (entry.name.as_str(), entry.is_file, entry.is_directory, link)
+        })
+        .collect();
+    assert_eq!(
+        listed,
+        [
+            ("broken", false, false, Some((gone.as_str(), Missing))),
+            ("chain", false, false, Some(("to-dir", Directory))),
+            ("loop-a", false, false, Some(("loop-b", Missing))),
+            ("loop-b", false, false, Some(("loop-a", Missing))),
+            ("notes.txt", true, false, None),
+            ("shared", false, true, None),
+            ("to-dir", false, false, Some(("shared", Directory))),
+            ("to-file", false, false, Some(("notes.txt", File))),
+        ]
+    );
+}

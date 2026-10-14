@@ -186,15 +186,36 @@ pub enum FileKind {
 }
 
 /// One entry of a directory, with its own metadata as `lstat` reports it:
-/// a symbolic link's size and modification time are the link's. A listing
-/// carries them so that it is one request to the Host (`runner.md` § Host
-/// operations).
+/// a symbolic link's size and modification time are the link's, and it
+/// carries `link`, where it points. A listing carries them so that it is
+/// one request to the Host (`runner.md` § Host operations).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DirEntry {
     pub name: String,
     pub kind: FileKind,
     pub size: u64,
     pub modified: Timestamp,
+    /// Present for a [`FileKind::Symlink`] only.
+    pub link: Option<SymbolicLink>,
+}
+
+/// Where a symbolic link points: its target as written, and what is there
+/// once every link on the way is followed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SymbolicLink {
+    pub target: String,
+    pub target_kind: LinkTargetKind,
+}
+
+/// What a symbolic link leads to; `Missing` when it cannot be reached:
+/// nothing there, a loop of links, or a directory on the way that may not
+/// be searched.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum LinkTargetKind {
+    File,
+    Directory,
+    Other,
+    Missing,
 }
 
 /// How a file is written. A write makes the directories above its path
