@@ -63,7 +63,7 @@ what started it and the numbers it compared, so a pass is never a mystery.
 | Inside a turn, after a provider response | The response's reported usage is at or over the token threshold | One per response; the turn continues after at most three of them |
 | A request refused for its tokens (`context_length_exceeded`) | Always | One; the request is then sent once more ([Retries](failures-and-recovery.md#retries)) |
 | Before a model switch | The estimate is at or over the token threshold of the new model | Until it is under, at most eight, stopping when a pass compacts nothing |
-| A `compact` action | The estimate is at least 50% of the window in use, or the model has none | One |
+| A `compact` action | The estimate is at least 50% of the window in use, the model has none, or the unfinished turn failed with `request_too_large` | One |
 
 A response's usage is that of its last call to the model, the size of what
 the model read for it; a provider whose run makes several calls, as Claude
@@ -102,10 +102,14 @@ frame is refused with `(now 23%)`; at 50,000 it is taken. A user who limited
 a 1,000,000-token model to 300K compacts from 150,000 tokens. Below half there is
 too little to summarize for the summary to free much, and each pass loses
 detail. A model that reports no context window has no share to compare, and
-no token threshold relieves it, so its `compact` frame is always taken. The
+no token threshold relieves it, so its `compact` frame is always taken. A turn
+that failed with `request_too_large` also takes it at any share: its media,
+not its tokens, are what the vendor refused, and summarizing them away is the
+user's way to continue it ([Retries](failures-and-recovery.md#retries)). The
 page reads the same estimate and the same 50% from the session's usage
-([Context estimate](#context-estimate)), so its Compact control is disabled
-exactly when the frame would be refused.
+([Context estimate](#context-estimate)), and the failure from the transcript's
+last `error` block, so its Compact control is disabled exactly when the frame
+would be refused.
 
 While a pass runs, the phase is `compacting`. Steers and agent messages that
 arrive wait outside the summarized part and reach the model in the first
