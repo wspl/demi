@@ -39,8 +39,9 @@ across your own machines, and tasks keep running when you close the tab.
 
 ## Quick start
 
-**Requirements**: a Linux server (Ubuntu 22.04+ or Debian 12+) with root
-access, a domain name, and HTTPS in front of it.
+**Requirements**: a Linux server with root access (Ubuntu 22.04+, Debian 12+,
+Fedora, RHEL 10, Rocky Linux, AlmaLinux or Arch Linux; Linux 5.14+ with systemd
+and cgroup v2), a domain name, and HTTPS in front of it.
 
 ```sh
 curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
