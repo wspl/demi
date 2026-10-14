@@ -294,22 +294,43 @@ watch(() => props.path, () => {
 // A file the tree opened, whose link the tree has just read again.
 let openedFromTree: string | null = null
 
-// A link opened, from a message, Back or the crumbs as from the tree, is a
-// link used (`file-previews.md` § Symbolic links): its folder, when kept,
-// is listed again, and the file read again, at once, since neither the
-// folder's watch nor the file's sees its target come or go; so a link its
-// listing called missing whose target is back shows the file. The tree
-// lists a link's folder again itself before it opens it. A read on its way
-// is joined, not repeated.
+/**
+ * A link opened, from a message, Back, the crumbs or the tree, is a link
+ * used (`file-previews.md` § Symbolic links): its folder, when kept, is
+ * listed again, unless the tree has just done so to open it, and the file
+ * is read again, at once, since neither the folder's watch nor the file's
+ * sees its target come or go; so a link its listing called missing whose
+ * target is back shows the file. A read on its way is joined, not repeated.
+ */
+function readOpenedLink(listFolder: boolean): void {
+  if (props.path === null || listed.value?.link === undefined)
+    return
+  if (listFolder)
+    void folder.retry()
+  void (media.value === null ? shown.retry() : preview.value?.retry())
+}
+
+// Another file shown is one opened.
 watch(() => props.path, (path) => {
   const fromTree = path !== null && path === openedFromTree
   openedFromTree = null
-  if (path === null || listed.value?.link === undefined)
-    return
-  if (!fromTree)
-    void folder.retry()
-  void (media.value === null ? shown.retry() : preview.value?.retry())
+  readOpenedLink(!fromTree)
 }, { immediate: true, flush: 'post' })
+
+/**
+ * A file opened from the view itself, its tree, crumbs or a document's
+ * link: the file shown now, opened again, changes no path, so its link is
+ * read again here; `folderListed`, when the tree listed its folder again.
+ */
+function openHere(path: string, folderListed = false): void {
+  if (path === props.path) {
+    readOpenedLink(!folderListed)
+    return
+  }
+  if (folderListed)
+    openedFromTree = path
+  emit('open', path)
+}
 
 /** Whether `path` names a directory, by its parent's listing. */
 async function isDirectory(path: string): Promise<boolean> {
@@ -339,7 +360,7 @@ async function go(target: string): Promise<void> {
   if (current.signal.aborted)
     return
   if (!directory) {
-    emit('open', target)
+    openHere(target)
     return
   }
   const root = normalizePath(props.root)
@@ -355,8 +376,8 @@ async function go(target: string): Promise<void> {
 
 function openFromTree(path: string): void {
   frame.value?.dismiss()
-  openedFromTree = path
-  emit('open', path)
+  // The tree lists a link's folder again itself before it opens the link.
+  openHere(path, true)
 }
 
 function download(): void {
@@ -390,7 +411,7 @@ onBeforeUnmount(() => {
         :source="source"
         :leaf="path ? 'file' : 'directory'"
         @navigate="go"
-        @open="emit('open', $event)"
+        @open="openHere($event)"
       />
     </template>
     <template #default="{ overlap }">
@@ -440,7 +461,7 @@ onBeforeUnmount(() => {
           :place="place"
           :contents="source.contents"
           :reloads="reloads"
-          @open="emit('open', $event)"
+          @open="openHere($event)"
         />
         <!-- One editor per file: a new text of it replaces the old in place. -->
         <CodeEditor

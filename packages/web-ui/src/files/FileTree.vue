@@ -291,6 +291,10 @@ async function followLink(row: TreeRow): Promise<void> {
   let now: FileBrowserEntry | undefined
   try {
     now = await readLinkAgain(props.source, row.path, signal)
+  } catch {
+    // Its folder could not be listed again: the folder says why, with its
+    // row's dot or the tree's note, as for any listing, and nothing opens.
+    return
   } finally {
     if (!signal.aborted)
       followed.delete(row.path)

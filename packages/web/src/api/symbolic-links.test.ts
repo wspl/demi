@@ -41,6 +41,8 @@ function host(folders: Record<string, object[]>, texts: Record<string, string> =
   const asked: string[] = []
   /** While set, every request waits for it before it is answered. */
   const held: { until: Promise<void> | null } = { until: null }
+  /** While set, every request is refused as the backend refuses one for a device offline. */
+  const offline = { now: false }
   const notFound = (path: string) =>
     Response.json({ requestId: 'req_test000000000001', code: 'not_found', message: `No ${path}` }, { status: 404 })
   globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -50,6 +52,8 @@ function host(folders: Record<string, object[]>, texts: Record<string, string> =
     asked.push(`${init?.method === 'HEAD' ? 'HEAD ' : ''}${route} ${path}`)
     await answering
     await held.until
+    if (offline.now)
+      return Response.json({ requestId: 'req_test000000000009', code: 'device_offline', message: 'runner has no connection' }, { status: 409 })
     if (route === '/') {
       const entries = folders[path]
       return entries ? Response.json({ path, home: '/w', entries }) : notFound(path)
@@ -66,7 +70,7 @@ function host(folders: Record<string, object[]>, texts: Record<string, string> =
     }
     throw new Error(`Unexpected request: ${route} ${path}`)
   }, { preconnect: realFetch.preconnect })
-  return { folders, texts, asked, held }
+  return { folders, texts, asked, held, offline }
 }
 
 /** Lets the answers given land and what they started run: a few turns of the event loop, no time of its own. */
@@ -401,6 +405,57 @@ test('the attachment picker attaches no link whose target cannot be read, and sa
     open().click()
     await until(shows('Symbolic link to /root/notes, which cannot be read: permission denied.'), 'the picker says why')
     expect(view.picked).toEqual([])
+  } finally {
+    view.unmount()
+  }
+})
+
+test('a link whose folder cannot be listed again is neither chosen nor opened, and the picker says why', async () => {
+  const backend = host({ '/w': [linked('notes.txt', '/srv/notes.txt', { kind: 'file' })] }, { '/w/notes.txt': 'Notes\n' })
+  const view = browse('file')
+  try {
+    await until(() => option('notes.txt') !== undefined, 'the folder lists')
+    backend.offline.now = true
+    option('notes.txt')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+    await until(shows('The device is offline.'), 'the picker says why')
+    expect(view.picked).toEqual([])
+  } finally {
+    view.unmount()
+  }
+})
+
+test('a link in the tree whose folder cannot be listed again does not open', async () => {
+  const backend = host({ '/w': [linked('notes.txt', '/srv/notes.txt', { kind: 'file' })] }, { '/w/notes.txt': 'Notes\n' })
+  const view = show(null)
+  try {
+    await until(() => rows().length === 1, 'the workspace lists')
+    backend.offline.now = true
+    const before = backend.asked.length
+    row('notes.txt').click()
+    await until(() => backend.asked.length > before, 'the folder is listed again')
+    await drain()
+    expect(view.shown.value).toBe(null)
+    expect(backend.asked.slice(before)).toEqual(['/ /w'])
+  } finally {
+    view.unmount()
+  }
+})
+
+test('the link shown, opened again from the tree, reads its file again: a target that is back shows', async () => {
+  const backend = host({ '/w': [linked('notes.txt', '/srv/notes.txt', { kind: 'missing' })] })
+  const view = show('/w/notes.txt')
+  try {
+    await until(shows('Symbolic link to /srv/notes.txt, which does not exist.'), 'the gone target is said')
+    backend.folders['/w'] = [linked('notes.txt', '/srv/notes.txt', { kind: 'file' })]
+    backend.texts['/w/notes.txt'] = 'Back again\n'
+    const listings = () => backend.asked.filter((request) => request === '/ /w').length
+    const before = listings()
+    row('notes.txt').click()
+    await until(shows('Back again'), 'the file shows')
+    expect(view.shown.value).toBe('/w/notes.txt')
+    // The tree listed the folder again; the File view only read the file.
+    await drain()
+    expect(listings()).toBe(before + 1)
   } finally {
     view.unmount()
   }

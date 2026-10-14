@@ -285,8 +285,16 @@ async function current(entry: FileBrowserEntry): Promise<FileBrowserEntry | unde
   if (!entry.link)
     return entry
   const { signal } = following
-  const now = await readLinkAgain(props.source, joinPath(path.value, entry.name), signal)
-  return signal.aborted ? undefined : now
+  try {
+    const now = await readLinkAgain(props.source, joinPath(path.value, entry.name), signal)
+    return signal.aborted ? undefined : now
+  } catch (failure) {
+    // Its folder could not be listed again: said where the browser says what
+    // went wrong, and nothing is opened or chosen.
+    if (!signal.aborted)
+      error.value = { message: toFailure(failure).message ?? 'Could not read the link again.', requestId: requestIdOf(failure) }
+    return undefined
+  }
 }
 
 /**
