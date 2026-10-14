@@ -28,9 +28,11 @@ coverage/
 docs/.vitepress/dist/
 
 # Packaging artifacts (`npm pack` / `bun pm pack`); the release puts the root
-# LICENSE in a package only while it packs it (scripts/release.ts)
+# LICENSE in a package only while it packs it (scripts/release.ts). The
+# web app, under the Demi License, keeps its own, which names LICENSE-DEMI.
 *.tgz
 packages/*/LICENSE
+!packages/web/LICENSE
 
 # Logs
 *.log

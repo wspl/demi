@@ -7,8 +7,10 @@
  * Pipeline per package: strip development export conditions and put the
  * root LICENSE beside the manifest → `bun pm pack` (rewrites workspace
  * ranges from the lockfile) → validate the packed manifest →
- * `bun publish <tarball>`. The root LICENSE is the one copy in the
- * repository; a package carries it only in its tarball.
+ * `bun publish <tarball>`. The root LICENSE is the one copy of the Apache
+ * License in the repository; a package carries it only in its tarball. The
+ * web app keeps a LICENSE of its own that names the Demi License, and
+ * copying never replaces one a package holds.
  *
  * Three failure modes are guarded against:
  *  - workspace protocol leaking into the tarball (the npm-publish bug);
@@ -26,7 +28,7 @@
  * configured .npmrc. Usage: bun run release [--dry-run]
  */
 import { $ } from 'bun'
-import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { constants, copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -198,8 +200,10 @@ for (const { dir, manifest } of packages) {
 
   const dest = await mkdtemp(join(tmpdir(), 'demi-release-'))
   const licensePath = join(dir, 'LICENSE')
+  // Fails, before the manifest is touched, for a package with a LICENSE of
+  // its own, which this release would otherwise ship as Apache and delete.
+  copyFileSync(join(ROOT, 'LICENSE'), licensePath, constants.COPYFILE_EXCL)
   writeFileSync(manifestPath, `${JSON.stringify(publishManifest, null, 2)}\n`)
-  copyFileSync(join(ROOT, 'LICENSE'), licensePath)
   try {
     await $`bun pm pack --destination ${dest}`.cwd(dir).quiet()
   } finally {

@@ -6,7 +6,7 @@
 //! asked, a Linux target's backend, machine manager and `demi-server` in
 //! `bin/` with the
 //! services' units in `systemd/`, and the built web app in `web/`. Its
-//! `LICENSE` and `NOTICE` are the repository's, and with a web app its
+//! `LICENSE`, `LICENSE-DEMI` and `NOTICE` are the repository's, and with a web app its
 //! `THIRD-PARTY-NOTICES` are the ones `xtask notices` wrote into it
 //! (`builds-and-releases.md` § Licenses in a release). The release's files hold each target's runner
 //! executable and each command program's compressed copy. Packaging makes
@@ -29,10 +29,12 @@ use crate::notices::WEB_NOTICES;
 /// (`web-api.md` § Serving the web app build).
 const WEB_BUILD: &str = "build.json";
 
-/// The project's license and notice, which every release carries at its
-/// root.
-const LEGAL: [(&str, &str); 2] = [
+/// The project's licenses, the Apache License and the Demi License that
+/// covers the server and the web app, and its notice, which every release
+/// carries at its root.
+const LEGAL: [(&str, &str); 3] = [
     ("LICENSE", include_str!("../../../LICENSE")),
+    ("LICENSE-DEMI", include_str!("../../../LICENSE-DEMI")),
     ("NOTICE", include_str!("../../../NOTICE")),
 ];
 
@@ -336,12 +338,13 @@ mod tests {
             &[linux],
         );
         assemble(&options(&output, None), &cancel).await.unwrap();
-        // The release's license, its notice and the notices of what it
+        // The release's licenses, its notice and the notices of what it
         // ships lie at its root.
         assert_eq!(
             names(&output),
             [
                 "LICENSE",
+                "LICENSE-DEMI",
                 "NOTICE",
                 NOTICES,
                 "bin",
@@ -356,7 +359,17 @@ mod tests {
             std::fs::read_to_string(output.join(NOTICES)).unwrap(),
             "Third-party notices for Demi"
         );
-        assert!(std::fs::read_to_string(output.join("LICENSE")).unwrap().starts_with("Demi License"));
+        assert!(
+            std::fs::read_to_string(output.join("LICENSE"))
+                .unwrap()
+                .trim_start()
+                .starts_with("Apache License")
+        );
+        assert!(
+            std::fs::read_to_string(output.join("LICENSE-DEMI"))
+                .unwrap()
+                .starts_with("Demi License")
+        );
         assert_eq!(
             names(&output.join("systemd")),
             ["demi-backend.service", "demi-machine-manager.service"]
