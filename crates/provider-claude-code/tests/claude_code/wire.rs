@@ -322,6 +322,24 @@ async fn a_usage_limit_is_the_clis_cause_and_waits_until_the_reset_its_refusal_n
     let facts = provider.read_failure(diagnostics, NOW.parse().unwrap());
     assert_eq!(facts.retry_at, Some("2026-09-24T10:00:00Z".parse().unwrap()));
 
+    // Either the window or the usage credits lift the limit: the earlier
+    // reset of those the refusal names, the credits' at 09:00 here, or the
+    // credits' alone.
+    let (notice, result) = session(
+        "You're out of extra usage · resets 9am (UTC)",
+        json!({ "status": "rejected", "resetsAt": 1790244000, "rateLimitType": "overage",
+            "overageResetsAt": 1790240400, "isUsingOverage": false }),
+    );
+    let failed = failure(&run(vec![notice, result]).await).clone();
+    assert_eq!(failed.retry_after, Some(std::time::Duration::from_secs(3600)));
+    let (notice, result) = session(
+        "You're out of extra usage · resets 9am (UTC)",
+        json!({ "status": "rejected", "rateLimitType": "overage", "overageResetsAt": 1790240400,
+            "isUsingOverage": false }),
+    );
+    let failed = failure(&run(vec![notice, result]).await).clone();
+    assert_eq!(failed.retry_after, Some(std::time::Duration::from_secs(3600)));
+
     // Whatever the status says.
     let (notice, mut result) = session("You've hit your weekly limit", info);
     result.as_object_mut().unwrap().remove("api_error_status");
