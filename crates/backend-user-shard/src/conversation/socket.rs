@@ -306,6 +306,19 @@ impl Shard {
             .map_err(|error| error.to_string())
     }
 
+    /// The reason the user's Resume of the conversation carries, when the
+    /// backend would deliver one; none when it would refuse it, as for an
+    /// archived conversation.
+    pub(crate) async fn resume_frame_reason(
+        &self,
+        conversation: &ConversationId,
+    ) -> Result<Option<Option<String>>, StorageError> {
+        match self.prepare_frame(conversation, &ClientFrame::Resume {}).await? {
+            Prepared::Resume(reason) => Ok(Some(reason)),
+            Prepared::Deliver | Prepared::Refused(..) => Ok(None),
+        }
+    }
+
     /// Decodes one message and hands the frame to the conversation's agent
     /// connection, unless the backend refuses it first: a frame that is not
     /// valid, one sent while the conversation is archived, an `open` of a

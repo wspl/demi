@@ -63,7 +63,7 @@ async function create(draft: WorkspaceDraft): Promise<void> {
     :places-for="(id) => placesFor(deviceById(id), resources.projects)"
     @close="close"
     @create="create"
-    @choose="(choice) => preferences.update({ lastProjectHost: choice }, true)"
+    @choose="(choice) => preferences.update({ lastProjectHost: choice })"
     @connect-device="resources.openPairing"
   />
 </template>

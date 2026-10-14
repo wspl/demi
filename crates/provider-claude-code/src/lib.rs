@@ -14,6 +14,7 @@
 
 mod account;
 mod cli;
+mod failure;
 mod input;
 mod live;
 mod login;
@@ -36,7 +37,6 @@ use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::quota::{ProviderQuota, QuotaSnapshotStore};
 use demi_provider_common::{
     Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError,
-    read_http_failure,
 };
 use demi_shared_types::{
     AuthState, Clock, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
@@ -222,14 +222,14 @@ impl Provider for ClaudeCodeProvider {
         Box::pin(models::list(&self.shared.models_dev))
     }
 
-    /// The CLI's failures carry no HTTP record of the vendor's; a record
-    /// that has one is read by the standard HTTP rules.
+    /// A usage limit can succeed again when the account's limited window
+    /// resets; any other failure is read by the standard HTTP rules.
     fn read_failure(
         &self,
         diagnostics: &ProviderErrorDiagnostics,
         received_at: Timestamp,
     ) -> ProviderFailureFacts {
-        read_http_failure(diagnostics, received_at)
+        self.shared.read_failure(diagnostics, received_at)
     }
 
     fn quota(&self) -> Option<&ProviderQuota> {

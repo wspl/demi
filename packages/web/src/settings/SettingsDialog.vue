@@ -416,10 +416,12 @@ function resetShortcuts(): void {
       @update:tone="preferences.update({ appearance: { tone: $event } })"
       @update:accent="preferences.update({ appearance: { accent: $event } })"
       @update:font-size="
-        preferences.update({ appearance: { fontSize: $event } })
+        preferences.update({ appearance: { fontSize: $event } }, { bursty: true })
       "
       :send-while-running="preferences.sendWhileRunning"
       @update:send-while-running="preferences.update({ sendWhileRunning: $event })"
+      :resume-at-retry="preferences.resumeAtRetry"
+      @update:resume-at-retry="preferences.update({ resumeAtRetry: $event })"
     />
     <SettingsAccount
       v-else-if="section === 'account'"

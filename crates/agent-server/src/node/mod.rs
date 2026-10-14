@@ -338,10 +338,11 @@ impl<H: HostResolver> Node<H> {
 
     /// Runs what a restored or new node has yet to run, under its role's
     /// policy (`subagents.md` § Persistence): a child resumes the turn the
-    /// process interrupted, while the root records the interruption and
-    /// leaves the turn to its client; the queued messages run again in
-    /// order; waiting input wakes the root only when its last turn was not
-    /// interrupted, and a child only once its supervisor has
+    /// process interrupted, while the root, whose restore recorded the
+    /// interruption, leaves the turn to its client; the queued messages run again in
+    /// order; waiting input wakes the root, or is written into its last turn
+    /// when that failed or was interrupted (`failures-and-recovery.md` § The
+    /// unfinished turn), and wakes a child only once its supervisor has
     /// looked at it, which closes it instead when it is quiescent. What this
     /// changed is saved at once.
     pub(crate) async fn continue_from(&self, continuation: Continuation) -> Result<(), StoreError> {
@@ -351,27 +352,19 @@ impl<H: HostResolver> Node<H> {
         // failure is logged, and a report or an rpc call of it tries again.
         let _ = self.runtime.take_up(|_| true).await;
         let session = &self.session;
-        if self.role == NodeRole::Child {
-            // Its supervision releases the hold at its first look; an action
-            // that starts first releases it too.
-            session.hold();
-        }
-        if continuation.interrupted {
-            match self.role {
-                NodeRole::Root => session.record_interruption(),
-                // The action reports its course as events, and a refusal
-                // means the session is closing.
-                NodeRole::Child => drop(session.resume(Some(RESTARTED))),
-            }
+        // The restore held a child, which its supervision releases at its
+        // first look, and ended a root's interrupted turn with its record.
+        if continuation.interrupted && self.role == NodeRole::Child {
+            // The action reports its course as events, and a refusal means
+            // the session is closing.
+            drop(session.resume(Some(RESTARTED)));
         }
         for message in continuation.queued {
             // A restored session is live and has run nothing, so it admits
             // them; the actions report their course as events.
             drop(session.send(message.content, message.id));
         }
-        if !continuation.interrupted {
-            session.wake();
-        }
+        session.wake();
         session.flush().await
     }
 }
@@ -622,10 +615,10 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         Box::pin(self.admission.enter(Purpose::Demand))
     }
 
-    /// A root's turn only: a child's result says what it could not do, and
+    /// A root's turns only: a child's result says what it could not do, and
     /// its parent's turn decides (`failures-and-recovery.md` § The
     /// unfinished turn).
-    fn ends_offline_turns_unfinished(&self) -> bool {
+    fn user_recovers_turns(&self) -> bool {
         self.node == self.root
     }
 

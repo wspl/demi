@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ShownError } from '../infra/errors'
 import { provideEditSelection, type EditSelectionHandler } from './edit-selection'
+import { provideResumeAtRetry } from './resume-at-retry'
 import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, watch } from 'vue'
@@ -52,7 +53,7 @@ import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
-import { resumeWaitsFor, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
+import { endsWithErrorRecord, resumeWaitsFor, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import { latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
@@ -123,10 +124,16 @@ const props = withDefaults(defineProps<{
    * Connecting row of its own while the conversation's socket waits for it.
    */
   backendAway?: boolean
+  /**
+   * The user's preference to resume a turn by itself at the time its failure
+   * names, which such a failure's record offers; absent, it offers none.
+   */
+  resumeAtRetry?: boolean
 }>(), {
   // Vue reads an absent boolean prop as false, which would offer Open panel
   // where there is no panel; absent stays undefined.
   asideOpen: undefined,
+  resumeAtRetry: undefined,
 })
 /** The share of the session area's height the dock's windows keep; the host keeps it (`dock-window.ts`). */
 const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_WINDOW_SHARE.default })
@@ -134,6 +141,8 @@ const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_W
 const emit = defineEmits<{
   /** The dock windows' share settled: a drag ended, a key or a double-click applied. */
   dockWindowResizeEnd: [share: number]
+  /** A failure's record turned the preference to resume at its time on or off. */
+  'update:resumeAtRetry': [on: boolean]
   openAside: []
   rename: [title: string]
   /** The row menu's commands, from the phone's title sheet; Delete once the user confirmed it. */
@@ -183,6 +192,9 @@ const emit = defineEmits<{
   openInstruction: [entry: InstructionEntry]
 }>()
 provideEditSelection(() => props.selectEdit)
+provideResumeAtRetry(() => props.resumeAtRetry === undefined
+  ? undefined
+  : { on: props.resumeAtRetry, set: (on) => emit('update:resumeAtRetry', on) })
 provideBlockReader(() => props.readBlock)
 // A running call shows its command's output under it; once the call
 // returned, a command that still runs is the dock's (`runtime.md`
@@ -286,14 +298,14 @@ const canRecover = computed(
 )
 // A session-level failure is told once, in the transcript flow: never beside
 // the status pane that already replaced the transcript, never under an error
-// record that already says it.
+// record that already says it, also when receipts arrived behind it.
 const failureNotice = computed(() => {
   const visible = getVisibleBlocks(latest.value)
   return sessionFailureNotice(
     props.conversation.load,
     props.conversation.lastError,
     visible.length > 0,
-    visible.at(-1)?.type === 'error',
+    endsWithErrorRecord(visible),
   )
 })
 // One control in the dock: Resume after an error, Continue after the user's Stop.

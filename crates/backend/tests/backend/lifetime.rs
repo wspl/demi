@@ -383,16 +383,33 @@ async fn a_command_lost_after_a_shutdown_interrupted_its_call_is_reported_by_the
     alpha.runner.start_again();
     backend.until_online(&master, alpha.id(), true).await;
 
-    // The loss waits for the interrupted turn's next action, named by the
-    // call's title, which the command's record kept from its start.
-    eventually("the loss is reported", || {
-        let waiting = lost_reports_waiting(&harness);
-        async move { waiting == 1 }
-    })
-    .await;
-    let report = &reports_waiting(&harness)[0];
-    assert_eq!(report["title"], "Deploy the batch", "{report}");
-    assert_eq!(report["event"]["reason"], demi_backend_remote_host::UPGRADED, "{report}");
+    // The interrupted turn holds the loss until the user acts, written into
+    // it as it arrives (`failures-and-recovery.md` § The unfinished turn),
+    // named by the call's title, which the command's record kept from its
+    // start.
+    let lost = || async {
+        transcript(&backend, &master, FIRST)
+            .await
+            .blocks
+            .into_iter()
+            .find_map(|block| match block {
+                Block::Wakeup(wakeup) => wakeup
+                    .reports
+                    .into_iter()
+                    .find(|report| matches!(report.event, ReportEvent::Lost { .. })),
+                _ => None,
+            })
+    };
+    eventually("the loss is reported", || async { lost().await.is_some() }).await;
+    let report = lost().await.unwrap();
+    assert_eq!(report.title, "Deploy the batch");
+    assert_eq!(
+        report.event,
+        ReportEvent::Lost {
+            reason: demi_backend_remote_host::UPGRADED.to_owned()
+        }
+    );
+    assert_eq!(lost_reports_waiting(&harness), 0);
     backend.close().await;
 }
 

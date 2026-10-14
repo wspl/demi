@@ -12,13 +12,16 @@ import SwatchPicker from '../ui/SwatchPicker.vue'
 import AppearancePreview from './AppearancePreview.vue'
 import { SEND_WAY_LABELS, otherWayKeys, type SendWhileRunning } from '../agent/send-way'
 import { IN_DEVELOPMENT } from '../ui/disabled'
+import Switch from '../ui/Switch.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 
 /**
- * Language, look, and what Enter does with a message while the agent works.
- * Every row is a model; the preview beside the look reads the live tokens.
+ * Language, look, what Enter does with a message while the agent works, and
+ * whether a turn a usage limit stopped goes on by itself once the limit
+ * resets. Every row is a model; the preview beside the look reads the live
+ * tokens.
  */
 defineProps<{
   overlayStore: OverlayStore
@@ -31,6 +34,7 @@ const tone = defineModel<ProductTone>('tone', { required: true })
 const accent = defineModel<ProductAccent>('accent', { required: true })
 const fontSize = defineModel<number>('fontSize', { required: true })
 const sendWhileRunning = defineModel<SendWhileRunning>('sendWhileRunning', { required: true })
+const resumeAtRetry = defineModel<boolean>('resumeAtRetry', { required: true })
 
 const themeOptions: readonly SegmentedOption<ThemeChoice>[] = [
   { value: 'light', label: 'Light', icon: Sun },
@@ -115,6 +119,12 @@ const sendDescription = `Steer: the agent reads your message in the running turn
           size="sm"
           :options="sendOptions"
         />
+      </SettingsRow>
+      <SettingsRow
+        label="Resume after a usage limit resets"
+        description="A turn that stops at a usage limit goes on by itself at the time the limit resets. Off, it waits for you to resume it."
+      >
+        <Switch v-model="resumeAtRetry" size="sm" aria-label="Resume after a usage limit resets" />
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>

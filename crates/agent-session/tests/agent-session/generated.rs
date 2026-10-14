@@ -493,7 +493,6 @@ impl Driver {
         self.store = copy;
         self.shared.session.replace(Some(self.session.clone()));
         if continuation.interrupted {
-            self.session.record_interruption();
             self.finish(self.session.resume(None)).await;
         }
     }
