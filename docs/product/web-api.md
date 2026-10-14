@@ -976,19 +976,10 @@ uses its full window. A patch changes one model's limit with
 stores that limit, null removes it, and any other number is refused. The
 backend does not look the model up: a limit its window does not offer has no
 effect. The backend reads, merges and writes in one transaction, preserving
-concurrent changes to other fields. A page keeps the user's changes in order: it
-sends a change of a switch at once, and a change that comes in bursts, such
-as a slider's, after a short pause, and when it is hidden or closed it sends
-what is still waiting at once, with `keepalive`, without waiting for a write
-in flight. Each patch therefore carries `write: { page, seq }`, a random id
-the page draws when it loads and a number that grows with each of its
-writes, and the backend applies a field only from a write newer than the
-last one of the same page that set it: for example, a page sends
-`resumeAtRetry: true` as write 7, the user turns it off and closes the tab,
-and the page sends `false` as write 8 at once; when 8 arrives before 7, the
-backend applies 8 and drops 7's `resumeAtRetry`, so the switch stays off. The
-backend keeps each page's last write per field in memory for ten minutes, as
-long as a write can be on its way. Preferences persist across restarts and are
+concurrent changes to other fields. A page sends a change of a switch at once,
+and a change that comes in bursts, such as a slider's, after a short pause;
+when the page is hidden, reloaded or closed, it sends what is still waiting
+at once, with `keepalive`, so the user's last choice is the one stored. Preferences persist across restarts and are
 separate for every user in both instance modes. The web app reads and
 writes these overrides through its preference state adapter.
 
