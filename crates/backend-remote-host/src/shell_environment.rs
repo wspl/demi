@@ -44,7 +44,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::{
     CommandCatalog, JobEnd, JobMedium, JobOutput, JobStart, RemoteHost, RemoteJob,
-    manifest::CommandSelection,
+    device_jobs::Newest, manifest::CommandSelection,
 };
 
 /// The product's host access around one job: it holds what the Host needs,
@@ -1194,10 +1194,11 @@ fn push_reason(output: &mut Vec<OutputRecord>, reason: &str) -> String {
 /// and output).
 #[derive(Default)]
 struct Received {
-    /// How many of the stream's first `JOB_VIEW_BYTES` it received: the
-    /// stream's part of the output it holds. Bytes the runner printed while
-    /// no connection served and nothing delivered again are not among them,
-    /// though bytes after them were received, so the end reads the kept
+    /// Where the stream's part of the output it holds ends: its first bytes,
+    /// within `JOB_VIEW_BYTES`, up to the first it did not receive, such as
+    /// bytes the runner printed while no connection served that no read
+    /// delivered again. Bytes after such a gap stay out of it, so the
+    /// output never joins bytes across it, and the end reads the kept
     /// output.
     head: u64,
     /// The stream's length on the Host, as its messages told it.
@@ -1205,10 +1206,8 @@ struct Received {
     /// Where the pages' view of the stream's next bytes starts.
     next: u64,
     text: Utf8Stream,
-    /// The stream's newest bytes beyond its first `JOB_VIEW_BYTES`, at most
-    /// `JOB_VIEW_BYTES` of them, and where they start.
-    newest: Vec<u8>,
-    newest_offset: u64,
+    /// The stream's newest bytes beyond its first `JOB_VIEW_BYTES`.
+    newest: Newest,
 }
 
 impl Received {
@@ -1226,27 +1225,30 @@ impl Received {
         self.host = self.host.max(end);
         if chunk.offset < wire::JOB_VIEW_BYTES as u64 {
             // The device's jobs deliver a stream's first bytes without
-            // overlap (`JobEntry::deliver`).
-            self.head += chunk.bytes.len() as u64;
+            // overlap (`JobEntry::deliver`), so a message that does not
+            // start where the held output ends lies past a gap.
+            if chunk.offset == self.head {
+                self.head = end;
+                if !chunk.bytes.is_empty() {
+                    received
+                        .borrow_mut()
+                        .push(OutputRecord::Output(chunk.stream, chunk.bytes.clone()));
+                }
+            }
             self.next = end;
             let text = self.text.decode(&chunk.bytes);
-            if !chunk.bytes.is_empty() {
-                received
-                    .borrow_mut()
-                    .push(OutputRecord::Output(chunk.stream, chunk.bytes));
-            }
             return record.borrow_mut().append_output(chunk.stream, &text);
         }
         record.borrow_mut().grew(chunk.stream, end);
         if chunk.bytes.is_empty() {
             return false;
         }
-        self.keep_newest(chunk.offset, &chunk.bytes);
+        self.newest.keep(chunk.offset, &chunk.bytes);
         record.borrow_mut().set_newest(
             chunk.stream,
-            self.newest_offset,
-            self.newest_offset.saturating_sub(self.head),
-            whole_characters(&self.newest),
+            self.newest.offset(),
+            self.newest.offset().saturating_sub(self.head),
+            whole_characters(self.newest.bytes()),
         );
         // The pages' view takes only the bytes it does not hold yet: a job
         // nobody follows sends its newest bytes again with each message.
@@ -1266,24 +1268,6 @@ impl Received {
         record.borrow_mut().append_page_output(&text)
     }
 
-    /// Adds `bytes` at `offset` to the stream's newest bytes: they continue
-    /// or overlap the ones before, or replace them; the newest
-    /// `JOB_VIEW_BYTES` stay.
-    fn keep_newest(&mut self, offset: u64, bytes: &[u8]) {
-        let end = self.newest_offset + self.newest.len() as u64;
-        if self.newest.is_empty() || offset < self.newest_offset || offset > end {
-            self.newest = bytes.to_vec();
-            self.newest_offset = offset;
-        } else {
-            self.newest
-                .truncate(usize::try_from(offset - self.newest_offset).expect("within the bytes"));
-            self.newest.extend_from_slice(bytes);
-        }
-        let excess = self.newest.len().saturating_sub(wire::JOB_VIEW_BYTES);
-        self.newest.drain(..excess);
-        self.newest_offset += excess as u64;
-    }
-
     /// The bytes of the stream in the output the backend holds.
     fn received(&self) -> u64 {
         self.head
@@ -1298,9 +1282,9 @@ impl Received {
             .filter(|(_, stream)| !stream.newest.is_empty())
             .map(|(kind, stream)| {
                 (
-                    stream.newest_offset.saturating_sub(stream.head),
+                    stream.newest.offset().saturating_sub(stream.head),
                     kind,
-                    Bytes::from(stream.newest.clone()),
+                    Bytes::copy_from_slice(stream.newest.bytes()),
                 )
             })
             .collect()
