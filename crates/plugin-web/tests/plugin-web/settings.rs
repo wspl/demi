@@ -34,7 +34,7 @@ fn the_state_follows_the_sign_in_and_the_key_and_names_the_way_in_use() {
     local(async {
         let plugged = Plugged::new(FakeExa::new(Exa {
             pages: pages(),
-            key: Some("exa-key-1234abcd"),
+            key: Some("exa-example-abcd"),
             ..Exa::default()
         }));
         assert_eq!(
@@ -44,8 +44,8 @@ fn the_state_follows_the_sign_in_and_the_key_and_names_the_way_in_use() {
         let started = plugged.call("sign_in", json!({})).await.unwrap();
         assert_eq!(started, json!({ "url": "https://auth.example.test/authorize?state=test" }));
 
-        plugged.sign_in(&token_naming("zan@example.com"));
-        let account = Some(Account { email: Some("zan@example.com".into()) });
+        plugged.sign_in(&token_naming("alex@example.com"));
+        let account = Some(Account { email: Some("alex@example.com".into()) });
         assert_eq!(
             plugged.state().await,
             WebState { account: account.clone(), key: None, in_use: InUse::Account }
@@ -60,8 +60,8 @@ fn the_state_follows_the_sign_in_and_the_key_and_names_the_way_in_use() {
         assert_eq!(plugged.saved_key(), None);
 
         let changes = plugged.demi.changes();
-        plugged.call("save_key", json!({ "key": " exa-key-1234abcd\n" })).await.unwrap();
-        assert_eq!(plugged.saved_key().as_deref(), Some("exa-key-1234abcd"));
+        plugged.call("save_key", json!({ "key": " exa-example-abcd\n" })).await.unwrap();
+        assert_eq!(plugged.saved_key().as_deref(), Some("exa-example-abcd"));
         assert!(plugged.demi.changes() > changes);
         let key = Some(SavedKey { last_four: "abcd".into(), unchecked: None });
         assert_eq!(
@@ -93,12 +93,12 @@ fn a_key_the_check_could_not_search_with_is_saved_as_not_checked() {
     local(async {
         let plugged = Plugged::new(FakeExa::new(Exa {
             pages: pages(),
-            key: Some("exa-key-1234abcd"),
+            key: Some("exa-example-abcd"),
             refuse: Some((429, vec![("Retry-After", "20")])),
             ..Exa::default()
         }));
-        plugged.call("save_key", json!({ "key": "exa-key-1234abcd" })).await.unwrap();
-        assert_eq!(plugged.saved_key().as_deref(), Some("exa-key-1234abcd"));
+        plugged.call("save_key", json!({ "key": "exa-example-abcd" })).await.unwrap();
+        assert_eq!(plugged.saved_key().as_deref(), Some("exa-example-abcd"));
         let unchecked = Some("Exa’s rate limit was reached".to_owned());
         assert_eq!(
             plugged.state().await.key,

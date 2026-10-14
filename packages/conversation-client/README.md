@@ -28,4 +28,4 @@ Demi has no TypeScript SDK: the client drives a conversation the backend
 runs; it does not run Demi's agent itself
 ([The TypeScript boundary](../../docs/architecture/contracts.md#the-typescript-boundary)).
 
-Part of [Demi](../../README.md). Demi License; see [LICENSE](LICENSE).
+Part of [Demi](../../README.md). Demi License; see [LICENSE](../../LICENSE).

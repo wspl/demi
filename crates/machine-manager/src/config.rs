@@ -634,12 +634,12 @@ mod tests {
 
     #[test]
     fn the_hosts_resolvers_are_the_ones_a_sandbox_can_use() {
-        let conf = "# systemd-resolved\nnameserver 127.0.0.53\nnameserver 185.12.64.1\n\
-                    nameserver 2a01:4ff:ff00::add:1\nnameserver 185.12.64.2\nnameserver 185.12.64.1\n\
+        let conf = "# systemd-resolved\nnameserver 127.0.0.53\nnameserver 192.0.2.1\n\
+                    nameserver 2001:db8::1\nnameserver 192.0.2.2\nnameserver 192.0.2.1\n\
                     search example.test\n";
         assert_eq!(
             usable_resolvers(conf),
-            [Ipv4Addr::new(185, 12, 64, 1), Ipv4Addr::new(185, 12, 64, 2)]
+            [Ipv4Addr::new(192, 0, 2, 1), Ipv4Addr::new(192, 0, 2, 2)]
         );
         assert!(usable_resolvers("nameserver 127.0.0.53\noptions edns0\n").is_empty());
     }

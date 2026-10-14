@@ -92,7 +92,7 @@ test("a conversation outside a project shows its paired device with its state, o
     runnerVersion: null,
     route: 'automatic' as const,
   }
-  const onLaptop = { kind: 'device' as const, deviceId: 'laptop', path: '/Users/zan' }
+  const onLaptop = { kind: 'device' as const, deviceId: 'laptop', path: '/Users/alex' }
 
   product.read = productState({ devices: [device] })
   expect(resources.conversationDevice(onLaptop)).toEqual({ kind: 'paired', name: 'MacBook Pro', state: 'offline' })

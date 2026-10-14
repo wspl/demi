@@ -100,7 +100,7 @@ const dotBreathing = ref(true)
 
 const query = ref('session cookie')
 const emptyQuery = ref('')
-const secret = ref('sk-ant-api03-3f2a9c1d7e5b4a6f8c2d1e9b')
+const secret = ref('sk-ant-api03-example-not-a-real-key')
 const accountPassword = ref('correct horse battery')
 const shortcut = ref('⌘K')
 const swatch = ref('blue')

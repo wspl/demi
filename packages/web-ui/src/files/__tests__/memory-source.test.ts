@@ -5,11 +5,11 @@ import { FileBrowserError } from '../types'
 function source(offline = false) {
   return createMemoryFileSource({
     platform: 'linux',
-    home: '/home/zan',
+    home: '/home/alex',
     offline,
     root: dir({
       home: dir({
-        zan: dir({
+        alex: dir({
           Projects: dir({
             demi: dir({
               'README.md': file(120, '2026-09-01T10:00:00Z')
@@ -29,7 +29,7 @@ function source(offline = false) {
 }
 
 test('lists a directory with sizes and times', async () => {
-  const entries = await source().list('/home/zan')
+  const entries = await source().list('/home/alex')
   expect(entries).toEqual([
     { name: 'Projects', isDirectory: true, modifiedAt: undefined },
     { name: 'locked', isDirectory: true, modifiedAt: undefined },
@@ -55,8 +55,8 @@ test('a missing path, a failing directory and an offline device reject with thei
       message: 'Permission denied'
     }
   )
-  await expect(source(true).list('/home/zan')).rejects.toBeInstanceOf(FileBrowserError)
-  await expect(source(true).list('/home/zan')).rejects.toMatchObject(
+  await expect(source(true).list('/home/alex')).rejects.toBeInstanceOf(FileBrowserError)
+  await expect(source(true).list('/home/alex')).rejects.toMatchObject(
     { kind: 'offline' }
   )
 })
@@ -83,7 +83,7 @@ test('remove deletes a file or a directory with what is in it, and a path with n
   await s.remove!('/home/alex/Projects/demi')
   await s.remove!('/home/alex/notes.txt')
   await s.remove!('/home/alex/nothing')
-  expect((await s.list('/home/zan')).map((entry) => entry.name)).toEqual(['Projects', 'locked'])
+  expect((await s.list('/home/alex')).map((entry) => entry.name)).toEqual(['Projects', 'locked'])
 })
 
 test('an upload lands as a file, writes over one only when told, and never over a folder', async () => {

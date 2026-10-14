@@ -330,21 +330,22 @@ async fn reported(host: &mut Host, job: &str) -> (Vec<JobFileChange>, Vec<JobPat
 }
 
 /// A job's report marks what it wrote in a temporary directory, so the
-/// conversation leaves it out, and a later move out of it carries the
-/// file's edits to a name that is not temporary (`edit-tracking.md`
-/// § Temporary files); a removal there is marked temporary too, and a file
-/// a job made and removed is not listed at all (§ The report). About a
-/// second: three jobs start a login shell.
+/// conversation leaves it out, and a later move out of it into the job's
+/// working directory carries the file's edits to a name that is not
+/// temporary, wherever that directory is (`edit-tracking.md` § Temporary
+/// files); a removal there is marked temporary too, and a file a job made
+/// and removed is not listed at all (§ The report). About a second: three
+/// jobs start a login shell.
 #[tokio::test]
 async fn a_file_in_a_temporary_directory_is_reported_temporary_and_a_move_out_of_it_is_not() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let mut host = Host::start(BTreeMap::new()).await.online().await;
-        // `/tmp` itself, which macOS links to `/private/tmp`; the work
-        // folder is in Cargo's own, which is in no temporary directory.
+        // `/tmp` itself, which macOS links to `/private/tmp`; the jobs run
+        // in the Host's home, whose files are never temporary to them, even
+        // where the home is itself in a temporary directory.
         let scratch = tempfile::tempdir_in("/tmp").unwrap();
-        let work = tempfile::tempdir_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
         let written = scratch.path().join("x").to_string_lossy().into_owned();
-        let moved = std::fs::canonicalize(work.path())
+        let moved = std::fs::canonicalize(host.home())
             .unwrap()
             .join("y")
             .to_string_lossy()

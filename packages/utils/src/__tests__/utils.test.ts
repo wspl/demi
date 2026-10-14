@@ -55,8 +55,8 @@ test("an input method's keys stay with the field and a plain Enter reaches its h
 test("a Host path's name, on a Mac, Linux or Windows Host", () => {
   expect(baseName('/Users/alex/Projects/demi')).toBe('demi')
   expect(baseName('/Users/alex/Projects/demi/')).toBe('demi')
-  expect(baseName('C:\\Users\\zan\\report.pdf')).toBe('report.pdf')
-  expect(baseName('C:\\Users\\zan\\Projects\\')).toBe('Projects')
+  expect(baseName('C:\\Users\\alex\\report.pdf')).toBe('report.pdf')
+  expect(baseName('C:\\Users\\alex\\Projects\\')).toBe('Projects')
   expect(baseName('C:/Users/alex/notes.md')).toBe('notes.md')
   expect(baseName('report.pdf')).toBe('report.pdf')
   expect(baseName('/')).toBe('')
