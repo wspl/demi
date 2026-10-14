@@ -970,13 +970,25 @@ Commands receive it in their
 `contextLimits` holds the user's
 [context limits](../providers/models.md#context-limit), by provider entry id
 and then model id, each in tokens, such as
-`{ "<entry id>": { "claude-opus-4-8": 300000 } }`; a model it does not name
+`{ "<entry id>": { "claude-opus-5-5": 300000 } }`; a model it does not name
 uses its full window. A patch changes one model's limit with
 `contextLimit: { providerId, modelId, tokens }`: 500000, 300000 or 200000
 stores that limit, null removes it, and any other number is refused. The
 backend does not look the model up: a limit its window does not offer has no
 effect. The backend reads, merges and writes in one transaction, preserving
-concurrent changes to other fields. Preferences persist across restarts and are
+concurrent changes to other fields. A page keeps the user's changes in order: it
+sends a change of a switch at once, and a change that comes in bursts, such
+as a slider's, after a short pause, and when it is hidden or closed it sends
+what is still waiting at once, with `keepalive`, without waiting for a write
+in flight. Each patch therefore carries `write: { page, seq }`, a random id
+the page draws when it loads and a number that grows with each of its
+writes, and the backend applies a field only from a write newer than the
+last one of the same page that set it: for example, a page sends
+`resumeAtRetry: true` as write 7, the user turns it off and closes the tab,
+and the page sends `false` as write 8 at once; when 8 arrives before 7, the
+backend applies 8 and drops 7's `resumeAtRetry`, so the switch stays off. The
+backend keeps each page's last write per field in memory for ten minutes, as
+long as a write can be on its way. Preferences persist across restarts and are
 separate for every user in both instance modes. The web app reads and
 writes these overrides through its preference state adapter.
 
@@ -1013,7 +1025,7 @@ answers 204; a `limit` that is not a whole number from 1 answers 400
 contextLimit, instructions, canSpawn }`, where `contextLimit` is null, the
 user's limit, or the tokens of the profile's own choice, the full window
 included (400 `invalid_body` without a model of its own or for a choice the
-model does not offer),, creates the profile enabled, and answers 201 with
+model does not offer), creates the profile enabled, and answers 201 with
 `{ profile }`. `PATCH /api/subagents/profiles/:id` takes any subset of those
 fields and `enabled`, and answers `{ profile }`; `model` and `instructions`
 are whole values, and null returns either to the parent's.
@@ -1058,14 +1070,18 @@ every node of the user's conversations.
 ## Model configuration and provider inspection
 
 `POST /api/providers` takes
-`{ source: "vendor", vendorId, label?, apiKey?, models? }` or
-`{ source: "custom", providerType, wireApi?, label?, apiKey?, baseUrl?, models? }`:
-the first a vendor entry of a models.dev vendor, the second the family's own
-vendor's entry without `baseUrl`, such as Anthropic's, and a compatible entry
-with it ([Endpoints](../providers/providers.md#endpoints)):
-everything but the kind may come later, and the entry is
+`{ source: "vendor", vendorId, label?, apiKey?, models? }`,
+`{ source: "family", providerType, wireApi?, label?, apiKey?, models? }` or
+`{ source: "compatible", providerType?, wireApi?, label?, apiKey?, baseUrl?, models? }`:
+a vendor entry of a models.dev vendor, a family's own vendor's entry, such as
+Anthropic's, and a compatible entry, Anthropic Messages unless
+`providerType` and `wireApi` say otherwise
+([Endpoints](../providers/providers.md#endpoints)). Everything but the kind
+may come later, and the entry is
 [incomplete](../providers/models.md#a-provider-is-in-the-list-from-the-start)
-until it has what it needs; `label` defaults to the vendor's or family's name.
+until it has what it needs; `label` defaults to the vendor's or family's
+name, or *Compatible API*, with the first free *(2)*, *(3)* when the user
+has an entry of that name.
 The first derives the family, its wire and its endpoint from the vendor
 catalog, `GET /api/providers/catalog`, which lists the
 [vendors from models.dev](../providers/providers.md#vendors-from-modelsdev);
@@ -1073,10 +1089,12 @@ the second names the family explicitly. `wireApi` is
 `responses` or `chat-completions`, and only a family that speaks both takes
 it. A label has 1 to 80 characters after trimming, a key is one line of text,
 and `baseUrl` is an `http` or `https` URL. PATCH accepts label and, for
-API-key entries, key and model list, and a compatible entry's endpoint; a
-subscription entry takes only a new label (400 `subscription_only`), and an
-endpoint set on a vendor entry or removed from a compatible one answers 400
-`endpoint_kind`, since an entry stays the kind it was added as. An entry's
+API-key entries, key (null removes it) and model list, and a compatible
+entry's endpoint (null removes it, which leaves the entry incomplete),
+`providerType` and `wireApi`; a subscription entry takes only a new label
+(400 `subscription_only`), and an endpoint or a protocol set on a vendor
+entry answers 400 `endpoint_kind`, since an entry stays the kind it was
+added as. A model list whose ids repeat answers 400 `duplicate_model`. An entry's
 read model carries `endpoint`, the base URL its requests go to, whichever
 kind it is. The Test endpoint deliberately makes a real inference
 request. A change of an entry, its accounts included, holds the entry while it
