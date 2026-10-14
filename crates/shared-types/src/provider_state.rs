@@ -165,9 +165,17 @@ pub struct LoginPending {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub user_code: Option<String>,
-    /// Why the vendor's sign-in refused the code the user pasted, in its
-    /// own words, while it waits for another; null otherwise.
+    /// The code the vendor's sign-in refused, while it waits for another;
+    /// null otherwise.
     #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<String>")]
-    pub code_error: Option<String>,
+    #[schemars(with = "Nullable<RefusedCode>")]
+    pub code_error: Option<RefusedCode>,
+}
+
+/// A code the user pasted that the vendor's sign-in refused: the `code`th
+/// the login took, counting from one, and why, in the sign-in's own words.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RefusedCode {
+    pub code: u32,
+    pub message: String,
 }

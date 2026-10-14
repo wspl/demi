@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
+import { timeLeft } from '@demicodes/utils'
 import { Check, ExternalLink } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -40,6 +41,38 @@ watch(
     code.value = ''
   },
 )
+
+/** The page's clock, which ticks each second while the phase counts down to its expiry. */
+const now = ref(Date.now())
+let ticking: ReturnType<typeof setInterval> | null = null
+const expiresAt = computed(() =>
+  props.isOpen && (props.phase.kind === 'device' || props.phase.kind === 'code')
+    ? props.phase.expiresAt ?? null
+    : null,
+)
+watch(
+  expiresAt,
+  (deadline) => {
+    if (deadline === null) {
+      stopTicking()
+      return
+    }
+    now.value = Date.now()
+    ticking ??= setInterval(() => {
+      now.value = Date.now()
+    }, 1000)
+  },
+  { immediate: true },
+)
+function stopTicking(): void {
+  if (ticking !== null) {
+    clearInterval(ticking)
+    ticking = null
+  }
+}
+onUnmounted(stopTicking)
+/** The time the sign-in has left, as `9:05`; null without an expiry or once it passed. */
+const left = computed(() => (expiresAt.value === null ? null : timeLeft(expiresAt.value, now.value)))
 
 function submitCode(): void {
   if (props.phase.kind === 'code' && !props.phase.submitted && code.value) {
@@ -126,9 +159,7 @@ function submitCode(): void {
           />
           <span class="flex items-center gap-1.5 text-[12px] text-fg-subtle">
             <IndeterminateSpinner :size="ICON_PX.in20" />
-            Waiting<template v-if="phase.expiresIn">
-              · code expires in {{ phase.expiresIn }}</template
-            >
+            Waiting<template v-if="left"> · code expires in {{ left }}</template>
           </span>
         </div>
       </div>
@@ -171,8 +202,8 @@ function submitCode(): void {
           <IndeterminateSpinner :size="ICON_PX.in20" />
           <template v-if="phase.submitted">Signing in…</template>
           <template v-else
-            >Waiting for the code<template v-if="phase.expiresIn">
-              · expires in {{ phase.expiresIn }}</template
+            >Waiting for the code<template v-if="left">
+              · expires in {{ left }}</template
             ></template
           >
         </span>

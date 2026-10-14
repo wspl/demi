@@ -19,7 +19,7 @@ pub(crate) fn request_id(answer: &Answer) -> String {
 
 /// The lines the server log keeps of `request`, as an administrator reads
 /// them.
-pub(crate) async fn lines_of(backend: &TestBackend, admin: &Session, request: &str) -> ServerLog {
+async fn lines_of(backend: &TestBackend, admin: &Session, request: &str) -> ServerLog {
     let read = backend
         .get(&format!("/api/server/log?request={request}"), Some(admin))
         .await;

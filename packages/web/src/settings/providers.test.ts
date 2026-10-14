@@ -34,6 +34,8 @@ let activate: () => Promise<Response>
 let startLogin: (path: string) => Promise<Response>
 /** The sign-ins the page cancelled, by their ids. */
 let cancelled: string[]
+/** What the backend answers to a pasted code. */
+let pasteCode: (code: string) => Promise<Response>
 
 beforeEach(async () => {
   pinia = createPinia()
@@ -63,6 +65,9 @@ beforeEach(async () => {
     throw new Error('No sign-in starts in this test')
   }
   cancelled = []
+  pasteCode = async () => {
+    throw new Error('No code is pasted in this test')
+  }
   write = async (body) => {
     if (typeof body.label === 'string') {
       state.providers[0]!.label = body.label
@@ -135,6 +140,9 @@ beforeEach(async () => {
     }
     if (path.endsWith('/login') && init?.method === 'POST') {
       return startLogin(path)
+    }
+    if (path.endsWith('/code') && init?.method === 'POST') {
+      return pasteCode(JSON.parse(String(init.body)).code as string)
     }
     if (path.startsWith('/api/providers/subscription-login/') && init?.method === 'DELETE') {
       cancelled.push(path.slice('/api/providers/subscription-login/'.length))
@@ -598,6 +606,7 @@ function runningLogin(id: string, stage: LoginStage, providerId: string | null =
       verificationUrl: stage === 'waiting_for_user' ? 'https://auth.openai.com/codex/device' : null,
       userCode: stage === 'waiting_for_user' ? 'HXRV-7K2M' : null,
       needsCode: false,
+      codesTaken: 0,
       codeError: null,
       expiresAt: '2026-09-10T00:10:00.000Z',
     },
@@ -623,7 +632,7 @@ test('a page loaded while a sign-in runs shows it again, follows it, and Cancel 
   state.logins = [runningLogin('running', 'waiting_for_user')]
   channels.last().send({ type: 'logins', logins: state.logins })
   await waitFor(() => settings.login?.phase.kind === 'device')
-  expect(settings.login?.phase).toEqual({ kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M' })
+  expect(settings.login?.phase).toEqual({ kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M', expiresAt: Date.parse('2026-09-10T00:10:00.000Z') })
 
   // Cancel cancels it, and the dialog stays closed when its end is announced.
   await settings.closeLogin()
@@ -665,7 +674,7 @@ test('a start the entry’s running sign-in holds opens that sign-in, whose fail
   }
   await settings.beginLogin(settings.providers.find((provider) => provider.id === 'subscription')!)
   expect(starts).toEqual(['/api/providers/subscription/accounts/login'])
-  expect(settings.login?.phase).toEqual({ kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M' })
+  expect(settings.login?.phase).toEqual({ kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M', expiresAt: Date.parse('2026-09-10T00:10:00.000Z') })
 
   state.logins = [{
     ...state.logins[0]!,
@@ -681,4 +690,58 @@ test('a start the entry’s running sign-in holds opens that sign-in, whose fail
   // Nothing to cancel: it ended.
   await settings.closeLogin()
   expect(cancelled).toEqual([])
+})
+
+test('a refusal shows only for the code it refused, never an earlier one’s over a later code', async () => {
+  const listed = (codesTaken: number, codeError: string | null): ListedLogin => ({
+    id: 'claude',
+    providerId: null,
+    // The page takes a code the same way whatever the family.
+    providerType: 'codex',
+    login: {
+      status: 'pending',
+      stage: 'waiting_for_user',
+      verificationUrl: 'https://claude.com/cai/oauth/authorize',
+      userCode: null,
+      needsCode: true,
+      codesTaken,
+      codeError,
+      expiresAt: '2026-09-10T00:15:00.000Z',
+    },
+  })
+  const settings = useProviderSettings()
+  // The first code was refused.
+  state.logins = [listed(1, 'Invalid code. Please make sure the full code was copied.')]
+  channels.last().send({ type: 'logins', logins: state.logins })
+  await waitFor(() => settings.login?.phase.kind === 'code')
+  const phase = () => {
+    const shown = settings.login?.phase
+    if (shown?.kind !== 'code') {
+      throw new Error(`Not waiting for a code: ${JSON.stringify(shown)}`)
+    }
+    return [shown.submitted, shown.error ?? null]
+  }
+  expect(phase()).toEqual([false, 'Invalid code. Please make sure the full code was copied.'])
+  expect(settings.login?.phase).toMatchObject({ expiresAt: Date.parse('2026-09-10T00:15:00.000Z') })
+
+  // The user pastes a second one; the backend takes it before the channel says so.
+  let pasted = ''
+  pasteCode = async (code) => {
+    pasted = code
+    return new Response(null, { status: 204 })
+  }
+  await settings.submitCode('second#state')
+  expect(pasted).toBe('second#state')
+  expect(phase()).toEqual([true, null])
+  // The first code's refusal arrives late, as the sign-in judged it: it is not the second's.
+  channels.last().send({ type: 'logins', logins: [listed(1, 'Invalid code. Please make sure the full code was copied.')] })
+  await nextTick()
+  expect(phase()).toEqual([true, null])
+  channels.last().send({ type: 'logins', logins: [listed(2, null)] })
+  await nextTick()
+  expect(phase()).toEqual([true, null])
+  // The second's refusal shows.
+  channels.last().send({ type: 'logins', logins: [listed(2, 'Invalid code 2')] })
+  await waitFor(() => phase()[1] !== null)
+  expect(phase()).toEqual([false, 'Invalid code 2'])
 })

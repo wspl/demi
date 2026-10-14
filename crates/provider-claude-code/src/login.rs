@@ -17,7 +17,7 @@ use demi_provider_common::credentials::{
     AccountKit, AccountsCapability, LoginError, LoginIo, LoginKind, NewAccount, SecretDocument,
     decode_secret,
 };
-use demi_shared_types::{LoginPending, LoginStage, StreamKind, Timestamp};
+use demi_shared_types::{LoginPending, LoginStage, RefusedCode, StreamKind, Timestamp};
 use futures_util::future::BoxFuture;
 use futures_util::{FutureExt as _, StreamExt as _};
 use reqwest::Url;
@@ -41,9 +41,8 @@ enum Shown {
     Stage(LoginStage),
     /// The link the CLI printed.
     Link(String),
-    /// The CLI refused the code the user pasted, in these words, and waits
-    /// for another.
-    CodeRefused(String),
+    /// The CLI refused a code the user pasted, and waits for another.
+    CodeRefused(RefusedCode),
 }
 
 /// What the `claude-code` family adds to the account operations: the CLI's
@@ -113,13 +112,13 @@ async fn sign_in(
                     });
                     link_url = Some(url);
                 }
-                Some(Shown::CodeRefused(words)) => {
+                Some(Shown::CodeRefused(refused)) => {
                     // The CLI reads codes only after it printed its link.
                     if let Some(url) = &link_url {
                         pending(LoginPending {
                             verification_url: url.clone(),
                             user_code: None,
-                            code_error: Some(words),
+                            code_error: Some(refused),
                         });
                     }
                 }
@@ -222,6 +221,9 @@ async fn relay(
     let mut stderr_line = Vec::new();
     let mut linked = false;
     let mut coded = false;
+    // The CLI judges the codes in the order it reads them, one refusal
+    // each, so the nth refusal is of the nth code.
+    let mut refused = 0;
     loop {
         tokio::select! {
             chunk = output.next() => {
@@ -250,8 +252,12 @@ async fn relay(
                             let line: Vec<u8> = stderr_line.drain(..=end).collect();
                             let line = String::from_utf8_lossy(&line).trim().to_owned();
                             if line.starts_with("Invalid code") {
+                                refused += 1;
                                 // As above.
-                                let _ = shown.send(Shown::CodeRefused(line));
+                                let _ = shown.send(Shown::CodeRefused(RefusedCode {
+                                    code: refused,
+                                    message: line,
+                                }));
                             }
                         }
                     }

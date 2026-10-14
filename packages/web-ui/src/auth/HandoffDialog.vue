@@ -5,12 +5,12 @@ import { CircleCheck } from '@lucide/vue'
 import QRCode from 'qrcode'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
+import { timeLeft } from '@demicodes/utils'
 import Dialog from '../ui/Dialog.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import InlineError from '../ui/InlineError.vue'
 import {
   HANDOFF_WORDING,
-  timeLeft,
   type HandoffCodeView,
   type HandoffHost,
   type HandoffWording,

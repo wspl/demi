@@ -331,6 +331,7 @@ impl LoginFlows {
                 verification_url: None,
                 user_code: None,
                 needs_code: false,
+                codes_taken: 0,
                 code_error: None,
                 expires_at,
             },
@@ -369,8 +370,9 @@ impl LoginFlows {
     }
 
     /// Hands `code`, which the owner pasted, to the owner's login, which
-    /// waits for one once it has shown its link; the refusal of an earlier
-    /// code no longer stands. The code is never kept.
+    /// waits for one once it has shown its link, as the next code it took;
+    /// the refusal of an earlier code no longer stands. The code is never
+    /// kept.
     pub fn submit_code(
         &self,
         id: &LoginId,
@@ -384,6 +386,7 @@ impl LoginFlows {
             .ok_or(CodeRefusal::NotFound)?;
         let LoginState::Pending {
             needs_code: true,
+            codes_taken,
             code_error,
             ..
         } = &mut flow.state
@@ -396,12 +399,12 @@ impl LoginFlows {
         flow.codes
             .send(code)
             .map_err(|_| CodeRefusal::NotWaiting)?;
-        let refused = code_error.take().is_some();
+        *codes_taken += 1;
+        *code_error = None;
+        let taken = *codes_taken;
         drop(flows);
-        tracing::info!(login = %id, "a code was handed to the login");
-        if refused {
-            self.announce(owner);
-        }
+        tracing::info!(login = %id, code = taken, "a code was handed to the login");
+        self.announce(owner);
         Ok(())
     }
 
@@ -583,30 +586,54 @@ impl LoginFlows {
     }
 
     /// Stores what the vendor asked the user to do, while the login waits;
-    /// the login still ends when it started to.
+    /// the login still ends when it started to. A refusal of a code before
+    /// the last one the login took is no longer news: the user pasted
+    /// another since.
     fn pending(&self, id: &LoginId, pending: LoginPending) {
         let mut flows = self.lock();
         let Some(flow) = flows.get_mut(id) else {
             return;
         };
-        let LoginState::Pending { expires_at, .. } = flow.state else {
+        let LoginState::Pending {
+            expires_at,
+            codes_taken,
+            ..
+        } = flow.state
+        else {
             return;
         };
         if flow.cancel.is_cancelled() {
             return;
         }
-        flow.reach(LoginStage::WaitingForUser);
-        if pending.code_error.is_some() {
-            tracing::info!("the login's sign-in refused a code");
-        }
-        flow.state = LoginState::Pending {
+        let code_error = match pending.code_error {
+            Some(refused) if refused.code == codes_taken => {
+                tracing::info!(code = refused.code, "the login's sign-in refused a code");
+                Some(refused.message)
+            }
+            Some(refused) => {
+                tracing::info!(
+                    code = refused.code,
+                    codes_taken,
+                    "the login's sign-in refused a code the user has pasted another after"
+                );
+                None
+            }
+            None => None,
+        };
+        let state = LoginState::Pending {
             stage: LoginStage::WaitingForUser,
             verification_url: Some(pending.verification_url),
             user_code: pending.user_code,
             needs_code: flow.kind == LoginKind::PastedCode,
-            code_error: pending.code_error,
+            codes_taken,
+            code_error,
             expires_at,
         };
+        if state == flow.state {
+            return;
+        }
+        flow.reach(LoginStage::WaitingForUser);
+        flow.state = state;
         let owner = flow.owner.clone();
         drop(flows);
         self.announce(&owner);
@@ -669,7 +696,8 @@ mod tests {
         Capabilities, CatalogError, ProviderRuntime, RuntimeEnv, RuntimeError,
     };
     use demi_shared_types::{
-        AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
+        AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RefusedCode,
+        RuntimeState,
     };
     use demi_web_api_protocol::settings::InstanceMode;
     use futures_util::future::BoxFuture;
@@ -762,6 +790,144 @@ mod tests {
         }
     }
 
+    /// A family whose login takes pasted codes and refuses the code the
+    /// test names, when the test names it, then acknowledges it.
+    struct Refusing {
+        refusals: Arc<Mutex<Option<mpsc::UnboundedReceiver<(u32, tokio::sync::oneshot::Sender<()>)>>>>,
+    }
+
+    impl ProviderFamily for Refusing {
+        fn credential(&self) -> CredentialKind {
+            CredentialKind::Subscription
+        }
+
+        fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
+            let FamilyCredential::Subscription(subscription) = args.credential else {
+                return Err(FamilyError::WrongCredential);
+            };
+            let kit = RefusingKit {
+                refusals: self.refusals.clone(),
+            };
+            Ok(Arc::new(Waiting(Accounts::new(
+                subscription.pool,
+                kit,
+                args.clock,
+            ))))
+        }
+    }
+
+    struct RefusingKit {
+        refusals: Arc<Mutex<Option<mpsc::UnboundedReceiver<(u32, tokio::sync::oneshot::Sender<()>)>>>>,
+    }
+
+    impl AccountKit for RefusingKit {
+        fn capability(&self) -> AccountsCapability {
+            AccountsCapability {
+                login: Some(LoginKind::PastedCode),
+            }
+        }
+
+        fn login<'a>(
+            &'a self,
+            io: LoginIo<'a>,
+        ) -> Option<BoxFuture<'a, Result<NewAccount, LoginError>>> {
+            let mut refusals = self.refusals.lock().unwrap().take().expect("one login");
+            Some(Box::pin(async move {
+                let link = || "https://sign-in.example/authorize".to_owned();
+                (io.pending)(LoginPending {
+                    verification_url: link(),
+                    user_code: None,
+                    code_error: None,
+                });
+                let refusing = async {
+                    // The codes stay taken while the login runs; the test
+                    // names the refusals itself.
+                    let _codes = &io.codes;
+                    while let Some((code, refused)) = refusals.recv().await {
+                        (io.pending)(LoginPending {
+                            verification_url: link(),
+                            user_code: None,
+                            code_error: Some(RefusedCode {
+                                code,
+                                message: format!("Invalid code {code}"),
+                            }),
+                        });
+                        // The test waits for it.
+                        let _ = refused.send(());
+                    }
+                    std::future::pending().await
+                };
+                LoginIo::until_stopped(&io.stop, refusing).await
+            }))
+        }
+    }
+
+    // Instant: nothing waits for time.
+    #[tokio::test]
+    async fn a_refused_code_shows_only_while_no_later_code_was_taken() {
+        let (refuse, refusals) = mpsc::unbounded_channel();
+        let families = FamilyRegistry::default().with(
+            "pasted",
+            Refusing {
+                refusals: Arc::new(Mutex::new(Some(refusals))),
+            },
+        );
+        let clock = Arc::new(TokioClock::new("2026-09-24T08:00:00.000Z".parse().unwrap()));
+        let Backend {
+            _data,
+            sync,
+            flows,
+            master,
+            ..
+        } = backend(families, clock, LoginTiming::default()).await;
+        let page = sync.watch(&master);
+        let id = flows
+            .start(
+                master.clone(),
+                master.clone(),
+                "pasted".into(),
+                "Pasted".into(),
+                None,
+                Arc::new(NoMachine),
+                RequestId::try_from("req_starting".to_owned()).unwrap(),
+            )
+            .await
+            .unwrap();
+        while !matches!(
+            &announced(&page, &flows, &master).await[..],
+            [ListedLogin { login: LoginState::Pending { verification_url: Some(_), .. }, .. }]
+        ) {}
+        let refused = |code| {
+            let (acknowledged, acknowledgement) = tokio::sync::oneshot::channel();
+            refuse.send((code, acknowledged)).unwrap();
+            async { acknowledgement.await.unwrap() }
+        };
+        let shown = || match flows.state(&id, &master) {
+            Some(LoginState::Pending {
+                codes_taken,
+                code_error,
+                ..
+            }) => (codes_taken, code_error),
+            other => panic!("the login ended: {other:?}"),
+        };
+
+        // The user pastes a second code before the sign-in judges the
+        // first: the first's refusal is not shown over the second.
+        for code in ["first", "second"] {
+            flows
+                .submit_code(&id, &master, Secret::try_from(code.to_owned()).unwrap())
+                .unwrap();
+        }
+        assert_eq!(shown(), (2, None));
+        refused(1).await;
+        assert_eq!(shown(), (2, None));
+
+        // The second's refusal is.
+        refused(2).await;
+        assert_eq!(shown(), (2, Some("Invalid code 2".to_owned())));
+        flows.close().await;
+    }
+
     /// The machine of a backend whose logins run no process.
     struct NoMachine;
 
@@ -772,9 +938,9 @@ mod tests {
     }
 
     /// A provider that only logs in.
-    struct Waiting(Accounts<Kit>);
+    struct Waiting<K>(Accounts<K>);
 
-    impl Provider for Waiting {
+    impl<K: AccountKit + 'static> Provider for Waiting<K> {
         fn capabilities(&self) -> Capabilities {
             Capabilities::default()
         }
@@ -808,6 +974,63 @@ mod tests {
         }
     }
 
+    /// The vault's logins over a new control database with its master, for
+    /// `families`.
+    struct Backend {
+        _data: tempfile::TempDir,
+        vault: Vault,
+        sync: SyncRegistry,
+        flows: Arc<LoginFlows>,
+        master: UserId,
+    }
+
+    async fn backend(families: FamilyRegistry, clock: Arc<TokioClock>, timing: LoginTiming) -> Backend {
+        let data = tempfile::tempdir().unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+        )
+        .await
+        .unwrap();
+        let master = testing::master(&control).await.id;
+        let sync = SyncRegistry::default();
+        let vault = Vault::new(
+            control.clone(),
+            VaultKey::new([3; 32]),
+            InstanceMode::Shared,
+            sync.clone(),
+        );
+        let edge = tokio::runtime::Handle::current();
+        let models_dev = ModelsDevClient::new(
+            reqwest::Client::new(),
+            ModelsDevClient::DEFAULT_URL.parse().unwrap(),
+            clock.clone(),
+        );
+        let assembly = Arc::new(ProviderAssembly::new(
+            vault.clone(),
+            families,
+            AccountQuotas::new(vault.clone(), edge.clone()),
+            ModelCatalogCache::new(control.clone(), clock.clone(), edge),
+            VendorCatalog::new(models_dev),
+            reqwest::Client::new(),
+            clock.clone(),
+        ));
+        let flows = LoginFlows::new(
+            assembly,
+            Arc::new(ProviderOperations::default()),
+            timing,
+            clock,
+            sync.clone(),
+        );
+        Backend {
+            _data: data,
+            vault,
+            sync,
+            flows,
+            master,
+        }
+    }
+
     /// The owner's logins as the vault announces them next on a page's
     /// channel.
     async fn announced(
@@ -834,22 +1057,7 @@ mod tests {
     #[tokio::test(start_paused = true)]
     async fn a_login_announces_each_change_ends_at_the_expiry_it_shows_and_its_result_goes_later()
     {
-        let data = tempfile::tempdir().unwrap();
-        let control = ControlService::open(
-            &data.path().join("control.sqlite"),
-            Arc::new(demi_shared_types::SystemClock),
-        )
-        .await
-        .unwrap();
-        let master = testing::master(&control).await.id;
         let clock = Arc::new(TokioClock::new("2026-09-24T08:00:00.000Z".parse().unwrap()));
-        let sync = SyncRegistry::default();
-        let vault = Vault::new(
-            control.clone(),
-            VaultKey::new([3; 32]),
-            InstanceMode::Shared,
-            sync.clone(),
-        );
         let dropped = Arc::new(AtomicUsize::new(0));
         let families = FamilyRegistry::default().with(
             "device",
@@ -857,30 +1065,15 @@ mod tests {
                 dropped: dropped.clone(),
             },
         );
-        let edge = tokio::runtime::Handle::current();
-        let models_dev = ModelsDevClient::new(
-            reqwest::Client::new(),
-            ModelsDevClient::DEFAULT_URL.parse().unwrap(),
-            clock.clone(),
-        );
-        let assembly = Arc::new(ProviderAssembly::new(
-            vault.clone(),
-            families,
-            AccountQuotas::new(vault.clone(), edge.clone()),
-            ModelCatalogCache::new(control.clone(), clock.clone(), edge),
-            VendorCatalog::new(models_dev),
-            reqwest::Client::new(),
-            clock.clone(),
-        ));
         let timing = LoginTiming::default();
         assert_eq!(timing.device_lifetime, Duration::from_secs(10 * 60));
-        let flows = LoginFlows::new(
-            assembly,
-            Arc::new(ProviderOperations::default()),
-            timing,
-            clock.clone(),
-            sync.clone(),
-        );
+        let Backend {
+            _data,
+            vault,
+            sync,
+            flows,
+            master,
+        } = backend(families, clock.clone(), timing).await;
         let page = sync.watch(&master);
         let request = RequestId::try_from("req_starting".to_owned()).unwrap();
 
@@ -938,6 +1131,7 @@ mod tests {
                 verification_url: Some("https://verify.example/device".into()),
                 user_code: Some("ABCD-1234".into()),
                 needs_code: false,
+                codes_taken: 0,
                 code_error: None,
                 expires_at,
             }
