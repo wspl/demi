@@ -9,10 +9,9 @@
 //! - every request, encoded by every provider's request builder, is one its
 //!   vendor takes: roles in order, every result after its call, no call
 //!   without its result, signed reasoning only where its vendor accepts it;
-//! - every summary request is a request the session sent before to the
-//!   same model, encoded byte for byte the same by every builder, with the
-//!   instruction after it, unless the model has answered none since the
-//!   pass before;
+//! - every summary request, without its instruction, begins with the
+//!   latest request the session sent to the same model since the summary
+//!   request before, encoded byte for byte the same by every builder;
 //! - each new boundary stands at the cut point the recent work's budget
 //!   gives, and keeps the user's words within theirs;
 //! - the estimate after each pass is under the threshold, or the pass freed
@@ -130,20 +129,34 @@ impl Builder {
 
 /// Whether `request` is a summary request.
 pub(super) fn is_summary(request: &InferenceRequest) -> bool {
-    matches!(
-        request.items.last(),
-        Some(InferenceItem::UserMessage { content })
-            if matches!(content.as_slice(), [UserPart::Text(text)] if text == COMPACTION_SUMMARY_INSTRUCTION)
-    )
+    without_instruction(request).is_some()
+}
+
+/// The items of `request` without the summary instruction, when it is a
+/// summary request: the instruction is the last text block of its last
+/// user message, which holds nothing else when the history ended with
+/// something other than the user's input.
+fn without_instruction(request: &InferenceRequest) -> Option<Vec<InferenceItem>> {
+    let mut items = request.items.to_vec();
+    let (InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content }) =
+        items.last_mut()?
+    else {
+        return None;
+    };
+    if content.last() != Some(&UserPart::Text(COMPACTION_SUMMARY_INSTRUCTION.to_owned())) {
+        return None;
+    }
+    content.pop();
+    if content.is_empty() {
+        items.pop();
+    }
+    Some(items)
 }
 
 /// What the generated model answers, drawn from the session's seed.
 struct Generated {
     rng: StdRng,
     requests: Vec<InferenceRequest>,
-    /// Whether each request was answered, rather than left to run until
-    /// it was cancelled.
-    answered: Vec<bool>,
     /// The next request of the session runs until it is cancelled.
     hang: bool,
     /// Rounds per turn, to end a turn after a few.
@@ -180,7 +193,6 @@ impl Generated {
     /// it is cancelled.
     fn answer(&mut self, request: &InferenceRequest) -> Option<Vec<ProviderEvent>> {
         self.requests.push(request.clone());
-        self.answered.push(true);
         if is_summary(request) {
             let n = self.next();
             let text = event::text(&format!("Summary {n}: {}", "s".repeat(self.rng.random_range(10..400))));
@@ -200,7 +212,6 @@ impl Generated {
             });
         }
         if std::mem::take(&mut self.hang) {
-            *self.answered.last_mut().expect("the request is recorded") = false;
             return None;
         }
         let rounds = match self.rounds.iter_mut().find(|(turn, _)| *turn == request.turn_id) {
@@ -367,7 +378,6 @@ impl Driver {
         let model = Model(Rc::new(RefCell::new(Generated {
             rng: StdRng::seed_from_u64(seed),
             requests: Vec::new(),
-            answered: Vec::new(),
             hang: false,
             rounds: Vec::new(),
             serial: 0,
@@ -582,10 +592,7 @@ impl Driver {
                 self.check_pass(&blocks, index, &context);
             }
         }
-        let (requests, answered) = {
-            let generated = self.model.0.borrow();
-            (generated.requests.clone(), generated.answered.clone())
-        };
+        let requests = self.model.0.borrow().requests.clone();
         for (index, request) in requests.iter().enumerate().skip(self.checked) {
             let context = format!("{context} request {index}");
             for builder in BUILDERS {
@@ -594,7 +601,7 @@ impl Driver {
                 });
             }
             if is_summary(request) {
-                check_summary(&requests[..index], &answered[..index], request, &context);
+                check_summary(&requests[..index], request, &context);
             }
         }
         self.checked = requests.len();
@@ -752,41 +759,32 @@ impl Driver {
     }
 }
 
-/// Every summary request is an earlier request of the session to the same
-/// model, the same for every builder, with the instruction after it; but
-/// when that model answered no request since the pass before. Its window
-/// then ends where the input no request answered begins, or where another
-/// model's latest answered request ended (`compaction.md` § One pass), and
-/// it repeats no request of its model.
-fn check_summary(
-    earlier: &[InferenceRequest],
-    answered: &[bool],
-    summary: &InferenceRequest,
-    context: &str,
-) {
-    let prefix = &summary.items[..summary.items.len() - 1];
-    let Some(sent) = earlier.iter().rev().find(|request| {
-        !is_summary(request)
-            && request.items.as_ref() == prefix
-            && request.model_id == summary.model_id
-            && request.system_prompt == summary.system_prompt
-            && request.tools == summary.tools
-    }) else {
-        let previous = earlier.iter().rposition(is_summary).unwrap_or(0);
-        let answered_since = earlier[previous..]
-            .iter()
-            .zip(&answered[previous..])
-            .any(|(request, answered)| {
-                !is_summary(request) && *answered && request.model_id == summary.model_id
-            });
-        assert!(
-            !answered_since,
-            "{context}: the summary request repeats no request sent before: {prefix:?}"
-        );
+/// Every summary request is the session's next request with the
+/// instruction added (`compaction.md` § The summary request): without the
+/// instruction, it begins with the latest request the session sent to the
+/// same model since the summary request before, the same for every builder,
+/// with the same system prompt and tools.
+fn check_summary(earlier: &[InferenceRequest], summary: &InferenceRequest, context: &str) {
+    let items = without_instruction(summary).expect("a summary request");
+    let previous = earlier.iter().rposition(is_summary).map_or(0, |index| index + 1);
+    let Some(sent) = earlier[previous..]
+        .iter()
+        .rev()
+        .find(|request| request.model_id == summary.model_id)
+    else {
         return;
     };
+    assert!(
+        items.starts_with(&sent.items),
+        "{context}: the summary request does not begin with the latest request: {items:?}"
+    );
+    assert_eq!(
+        (&summary.system_prompt, &summary.tools),
+        (&sent.system_prompt, &sent.tools),
+        "{context}"
+    );
     let repeated = InferenceRequest {
-        items: prefix.into(),
+        items: items[..sent.items.len()].into(),
         blocks: sent.blocks.clone(),
         request_id: sent.request_id.clone(),
         turn_id: sent.turn_id.clone(),
