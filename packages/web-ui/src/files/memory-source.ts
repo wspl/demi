@@ -158,12 +158,22 @@ export class SimulatedWatch {
    * concerns hears of it with the change's number.
    */
   change(path: string, { entry = false }: { entry?: boolean } = {}): void {
+    this.announce((subject) => concerns(subject, path, entry))
+  }
+
+  /** A commit, a checkout or a new branch moved the `head` of the repository at `root`. */
+  moveHead(root: string): void {
+    this.announce((subject) => subject.kind === 'head' && subject.path === root)
+  }
+
+  /** Each subscription `changed` names hears of a change with its number. */
+  private announce(changed: (subject: Subject) => boolean): void {
     this.number += 1
     const at = this.number
     for (const link of this.links) {
       const changes: [string, number][] = []
       for (const [key, subject] of link.held) {
-        if (concerns(subject, path, entry))
+        if (changed(subject))
           changes.push([key, at])
       }
       if (changes.length > 0)

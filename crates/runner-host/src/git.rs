@@ -85,6 +85,8 @@ pub enum GitError {
     Timeout,
     #[error("the file is too large")]
     TooLarge,
+    #[error("the abbreviation names more than one commit")]
+    Ambiguous,
     #[error("the working-tree request was cancelled")]
     Cancelled,
     #[error("{0}")]
@@ -99,6 +101,7 @@ impl GitError {
             GitError::NotRepository => "not_repository",
             GitError::Timeout => "timeout",
             GitError::TooLarge => "too_large",
+            GitError::Ambiguous => "ambiguous",
             GitError::Cancelled => "cancelled",
             GitError::Internal(_) => "internal",
             GitError::Io(error) => crate::fs::error_code(error).unwrap_or("EIO"),
@@ -119,6 +122,7 @@ impl Clone for GitError {
             GitError::NotRepository => GitError::NotRepository,
             GitError::Timeout => GitError::Timeout,
             GitError::TooLarge => GitError::TooLarge,
+            GitError::Ambiguous => GitError::Ambiguous,
             GitError::Cancelled => GitError::Cancelled,
             GitError::Internal(message) => GitError::Internal(message.clone()),
             // Out of open files stays so, whatever the error wraps: the
@@ -134,7 +138,7 @@ impl Clone for GitError {
     }
 }
 
-fn internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> GitError {
+pub(crate) fn internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> GitError {
     // Running out of open files stays an IO error, so the request waits for
     // one (`runner.md` § Load).
     if demi_command_sdk::descriptors::exhausted(&error) {
@@ -151,6 +155,8 @@ fn internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> GitError 
 #[derive(Clone)]
 pub struct GitService {
     requests: mpsc::Sender<ChangesRequest>,
+    /// A commit's file list stops here, as the working tree's does.
+    max_files: usize,
     /// How many whole walks the service made.
     walks: Arc<AtomicU64>,
     /// The owner ends with the last handle.
@@ -262,11 +268,14 @@ struct Touched {
 
 /// Where a directory sits in its repository.
 #[derive(Clone)]
-struct Located {
+pub(crate) struct Located {
     workdir: PathBuf,
     git_dir: PathBuf,
+    /// In a linked worktree, the main repository's git directory, which
+    /// holds the refs and `packed-refs`; none when it is `git_dir`.
+    common_dir: Option<PathBuf>,
     /// The directory relative to the work tree, with `/` separators; empty at the work tree itself.
-    prefix: String,
+    pub(crate) prefix: String,
 }
 
 enum Scope {
@@ -311,6 +320,7 @@ impl GitService {
         };
         GitService {
             requests,
+            max_files,
             walks,
             _owner: Arc::new(AbortOnDropHandle::new(tokio::spawn(owner.run(received)))),
         }
@@ -350,11 +360,13 @@ impl GitService {
         }
     }
 
-    /// The file at `path` under `root` as the last commit has it.
+    /// The file at `path` under `root` as the last commit has it, or as
+    /// `commit` has it when one is named.
     pub async fn show(
         &self,
         root: &Path,
         path: &str,
+        commit: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<Vec<u8>, GitError> {
         if cancel.is_cancelled() {
@@ -362,10 +374,14 @@ impl GitService {
         }
         let root = tokio::fs::canonicalize(root).await?;
         let path = path.to_owned();
+        let commit = commit.map(str::to_owned);
         blocking(cancel, move || {
             let located = locate(&root)?.ok_or(GitError::NotRepository)?;
             let repo = discover(&root)?.ok_or(GitError::NotRepository)?;
-            let tree = head_tree(&repo)?;
+            let tree = match &commit {
+                Some(commit) => crate::history::tree_at(&repo, commit)?,
+                None => head_tree(&repo)?,
+            };
             let rela = join_prefix(&located.prefix, &path);
             let entry = tree
                 .lookup_entry_by_path(gix::path::from_bstr(rela.as_bstr()))
@@ -386,6 +402,69 @@ impl GitService {
         })
         .await
     }
+
+    /// The local branches of `root`'s repository and the one checked out.
+    pub async fn branches(
+        &self,
+        root: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<wire::GitBranches, GitError> {
+        let root = canonical(root, cancel).await?;
+        history(cancel, move |_| crate::history::branches(&root)).await
+    }
+
+    /// One page of `branch`'s first-parent history, HEAD's without one,
+    /// after the commit `after` names.
+    pub async fn log(
+        &self,
+        root: &Path,
+        branch: Option<&str>,
+        after: Option<&str>,
+        cancel: &CancellationToken,
+    ) -> Result<wire::GitLog, GitError> {
+        let root = canonical(root, cancel).await?;
+        let branch = branch.map(str::to_owned);
+        let after = after.map(str::to_owned);
+        history(cancel, move |interrupt| {
+            crate::history::log(&root, branch.as_deref(), after.as_deref(), &interrupt)
+        })
+        .await
+    }
+
+    /// The commit `commit` names, its files under `root` against its first
+    /// parent and the local branches it is on.
+    pub async fn commit(
+        &self,
+        root: &Path,
+        commit: &str,
+        cancel: &CancellationToken,
+    ) -> Result<wire::GitCommit, GitError> {
+        let root = canonical(root, cancel).await?;
+        let commit = commit.to_owned();
+        let max_files = self.max_files;
+        history(cancel, move |interrupt| {
+            crate::history::commit(&root, &commit, max_files, &interrupt)
+        })
+        .await
+    }
+}
+
+/// `root` as the history requests read it, unless the request was
+/// cancelled first.
+async fn canonical(root: &Path, cancel: &CancellationToken) -> Result<PathBuf, GitError> {
+    if cancel.is_cancelled() {
+        return Err(GitError::Cancelled);
+    }
+    Ok(tokio::fs::canonicalize(root).await?)
+}
+
+/// A history request's work, stopped as a computation is when the
+/// connection closes or after thirty seconds (`runner.md` § Working tree).
+async fn history<T: Send + 'static>(
+    cancel: &CancellationToken,
+    work: impl FnOnce(Arc<AtomicBool>) -> Result<T, GitError> + Send + 'static,
+) -> Result<T, GitError> {
+    interruptible(cancel, Arc::new(AtomicBool::new(false)), work).await
 }
 
 impl Owner {
@@ -549,9 +628,9 @@ async fn changes(
     let mut adopted = false;
     match &mut state.watch {
         Watch::Unstarted => {
-            let git_dir = located.git_dir.clone();
+            let dirs = GitDirs::of(&located);
             let touched = touched_paths.clone();
-            let listener = Box::new(move |event: &Event| lock(&touched).record(event, &git_dir));
+            let listener = Box::new(move |event: &Event| lock(&touched).record(event, &dirs));
             let key = Key {
                 path: path.to_owned(),
                 reach: Reach::Tree,
@@ -753,7 +832,7 @@ async fn interruptible<T: Send + 'static>(
 /// "no repository" when it could not open a candidate's files as well (on
 /// Linux, without the cause), so that answer stands only once the runner can
 /// open the directory itself.
-fn discover(root: &Path) -> Result<Option<gix::Repository>, GitError> {
+pub(crate) fn discover(root: &Path) -> Result<Option<gix::Repository>, GitError> {
     match gix::discover(root) {
         Ok(repo) => Ok(Some(repo)),
         Err(error) if demi_command_sdk::descriptors::exhausted(&error) => Err(internal(error)),
@@ -767,7 +846,7 @@ fn discover(root: &Path) -> Result<Option<gix::Repository>, GitError> {
     }
 }
 
-fn locate(root: &Path) -> Result<Option<Located>, GitError> {
+pub(crate) fn locate(root: &Path) -> Result<Option<Located>, GitError> {
     let Some(repo) = discover(root)? else {
         return Ok(None);
     };
@@ -776,6 +855,9 @@ fn locate(root: &Path) -> Result<Option<Located>, GitError> {
     };
     let workdir = std::fs::canonicalize(workdir).map_err(GitError::Io)?;
     let git_dir = std::fs::canonicalize(repo.git_dir()).map_err(GitError::Io)?;
+    let common_dir = std::fs::canonicalize(repo.common_dir())
+        .map_err(GitError::Io)?;
+    let common_dir = (common_dir != git_dir).then_some(common_dir);
     let prefix = match root.strip_prefix(&workdir) {
         Ok(relative) => unix_path(relative),
         Err(_) => return Ok(None),
@@ -783,6 +865,7 @@ fn locate(root: &Path) -> Result<Option<Located>, GitError> {
     Ok(Some(Located {
         workdir,
         git_dir,
+        common_dir,
         prefix,
     }))
 }
@@ -852,7 +935,7 @@ fn within(path: &str, paths: &[String]) -> bool {
 }
 
 /// `rela` (relative to the work tree) relative to the root, or `None` outside it.
-fn root_relative_path<'a>(rela: &'a str, prefix: &str) -> Option<&'a str> {
+pub(crate) fn root_relative_path<'a>(rela: &'a str, prefix: &str) -> Option<&'a str> {
     if prefix.is_empty() {
         return Some(rela);
     }
@@ -873,7 +956,8 @@ impl Touched {
     /// changes nothing listed and is not noted, so a build that writes
     /// thousands of files under `target/` leaves nothing to re-examine;
     /// events lost below a folder have it re-examined.
-    fn record(&mut self, event: &Event, git_dir: &Path) {
+    fn record(&mut self, event: &Event, dirs: &GitDirs) {
+        let git_dir = &dirs.git_dir;
         let (path, metadata) = match &event.change {
             Seen::Changed { ignored: true, .. } | Seen::Lost { ignored: true, .. } => return,
             Seen::Changed { path, metadata, .. } => (path, *metadata),
@@ -882,7 +966,7 @@ impl Touched {
                 return;
             }
             Seen::Lost { under: Some(under), .. } => {
-                if under.starts_with(git_dir) || git_dir.starts_with(under) {
+                if dirs.overlaps(under) {
                     self.whole = true;
                 } else {
                     self.touch(under);
@@ -901,6 +985,13 @@ impl Touched {
                     GitPath::Listing => self.whole = true,
                     GitPath::Other => {}
                 }
+            }
+        } else if let Some(common) = dirs.common_dir.as_deref()
+            && path.starts_with(common)
+        {
+            // The refs a linked worktree shares; nothing else there is listed.
+            if !metadata && dirs.shared_ref(path) {
+                self.whole = true;
             }
         } else if !metadata && rules_file(path) {
             self.whole = true;
@@ -969,10 +1060,56 @@ fn rules_file(path: &Path) -> bool {
     )
 }
 
-/// The `.git` of the repository the canonical `root` lies in, if any, which
-/// a watch below the root also covers.
-pub(crate) fn git_dir(root: &Path) -> Option<PathBuf> {
-    locate(root).ok().flatten().map(|located| located.git_dir)
+/// Where git keeps what a working tree's repository reads: its own git
+/// directory, and in a linked worktree the main one's, which holds the refs
+/// and `packed-refs` every worktree shares (`runner.md` § Watching files).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GitDirs {
+    pub(crate) git_dir: PathBuf,
+    pub(crate) common_dir: Option<PathBuf>,
+}
+
+impl GitDirs {
+    fn of(located: &Located) -> Self {
+        GitDirs {
+            git_dir: located.git_dir.clone(),
+            common_dir: located.common_dir.clone(),
+        }
+    }
+
+    /// The folders a watch of the work tree covers besides it: the git
+    /// directory, or in a linked worktree the common one that holds it.
+    pub(crate) fn watched(&self) -> &Path {
+        match &self.common_dir {
+            Some(common) if self.git_dir.starts_with(common) => common,
+            _ => &self.git_dir,
+        }
+    }
+
+    /// Whether `path` is a ref or `packed-refs` of the common git directory.
+    pub(crate) fn shared_ref(&self, path: &Path) -> bool {
+        let Some(inside) = self.common_dir.as_deref().and_then(|common| path.strip_prefix(common).ok()) else {
+            return false;
+        };
+        let mut parts = inside.components().map(|part| part.as_os_str().to_string_lossy());
+        match parts.next().as_deref() {
+            Some("refs") => true,
+            Some("packed-refs") => parts.next().is_none(),
+            _ => false,
+        }
+    }
+
+    /// Whether events lost below `under` may have missed one of them.
+    pub(crate) fn overlaps(&self, under: &Path) -> bool {
+        let overlaps = |dir: &Path| under.starts_with(dir) || dir.starts_with(under);
+        overlaps(&self.git_dir) || self.common_dir.as_deref().is_some_and(overlaps)
+    }
+}
+
+/// The git directories of the repository the canonical `root` lies in, if
+/// any, which a watch below the root also covers.
+pub(crate) fn git_dirs(root: &Path) -> Option<GitDirs> {
+    locate(root).ok().flatten().map(|located| GitDirs::of(&located))
 }
 
 /// The `.gitignore` and `.gitattributes` of each directory above the root,
@@ -1431,15 +1568,41 @@ async fn call(
         Inbound::GitChanges { id, root } => {
             let root = resolve(default_cwd, root).map_err(GitError::Io)?;
             let changes = service.changes(&root, cancel).await?;
-            wire::encode(&wire::Outbound::GitOk(wire::GitOk {
-                id: id.clone(),
-                read_at: read_at.clone(),
-                result: wire::GitResult::Changes(to_wire(changes)),
-            }))
-            .map_err(internal)
+            reply(id, read_at, wire::GitResult::Changes(to_wire(changes)))
+        }
+        Inbound::GitBranches { id, root } => {
+            let root = resolve(default_cwd, root).map_err(GitError::Io)?;
+            let branches = service.branches(&root, cancel).await?;
+            reply(id, read_at, wire::GitResult::Branches(branches))
+        }
+        Inbound::GitLog {
+            id,
+            root,
+            branch,
+            after,
+        } => {
+            let root = resolve(default_cwd, root).map_err(GitError::Io)?;
+            let log = service
+                .log(&root, branch.as_deref(), after.as_deref(), cancel)
+                .await?;
+            reply(id, read_at, wire::GitResult::Log(log))
+        }
+        Inbound::GitCommit { id, root, commit } => {
+            let root = resolve(default_cwd, root).map_err(GitError::Io)?;
+            let commit = service.commit(&root, commit, cancel).await?;
+            reply(id, read_at, wire::GitResult::Commit(commit))
         }
         _ => Err(GitError::Internal("not a working-tree request".into())),
     }
+}
+
+fn reply(id: &str, read_at: &wire::ReadAt, result: wire::GitResult) -> Result<Frame, GitError> {
+    wire::encode(&wire::Outbound::GitOk(wire::GitOk {
+        id: id.to_owned(),
+        read_at: read_at.clone(),
+        result,
+    }))
+    .map_err(internal)
 }
 
 fn to_wire(changes: Changes) -> wire::GitChanges {

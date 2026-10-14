@@ -36,6 +36,14 @@ export function useShowing<O, T>(
   }
 }
 
+/** Kept entries a component shows by path (`useShowings`). */
+export interface ShownEntries<T> {
+  /** The entry shown at each path. */
+  readonly entries: ComputedRef<ReadonlyMap<string, ShownEntry<T>>>
+  /** Reads the entry at `path` again now, as Retry does; at once when none is shown there. */
+  retry(path: string): Promise<void>
+}
+
 /**
  * Shows the entry at each of `paths` of what `owner` gives, through `open`,
  * while the calling component's scope lives, as `useShowing` shows one: a
@@ -47,7 +55,7 @@ export function useShowings<O, T>(
   owner: () => O | null | undefined,
   paths: () => readonly string[],
   open: (owner: O, path: string) => Showing<T>,
-): ComputedRef<ReadonlyMap<string, ShownEntry<T>>> {
+): ShownEntries<T> {
   const held = shallowRef<ReadonlyMap<string, Showing<T>>>(new Map())
   /** The owner `held` was shown from. */
   let heldOwner: O | null | undefined
@@ -75,5 +83,8 @@ export function useShowings<O, T>(
       showing.release()
   })
   followOnScreen(() => [...held.value.values()])
-  return computed(() => new Map([...held.value].map(([path, showing]) => [path, showing.entry])))
+  return {
+    entries: computed(() => new Map([...held.value].map(([path, showing]) => [path, showing.entry]))),
+    retry: (path) => held.value.get(path)?.retry() ?? Promise.resolve(),
+  }
 }

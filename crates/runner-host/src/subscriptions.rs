@@ -11,6 +11,7 @@
 //! follow them and note the ids that changed, so a change nobody
 //! subscribed to costs a lookup and sends nothing.
 
+use crate::git::GitDirs;
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     path::{Path, PathBuf},
@@ -133,16 +134,10 @@ struct Subscription {
 enum Subject {
     File(PathBuf),
     Folder { path: PathBuf, details: bool },
-    Worktree { root: PathBuf, repo: Option<Repository> },
+    Worktree { root: PathBuf, repo: Option<GitDirs> },
     /// Followed through the tree's watch, which also covers its git
-    /// directory.
-    Head { root: PathBuf, git_dir: Option<PathBuf> },
-}
-
-/// Where a working tree's repository keeps what git reads of it.
-#[derive(Debug, Clone)]
-struct Repository {
-    git_dir: PathBuf,
+    /// directories.
+    Head { root: PathBuf, git_dir: Option<GitDirs> },
 }
 
 impl Subject {
@@ -209,7 +204,7 @@ impl Index {
     }
 
     /// Notes in `pending` each subscription `event` changes.
-    fn matched(&self, event: &Event, pending: &Pending) {
+    fn matched(&mut self, event: &Event, pending: &Pending) {
         match &event.change {
             Change::Changed {
                 path,
@@ -236,8 +231,8 @@ impl Index {
                     // What lies below a folder that came, went or was renamed.
                     self.below(path, |id| pending.note(id, event.at));
                 }
-                for (id, subject) in &self.trees {
-                    if tree_changed(subject, path, *metadata, *entry, *ignored) {
+                for (id, subject) in &mut self.trees {
+                    if rebound(subject, path) || tree_changed(subject, path, *metadata, *entry, *ignored) {
                         pending.note(id, event.at);
                     }
                 }
@@ -286,6 +281,21 @@ impl Index {
     }
 }
 
+/// Whether a working tree that was in no repository is in one now that
+/// `path` changed in its `.git`, as `git init` makes it: its subject then
+/// follows the new repository's git directory, and has changed.
+fn rebound(subject: &mut Subject, path: &Path) -> bool {
+    let (root, dirs) = match subject {
+        Subject::Worktree { root, repo: dirs @ None } | Subject::Head { root, git_dir: dirs @ None } => (root, dirs),
+        _ => return false,
+    };
+    if !path.starts_with(root.join(".git")) {
+        return false;
+    }
+    *dirs = crate::git::git_dirs(root);
+    dirs.is_some()
+}
+
 /// Whether a change at `path` changes a working tree's list or its last
 /// commit (`runner.md` § Watching files).
 fn tree_changed(subject: &Subject, path: &Path, metadata: bool, entry: bool, ignored: bool) -> bool {
@@ -293,6 +303,9 @@ fn tree_changed(subject: &Subject, path: &Path, metadata: bool, entry: bool, ign
         Subject::Worktree { root, repo: Some(repo) } => {
             if let Ok(inside) = path.strip_prefix(&repo.git_dir) {
                 return !metadata && git_listing(inside);
+            }
+            if repo.common_dir.as_deref().is_some_and(|common| path.starts_with(common)) {
+                return !metadata && repo.shared_ref(path);
             }
             let Ok(relative) = path.strip_prefix(root) else {
                 return false;
@@ -309,9 +322,10 @@ fn tree_changed(subject: &Subject, path: &Path, metadata: bool, entry: bool, ign
         Subject::Worktree { root, repo: None } => {
             entry && path.starts_with(root) && path.file_name() == Some(".git".as_ref())
         }
-        Subject::Head { git_dir: Some(git_dir), .. } => path
-            .strip_prefix(git_dir)
-            .is_ok_and(|inside| !metadata && head_path(inside)),
+        Subject::Head { git_dir: Some(dirs), .. } => {
+            !metadata
+                && (path.strip_prefix(&dirs.git_dir).is_ok_and(head_path) || dirs.shared_ref(path))
+        }
         Subject::Head { git_dir: None, .. } | Subject::File(_) | Subject::Folder { .. } => false,
     }
 }
@@ -322,9 +336,9 @@ fn tree_lost(subject: &Subject, under: &Path) -> bool {
     let overlaps = |path: &Path| path.starts_with(under) || under.starts_with(path);
     match subject {
         Subject::Worktree { root, repo } => {
-            overlaps(root) || repo.as_ref().is_some_and(|repo| overlaps(&repo.git_dir))
+            overlaps(root) || repo.as_ref().is_some_and(|repo| repo.overlaps(under))
         }
-        Subject::Head { git_dir: Some(git_dir), .. } => overlaps(git_dir),
+        Subject::Head { git_dir: Some(dirs), .. } => dirs.overlaps(under),
         Subject::Head { git_dir: None, .. } | Subject::File(_) | Subject::Folder { .. } => false,
     }
 }
@@ -706,11 +720,11 @@ fn subject_of(kind: SubscriptionKind, path: &Path) -> Result<Subject, String> {
             details: true,
         },
         SubscriptionKind::Worktree => Subject::Worktree {
-            repo: crate::git::git_dir(&canonical).map(|git_dir| Repository { git_dir }),
+            repo: crate::git::git_dirs(&canonical),
             root: canonical,
         },
         SubscriptionKind::Head => Subject::Head {
-            git_dir: crate::git::git_dir(&canonical),
+            git_dir: crate::git::git_dirs(&canonical),
             root: canonical,
         },
     })

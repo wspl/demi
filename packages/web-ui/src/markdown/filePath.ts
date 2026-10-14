@@ -30,6 +30,14 @@ function normalizeFilePath(rawPath: string): string {
 }
 
 /**
+ * The commit a link's target names, such as `3f2a9c1` for `commit:3f2a9c1`:
+ * its id or at least 7 of its first hex digits; null for any other target.
+ */
+export function linkedCommit(target: string): string | null {
+  return /^commit:([0-9a-f]{7,64})$/i.exec(target.trim())?.[1] ?? null
+}
+
+/**
  * The attachment a target names, such as `a3` for `attachment:a3`
  * (`file-previews.md` § Files named in messages); null for any other target.
  */

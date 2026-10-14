@@ -4,6 +4,7 @@ import { baseName } from '@demicodes/utils'
 import type { Showing } from './file-cache'
 import type { TreeRow } from './tree'
 import type { RequestChangeSource, RequestFile } from './request-changes'
+import type { CommitHistorySource } from './history'
 import { relativePath, resolveHostPath } from './paths'
 import type { FileContents } from './types'
 
@@ -51,9 +52,10 @@ export interface ChangeSetSource {
   /**
    * Shows both sides of one file until released: empty `original` for an
    * added file, empty `modified` for a deleted one. A side that is not text
-   * is the answer `binary` or `too-large`.
+   * is the answer `binary` or `too-large`. A renamed file names `from`,
+   * its earlier path, whose last committed content is the old side.
    */
-  showSides(path: string): Showing<ChangeSides>
+  showSides(path: string, from?: string): Showing<ChangeSides>
   /**
    * Each file as the last commit has it, by the path relative to the
    * workspace, for previews and Download; absent when the source serves no
@@ -72,7 +74,7 @@ export type ReadCallChange = (copies: EditCopies, signal?: AbortSignal) => Promi
 /** What an empty change set says in place of its files, by why it is empty. */
 export function emptyChangeSetText(source: ChangeSetSource): string {
   if (source.unavailable === 'no-repository') {
-    return 'Not a git repository.'
+    return 'Not a Git repository.'
   }
   if (source.failure) {
     return 'Could not list the changes.'
@@ -82,14 +84,20 @@ export function emptyChangeSetText(source: ChangeSetSource): string {
 
 /**
  * Where a change view's diffs come from: a request of the conversation (the
- * files its calls changed, nothing to do with git) or the workspace's
- * uncommitted changes against its last commit.
+ * files its calls changed, nothing to do with git) or the repository's
+ * commits, its uncommitted changes against its last commit first
+ * (`edit-tracking.md` § Commits mode).
  */
-export type ChangeMode = 'conversation' | 'uncommitted'
+export type ChangeMode = 'conversation' | 'commits'
 
-/** A live working-tree list and, independently, the request the view shows; null while it shows none. */
+/**
+ * A live working-tree list, the repository's history, null where the host
+ * has none, and, independently, the request the view shows; null while it
+ * shows none.
+ */
 export interface ChangeSources {
   uncommitted: ChangeSetSource
+  history: CommitHistorySource | null
   conversation: RequestChangeSource | null
 }
 

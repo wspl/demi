@@ -307,9 +307,9 @@ impl FileTransfers {
         Ok(())
     }
 
-    /// `git_show`: the file as the last commit has it, decoded whole under
-    /// the working-tree admission `permit`, then streamed into the output
-    /// pipe after the reply.
+    /// `git_show`: the file as the last commit, or the commit it names, has
+    /// it, decoded whole under the working-tree admission `permit`, then
+    /// streamed into the output pipe after the reply.
     pub fn show(
         &self,
         message: Inbound,
@@ -322,6 +322,7 @@ impl FileTransfers {
             root,
             path,
             output,
+            commit,
         } = message
         else {
             return Err(io::Error::other("not a git show"));
@@ -344,7 +345,7 @@ impl FileTransfers {
             let decoded = match root {
                 // Out of open files, the request waits for one (`runner.md` § Load).
                 Ok(root) => {
-                    demi_command_sdk::descriptors::retry(&transfer, || git.show(&root, &path, &transfer)).await
+                    demi_command_sdk::descriptors::retry(&transfer, || git.show(&root, &path, commit.as_deref(), &transfer)).await
                 }
                 Err(error) => Err(crate::git::GitError::Io(error)),
             };

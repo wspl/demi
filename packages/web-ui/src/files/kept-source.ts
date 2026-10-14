@@ -14,6 +14,7 @@ import type { Answered, HostFiles, KeptSpec, Read, Showing } from './file-cache'
 import { baseName } from '@demicodes/utils'
 import { parentPath } from './paths'
 import type { ChangeSetSource, ChangeSides, WorkingTreeChange } from './changes'
+import type { BranchList, CommitDetails, CommitHistorySource, CommitLogPage } from './history'
 import type { WatchChannel } from './watch-channel'
 import type {
   FileBrowserEntry,
@@ -85,11 +86,13 @@ export function keptContents(
   kind: 'description' | 'committed' = 'description',
   absolute: (path: string) => string = (path) => path,
   root?: string,
+  /** Tells apart the committed contents of one commit from another's and the last commit's. */
+  commit?: string,
 ): FileContents {
   const spec = (path: string): KeptSpec<FileDescription> => ({
     kind,
     path: absolute(path),
-    key: path,
+    key: commit === undefined ? path : `${commit}\u0000${path}`,
     ...(root === undefined ? {} : { root }),
     watch: watch ?? null,
     read: () => reads.describe(path),
@@ -178,9 +181,10 @@ export interface ChangeReads {
   list(held: string | null): Promise<Read<ChangesList>>
   /**
    * Both sides of one changed file, by its path relative to the working
-   * tree; a side that is not text rejects with that answer.
+   * tree, the old side at `from` for a renamed file; a side that is not
+   * text rejects with that answer.
    */
-  sides(path: string, held: string | null): Promise<Read<KeptSides>>
+  sides(path: string, held: string | null, from?: string): Promise<Read<KeptSides>>
   /** The committed side's bytes, by path relative to the working tree. */
   committed?: ContentReads
 }
@@ -219,13 +223,13 @@ export function keptChangeSet(
     size: (list) => list.files.reduce((sum, file) => sum + file.path.length, 0),
     version: (list) => list.version,
   }
-  const sidesSpec = (path: string): KeptSpec<KeptSides> => ({
+  const sidesSpec = (path: string, from?: string): KeptSpec<KeptSides> => ({
     kind: 'sides',
     path: absolute(path),
-    key: root,
+    key: from === undefined ? root : `${root}\u0000${from}`,
     root,
     watch,
-    read: (held) => reads.sides(path, held),
+    read: (held) => reads.sides(path, held, from),
     size: (sides) => sides.original.length + sides.modified.length,
     version: (sides) => sides.version,
   })
@@ -254,9 +258,84 @@ export function keptChangeSet(
     refresh() {
       files.retry(listSpec)
     },
-    showSides: (path: string) => files.show(sidesSpec(path)),
+    showSides: (path: string, from?: string) => files.show(sidesSpec(path, from)),
     ...(reads.committed ? { committed: keptContents(reads.committed, options, 'committed', absolute, root) } : {}),
     show: () => files.show(listSpec),
   })
   return source
+}
+
+/**
+ * A repository's history as a host reads it, each a request with the Host's
+ * number before it read: an answer that nothing is there, a branch deleted
+ * or a commit the repository lacks, rejects as not found.
+ */
+export interface HistoryReads {
+  branches(): Promise<Answered<BranchList>>
+  log(branch: string | null, after: string): Promise<Answered<CommitLogPage>>
+  commit(commit: string): Promise<Answered<CommitDetails>>
+  sides(commit: string, path: string, from?: string): Promise<Answered<ChangeSides>>
+  /** A commit's files' bytes, by path relative to the working tree's root. */
+  contents?(commit: string): ContentReads
+}
+
+/** A commit's full id, SHA-1's or SHA-256's, as against an abbreviation, which a new commit can make ambiguous. */
+const FULL_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
+
+/**
+ * The history of the repository the working tree under `root` is in, kept
+ * like its files: each part follows the repository's `head`, which a
+ * commit, a checkout or a new branch changes, so a view shows it again at
+ * once (`edit-tracking.md` § Commits mode); a file's sides at a commit's
+ * full id never change, and are read once. Outside a repository the `head`
+ * it follows changes when one is made there.
+ */
+export function keptHistory(reads: HistoryReads, root: string, options: KeptSourceOptions): CommitHistorySource {
+  const { files } = options
+  const watch = options.watch ?? null
+  const head = () => [{ kind: 'head' as const, path: root }]
+  const answer = <T>(key: string, read: () => Promise<Answered<T>>, size: (value: T) => number, immutable = false): KeptSpec<T> => ({
+    kind: 'answer',
+    path: root,
+    key,
+    watch,
+    read,
+    size,
+    // What a commit's full id names never changes: nothing moves it.
+    ...(immutable ? { immutable, subjects: () => [] } : { subjects: head }),
+  })
+  const messages = (commits: readonly { message: string }[]) => commits.reduce((sum, commit) => sum + commit.message.length, 0)
+  const absolute = (path: string) => `${root.replace(/\/$/, '')}/${path}`
+  const contents = new Map<string, FileContents>()
+  return {
+    showBranches: () => files.show(answer('branches', () => reads.branches(), (list) => list.branches.length)),
+    showLog: (branch, after) => files.show(answer(
+      `log\u0000${branch ?? ''}\u0000${after}`,
+      () => reads.log(branch, after),
+      (page) => messages(page.commits),
+    )),
+    showCommit: (commit) => files.show(answer(
+      `commit\u0000${commit}`,
+      () => reads.commit(commit),
+      (details) => details.commit.message.length + details.files.reduce((sum, file) => sum + file.path.length, 0),
+    )),
+    showSides: (commit, path, from) => files.show(answer(
+      `sides\u0000${commit}\u0000${path}\u0000${from ?? ''}`,
+      () => reads.sides(commit, path, from),
+      (sides) => sides.original.length + sides.modified.length,
+      FULL_ID.test(commit),
+    )),
+    ...(reads.contents
+      ? {
+          contents: (commit: string) => {
+            let kept = contents.get(commit)
+            if (!kept) {
+              kept = keptContents(reads.contents!(commit), options, 'committed', absolute, root, commit)
+              contents.set(commit, kept)
+            }
+            return kept
+          },
+        }
+      : {}),
+  }
 }
