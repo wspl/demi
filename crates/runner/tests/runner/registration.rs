@@ -413,3 +413,86 @@ async fn start_appends_to_the_log_reads_it_from_where_it_ended_and_starts_it_aga
     .await
     .unwrap();
 }
+
+/// A runner started with `--log` in a terminal's foreground, as the leader
+/// of its process group and of the terminal's session, as a shell with job
+/// control or a terminal window starts a program, cannot make a session of
+/// its own; it starts again in one and this process ends. So the
+/// terminal's Ctrl-C reaches no runner, and the runner has no controlling
+/// terminal (`runner.md` § Installation, pairing and removal). Skipped
+/// where the system gives no pseudo-terminal.
+// Under a second: the runner starts twice, its backend's port refusing it.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_runner_with_a_log_started_in_a_terminals_foreground_leaves_the_terminal() {
+    let terminal = match demi_backend_remote_host::testing::Terminal::open() {
+        Ok(terminal) => terminal,
+        Err(error) => {
+            eprintln!("skipped: this system gives no pseudo-terminal: {error}");
+            return;
+        }
+    };
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let installation = tempfile::tempdir().unwrap();
+        let installation = installation.path();
+        let _drained = Drained(installation);
+        let mut runner = tokio::process::Command::new(runner_binary());
+        runner
+            .args(["run", "--log", "--backend", "http://127.0.0.1:9/", "--home"])
+            .arg(installation)
+            .env_remove("DEMI_HOME")
+            .kill_on_drop(true);
+        // Read as a terminal window reads it: a process that closes a
+        // terminal waits on macOS until what it wrote there was read.
+        let mut output = terminal.output().unwrap();
+        let shown = tokio::spawn(async move {
+            let mut shown = String::new();
+            let _ = tokio::io::AsyncReadExt::read_to_string(&mut output, &mut shown).await;
+            shown
+        });
+        let mut started = terminal.spawn(runner).unwrap();
+        while manage("status", installation).await != Some(0) {
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+
+        // The person presses Ctrl-C at the terminal.
+        terminal.interrupt().unwrap();
+        started.wait().await.unwrap();
+        let log = std::fs::read_to_string(installation.join("runner.log")).unwrap_or_default();
+        assert_eq!(manage("status", installation).await, Some(0), "{log}");
+        // No process holds the terminal any more, so what it showed ends.
+        let shown = shown.await.unwrap();
+        assert!(shown.contains("in a session of its own"), "{shown}");
+        // `ps` names no terminal as `?` on Linux and `??` on macOS.
+        let listed = std::process::Command::new("ps")
+            .args(["-A", "-ww", "-o", "tty=,args="])
+            .output()
+            .unwrap();
+        let listed = String::from_utf8_lossy(&listed.stdout);
+        let runners: Vec<&str> = listed
+            .lines()
+            .filter(|line| line.contains(&*installation.to_string_lossy()))
+            .collect();
+        let [runner] = runners.as_slice() else {
+            panic!("one runner of the installation: {runners:?}");
+        };
+        let tty = runner.split_whitespace().next().unwrap_or_default();
+        assert!(tty.chars().all(|c| c == '?'), "{runner}");
+    })
+    .await
+    .unwrap();
+}
+
+/// Drains the installation in its directory when the test ends, however it
+/// ends.
+struct Drained<'a>(&'a std::path::Path);
+
+impl Drop for Drained<'_> {
+    fn drop(&mut self) {
+        // A runner that never started has nothing to drain.
+        let _ = std::process::Command::new(runner_binary())
+            .arg("drain")
+            .env("DEMI_HOME", self.0)
+            .output();
+    }
+}

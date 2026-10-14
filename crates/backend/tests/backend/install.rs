@@ -224,7 +224,12 @@ impl Installations {
     /// A shell for an installer, with the home and without an installation
     /// ID; the runners it starts call their device [`DEVICE`].
     fn shell(&self) -> tokio::process::Command {
-        let mut shell = tokio::process::Command::new("sh");
+        self.program("sh")
+    }
+
+    /// [`Installations::shell`], of the program `program`.
+    fn program(&self, program: &str) -> tokio::process::Command {
+        let mut shell = tokio::process::Command::new(program);
         shell
             .env("HOME", self.home.path())
             .env("DEMI_RUNNER_NAME", DEVICE)
@@ -362,17 +367,31 @@ async fn paired(
     mut installer: tokio::process::Command,
     backend: &TestBackend,
     session: &Session,
-    mut expiring: Option<Duration>,
+    expiring: Option<Duration>,
 ) -> String {
-    use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
     let mut child = installer
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .kill_on_drop(true)
         .spawn()
         .unwrap();
-    let mut lines = tokio::io::BufReader::new(child.stdout.take().unwrap()).lines();
-    let mut stderr = child.stderr.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let stderr = child.stderr.take().unwrap();
+    pairs(child, stdout, stderr, backend, session, expiring).await
+}
+
+/// [`paired`], for an installer started already as `child`, whose output
+/// `stdout` and error `stderr` read.
+async fn pairs(
+    mut child: tokio::process::Child,
+    stdout: impl tokio::io::AsyncRead + Unpin,
+    mut stderr: impl tokio::io::AsyncRead + Unpin,
+    backend: &TestBackend,
+    session: &Session,
+    mut expiring: Option<Duration>,
+) -> String {
+    use tokio::io::{AsyncBufReadExt as _, AsyncReadExt as _};
+    let mut lines = tokio::io::BufReader::new(stdout).lines();
     let mut errors = Vec::new();
     let mut chunk = [0; 8192];
     let mut stderr_open = true;
@@ -687,10 +706,11 @@ fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 
-/// An installer that finds its runner running and waiting to be paired
-/// asks it to write its state again and shows the code it waits with, not
-/// the lines of an earlier pairing that its log holds (`runner.md`
-/// § Installation, pairing and removal).
+/// Interrupting an installer at its terminal while it shows the code leaves
+/// the runner it started running. An installer that finds its runner
+/// running and waiting to be paired asks it to write its state again and
+/// shows the code it waits with, not the lines of an earlier pairing that
+/// its log holds (`runner.md` § Installation, pairing and removal).
 // Several seconds: the first installer downloads this build's runner
 // (170 MB) and starts it; the second finds it running.
 #[tokio::test]
@@ -703,12 +723,14 @@ async fn an_installer_that_finds_its_runner_waiting_shows_its_code_and_no_earlie
     let installations = Installations::new();
     let state = installations.state(&format!("{}/", backend.url));
 
-    // The person closes the first installer once it shows the code; the
-    // runner keeps waiting to be paired.
+    // The person presses Ctrl-C at the first installer once it shows the
+    // code: the terminal interrupts its foreground job, the installer's
+    // process group. The runner keeps waiting to be paired.
     let script = installations.script(&backend).await;
     let mut first = installations
         .shell()
         .arg(&script)
+        .process_group(0)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true)
@@ -725,7 +747,9 @@ async fn an_installer_that_finds_its_runner_waiting_shows_its_code_and_no_earlie
     })
     .await
     .expect("the first installer shows a code");
-    first.kill().await.unwrap();
+    let job = rustix::process::Pid::from_raw(first.id().unwrap() as i32).unwrap();
+    rustix::process::kill_process_group(job, rustix::process::Signal::INT).unwrap();
+    assert!(!first.wait().await.unwrap().success());
     // The log holds an earlier pairing's lines after the runner's own.
     let mut log = std::fs::OpenOptions::new()
         .append(true)
@@ -754,7 +778,7 @@ async fn an_installer_that_finds_its_runner_waiting_shows_its_code_and_no_earlie
 // code, which the test lets expire at once, before it shows the one claimed;
 // a scripted model then runs one job on the paired runner.
 #[tokio::test]
-async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the_shells_mask() {
+async fn an_installer_shows_each_code_until_paired_and_its_runner_works_as_the_users_programs() {
     let releases = Releases::new(runner_binary());
     releases.publish("initial");
     let harness = Harness::new().with_runner_releases(releases.path());
@@ -796,7 +820,9 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
         .await;
 
     // The agent's job reports the user's mask, and a file it makes has the
-    // mode the user's own programs would give it.
+    // mode the user's own programs would give it. Its programs take the
+    // default action of the signals the installer's shell and `nohup`
+    // ignored for the runner, so a job stopped with one of them ends.
     let vendor = MockVendor::start().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
@@ -815,7 +841,8 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
-    let script = "umask; echo made > made.txt";
+    let script = "umask; echo made > made.txt; \
+        perl -e 'print join(q( ), map { qq($_=) . ($SIG{$_} // q(DEFAULT)) } qw(HUP INT QUIT))'";
     vendor.respond(tool_use(
         "mask",
         "shell",
@@ -826,7 +853,57 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
     let requests = vendor.requests();
     let result = tool_result(&requests[1].json(), "mask");
     assert!(result.contains("0002"), "{result}");
+    assert!(
+        result.contains("HUP=DEFAULT INT=DEFAULT QUIT=DEFAULT"),
+        "{result}"
+    );
     assert_eq!(mode(&home.join("made.txt")), 0o664);
+    drop(installations);
+    backend.close().await;
+}
+
+/// A person pastes the install command into a terminal whose shell has job
+/// control, with dash as `sh`, as on Debian: the pipeline is the terminal's
+/// foreground job, led by the program that fetches the installer. The
+/// installer shows the code, says the device is paired, and exits with 0
+/// (`runner.md` § Installation, pairing and removal). Skipped where the
+/// system gives no pseudo-terminal, or has no dash or bash.
+// Several seconds: the installer downloads this build's runner (170 MB),
+// verifies it and starts it.
+#[tokio::test]
+async fn an_installer_piped_into_dash_at_a_terminal_pairs_and_exits_with_0() {
+    let terminal = match demi_backend_remote_host::testing::Terminal::open() {
+        Ok(terminal) => terminal,
+        Err(error) => {
+            eprintln!("skipped: this system gives no pseudo-terminal: {error}");
+            return;
+        }
+    };
+    for shell in ["dash", "bash"] {
+        let present = std::process::Command::new(shell).args(["-c", ":"]).status();
+        if present.is_err() {
+            eprintln!("skipped: this system has no {shell}");
+            return;
+        }
+    }
+    let releases = Releases::new(runner_binary());
+    releases.publish("initial");
+    let harness = Harness::new().with_runner_releases(releases.path());
+    let (backend, master) = harness.start_set_up().await;
+    let installations = Installations::new();
+    let state = installations.state(&format!("{}/", backend.url));
+    let script = installations.script(&backend).await;
+
+    // `cat` stands in for curl, the job's leader, which ends first.
+    let mut installer = installations.program("bash");
+    installer
+        .args(["--norc", "-i", "-c", "cat \"$1\" | dash", "bash"])
+        .arg(&script)
+        .kill_on_drop(true);
+    let shown = terminal.output().unwrap();
+    let child = terminal.spawn(installer).unwrap();
+    let printed = pairs(child, shown, tokio::io::empty(), &backend, &master, None).await;
+    says_paired(&printed, &state);
     drop(installations);
     backend.close().await;
 }
