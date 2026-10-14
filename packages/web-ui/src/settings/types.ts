@@ -59,6 +59,17 @@ export interface SettingsNavGroup {
   items: SettingsNavItem[]
 }
 
+/**
+ * The release's third-party notices as Settings › About › Acknowledgements
+ * shows them. `missing`: the page's build includes none, as a development
+ * build does; a release always does.
+ */
+export type AcknowledgementsState =
+  | { status: 'loading' }
+  | { status: 'ready'; text: string }
+  | { status: 'missing' }
+  | { status: 'failed'; error: ShownError }
+
 export interface SettingsAccountInfo {
   /** The account id, which the avatar's tone follows. */
   id: string

@@ -44,6 +44,7 @@ import InstructionsPanel from './InstructionsPanel.vue'
 import SubagentsPanel from './SubagentsPanel.vue'
 import CredentialsPanel from './CredentialsPanel.vue'
 import UsersPanel from './UsersPanel.vue'
+import AboutPanel from './AboutPanel.vue'
 import type { Action } from '@demicodes/web-ui/ui/operations'
 
 /**
@@ -485,5 +486,6 @@ function resetShortcuts(): void {
       @rebind="rebind"
       @reset="resetShortcuts"
     />
+    <AboutPanel v-else-if="section === 'about'" />
   </SettingsDialog>
 </template>

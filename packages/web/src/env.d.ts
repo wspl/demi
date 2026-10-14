@@ -6,6 +6,8 @@ interface ImportMetaEnv {
   readonly DEMI_DEV_PASSWORD?: string
   /** This page's build, which `vite build` writes in (`vite.config.ts`); none in development. */
   readonly DEMI_WEB_BUILD?: string
+  /** The Demi version this page belongs to (`vite.config.ts`). */
+  readonly DEMI_VERSION: string
 }
 
 declare module '*.vue' {

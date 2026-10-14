@@ -14,6 +14,7 @@ mod contracts;
 #[cfg(all(unix, feature = "developer"))]
 mod dev;
 mod native;
+mod notices;
 mod server_release;
 // Reads Unix file metadata: the sweep runs where development builds do.
 #[cfg(unix)]
@@ -43,6 +44,8 @@ enum Command {
     Native(native::Command),
     /// Assembles a server release root from the built executables.
     ServerRelease(server_release::Options),
+    /// Writes the third-party notices of a release into the built web app.
+    Notices(notices::Options),
     /// Moves the server DEMI_DEPLOY_HOST names to a build of the checkout,
     /// without a release.
     Deploy(deploy::Options),
@@ -69,6 +72,37 @@ fn repository() -> PathBuf {
         .nth(2)
         .expect("xtask sits two directories below the repository's root")
         .to_owned()
+}
+
+/// A package of the workspace's dependency graph, as `cargo metadata`
+/// names it.
+#[derive(serde::Deserialize)]
+struct Package {
+    name: String,
+    version: String,
+    manifest_path: PathBuf,
+}
+
+/// The packages of the dependency graph of the workspace at `repository`,
+/// from `cargo metadata`, or why it failed.
+fn packages(repository: &Path) -> Result<Vec<Package>, String> {
+    /// What is read of `cargo metadata`.
+    #[derive(serde::Deserialize)]
+    struct Metadata {
+        packages: Vec<Package>,
+    }
+    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
+    let output = std::process::Command::new(cargo)
+        .args(["metadata", "--format-version", "1", "--locked", "--manifest-path"])
+        .arg(repository.join("Cargo.toml"))
+        .output()
+        .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).into_owned());
+    }
+    let metadata: Metadata =
+        serde_json::from_slice(&output.stdout).map_err(|error| error.to_string())?;
+    Ok(metadata.packages)
 }
 
 /// A release record's file: indented JSON with a final newline.
@@ -247,6 +281,13 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask server-release: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        Command::Notices(options) => match notices::run(options) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("xtask notices: {error}");
                 ExitCode::FAILURE
             }
         },
