@@ -34,6 +34,7 @@ import GalleryInstructions from './GalleryInstructions.vue'
 import GalleryCredentials from './GalleryCredentials.vue'
 import GalleryUsers from './GalleryUsers.vue'
 import GallerySubagents from './GallerySubagents.vue'
+import GalleryAbout from './GalleryAbout.vue'
 import { slow } from '../fixtures/slow'
 
 /** One page of the full mock, chosen by the dialog's tab. All state lives in the fixture; timers stand in for the server. */
@@ -389,6 +390,8 @@ function resetShortcuts() {
     @rebind="rebind"
     @reset="resetShortcuts"
   />
+
+  <GalleryAbout v-else-if="tab === 'about'" />
 
   <SettingsData
     v-else-if="tab === 'data'"

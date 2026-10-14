@@ -1,0 +1,52 @@
+# Checks each pull request and each push to main on a stock Linux runner
+# (docs/delivery/testing.md): the workspace's one Cargo selection, checked
+# and tested; the web app's suites and type checks; the public registry
+# check; and gitleaks over the commits. The suites that need Chrome, a real
+# machine manager or a vendor's CLI are ignored tests that run only where
+# their resources are supplied, which no job here does.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    name: Check and test
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - uses: ./.github/actions/rust-cache
+        with:
+          key: ci
+      - run: bun install --frozen-lockfile
+      - run: cargo check --locked --workspace --all-targets --features demi-runner/test-fixtures
+      - run: cargo test --locked --workspace --features demi-runner/test-fixtures
+      - run: bun run test
+      - run: bun run typecheck:web
+      - run: bun run check:registry
+
+  secrets:
+    name: Secrets
+    runs-on: ubuntu-26.04
+    steps:
+      # The whole history, from which gitleaks reads the commits the push or
+      # the pull request adds; .gitleaks.toml at the root is its settings.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
