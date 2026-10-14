@@ -6,7 +6,8 @@
 use std::sync::Arc;
 
 use demi_provider_common::{
-    InferenceRequest, ProviderEvent, ProviderFailure, encode_body, http_failure,
+    ErrorCode, HttpFailureRecord, InferenceRequest, ProviderEvent, ProviderFailure, encode_body,
+    http_failure,
     quota::Observation,
     read_http_failure,
     wire::{Vendor, chat_completions},
@@ -101,7 +102,7 @@ pub(crate) fn run(
                 failure = http_failure(response, LABEL, read_http_failure, &*shared.clock) => Some(failure),
             };
             if let Some(failure) = failure {
-                yield ProviderEvent::Error(failure);
+                yield ProviderEvent::Error(with_usage_limit(failure));
             }
             return;
         }
@@ -116,4 +117,28 @@ pub(crate) fn run(
             yield event;
         }
     }
+}
+
+/// `failure` with the code `usage_limit` when its answer is Grok Build's
+/// sign of a used-up account (`failures-and-recovery.md`), as the Grok CLI
+/// reads it: a 402, whatever its body, or a 403 whose text says the account
+/// ran out of credits. Any other 403 stays a refused credential, and a 429
+/// only throttles.
+fn with_usage_limit(mut failure: ProviderFailure) -> ProviderFailure {
+    let used_up = failure
+        .diagnostics
+        .as_deref()
+        .and_then(HttpFailureRecord::read)
+        .is_some_and(|record| match record.status {
+            402 => true,
+            403 => record
+                .body
+                .to_ascii_lowercase()
+                .contains("run out of credits"),
+            _ => false,
+        });
+    if used_up {
+        failure.code = Some(ErrorCode::UsageLimit);
+    }
+    failure
 }

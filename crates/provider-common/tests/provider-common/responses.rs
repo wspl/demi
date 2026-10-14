@@ -213,7 +213,10 @@ async fn a_failure_keeps_the_frame_as_its_record_and_takes_the_wait_from_the_pro
     };
     let failure = failure_of(events_with(&[Value::String(frame.into())], in_a_minute).await);
     assert_eq!(failure.message, "The usage limit has been reached");
-    assert_eq!(failure.code, Some(ErrorCode::RateLimit));
+    assert_eq!(
+        failure.code,
+        Some(ErrorCode::Vendor("usage_limit_reached".into()))
+    );
     assert_eq!(failure.retry_after, Some(Duration::from_secs(60)));
     let diagnostics = failure.diagnostics.unwrap();
     assert_eq!(

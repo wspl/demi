@@ -258,6 +258,54 @@ async fn a_websocket_failure_after_its_first_event_is_the_runs_failure() {
     );
 }
 
+/// A usage limit in a WebSocket error frame, in the shape the Codex CLI
+/// reads, ends the run as a usage limit that names when it lifts.
+#[tokio::test]
+async fn a_usage_limit_in_a_websocket_error_frame_is_a_usage_limit() {
+    let vendor = MockVendor::start().await;
+    let frame = json!({ "type": "error", "status": 429, "error": { "type": "usage_limit_reached", "message": "The usage limit has been reached", "plan_type": "pro", "resets_at": 1_790_062_659 } });
+    let socket = FakeWebSocket::start(
+        vec![Script::Accept(vec![event(frame)])],
+        Some(address(&vendor)),
+    )
+    .await;
+    let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
+    let provider = provider(&socket, &vendor, &pool, TransportMode::Auto, None);
+    let events = run(runtime_of(&provider).as_mut(), inference_request()).await;
+    let [ProviderEvent::Error(failure)] = events.as_slice() else {
+        panic!("{events:?}");
+    };
+    assert_eq!(failure.code, Some(ErrorCode::UsageLimit));
+    assert!(failure.retry_after.is_some(), "{failure:?}");
+}
+
+/// A failure inside a WebSocket envelope, `{"event": …}`, is read as the
+/// frame it wraps: a usage limit's status and reset, and a failed response
+/// whose quota is used up, which no retry would fix.
+#[tokio::test]
+async fn a_failure_in_a_websocket_envelope_is_read_as_the_frame_it_wraps() {
+    let frames = [
+        json!({ "type": "event", "event": { "type": "error", "status": 429, "error": { "type": "usage_limit_reached", "message": "The usage limit has been reached", "resets_at": 1_790_062_659 } } }),
+        json!({ "type": "event", "event": { "type": "response.failed", "response": { "error": { "code": "insufficient_quota", "message": "You exceeded your current quota." } } } }),
+    ];
+    for (frame, lifts) in frames.into_iter().zip([true, false]) {
+        let vendor = MockVendor::start().await;
+        let socket = FakeWebSocket::start(
+            vec![Script::Accept(vec![event(frame.clone())])],
+            Some(address(&vendor)),
+        )
+        .await;
+        let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
+        let provider = provider(&socket, &vendor, &pool, TransportMode::Auto, None);
+        let events = run(runtime_of(&provider).as_mut(), inference_request()).await;
+        let [ProviderEvent::Error(failure)] = events.as_slice() else {
+            panic!("{frame}: {events:?}");
+        };
+        assert_eq!(failure.code, Some(ErrorCode::UsageLimit), "{frame}");
+        assert_eq!(failure.retry_after.is_some(), lifts, "{frame}");
+    }
+}
+
 #[tokio::test]
 async fn a_handshake_refused_with_401_refreshes_the_token_once() {
     let vendor = MockVendor::start().await;

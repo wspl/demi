@@ -66,7 +66,7 @@ test('the provider response shows whole, indented when it is JSON', () => {
 })
 
 test('the copied report carries the vendor payload, indented', () => {
-  const report = errorReportText('The usage limit has been reached', 'rate_limit', {
+  const report = errorReportText('The usage limit has been reached', 'usage_limit', {
     source: 'stream',
     upstream: '{"error":{"plan_type":"pro"}}',
   })

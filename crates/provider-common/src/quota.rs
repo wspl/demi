@@ -42,6 +42,21 @@ impl ProviderQuota {
         self.store.latest()
     }
 
+    /// When the account can be used again after a usage limit received at
+    /// `received_at`, as its kept snapshot says (`failures-and-recovery.md`
+    /// § The unfinished turn): the latest reset still to come among the
+    /// windows it shows used up, since a request succeeds only once every
+    /// one has reset; `None` when it shows none.
+    pub fn used_up_until(&self, received_at: Timestamp) -> Option<Timestamp> {
+        self.latest()?
+            .windows
+            .iter()
+            .filter(|window| window.used_percent.is_some_and(|used| used >= 100.0))
+            .filter_map(|window| window.resets_at)
+            .filter(|reset| *reset > received_at)
+            .max()
+    }
+
     /// What a probe of the account costs; `None` when the family cannot
     /// probe.
     pub fn probe_cost(&self) -> Option<ProbeCost> {
