@@ -5,6 +5,7 @@ use axum::Json;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
+use demi_web_api_protocol::ids::LoginId;
 use demi_web_api_protocol::passkeys::PasskeyId;
 
 use crate::request_id;
@@ -45,6 +46,9 @@ pub(crate) struct ApiError {
     reason: Option<String>,
     /// The passkey a refused sign-in names.
     credential_id: Option<PasskeyId>,
+    /// The starter's own login that holds the entry a login start was
+    /// refused for.
+    login_id: Option<LoginId>,
     /// The `Retry-After` the answer carries, in whole seconds.
     retry_after: Option<u64>,
     /// The ETag of the file a refused read is an answer of, such as one
@@ -73,6 +77,7 @@ impl ApiError {
             message: message.into(),
             reason: None,
             credential_id: None,
+            login_id: None,
             retry_after: None,
             etag: None,
             read_at: None,
@@ -301,9 +306,8 @@ impl IntoResponse for ApiError {
             message: self.message,
             reason: self.reason,
             credential_id: self.credential_id,
-            // Outside the edge's request IDs, as in a unit test that calls a
-            // handler, the answer names an ID no request had.
-            request_id: request_id::current().unwrap_or_else(request_id::generate),
+            login_id: self.login_id,
+            request_id: request_id::current_or_new(),
         };
         let mut response = (self.status, Json(body)).into_response();
         // The request's answered line names the code.
@@ -386,7 +390,10 @@ impl From<LoginRefusal> for ApiError {
             LoginRefusal::Exists(_) => {
                 Self::new(StatusCode::CONFLICT, ErrorCode::ProviderExists, message)
             }
-            LoginRefusal::Busy => Self::provider_busy(),
+            LoginRefusal::Busy(login) => Self {
+                login_id: login,
+                ..Self::provider_busy()
+            },
             LoginRefusal::Assembly(AssemblyError::UnknownFamily(_)) => Self::new(
                 StatusCode::BAD_REQUEST,
                 ErrorCode::UnknownProviderType,

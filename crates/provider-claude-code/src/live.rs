@@ -267,7 +267,7 @@ impl LiveCli {
             config,
             steps,
         } = placement
-            .start(&start)
+            .start(&start, &|_| {})
             .await
             // The machine could not be reached or readied, as when its
             // connection is being replaced or its network fails a lookup:

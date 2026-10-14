@@ -64,17 +64,33 @@ pub struct CliStart {
 #[error("{0}")]
 pub struct StartError(pub String);
 
+/// What a start waits for, in its order, which a sign-in shows its user
+/// (`claude-code.md` § Accounts and sign-in). A start reports each stage as
+/// it reaches it, `Install` only when the machine has no CLI.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StartStage {
+    /// The machine: its access acquired, a stopped one woken, a runner
+    /// that reconnects awaited.
+    Machine,
+    /// Demi's CLI installed on the machine.
+    Install,
+    /// The process readied and started.
+    Process,
+}
+
 /// Starts the CLI processes of a runtime or a sign-in, on a machine the
 /// placement chooses. It lives on the user's shard with its user.
 pub trait Placement {
     /// Starts a new CLI process: the placement readies the machine, Demi's
     /// CLI and a new configuration directory there, `start` says what to
     /// start at the site it found, and the placement writes its files into
-    /// the directory and starts its request on the machine's Host. Dropping
-    /// the future gives the start up, and removes the directory.
+    /// the directory and starts its request on the machine's Host; it
+    /// reports each stage it reaches to `stages`. Dropping the future gives
+    /// the start up, and removes the directory.
     fn start<'a>(
         &'a self,
         start: &'a dyn Fn(&CliSite) -> CliStart,
+        stages: &'a dyn Fn(StartStage),
     ) -> LocalBoxFuture<'a, Result<Placed, StartError>>;
 
     /// The processes prepared ahead on the placement's machine and not yet

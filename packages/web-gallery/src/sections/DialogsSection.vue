@@ -175,17 +175,20 @@ const passwordPhases: { variant: string; phase: ChangePasswordPhase }[] = [
 ]
 const claudeLink = 'https://claude.com/cai/oauth/authorize?code=true'
 const claudePhases: { variant: string; phase: ProviderLoginPhase }[] = [
-  { variant: 'Claude Code · starting', phase: { kind: 'starting' } },
+  { variant: 'Claude Code · contacting', phase: { kind: 'starting', stage: 'preparing' } },
+  { variant: 'Claude Code · waiting for the Cloud', phase: { kind: 'starting', stage: 'waiting_for_cloud' } },
+  { variant: 'Claude Code · installing', phase: { kind: 'starting', stage: 'installing' } },
+  { variant: 'Claude Code · starting', phase: { kind: 'starting', stage: 'starting' } },
   {
     variant: 'Claude Code · link and code',
-    phase: { kind: 'code', url: claudeLink, expiresIn: '15 min', submitted: false },
+    phase: { kind: 'code', url: claudeLink, expiresAt: Date.now() + 15 * 60_000, submitted: false },
   },
   {
     variant: 'Claude Code · code refused',
     phase: {
       kind: 'code',
       url: claudeLink,
-      expiresIn: '14 min',
+      expiresAt: Date.now() + 14 * 60_000,
       submitted: false,
       error: 'Invalid code. Please make sure the full code was copied.',
     },
@@ -199,12 +202,26 @@ const claudePhases: { variant: string; phase: ProviderLoginPhase }[] = [
     variant: 'Claude Code · failed',
     phase: { kind: 'failed', ...requestFailure('Login failed: the authorization code has expired.') },
   },
+  {
+    variant: 'Claude Code · failed waiting for the Cloud',
+    phase: {
+      kind: 'failed',
+      ...requestFailure('Your Cloud did not start: its runner did not connect within 60 seconds'),
+    },
+  },
+  {
+    variant: 'Claude Code · failed installing',
+    phase: {
+      kind: 'failed',
+      ...requestFailure('Claude Code 2.1.3 could not be installed: the distribution answered 503 Service Unavailable'),
+    },
+  },
 ]
 const codexPhases: { variant: string; phase: ProviderLoginPhase }[] = [
-  { variant: 'Codex · starting', phase: { kind: 'starting' } },
+  { variant: 'Codex · contacting', phase: { kind: 'starting', stage: 'preparing' } },
   {
     variant: 'Codex · device code',
-    phase: { kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M', expiresIn: '10 min' },
+    phase: { kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M', expiresAt: Date.now() + 10 * 60_000 },
   },
   { variant: 'Codex · done · the first account', phase: { kind: 'done', account: 'alex@example.com · Plus', active: true } },
   { variant: 'Codex · done · added beside another', phase: { kind: 'done', account: 'alex@work.example · Pro', active: false } },
@@ -212,7 +229,7 @@ const codexPhases: { variant: string; phase: ProviderLoginPhase }[] = [
 const grokPhases: { variant: string; phase: ProviderLoginPhase }[] = [
   {
     variant: 'Grok Build · device code',
-    phase: { kind: 'device', url: 'https://accounts.x.ai/device', code: 'QK4P-9TWD', expiresIn: '10 min' },
+    phase: { kind: 'device', url: 'https://accounts.x.ai/device', code: 'QK4P-9TWD', expiresAt: Date.now() + 10 * 60_000 },
   },
   { variant: 'Grok Build · done', phase: { kind: 'done', account: 'alex@example.com · SuperGrok', active: true } },
 ]
@@ -551,7 +568,7 @@ const resetPhases: {
                 @close="close"
                 @submit-code="productWould(`Give the Code to the ${item.vendor} Sign-In`)"
                 @open="(url) => productWould(`Open ${url} in a New Browser Tab`)"
-                @retry="productWould(`Start the ${item.vendor} Sign-in Again`)"
+                @retry="productWould(`Start the ${item.vendor} Sign-In Again`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>

@@ -487,6 +487,25 @@ impl Backend {
         self.services.syncs.hold(step)
     }
 
+    /// Waits until `user`'s login `login` has ended, as the vault announces
+    /// it, whatever a page's channel is held at.
+    #[cfg(feature = "testing")]
+    pub async fn until_login_ended(
+        &self,
+        user: &demi_web_api_protocol::ids::UserId,
+        login: &demi_web_api_protocol::ids::LoginId,
+    ) {
+        use demi_web_api_protocol::providers::LoginState;
+        let marks = self.services.sync.watch(user);
+        while matches!(
+            self.services.logins.state(login, user),
+            Some(LoginState::Pending { .. })
+        ) {
+            marks.marked().await;
+            marks.take();
+        }
+    }
+
     /// The file gate of the user's conversation `conversation`: every
     /// operation on the conversation's Host holds a lease of it, a
     /// transition reserves it, and a lease the caller takes is activity
