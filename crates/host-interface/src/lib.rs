@@ -43,7 +43,7 @@ pub use environment::{
 };
 pub use host::{
     ByteRange, ByteStream, CpOptions, Descriptor, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
-    HostErrorKind, HostFs, HostIdentity, HostKey, HostProcess, LinkTargetKind, MkdirOptions, Process,
+    HostErrorKind, HostFs, HostIdentity, HostKey, HostProcess, LinkTarget, MkdirOptions, Process,
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnError,
     SpawnErrorKind, SpawnRequest, SymbolicLink, WhenExists, WriteOptions,
 };

@@ -163,13 +163,15 @@ mod platform {
     /// to, so the look still follows no link to read through it.
     fn link_at(directory: &OwnedFd, name: &std::ffi::CStr) -> Result<wire::SymbolicLink, Errno> {
         let target = rustix::fs::readlinkat(directory, name, Vec::new())?;
-        let followed = rustix::fs::statat(directory, name, AtFlags::empty()).map(|stat| {
-            let kind = FileType::from_raw_mode(stat.st_mode);
-            (kind == FileType::RegularFile, kind == FileType::Directory)
-        });
+        let followed = rustix::fs::statat(directory, name, AtFlags::empty())
+            .map(|stat| {
+                let kind = FileType::from_raw_mode(stat.st_mode);
+                (kind == FileType::RegularFile, kind == FileType::Directory)
+            })
+            .map_err(std::io::Error::from);
         Ok(wire::SymbolicLink {
             target: target.to_string_lossy().into_owned(),
-            target_kind: crate::fs::link_target_kind(followed),
+            leads_to: crate::fs::link_target(followed),
         })
     }
 }

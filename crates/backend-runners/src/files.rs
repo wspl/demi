@@ -9,7 +9,7 @@ use bytes::BytesMut;
 use demi_command_protocol::EDIT_FILE_BYTES;
 pub use demi_command_protocol::{TextRefusal, text_of};
 use demi_backend_remote_host::RemoteHost;
-use demi_host_interface::{ByteRange, ByteStream, FileKind, HostError, HostFs, LinkTargetKind};
+use demi_host_interface::{ByteRange, ByteStream, FileKind, HostError, HostFs, LinkTarget};
 use demi_runner_protocol::wire::{self, ReadAt};
 use futures_util::StreamExt as _;
 use demi_web_api_protocol::files::DirectoryEntry;
@@ -65,11 +65,12 @@ pub async fn browse_directory(
             modified_at: entry.modified,
             link: entry.link.map(|link| wire::SymbolicLink {
                 target: link.target,
-                target_kind: match link.target_kind {
-                    LinkTargetKind::File => wire::LinkTargetKind::File,
-                    LinkTargetKind::Directory => wire::LinkTargetKind::Directory,
-                    LinkTargetKind::Other => wire::LinkTargetKind::Other,
-                    LinkTargetKind::Missing => wire::LinkTargetKind::Missing,
+                leads_to: match link.leads_to {
+                    LinkTarget::File => wire::LinkTarget::File,
+                    LinkTarget::Directory => wire::LinkTarget::Directory,
+                    LinkTarget::Other => wire::LinkTarget::Other,
+                    LinkTarget::Missing => wire::LinkTarget::Missing,
+                    LinkTarget::Unreadable { reason } => wire::LinkTarget::Unreadable { reason },
                 },
             }),
         })
@@ -133,7 +134,7 @@ mod tests {
                 (
                     entry.name.as_str(),
                     entry.is_directory,
-                    entry.link.as_ref().map(|link| (link.target.as_str(), link.target_kind)),
+                    entry.link.as_ref().map(|link| (link.target.as_str(), link.leads_to.clone())),
                     entry.size,
                     entry.modified_at.as_millisecond(),
                 )
@@ -147,7 +148,7 @@ mod tests {
                 (
                     "link",
                     false,
-                    Some(("notes.txt", wire::LinkTargetKind::File)),
+                    Some(("notes.txt", wire::LinkTarget::File)),
                     9,
                     modified(&directory.join("link"))
                 ),

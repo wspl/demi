@@ -2,15 +2,12 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
 // A conversation's File view shows symbolic links as their targets
-// (`file-previews.md` § Symbolic links): the workspace `/w` holds `vendor`,
-// a link to a folder, `config.json`, a link to a file, and `old.log`, a link
-// to a file that is gone, as the backend's listing names them. The tree
-// shows `vendor` as a folder that unfolds into the target's entries, a link
-// back to `/w` among them unfolding again a level deeper; each link wears
-// its mark naming the target; a file link opens under its own path; and the
-// gone one, opened, says so where the file would be. The page is happy-dom,
-// the backend a stubbed fetch answering the routes as it does. Cost: no
-// I/O; tens of milliseconds.
+// (`file-previews.md` § Symbolic links), on a page of happy-dom whose
+// backend is a stubbed fetch answering the file routes as the backend
+// does, from a Host the test changes between steps. The workspace `/w`
+// holds `vendor`, a link to a folder, `config.json`, a link to a file,
+// `old.log`, a link to a file that is gone, and `secret`, a link behind a
+// folder closed to the user. Cost: no I/O; tens of milliseconds a test.
 
 GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/chat' })
 // After the page, since the components ask for its elements.
@@ -26,35 +23,43 @@ afterEach(() => {
 })
 
 const at = '2026-09-12T09:30:00.000Z'
+type LeadsTo = { kind: 'file' | 'directory' | 'missing' } | { kind: 'unreadable'; reason: string }
 const folder = (name: string) => ({ name, isDirectory: true, size: 96, modifiedAt: at })
-const linked = (name: string, target: string, targetKind: string) =>
-  ({ name, isDirectory: false, size: target.length, modifiedAt: at, link: { target, targetKind } })
-const workspace = [
-  folder('src'),
-  linked('vendor', '../shared/vendor', 'directory'),
-  linked('config.json', '/home/ana/.config/app.json', 'file'),
-  linked('old.log', '/gone/old.log', 'missing'),
-]
-const vendor = [folder('lib'), linked('project', '/w', 'directory')]
+const file = (name: string, size: number) => ({ name, isDirectory: false, size, modifiedAt: at })
+const linked = (name: string, target: string, leadsTo: LeadsTo) =>
+  ({ name, isDirectory: false, size: target.length, modifiedAt: at, link: { target, leadsTo } })
 
-/** Answers the listing and text routes from the fixture, noting each path the page asked for. */
-function stubBackend(): string[] {
+/**
+ * A Host as the backend answers of it: each folder's listing and each
+ * file's text by path, which a test changes as something on the Host would,
+ * and every request the page made, as `<route> <path>`.
+ */
+function host(folders: Record<string, object[]>, texts: Record<string, string> = {}) {
   const asked: string[] = []
-  globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => {
+  const notFound = (path: string) =>
+    Response.json({ requestId: 'req_test000000000001', code: 'not_found', message: `No ${path}` }, { status: 404 })
+  globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), 'http://127.0.0.1:3271')
     const path = url.searchParams.get('path') ?? ''
-    asked.push(`${url.pathname} ${path}`)
-    if (url.pathname === '/api/conversations/c1/fs') {
-      const entries = path === '/w' || path === '/w/vendor/project' ? workspace : path === '/w/vendor' ? vendor : null
-      return entries
-        ? Response.json({ path, home: '/w', entries })
-        : Response.json({ requestId: 'req_test000000000001', code: 'not_found', message: `No ${path}` }, { status: 404 })
+    const route = url.pathname.replace('/api/conversations/c1/fs', '') || '/'
+    asked.push(`${init?.method === 'HEAD' ? 'HEAD ' : ''}${route} ${path}`)
+    if (route === '/') {
+      const entries = folders[path]
+      return entries ? Response.json({ path, home: '/w', entries }) : notFound(path)
     }
-    if (url.pathname === '/api/conversations/c1/fs/file' && path === '/w/old.log')
-      return Response.json({ requestId: 'req_test000000000002', code: 'not_found', message: 'No such file' }, { status: 404 })
-    throw new Error(`Unexpected request: ${url.pathname} ${path}`)
+    if (route === '/file') {
+      const text = texts[path]
+      return text === undefined ? notFound(path) : Response.json({ path, text }, { headers: { etag: `W/"${text.length}-1"` } })
+    }
+    if (route === '/raw' && init?.method === 'HEAD') {
+      const text = texts[path]
+      return text === undefined
+        ? new Response(null, { status: 404 })
+        : new Response(null, { headers: { 'content-length': String(text.length), 'last-modified': 'Sat, 12 Sep 2026 09:30:00 GMT', etag: `W/"${text.length}-1"` } })
+    }
+    throw new Error(`Unexpected request: ${route} ${path}`)
   }, { preconnect: realFetch.preconnect })
-  return asked
+  return { folders, texts, asked }
 }
 
 /** Resolves once `done` holds, checked at each change of the page. */
@@ -77,6 +82,8 @@ function until(done: () => boolean, what: string): Promise<void> {
   })
 }
 
+const shows = (text: string) => () => document.body.textContent!.includes(text)
+
 /** The tree's rows, each its name, depth, whether it folds, and its link mark's words. */
 function rows(): Array<[string, string, string | null, string | null]> {
   return [...document.querySelectorAll<HTMLElement>('[role=treeitem]')].map((row) => [
@@ -87,7 +94,7 @@ function rows(): Array<[string, string, string | null, string | null]> {
   ])
 }
 
-function row(name: string, depth: number): HTMLElement {
+function row(name: string, depth = 0): HTMLElement {
   const found = [...document.querySelectorAll<HTMLElement>('[role=treeitem]')]
     .find((element) => element.textContent!.trim() === name && element.style.paddingLeft === `${4 + depth * 12}px`)
   if (!found)
@@ -95,32 +102,59 @@ function row(name: string, depth: number): HTMLElement {
   return found
 }
 
-test('links show as their targets in the tree, unfold at any depth, and a gone target is said where the file would be', async () => {
-  const asked = stubBackend()
+/** Devices shown so far: the page keeps what it read of a device's files for its lifetime, so each test has its own. */
+let devices = 0
+
+/** The File view of `/w` showing `path`, which a pick in its tree replaces, as the File tab does. */
+function show(path: string | null) {
+  devices += 1
   const source = fileSource(
-    { directory: '/conversations/c1/fs', text: '/conversations/c1/fs/file' },
-    { id: 'd1', platform: 'linux', home: '/w' },
+    { directory: '/conversations/c1/fs', text: '/conversations/c1/fs/file', raw: '/conversations/c1/fs/raw' },
+    { id: `d${devices}`, platform: 'linux', home: '/w' },
   )
-  const path = ref('/w/old.log')
-  const opened: string[] = []
+  const shown = ref(path)
   const element = document.createElement('div')
   document.body.append(element)
   const app = createApp({
-    render: () => h(FileView, { source, root: '/w', path: path.value, onOpen: (to: string) => opened.push(to) }),
+    render: () => h(FileView, { source, root: '/w', path: shown.value, onOpen: (to: string) => { shown.value = to } }),
   })
   app.mount(element)
+  return { shown, unmount: () => app.unmount() }
+}
+
+const workspace = () => [
+  folder('src'),
+  linked('vendor', '../shared/vendor', { kind: 'directory' }),
+  linked('config.json', '/home/ana/.config/app.json', { kind: 'file' }),
+  linked('old.log', '/gone/old.log', { kind: 'missing' }),
+  linked('secret', '/root/notes', { kind: 'unreadable', reason: 'Permission denied' }),
+]
+
+test('links show as their targets, unfold at any depth, open their target, and a broken one says why before any read', async () => {
+  const backend = host({
+    '/w': workspace(),
+    '/w/vendor': [folder('lib'), linked('project', '/w', { kind: 'directory' })],
+    '/w/vendor/project': workspace(),
+  }, { '/w/config.json': '{\n  "theme": "dark",\n  "fontSize": 13\n}\n' })
+  const view = show('/w/old.log')
   try {
-    await until(() => document.body.textContent!.includes('which does not exist.'), 'the gone target is said')
-    expect(document.body.textContent).toContain('Symbolic link to /gone/old.log, which does not exist.')
+    // The sentence is the listing's: the target is never read.
+    await until(shows('Symbolic link to /gone/old.log, which does not exist.'), 'the gone target is said')
+    expect(backend.asked.filter((request) => request.endsWith('old.log'))).toEqual([])
     expect(rows()).toEqual([
       ['src', '4px', 'false', null],
       ['vendor', '4px', 'false', 'Symbolic link to ../shared/vendor'],
       ['config.json', '4px', null, 'Symbolic link to /home/ana/.config/app.json'],
       ['old.log', '4px', null, 'Symbolic link to /gone/old.log, which does not exist'],
+      ['secret', '4px', null, 'Symbolic link to /root/notes, which cannot be read: permission denied'],
     ])
 
-    // The link to a folder unfolds into the target's entries, listed by the link's own path.
-    row('vendor', 0).click()
+    row('secret').click()
+    await until(shows('Symbolic link to /root/notes, which cannot be read: permission denied.'), 'the unreadable target is said')
+    expect(backend.asked.filter((request) => request.endsWith('/root/notes') || request.endsWith('/w/secret'))).toEqual([])
+
+    // A link to a folder unfolds into the target's entries, listed by the link's own path, a link back up again.
+    row('vendor').click()
     await until(() => rows().some(([name]) => name === 'project'), 'vendor unfolds')
     row('project', 1).click()
     await until(() => rows().some(([name, depth]) => name === 'config.json' && depth === '28px'), 'project unfolds')
@@ -130,16 +164,63 @@ test('links show as their targets in the tree, unfold at any depth, and a gone t
       ['project', '16px', 'true', 'Symbolic link to /w'],
       ['src', '28px', 'false', null],
     ])
-    expect(asked.filter((request) => request.startsWith('/api/conversations/c1/fs '))).toEqual([
-      '/api/conversations/c1/fs /w',
-      '/api/conversations/c1/fs /w/vendor',
-      '/api/conversations/c1/fs /w/vendor/project',
+    expect(backend.asked).toContain('/ /w/vendor/project')
+
+    // A link to a file shows the target's text under the link's own path.
+    row('config.json').click()
+    await until(shows('"fontSize": 13'), 'the target\'s text shows')
+    expect(view.shown.value).toBe('/w/config.json')
+    expect(backend.asked).toContain('/file /w/config.json')
+  } finally {
+    view.unmount()
+  }
+})
+
+test('expanding or opening a link reads its target again: gone now says so, there now expands', async () => {
+  const backend = host({
+    '/w': [linked('data', '/mnt/data', { kind: 'missing' }), linked('vendor', '../shared/vendor', { kind: 'directory' })],
+    '/w/vendor': [folder('lib')],
+  })
+  const view = show(null)
+  try {
+    await until(() => rows().length === 2, 'the workspace lists')
+    // The target appears on the Host, and the vendor's goes: the rows say what the listing said.
+    backend.folders['/w'] = [linked('data', '/mnt/data', { kind: 'directory' }), linked('vendor', '../shared/vendor', { kind: 'missing' })]
+    backend.folders['/w/data'] = [file('records.csv', 1024)]
+    delete backend.folders['/w/vendor']
+    expect(rows()).toEqual([
+      ['vendor', '4px', 'false', 'Symbolic link to ../shared/vendor'],
+      ['data', '4px', null, 'Symbolic link to /mnt/data, which does not exist'],
     ])
 
-    // A link to a file opens under its own path, which the Host reads through the link.
-    row('config.json', 0).click()
-    expect(opened).toEqual(['/w/config.json'])
+    row('data').click()
+    await until(() => rows().some(([name]) => name === 'records.csv'), 'the link now to a folder expands')
+    expect(row('data').getAttribute('aria-expanded')).toBe('true')
+    expect(view.shown.value).toBe(null)
+
+    row('vendor').click()
+    await until(shows('Symbolic link to ../shared/vendor, which does not exist.'), 'the link whose folder went says so')
+    expect(view.shown.value).toBe('/w/vendor')
+    expect(rows().find(([name]) => name === 'vendor')).toEqual(['vendor', '4px', null, 'Symbolic link to ../shared/vendor, which does not exist'])
   } finally {
-    app.unmount()
+    view.unmount()
+  }
+})
+
+test('a link to an image that is gone says so, and Retry shows the image once its target is back', async () => {
+  const backend = host({ '/w': [linked('logo.png', '/srv/logo.png', { kind: 'missing' })] })
+  const view = show('/w/logo.png')
+  try {
+    await until(shows('Symbolic link to /srv/logo.png, which does not exist.'), 'the gone image is said')
+    expect(backend.asked.filter((request) => request.includes('/raw'))).toEqual([])
+
+    backend.folders['/w'] = [linked('logo.png', '/srv/logo.png', { kind: 'file' })]
+    backend.texts['/w/logo.png'] = 'PNG'
+    const retry = [...document.querySelectorAll<HTMLElement>('button, [role=button]')].find((button) => button.textContent!.trim() === 'Retry')!
+    retry.click()
+    await until(() => document.querySelector('img[src*="logo.png"]') !== null, 'the image shows')
+    expect(backend.asked).toContain('HEAD /raw /w/logo.png')
+  } finally {
+    view.unmount()
   }
 })

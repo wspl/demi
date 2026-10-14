@@ -294,6 +294,12 @@ const linkFiles = linksSource()
 const linkFilePath = ref<string>(LINKS.file)
 const missingLinks = linksSource()
 const missingLinkPath = ref<string>(LINKS.missing)
+/** Puts the missing link's target back on the simulated Host, as another program would: the row and the sentence stay until the link is opened or Retry is used. */
+function restoreGoneTarget(): void {
+  missingLinks.change(LINKS.gone, 'Build finished.\n')
+}
+const unreadableLinks = linksSource()
+const unreadableLinkPath = ref<string>(LINKS.unreadable)
 
 const MiB = 1024 * 1024
 
@@ -491,7 +497,7 @@ onMounted(() => {
       </GallerySection>
       <GallerySection
         title="Symbolic Links"
-        note="A symbolic link shows as Visual Studio Code’s Explorer shows one: as what it points at, with a small arrow at the end of its row in the secondary text color, whose tooltip names the target as written. A link to a folder unfolds as a folder with the target’s entries, at any depth: vendor holds project, a link back to the workspace, which unfolds again, a level at a time. A link to a file opens the target’s contents under the link’s own path. A link whose target is gone shows as a file, its tooltip saying the target does not exist, and opening it says so where the file would be. Click the rows to fold, unfold and open."
+        note="A symbolic link shows as Visual Studio Code’s Explorer shows one: as what it points at, with a small arrow at the end of its row in the secondary text color, whose tooltip names the target as written. A link to a folder unfolds as a folder with the target’s entries, at any depth: vendor holds project, a link back to the workspace, which unfolds again, a level at a time. A link to a file opens the target’s contents under the link’s own path. A link whose target is gone shows as a file, its tooltip saying the target does not exist, and opening it says so where the file would be, from the listing, before any read of the target; one whose target is there but cannot be reached, here a link to itself, says why, in the system’s words. What a row says of its target is as of its folder’s listing: Put gone.log Back creates the target as another program would, and the row and the sentence stay until the link is opened again or Retry is used, which read the target again and show the file. Click the rows to fold, unfold and open."
       >
         <div class="flex flex-wrap gap-6">
           <GallerySpecimen variant="link to a folder · unfolds at any depth">
@@ -513,13 +519,31 @@ onMounted(() => {
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="missing target · said where the file would be" wide>
+            <div class="flex flex-col gap-2">
+              <div class="flex flex-wrap gap-1">
+                <Button size="sm" @click="restoreGoneTarget">Put gone.log Back</Button>
+              </div>
+              <div class="gallery-frame flex h-[24rem] overflow-hidden">
+                <FileView
+                  class="w-full"
+                  :source="missingLinks"
+                  :root="TREE_ROOT"
+                  :path="missingLinkPath"
+                  @open="missingLinkPath = $event"
+                  @back="productWould('Show the File Before')"
+                  @forward="productWould('Show the File After')"
+                />
+              </div>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="unreadable target · the system’s reason" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
               <FileView
                 class="w-full"
-                :source="missingLinks"
+                :source="unreadableLinks"
                 :root="TREE_ROOT"
-                :path="missingLinkPath"
-                @open="missingLinkPath = $event"
+                :path="unreadableLinkPath"
+                @open="unreadableLinkPath = $event"
                 @back="productWould('Show the File Before')"
                 @forward="productWould('Show the File After')"
               />

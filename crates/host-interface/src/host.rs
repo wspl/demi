@@ -204,18 +204,20 @@ pub struct DirEntry {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SymbolicLink {
     pub target: String,
-    pub target_kind: LinkTargetKind,
+    pub leads_to: LinkTarget,
 }
 
-/// What a symbolic link leads to; `Missing` when it cannot be reached:
-/// nothing there, a loop of links, or a directory on the way that may not
-/// be searched.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum LinkTargetKind {
+/// What a symbolic link leads to: `Missing` when nothing is there,
+/// `Unreadable` with the system's reason when something may be there but
+/// cannot be reached (a directory on the way closed to the user, a loop of
+/// links, a failing disk).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LinkTarget {
     File,
     Directory,
     Other,
     Missing,
+    Unreadable { reason: String },
 }
 
 /// How a file is written. A write makes the directories above its path

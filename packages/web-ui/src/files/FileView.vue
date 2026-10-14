@@ -124,14 +124,50 @@ type TextState =
   | { phase: 'missing' }
   | { phase: 'failed'; message: string; requestId: string | null }
 
+/**
+ * The folder of the file shown, whose listing says whether the file is a
+ * symbolic link whose target is gone or cannot be read: such a link says so
+ * in the file's place from the listing, before any read of its target
+ * (`file-previews.md` § Symbolic links), so the file is read once the
+ * listing has answered. It is the tree's own listing, which the tree reads
+ * as it unfolds to the file, and keeps.
+ */
+const folder = useShowing(
+  () => props.source,
+  () => props.path === null ? null : parentPath(props.path),
+  (source, path) => source.showListing(path),
+)
+/** Whether the folder's listing has answered, or could not be made; the file is read only then. */
+const folderAnswered = computed(() => {
+  const entry = folder.entry.value
+  return entry !== null && (entry.answer !== null || entry.failure !== null)
+})
+/** The file as its folder's listing names it; undefined before the listing, or when it does not name it. */
+const listed = computed(() => {
+  const path = props.path
+  return path === null ? undefined : folder.entry.value?.value?.find((entry) => entry.name === baseName(path))
+})
+/** The file, when it is a link whose target cannot be reached, as its folder's listing says. */
+const brokenLink = computed(() => listed.value?.link?.broken ? listed.value.link : null)
+/**
+ * Whether there is nothing to read as a file: a link whose target cannot be
+ * reached, or one that leads to a folder now, as a link opened while its
+ * target was gone may come to.
+ */
+const unreadable = computed(() => brokenLink.value !== null || listed.value?.isDirectory === true)
+
 const shown = useShowing(
   () => props.source,
-  () => props.path !== null && media.value === null ? props.path : null,
+  () => props.path !== null && media.value === null && folderAnswered.value && !unreadable.value ? props.path : null,
   (source, path) => source.showText?.(path),
 )
 
 const state = computed<TextState>(() => {
-  if (props.path === null || media.value !== null)
+  if (props.path === null)
+    return { phase: 'idle' }
+  if (!folderAnswered.value)
+    return { phase: 'loading' }
+  if (media.value !== null || unreadable.value)
     return { phase: 'idle' }
   if (!props.source.showText)
     return { phase: 'failed', message: 'This source cannot read files.', requestId: null }
@@ -179,14 +215,15 @@ const startNote = computed(() => start.value?.phase === 'ready'
 
 /**
  * What the region says while it shows no file: none chosen, a read on its
- * way, that nothing is at the path, a link's target that is not there, or
- * why the read failed. Retry stands under the failures, and the region
+ * way, a link whose target is gone or cannot be read, that nothing is at
+ * the path, or why the read failed. Retry stands under the failures and
+ * reads again what said so, the link's folder for a link, and the region
  * loads until its read ends.
  */
 const placeholder = computed(() => {
   const current = state.value
   if (brokenLink.value)
-    return { status: 'failed' as const, icon: MISSING_FILE.icon, label: `${linkDescription(brokenLink.value)}.`, detail: null, requestId: null }
+    return { status: 'failed' as const, icon: MISSING_FILE.icon, label: `${linkDescription(brokenLink.value)}.`, detail: null, requestId: null, retry: folder.retry }
   if (current.phase === 'missing')
     return { status: 'failed' as const, icon: MISSING_FILE.icon, label: MISSING_FILE.label, detail: null, requestId: null }
   if (current.phase === 'failed')
@@ -207,6 +244,8 @@ const card = useShowing(
 
 /** What the view shows of its file, which the file's bar names and acts on. */
 const shownFile = computed<ShownFile>(() => {
+  if (brokenLink.value !== null)
+    return { as: 'missing' }
   if (media.value !== null)
     return mediaShown.value?.path === props.path ? mediaShown.value.shown : { as: 'reading' }
   const current = state.value
@@ -225,26 +264,6 @@ const shownFile = computed<ShownFile>(() => {
       return { as: 'reading' }
   }
 })
-/**
- * The folder of a file whose read found nothing there, which says whether
- * the file is a symbolic link whose target is missing; it is listed only
- * then, and is usually the tree's own, kept already.
- */
-const folder = useShowing(
-  () => props.source,
-  () => props.path !== null && shownFile.value.as === 'missing' ? parentPath(props.path) : null,
-  (source, path) => source.showListing(path),
-)
-/** The file, when it is a link to nothing: the view says so where the file would be (`file-previews.md` § Symbolic links). */
-const brokenLink = computed(() => {
-  const path = props.path
-  const entries = folder.entry.value?.value
-  if (path === null || !entries)
-    return null
-  const link = entries.find((entry) => entry.name === baseName(path))?.link
-  return link?.missing ? link : null
-})
-
 /** The file's bar; Download only where the source serves files' bytes. */
 const bar = computed(() => {
   if (props.path === null)
@@ -385,7 +404,7 @@ onBeforeUnmount(() => {
       <RegionNote v-if="startNote" :icon="FileText" :label="startNote" action="Download" @action="download" />
       <div class="min-h-0 flex-1">
         <FilePreview
-          v-if="media && path && source.contents && !brokenLink"
+          v-if="media && path && source.contents && folderAnswered && !unreadable"
           :key="path"
           :path="path"
           :kind="media"
@@ -428,7 +447,7 @@ onBeforeUnmount(() => {
             loading-label="Reading…"
             :detail="placeholder.detail"
             :request-id="placeholder.requestId"
-            :on-retry="shown.retry"
+            :on-retry="placeholder.retry ?? shown.retry"
           />
         </div>
       </div>

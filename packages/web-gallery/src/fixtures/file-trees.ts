@@ -150,6 +150,9 @@ export const LINKS = {
   folder: `${TREE_ROOT}/vendor`,
   file: `${TREE_ROOT}/config.json`,
   missing: `${TREE_ROOT}/old.log`,
+  /** Where `old.log` leads, which the missing specimen puts back. */
+  gone: '/tmp/gone.log',
+  unreadable: `${TREE_ROOT}/current`,
   /** A file inside the linked folder, reached back through it: the tree unfolds to it at depth. */
   deep: `${TREE_ROOT}/vendor/project/vendor/README.md`,
 } as const
@@ -158,7 +161,8 @@ export const LINKS = {
  * A workspace with a symbolic link of each kind (`file-previews.md`
  * § Symbolic links): `vendor` to a folder beside it, which holds `project`,
  * a link back to the workspace; `config.json` to a file in the home's
- * `.config`; and `old.log` to a file that is gone.
+ * `.config`; `old.log` to a file that is gone; and `current`, a link to
+ * itself, whose target cannot be read for the loop.
  */
 export function linksSource(): MemoryFileSource {
   return createMemoryFileSource({
@@ -170,6 +174,7 @@ export function linksSource(): MemoryFileSource {
         vendor: link('../shared/vendor', at),
         'config.json': link('/home/alex/.config/app.json', at),
         'old.log': link('/tmp/gone.log', at),
+        current: link('current', at),
         'README.md': textFile('# demi\n', at),
       }),
       shared: dir({

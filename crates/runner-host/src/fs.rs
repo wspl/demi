@@ -279,21 +279,28 @@ pub(crate) fn symbolic_link(path: &Path) -> io::Result<wire::SymbolicLink> {
     });
     Ok(wire::SymbolicLink {
         target,
-        target_kind: link_target_kind(followed),
+        leads_to: link_target(followed),
     })
 }
 
 /// What a link leads to, from the metadata found by following it, as
-/// whether it is a file and whether a directory. Any failure to follow it,
-/// nothing there, a loop, a directory on the way that may not be searched,
-/// is a target that cannot be reached: the listing it is part of never
-/// fails for it (`runner.md` § Host operations).
-pub(crate) fn link_target_kind<E>(followed: Result<(bool, bool), E>) -> wire::LinkTargetKind {
+/// whether it is a file and whether a directory. A failure to follow it is
+/// never a failure of the listing it is part of (`runner.md` § Host
+/// operations): nothing there, a name on the way that does not exist or is
+/// no directory, is a missing target; any other failure, a directory on the
+/// way that may not be searched, a loop of links, a failing disk, is an
+/// unreadable one with the system's reason.
+pub(crate) fn link_target(followed: io::Result<(bool, bool)>) -> wire::LinkTarget {
     match followed {
-        Ok((true, _)) => wire::LinkTargetKind::File,
-        Ok((_, true)) => wire::LinkTargetKind::Directory,
-        Ok(_) => wire::LinkTargetKind::Other,
-        Err(_) => wire::LinkTargetKind::Missing,
+        Ok((true, _)) => wire::LinkTarget::File,
+        Ok((_, true)) => wire::LinkTarget::Directory,
+        Ok(_) => wire::LinkTarget::Other,
+        Err(error) if matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::NotADirectory) => {
+            wire::LinkTarget::Missing
+        }
+        Err(error) => wire::LinkTarget::Unreadable {
+            reason: demi_command_sdk::errors::reason(&error),
+        },
     }
 }
 

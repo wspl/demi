@@ -34,7 +34,7 @@ fn no_link_below_the_directory_is_followed_and_a_file_reads_up_to_its_limit() {
                 "linked.yaml",
                 Some(demi_runner_protocol::wire::SymbolicLink {
                     target: outside.join("workflows/review.yaml").to_string_lossy().into_owned(),
-                    target_kind: demi_runner_protocol::wire::LinkTargetKind::File,
+                    leads_to: demi_runner_protocol::wire::LinkTarget::File,
                 })
             ),
             ("review.yaml", None)

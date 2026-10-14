@@ -5,12 +5,13 @@ import {
   FileBrowserError,
   type FileBrowserEntry,
   type FileBrowserFailure,
+  type FileBrowserLink,
   type FileBrowserSource,
   type FileUploadOptions,
 } from '@demicodes/web-ui/files/types'
 import { z } from 'zod'
 import { ApiError, apiRequest, apiUrl, invalidResponse, jsonBody, readResponse } from './client'
-import { directorySchema, fileTextSchema, type CreateDirectory, type DirectoryEntry } from './generated/web-api'
+import { directorySchema, fileTextSchema, type CreateDirectory, type DirectoryEntry, type LinkTarget } from './generated/web-api'
 import { uploadBytes } from './uploads'
 import type { Device } from '../state/types'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
@@ -226,10 +227,22 @@ export function fileBrowserEntry(entry: DirectoryEntry): FileBrowserEntry {
   const { link } = entry
   return {
     name: entry.name,
-    isDirectory: entry.isDirectory || link?.targetKind === 'directory',
+    isDirectory: entry.isDirectory || link?.leadsTo.kind === 'directory',
     size: entry.size,
     modifiedAt: entry.modifiedAt,
-    ...(link ? { link: { target: link.target, missing: link.targetKind === 'missing' } } : {}),
+    ...(link ? { link: { target: link.target, ...linkBreak(link.leadsTo) } } : {}),
+  }
+}
+
+/** Why a link's target cannot be reached, as the listing says; nothing while it can. */
+function linkBreak(leadsTo: LinkTarget): Pick<FileBrowserLink, 'broken'> {
+  switch (leadsTo.kind) {
+    case 'missing':
+      return { broken: { kind: 'missing' } }
+    case 'unreadable':
+      return { broken: { kind: 'unreadable', reason: leadsTo.reason } }
+    default:
+      return {}
   }
 }
 
