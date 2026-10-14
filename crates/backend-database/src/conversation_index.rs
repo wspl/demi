@@ -827,16 +827,13 @@ fn target_row(row: &Row<'_>) -> Result<ConversationTarget, StorageError> {
 
 /// A device attached to a conversation (`sessions-and-targets.md`
 /// § Attached hosts): a Host the conversation reaches besides its primary one.
-/// A Fork keeps its source's in its operation's metadata.
+/// A Fork keeps its source's in its operation's metadata. It has no name of
+/// its own: it goes by its device's, which [`AttachedHost`] carries as read.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AttachedHostRecord {
     #[garde(skip)]
     pub device: DeviceId,
-    /// What the model and the user call the host; unique within the
-    /// conversation.
-    #[garde(length(min = 1))]
-    pub name: String,
     /// The directory its commands start in, fixed when it was attached: the
     /// conversation's directory there for a departed primary target; none
     /// for a device `demi host attach` attached, whose commands start in its
@@ -846,12 +843,33 @@ pub struct AttachedHostRecord {
     pub cwd: Option<String>,
 }
 
+/// An attached host as the conversation reaches it: its device, the name it
+/// goes by, which is its device's current name, with `-2`, `-3` and so on
+/// after the name when a host attached before it goes by that name already,
+/// and the directory its commands start in.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttachedHost {
+    pub device: DeviceId,
+    pub name: String,
+    pub cwd: Option<String>,
+}
+
+impl AttachedHost {
+    /// What storage keeps of it, which a Fork copies.
+    pub fn record(&self) -> AttachedHostRecord {
+        AttachedHostRecord {
+            device: self.device.clone(),
+            cwd: self.cwd.clone(),
+        }
+    }
+}
+
 impl ControlService {
     /// The conversation's attached hosts, first attached first.
     pub async fn attached_hosts(
         &self,
         id: ConversationId,
-    ) -> Result<Vec<AttachedHostRecord>, StorageError> {
+    ) -> Result<Vec<AttachedHost>, StorageError> {
         let listed = self
             .call(move |connection, _| attached_rows(connection, &id))
             .await?;
@@ -863,7 +881,7 @@ impl ControlService {
     pub async fn attached_host_listing(
         &self,
         id: ConversationId,
-    ) -> Result<Vec<(AttachedHostRecord, Timestamp)>, StorageError> {
+    ) -> Result<Vec<(AttachedHost, Timestamp)>, StorageError> {
         self.call(move |connection, _| attached_rows(connection, &id))
             .await
     }
@@ -937,11 +955,7 @@ impl ControlService {
             if let Some((departed, cwd)) = &ends.departed
                 && Some(departed) != ends.arriving.as_ref()
             {
-                let name: Option<String> = transaction
-                    .query_row("SELECT name FROM devices WHERE id = ?1", [departed.as_str()], |row| row.get(0))
-                    .optional()?;
                 let host = AttachedHostRecord {
-                    name: name.unwrap_or_else(|| departed.to_string()),
                     device: departed.clone(),
                     cwd: Some(cwd.clone()),
                 };
@@ -1094,7 +1108,7 @@ impl ControlService {
             let detaching = connection
                 .prepare_cached(
                     "SELECT device_id FROM conversation_hosts
-                     WHERE conversation_id = ?1 AND detaching = 1 ORDER BY attached_at, name",
+                     WHERE conversation_id = ?1 AND detaching = 1 ORDER BY attached_at, rowid",
                 )?
                 .query_map([id.as_str()], |row| row.get::<_, String>(0))?
                 .map(|device| {
@@ -1160,26 +1174,42 @@ fn clear_pending_move(
     Ok(())
 }
 
-/// The `conversation_hosts` rows of the conversation, first attached first.
+/// The conversation's attached hosts, first attached first, each by its
+/// device's current name: a host whose name one attached before it goes by
+/// already takes the first free `name-2`, `name-3` and so on, so a name
+/// stays the same device while the hosts and their devices' names do. Hosts
+/// attached at one time, as a Fork's are, keep the order they were attached
+/// in, which their row ids hold.
 fn attached_rows(
     connection: &Connection,
     id: &ConversationId,
-) -> Result<Vec<(AttachedHostRecord, Timestamp)>, StorageError> {
+) -> Result<Vec<(AttachedHost, Timestamp)>, StorageError> {
     const TABLE: &str = "conversation_hosts";
     let mut statement = connection.prepare_cached(
-        "SELECT device_id, name, cwd, attached_at FROM conversation_hosts WHERE conversation_id = ?1
-         ORDER BY attached_at, name",
+        "SELECT host.device_id, device.name, host.cwd, host.attached_at
+         FROM conversation_hosts host JOIN devices device ON device.id = host.device_id
+         WHERE host.conversation_id = ?1
+         ORDER BY host.attached_at, host.rowid",
     )?;
     let mut rows = statement.query([id.as_str()])?;
+    let mut taken = std::collections::HashSet::new();
     let mut hosts = Vec::new();
     while let Some(row) = rows.next()? {
-        let host = AttachedHostRecord {
+        let device: String = row.get("name")?;
+        let mut name = device.clone();
+        let mut suffix = 2;
+        while taken.contains(&name) {
+            name = format!("{device}-{suffix}");
+            suffix += 1;
+        }
+        taken.insert(name.clone());
+        let host = AttachedHost {
             device: decode(
                 TABLE,
                 "device_id",
                 DeviceId::try_from(row.get::<_, String>("device_id")?),
             )?,
-            name: row.get("name")?,
+            name,
             cwd: row.get("cwd")?,
         };
         hosts.push((host, instant(row, TABLE, "attached_at")?));
@@ -1187,40 +1217,22 @@ fn attached_rows(
     Ok(hosts)
 }
 
-/// Attaches `device` to the conversation under the first free name within
-/// it: `name`, then `name-2`, `name-3` and so on; an empty name is the
-/// device's id. A device attached already keeps its row, and the answer is
-/// false. For a transaction that attaches hosts with its other writes, such
-/// as a target switch's or a Fork's.
+/// Attaches `host` to the conversation. A device attached already keeps its
+/// row, and the answer is false. For a transaction that attaches hosts with
+/// its other writes, such as a target switch's or a Fork's.
 pub fn insert_attached_host(
     connection: &Connection,
     conversation: &ConversationId,
     host: &AttachedHostRecord,
     now: Timestamp,
 ) -> Result<bool, StorageError> {
-    let base = match host.name.trim() {
-        "" => host.device.as_str(),
-        trimmed => trimmed,
-    };
-    let mut statement = connection
-        .prepare_cached("SELECT name FROM conversation_hosts WHERE conversation_id = ?1")?;
-    let taken = statement
-        .query_map([conversation.as_str()], |row| row.get::<_, String>(0))?
-        .collect::<Result<std::collections::HashSet<String>, _>>()?;
-    let mut candidate = base.to_owned();
-    let mut suffix = 2;
-    while taken.contains(&candidate) {
-        candidate = format!("{base}-{suffix}");
-        suffix += 1;
-    }
     let inserted = connection.execute(
-        "INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)
+        "INSERT INTO conversation_hosts (conversation_id, device_id, cwd, attached_at)
+         VALUES (?1, ?2, ?3, ?4)
          ON CONFLICT (conversation_id, device_id) DO NOTHING",
         params![
             conversation.as_str(),
             host.device.as_str(),
-            candidate,
             host.cwd,
             now.as_millisecond()
         ],
@@ -1390,8 +1402,14 @@ mod tests {
         control.close().await.unwrap();
     }
 
+    /// An attached host goes by its device's name, a later one by that name
+    /// with a suffix when an earlier one goes by it, and by the device's new
+    /// name once the user renames the device, which the conversation's page
+    /// and its agents' next context block learn of.
     #[tokio::test]
-    async fn a_host_attaches_once_under_a_name_free_in_its_conversation() {
+    async fn an_attached_host_goes_by_its_devices_name_with_a_suffix_and_follows_a_rename() {
+        use crate::devices::DeviceChange;
+
         let data = tempfile::tempdir().unwrap();
         let control = ControlService::open(
             &data.path().join("control.sqlite"),
@@ -1416,17 +1434,16 @@ mod tests {
                 .unwrap();
             devices.push(device.id);
         }
-        let host = |device: &DeviceId, name: &str, cwd: Option<&str>| AttachedHostRecord {
+        let record = |device: &DeviceId, cwd: Option<&str>| AttachedHostRecord {
             device: device.clone(),
-            name: name.into(),
             cwd: cwd.map(str::to_owned),
         };
         let attaching = vec![
-            host(&devices[0], "laptop", None),
-            host(&devices[1], "laptop", Some("/work")),
-            host(&devices[2], " ", None),
+            record(&devices[0], None),
+            record(&devices[1], Some("/work")),
+            record(&devices[2], None),
             // Attached already: its row stays as it is.
-            host(&devices[0], "renamed", Some("/elsewhere")),
+            record(&devices[0], Some("/elsewhere")),
         ];
         control
             .call({
@@ -1442,15 +1459,50 @@ mod tests {
             })
             .await
             .unwrap();
-        // Attached in one transaction, at one time: listed by name.
-        let attached = control.attached_hosts(id).await.unwrap();
-        let mut expected = vec![
-            host(&devices[0], "laptop", None),
-            host(&devices[1], "laptop-2", Some("/work")),
-            host(&devices[2], devices[2].as_str(), None),
-        ];
-        expected.sort_by(|first, second| first.name.cmp(&second.name));
-        assert_eq!(attached, expected);
+        let listed = async || -> Vec<(String, Option<String>)> {
+            control
+                .attached_hosts(id.clone())
+                .await
+                .unwrap()
+                .into_iter()
+                .map(|host| (host.name, host.cwd))
+                .collect()
+        };
+        let named = |names: [&str; 3]| -> Vec<(String, Option<String>)> {
+            names
+                .iter()
+                .zip([None, Some("/work".to_owned()), None])
+                .map(|(name, cwd)| ((*name).to_owned(), cwd))
+                .collect()
+        };
+        // Attached in one transaction, at one time: listed in the order they
+        // were attached, the second laptop with a suffix.
+        assert_eq!(listed().await, named(["laptop", "laptop-2", "ci"]));
+
+        let before = control.conversation(id.clone()).await.unwrap().unwrap();
+        let rename = |device: &DeviceId, name: &str| {
+            control.change_device(
+                device.clone(),
+                DeviceChange {
+                    name: Some(name.into()),
+                    route: None,
+                },
+            )
+        };
+        let renamed = rename(&devices[1], "studio").await.unwrap().unwrap();
+        assert_eq!(renamed.conversations, [id.clone()]);
+        assert_eq!(listed().await, named(["laptop", "studio", "ci"]));
+        let after = control.conversation(id.clone()).await.unwrap().unwrap();
+        assert_eq!(
+            (after.hosts_revision, after.context_version),
+            (before.hosts_revision + 1, before.context_version + 1)
+        );
+        // The first attached keeps the name both devices now have.
+        rename(&devices[0], "studio").await.unwrap().unwrap();
+        assert_eq!(listed().await, named(["studio", "studio-2", "ci"]));
+        // A change that keeps the name tells no conversation.
+        let unchanged = rename(&devices[2], "ci").await.unwrap().unwrap();
+        assert!(unchanged.conversations.is_empty());
         control.close().await.unwrap();
     }
 
@@ -1568,7 +1620,6 @@ mod tests {
             .id;
         let attach = RecordChange::Attach(AttachedHostRecord {
             device: laptop.clone(),
-            name: "laptop".into(),
             cwd: None,
         });
         control.change_conversation(id.clone(), attach).await.unwrap();
