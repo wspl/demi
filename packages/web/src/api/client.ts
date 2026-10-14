@@ -133,8 +133,13 @@ export function invalidResponse(error: z.ZodError, requestId: string | null = nu
   return new UnreadableResponse(`Invalid server response: ${first}`, `${answerOf(requestId)} does not read:\n${refusal}`)
 }
 
-/** What a proxy in front of the backend answers while no backend runs behind it, as while it restarts. */
-const AWAY_STATUSES = new Set([502, 503, 504])
+/**
+ * What a proxy in front of the backend answers while no backend runs behind
+ * it, as while it restarts, and Cloudflare's own 520 to 524, when the origin
+ * gave it nothing usable, as when its connection lost packets
+ * (`plugin-pages.md` § Calls and states).
+ */
+const AWAY_STATUSES = new Set([502, 503, 504, 520, 521, 522, 523, 524])
 
 /**
  * Whether a request failed because the backend could not be reached, not
