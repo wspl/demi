@@ -123,7 +123,13 @@ carries `resets_at`, a Unix time in seconds, and `resets_in_seconds`, a number
 of seconds after the failure was received. The Codex reader looks for them in
 the failure's `error`, in a WebSocket envelope's `event.error`, in a failed
 response's `response.error`, or in an HTTP failure's body; a value that is not
-a number reads as absent. Without them, it uses the standard reading.
+a number reads as absent. Without them, it uses the standard reading. The
+Claude Code CLI names no wait for a subscription's usage limit, only words
+such as *You've hit your session limit · resets 9am (UTC)*; its reader takes
+the moment the limited window resets from the account's quota, which the
+provider already reads ([Vendor quota](../providers/usage-and-quota.md#claude-code)),
+when the failure is a usage limit, so the limit is terminal on its first
+attempt rather than retried four times against a window that is still closed.
 
 The same reader serves both uses, so there is one implementation:
 
@@ -257,6 +263,17 @@ Behind a record that ended no turn, or behind a compaction, the turn before
 is as it was: when that turn had failed or been stopped, it still offers its
 Resume or Continue.
 
+A root whose last turn ended with an `error` block holds its waiting input,
+agent messages and command reports, as it does after a Stop: they are written
+and shown as they arrive, but none starts a turn until the user acts, with
+Resume or a message, which then answers them. Otherwise each wakeup would
+start a turn that fails the same way: a Claude subscription at its usage
+limit failed the main agent once for each of its children that reported,
+four red rows in a row, each one a whole history sent for nothing. A failure
+that names its `retryAt` releases the hold at that moment, as Resume would,
+so a usage limit that resets at 09:00 continues by itself then; a child's
+turn is not held, since its parent decides for it.
+
 A message is never left outside a turn. A send writes its `user` block as
 soon as its action starts, before its model switch lands
 ([Model switch](runtime.md#model-switch)), so the message's turn has begun
@@ -353,6 +370,8 @@ injected clock; no test calls a real model.
 | Text streamed before a transient failure | The failure is terminal and becomes an `error` block |
 | Four transient failures in a row | Three `retry_scheduled` frames, then a terminal `error` block; each delay is within its cap |
 | A vendor wait longer than 30 seconds | The failure is terminal at once |
+| A Claude Code usage limit whose account's quota names the window's reset | `retryAt` is that reset; the failure is terminal on its first attempt |
+| A root's turn fails, then two children report and a command ends | Three receipts and a notice are written; no turn starts until Resume, which answers them; with a `retryAt`, the turn continues at that moment by itself |
 | A failure after a completed tool call, then `resume` | The tool does not run again; the model continues after its result |
 | `resume` after a failure before any output | The turn reruns from its input, with no `resume` block |
 | The user's Compact after a finished answer, stopped during its summary | The transcript is as it was, with no `abort` block; the dock offers no Continue |
