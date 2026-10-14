@@ -342,6 +342,14 @@ impl ProviderSlot {
             Self::Out(_) => None,
         }
     }
+
+    /// The runtime, while it is in its slot, to change.
+    pub(super) fn held_mut(&mut self) -> Option<&mut (dyn ProviderRuntime + 'static)> {
+        match self {
+            Self::Held(runtime) => Some(runtime.as_mut()),
+            Self::Out(_) => None,
+        }
+    }
 }
 
 /// The blocks of the running request that its run's entries name: the

@@ -270,6 +270,13 @@ useEscapeClose(() => props.isOpen && !pinned.value && props.overlayStore.isTop(i
   transform: scale(0.95);
 }
 
+/* A closed dialog is gone for the pointer at once, as a macOS sheet is: its
+   fading scrim would otherwise take the next press meant for the page. */
+.dialog-leave-active,
+.dialog-leave-active * {
+  pointer-events: none;
+}
+
 /* The scrim is the container a panel fills; an inline panel has no scrim to fill. */
 .dialog-host {
   container-type: inline-size;

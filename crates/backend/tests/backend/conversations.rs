@@ -1387,6 +1387,10 @@ pub(crate) struct Runs {
     pub(crate) runtimes: AtomicUsize,
     calls: Mutex<Vec<(String, usize)>>,
     pub(crate) released: watch::Sender<bool>,
+    /// Whether every run waits, once started, until it is false again.
+    pub(crate) held: watch::Sender<bool>,
+    /// How many runs have started, each counted before it waits.
+    pub(crate) started: watch::Sender<usize>,
     /// The keys whose runs fail with a usage limit, as a used-up account's
     /// do.
     pub(crate) used_up: Mutex<Vec<String>>,
@@ -1406,6 +1410,8 @@ impl Runs {
             runtimes: AtomicUsize::new(0),
             calls: Mutex::new(Vec::new()),
             released: watch::Sender::new(false),
+            held: watch::Sender::new(false),
+            started: watch::Sender::new(0),
             used_up: Mutex::new(Vec::new()),
             closed: Mutex::new(Vec::new()),
             fails_late: std::sync::atomic::AtomicBool::new(false),
@@ -1507,10 +1513,13 @@ impl ProviderRuntime for KeyedRuntime {
                 calls.push((key.clone(), count));
                 calls.len() == 1
             };
+            runs.started.send_modify(|started| *started += 1);
             if first {
                 let mut released = runs.released.subscribe();
                 let _ = released.wait_for(|released| *released).await;
             }
+            let mut held = runs.held.subscribe();
+            let _ = held.wait_for(|held| !*held).await;
             if runs.used_up.lock().unwrap().contains(&key) {
                 let failure = ProviderFailure {
                     message: format!("{key} has reached its usage limit"),

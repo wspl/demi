@@ -352,8 +352,10 @@ impl ControlService {
     /// Removes the account. When it was the entry's active account, the
     /// entry's first remaining account in the list's order becomes active in
     /// the same transaction, or none when it was the last
-    /// (`providers.md` § Login and publication). Answers the account active
-    /// afterwards.
+    /// (`providers.md` § Login and publication). An entry left with fewer
+    /// than two accounts has nothing to rotate, and its rotation goes back
+    /// to Manual in the same transaction (`providers.md` § Account
+    /// rotation). Answers the account active afterwards.
     pub async fn remove_credential(
         &self,
         provider: ProviderId,
@@ -370,6 +372,12 @@ impl ControlService {
                    (SELECT id FROM provider_credentials WHERE provider_id = ?1 ORDER BY position, id LIMIT 1)
                  WHERE id = ?1 AND active_credential_id = ?2",
                 params![provider.as_str(), id.as_str()],
+            )?;
+            transaction.execute(
+                "UPDATE providers SET rotation = 'manual'
+                 WHERE id = ?1
+                   AND (SELECT count(*) FROM provider_credentials WHERE provider_id = ?1) < 2",
+                [provider.as_str()],
             )?;
             let active: Option<String> = transaction.query_row(
                 "SELECT active_credential_id FROM providers WHERE id = ?1",

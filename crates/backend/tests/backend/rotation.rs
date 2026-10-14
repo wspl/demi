@@ -12,13 +12,13 @@ use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_shared_types::{Block, Clock as _, QuotaWindow, Timestamp};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::CredentialId;
-use demi_web_api_protocol::providers::{Accounts, LoginState, ProviderAnswer, Rotation};
+use demi_web_api_protocol::providers::{Accounts, LoginState, ProviderAnswer, Providers, Rotation};
 use demi_web_api_protocol::settings::UserPreferences;
 use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::accounts::{Scripts, awaited, device_entry, ended, start_login};
-use crate::conversations::{FIRST, Runs, Socket, choose, create, kinds, transcript};
+use crate::conversations::{FIRST, Runs, SECOND, Socket, choose, create, kinds, send, transcript};
 use crate::families::{Directory, LoginScript, QuotaScript, ScriptedSubscription};
 use crate::support::{Harness, Session, TestBackend};
 
@@ -147,8 +147,12 @@ async fn rotation_and_order_are_the_entrys_and_refused_where_they_cannot_apply()
     let rotated = backend.patch(&path, master, json!({ "rotation": "balanced" })).await;
     assert_eq!(rotated.json::<ProviderAnswer>().provider.rotation, Rotation::Balanced);
 
-    // With one account left, no rotation but Manual is taken.
+    // With one account left the entry is Manual again, as it reads at
+    // once, and no rotation but Manual is taken.
     backend.delete(&format!("{path}/accounts/{first}"), master).await;
+    let listed = backend.get("/api/providers", Some(master)).await.json::<Providers>();
+    let left = listed.providers.iter().find(|provider| provider.id.as_str() == entry).unwrap();
+    assert_eq!(left.rotation, Rotation::Manual);
     let refused = backend.patch(&path, master, json!({ "rotation": "in_order" })).await;
     assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::RotationNeedsAccounts));
     let manual = backend.patch(&path, master, json!({ "rotation": "manual" })).await;
@@ -404,5 +408,59 @@ async fn a_limit_reached_mid_answer_ends_the_turn_with_the_moment_of_the_agents_
     assert_eq!(error.account.as_deref(), Some(first.as_str()));
     let moment = cold.failures.as_ref().and_then(|facts| facts.get(&error.id)?.retry_at);
     assert_eq!(moment, Some(Timestamp::from_millisecond(now.as_millisecond() + 2 * 3_600_000).unwrap()));
+    // But the account is used up: neither another agent nor this one's
+    // next request takes it until its moment.
+    create(&setup.backend, &setup.master, SECOND).await;
+    choose(&setup.backend, &setup.master, SECOND, &setup.entry, "m").await;
+    let mut other = Socket::connect(&setup.backend, &setup.master, SECOND).await;
+    other.open().await;
+    other.chat("o1", "other").await;
+    socket.chat("m3", "three").await;
+    assert_eq!(
+        accounts_run(&setup.runs),
+        [first.as_str(), first.as_str(), second.as_str(), second.as_str()]
+    );
     setup.backend.close().await;
 }
+
+// A backend and four conversations' turns: about half a second.
+#[tokio::test]
+async fn balanced_spreads_the_agents_whose_turns_run_and_not_the_idle_ones() {
+    let setup = two_accounts(false).await;
+    let (first, second) = (setup.first.clone(), setup.second.clone());
+    // Two accounts of equal room.
+    setup.rotate("balanced").await;
+    let ids = [FIRST, SECOND, THIRD, FOURTH];
+    let mut sockets = Vec::new();
+    for id in ids {
+        create(&setup.backend, &setup.master, id).await;
+        choose(&setup.backend, &setup.master, id, &setup.entry, "m").await;
+        let mut socket = Socket::connect(&setup.backend, &setup.master, id).await;
+        socket.open().await;
+        sockets.push(socket);
+    }
+    // One after the other: each turn has ended before the next starts, so
+    // the idle agent keeping the first account counts on it no more, and
+    // the next agent takes the first account too.
+    sockets[0].chat("a", "one").await;
+    sockets[1].chat("b", "two").await;
+    // Together: the third agent's turn runs on the first account while the
+    // fourth chooses, which takes the second.
+    setup.runs.held.send_replace(true);
+    sockets[2].send(&send("c", "three")).await;
+    let mut started = setup.runs.started.subscribe();
+    let _ = started.wait_for(|count| *count == 3).await;
+    sockets[3].send(&send("d", "four")).await;
+    let _ = started.wait_for(|count| *count == 4).await;
+    setup.runs.held.send_replace(false);
+    sockets[2].until_idle().await;
+    sockets[3].until_idle().await;
+    assert_eq!(
+        accounts_run(&setup.runs),
+        [first.as_str(), first.as_str(), first.as_str(), second.as_str()]
+    );
+    setup.backend.close().await;
+}
+
+const THIRD: &str = "5e2d3c4b-1a0f-4e9d-8c7b-6a5f4e3d2c1b";
+const FOURTH: &str = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";

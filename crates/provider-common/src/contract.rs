@@ -138,6 +138,12 @@ pub trait ProviderRuntime {
     /// waiting.
     fn close(&mut self) -> LocalBoxFuture<'_, ()>;
 
+    /// The session's action ended, such as a turn: nothing of it runs
+    /// until its next request. A runtime that counts what runs, such as an
+    /// agent's account under rotation (`providers.md` § Account rotation),
+    /// stops counting it; most runtimes have nothing to do.
+    fn idle(&mut self) {}
+
     /// Whether [`prepare`](Self::prepare) readies anything, so the session
     /// builds the request it takes, reading the media its history replays,
     /// only for a runtime that uses it.
