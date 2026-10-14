@@ -1878,6 +1878,7 @@ dependencies = [
  "rand 0.9.5",
  "reqwest",
  "rusqlite",
+ "rustix",
  "sd-notify",
  "serde",
  "serde_json",
