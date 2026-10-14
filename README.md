@@ -162,6 +162,10 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
   back when they finish, so dev servers and test suites never block the
   conversation.
 
+> [!NOTE]
+> **Planned**: the Demi harness as a standalone TypeScript library, so you can
+> build your own agents on it without the Demi app.
+
 ## Architecture
 
 ```text

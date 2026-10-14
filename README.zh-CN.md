@@ -115,6 +115,9 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 - **模型无关**：所有模型面对的都是同一个工具，换模型不会改变 Agent 的能力。
 - **适合长任务**：命令在后台持续运行，结束后自动汇报，开发服务器和测试套件不会阻塞对话。
 
+> [!NOTE]
+> **规划中**：Demi Harness 将作为独立的 TypeScript 库提供，你可以不依赖 Demi 应用，直接基于它构建自己的 Agent。
+
 ## 架构
 
 ```text
