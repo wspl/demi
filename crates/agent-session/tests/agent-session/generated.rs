@@ -127,9 +127,17 @@ impl Builder {
     }
 }
 
-/// Whether `request` is a summary request.
+/// Whether `request` is a summary request: a user message holds the
+/// instruction's text, in whatever form.
 pub(super) fn is_summary(request: &InferenceRequest) -> bool {
-    without_instruction(request).is_some()
+    request.items.iter().any(|item| match item {
+        InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
+            content.iter().any(|part| {
+                matches!(part, UserPart::Text(text) if text.contains(COMPACTION_SUMMARY_INSTRUCTION))
+            })
+        }
+        _ => false,
+    })
 }
 
 /// The items of `request` without the summary instruction, when it is a
@@ -371,6 +379,8 @@ struct Driver {
     boundaries: HashSet<BlockId>,
     /// Every block seen that only an edit could remove.
     seen: Vec<BlockId>,
+    /// How the histories of the summary requests checked so far ended.
+    history_ends: HashSet<HistoryEnd>,
 }
 
 impl Driver {
@@ -416,6 +426,7 @@ impl Driver {
             checked: 0,
             boundaries: HashSet::new(),
             seen: Vec::new(),
+            history_ends: HashSet::new(),
         }
     }
 
@@ -554,7 +565,13 @@ impl Driver {
                 }
             }
             8 => self.restart().await,
-            _ => {}
+            // A Stop before any answer, left as it is: the step's pass
+            // asks with the stopped message last.
+            _ => {
+                let running = self.send_hanging().await;
+                self.session.abort().await;
+                let _ = running.await;
+            }
         }
         self.finish(self.session.compact()).await;
     }
@@ -601,7 +618,8 @@ impl Driver {
                 });
             }
             if is_summary(request) {
-                check_summary(&requests[..index], request, &context);
+                let end = check_summary(&requests[..index], request, &context);
+                self.history_ends.insert(end);
             }
         }
         self.checked = requests.len();
@@ -759,45 +777,108 @@ impl Driver {
     }
 }
 
+/// How a summary request's history ended: with the user's input, which
+/// the instruction joins, or with a tool's results or an answer, which it
+/// follows as a message of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum HistoryEnd {
+    Input,
+    Results,
+    Answer,
+}
+
 /// Every summary request is the session's next request with the
-/// instruction added (`compaction.md` § The summary request): without the
-/// instruction, it begins with the latest request the session sent to the
-/// same model since the summary request before, the same for every builder,
-/// with the same system prompt and tools.
-fn check_summary(earlier: &[InferenceRequest], summary: &InferenceRequest, context: &str) {
-    let items = without_instruction(summary).expect("a summary request");
-    let previous = earlier.iter().rposition(is_summary).map_or(0, |index| index + 1);
-    let Some(sent) = earlier[previous..]
-        .iter()
-        .rev()
-        .find(|request| request.model_id == summary.model_id)
-    else {
-        return;
+/// instruction added (`compaction.md` § The summary request): every
+/// builder encodes it as it encodes that request, but for the instruction,
+/// and it begins with the latest request the session sent to the same
+/// model since the summary request before, with the same system prompt and
+/// tools. Returns how its history ended.
+fn check_summary(earlier: &[InferenceRequest], summary: &InferenceRequest, context: &str) -> HistoryEnd {
+    let items = without_instruction(summary).unwrap_or_else(|| {
+        panic!("{context}: the instruction is not the last block of the last user message")
+    });
+    let end = match items.last() {
+        Some(InferenceItem::UserMessage { .. } | InferenceItem::UserSteer { .. })
+            if items.len() == summary.items.len() =>
+        {
+            HistoryEnd::Input
+        }
+        Some(InferenceItem::ToolResult { .. }) => HistoryEnd::Results,
+        _ => HistoryEnd::Answer,
     };
-    assert!(
-        items.starts_with(&sent.items),
-        "{context}: the summary request does not begin with the latest request: {items:?}"
-    );
-    assert_eq!(
-        (&summary.system_prompt, &summary.tools),
-        (&sent.system_prompt, &sent.tools),
-        "{context}"
-    );
-    let repeated = InferenceRequest {
-        items: items[..sent.items.len()].into(),
-        blocks: sent.blocks.clone(),
-        request_id: sent.request_id.clone(),
-        turn_id: sent.turn_id.clone(),
-        prompt_cache: sent.prompt_cache,
-        cancel: sent.cancel.clone(),
+    // The next request: the same history and the blocks that give it, with
+    // the entries a vendor kept on them, without the instruction.
+    let next = InferenceRequest {
+        items: items.clone().into(),
+        blocks: summary
+            .blocks
+            .iter()
+            .filter(|block| block.items.end <= items.len())
+            .cloned()
+            .collect(),
         ..summary.clone()
     };
     for builder in BUILDERS {
         assert_eq!(
-            uncached(builder.json(&repeated)),
-            uncached(builder.json(sent)),
-            "{context}: {builder:?}"
+            without_instruction_json(
+                uncached(builder.json(summary)),
+                matches!(builder, Builder::ChatCompletions | Builder::Grok)
+            ),
+            Some(uncached(builder.json(&next))),
+            "{context}: {builder:?}: the summary request encodes the history otherwise"
         );
+    }
+    let previous = earlier.iter().rposition(is_summary).map_or(0, |index| index + 1);
+    if let Some(sent) = earlier[previous..]
+        .iter()
+        .rev()
+        .find(|request| request.model_id == summary.model_id)
+    {
+        assert!(
+            items.starts_with(&sent.items),
+            "{context}: the summary request does not begin with the latest request: {items:?}"
+        );
+        assert_eq!(
+            (&summary.system_prompt, &summary.tools),
+            (&sent.system_prompt, &sent.tools),
+            "{context}"
+        );
+    }
+    end
+}
+
+/// An encoded request without the summary instruction: each value that
+/// holds it goes, with the object or the array element it is in, and an
+/// array that held nothing else goes with it, up to the message. A format
+/// that joins a message's texts into one string, as Chat Completions and Grok do,
+/// keeps the input's text before a line break and the instruction: the
+/// text stays a prefix of what its vendor caches, which caches prefixes
+/// without marks. `joins` says whether `builder` is such a format.
+fn without_instruction_json(value: Value, joins: bool) -> Option<Value> {
+    match value {
+        Value::String(text) if text == COMPACTION_SUMMARY_INSTRUCTION => None,
+        Value::String(text)
+            if joins && text.ends_with(&format!("\n{COMPACTION_SUMMARY_INSTRUCTION}")) =>
+        {
+            let kept = text.len() - COMPACTION_SUMMARY_INSTRUCTION.len() - 1;
+            Some(Value::String(text[..kept].to_owned()))
+        }
+        Value::Object(fields) => {
+            let mut kept = serde_json::Map::new();
+            for (key, field) in fields {
+                kept.insert(key, without_instruction_json(field, joins)?);
+            }
+            Some(Value::Object(kept))
+        }
+        Value::Array(elements) => {
+            let held = !elements.is_empty();
+            let kept: Vec<Value> = elements
+                .into_iter()
+                .filter_map(|element| without_instruction_json(element, joins))
+                .collect();
+            (!kept.is_empty() || !held).then_some(Value::Array(kept))
+        }
+        other => Some(other),
     }
 }
 
@@ -1075,7 +1156,9 @@ fn contents_valid(contents: &Value, signed: &[String]) -> Result<(), String> {
 }
 
 /// Drives `seed`'s session and checks it after every step.
-async fn drive(seed: u64) {
+/// Drives the session of `seed`; returns how the histories of its summary
+/// requests ended.
+async fn drive(seed: u64) -> HashSet<HistoryEnd> {
     let mut driver = Driver::new(seed).await;
     for step in 0..STEPS {
         driver.step().await;
@@ -1083,6 +1166,7 @@ async fn drive(seed: u64) {
     }
     driver.shared.session.replace(None);
     let _ = driver.session.dispose().await;
+    driver.history_ends
 }
 
 // Four seeds of 24 steps take every kind of step, about 400 requests and 120
@@ -1091,7 +1175,15 @@ async fn drive(seed: u64) {
 // scenario reaches, such as right after a Stop, a restart or a switch.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn generated_sessions_stay_valid_for_every_provider_through_every_pass() {
+    let mut history_ends = HashSet::new();
     for seed in SEEDS.chain(FIXED_SEEDS.iter().copied()) {
-        drive(seed).await;
+        history_ends.extend(drive(seed).await);
     }
+    // The summary requests met both ends of a history that the instruction
+    // meets inside a user message: the user's input, which it joins, and a
+    // tool's results.
+    assert!(
+        history_ends.contains(&HistoryEnd::Input) && history_ends.contains(&HistoryEnd::Results),
+        "{history_ends:?}"
+    );
 }

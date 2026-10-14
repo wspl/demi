@@ -2664,8 +2664,20 @@ async fn a_summary_request_refused_for_its_size_fails_the_pass_without_a_smaller
 #[tokio::test(flavor = "local")]
 async fn a_summary_request_gives_the_claude_code_cli_its_instruction_inside_the_message_the_cli_recorded()
  {
-    // The CLI recorded the second message before the vendor refused its
-    // request; the pass after the refusal asks with that message last.
+    // The CLI recorded the second message, after the metadata it writes
+    // before one, before the vendor refused its request; the pass after the
+    // refusal asks with that message last.
+    let date = json!({
+        "type": "attachment",
+        "uuid": "recorded-date",
+        "attachment": { "type": "date_change", "newDate": "2026-10-14" },
+    });
+    let meta = json!({
+        "type": "user",
+        "uuid": "recorded-meta",
+        "isMeta": true,
+        "message": { "role": "user", "content": "<model-switch>small-model</model-switch>" },
+    });
     let recorded = json!({
         "type": "user",
         "uuid": "recorded-two",
@@ -2676,7 +2688,7 @@ async fn a_summary_request_gives_the_claude_code_cli_its_instruction_inside_the_
         Turn::Events(vec![
             ProviderEvent::Entries {
                 of: EntriesOf::Item(2),
-                entries: vec![recorded],
+                entries: vec![date.clone(), meta.clone(), recorded],
             },
             ProviderEvent::Error(ProviderFailure {
                 message: "prompt is too long".into(),
@@ -2694,19 +2706,28 @@ async fn a_summary_request_gives_the_claude_code_cli_its_instruction_inside_the_
 
     session.send(text("two"), turn("t2")).unwrap().await.unwrap();
 
-    // The session file a new CLI process resumes ends with one message,
-    // the second with the instruction as one more text block: two messages
-    // in a row would make the CLI add a line break to the first one's text.
+    // The session file a new CLI process resumes ends with the metadata as
+    // the CLI wrote it, then one message, the recorded second with the
+    // instruction as one more text block: two messages in a row would make
+    // the CLI add a line break to the first one's text.
     let requests = provider.requests();
     let summary = &requests[2];
     assert!(is_copy(summary));
     let file = demi_provider_claude_code::testing::session(summary, "2026-10-14T12:00:00.000Z");
-    let last: serde_json::Value = String::from_utf8(file)
+    let entries: Vec<serde_json::Value> = String::from_utf8(file)
         .unwrap()
         .lines()
-        .last()
         .map(|line| serde_json::from_str(line).unwrap())
-        .unwrap();
+        .collect();
+    let [.., written_date, written_meta, last] = entries.as_slice() else {
+        panic!("{entries:#?}");
+    };
+    for (written, recorded) in [(written_date, &date), (written_meta, &meta)] {
+        assert_eq!(written["uuid"], recorded["uuid"]);
+        assert_eq!(written["attachment"], recorded["attachment"]);
+        assert_eq!(written["message"], recorded["message"]);
+    }
+    assert_eq!(last["uuid"], "recorded-two");
     assert_eq!(
         last["message"]["content"],
         json!([
