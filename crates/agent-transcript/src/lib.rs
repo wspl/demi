@@ -20,7 +20,7 @@ pub use compaction::{
 };
 pub use cut::{
     CutError, ForkEnd, ResumePoint, Rewind, before_user, fork_prefix, last_answer, last_failure,
-    last_assistant_text, resume_point, rewind, unwind,
+    last_assistant_text, resume_point, rewind, turn_record, unwind,
 };
 pub use ids::{IdSource, RandomIds};
 pub use journal::{DirtyRows, PatchBatch};

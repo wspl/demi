@@ -824,6 +824,20 @@ impl AgentSession {
         compaction::held_context_usage(&self.shared).await
     }
 
+    /// Why the user's `compact` would be refused now, or none when it is
+    /// taken (`compaction.md` § When compaction runs): below half the window
+    /// in use, unless the unfinished turn failed for its size. A usage that
+    /// cannot be read refuses it with the read's failure.
+    pub async fn compaction_refusal(&self) -> Option<String> {
+        let size_refused = self
+            .shared
+            .read(|core| compaction::size_refused(core.transcript.blocks()));
+        match self.context_usage().await {
+            Ok(usage) => compaction_refusal(&usage, size_refused),
+            Err(report) => Some(report.message),
+        }
+    }
+
     /// Runs one compaction pass (`compaction.md` § Compaction).
     pub fn compact(&self) -> Result<ActionHandle, AdmissionError> {
         self.shared.update(|core| core.admit(ActionKind::Compact))

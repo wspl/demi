@@ -196,6 +196,17 @@ pub fn last_answer(blocks: &[Block], since: usize) -> Option<&TextBlock> {
         })
 }
 
+/// The record that ended the last turn (`failures-and-recovery.md` § The
+/// unfinished turn): the last block but a compaction's boundary and marker
+/// and an error that ended no turn, such as a Compact whose summary request
+/// failed, which leave the turn before them as it was. An `error` block
+/// there is the failure that left the turn unfinished.
+pub fn turn_record(blocks: &[Block]) -> Option<&Block> {
+    blocks.iter().rev().find(|block| {
+        !is_compaction(block) && !matches!(block, Block::Error(error) if error.outside_turn)
+    })
+}
+
 /// The last `error` block, the record of the agent's last failure.
 pub fn last_failure(blocks: &[Block]) -> Option<&ErrorBlock> {
     blocks.iter().rev().find_map(|block| match block {

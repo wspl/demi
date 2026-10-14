@@ -5,7 +5,7 @@ use std::io::Cursor;
 
 use demi_agent_store::{
     images::{Fitted, Unfit, fit},
-    testing::png as png_of,
+    testing::{illustration, png as png_of, speckled},
 };
 use demi_shared_types::B64Bytes;
 use image::{
@@ -102,4 +102,38 @@ async fn an_image_over_the_byte_limit_enters_as_jpeg_and_one_that_does_not_decod
         fit(broken, "image/png").await,
         Err(Unfit::Undecodable(_))
     ));
+}
+
+// Four images of at most 1.2 megapixels, each encoded once or twice: about
+// a second in an unoptimized build.
+#[tokio::test]
+async fn a_png_over_500_kb_enters_as_a_jpeg_when_that_is_smaller_and_otherwise_as_it_came() {
+    let opaque = |_, _| 255;
+    let heavy = illustration(800, 500, opaque);
+    assert!(heavy.len() > 500_000, "{}", heavy.len());
+    let fitted = fit(heavy.clone(), "image/png").await.unwrap();
+    assert_eq!(sizes(&fitted), ("image/jpeg", (800, 500), (800, 500), true));
+    assert!(fitted.data.len() < heavy.len() / 2, "{}", fitted.data.len());
+
+    let light = illustration(300, 200, opaque);
+    assert!((100_000..=500_000).contains(&light.len()), "{}", light.len());
+    let fitted = fit(light.clone(), "image/png").await.unwrap();
+    assert_eq!(fitted.data, light);
+    assert_eq!(sizes(&fitted), ("image/png", (300, 200), (300, 200), false));
+
+    // As a JPEG it would be larger: it enters as it came.
+    let specks = speckled(1_200, 1_000);
+    assert!(specks.len() > 500_000, "{}", specks.len());
+    let fitted = fit(specks.clone(), "image/png").await.unwrap();
+    assert_eq!(fitted.data, specks);
+    assert_eq!(sizes(&fitted), ("image/png", (1_200, 1_000), (1_200, 1_000), false));
+
+    // Its transparency is flattened onto white: a transparent pixel shows
+    // white, not the color it hid.
+    let clear = illustration(800, 500, |x, y| if x < 100 && y < 100 { 0 } else { 255 });
+    let fitted = fit(clear, "image/png").await.unwrap();
+    assert_eq!(fitted.media_type, "image/jpeg");
+    let shown = image::load_from_memory(&fitted.data).unwrap().to_rgb8();
+    let corner = shown.get_pixel(40, 40).0;
+    assert!(corner.iter().all(|channel| *channel >= 245), "{corner:?}");
 }

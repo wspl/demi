@@ -10,8 +10,8 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{
     RequestView, TranscriptLog, compaction_window,
-    estimate::{RequestSize, block_tokens, context_tokens, request_size, text_tokens},
-    kept_messages, last_assistant_text, replay,
+    estimate::{block_tokens, context_tokens, text_tokens},
+    kept_messages, last_assistant_text, turn_record,
 };
 use demi_provider_common::{ErrorCode, RequestLimits, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
@@ -82,10 +82,6 @@ const MAX_FIT_PASSES: usize = 8;
 /// compact (`compaction.md` § When compaction runs).
 const MANUAL_COMPACTION_PERCENT: u8 = 50;
 
-/// The share of each of a vendor's request limits, in percent, at which a
-/// request compacts first.
-const SIZE_THRESHOLD_PERCENT: u8 = 80;
-
 /// The most room the token threshold leaves for the model's answer, and the
 /// room it leaves beyond that for the summary request's instruction and the
 /// estimate's margin, in tokens.
@@ -133,8 +129,9 @@ pub fn token_threshold(window: u64, output_limit: Option<u32>) -> u64 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CompactionConfig {
     /// Whether the session compacts without being asked: before a turn,
-    /// before a request, after a response or a refusal. A session copy does
-    /// not, so its refused summary request comes back to its pass.
+    /// after a response or a refusal for its tokens, before a model switch.
+    /// A session copy does not, so its refused summary request comes back to
+    /// its pass.
     pub automatic: bool,
 }
 
@@ -157,17 +154,18 @@ impl CompactionConfig {
         Some(token_threshold(window, model.output_limit))
     }
 
-    /// Whether one response's usage reached the threshold of `model`, whose
-    /// window in use is `window`. An input above the model's own window
-    /// cannot be one call's, so it reaches nothing and is logged with its
-    /// provider: a provider that misreports is found rather than compacting
-    /// every turn (`compaction.md` § When compaction runs).
+    /// The trigger of a pass when one response's usage reached the
+    /// threshold of `model`, whose window in use is `window`; none when it
+    /// did not. An input above the model's own window cannot be one call's,
+    /// so it reaches nothing and is logged with its provider: a provider
+    /// that misreports is found rather than compacting every turn
+    /// (`compaction.md` § When compaction runs).
     pub(crate) fn reached(
         &self,
         window: Option<u64>,
         model: &ModelSelection,
         usage: &TokenUsage,
-    ) -> bool {
+    ) -> Option<Trigger> {
         let input = usage.input_tokens + usage.cache_read_tokens + usage.cache_write_tokens;
         let model_window = u64::from(model.model.context_window);
         if model_window > 0 && input > model_window {
@@ -180,60 +178,132 @@ impl CompactionConfig {
                 context_window = model_window,
                 "a response reported more input than its model's context window; it triggers no compaction"
             );
-            return false;
+            return None;
         }
-        self.threshold(window, &model.model)
-            .is_some_and(|threshold| input + usage.output_tokens >= threshold)
-    }
-
-    /// Whether a request of `size` reaches a size threshold of a vendor that
-    /// takes requests within `limits` (`compaction.md` § When compaction
-    /// runs): 80% of its body limit or of its image limit.
-    pub(crate) fn size_reached(&self, limits: RequestLimits, size: RequestSize) -> bool {
-        if !self.automatic {
-            return false;
-        }
-        let reached = |limit: Option<u64>, value: u64| {
-            limit.is_some_and(|limit| value >= share(limit, SIZE_THRESHOLD_PERCENT))
-        };
-        reached(limits.body_bytes, size.bytes) || reached(limits.images.map(u64::from), size.images)
+        let tokens = input + usage.output_tokens;
+        let threshold = self.threshold(window, &model.model)?;
+        (tokens >= threshold).then_some(Trigger::Usage { tokens, threshold })
     }
 }
 
-/// Whether the estimate of `request` is at or over the token threshold of
-/// its model, whose window in use is `window`.
+/// What started a compaction pass, with the numbers it compared
+/// (`compaction.md` § When compaction runs): a pass logs it as it starts,
+/// so that no pass is a mystery. Tokens are a request's, as estimated or as
+/// the vendor reported them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum Trigger {
+    /// Before a turn, the estimate for the current model at or over its
+    /// token threshold.
+    BeforeTurn { estimate: u64, threshold: u64 },
+    /// Inside a turn, a response's usage at or over the token threshold.
+    Usage { tokens: u64, threshold: u64 },
+    /// A request the vendor refused for its tokens
+    /// (`context_length_exceeded`), with what it said.
+    TokenRefusal { request_id: String, message: String },
+    /// Before a model switch, the estimate for the new model at or over its
+    /// token threshold.
+    ModelSwitch {
+        model: String,
+        estimate: u64,
+        threshold: u64,
+    },
+    /// The user's `compact` action, at an estimate the server compared with
+    /// the share from which the user may compact; none when the estimate
+    /// could not be read.
+    UserAction {
+        estimate: Option<u64>,
+        compact_from: Option<u64>,
+    },
+}
+
+impl Trigger {
+    /// Logs the pass this trigger starts in `session`.
+    fn log(&self, session: &str) {
+        match self {
+            Self::BeforeTurn {
+                estimate,
+                threshold,
+            } => tracing::info!(
+                session,
+                estimate,
+                threshold,
+                "compacting before a turn: the estimate is at or over the token threshold"
+            ),
+            Self::Usage { tokens, threshold } => tracing::info!(
+                session,
+                tokens,
+                threshold,
+                "compacting inside a turn: a response's usage is at or over the token threshold"
+            ),
+            Self::TokenRefusal {
+                request_id,
+                message,
+            } => tracing::info!(
+                session,
+                request_id,
+                message,
+                "compacting after the vendor refused a request for its tokens"
+            ),
+            Self::ModelSwitch {
+                model,
+                estimate,
+                threshold,
+            } => tracing::info!(
+                session,
+                model,
+                estimate,
+                threshold,
+                "compacting before a model switch: the estimate is at or over the new model's token threshold"
+            ),
+            Self::UserAction {
+                estimate,
+                compact_from,
+            } => tracing::info!(
+                session,
+                estimate,
+                compact_from,
+                "compacting at the user's request"
+            ),
+        }
+    }
+}
+
+/// The estimate of `request` and the token threshold of its model, whose
+/// window in use is `window`, when the estimate is at or over it.
 fn over_token_threshold(
     s: &SessionShared,
     request: &RequestView,
     system_prompt: &str,
     window: Option<u64>,
-) -> bool {
-    s.config
-        .compaction
-        .threshold(window, request.model())
-        .is_some_and(|threshold| context_tokens(request, system_prompt) >= threshold)
+) -> Option<(u64, u64)> {
+    let threshold = s.config.compaction.threshold(window, request.model())?;
+    let estimate = context_tokens(request, system_prompt);
+    (estimate >= threshold).then_some((estimate, threshold))
 }
 
-/// Whether the history is at or over a threshold of `model`, whose vendor
-/// takes requests within `limits`: its estimate, or the size of the request
-/// that model would be sent.
-async fn over_a_threshold(
+/// The trigger of a pass before a switch to `model`, whose vendor takes
+/// requests within `limits`, when the history's estimate for it is at or
+/// over its token threshold.
+async fn over_threshold_of(
     s: &SessionShared,
     model: &ModelSelection,
     limits: RequestLimits,
     cancel: &TurnCancel,
-) -> Result<bool, TurnError> {
+) -> Result<Option<Trigger>, TurnError> {
     let window = cancel.guard(window_in_use(s, model)).await?;
     let view = model_view(s, cancel).await?;
     let tools = s.runtime.tools();
     let request = RequestView::new(&view, &model.model, limits, &tools);
     let system_prompt = turn::system_prompt(s, model, cancel).await?.text();
-    if over_token_threshold(s, &request, &system_prompt, window) {
-        return Ok(true);
-    }
-    let replayed = replay(&request);
-    let size = request_size(&system_prompt, &replayed.items);
-    Ok(s.config.compaction.size_reached(limits, size))
+    Ok(
+        over_token_threshold(s, &request, &system_prompt, window).map(|(estimate, threshold)| {
+            Trigger::ModelSwitch {
+                model: model.model.id.clone(),
+                estimate,
+                threshold,
+            }
+        }),
+    )
 }
 
 /// Runs `work` in the compacting stage, which clients see as the phase
@@ -328,8 +398,12 @@ pub(super) async fn report_context_usage(s: &SessionShared, cancel: &TurnCancel)
 }
 
 /// Why a `compact` frame is refused at `usage`, or none when it is taken.
-pub fn compaction_refusal(usage: &ContextUsage) -> Option<String> {
-    if usage.admits_compaction() {
+/// A history whose unfinished turn failed for its size (`size_refused`)
+/// takes it at any share: its media, not its tokens, are what the vendor
+/// refused, and summarizing them away is how the user continues it
+/// (`compaction.md` § When compaction runs).
+pub fn compaction_refusal(usage: &ContextUsage, size_refused: bool) -> Option<String> {
+    if size_refused || usage.admits_compaction() {
         return None;
     }
     let window = usage.window?;
@@ -339,8 +413,15 @@ pub fn compaction_refusal(usage: &ContextUsage) -> Option<String> {
     ))
 }
 
+/// Whether the turn the history leaves unfinished failed because its
+/// request was too large for the vendor (`request_too_large`).
+pub(super) fn size_refused(blocks: &[Block]) -> bool {
+    matches!(turn_record(blocks), Some(Block::Error(error))
+        if error.code.as_deref() == Some(ErrorCode::RequestTooLarge.as_str()))
+}
+
 /// Before a turn: one pass when the history is over the current model's
-/// token threshold; a request's size is checked before each request.
+/// token threshold. A request's size never starts one.
 pub(super) async fn preflight(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     let model = s.read(|core| core.model.clone());
     let window = cancel.guard(window_in_use(s, &model)).await?;
@@ -349,29 +430,36 @@ pub(super) async fn preflight(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Res
     let over = s.read(|core| {
         over_token_threshold(s, &core.request_view(&view), &system_prompt, window)
     });
-    if over {
-        compacting(s, run_pass(s, cancel)).await?;
+    if let Some((estimate, threshold)) = over {
+        let trigger = Trigger::BeforeTurn {
+            estimate,
+            threshold,
+        };
+        compacting(s, run_pass(s, cancel, &trigger)).await?;
     }
     Ok(())
 }
 
 /// Before a model switch lands: passes with the current model until the
-/// history fits the thresholds of `target`, whose vendor takes requests
-/// within `limits`, at most eight, stopping when a pass compacts nothing.
-/// Returns whether any pass compacted.
+/// history's estimate is under the token threshold of `target`, whose
+/// vendor takes requests within `limits`, at most eight, stopping when a
+/// pass compacts nothing. Returns whether any pass compacted.
 pub(super) async fn compact_to_fit(
     s: &Rc<SessionShared>,
     target: &ModelSelection,
     limits: RequestLimits,
     cancel: &TurnCancel,
 ) -> Result<bool, TurnError> {
-    if !over_a_threshold(s, target, limits, cancel).await? {
+    if over_threshold_of(s, target, limits, cancel).await?.is_none() {
         return Ok(false);
     }
     compacting(s, async {
         let mut compacted = false;
         for _ in 0..MAX_FIT_PASSES {
-            if !over_a_threshold(s, target, limits, cancel).await? || !run_pass(s, cancel).await? {
+            let Some(trigger) = over_threshold_of(s, target, limits, cancel).await? else {
+                break;
+            };
+            if !run_pass(s, cancel, &trigger).await? {
                 break;
             }
             compacted = true;
@@ -391,11 +479,13 @@ pub(super) async fn compact_to_fit(
 /// Returns whether it compacted anything. A summary request that exceeds the
 /// context is asked again for the first half of the window, down to one
 /// block after the previous boundary; when that one exceeds it too, the pass
-/// fails.
+/// fails. The pass logs its `trigger` first.
 pub(super) async fn run_pass(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
+    trigger: &Trigger,
 ) -> Result<bool, TurnError> {
+    trigger.log(&s.read(|core| core.id.to_string()));
     let model = s.read(|core| core.model.clone());
     let window_tokens = cancel.guard(window_in_use(s, &model)).await?;
     let budget = window_tokens.map_or(KEPT_WORK, |window| {

@@ -48,23 +48,35 @@ fn an_http_status_decides_the_code() {
             "Context length exceeded",
             Some(ErrorCode::ContextLengthExceeded),
         ),
-        // A body over the vendor's size, whatever its text, and the
-        // Anthropic API's refusals of too many images or of images too large
-        // for a request with many.
-        (413, "", Some(ErrorCode::ContextLengthExceeded)),
+        // Too large rather than too long: a body over the vendor's size,
+        // whatever its text, a 400 that says so, and the Anthropic API's
+        // refusals of too many images or of images too large for a request
+        // with many.
+        (413, "", Some(ErrorCode::RequestTooLarge)),
         (
             400,
             "Request too large",
-            Some(ErrorCode::ContextLengthExceeded),
+            Some(ErrorCode::RequestTooLarge),
+        ),
+        (
+            400,
+            "Payload Too Large",
+            Some(ErrorCode::RequestTooLarge),
         ),
         (
             400,
             "Too many images in request",
-            Some(ErrorCode::ContextLengthExceeded),
+            Some(ErrorCode::RequestTooLarge),
         ),
         (
             400,
             "image dimensions exceed max allowed size for many-image requests: 2000 pixels",
+            Some(ErrorCode::RequestTooLarge),
+        ),
+        // Any other text of a size is the tokens'.
+        (
+            400,
+            "input is too large for the model",
             Some(ErrorCode::ContextLengthExceeded),
         ),
         (400, "bad request", None),
@@ -95,16 +107,26 @@ fn a_vendor_failure_classifies_by_whole_words_and_falls_back_to_the_vendor_code(
         (
             Some("request_too_large"),
             "Request exceeds the maximum size",
-            Some(ErrorCode::ContextLengthExceeded),
+            Some(ErrorCode::RequestTooLarge),
+        ),
+        (
+            None,
+            "payload too large",
+            Some(ErrorCode::RequestTooLarge),
         ),
         (
             Some("invalid_request_error"),
             "Too many images in request",
-            Some(ErrorCode::ContextLengthExceeded),
+            Some(ErrorCode::RequestTooLarge),
         ),
         (
             Some("invalid_request_error"),
             "image dimensions exceed max allowed size for many-image requests",
+            Some(ErrorCode::RequestTooLarge),
+        ),
+        (
+            None,
+            "the input is too large",
             Some(ErrorCode::ContextLengthExceeded),
         ),
         (None, "rate limit reached", Some(ErrorCode::RateLimit)),

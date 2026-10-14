@@ -6,7 +6,7 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_agent_transcript::{resume_point, rewind, unwind};
+use demi_agent_transcript::{resume_point, rewind, turn_record, unwind};
 use demi_provider_common::Ahead;
 use demi_shared_types::{Block, ErrorDevice, HOST_OFFLINE, TurnId};
 use tokio::sync::Notify;
@@ -207,7 +207,16 @@ async fn execute(
         ActionKind::Resume { reason } => resume(s, cancel, reason.clone()).await,
         ActionKind::Edit => editing::run(s, cancel).await,
         ActionKind::Compact => {
-            compaction::compacting(s, compaction::run_pass(s, cancel)).await?;
+            // The server compared the estimate with the share from which the
+            // user may compact before it took the frame; the log repeats it.
+            // A usage that cannot be read only leaves it out of the log: the
+            // pass reads what it needs itself and reports its own failure.
+            let usage = compaction::context_usage(s, cancel).await.ok();
+            let trigger = compaction::Trigger::UserAction {
+                estimate: usage.as_ref().map(|usage| usage.tokens),
+                compact_from: usage.and_then(|usage| usage.compact_from),
+            };
+            compaction::compacting(s, compaction::run_pass(s, cancel, &trigger)).await?;
             // Agent messages that were waiting reach the model; steers that
             // arrived during the pass wait in the transcript for the next
             // turn.
@@ -271,16 +280,11 @@ async fn resume(
 }
 
 /// The device whose absence left the last turn unfinished: the turn's
-/// record, the last block before any compaction after it, is a
-/// `host_offline` error naming it. The backend reads it to say, as the user
-/// resumes, where the turn now runs (`failures-and-recovery.md` § The
-/// unfinished turn).
+/// record ([`turn_record`]) is a `host_offline` error naming it. The backend
+/// reads it to say, as the user resumes, where the turn now runs
+/// (`failures-and-recovery.md` § The unfinished turn).
 pub fn left_by_offline_host(blocks: &[Block]) -> Option<&ErrorDevice> {
-    let record = blocks
-        .iter()
-        .rev()
-        .find(|block| !matches!(block, Block::CompactionBoundary(_) | Block::CompactionMarker(_)))?;
-    match record {
+    match turn_record(blocks)? {
         Block::Error(error) if error.code.as_deref() == Some(HOST_OFFLINE) => error.device.as_ref(),
         _ => None,
     }
