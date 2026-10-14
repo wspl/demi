@@ -772,7 +772,7 @@ Providers once it has two accounts:
 
 | Rotation | Which account an agent uses |
 |---|---|
-| Manual, the default | The active account, as without rotation. A usage limit stops the turn ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)); the dock then also offers *Continue with sam@example.com*, the account with the most room when the failure was recorded, which makes it active and resumes. |
+| Manual, the default | The active account, as without rotation. A usage limit stops the turn ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)); the dock then also offers *Continue with sam@example.com*, the account with the most room as the page reads the failure ([Failure facts](../backend/backend.md#failure-facts)), which makes it active and resumes. |
 | In Order | The first account in the list's order that is not used up; the user orders the list by dragging. One account is used until it runs out, then the next. |
 | Balanced | The account with the most room, by the rule below. |
 
