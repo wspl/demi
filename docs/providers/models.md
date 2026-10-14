@@ -57,7 +57,7 @@ does not state is null, which means unknown.
 | Field | Meaning |
 |---|---|
 | `id`, `displayName`, `description` | The model as its source names it |
-| `contextWindow`, `outputLimit` | Token limits; a null `outputLimit` means no model-specific limit ([Output limit](#output-limit)) |
+| `contextWindow`, `outputLimit` | Token limits; a null `outputLimit` means no model-specific limit ([Output limit](#output-limit)), and a null `contextWindow` an unknown window, as a model added by Custom has until the user sets one |
 | `supportsTools` | Whether the model can call tools |
 | `supportsAttachments`, `supportsVideo`, `acceptedExtensions` | Which files the model reads natively ([Accepted attachment types](#accepted-attachment-types)) |
 | `supportsReasoning`, `supportedThinkingEfforts`, `canDisableThinking` | Which thinking settings the model offers ([Thinking and service tiers](#thinking-and-service-tiers)) |
@@ -220,7 +220,9 @@ An entry whose catalog is its configured list gets a model in one step:
    reads, in that order, every field editable, the id included. Choosing
    *Custom* adds a model whose id and name are the text typed so far, and
    opens it the same way.
-3. Edit Model saves a change with **Save**, drops it with **Cancel**, and
+3. On an entry's page, emptying the key or the endpoint field and leaving it
+   removes the key or the endpoint, as the API's null does.
+4. Edit Model saves a change with **Save**, drops it with **Cancel**, and
    removes the model with **Delete Model**. Cancel on a model just added
    keeps it as it was added, as Cancel does for any model; Delete Model
    removes it.
