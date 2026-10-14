@@ -156,7 +156,7 @@ async function carryOut(dialog: Dialog, user: SettingsUser, call: () => Promise<
 
 async function add(user: SettingsNewUser): Promise<void> {
   addError.value = undefined
-  const outcome = await confirmed(() => props.host.add(user), 'Adding an account asks it is you.')
+  const outcome = await confirmed(() => props.host.add(user), 'Confirm it’s you to add an account.')
   if (outcome === null) {
     return
   }
@@ -182,7 +182,7 @@ async function resetPassword(): Promise<void> {
     return
   }
   try {
-    const outcome = await confirmed(() => props.host.newPassword(user.id), 'Resetting a password asks it is you.')
+    const outcome = await confirmed(() => props.host.newPassword(user.id), 'Confirm it’s you to reset a password.')
     if (outcome?.kind === 'made') {
       ready.value = {
         host: props.host.signInCode(user.id),
@@ -204,7 +204,7 @@ async function makeAnotherPassword(): Promise<boolean> {
   if (!account) {
     return false
   }
-  const outcome = await confirmed(() => props.host.newPassword(account.id), 'A new password asks it is you.')
+  const outcome = await confirmed(() => props.host.newPassword(account.id), 'Confirm it’s you to make a new password.')
   if (outcome?.kind !== 'made' || !ready.value) {
     return false
   }
@@ -373,8 +373,7 @@ function closeDialog(): void {
     @confirm="resetPassword"
   >
     <p>
-      Demi makes a new first password and shows it to you once. The one they have stops working, and they choose
-      a password of their own the next time they sign in. Their signed-in browsers and passkeys stay.
+      Demi makes a new first password and shows it once. Their current password stops working. Signed-in browsers and passkeys stay.
     </p>
   </ConfirmDialog>
   <HandoffDialog
@@ -412,8 +411,7 @@ function closeDialog(): void {
     @confirm="signOutEverywhere"
   >
     <p>
-      Every browser signed in as {{ targetName }} goes to the sign-in page at once, its open pages included.
-      Nothing is removed, and they can sign in again.
+      Every browser signed in as {{ targetName }} returns to the sign-in page. They can sign in again.
     </p>
   </ConfirmDialog>
   <ConfirmDialog
@@ -426,12 +424,10 @@ function closeDialog(): void {
     @confirm="disableAccount"
   >
     <p>
-      {{ targetName }} is signed out everywhere and can’t sign in any way. Their Cloud stops, and their paired
-      devices can’t reach the server.
+      {{ targetName }} is signed out everywhere and can’t sign in. Their Cloud stops and their devices disconnect.
     </p>
     <p>
-      Nothing is removed: their conversations, Clouds, devices and settings wait.
-      Enable Account undoes it.
+      Nothing is removed. Enable Account restores access.
     </p>
   </ConfirmDialog>
 </template>

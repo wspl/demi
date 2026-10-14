@@ -97,7 +97,7 @@ function keydown(event: KeyboardEvent): void {
 }
 
 const emptyLabel = computed(() =>
-  view.value.kind === 'recent' ? 'No conversations yet.' : 'No conversations match.',
+  view.value.kind === 'recent' ? 'No conversations' : 'No matches',
 )
 </script>
 

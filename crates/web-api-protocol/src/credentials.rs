@@ -273,7 +273,7 @@ pub fn distinct<'a>(names: impl IntoIterator<Item = &'a str>) -> garde::Result {
     for name in names {
         if !seen.insert(name) {
             return Err(garde::Error::new(format!(
-                "Two fields are named \u{201c}{name}\u{201d}; give each field its own name."
+                "Two fields are named \u{201c}{name}\u{201d}. Give each field its own name."
             )));
         }
     }

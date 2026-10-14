@@ -9,7 +9,7 @@ import { Dropdown } from '@demicodes/plugin-sdk'
 import { ProgressLine } from '@demicodes/plugin-sdk'
 import { RegionStatus } from '@demicodes/plugin-sdk'
 import { Tooltip } from '@demicodes/plugin-sdk'
-import { downloadUrl, formatBytes, usePage } from '@demicodes/plugin-sdk'
+import { downloadUrl, formatByteRatio, formatBytes, usePage } from '@demicodes/plugin-sdk'
 import { clientPlatform } from '@demicodes/utils'
 import type { LiveDownload } from '../generated/plugin'
 import LiveView from './LiveView.vue'
@@ -258,7 +258,7 @@ function downloadDetail(download: LiveDownload): string {
     return formatBytes(download.total)
   }
   return download.total > 0
-    ? `${formatBytes(download.received)} of ${formatBytes(download.total)}`
+    ? formatByteRatio(download.received, download.total)
     : formatBytes(download.received)
 }
 
@@ -437,7 +437,7 @@ watch(
         v-else-if="bound !== undefined && props.session.pictures.value === 'unsupported'"
         class="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-[13px] text-fg-faint"
       >
-        This browser cannot show the live view: it cannot decode H.264 video.
+        This browser can’t decode H.264 video.
       </div>
       <!-- Before the browser has the tab: the panel's own background, which says what Demi does from the frame
            the tab starts opening. -->

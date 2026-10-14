@@ -149,7 +149,7 @@ const pageProjects = computed(() =>
           v-if="!devices.length"
           class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
         >
-          No devices connected.
+          No devices
         </div>
       </AsyncRegion>
     </SettingsGroup>

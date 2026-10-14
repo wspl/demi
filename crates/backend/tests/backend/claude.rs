@@ -967,7 +967,7 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
     assert_eq!(
         end,
         LoginState::Failed {
-            message: "Your Cloud did not start: its runner did not connect within 2 seconds"
+            message: "Your Cloud didn’t start. Its runner didn’t connect in 2 seconds."
                 .into(),
             request_id: request.clone().try_into().unwrap(),
         }

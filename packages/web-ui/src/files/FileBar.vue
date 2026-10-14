@@ -47,7 +47,7 @@ const END_INSET = (36 - 24) / 2
         :options="modeOptions"
         size="sm"
         :disabled="tooLargeToRender"
-        disabled-reason="Too large to render; showing its source"
+        disabled-reason="Too large to render"
       />
       <CopyButton v-if="bar.copy !== null" :source="bar.copy" />
       <Tooltip v-if="bar.download" content="Download">

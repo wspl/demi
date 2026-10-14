@@ -39,15 +39,13 @@ const title = computed(() =>
     @confirm="onDelete?.()"
   >
     <p v-if="one">
-      The conversation is deleted with its messages and the files it holds.
-      This cannot be undone.
+      Its messages and files are deleted. This cannot be undone.
     </p>
     <p v-else>
-      The conversations are deleted with their messages and the files they
-      hold. This cannot be undone.
+      Their messages and files are deleted. This cannot be undone.
     </p>
     <p>
-      {{ one ? 'Files it changed in its project stay.' : 'Files they changed in their projects stay.' }}
+      {{ one ? 'Files it changed stay in the project.' : 'Files they changed stay in their projects.' }}
     </p>
   </ConfirmDialog>
 </template>

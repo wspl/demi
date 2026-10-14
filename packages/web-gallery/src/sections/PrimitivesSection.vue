@@ -841,7 +841,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             <div class="space-y-1">
               <div class="gallery-label">Settings › Account · 32px</div>
               <SettingsGroup>
-                <SettingsRow label="Avatar" description="Your initials, until pictures arrive.">
+                <SettingsRow label="Avatar" description="Your initials.">
                   <Avatar :account-id="avatarSelf.id" :name="avatarSelf.name" :email="avatarSelf.email" :size="32" />
                 </SettingsRow>
               </SettingsGroup>
@@ -971,7 +971,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
           <GallerySpecimen variant="turn running">
             <ContextUsageIndicator
               :usage="usageAt(0.75)"
-              unavailable-reason="Compaction is available once the turn ends."
+              unavailable-reason="Available after the turn ends"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="compacting">

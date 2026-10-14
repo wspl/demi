@@ -187,7 +187,7 @@ const details = computed(() => {
     { label: 'Ended at', value: ended },
     { label: 'This browser', value: addressLines(seen.browser) },
     { label: 'The device', value: addressLines(seen.device) },
-    { label: 'Paths', value: `${seen.pairs.tried} tried, ${seen.pairs.answered} answered` },
+    { label: 'Paths', value: `${seen.pairs.answered} / ${seen.pairs.tried} answered` },
     ...(seen.inUse ? [{ label: 'Path in use', value: addressWithPort(seen.inUse) }] : []),
     { label: 'Local network access', value: permission(seen.permission) },
     ...(direct.value?.nextAt ? [{ label: 'Next attempt', value: upperFirst(nextIn.value) }] : []),

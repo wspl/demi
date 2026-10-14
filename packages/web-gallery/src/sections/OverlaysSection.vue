@@ -654,7 +654,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
               filterable
               :autofocus="false"
               filter-placeholder="Search conversations"
-              empty-text="No Conversations"
+              empty-text="No conversations"
               :items="[]"
             />
           </GallerySpecimen>

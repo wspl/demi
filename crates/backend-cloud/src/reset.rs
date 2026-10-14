@@ -29,7 +29,7 @@ use crate::{CloudServices, CloudShard};
 
 /// What a backend that started records of a reset its disks were recovered
 /// for: the operation failed, and a retry boots the Cloud.
-const RECOVERED: &str = "Reset disks recovered; retry to start Cloud";
+const RECOVERED: &str = "Reset disks recovered. Retry to start Cloud.";
 
 impl dyn CloudShard {
     /// Admits the reset `id` of the user's Cloud, or answers the one of that

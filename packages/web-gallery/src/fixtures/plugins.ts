@@ -331,7 +331,7 @@ export function skillsPlugin(state: SkillsState): GalleryPlugin {
     for (const other of state.sources) {
       for (const skill of other.skills) {
         if (skill.enabled && names.includes(skill.name) && other.id !== id) {
-          throw new PluginCallError('skill_name_taken', `A skill named "${skill.name}" from ${other.origin} is on; turn it off first`)
+          throw new PluginCallError('skill_name_taken', `A skill named “${skill.name}” from ${other.origin} is on. Turn it off first.`)
         }
       }
     }

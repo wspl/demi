@@ -131,7 +131,7 @@ pub enum CredentialRefusal {
     #[error("This credential no longer exists.")]
     NotFound,
     /// The name of the other credential, as it is saved.
-    #[error("Another credential is named \u{201c}{0}\u{201d}; choose another name.")]
+    #[error("Another credential is named \u{201c}{0}\u{201d}. Choose another name.")]
     NameTaken(String),
     /// A new field, by its label, sent without a value.
     #[error("Enter a value for the new field \u{201c}{0}\u{201d}.")]

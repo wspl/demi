@@ -312,7 +312,7 @@ function selectDevice(id: string, close: () => void): void {
                         v-if="!devices.length"
                         class="select-none px-2 py-3 text-center text-chrome text-fg-subtle"
                       >
-                        No devices yet.
+                        No devices
                       </div>
                     </Menu>
                   </template>

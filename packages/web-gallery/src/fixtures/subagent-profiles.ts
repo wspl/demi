@@ -24,7 +24,7 @@ export function demoSubagentProfiles(): SettingsSubagentProfile[] {
     {
       id: 'explore',
       name: 'explore',
-      description: 'Use for finding code, call sites and documentation; it reports and changes nothing.',
+      description: 'Use for finding code, call sites and documentation. It changes nothing.',
       model: { providerId: 'openai', modelId: 'gpt-5', thinkingEffort: null, serviceTierId: 'priority' },
       contextLimit: null,
       instructions: 'Find code and report where it is, with paths and line numbers.\nChange nothing.',

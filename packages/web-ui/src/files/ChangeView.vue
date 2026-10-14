@@ -219,7 +219,7 @@ const nextEdit = computed(() => {
   const at = editAt.value
   return at === null ? edits.value[0] : edits.value[at + 1]
 })
-const editLabel = computed(() => editAt.value === null ? 'All Changes' : `Edit ${editAt.value + 1} of ${edits.value.length}`)
+const editLabel = computed(() => editAt.value === null ? 'All Changes' : `Edit ${editAt.value + 1} / ${edits.value.length}`)
 const editItems = computed(() => [
   ...(allChanges.value ? [{ id: 'all', label: 'All Changes' }] : []),
   ...edits.value.map((entry, index) => ({ id: String(index), label: entry.title, value: `Edit ${index + 1}` })),
@@ -302,7 +302,7 @@ const treeFiles = computed<ChangeTreeFile[]>(() => {
 const idleText = computed(() => {
   if (mode.value === 'conversation') {
     if (!request.value)
-      return 'Click a changed file in the conversation to see its diff here.'
+      return 'Select a changed file in the conversation.'
     return request.value.files.length > 0 ? 'Select a changed file.' : 'These changes are no longer in the conversation.'
   }
   if (missingCommit.value)
@@ -314,8 +314,8 @@ const idleText = computed(() => {
 
 /** What stands where the diff would, when the contents it needs were not kept. */
 const unkeptText = computed(() => selectedChange.value?.kind === 'deleted'
-  ? 'The contents before it was removed were not kept.'
-  : 'The contents of this change were not kept.')
+  ? 'The previous contents weren’t kept.'
+  : 'This change’s contents weren’t kept.')
 
 const kind = computed(() => selectedChange.value ? previewKind(selectedChange.value.path) : 'text')
 const sourceView = computed(() => selectedChange.value !== null && hasSourceView(selectedChange.value.path))

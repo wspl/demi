@@ -287,7 +287,7 @@ function askRemoveProvider(provider: SettingsProviderEntry): void {
       provider.models.length === 0
         ? 'Its API key goes with it.'
         : `Its API key and its ${countUnlessOne(provider.models.length, 'model')} go with it.`,
-      'Conversations that use one of its models keep their history, and their next message needs another model.',
+      'Conversations using its models keep their history and need another model.',
     ],
     operation: providerOperation(provider.id, { kind: 'removing' }),
     run: () => props.onRemove?.(provider.id),
@@ -885,7 +885,7 @@ function endpointCheck(value: string) {
                   v-if="!selected.accounts.length"
                   class="flex select-none flex-col items-center gap-1.5 px-4 py-6 text-center text-[13px] text-fg-subtle"
                 >
-                  No account yet. Add one to use this provider.
+                  No accounts
                 </div>
               </template>
 
@@ -1033,7 +1033,7 @@ function endpointCheck(value: string) {
             <SettingsGroup v-if="selected.cli" title="Command-Line Tool">
               <SettingsRow
                 label="Version"
-                description="Follows the newest version; updates install by themselves."
+                description="Follows the newest version and updates itself."
               >
                 <span
                   v-if="'version' in selected.cli.newest"
@@ -1263,11 +1263,11 @@ function endpointCheck(value: string) {
                   <!-- An empty list is a plain wait, never red: nothing has failed. -->
                   {{
                     modelFilter
-                      ? 'No model matches.'
+                      ? 'No matches'
                       : selected.kind === 'subscription' &&
                           !selected.accounts.length
-                        ? 'Sign in to see what this account can use.'
-                        : 'No models yet.'
+                        ? 'Sign in to see models'
+                        : 'No models'
                   }}
                 </div>
               </AsyncRegion>

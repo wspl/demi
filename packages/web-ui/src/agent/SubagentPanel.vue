@@ -224,6 +224,6 @@ function closeTab(id: string): void {
         @refresh-limits="emit('refreshLimits', active.model.providerId, active.contextUsage?.account ?? null, $event)"
       />
     </div>
-    <RegionStatus v-else class="h-full" status="note" :icon="Bot" label="No agents are running." />
+    <RegionStatus v-else class="h-full" status="note" :icon="Bot" label="No agents running" />
   </SessionOverlay>
 </template>

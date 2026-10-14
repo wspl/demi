@@ -57,7 +57,7 @@ const EMAIL_CORRECTIONS = {
   email_taken: 'That email address is already in use.',
 } as const
 const CODE_CORRECTIONS = {
-  invalid_code: 'That code is not right, or it expired. Check the newest message.',
+  invalid_code: 'That code is wrong or expired. Use the newest one.',
   email_taken: 'That email address is already in use.',
 } as const
 
@@ -157,7 +157,7 @@ function rename(nickname: string): Promise<void> {
 }
 
 /** Why the email cannot be changed on a server without mail (`web-api.md` § Account API). */
-const EMAIL_UNAVAILABLE = 'This server cannot send email, which a change needs for its code. Ask your administrator.'
+const EMAIL_UNAVAILABLE = 'This server can’t send email. Ask your administrator.'
 
 const emailDraft = ref({ email: '', password: '', code: '' })
 const passwordDraft = ref({ current: '', next: '', confirm: '' })

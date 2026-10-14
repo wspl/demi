@@ -74,12 +74,12 @@ export type ReadCallChange = (copies: EditCopies, signal?: AbortSignal) => Promi
 /** What an empty change set says in place of its files, by why it is empty. */
 export function emptyChangeSetText(source: ChangeSetSource): string {
   if (source.unavailable === 'no-repository') {
-    return 'Not a Git repository.'
+    return 'Not a Git repository'
   }
   if (source.failure) {
     return 'Could not list the changes.'
   }
-  return 'The working tree matches the last commit.'
+  return 'No changes'
 }
 
 /**

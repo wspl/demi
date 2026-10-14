@@ -86,7 +86,7 @@ function save(): unknown {
         <!-- A key saved while Exa could not tell whether it searches: the next search decides. -->
         <template v-else-if="key?.unchecked" #detail>
           <p role="status" class="text-[12px] leading-4 text-fg-subtle">
-            Not checked: {{ key.unchecked }}. The next search with it decides.
+            Not checked: {{ key.unchecked }}
           </p>
         </template>
         <template v-if="key">

@@ -120,7 +120,7 @@ const results = computed(() =>
         v-if="!compatibleShown && !results.length"
         class="select-none py-6 text-center text-[13px] text-fg-subtle"
       >
-        Nothing matches.
+        No matches
       </div>
     </AsyncRegion>
   </FilterDialog>

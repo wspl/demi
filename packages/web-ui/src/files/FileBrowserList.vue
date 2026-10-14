@@ -413,7 +413,7 @@ defineExpose({
           v-else-if="!entries.length && !creating"
           class="flex flex-1 select-none items-center justify-center py-10 text-chrome text-fg-subtle"
         >
-          This folder is empty.
+          Empty folder
         </div>
       </div>
       <TypeSelectHint :query="typeSelect.query.value" :matched="typeSelect.matched.value" />

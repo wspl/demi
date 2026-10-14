@@ -124,6 +124,6 @@ const empty = computed(() => props.host.passkeys.length === 0)
     @close="removeOpen = false"
     @confirm="remove"
   >
-    <p>It no longer signs in to this account. Your password and your other passkeys still do.</p>
+    <p>It can’t sign in to this account anymore. Your password and other passkeys still work.</p>
   </ConfirmDialog>
 </template>
