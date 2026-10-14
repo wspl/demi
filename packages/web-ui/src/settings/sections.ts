@@ -5,6 +5,7 @@ import {
   Bot,
   CircleUser,
   Database,
+  Info,
   KeyRound,
   Keyboard,
   Monitor,
@@ -165,6 +166,17 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
           'delete'
         ],
         ...deferred
+      },
+    ],
+  },
+  {
+    items: [
+      {
+        id: 'about',
+        label: 'About',
+        icon: Info,
+        keywords: ['version', 'licenses', 'open source', 'third-party', 'notices'],
+        settings: [{ label: 'Version' }, { label: 'Acknowledgements' }],
       },
     ],
   },

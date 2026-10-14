@@ -69,6 +69,10 @@ pub struct Options {
     /// for which browsers make no passkeys.
     #[arg(long)]
     public_host: Option<String>,
+    /// Seed nothing on a new data directory: the backend has no account
+    /// yet, and the page opens on its setup.
+    #[arg(long)]
+    unseeded: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -230,11 +234,18 @@ async fn session(
 
     let http = reqwest::Client::builder().no_proxy().build()?;
     answering(&http, &origin, backend.as_mut()).await?;
-    let models = match setup_needed(&http, &origin).await? {
-        true => seed_data(&http, &origin, seed, echo).await?,
+    let (account, models) = match (setup_needed(&http, &origin).await?, options.unseeded) {
+        (true, false) => (Some(&seed.account), seed_data(&http, &origin, seed, echo).await?),
+        (true, true) => (
+            None,
+            "\x20 Model:   none; the setup's account adds them\n".to_owned(),
+        ),
         // A data directory of an earlier run holds the account and the
         // entries it seeded.
-        false => "\x20 Model:   the entries the data directory's first run seeded\n".to_owned(),
+        (false, _) => (
+            Some(&seed.account),
+            "\x20 Model:   the entries the data directory's first run seeded\n".to_owned(),
+        ),
     };
     let kept = if options.data.is_some() || options.keep {
         " (kept)"
@@ -243,20 +254,21 @@ async fn session(
     };
     println!(
         "\nThe development backend serves at {origin}\n\
-         \x20 Account: {}, password {}\n\
+         \x20 Account: {}\n\
          {models}\
          \x20 Data:    {}{kept}\n\
          Start the page in another terminal:\n\
          \x20 DEMI_BACKEND_URL={origin} {}bun run web:dev\n\
          Ctrl-C stops the backend.\n",
-        seed.account.email,
-        if seed.account.from_env {
-            "from DEMI_DEV_PASSWORD"
-        } else {
-            seed.account.password.as_str()
+        match account {
+            Some(account) if account.from_env => {
+                format!("{}, password from DEMI_DEV_PASSWORD", account.email)
+            }
+            Some(account) => format!("{}, password {}", account.email, account.password),
+            None => "none yet; the page opens on the setup".to_owned(),
         },
         root.display(),
-        page_account(&seed.account),
+        account.map(page_account).unwrap_or_default(),
     );
 
     tokio::select! {

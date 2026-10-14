@@ -155,7 +155,7 @@ impl Executable {
     }
 
     /// The targets it runs on, in the order of the release matrix.
-    fn targets(self) -> &'static [&'static str] {
+    pub(crate) fn targets(self) -> &'static [&'static str] {
         match self {
             Self::Runner | Self::File | Self::Fetch | Self::Browser | Self::Claude => TARGETS,
             // Servers run Linux; a developer may also run the backend on a

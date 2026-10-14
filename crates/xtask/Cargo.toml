@@ -33,6 +33,10 @@ semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 similar = "2"
+# Checks an npm package's license against the accepted ones and gives the
+# standard text of one without a license file (`xtask notices`); the
+# version cargo-about checks the crates' licenses with.
+spdx = { version = "0.13", features = ["text"] }
 tar = { version = "0.4", default-features = false }
 thiserror.workspace = true
 tempfile = "3"

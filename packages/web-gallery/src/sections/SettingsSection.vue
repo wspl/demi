@@ -7,6 +7,8 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import type { SettingsTab } from '@demicodes/web-ui/settings/types'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
 import GallerySection from '../components/GallerySection.vue'
+import GalleryAbout from '../components/GalleryAbout.vue'
+import type { NoticesAnswer } from '../fixtures/acknowledgements'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import GallerySettingsRows from '../components/GallerySettingsRows.vue'
 import GallerySkillsShowcase from '../components/GallerySkillsShowcase.vue'
@@ -159,6 +161,13 @@ function answerAs(answer: 'granted' | 'denied'): void {
   full.notifications.permission = 'default'
   full.notifications.enabled = false
 }
+/** What the About specimen's stand-in server answers for the notices. */
+const noticesAnswers = [
+  { value: 'notices', label: 'Notices' },
+  { value: 'none', label: 'Development Build' },
+  { value: 'failure', label: 'Failure' },
+] as const
+const noticesAnswer = ref<NoticesAnswer>('notices')
 /** The account specimen on a server without mail. */
 const noMail = ref({ name: 'Alex' })
 /** The specimen's signed-in browsers: Sign Out drops one, as the product's list would. */
@@ -365,6 +374,22 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
           />
           <div class="rounded-xl border border-line bg-surface-dialog p-6">
             <GallerySettingsFull tab="notifications" :state="full" />
+          </div>
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="About"
+        note="The version, and Acknowledgements, a page of its own with a back button to About: the third-party notices of the release, read when the page opens. Switch what the stand-in server answers: the notices; none, as a development build has; or a failure, whose Retry reads them again."
+      >
+        <div class="flex w-full max-w-2xl flex-col gap-4">
+          <Segmented
+            v-model="noticesAnswer"
+            :options="noticesAnswers"
+            size="sm"
+          />
+          <div class="@container rounded-xl border border-line bg-surface-dialog p-6">
+            <GalleryAbout :answer="noticesAnswer" />
           </div>
         </div>
       </GallerySection>
