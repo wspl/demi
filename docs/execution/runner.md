@@ -369,9 +369,10 @@ server takes about half a second for a round trip. So a filesystem operation
 that the backend needs as one answer is one request, never one per entry. A
 directory listing carries each entry's name, kind, size and modification
 time, and for a symbolic link its target as written and what the target is
-(a file, a directory, another kind, or missing, followed through every link
-on the way), which the runner reads beside the entry as it lists the
-directory: a
+(a file, a directory, another kind, missing when nothing is there, or
+unreadable with the system's reason when it is there but cannot be reached,
+followed through every link on the way), which the runner reads beside the
+entry as it lists the directory: a
 home directory of 105 entries, listed with one request per entry, took about
 fifty seconds to show in the folder picker, and takes one round trip so.
 

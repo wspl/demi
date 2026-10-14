@@ -117,7 +117,21 @@ holds `vendor → ../shared/vendor` and `config.json → ~/.config/app.json`:
   file does.
 - **A link whose target is missing** shows as a file with the mark, its
   tooltip *Symbolic link to /tmp/gone.log, which does not exist*; opening it
-  shows that sentence where the file would be.
+  shows that sentence where the file would be. Missing means nothing is
+  there. A target that is there but cannot be reached, because a folder on
+  the way is closed to the user, the links go round in a loop, or the disk
+  fails, is *unreadable* instead, and says why: *Symbolic link to
+  /root/notes, which cannot be read: permission denied*. Opening either
+  shows its sentence from the listing, whatever a read of the target
+  answers; the File view asks for the folder's listing and the file at
+  once, so a file opened from a message link costs no extra round trip.
+- **What a row says about its target is as of its listing.** The folder's
+  watch sees the folder's own entries, not where each link leads, so a
+  target created or removed elsewhere does not change the row by itself, as
+  the Explorer's rows do not. Expanding or opening a link reads its target
+  again, and the row takes what that read found: a link that showed as
+  missing and now leads to a folder expands, and one that showed as a
+  folder whose target is gone says it does not exist.
 
 The listing says what each link's target is
 ([Host operations](../execution/runner.md)), so the tree shows all of this
