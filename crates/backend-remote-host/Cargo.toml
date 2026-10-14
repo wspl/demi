@@ -35,8 +35,9 @@ axum = { version = "0.8", features = ["ws"], optional = true }
 sha2 = { version = "0.10", optional = true }
 tempfile = { version = "3", optional = true }
 
+# The test support's runner processes, and its pseudo-terminal.
 [target.'cfg(unix)'.dependencies]
-rustix = { version = "1", features = ["process"], optional = true }
+rustix = { version = "1", features = ["process", "pty"], optional = true }
 
 [dev-dependencies]
 # The crate's own tests use its test support and the Host conformance cases.
