@@ -1348,7 +1348,12 @@ summary carries no draft's text. `hostsRevision` is the revision of the
 conversation's [attached hosts](../execution/sessions-and-targets.md#attached-hosts),
 which an attach, a detach or a rename raises, read by the page the same way. `panelRevision` is the revision of the
 conversation's [work panel](#work-panel-state), 0 before its first change,
-read the same way. `pluginRevisions` does the same for each
+read the same way. `lastAttachment` is the number of the conversation's
+latest [attachment](../execution/commands.md#attachment-commands), 3 for
+`a3`, 0 before its first; an upload raises it, and the backend sends the
+summary as it stores the attachment, so a page learns of a new one
+([Files named in messages](file-previews.md#files-named-in-messages)).
+`pluginRevisions` is a revision like `panelRevision` for each
 plugin's [conversation state](#conversation-state-of-plugins), as
 `{ plugin, revision }` for every plugin that declares one, in registration
 order, so turning a plugin on or off changes no summary. What changes in the

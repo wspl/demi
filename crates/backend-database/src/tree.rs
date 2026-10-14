@@ -39,7 +39,7 @@ use super::StorageError;
 use super::columns::{count, decode, instant, json, to_json};
 use super::command_outputs::{self, OutputRow};
 use super::conversations::ConversationDb;
-use super::{running, sequences};
+use super::{conversation_attachments, running, sequences};
 
 /// What a tree store tells after each commit that writes a node's
 /// checkpoint, closes, reopens or deletes a node, with that node: a
@@ -766,22 +766,25 @@ fn integer(value: u64) -> i64 {
 /// What a conversation's summary is built from (`storage.md` § Conversation
 /// state and transactions): the root's phase and output revision, the kind
 /// of its latest terminal block and its latest ended turn, read without
-/// loading the transcript.
+/// loading the transcript, and the number of its latest attachment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SummaryFacts {
     pub phase: SessionPhase,
     pub revision: u64,
     pub last: Option<Terminal>,
     pub last_turn: Option<EndedTurn>,
+    pub last_attachment: u64,
 }
 
 impl SummaryFacts {
-    /// The facts of a conversation that has no tree yet: idle, revision 0.
+    /// The facts of a conversation that has no tree yet: idle, revision 0,
+    /// no attachment.
     pub const EMPTY: Self = Self {
         phase: SessionPhase::Idle,
         revision: 0,
         last: None,
         last_turn: None,
+        last_attachment: 0,
     };
 }
 
@@ -884,8 +887,12 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
         )
         .optional()?;
+    let last_attachment = conversation_attachments::last(connection)?;
     let Some((id, state, block_count, revision)) = root else {
-        return Ok(SummaryFacts::EMPTY);
+        return Ok(SummaryFacts {
+            last_attachment,
+            ..SummaryFacts::EMPTY
+        });
     };
     let state: CheckpointState = json("nodes", "state", &state)?;
     // A failed `compact` ends no turn, and a stop that a Resume continued
@@ -917,6 +924,7 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
         revision: decode("nodes", "output_revision", u64::try_from(revision))?,
         last: walk.last,
         last_turn,
+        last_attachment,
     })
 }
 

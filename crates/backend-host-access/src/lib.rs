@@ -95,6 +95,10 @@ pub trait HostShard {
         conversation: &'a ConversationId,
         change: ConversationChange,
     ) -> LocalBoxFuture<'a, Result<(), ChangeRefusal>>;
+    /// Sends the conversation's summary to the user's pages again, after a
+    /// change of a fact it carries that no `transition` makes, such as a new
+    /// attachment.
+    fn summary_changed(&self, conversation: &ConversationId);
     /// Makes the conversation's pending changes, a move or a detach an agent
     /// asked for, once its tree is next idle (`sessions-and-targets.md`
     /// § Switch the primary target).
