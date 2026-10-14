@@ -905,7 +905,9 @@ html[data-theme="light"] .file-pill {
   --composer-shell-radius: calc(var(--composer-shell-height) / 2);
   --composer-line: calc(var(--agent-text) * var(--agent-leading));
   --composer-attach-gap: 8px;
-  --composer-below-gap: calc(var(--spacing) * 1);
+  /* The row under the box stands as far under it as the list stands under the
+     row: the box's own inset, so the row has the same room above and below. */
+  --composer-below-gap: var(--composer-inset);
   --composer-editor-pad-top: 16px;
   --composer-editor-pad-x: 16px;
   --composer-editor-pad-bottom: 12px;
@@ -925,24 +927,23 @@ html[data-theme="light"] .file-pill {
 }
 
 /* The row under the box: the model, then the context, at its right edge. It
-   stands one step under the box, inside the 12px the dock keeps around the
-   composer. */
+   stands one inset under the box, inside the 12px the dock keeps around the
+   composer. The row's controls are chips with their own padding, so its ends
+   are the box's edges: the first control's mark stands under the attach
+   control's left edge, and the context ring's, which is centred in its chip,
+   under the send button's right edge. */
 .composer-below {
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: calc(var(--spacing) * 1);
   margin-top: var(--composer-below-gap);
-  /* The row's last control stands over the send button: both are a chip
-     wide, so the box's inset puts their centres on one line. */
-  padding-inline-end: var(--composer-inset);
 }
 
-/* What stands at the row's left edge, such as the saved messages' entry, level with
-   the box's attach control the way the last control is with the send button. */
+/* What stands at the row's left end, such as the workflow and the saved
+   messages' entries. */
 .composer-below-start {
   margin-inline-end: auto;
-  padding-inline-start: var(--composer-inset);
 }
 
 /* A list under the box (the saved messages) stands as far under the row as the row
