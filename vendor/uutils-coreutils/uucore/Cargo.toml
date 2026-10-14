@@ -573,4 +573,5 @@ patches = [
     "A write through uucore::context to a pipe whose reader has gone ends the invocation with 141 and nothing on stderr, as SIGPIPE ends a GNU program in a shell, except while it unwinds already; before, each utility saw EPIPE and printed its own Broken pipe message with status 1 or 2, and diff panicked",
     "A walk checks the invocation's cancellation at each entry it reads (context::fs::ReadDir, added, and safe_traversal's DirFd::read_dir), so a walk that prints nothing, such as du -s or rm -r, stops at its next entry",
     "error::io_message (added) words an io error as GNU's tools do, the wording UIoError's display uses, so a utility that words its errors itself words them the same",
+    "pipes::zero_copy (added) says whether the splice paths run, which they do not under an owner's control; splice_unbounded_auto then falls back before it grows its destination to 1 MiB, so cat and tail write into the shell's pipe at the size it has, and the writer meets EPIPE once its reader has gone, as with a 64 KiB pipe; before, cat's output up to 1 MiB fit and it ended with 0 under a head that had stopped reading",
 ]
