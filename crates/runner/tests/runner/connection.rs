@@ -70,6 +70,46 @@ async fn typed_exchange_and_remote_close() {
     .unwrap();
 }
 
+/// Ending the last tree subscription must not stop the runner's control
+/// loop. A new subscription, a ping and a reconnect still work, and closing
+/// with a live watch releases its threads too. About 1 s; no model calls.
+#[tokio::test]
+async fn ending_a_tree_watch_keeps_the_runner_responsive() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        let path = host.home().to_string_lossy().into_owned();
+        for id in ["first", "second"] {
+            host.send(Inbound::FsSubscribe {
+                id: id.into(),
+                kind: demi_runner_protocol::files::SubscriptionKind::Worktree,
+                path: path.clone(),
+            })
+            .await;
+            assert!(matches!(host.frame().await, Outbound::FsLive { id: live, .. } if live == id));
+            host.send(Inbound::FsUnsubscribe { id: id.into() }).await;
+        }
+        // A new subscription is handled by the same owner after both ends,
+        // unlike a ping that could be answered before it processes them.
+        host.send(Inbound::FsSubscribe {
+            id: "last".into(),
+            kind: demi_runner_protocol::files::SubscriptionKind::Worktree,
+            path,
+        })
+        .await;
+        assert!(matches!(host.frame().await, Outbound::FsLive { id, .. } if id == "last"));
+        host.send(Inbound::Ping {}).await;
+        assert!(matches!(host.frame().await, Outbound::Pong { jobs: 0 }));
+        host.close_connection().await;
+        host.reconnected().await;
+        host.welcome(&[crate::CONVERSATION]).await;
+        host.send(Inbound::Ping {}).await;
+        assert!(matches!(host.frame().await, Outbound::Pong { jobs: 0 }));
+        host.close().await;
+    })
+    .await
+    .expect("ending a tree watch must not hang the runner");
+}
+
 /// A message that is not the protocol's ends the connection; the runner
 /// connects again.
 #[tokio::test]

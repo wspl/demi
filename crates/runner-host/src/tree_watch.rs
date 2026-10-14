@@ -273,14 +273,24 @@ mod platform {
     /// Adds the watches of the folders a tree gains, off notify's own
     /// thread, which would wait for itself.
     struct FolderAdder {
-        added: Option<mpsc::Sender<PathBuf>>,
+        added: mpsc::SyncSender<FolderChange>,
         thread: Option<std::thread::JoinHandle<()>>,
+    }
+
+    enum FolderChange {
+        Added(PathBuf),
+        Stop,
     }
 
     impl Drop for FolderAdder {
         fn drop(&mut self) {
-            // Its channel's end ends the thread.
-            self.added.take();
+            // The worker owns a watcher whose callback owns another sender,
+            // so dropping our sender cannot end its receive loop. Watch
+            // destruction runs on the blocking pool, where sending and
+            // joining may wait without stopping the control runtime.
+            if self.added.send(FolderChange::Stop).is_err() {
+                // The worker already exited, so there is nothing to stop.
+            }
             if let Some(thread) = self.thread.take() {
                 // A thread that panicked has nothing left to release.
                 let _ = thread.join();
@@ -297,7 +307,7 @@ mod platform {
         ) -> Result<Watch, String> {
             let listener = Arc::new(Mutex::new(listener));
             let tree_by_folder = cfg!(target_os = "linux") && reach == Reach::Tree;
-            let (added, adding) = mpsc::channel::<PathBuf>();
+            let (added, adding) = mpsc::sync_channel::<FolderChange>(128);
             let handler = {
                 let listener = listener.clone();
                 let added = added.clone();
@@ -311,8 +321,21 @@ mod platform {
                             if let Raw::Changed { path, entry: true, .. } = raw
                                 && path.is_dir()
                             {
-                                // The adder ends only with the watch.
-                                let _ = added.send(path.clone());
+                                match added.try_send(FolderChange::Added(path.clone())) {
+                                    Ok(()) => {}
+                                    Err(mpsc::TrySendError::Full(_)) => {
+                                        lock(&listener).deliver(vec![Raw::Failed(
+                                            "The folder watch queue is full".into(),
+                                        )]);
+                                        return;
+                                    }
+                                    Err(mpsc::TrySendError::Disconnected(_)) => {
+                                        lock(&listener).deliver(vec![Raw::Failed(
+                                            "The folder watch thread stopped".into(),
+                                        )]);
+                                        return;
+                                    }
+                                }
                             }
                         }
                     }
@@ -340,26 +363,29 @@ mod platform {
                     add_below(&watcher, &listener, &watched, false);
                 }
             }
-            let folders = tree_by_folder.then(|| {
+            let folders = if tree_by_folder {
                 let watcher = watcher.clone();
                 let listener = listener.clone();
-                FolderAdder {
-                    added: Some(added),
-                    thread: std::thread::Builder::new()
-                        .name("inotify-folders".into())
-                        .spawn(move || {
-                            for folder in adding {
-                                if lock(&watcher)
-                                    .watch(&folder, notify::RecursiveMode::NonRecursive)
-                                    .is_ok()
-                                {
-                                    add_below(&watcher, &listener, &folder, true);
-                                }
+                let thread = std::thread::Builder::new()
+                    .name("inotify-folders".into())
+                    .spawn(move || {
+                        while let Ok(FolderChange::Added(folder)) = adding.recv() {
+                            if lock(&watcher)
+                                .watch(&folder, notify::RecursiveMode::NonRecursive)
+                                .is_ok()
+                            {
+                                add_below(&watcher, &listener, &folder, true);
                             }
-                        })
-                        .ok(),
-                }
-            });
+                        }
+                    })
+                    .map_err(|error| error.to_string())?;
+                Some(FolderAdder {
+                    added,
+                    thread: Some(thread),
+                })
+            } else {
+                None
+            };
             Ok(Watch {
                 _watcher: watcher,
                 _folders: folders,
@@ -409,9 +435,9 @@ mod platform {
                     folders
                         .into_iter()
                         .zip(ignored)
-                        .filter(|(path, ignored)| {
-                            !ignored && path.file_name() != Some(".git".as_ref())
-                        })
+                        // Git metadata is not ignored: its index and refs
+                        // announce staging and commits as worktree edits do.
+                        .filter(|(_, ignored)| !ignored)
                         .map(|(path, _)| path)
                         .collect()
                 }

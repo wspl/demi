@@ -683,7 +683,19 @@ of its repository's tree.
 received its `fs_subscribe` or its last `fs_renew`, which names many ids at
 once. The runner ends a subscription whose lease ran out and releases what it
 held; `fs_unsubscribe` ends one at once. Closing the connection ends them
-all. The backend renews a subscription while a page still renews it
+all. Starting and stopping a shared platform watch run on the blocking pool,
+never on the runner's control thread. The last subscriber releases its watch
+without waiting for a thread to join; the connection owns that cleanup and
+awaits it when it closes. Closing also ends a watch still being started, so
+neither a late start nor a direct channel can leave one behind.
+
+On Linux the folder-adder thread receives an explicit stop message. It must
+not wait for all folder-event senders to disappear: the watcher it owns also
+owns one of those senders. Its folder queue is bounded; if it fills, the watch
+reports failure rather than silently missing new folders. Failure to start
+the thread is a watch failure too.
+
+The backend renews a subscription while a page still renews it
 ([File watch](../product/web-api.md#file-watch)).
 
 **How the platforms watch.** One subscription costs nothing of its own when
