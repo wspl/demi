@@ -2415,36 +2415,18 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
     );
 }
 
-/// The images `request` carries, in messages and tool results.
-fn images(request: &demi_provider_common::InferenceRequest) -> usize {
-    demi_agent_transcript::estimate::request_size("", &request.items).images as usize
+/// A round that calls `shoot`.
+fn shot(call: &str) -> Turn {
+    Turn::Events(vec![
+        event::tool_call(call, "shoot", json!({})),
+        event::response(1, 1),
+    ])
 }
 
-#[tokio::test(flavor = "local")]
-async fn screenshots_toward_the_vendors_image_limit_compact_before_a_request_would_reach_it() {
-    // The vendor takes five images a request, so a request of four reaches
-    // its threshold. Each call returns a screenshot.
-    let shot = |call: &str| {
-        Turn::Events(vec![
-            event::tool_call(call, "shoot", json!({})),
-            event::response(1, 1),
-        ])
-    };
-    let provider = ScriptedRuntime::new([
-        shot("shot-1"),
-        shot("shot-2"),
-        shot("shot-3"),
-        shot("shot-4"),
-        answer("the screen so far"),
-        answer("done"),
-    ])
-    .with_limits(RequestLimits {
-        body_bytes: None,
-        images: Some(5),
-        tool_results: demi_provider_common::ToolResultKinds::ALL,
-    });
+/// A tool whose result is a screenshot.
+fn shoot() -> (String, Invoke) {
     let png = B64Bytes::from(b"\x89PNG\r\n\x1a\n\0\0\0\x01".to_vec());
-    let shoot = tool("shoot", move |_| {
+    tool("shoot", move |_| {
         let image = ResultPart::Image(MediaBytes {
             data: png.clone(),
             media_type: "image/png".into(),
@@ -2455,12 +2437,45 @@ async fn screenshots_toward_the_vendors_image_limit_compact_before_a_request_wou
                 ..output("")
             })
         })
-    });
+    })
+}
+
+/// A vendor that takes `images` images a request.
+fn taking_images(images: u32) -> RequestLimits {
+    RequestLimits {
+        body_bytes: None,
+        images: Some(images),
+        tool_results: demi_provider_common::ToolResultKinds::ALL,
+    }
+}
+
+/// Whether `blocks` hold a compaction.
+fn compacted(blocks: &[Block]) -> bool {
+    blocks
+        .iter()
+        .any(|block| matches!(block, Block::CompactionBoundary(_) | Block::CompactionMarker(_)))
+}
+
+// Two sessions of a few scripted requests each: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn screenshots_near_a_vendors_image_limit_never_compact_a_history_under_the_token_threshold() {
+    // The vendor takes five images a request, so a request of four is at
+    // 80% of its limit, with a few thousand tokens of a 100,000-token
+    // window.
+    let provider = ScriptedRuntime::new([
+        shot("shot-1"),
+        shot("shot-2"),
+        shot("shot-3"),
+        shot("shot-4"),
+        answer("four shots"),
+    ])
+    .with_limits(taking_images(5));
     let store = MemoryTreeStore::new();
-    let session = start(&provider, vec![shoot], &store, SessionConfig::default()).await;
+    let session = start(&provider, vec![shoot()], &store, SessionConfig::default()).await;
+    let reads = [FileExtension::Png];
     session
         .update_model(ModelSwitch {
-            model: Box::new(model_reading("stub", "test-model", &[FileExtension::Png])),
+            model: Box::new(model_reading("stub", "model-a", &reads)),
             runtime: None,
         })
         .unwrap();
@@ -2471,40 +2486,69 @@ async fn screenshots_toward_the_vendors_image_limit_compact_before_a_request_wou
         .await
         .unwrap();
 
-    // No request reaches four images: the fifth would have carried four, so
-    // the pass before it summarizes what the fourth carried, whose request
-    // it extends, and the turn goes on after the last screenshot.
-    let requests = provider.requests();
-    assert_eq!(
-        requests.iter().map(images).collect::<Vec<_>>(),
-        [0, 1, 2, 3, 3, 1]
-    );
-    let (fourth, summary, fifth) = (&requests[3], &requests[4], &requests[5]);
-    assert_eq!(
-        summary.items.as_ref(),
-        [
-            fourth.items.to_vec(),
-            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
-        ]
-        .concat()
-    );
-    assert_eq!(
-        item_kinds(&fifth.items),
-        [
-            "user_message",
-            "user_message",
-            "user_message",
-            "tool_use",
-            "tool_result",
-            "user_message"
-        ]
-    );
-    assert_eq!(fifth.items[2], summary_item("the screen so far"));
-    assert_eq!(fifth.items[5], user_item(RESUME_TEXT));
+    // Compaction runs on tokens only: no summary request, no pass.
+    assert_eq!(provider.requests().len(), 5);
+    assert!(!provider.requests().iter().any(is_copy));
+    assert!(!compacted(&session.transcript().blocks));
+
+    // A switch to a vendor that takes three images a request does not
+    // compact either, with the model before it or after.
+    let second = ScriptedRuntime::new([answer("after the switch")]).with_limits(taking_images(3));
+    session
+        .update_model(ModelSwitch {
+            model: Box::new(model_reading("other", "model-b", &reads)),
+            runtime: Some(Box::new(second.clone())),
+        })
+        .unwrap();
+    session
+        .send(text("and now?"), turn("t2"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    assert_eq!(provider.requests().len(), 5);
+    assert_eq!(second.requests().len(), 1);
+    assert!(!compacted(&session.transcript().blocks));
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_request_refused_as_too_large_compacts_once_and_goes_again_and_a_second_refusal_fails_the_turn()
+async fn a_request_refused_for_its_size_is_not_compacted() {
+    // An HTTP 413: the vendor's body or image limit, not the model's
+    // window.
+    let refused = Turn::Events(vec![ProviderEvent::Error(ProviderFailure {
+        message: "Request exceeds the maximum size".into(),
+        code: ErrorCode::from_http(413, ""),
+        diagnostics: None,
+        retry_after: None,
+    })]);
+    // A summary and an answer after it stay unasked: no pass runs.
+    let provider = ScriptedRuntime::new([
+        answer("first"),
+        refused,
+        answer("summary of the first message"),
+        answer("second"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = small_session(&provider, Vec::new(), &store).await;
+    session
+        .send(text("one"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    let failed = session.send(text("two"), turn("t2")).unwrap().await;
+
+    assert_eq!(
+        failed.unwrap_err().code.as_deref(),
+        Some("request_too_large")
+    );
+    assert_eq!(provider.requests().len(), 2);
+    assert_eq!(provider.remaining(), 2);
+    assert!(!compacted(&session.transcript().blocks));
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_request_refused_for_its_tokens_compacts_once_and_goes_again_and_a_second_refusal_fails_the_turn()
  {
     let provider = ScriptedRuntime::new([
         answer("first"),
@@ -2584,97 +2628,6 @@ async fn a_request_refused_as_too_large_compacts_once_and_goes_again_and_a_secon
             .last()
             .map(String::as_str),
         Some("error")
-    );
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_switch_to_a_vendor_that_takes_fewer_images_compacts_with_the_model_before_it() {
-    let shot = |call: &str| {
-        Turn::Events(vec![
-            event::tool_call(call, "shoot", json!({})),
-            event::response(1, 1),
-        ])
-    };
-    let first = ScriptedRuntime::new([
-        shot("shot-1"),
-        shot("shot-2"),
-        shot("shot-3"),
-        answer("three shots"),
-        answer("summary of the shots"),
-    ]);
-    // The new model's vendor takes four images a request: three reach its
-    // threshold.
-    let second = ScriptedRuntime::new([answer("after the switch")]).with_limits(RequestLimits {
-        body_bytes: None,
-        images: Some(4),
-        tool_results: demi_provider_common::ToolResultKinds::ALL,
-    });
-    let png = B64Bytes::from(b"\x89PNG\r\n\x1a\n\0\0\0\x01".to_vec());
-    let shoot = tool("shoot", move |_| {
-        let image = ResultPart::Image(MediaBytes {
-            data: png.clone(),
-            media_type: "image/png".into(),
-        });
-        Box::pin(async move {
-            Ok(ToolOutcome {
-                output: vec![image],
-                ..output("")
-            })
-        })
-    });
-    let store = MemoryTreeStore::new();
-    let session = start(&first, vec![shoot], &store, SessionConfig::default()).await;
-    let reads = [FileExtension::Png];
-    session
-        .update_model(ModelSwitch {
-            model: Box::new(model_reading("stub", "model-a", &reads)),
-            runtime: None,
-        })
-        .unwrap();
-    session
-        .send(text("take three"), turn("t1"))
-        .unwrap()
-        .await
-        .unwrap();
-    session
-        .update_model(ModelSwitch {
-            model: Box::new(model_reading("other", "model-b", &reads)),
-            runtime: Some(Box::new(second.clone())),
-        })
-        .unwrap();
-
-    session
-        .send(text("and now?"), turn("t2"))
-        .unwrap()
-        .await
-        .unwrap();
-
-    // The model before the switch summarized what its last request carried,
-    // and the new model's request holds no image.
-    let requests = first.requests();
-    let [.., last, summary] = requests.as_slice() else {
-        panic!("{requests:?}");
-    };
-    assert_eq!(images(last), 3);
-    assert_eq!(summary.model_id, "model-a");
-    assert_eq!(
-        summary.items.as_ref(),
-        [
-            last.items.to_vec(),
-            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
-        ]
-        .concat()
-    );
-    assert_eq!(
-        second.requests()[0].items.as_ref(),
-        [
-            boundary_items(&["take three"], "summary of the shots"),
-            vec![
-                answer_item("model-a", "three shots"),
-                user_item("and now?"),
-            ],
-        ]
-        .concat()
     );
 }
 

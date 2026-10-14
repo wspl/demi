@@ -207,7 +207,16 @@ async fn execute(
         ActionKind::Resume { reason } => resume(s, cancel, reason.clone()).await,
         ActionKind::Edit => editing::run(s, cancel).await,
         ActionKind::Compact => {
-            compaction::compacting(s, compaction::run_pass(s, cancel)).await?;
+            // The server compared the estimate with the share from which the
+            // user may compact before it took the frame; the log repeats it.
+            // A usage that cannot be read only leaves it out of the log: the
+            // pass reads what it needs itself and reports its own failure.
+            let usage = compaction::context_usage(s, cancel).await.ok();
+            let trigger = compaction::Trigger::UserAction {
+                estimate: usage.as_ref().map(|usage| usage.tokens),
+                compact_from: usage.and_then(|usage| usage.compact_from),
+            };
+            compaction::compacting(s, compaction::run_pass(s, cancel, &trigger)).await?;
             // Agent messages that were waiting reach the model; steers that
             // arrived during the pass wait in the transcript for the next
             // turn.

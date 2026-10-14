@@ -4,9 +4,7 @@
 
 use std::borrow::Cow;
 
-use demi_provider_common::{
-    InferenceItem, MediaBytes, Medium, ResultPart, ToolDefinition, UserPart,
-};
+use demi_provider_common::{MediaBytes, Medium, ToolDefinition};
 use demi_shared_types::{
     B64Bytes, Block, DocumentSource, INSTRUCTIONS_SOURCE, Model, ModelMediaKind, ResponseBlock,
     ToolResultContentBlock, UserContentBlock,
@@ -119,98 +117,6 @@ pub fn anchor_tokens(anchor: &ContextAnchor, system_prompt: &str, tools: &[ToolD
 /// The estimates of `blocks`, summed, each as `request` carries it.
 pub fn blocks_tokens(blocks: &[Block], request: &RequestView) -> u64 {
     blocks.iter().map(|block| block_tokens(block, request)).sum()
-}
-
-/// What a request weighs as its vendor receives it (`compaction.md`
-/// § Request size).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct RequestSize {
-    /// The base64 length of the media it carries, and the UTF-8 length of its
-    /// system prompt and texts; the vendor's format adds its keys and escapes.
-    pub bytes: u64,
-    /// The image blocks it carries, in messages and tool results alike.
-    pub images: u64,
-}
-
-/// The size of a request with `system_prompt` and `items`, which replay made
-/// for the request's model, so what it could not take is text already.
-pub fn request_size(system_prompt: &str, items: &[InferenceItem]) -> RequestSize {
-    let mut size = RequestSize {
-        bytes: byte_count(system_prompt.len()),
-        images: 0,
-    };
-    for item in items {
-        match item {
-            InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
-                for part in content {
-                    size.add_content(part);
-                }
-            }
-            InferenceItem::AssistantText { text, .. } => size.add_text(text),
-            InferenceItem::AssistantThinking {
-                text, signature, ..
-            } => {
-                size.add_text(text);
-                size.add_text(signature.as_deref().unwrap_or_default());
-            }
-            InferenceItem::AssistantRedactedThinking { data, .. } => size.add_text(data),
-            InferenceItem::ToolUse {
-                tool_use_id,
-                tool_name,
-                input,
-                ..
-            } => {
-                size.add_text(tool_use_id);
-                size.add_text(tool_name);
-                size.add_text(&input.to_string());
-            }
-            InferenceItem::ToolResult {
-                tool_use_id,
-                output,
-                ..
-            } => {
-                size.add_text(tool_use_id);
-                for part in output {
-                    match part {
-                        ResultPart::Text(text) => size.add_text(text),
-                        ResultPart::Image(bytes) => {
-                            size.images += 1;
-                            size.bytes += bytes.data.base64_len();
-                        }
-                        ResultPart::Video(bytes) | ResultPart::Document { bytes, .. } => {
-                            size.bytes += bytes.data.base64_len();
-                        }
-                    }
-                }
-            }
-        }
-    }
-    size
-}
-
-impl RequestSize {
-    fn add_text(&mut self, text: &str) {
-        self.bytes += byte_count(text.len());
-    }
-
-    fn add_content(&mut self, part: &UserPart) {
-        match part {
-            UserPart::Text(text) => self.add_text(text),
-            UserPart::Image(medium) => {
-                self.images += 1;
-                self.add_medium(medium);
-            }
-            UserPart::Video(medium) => self.add_medium(medium),
-            UserPart::Document { bytes, .. } => self.bytes += bytes.data.base64_len(),
-        }
-    }
-
-    fn add_medium(&mut self, medium: &Medium) {
-        match medium {
-            Medium::Bytes(bytes) => self.bytes += bytes.data.base64_len(),
-            Medium::Url(url) => self.add_text(url),
-        }
-    }
 }
 
 /// The latest response block with usage above zero, and that usage, unless
