@@ -553,6 +553,86 @@ mod tests {
         assert_eq!(block(&pool, &owner, &id, &seen).await, None);
     }
 
+    /// A Fork's first switch is announced in the Fork once, though the
+    /// transcript it copied holds blocks of the source's later revisions
+    /// than the Fork's own first ones would be.
+    /// Planted defect this catches: a Fork that starts at revision 0, whose
+    /// first switch, at revision 1, the copied block of revision 7 hid.
+    #[tokio::test(flavor = "local")]
+    async fn a_forks_first_switch_is_announced_once_past_the_blocks_it_copied() {
+        use demi_backend_database::forks::{ForkMetadata, ForkOperation};
+        use demi_shared_types::BlockId;
+
+        let data = tempfile::tempdir().unwrap();
+        let (pool, owner, devices, source, control) = on_devices(data.path(), "alpha", &[]).await;
+        let beta = control
+            .create_device(owner.clone(), "beta".into(), RunnerPlatform::Linux, TokenHash::of("beta"))
+            .await
+            .unwrap()
+            .id;
+        // The source's history holds a block of revision 7, which the Fork
+        // copies.
+        testing::execute(
+            &control,
+            "UPDATE conversations SET context_version = 7 WHERE id = ?1",
+            vec![ID.to_owned()],
+        )
+        .await;
+        let copied = block(&pool, &owner, &source, &[]).await.unwrap();
+        assert!(copied.starts_with("[Execution context 7]"), "{copied}");
+
+        let fork = ConversationId::try_from("9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b").unwrap();
+        let on_alpha = ConversationTarget::Device {
+            device_id: devices[0].clone(),
+            path: "/a".into(),
+        };
+        let operation = ForkOperation {
+            id: fork.clone(),
+            owner: owner.clone(),
+            source: source.clone(),
+            block: BlockId::try_from("text-1").unwrap(),
+            metadata: ForkMetadata {
+                title: "Fork".into(),
+                target: on_alpha.clone(),
+                model: None,
+                created_at: "2026-10-14T08:00:00Z".parse().unwrap(),
+                attached_hosts: Vec::new(),
+                context_version: 7,
+            },
+        };
+        control.reserve_fork(operation).await.unwrap().expect("the id is free");
+        control.publish_fork(fork.clone()).await.unwrap();
+        let to = ConversationTarget::Device {
+            device_id: beta.clone(),
+            path: "/b".into(),
+        };
+        let switch = TargetSwitch {
+            from: ExecutionTarget::Device {
+                device_id: devices[0].clone(),
+                path: "/a".into(),
+            },
+            to: ExecutionTarget::Device {
+                device_id: beta.clone(),
+                path: "/b".into(),
+            },
+        };
+        let ends = SwitchEnds {
+            departed: Some((devices[0].clone(), "/a".into())),
+            arriving: Some(beta),
+        };
+        control
+            .switch_conversation_target(fork.clone(), on_alpha, to, switch, ends, None)
+            .await
+            .unwrap()
+            .expect("the switch wins");
+
+        let mut seen = vec![copied];
+        let announced = block(&pool, &owner, &fork, &seen).await.expect("the context changed");
+        assert!(announced.contains(SWITCHED), "{announced}");
+        seen.push(announced);
+        assert_eq!(block(&pool, &owner, &fork, &seen).await, None);
+    }
+
     /// Two attached devices that trade names change the attached hosts:
     /// `--host laptop` now reaches the other device, though the list of
     /// names reads the same.

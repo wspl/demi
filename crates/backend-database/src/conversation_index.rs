@@ -308,6 +308,7 @@ impl ControlService {
                     target: &start.target,
                     model: start.model.as_ref(),
                     workflow: &start.workflow,
+                    context_version: 0,
                     at: now,
                 },
             )?;
@@ -639,6 +640,9 @@ pub struct NewConversation<'a> {
     pub target: &'a ConversationTarget,
     pub model: Option<&'a ModelSelection>,
     pub workflow: &'a WorkflowChoice,
+    /// The execution-context revision it starts at: 0, or a Fork's source's
+    /// at the Fork, which the context blocks its copied transcript name.
+    pub context_version: u64,
     /// When it was created, and last active.
     pub at: Timestamp,
 }
@@ -657,7 +661,7 @@ pub fn insert_conversation(
            model, created_at, updated_at, workflow_kind, workflow_id)
          VALUES (?1, ?2, ?3, ?4, 0, ?11,
            (SELECT COALESCE(MIN(sort_order), 0) - 1 FROM conversations WHERE user_id = ?2),
-           0, ?5, ?6, ?7, ?8, 0, ?9, ?10, ?10, ?12, ?13)
+           0, ?5, ?6, ?7, ?8, ?14, ?9, ?10, ?10, ?12, ?13)
          ON CONFLICT (id) DO NOTHING",
         params![
             new.id.as_str(),
@@ -672,7 +676,8 @@ pub fn insert_conversation(
             new.at.as_millisecond(),
             new.pinned,
             workflow_kind,
-            workflow_id
+            workflow_id,
+            revision_column(new.context_version)
         ],
     )?;
     Ok(inserted)

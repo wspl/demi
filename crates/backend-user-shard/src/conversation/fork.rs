@@ -146,6 +146,7 @@ impl Shard {
                             .iter()
                             .map(AttachedHost::record)
                             .collect(),
+                        context_version: source.context_version,
                     },
                 };
                 control
@@ -382,6 +383,7 @@ mod tests {
                 model: Some(test_model()),
                 created_at,
                 attached_hosts: attached.iter().map(|host| host.record()).collect(),
+                context_version: 5,
             },
         };
         let committed = conversation("7d1c2e3f-4a5b-4c1e-9d2b-0b6f7f3e8f3a");
@@ -432,6 +434,8 @@ mod tests {
         );
         assert_eq!(published.model, Some(test_model()));
         assert_eq!(published.created_at, created_at);
+        // It starts at its source's revision at the Fork.
+        assert_eq!(published.context_version, 5);
         // The revoked device is left out; the other keeps its name and cwd.
         let kept: Vec<_> = attached
             .into_iter()
