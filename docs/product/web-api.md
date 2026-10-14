@@ -1025,7 +1025,7 @@ answers 204; a `limit` that is not a whole number from 1 answers 400
 contextLimit, instructions, canSpawn }`, where `contextLimit` is null, the
 user's limit, or the tokens of the profile's own choice, the full window
 included (400 `invalid_body` without a model of its own or for a choice the
-model does not offer),, creates the profile enabled, and answers 201 with
+model does not offer), creates the profile enabled, and answers 201 with
 `{ profile }`. `PATCH /api/subagents/profiles/:id` takes any subset of those
 fields and `enabled`, and answers `{ profile }`; `model` and `instructions`
 are whole values, and null returns either to the parent's.
