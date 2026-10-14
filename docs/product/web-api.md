@@ -911,14 +911,18 @@ not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale?, contextLimits?, sendWhileRunning?, hiddenProviders?, hiddenModels? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, hiddenProviders?, hiddenModels? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
 `settings`). A null shortcut removes that override. `sendWhileRunning` is
 `"steer"` or `"queue"`: what Enter does with a message while the agent works
 ([Steer or queue](product.md#steer-or-queue)); absent means `"steer"`, and a
-patch sets it. `hiddenProviders`, provider entry ids, and `hiddenModels`,
+patch sets it. `resumeAtRetry` is whether a turn that failed with a known
+time to try again, such as a usage limit that resets at 09:00, resumes by
+itself at that time ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
+absent means `false`. Settings › General shows it as *Resume after a usage
+limit resets*. `hiddenProviders`, provider entry ids, and `hiddenModels`,
 `{ providerId, modelId }` pairs, are the switches of Settings › Providers that
 take an entry or a model out of the model menu without deleting it; a patch
 replaces the list it names. They are the user's, not a browser's: every
