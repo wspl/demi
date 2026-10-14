@@ -19,7 +19,7 @@ import TreeFrame from './TreeFrame.vue'
 import { downloadUrl } from './download'
 import { fileBar, type ShownFile } from './file-bar'
 import { TREE_WIDTH } from './file-view'
-import { formatBytes } from './format'
+import { formatBytes, linkDescription } from './format'
 import { baseName } from '@demicodes/utils'
 import { normalizePath, parentPath } from './paths'
 import { hasSourceView, MISSING_FILE, previewKind, TOO_LARGE_NOTE } from './preview'
@@ -124,14 +124,39 @@ type TextState =
   | { phase: 'missing' }
   | { phase: 'failed'; message: string; requestId: string | null }
 
+/**
+ * The folder of the file shown, whose listing says whether the file is a
+ * symbolic link whose target is gone or cannot be read: such a link says so
+ * in the file's place from the listing, whatever the read of the file
+ * answers (`file-previews.md` § Symbolic links). The listing and the file
+ * are asked for at once, so a file whose folder is not kept yet costs no
+ * extra round trip; the tree's own listing, kept, when the file was opened
+ * there.
+ */
+const folder = useShowing(
+  () => props.source,
+  () => props.path === null ? null : parentPath(props.path),
+  (source, path) => source.showListing(path),
+)
+/** The file as its folder's listing names it; undefined before the listing, or when it does not name it. */
+const listed = computed(() => {
+  const path = props.path
+  return path === null ? undefined : folder.entry.value?.value?.find((entry) => entry.name === baseName(path))
+})
+/** The file, when it is a link whose target cannot be reached, as its folder's listing says. */
+const brokenLink = computed(() => listed.value?.link?.broken ? listed.value.link : null)
+/** Whether the listing names the path a folder now, as a link opened while its target was gone may come to: nothing to read as a file. */
+const leadsToFolder = computed(() => listed.value?.isDirectory === true)
+
 const shown = useShowing(
   () => props.source,
-  () => props.path !== null && media.value === null ? props.path : null,
+  () => props.path !== null && media.value === null && !leadsToFolder.value ? props.path : null,
   (source, path) => source.showText?.(path),
 )
 
 const state = computed<TextState>(() => {
-  if (props.path === null || media.value !== null)
+  // A broken link's read goes on, for Retry, but what it answered does not show.
+  if (props.path === null || media.value !== null || leadsToFolder.value || brokenLink.value !== null)
     return { phase: 'idle' }
   if (!props.source.showText)
     return { phase: 'failed', message: 'This source cannot read files.', requestId: null }
@@ -164,7 +189,7 @@ watch(() => shown.entry.value?.reading, (reading, wasReading) => {
 /** Why the last read of the file shown could not be made, while what it answered before stays. */
 const staleBecause = computed(() => {
   const entry = shown.entry.value
-  return entry?.answer && entry.failure ? entry.failure.message ?? 'The read failed.' : null
+  return entry?.answer && entry.failure && brokenLink.value === null ? entry.failure.message ?? 'The read failed.' : null
 })
 
 /** The start of a text file too large for the text read, while one is shown. */
@@ -177,13 +202,25 @@ const startNote = computed(() => start.value?.phase === 'ready'
   ? `Showing the first ${formatBytes(start.value.shown)} of ${formatBytes(start.value.size)}.`
   : null)
 
+/** The image or video shown, whose read Retry repeats. */
+const preview = ref<InstanceType<typeof FilePreview> | null>(null)
+
+/** Retry under a broken link's sentence: its folder, which said so, and the file, as the view reads it. */
+async function retryLink(): Promise<void> {
+  await Promise.all([folder.retry(), media.value === null ? shown.retry() : preview.value?.retry()])
+}
+
 /**
  * What the region says while it shows no file: none chosen, a read on its
- * way, that nothing is at the path, or why the read failed. Retry stands
- * under the last two, and the region loads until its read ends.
+ * way, a link whose target is gone or cannot be read, that nothing is at
+ * the path, or why the read failed. Retry stands under the failures and
+ * reads again what said so, the link's folder for a link, and the region
+ * loads until its read ends.
  */
 const placeholder = computed(() => {
   const current = state.value
+  if (brokenLink.value)
+    return { status: 'failed' as const, icon: MISSING_FILE.icon, label: `${linkDescription(brokenLink.value)}.`, detail: null, requestId: null, retry: retryLink }
   if (current.phase === 'missing')
     return { status: 'failed' as const, icon: MISSING_FILE.icon, label: MISSING_FILE.label, detail: null, requestId: null }
   if (current.phase === 'failed')
@@ -204,6 +241,8 @@ const card = useShowing(
 
 /** What the view shows of its file, which the file's bar names and acts on. */
 const shownFile = computed<ShownFile>(() => {
+  if (brokenLink.value !== null)
+    return { as: 'missing' }
   if (media.value !== null)
     return mediaShown.value?.path === props.path ? mediaShown.value.shown : { as: 'reading' }
   const current = state.value
@@ -252,6 +291,47 @@ watch(() => props.path, () => {
   located.value = null
 })
 
+// A file the tree opened, whose link the tree has just read again.
+let openedFromTree: string | null = null
+
+/**
+ * A link opened, from a message, Back, the crumbs or the tree, is a link
+ * used (`file-previews.md` § Symbolic links): its folder, when kept, is
+ * listed again, unless the tree has just done so to open it, and the file
+ * is read again, at once, since neither the folder's watch nor the file's
+ * sees its target come or go; so a link its listing called missing whose
+ * target is back shows the file. A read on its way is joined, not repeated.
+ */
+function readOpenedLink(listFolder: boolean): void {
+  if (props.path === null || listed.value?.link === undefined)
+    return
+  if (listFolder)
+    void folder.retry()
+  void (media.value === null ? shown.retry() : preview.value?.retry())
+}
+
+// Another file shown is one opened.
+watch(() => props.path, (path) => {
+  const fromTree = path !== null && path === openedFromTree
+  openedFromTree = null
+  readOpenedLink(!fromTree)
+}, { immediate: true, flush: 'post' })
+
+/**
+ * A file opened from the view itself, its tree, crumbs or a document's
+ * link: the file shown now, opened again, changes no path, so its link is
+ * read again here; `folderListed`, when the tree listed its folder again.
+ */
+function openHere(path: string, folderListed = false): void {
+  if (path === props.path) {
+    readOpenedLink(!folderListed)
+    return
+  }
+  if (folderListed)
+    openedFromTree = path
+  emit('open', path)
+}
+
 /** Whether `path` names a directory, by its parent's listing. */
 async function isDirectory(path: string): Promise<boolean> {
   // The filesystem root has no parent to list.
@@ -280,7 +360,7 @@ async function go(target: string): Promise<void> {
   if (current.signal.aborted)
     return
   if (!directory) {
-    emit('open', target)
+    openHere(target)
     return
   }
   const root = normalizePath(props.root)
@@ -296,7 +376,8 @@ async function go(target: string): Promise<void> {
 
 function openFromTree(path: string): void {
   frame.value?.dismiss()
-  emit('open', path)
+  // The tree lists a link's folder again itself before it opens the link.
+  openHere(path, true)
 }
 
 function download(): void {
@@ -330,7 +411,7 @@ onBeforeUnmount(() => {
         :source="source"
         :leaf="path ? 'file' : 'directory'"
         @navigate="go"
-        @open="emit('open', $event)"
+        @open="openHere($event)"
       />
     </template>
     <template #default="{ overlap }">
@@ -344,7 +425,7 @@ onBeforeUnmount(() => {
         @download="download"
       />
       <RegionNote
-        v-if="shown.entry.value?.answer && shown.entry.value.unwatched"
+        v-if="shown.entry.value?.answer && shown.entry.value.unwatched && !brokenLink"
         :icon="History"
         label="Showing this file as it was last read."
         :detail="shown.entry.value.unwatched"
@@ -361,8 +442,11 @@ onBeforeUnmount(() => {
       />
       <RegionNote v-if="startNote" :icon="FileText" :label="startNote" action="Download" @action="download" />
       <div class="min-h-0 flex-1">
+        <!-- Kept while a broken link's sentence shows, its read Retry's to repeat. -->
         <FilePreview
-          v-if="media && path && source.contents"
+          v-if="media && path && source.contents && !leadsToFolder"
+          v-show="!brokenLink"
+          ref="preview"
           :key="path"
           :path="path"
           :kind="media"
@@ -370,13 +454,14 @@ onBeforeUnmount(() => {
           :caption="false"
           @shown="mediaShown = { path, shown: $event }"
         />
+        <template v-if="!(media && path && source.contents && !leadsToFolder) || brokenLink">
         <MarkdownDocument
-          v-else-if="markdown && state.phase === 'ready' && place"
+          v-if="markdown && state.phase === 'ready' && place"
           :text="state.text"
           :place="place"
           :contents="source.contents"
           :reloads="reloads"
-          @open="emit('open', $event)"
+          @open="openHere($event)"
         />
         <!-- One editor per file: a new text of it replaces the old in place. -->
         <CodeEditor
@@ -405,9 +490,10 @@ onBeforeUnmount(() => {
             loading-label="Reading…"
             :detail="placeholder.detail"
             :request-id="placeholder.requestId"
-            :on-retry="shown.retry"
+            :on-retry="placeholder.retry ?? shown.retry"
           />
         </div>
+        </template>
       </div>
     </div>
     </template>

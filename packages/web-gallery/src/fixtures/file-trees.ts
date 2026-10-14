@@ -3,7 +3,7 @@ import type { FileBrowserSource } from '@demicodes/web-ui/files/types'
 import type { UploadItem } from '@demicodes/web-ui/files/file-uploads'
 import { HostFiles } from '@demicodes/web-ui/files/file-cache'
 import { keptSource } from '@demicodes/web-ui/files/kept-source'
-import { createMemoryFileSource, dir, file, memoryFileReads, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
+import { createMemoryFileSource, dir, file, link, memoryFileReads, textFile, type MemoryDirectory, type MemoryFileSource } from '@demicodes/web-ui/files/memory-source'
 import { baseName } from '@demicodes/utils'
 
 /**
@@ -143,4 +143,53 @@ export function offlineSource(): FileBrowserSource {
       throw new FileBrowserError('offline', 'The device is offline.')
     },
   }
+}
+
+/** Where the link specimens' workspace points, by its links. */
+export const LINKS = {
+  folder: `${TREE_ROOT}/vendor`,
+  file: `${TREE_ROOT}/config.json`,
+  missing: `${TREE_ROOT}/old.log`,
+  /** Where `old.log` leads, which the missing specimen puts back. */
+  gone: '/tmp/gone.log',
+  unreadable: `${TREE_ROOT}/current`,
+  /** A file inside the linked folder, reached back through it: the tree unfolds to it at depth. */
+  deep: `${TREE_ROOT}/vendor/project/vendor/README.md`,
+} as const
+
+/**
+ * A workspace with a symbolic link of each kind (`file-previews.md`
+ * § Symbolic links): `vendor` to a folder beside it, which holds `project`,
+ * a link back to the workspace; `config.json` to a file in the home's
+ * `.config`; `old.log` to a file that is gone; and `current`, a link to
+ * itself, whose target cannot be read for the loop.
+ */
+export function linksSource(): MemoryFileSource {
+  return createMemoryFileSource({
+    platform: 'macos',
+    home: TREE_ROOT,
+    root: dir({
+      demi: dir({
+        src: dir(stubs(['index.ts', 'server.ts'])),
+        vendor: link('../shared/vendor', at),
+        'config.json': link('/home/alex/.config/app.json', at),
+        'old.log': link('/tmp/gone.log', at),
+        current: link('current', at),
+        'README.md': textFile('# demi\n', at),
+      }),
+      shared: dir({
+        vendor: dir({
+          lodash: dir(stubs(['index.js', 'package.json'])),
+          project: link('/demi', at),
+          'README.md': textFile('# Vendored packages\n', at),
+        }),
+      }),
+      home: dir({
+        alex: dir({
+          '.config': dir({ 'app.json': textFile('{\n  "theme": "dark",\n  "fontSize": 13\n}\n', at) }),
+        }),
+      }),
+      tmp: dir({}),
+    }),
+  })
 }
