@@ -29,6 +29,7 @@ profiles:
     description: "Use to implement a settled design or rework a delivered branch: code, tests and the checks, in the slot the brief names. Not for design decisions or documentation."
     model: claude-opus-5-5
     effort: high
+    context: 300K
     instructions: |
       You implement what the lead designed: code and tests, in the worktree and branch the brief names. You do not make design decisions and you do not edit anything under docs/.
 
