@@ -43,7 +43,7 @@ Fields:
     model         A model id demi providers list lists; the first of the user's provider entries that offers it serves it. Optional: without it, the child runs on its parent's model.
     effort        An effort the model lists, or off for no thinking. Optional, the model's first effort by default; needs model.
     tier          A service tier the model offers, such as fast. Optional, the vendor's default tier by default; needs model.
-    context       The context window its children use: full, 500K, 300K or 200K, as the model offers them, or default for the user's context limit on the model. Optional, default by default; needs model.
+    context       The context window its children use: full, 500K, 300K or 200K, as the model offers them, or default for the user's context limit on the model. Optional, default by default; any but default needs model.
 
 A workflow sets no limits: how many subagents run at once and how deep they go stay the user's Settings > Subagents. Check a file you wrote or changed with demi agent workflows check <file> before you report it.
 
@@ -56,9 +56,9 @@ instructions: |
 profiles:
   - id: explore
     description: Use for finding code and call sites; it reports and changes nothing.
-    model: claude-haiku-4-5
+    model: claude-sonnet-5-5
     effort: low
-    context: 200K
+    context: 300K
     instructions: |
       Read and report where things are. Never change a file.
   - id: reviewer
@@ -233,10 +233,10 @@ mod tests {
                 description: "Use for finding code and call sites; it reports and changes nothing.".into(),
                 instructions: Some("Read and report where things are. Never change a file.\n".into()),
                 spawning: false,
-                model: Some("claude-haiku-4-5".into()),
+                model: Some("claude-sonnet-5-5".into()),
                 effort: Some("low".into()),
                 tier: None,
-                context: Some(ContextChoice::Limit(200_000)),
+                context: Some(ContextChoice::Limit(300_000)),
             },
         );
         assert_eq!(workflow.profiles[1].id, "reviewer");
