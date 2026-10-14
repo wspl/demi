@@ -35,6 +35,40 @@ pub fn to_log(directory: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Makes this process a runner in the background of its own: the leader of
+/// a new session, which has no controlling terminal, so that neither an
+/// interrupt at the terminal it was started from, nor that terminal's
+/// closing, as when an SSH connection ends, reaches it or the jobs it
+/// starts. The installer and `run start` start it without a process group
+/// of its own (`runner.md` § Installation, pairing and removal).
+///
+/// The signals its starter ignored to keep the terminal from it, `HUP`
+/// under `nohup` and `INT` and `QUIT` for a background command of a shell
+/// without job control, take their default action again: its jobs would
+/// inherit the ignoring, and a job stopped with one of them would go on.
+#[cfg(unix)]
+pub fn leave_terminal() -> io::Result<()> {
+    match rustix::process::setsid() {
+        Ok(_) => {}
+        // Refused only to a process group's leader: this runner once it has
+        // replaced itself with its update, which keeps the session it made,
+        // or one a shell with job control started in a group of its own,
+        // which the terminal's interrupt does not reach either.
+        Err(rustix::io::Errno::PERM) => {}
+        Err(error) => return Err(error.into()),
+    }
+    for signal in [libc::SIGHUP, libc::SIGINT, libc::SIGQUIT] {
+        // SAFETY: the default action runs no code in this process, and it
+        // replaces no handler: the runner installs its own, for `INT` and
+        // `TERM`, only later. rustix offers no safe call that sets a
+        // signal's action, nor does the standard library.
+        if unsafe { libc::signal(signal, libc::SIG_DFL) } == libc::SIG_ERR {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(())
+}
+
 /// The console line of a message of the runner's own, such as one its
 /// host log's console layer writes.
 pub fn runner_line(message: impl Display) -> String {

@@ -195,12 +195,8 @@ fn spawn(directory: &Path, arguments: Vec<String>) -> io::Result<tokio::process:
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    #[cfg(unix)]
-    {
-        // A group of its own: the terminal's interrupt and its closing do
-        // not reach it.
-        command.process_group(0);
-    }
+    // On Unix the runner leaves this terminal's session itself as it starts
+    // (`console::leave_terminal`), as one an installer starts does.
     // No handle of this process: Windows passes every inheritable one to
     // the runner otherwise, and an SSH session whose pipes the runner holds
     // stays open, so `run start` over SSH never returned. The runner makes

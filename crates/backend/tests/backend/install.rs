@@ -687,10 +687,11 @@ fn mode(path: &Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 
-/// An installer that finds its runner running and waiting to be paired
-/// asks it to write its state again and shows the code it waits with, not
-/// the lines of an earlier pairing that its log holds (`runner.md`
-/// § Installation, pairing and removal).
+/// Interrupting an installer at its terminal while it shows the code leaves
+/// the runner it started running. An installer that finds its runner
+/// running and waiting to be paired asks it to write its state again and
+/// shows the code it waits with, not the lines of an earlier pairing that
+/// its log holds (`runner.md` § Installation, pairing and removal).
 // Several seconds: the first installer downloads this build's runner
 // (170 MB) and starts it; the second finds it running.
 #[tokio::test]
@@ -703,12 +704,14 @@ async fn an_installer_that_finds_its_runner_waiting_shows_its_code_and_no_earlie
     let installations = Installations::new();
     let state = installations.state(&format!("{}/", backend.url));
 
-    // The person closes the first installer once it shows the code; the
-    // runner keeps waiting to be paired.
+    // The person presses Ctrl-C at the first installer once it shows the
+    // code: the terminal interrupts its foreground job, the installer's
+    // process group. The runner keeps waiting to be paired.
     let script = installations.script(&backend).await;
     let mut first = installations
         .shell()
         .arg(&script)
+        .process_group(0)
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true)
@@ -725,7 +728,9 @@ async fn an_installer_that_finds_its_runner_waiting_shows_its_code_and_no_earlie
     })
     .await
     .expect("the first installer shows a code");
-    first.kill().await.unwrap();
+    let job = rustix::process::Pid::from_raw(first.id().unwrap() as i32).unwrap();
+    rustix::process::kill_process_group(job, rustix::process::Signal::INT).unwrap();
+    assert!(!first.wait().await.unwrap().success());
     // The log holds an earlier pairing's lines after the runner's own.
     let mut log = std::fs::OpenOptions::new()
         .append(true)
@@ -754,7 +759,7 @@ async fn an_installer_that_finds_its_runner_waiting_shows_its_code_and_no_earlie
 // code, which the test lets expire at once, before it shows the one claimed;
 // a scripted model then runs one job on the paired runner.
 #[tokio::test]
-async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the_shells_mask() {
+async fn an_installer_shows_each_code_until_paired_and_its_runner_works_as_the_users_programs() {
     let releases = Releases::new(runner_binary());
     releases.publish("initial");
     let harness = Harness::new().with_runner_releases(releases.path());
@@ -796,7 +801,9 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
         .await;
 
     // The agent's job reports the user's mask, and a file it makes has the
-    // mode the user's own programs would give it.
+    // mode the user's own programs would give it. Its programs take the
+    // default action of the signals the installer's shell and `nohup`
+    // ignored for the runner, so a job stopped with one of them ends.
     let vendor = MockVendor::start().await;
     let provider = anthropic(&backend, &master, &vendor).await;
     create(&backend, &master, FIRST).await;
@@ -815,7 +822,8 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
-    let script = "umask; echo made > made.txt";
+    let script = "umask; echo made > made.txt; \
+        perl -e 'print join(q( ), map { qq($_=) . ($SIG{$_} // q(DEFAULT)) } qw(HUP INT QUIT))'";
     vendor.respond(tool_use(
         "mask",
         "shell",
@@ -826,6 +834,10 @@ async fn an_installer_shows_each_code_until_paired_and_its_runner_works_with_the
     let requests = vendor.requests();
     let result = tool_result(&requests[1].json(), "mask");
     assert!(result.contains("0002"), "{result}");
+    assert!(
+        result.contains("HUP=DEFAULT INT=DEFAULT QUIT=DEFAULT"),
+        "{result}"
+    );
     assert_eq!(mode(&home.join("made.txt")), 0o664);
     drop(installations);
     backend.close().await;
