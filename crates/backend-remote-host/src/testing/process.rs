@@ -50,11 +50,6 @@ pub struct RunnerProcessOptions {
     /// Whether the runner says it is a managed host, as a Cloud's runner
     /// does.
     pub managed: bool,
-    /// Where the runner's home and state are made; the system's temporary
-    /// directory when none. A test of what a job reports as temporary
-    /// makes them elsewhere, since the runner marks every path in the
-    /// system's temporary directories temporary.
-    pub directory: Option<PathBuf>,
 }
 
 impl Default for RunnerProcessOptions {
@@ -64,7 +59,6 @@ impl Default for RunnerProcessOptions {
             env: SpawnEnv::Inherit,
             token: None,
             managed: false,
-            directory: None,
         }
     }
 }
@@ -97,16 +91,12 @@ impl RunnerProcess {
     /// of a stale program stops the test at once, where in the task it would
     /// leave whoever waits on the task waiting.
     pub fn start_program(program: PathBuf, backend: &str, options: RunnerProcessOptions) -> Self {
-        let made = || match &options.directory {
-            Some(directory) => tempfile::tempdir_in(directory),
-            None => tempfile::tempdir(),
-        };
-        let home = made().expect("a temporary home");
+        let home = tempfile::tempdir().expect("a temporary home");
         let home_path = std::fs::canonicalize(home.path())
             .expect("the home has a real path")
             .to_string_lossy()
             .into_owned();
-        let state = made().expect("a temporary runner state");
+        let state = tempfile::tempdir().expect("a temporary runner state");
         std::fs::create_dir(state.path().join("tmp"))
             .expect("a temporary directory for the runner");
         if let Some(token) = &options.token {

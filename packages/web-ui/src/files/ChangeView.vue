@@ -13,7 +13,6 @@ import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import ChangeTree from './ChangeTree.vue'
-import RequestFileList from './RequestFileList.vue'
 import { useRequestSides } from './request-sides'
 import { useShowing } from './showing'
 import FilePreview from './FilePreview.vue'
@@ -24,7 +23,7 @@ import ImagePreview from './ImagePreview.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import PreviewPair from './PreviewPair.vue'
 import TreeFrame from './TreeFrame.vue'
-import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources, type ReadCallChange } from './changes'
+import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources, type ChangeTreeFile, type ReadCallChange } from './changes'
 import {
   allChangesStart,
   editIndex,
@@ -45,8 +44,9 @@ import type { FileContents } from './types'
  * One working-tree file, or one file of a request of the conversation
  * (`edit-tracking.md` § What the conversation shows): its All Changes, from
  * before the request's first edit of it to after its last, or one of its
- * edits, which a control steps through. The sidebar lists the working
- * tree's files, or the request's; the file, the edit and Back and Forward
+ * edits, which a control steps through. The sidebar shows the working
+ * tree's files, or the request's, as one tree (`ChangeTree`); the file, the
+ * edit and Back and Forward
  * are the host's to hold. An edit whose two sides were not kept, and a
  * removed file whose contents before it were not, say so where the diff
  * would be. The sidebar docks, hides and shows over the diff as its frame
@@ -179,6 +179,26 @@ const treeAvailable = computed(() => mode.value === 'uncommitted'
   ? workingTree.value.unavailable !== 'no-repository'
   : request.value !== null)
 const emptyText = computed(() => emptyChangeSetText(workingTree.value))
+/** The sidebar's files in either mode, as one tree shows them; a request's paths from the workspace. */
+const treeFiles = computed<ChangeTreeFile[]>(() => {
+  if (mode.value === 'uncommitted') {
+    return workingTree.value.files.map((file) => ({
+      key: file.path,
+      path: file.path,
+      kind: file.kind,
+      ...(file.from ? { from: file.from } : {}),
+      lines: { added: file.added, removed: file.removed },
+      status: file.status,
+    }))
+  }
+  return (request.value?.files ?? []).map((file) => ({
+    key: file.path,
+    path: relativePath(props.root, resolveHostPath(props.root, file.path)),
+    kind: file.kind,
+    ...(file.from ? { from: file.from } : {}),
+    ...(file.lines ? { lines: file.lines } : {}),
+  }))
+})
 const idleText = computed(() => {
   if (mode.value === 'conversation') {
     if (!request.value)
@@ -497,20 +517,16 @@ function pick(path: string): void {
     </template>
     <template v-if="treeAvailable" #tree>
       <ChangeTree
-        v-if="mode === 'uncommitted'"
-        :source="workingTree"
+        v-if="mode === 'uncommitted' || request"
+        :key="mode"
+        :files="treeFiles"
         :root="root"
         :root-name="rootName"
         :selected="selected"
-        :empty-text="emptyText"
-        @select="pick"
-      />
-      <RequestFileList
-        v-else-if="request"
-        :files="request.files"
-        :root="root"
-        :root-name="rootName"
-        :selected="selected"
+        :empty-text="mode === 'uncommitted' ? emptyText : 'These changes are no longer in the conversation.'"
+        :refresh="mode === 'uncommitted' ? workingTree.refresh : undefined"
+        :refreshing="mode === 'uncommitted' && workingTree.refreshing"
+        :truncated="mode === 'uncommitted' && workingTree.truncated"
         @select="pick"
       />
     </template>

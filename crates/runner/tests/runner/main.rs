@@ -45,12 +45,6 @@ impl Host {
     /// Starts a runner whose environment is the test's with `env` added, as
     /// the device the backend already paired, and takes its `hello`.
     pub async fn start(env: BTreeMap<String, String>) -> Self {
-        Self::start_in(env, None).await
-    }
-
-    /// [`Host::start`] with the runner's home and state made in
-    /// `directory`, the system's temporary directory when none.
-    pub async fn start_in(env: BTreeMap<String, String>, directory: Option<&Path>) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a local port");
@@ -67,7 +61,6 @@ impl Host {
                         .collect(),
                 ),
                 token: Some("test-token".into()),
-                directory: directory.map(Path::to_owned),
                 ..RunnerProcessOptions::default()
             },
         );

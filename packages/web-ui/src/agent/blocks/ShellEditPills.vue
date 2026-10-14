@@ -10,7 +10,7 @@ import FileChangePills from './FileChangePills.vue'
 /**
  * The files a shell call changed, as pills under its row, as the call's
  * view stores them: what it wrote, removed (struck through) and renamed,
- * but for a file in a temporary directory. A pill opens its file in the
+ * but for a file outside its agent's working directory. A pill opens its file in the
  * call's request, at the call's first edit of it (`edit-tracking.md`
  * § What the conversation shows).
  */

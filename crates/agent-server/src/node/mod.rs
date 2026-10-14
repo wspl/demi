@@ -615,6 +615,21 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         Box::pin(self.admission.enter(Purpose::Demand))
     }
 
+    /// The root's is where the conversation works, a child's its own while
+    /// the conversation works where it was set (`subagents.md` § Working
+    /// directory).
+    fn directory(&self) -> LocalBoxFuture<'_, Option<String>> {
+        Box::pin(async move {
+            match self.placement().await {
+                Ok(now) => Some(self.directory_at(&now)),
+                Err(error) => {
+                    tracing::warn!(node = %self.node, %error, "where the conversation works could not be read");
+                    None
+                }
+            }
+        })
+    }
+
     /// A root's turns only: a child's result says what it could not do, and
     /// its parent's turn decides (`failures-and-recovery.md` § The
     /// unfinished turn).

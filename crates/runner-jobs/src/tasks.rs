@@ -452,9 +452,6 @@ impl JobConfig {
         } = controls;
         let id = spec.id;
         let mut env = spec.env;
-        // Where the job's own work is, which its report never marks
-        // temporary (`edit-tracking.md` § Temporary files).
-        let working = spec.cwd.clone();
         let mut job = None;
         // A job's execution context, held until the job has ended.
         let mut execution = None;
@@ -826,10 +823,7 @@ impl JobConfig {
             // then lasts until the backend releases it.
             Some((logs, recorder, _running)) => {
                 let output = logs.lengths();
-                let scratch = self.scratch.clone();
-                let edits = tokio::task::spawn_blocking(move || {
-                    crate::edit_report::finish(recorder.as_ref(), &scratch, &working)
-                })
+                let edits = tokio::task::spawn_blocking(move || crate::edit_report::finish(recorder.as_ref()))
                 .await
                 .map_err(io::Error::other)?;
                 Terminal::of(

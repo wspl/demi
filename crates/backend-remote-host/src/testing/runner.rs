@@ -141,7 +141,6 @@ impl RunnerFixture {
                 ),
                 token: Some(TOKEN.into()),
                 managed: false,
-                directory: None,
             },
         );
         let fixture = Self {
