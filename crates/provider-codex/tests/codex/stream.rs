@@ -148,6 +148,15 @@ async fn a_used_up_account_is_a_usage_limit_and_any_other_429_throttles() {
     }
 }
 
+/// Codex's quota and credit codes are a usage limit with no status at all,
+/// as in a `response.failed` frame, which the Codex CLI reads the same way.
+#[tokio::test]
+async fn a_failed_response_whose_quota_is_used_up_is_a_usage_limit() {
+    let frame = json!({ "type": "response.failed", "response": { "error": { "code": "insufficient_quota", "message": "You exceeded your current quota." } } });
+    let (events, _vendor) = events_of(stream(std::slice::from_ref(&frame))).await;
+    assert_eq!(failure_of(events).code, Some(ErrorCode::UsageLimit));
+}
+
 #[tokio::test]
 async fn a_refused_request_keeps_the_whole_answer_and_is_not_retried_by_the_provider() {
     let body = r#"{"error":{"code":"server_error","message":"backend failed"}}"#;

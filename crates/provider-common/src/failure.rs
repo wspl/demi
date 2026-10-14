@@ -328,9 +328,13 @@ static CATEGORIES: LazyLock<[(ErrorCode, Regex); 6]> = LazyLock::new(|| {
         ),
         (
             ErrorCode::UsageLimit,
-            pattern(r"\bquota\b|\bbilling\b|\bbalance\b|\bout of credits\b"),
+            pattern(r"\bbilling\b|\bbalance\b|\bout of credits\b"),
         ),
-        (ErrorCode::RateLimit, pattern(r"\brate\b|\bratelimit\w*")),
+        // `quota` throttles: Gemini's per-minute RESOURCE_EXHAUSTED says it.
+        (
+            ErrorCode::RateLimit,
+            pattern(r"\bquota\b|\brate\b|\bratelimit\w*"),
+        ),
         (
             ErrorCode::AuthExpired,
             pattern(concat!(
