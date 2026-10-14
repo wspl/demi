@@ -1204,16 +1204,32 @@ once it has something to show; Claude Code adds `waiting_for_cloud`,
 [Accounts and sign-in](../providers/claude-code.md#accounts-and-sign-in)), the
 `verificationUrl` and `userCode`
 null until the vendor names them and `expiresAt` the moment the login ends
-unless the user finishes it, and for Claude Code `needsCode: true` and no
+unless the user finishes it, null while it is `preparing` and set, with its
+own announcement, once the login knows its kind, and for Claude Code `needsCode: true` and no
 `userCode`: `verificationUrl` is the link the CLI printed, the user signs in
 there and pastes the code the page shows, which
 `POST /api/providers/subscription-login/:id/code { code }` hands to the CLI's
-login (204; 409 `login_not_waiting` when it waits for none). A code the CLI
-refuses leaves the login pending with `codeError`, the CLI's words, until the
-user pastes another. The login then continues as a device login does, `{ status: "completed", providerId,
-credentialId }` with the account the login added, or `{ status: "failed",
-message, requestId }`, where `requestId` is the id of the request that started
-the login, under which the server log holds its whole course. Cancel with
+login as its next code and answers `{ code }`, the number the login gave
+it, counting from one (409 `login_not_waiting` when it waits for none);
+`codesTaken` counts the codes the login took. A code the CLI refuses leaves
+the login pending with `codeError`, the CLI's words, until the user pastes
+another; `codeError` is always the refusal of code number `codesTaken`, so a
+refusal of an earlier code that arrives after a later one was taken is
+dropped. A page shows a refusal only of the code its own request was
+answered for, and *Signing in…* until that answer comes, so of two tabs
+that paste a code each, neither shows the other's refusal as its own. The login then continues as a device login does, `{ status: "completed", providerId,
+credentialId }` with the account the login added, `{ status: "cancelled" }`
+once the user cancelled it, or `{ status: "failed", message, requestId }`,
+where `requestId` is the id of the request that started the login, under
+which the server log holds its whole course. A page learns
+that a login completed no sooner than it learns the account: the vault
+publishes the entry before it ends the login, the channel reads the parts of
+one message in the order of the table below, providers before logins, and
+reads each part only after the change that marked it, and the snapshot reads
+the logins before the providers. A page therefore shows a completed login as
+done the moment it learns of it, and an account removed later does not undo
+that.
+Cancel with
 DELETE at the same path. A login is its starter's to read and cancel; another
 id answers 404 `login_not_found`. Terminal results are retained for ten
 minutes. A start on an entry that a login of the same user reserves answers
