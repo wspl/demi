@@ -170,7 +170,8 @@ async fn a_turn_refused_for_its_size_compacts_at_any_share_and_then_resumes() {
 async fn a_failed_compaction_is_a_failure_record_that_survives_a_reload_and_its_turn_resumes() {
     let script = ScriptedRuntime::new([
         // The answer reaches the window's threshold, 67,000 tokens, so the
-        // turn compacts after it, and the summary request fails for good.
+        // next send compacts before its turn's request, and the summary
+        // request fails for good.
         answer("a", 85_000),
         Turn::Events(vec![event::error("The summary request failed", None)]),
         // Resume compacts first, then finishes the turn.
@@ -181,6 +182,8 @@ async fn a_failed_compaction_is_a_failure_record_that_survives_a_reload_and_its_
     let mut client = fixture.opened().await;
 
     client.send(send("m1", "first")).await;
+    client.next_until(is_idle).await;
+    client.send(send("m2", "second")).await;
     client.next_until(is_idle).await;
 
     client.send(ClientFrame::Close {}).await;
@@ -197,7 +200,7 @@ async fn a_failed_compaction_is_a_failure_record_that_survives_a_reload_and_its_
         panic!("the transcript does not end with the failure: {blocks:?}");
     };
     assert_eq!(error.message, "The summary request failed");
-    // The pass ran inside the turn, which the failure ended.
+    // The pass ran inside the second turn, which the failure ended.
     assert!(!error.outside_turn);
 
     reopened.send(ClientFrame::Resume {}).await;

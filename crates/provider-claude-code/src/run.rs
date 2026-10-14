@@ -302,7 +302,10 @@ fn run(
                     }
                     // A call that opens before the model's message streamed is
                     // a batch of one; once the process streams, calls come with
-                    // the batch its message_stop ends.
+                    // the batch its message_stop ends. A run that stops at a
+                    // batch ends, as every run does, with the response of the
+                    // call that wrote it, so the agent checks each call's
+                    // usage (`compaction.md` § When compaction runs).
                     Next::Opened(call) => {
                         if live.streamed {
                             continue;
@@ -312,11 +315,13 @@ fn run(
                         let call = ProviderEvent::ToolCall(call);
                         live.mirror.observe(&call);
                         let entries = live.mirror.place(&request, false);
+                        let usage = live.last_call.take();
                         runtime.live = Some(live);
                         yield call;
                         for event in entries {
                             yield event;
                         }
+                        yield ProviderEvent::response(usage, crate::FAMILY, &request.model_id);
                         return;
                     }
                     Next::Line(text, line) => (text, line),
@@ -402,10 +407,12 @@ fn run(
                                 live.mirror.observe(call);
                             }
                             let entries = live.mirror.place(&request, false);
+                            let usage = live.last_call.take();
                             runtime.live = Some(live);
                             for event in batch.into_iter().chain(entries) {
                                 yield event;
                             }
+                            yield ProviderEvent::response(usage, crate::FAMILY, &request.model_id);
                             return;
                         }
                         for event in event.events(&mut live.writing) {
