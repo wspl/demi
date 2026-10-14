@@ -43,9 +43,10 @@ pub(crate) fn read_failure(
 /// The reset of a usage limit's record: the failing assistant line and the
 /// `result` line, joined by a newline as received, when the result's API
 /// error is the usage limit; the moment is the assistant line's
-/// `api_error_params.rate_limit_info.resetsAt`, in Unix seconds. The
-/// account's quota is never read for it: it may be older than the refusal,
-/// or name another window.
+/// `api_error_params.rate_limit_info.resetsAt`, in Unix seconds. It comes
+/// before the account's quota, which may be older than the refusal; the
+/// quota stands in only for a limit that names no reset, which the backend
+/// reads for any provider.
 fn usage_limit_reset(diagnostics: &ProviderErrorDiagnostics) -> Option<Timestamp> {
     if diagnostics.source != FailureSource::Stream {
         return None;

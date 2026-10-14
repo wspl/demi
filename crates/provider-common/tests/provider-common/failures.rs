@@ -135,12 +135,13 @@ fn a_vendor_failure_classifies_by_whole_words_and_falls_back_to_the_vendor_code(
             "Number of requests exceeded",
             Some(ErrorCode::RateLimit),
         ),
-        // Used-up credits or quota is a usage limit, which no wait fixes.
+        // Used-up credits are a usage limit, which no wait fixes; a quota
+        // throttles, as Gemini's per-minute one does.
         (None, "insufficient balance", Some(ErrorCode::UsageLimit)),
         (
-            Some("insufficient_quota"),
-            "You exceeded your plan",
-            Some(ErrorCode::UsageLimit),
+            Some("RESOURCE_EXHAUSTED"),
+            "Quota exceeded for metric generate_content_requests per minute",
+            Some(ErrorCode::RateLimit),
         ),
         (
             Some("billing_error"),

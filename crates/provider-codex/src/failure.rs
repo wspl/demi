@@ -15,9 +15,10 @@ const USAGE_LIMIT_REACHED: &str = "usage_limit_reached";
 
 /// `failure` with the code `usage_limit` when its record is Codex's sign of
 /// a used-up account (`failures-and-recovery.md`): a 429, over HTTP or in a
-/// WebSocket error frame, whose error type is `usage_limit_reached`, or
-/// whose error type or code says the quota, the credits or a spend or usage
-/// cap is used up. Any other failure keeps its code.
+/// WebSocket error frame, whose error type is `usage_limit_reached`, or any
+/// failure, with a status or none as in a `response.failed` frame, whose
+/// error type or code says the quota, the credits or a spend or usage cap is
+/// used up. Any other failure keeps its code.
 pub(crate) fn with_usage_limit(mut failure: ProviderFailure) -> ProviderFailure {
     if failure.diagnostics.as_deref().is_some_and(is_usage_limit) {
         failure.code = Some(ErrorCode::UsageLimit);
@@ -36,9 +37,6 @@ fn is_usage_limit(diagnostics: &ProviderErrorDiagnostics) -> bool {
             .iter()
             .find_map(|key| failure.get(key)?.as_u64())
     });
-    if status != Some(429) {
-        return false;
-    }
     let Some(error) = error_object(&failure) else {
         return false;
     };
@@ -48,7 +46,8 @@ fn is_usage_limit(diagnostics: &ProviderErrorDiagnostics) -> bool {
             || value.ends_with("_spend_limit_exceeded")
             || value.ends_with("_usage_limit_exceeded")
     };
-    field("type").is_some_and(|kind| kind == USAGE_LIMIT_REACHED || used_up(kind))
+    (status == Some(429) && field("type") == Some(USAGE_LIMIT_REACHED))
+        || field("type").is_some_and(used_up)
         || field("code").is_some_and(used_up)
 }
 
