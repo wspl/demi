@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import { Gauge, Infinity as InfinityIcon } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import CommitTextInput from './CommitTextInput.vue'
 import ConfirmDialog from './ConfirmDialog.vue'
@@ -84,12 +85,14 @@ function commitText(text: string): void {
       <template #content="{ close }">
         <Menu>
           <MenuItem
+            :icon="Gauge"
             label="Limited"
             choice
             :is-selected="limited"
             @select="on('chooseLimited'); close()"
           />
           <MenuItem
+            :icon="InfinityIcon"
             label="Unlimited"
             choice
             :is-selected="!limited"

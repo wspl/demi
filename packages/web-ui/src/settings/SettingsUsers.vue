@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Ellipsis } from '@lucide/vue'
+import { Ellipsis, KeyRound, LogIn, LogOut, UserCheck, UserCog, UserX } from '@lucide/vue'
+import type { Component } from 'vue'
 import { accountDisplayName } from '../auth/account-display'
 import HandoffDialog from '../auth/HandoffDialog.vue'
 import { signInCodeWording, userReadyWording, type HandoffHost, type HandoffWording } from '../auth/handoff'
@@ -270,6 +271,15 @@ const ACTION_LABEL: Record<UserAction, string> = {
   enable: 'Enable Account',
 }
 
+const ACTION_ICONS: Record<UserAction, Component> = {
+  resetPassword: KeyRound,
+  changeRole: UserCog,
+  signInCode: LogIn,
+  signOutEverywhere: LogOut,
+  disable: UserX,
+  enable: UserCheck,
+}
+
 const targetName = computed(() => (target.value ? nameOf(target.value) : ''))
 
 function closeDialog(): void {
@@ -330,6 +340,7 @@ function closeDialog(): void {
                 <template v-for="action in actionsOf(user)" :key="action">
                   <MenuDivider v-if="action === 'signOutEverywhere'" />
                   <MenuItem
+                    :icon="ACTION_ICONS[action]"
                     :label="ACTION_LABEL[action]"
                     :is-danger="action === 'disable'"
                     :operation="onUser(action, user)"

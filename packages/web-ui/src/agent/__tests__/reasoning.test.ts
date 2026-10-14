@@ -2,6 +2,7 @@ import { test, expect } from 'bun:test'
 import type { ModelInfo } from '../../transport/protocol'
 import {
   buildReasoningState,
+  effortIcon,
   reasoningOptionIndex,
   reasoningOptionLabel
 } from '../reasoning'
@@ -55,4 +56,12 @@ test('an effort shows its own option, and one the model does not offer shows the
   expect(reasoningOptionLabel(state, 'high')).toBe('High')
   expect(reasoningOptionLabel(state, 'xhigh')).toBe('Low')
   expect(reasoningOptionLabel(buildReasoningState(alwaysThinking)!, 'disabled')).toBe('Low')
+})
+
+test('every reasoning option has an icon, and the marks of Off, Low, Medium and High all differ, so the menu reads as a level', () => {
+  const icons = buildReasoningState(base)!.options.map((option) => option.icon)
+  expect(icons.every((icon) => icon !== undefined)).toBe(true)
+  expect(new Set(icons).size).toBe(icons.length)
+  // An effort no table names still gets a mark, so the menu never mixes icons and none.
+  expect(effortIcon('some-new-effort')).toBeDefined()
 })

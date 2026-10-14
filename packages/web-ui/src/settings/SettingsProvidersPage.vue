@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { formError, type ShownError } from '../infra/errors'
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, reactive, ref, watch, type Component } from 'vue'
 import { countUnlessOne, upperFirst } from '@demicodes/utils'
 import { showToast } from '../infra/toast'
 import {
@@ -8,10 +8,13 @@ import {
   Check,
   GripVertical,
   Image,
+  Hand,
   Info,
+  ListOrdered,
   Plug,
   Plus,
   RefreshCw,
+  Scale,
   Search,
   SlidersHorizontal,
   TextCursorInput,
@@ -91,6 +94,9 @@ import type { TitleText } from '../ui/ui-text'
  * and choosing In Order or Balanced first warn, once, that several personal
  * subscriptions may be against the vendor's terms (`providers.md` § Account rotation).
  */
+/** Each rotation's mark: the one by hand, the one down the list, the one weighed by room. */
+const ROTATION_ICONS: Record<SettingsRotation, Component> = { manual: Hand, in_order: ListOrdered, balanced: Scale }
+
 const props = defineProps<{
   /**
    * Saves a model of the entry's own list: the one `original` was, or a new
@@ -784,6 +790,7 @@ function endpointCheck(value: string) {
                         <MenuItem
                           v-for="rotation in ROTATIONS"
                           :key="rotation"
+                          :icon="ROTATION_ICONS[rotation]"
                           :label="ROTATION_LABELS[rotation]"
                           :hint="ROTATION_HINTS[rotation]"
                           choice
