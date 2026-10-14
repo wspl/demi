@@ -4,6 +4,7 @@ import { conversationSummarySchema, draftFileSchema, workflowChoiceSchema } from
 import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
 import { modelSettingsSchema } from '@demicodes/web-ui/agent/model-selection'
 import { copiedStoredFileSchema } from '@demicodes/web-ui/agent/message-input/copied-message'
+import { IndexedDatabase } from '../state/indexed-db'
 
 /**
  * The upload the backend took: the attachment id a message names the file
@@ -151,65 +152,18 @@ function decodeDraft(value: unknown): SavedDraft | UnreadableDraftError {
   return draft.success ? draft.data : new UnreadableDraftError(schemaRefusal(draft.error))
 }
 
-let database: IDBDatabase | null = null
-let opening: Promise<IDBDatabase> | null = null
-let generation = 0
+const drafts = new IndexedDatabase('demi-drafts', DRAFTS_VERSION, upgradeDrafts)
 
-function openStorage(): Promise<IDBDatabase> {
-  if (opening) {
-    return opening
-  }
-  const current = generation
-  opening = new Promise<IDBDatabase>((resolve, reject) => {
-    let failed = false
-    const request = indexedDB.open('demi-drafts', DRAFTS_VERSION)
-    request.onupgradeneeded = (event) => upgradeDrafts(request, event.oldVersion)
-    request.onsuccess = () => {
-      const db = request.result
-      if (failed || current !== generation) {
-        db.close()
-        reject(new DOMException('Draft storage closed.', 'AbortError'))
-        return
-      }
-      database = db
-      db.onversionchange = closeDraftStorage
-      resolve(db)
-    }
-    request.onerror = () => reject(request.error)
-    request.onblocked = () => {
-      failed = true
-      reject(new Error('Draft storage is blocked.'))
-    }
-  }).finally(() => {
-    if (current === generation) {
-      opening = null
-    }
-  })
-  return opening
-}
-
-/** Closing a handle lets already-issued transactions finish. */
+/** Closes the draft database's connection; writes already issued finish, and the next use opens it again. */
 export function closeDraftStorage(): void {
-  generation += 1
-  database?.close()
-  database = null
-  opening = null
+  drafts.close()
 }
 
-/** Keep the handle open so pagehide can issue writes before document teardown. */
-export async function draftStorage<T>(
+function draftStorage<T>(
   mode: IDBTransactionMode,
   operation: (store: IDBObjectStore) => IDBRequest<T>,
 ): Promise<T> {
-  const db = database ?? (await openStorage())
-  return new Promise<T>((resolve, reject) => {
-    const transaction = db.transaction('drafts', mode)
-    const request = operation(transaction.objectStore('drafts'))
-    transaction.oncomplete = () => resolve(request.result)
-    transaction.onerror = () => reject(transaction.error)
-    transaction.onabort = () =>
-      reject(transaction.error ?? new Error('Draft write aborted.'))
-  })
+  return drafts.transaction('drafts', mode, operation)
 }
 
 /** The conversation's draft; rejects with `UnreadableDraftError` when its record does not decode. */
