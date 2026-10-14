@@ -301,8 +301,9 @@ conversation is open or was put away to save memory, and opens it when the
 moment comes; after a backend restart it starts again when the conversation
 is next opened. A
 usage limit's moment is the one the failure names, such as Codex's
-`resets_at`, else the latest reset among the account's windows that the
-quota shows used up; a limit with neither, such as a spend cap, names no
+`resets_at`, else the latest reset among the windows that the quota of
+the account the failing request used shows used up, which the `error` block
+names under [Account rotation](../providers/providers.md#account-rotation); a limit with neither, such as a spend cap, names no
 moment and waits for the user.
 
 A message is never left outside a turn. A send writes its `user` block as
