@@ -58,6 +58,11 @@ const records: Block[] = [
     'prompt is too long: 214,331 tokens > 200,000 maximum.',
   ),
   errorRecord(
+    'request_too_large',
+    413,
+    'Anthropic API request failed with HTTP 413: Request exceeds the maximum allowed number of bytes.',
+  ),
+  errorRecord(
     'generation_failed',
     502,
     'The upstream response ended before generation completed.',

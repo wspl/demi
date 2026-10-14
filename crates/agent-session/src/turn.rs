@@ -1,9 +1,9 @@
-//! A turn (`runtime.md` § A turn): write waiting input, compact first when
-//! the request reaches a size threshold, request the provider, retry what
-//! waiting can fix and compact once after a refusal as too large, apply its
-//! events to the transcript as they stream, save, run the requested tools in
-//! steps, compact when the usage reached the threshold, and ask again until a
-//! response requests no tool, unless input arrived during the round. Every
+//! A turn (`runtime.md` § A turn): write waiting input, request the
+//! provider, retry what waiting can fix and compact once after a refusal for
+//! its tokens, apply its events to the transcript as they stream, save, run
+//! the requested tools in steps, compact when the usage reached the
+//! threshold, and ask again until a response requests no tool, unless input
+//! arrived during the round. A request's size never compacts. Every
 //! wait on the provider, a hook or a tool is raced
 //! against the action's stop and dropped when it comes; a save is never
 //! raced. A message the user sends now cuts a provider request and a step's
@@ -14,7 +14,7 @@ use std::rc::Rc;
 use demi_agent_store::{changes, media};
 use demi_agent_transcript::{
     PendingCall,
-    estimate::{context_tokens, request_size},
+    estimate::context_tokens,
     replay_start, resume_point, tool_input,
 };
 use demi_provider_common::{
@@ -27,7 +27,7 @@ use tokio_util::sync::CancellationToken;
 use super::{
     ErrorReport, SessionEvent, SessionShared, TurnError,
     cancel::{CancelReason, TurnCancel},
-    compaction,
+    compaction::{self, Trigger},
     core::{SendNow, SessionCore, TurnStage, with_request_id},
     input::Take,
     media::model_view,
@@ -85,7 +85,8 @@ async fn run_turn(
         }
         write_inputs(s).await?;
         let before = s.read(|core| core.inputs.arrivals());
-        let recover = stream(s, cancel, continues).await?;
+        let reached = stream(s, cancel, continues).await?;
+        let recover = reached.is_some();
         continues = true;
         cancel.check()?;
         // A session copy's answer is its summary: a call in it never runs
@@ -112,9 +113,10 @@ async fn run_turn(
         if ends_for_message(s).await? {
             return Ok(());
         }
-        if recover && auto_compactions < MAX_AUTO_COMPACTIONS {
+        if let Some(trigger) = reached.filter(|_| auto_compactions < MAX_AUTO_COMPACTIONS) {
             let before_compaction = estimate(s, cancel).await?;
-            let compacted = compaction::compacting(s, compaction::run_pass(s, cancel)).await?;
+            let compacted =
+                compaction::compacting(s, compaction::run_pass(s, cancel, &trigger)).await?;
             // Looping on a pass that freed nothing would summarize its own
             // summaries and pile up `resume` blocks.
             if compacted && estimate(s, cancel).await? < before_compaction {
@@ -224,38 +226,25 @@ async fn write_inputs_since(s: &SessionShared, arrivals: u64) -> Result<(), Turn
 
 /// One provider request, from building it to the end of its stream,
 /// retrying transient failures while everything the attempt wrote can be
-/// unwound (`failures-and-recovery.md` § Retries). A request that reaches a
-/// size threshold of its vendor compacts first, and one refused as too
-/// large compacts once and goes again (`compaction.md` § When compaction
-/// runs); `continues` says it continues a running turn, so a pass is
-/// followed by a `resume` block. Returns whether a response's usage reached
-/// the compaction threshold. The stage stays streaming across the waits, so
+/// unwound (`failures-and-recovery.md` § Retries). A request refused for
+/// its tokens compacts once and goes again (`compaction.md` § When
+/// compaction runs); one refused for its size does not. `continues` says it
+/// continues a running turn, so a pass is followed by a `resume` block.
+/// Returns the trigger of a pass when a response's usage reached the
+/// compaction threshold. The stage stays streaming across the waits, so
 /// steers keep being accepted. A message the user sent now cuts the stream,
 /// or the wait before a retry, short: what streamed stays.
 async fn stream(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
     continues: bool,
-) -> Result<bool, TurnError> {
+) -> Result<Option<Trigger>, TurnError> {
     s.update(|core| core.set_stage(TurnStage::Streaming));
     let policy = s.config.retry;
     let mut attempt = 1;
-    let mut size_checked = false;
     let mut refusal_compacted = false;
     loop {
-        let mut request = request(s, cancel).await?;
-        // A pass that leaves the request as large is not repeated: the
-        // request goes out.
-        if !size_checked {
-            size_checked = true;
-            let limits = s.read(|core| core.request_limits());
-            let size = request_size(&request.system_prompt, &request.items);
-            if s.config.compaction.size_reached(limits, size)
-                && compact_before_request(s, cancel, continues).await?
-            {
-                request = self::request(s, cancel).await?;
-            }
-        }
+        let request = request(s, cancel).await?;
         let request_id = request.request_id.clone();
         let start = s.read(|core| core.transcript.blocks().len());
         let model = s.read(|core| core.model.clone());
@@ -269,21 +258,25 @@ async fn stream(
         s.update(|core| core.end_writing());
         s.return_runtime(runtime);
         let failure = match read? {
-            Ok(recover) => {
+            Ok(reached) => {
                 s.update(|core| core.set_stage(TurnStage::Preparing));
                 compaction::report_context_usage(s, cancel).await;
-                return Ok(recover);
+                return Ok(reached);
             }
             Err(failure) => with_request_id(failure, &request_id),
         };
         let unwindable = s.read(|core| resume_point(core.transcript.blocks()).cut <= start);
-        // The same request would be refused again: one pass, then the
-        // request built from the compacted history.
-        let too_large = failure.code == Some(ErrorCode::ContextLengthExceeded);
-        if too_large && unwindable && !refusal_compacted && s.config.compaction.automatic() {
+        // The same request would be refused again. Refused for its tokens:
+        // one pass, then the request built from the compacted history.
+        let too_long = failure.code == Some(ErrorCode::ContextLengthExceeded);
+        if too_long && unwindable && !refusal_compacted && s.config.compaction.automatic() {
             refusal_compacted = true;
             drop_attempt(s, start).await?;
-            if compact_before_request(s, cancel, continues).await? {
+            let trigger = Trigger::TokenRefusal {
+                request_id: request_id.clone(),
+                message: failure.message.clone(),
+            };
+            if compact_before_request(s, cancel, continues, &trigger).await? {
                 continue;
             }
         }
@@ -304,7 +297,7 @@ async fn stream(
             biased;
             () = sent_now(s) => {
                 s.update(|core| core.set_stage(TurnStage::Preparing));
-                return Ok(false);
+                return Ok(None);
             }
             slept = cancel.guard(tokio::time::sleep(delay)) => slept?,
         }
@@ -312,15 +305,17 @@ async fn stream(
     }
 }
 
-/// One compaction pass before a request; a pass that compacted inside a
-/// running turn appends a `resume` block, while before a turn's first
-/// request its new input is last already. Returns whether it compacted.
+/// One compaction pass, started by `trigger`, before a request; a pass that
+/// compacted inside a running turn appends a `resume` block, while before a
+/// turn's first request its new input is last already. Returns whether it
+/// compacted.
 async fn compact_before_request(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
     continues: bool,
+    trigger: &Trigger,
 ) -> Result<bool, TurnError> {
-    let compacted = compaction::compacting(s, compaction::run_pass(s, cancel)).await?;
+    let compacted = compaction::compacting(s, compaction::run_pass(s, cancel, trigger)).await?;
     if compacted && continues {
         s.update(|core| core.push_resume(None));
     }
@@ -409,10 +404,11 @@ pub(super) async fn system_prompt(
 /// something follows it, so that an empty lifecycle leaves nothing behind;
 /// open answer text completes when anything but more text follows it. The
 /// run's failure is handed back unrecorded, for the retry to decide on; the
-/// inner result says whether a response's usage reached the compaction
-/// threshold of the run's `model`, whose window in use is `window`. A message
-/// the user sent now ends it where it is, cancelling the request through
-/// `request_cancel`, as a Stop would, and what streamed stays.
+/// inner result is the trigger of a pass when a response's usage reached the
+/// compaction threshold of the run's `model`, whose window in use is
+/// `window`. A message the user sent now ends it where it is, cancelling the
+/// request through `request_cancel`, as a Stop would, and what streamed
+/// stays.
 async fn read(
     s: &SessionShared,
     cancel: &TurnCancel,
@@ -420,8 +416,8 @@ async fn read(
     model: &ModelSelection,
     mut events: ProviderRun<'_>,
     request_cancel: &CancellationToken,
-) -> Result<Result<bool, ProviderFailure>, TurnError> {
-    let mut recover = false;
+) -> Result<Result<Option<Trigger>, ProviderFailure>, TurnError> {
+    let mut reached = None;
     let mut cut = std::pin::pin!(sent_now(s));
     loop {
         let event = tokio::select! {
@@ -463,8 +459,10 @@ async fn read(
                     event,
                     ProviderEvent::TextDelta(_) | ProviderEvent::ThinkingSignature(_)
                 );
-                if let ProviderEvent::Response(Some(usage)) = &event {
-                    recover |= s.config.compaction.reached(window, model, usage);
+                if let ProviderEvent::Response(Some(usage)) = &event
+                    && let Some(trigger) = s.config.compaction.reached(window, model, usage)
+                {
+                    reached = Some(trigger);
                 }
                 // The page says Requesting under text the model finished,
                 // so its end starts the wait again within the run, until
@@ -485,7 +483,7 @@ async fn read(
     }
     drop(events);
     complete_text(s);
-    Ok(Ok(recover))
+    Ok(Ok(reached))
 }
 
 /// Marks open answer text at the end complete, so a Fork may end at it
