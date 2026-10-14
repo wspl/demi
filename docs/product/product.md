@@ -1344,7 +1344,11 @@ there, each with a switch of its own that enables or disables it; a new
 profile starts enabled. The next spawn of every conversation uses a change.
 A profile's model is chosen with the composer's own model menu, the same
 control with the same items, providers, models, Reasoning and the rest, plus
-*Parent's model* at its top. A profile whose provider entry, model, effort
+*Parent's model* at its top, but without the Context row, which there would
+change the user's limit for every conversation; the profile's own Context
+is a row of the editor beside the menu, *Default (500K)* naming the window
+the user's limit gives
+([Profiles](../agent/subagents.md#profiles)). A profile whose provider entry, model, effort
 or tier is gone is marked as unavailable, with the part that is missing,
 until the user fixes it.
 Settings have an Instructions section, after Providers: one text
