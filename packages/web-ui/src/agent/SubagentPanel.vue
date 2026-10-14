@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import { Bot, CircleStop, X } from '@lucide/vue'
+import { Bot, CircleStop, Copy, X } from '@lucide/vue'
 import type { InstructionEntry } from '@demicodes/protocol'
 import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
@@ -19,6 +19,7 @@ import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from '.
 import type { UsageLimits } from './context-usage'
 import { loadedInstructions } from './instructions'
 import { refusedForSize } from './session-status'
+import { copyId } from './copy-id'
 
 const props = withDefaults(
   defineProps<{
@@ -118,6 +119,14 @@ function agentOf(id: string): SubagentRecord | undefined {
   return tabs.value.find((agent) => agent.id === id)
 }
 
+// The number the `demi agent` commands take, not the record's id.
+function copyAgentId(id: string): void {
+  const agent = agentOf(id)
+  if (agent) {
+    void copyId(String(agent.number))
+  }
+}
+
 // A finished child's tab puts it away; a running one's tab stays until the child is stopped.
 function closeTab(id: string): void {
   activeId.value = tabs.value.filter((tab) => tab.id !== id).at(-1)?.id ?? null
@@ -151,6 +160,11 @@ function closeTab(id: string): void {
         label="Stop Agent"
         :disabled="agentOf(id)?.phase !== 'running'"
         @select="emit('abortAgent', id)"
+      />
+      <MenuItem
+        :icon="Copy"
+        label="Copy Agent ID"
+        @select="copyAgentId(id)"
       />
       <MenuDivider />
       <MenuItem

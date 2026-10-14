@@ -14,7 +14,7 @@ import { focusedByKeyboard } from '@demicodes/web-ui/ui/active-row'
 import { focusByPage } from '@demicodes/web-ui/ui/focus-by-page'
 import { FOLD_MS } from '@demicodes/web-ui/ui/fold'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
-import { copyConversationId } from '../agent/copy-conversation-id'
+import { copyId } from '../agent/copy-id'
 import type {
   ListLoad,
   SidebarAccount,
@@ -700,7 +700,7 @@ function selectProjectConversations(project: SidebarProject): void {
           :targets="menuTargets"
           @open="(id) => emit('select', id)"
           @rename="(id) => (renamingId = id)"
-          @copy-id="(id) => void copyConversationId(id)"
+          @copy-id="(id) => void copyId(id)"
           @pin="(ids, pinned) => emit('pin', ids, pinned)"
           @archive="(ids) => emit('archive', ids)"
           @delete="(ids) => askDelete(ids)"

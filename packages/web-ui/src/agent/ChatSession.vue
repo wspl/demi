@@ -46,7 +46,7 @@ import RenameDialog from '../ui/RenameDialog.vue'
 import Menu from '../ui/Menu.vue'
 import SidebarSelectionMenu from '../sidebar/SidebarSelectionMenu.vue'
 import ConversationDeleteDialog from '../sidebar/ConversationDeleteDialog.vue'
-import { copyConversationId } from './copy-conversation-id'
+import { copyId } from './copy-id'
 import StatusDot from '../ui/StatusDot.vue'
 import { usePhone } from '../ui/phone'
 import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
@@ -478,7 +478,7 @@ watch(
           :targets="[{ id: conversation.id, pinned: listed.pinned }]"
             shown
             @rename="fromTitleSheet(() => (renaming = true))"
-            @copy-id="fromTitleSheet(() => void copyConversationId(conversation.id))"
+            @copy-id="fromTitleSheet(() => void copyId(conversation.id))"
             @pin="(_ids, pinned) => fromTitleSheet(() => emit('pin', pinned))"
             @archive="fromTitleSheet(() => emit('archive'))"
             @delete="fromTitleSheet(() => (deleteAsked = true))"
