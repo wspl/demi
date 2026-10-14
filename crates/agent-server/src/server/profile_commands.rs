@@ -7,7 +7,7 @@ use std::rc::Weak;
 
 use demi_agent_tools::{HostResolver, ModelChoice, ModelEdit, NewProfileDraft, ProfileEdit};
 use demi_host_interface::{GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
-use demi_shared_types::trim;
+use demi_shared_types::{ContextChoice, trim};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
@@ -34,7 +34,7 @@ const PROFILES_GROUP: &str = "The user's subagent profiles: list them, show one,
 
 const LIST_SUMMARY: &str = "List the user's enabled subagent profiles with when to use each, as the user's settings say now; an unavailable one says what is missing, and a line says so when the user turned subagents off. A read, not a wait.";
 
-const SHOW_SUMMARY: &str = "Show every field of one profile, enabled or not: name, description, model (parent's, or provider entry, model, effort and tier), spawning, enabled, and its instructions in full. A read.";
+const SHOW_SUMMARY: &str = "Show every field of one profile, enabled or not: name, description, model (parent's, or provider entry, model, effort and tier), context, spawning, enabled, and its instructions in full. A read.";
 
 const CREATE_SUMMARY: &str = "Create a subagent profile, enabled unless --disabled. Without --model it inherits the parent's model. Its instructions, added to a child's system prompt, are stdin when given, else none. Needs the user's permission.";
 
@@ -48,6 +48,7 @@ const MODEL: &str = "A model id `demi providers list` lists.";
 const PROVIDER: &str = "The provider entry offering --model, by its name or id; needed only when more than one entry offers that id.";
 const EFFORT: &str = "An effort the model lists, or off to turn thinking off; without it the model's default effort.";
 const TIER: &str = "A service tier the model offers, such as fast, or default for the vendor's default tier.";
+const CONTEXT: &str = "The context window the profile's children use: full, 500K, 300K or 200K, as the model offers them (`demi providers list` gives each model's window), or default for the user's context limit on the model. Needs a model of the profile's own.";
 const INSTRUCTIONS: &str = "Text added to a child's system prompt after Demi's, which it never replaces: what this kind of subagent is for and how it works.";
 
 /// The input of `demi agent profiles list`, which takes none.
@@ -72,6 +73,8 @@ struct CreateArgs {
     provider: Option<String>,
     effort: Option<String>,
     tier: Option<String>,
+    #[schemars(with = "Option<String>")]
+    context: Option<ContextChoice>,
     /// Children of this profile may not spawn children of their own.
     no_spawning: Option<bool>,
     /// Create it disabled: agents cannot use it until it is enabled.
@@ -92,6 +95,8 @@ struct EditArgs {
     provider: Option<String>,
     effort: Option<String>,
     tier: Option<String>,
+    #[schemars(with = "Option<String>")]
+    context: Option<ContextChoice>,
     /// Children of this profile may spawn children of their own.
     spawning: Option<bool>,
     /// Children of this profile may not spawn children of their own.
@@ -133,6 +138,7 @@ pub(super) fn profiles_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> G
                 .describe("provider", PROVIDER)
                 .describe("effort", EFFORT)
                 .describe("tier", TIER)
+                .describe("context", CONTEXT)
                 .describe("instructions", INSTRUCTIONS)
                 .positionals(["name"])
                 .stdin_field("instructions")
@@ -152,6 +158,7 @@ pub(super) fn profiles_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> G
                 .describe("provider", PROVIDER)
                 .describe("effort", EFFORT)
                 .describe("tier", TIER)
+                .describe("context", CONTEXT)
                 .describe("instructions", INSTRUCTIONS)
                 .positionals(["profile"])
                 .stdin_field("instructions")
@@ -211,6 +218,7 @@ async fn create<H: HostResolver>(
         name: args.name,
         description: args.description,
         model,
+        context: args.context,
         instructions: given(args.instructions),
         can_spawn: args.no_spawning != Some(true),
         enabled: args.disabled != Some(true),
@@ -244,6 +252,7 @@ async fn edit<H: HostResolver>(call: Invoked<H, EditArgs>, port: RpcPort) -> Res
         name: args.name,
         description: args.description,
         model,
+        context: args.context,
         instructions: if args.no_instructions == Some(true) {
             Some(None)
         } else {

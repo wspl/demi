@@ -649,7 +649,10 @@ user's preference to resume such a turn by itself
 the same as Settings › General's *Resume after a usage limit resets*. It is
 a preference, not a choice for this record: ticked on one record, it holds
 for every later one and in Settings, and the record whose time has passed
-shows it no more.
+shows it no more. The fact and the checkbox name the same time, rounded up
+to the minute so it is never before the reset: a reset at 7:03:55 PM reads
+*Resets at 7:04 PM* and *Resume at 7:04 PM*, with the weekday when it is not
+today; on a phone the fact wraps rather than cutting the time.
 One recovery control sits in the dock, directly over the input, where the
 user's next action already is:
 
@@ -1284,8 +1287,8 @@ window that every conversation of the user with that model then uses
 | Path | User input and result |
 |---|---|
 | Subscription | Claude sign-in, or Codex/Grok device login; additional accounts go into the existing family entry |
-| Vendor | Select a vendor, Anthropic, OpenAI, Google or one models.dev lists, then label and key; its endpoint is the vendor's own and is shown but not edited, and its models come from the vendor's catalog |
-| Compatible API | Select the protocol, Anthropic Messages, OpenAI Chat Completions or OpenAI Responses, then label, endpoint and key; its models are the ones the user adds, none until then |
+| Vendor | Select a vendor, Anthropic, OpenAI, Google or one models.dev lists: the entry is created at once, named after the vendor, and its page asks for the key; its endpoint is the vendor's own and is shown but not edited, and its models come from the vendor's catalog |
+| Compatible API | Select Compatible API: the entry is created at once as *Compatible API*, and on its page the user sets the protocol, Anthropic Messages, OpenAI Chat Completions or OpenAI Responses, the endpoint and, when the server takes one, the key, and changes any of them later; its models are the ones the user adds, none until then |
 
 A vendor entry and a compatible one differ in who decides the models. A
 vendor's own API serves the vendor's catalog, so its entry lists them at
@@ -1294,9 +1297,10 @@ the Anthropic Messages API, serves whatever models it chooses under whatever
 names, so its entry starts empty, *No models yet* with Add Model, and never
 borrows the protocol's vendor's catalog. For example, Alex adds a compatible
 Anthropic Messages entry at `https://proxy.example/v1`: its Models list is
-empty until he adds `claude-sonnet-4-6` with Add Model. An entry stays the
+empty until he adds `claude-sonnet-5-5` with Add Model. An entry stays the
 kind it was added as: a vendor entry's endpoint is never edited, and a
-compatible entry's endpoint always can be; its protocol stays.
+compatible entry's endpoint and protocol always can be
+([A provider is in the list from the start](../providers/models.md#a-provider-is-in-the-list-from-the-start)).
 
 Red marks a failure only: a key the vendor refused, an endpoint that did
 not answer, a catalog that could not be read. An entry just added has failed
@@ -1305,7 +1309,7 @@ at nothing, so it shows no error; a compatible entry with no models yet says
 shows no status until it is tested or used.
 
 Entries can be renamed, edited, or removed. A vendor entry's models can be
-replaced by a manual list; clearing it returns to the vendor's catalog. Labels need not be unique.
+replaced by a manual list; clearing it returns to the vendor's catalog. A new entry's default name takes *(2)* when taken; a name the user gives need not be unique.
 Provider configuration stores explicit endpoint and model overrides. Fetched
 model directories are cached; they are not a fresh network lookup on every
 conversation opening.
@@ -1340,7 +1344,11 @@ there, each with a switch of its own that enables or disables it; a new
 profile starts enabled. The next spawn of every conversation uses a change.
 A profile's model is chosen with the composer's own model menu, the same
 control with the same items, providers, models, Reasoning and the rest, plus
-*Parent's model* at its top. A profile whose provider entry, model, effort
+*Parent's model* at its top, but without the Context row, which there would
+change the user's limit for every conversation; the profile's own Context
+is a row of the editor beside the menu, *Default (500K)* naming the window
+the user's limit gives
+([Profiles](../agent/subagents.md#profiles)). A profile whose provider entry, model, effort
 or tier is gone is marked as unavailable, with the part that is missing,
 until the user fixes it.
 Settings have an Instructions section, after Providers: one text

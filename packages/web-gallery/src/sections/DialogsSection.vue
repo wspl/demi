@@ -234,8 +234,8 @@ const grokPhases: { variant: string; phase: ProviderLoginPhase }[] = [
   { variant: 'Grok Build · done', phase: { kind: 'done', account: 'alex@example.com · SuperGrok', active: true } },
 ]
 const model: SettingsModelDraft = {
-  id: 'claude-sonnet-4-5',
-  name: 'Claude Sonnet 4.5',
+  id: 'claude-sonnet-5-5',
+  name: 'Claude Sonnet 5.5',
   contextWindow: 200_000,
   outputLimit: 64_000,
   efforts: ['low', 'medium', 'high'],

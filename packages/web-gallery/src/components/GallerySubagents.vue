@@ -5,15 +5,15 @@ import SettingsSubagents from '@demicodes/web-ui/settings/SettingsSubagents.vue'
 import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
 import type { LimitValue } from '@demicodes/web-ui/ui/limit-field'
 import { demoProviders } from '../fixtures/catalog'
-import { composerModels, setGalleryContextLimit } from '../fixtures/context-limits'
+import { composerModels } from '../fixtures/context-limits'
 import type { SubagentState } from '../fixtures/subagent-profiles'
 
 /**
  * The Subagents section over a specimen's state. Each write waits a beat, as
  * the product's does; a save with the reserved name or a name another
  * profile has is refused with the backend's message, so the editor shows
- * its error. The model menu offers the composer's models, and its Context
- * row sets the gallery's context limit, as the composer's does.
+ * its error. The model menu offers the composer's models, and a profile on
+ * Claude Opus offers its own Context.
  */
 const props = defineProps<{
   state: SubagentState
@@ -93,6 +93,5 @@ async function deleteProfile(id: string) {
     @switch="switchSubagents"
     @set-limit="setLimit"
     @switch-profile="switchProfile"
-    @context-limit="setGalleryContextLimit"
   />
 </template>

@@ -53,8 +53,9 @@ pub use content::{
 };
 pub use failure::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts};
 pub use context_limit::{
-    CONTEXT_LIMIT_STEPS, ContextLimitStep, applied_context_limit, context_limits,
-    effective_context_window, is_context_limit,
+    CONTEXT_LIMIT_STEPS, ContextChoice, ContextLimitStep, ContextWordError, applied_context_limit,
+    context_limits, context_word, effective_context_window, is_context_limit, offered_contexts,
+    offers_context, session_context_window,
 };
 pub use file_types::{
     IMAGE_CONTENT_POLICY, PREVIEW_TYPES, PreviewType, preview_media_type, shows_in_place,

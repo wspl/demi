@@ -495,11 +495,11 @@ vendor's HTTP status (`api_error_status`), the failure's code comes from that
 status by the rules of an HTTP failure
 ([Failures and recovery](../agent/failures-and-recovery.md)), because the CLI
 words every refused call `API Error: <status> …`, which its words alone would
-read as `overloaded`; otherwise its words decide. That error's usage is not
-recorded: a run that fails ends
-with its error and carries no usage, so the
-[usage ledger](usage-and-quota.md#usage-ledger) has no row for it, while the
-account's quota still shows what the vendor counted. An `error` line, a failure
+read as `overloaded`; otherwise its words decide. A run that fails ends with
+its error and carries no usage to the agent; the
+[usage ledger](usage-and-quota.md#usage-ledger) still has a row for the
+refused call, with its failure code and what the vendor reported, and the
+account's quota shows what the vendor counted. An `error` line, a failure
 the CLI reports outside a `result`, fails the run with the CLI's words. A line
 that fails to decode or is longer than 64 MiB, and a `tool_use` block without
 an ID or a name fail the run with that line as the failure record. A `rate_limit_event` line feeds the
@@ -610,7 +610,7 @@ its first word, against 1.4 s for a kept process, and a long conversation's
 new process took 5.3 s before its CLI was ready. So the runtime starts the
 process before the request whenever the request it will serve is already
 known but for its input. For example, the user opens a conversation that ran
-on Claude Opus yesterday; while they type, its process starts on their
+on Claude Opus 5.5 yesterday; while they type, its process starts on their
 Cloud, resumes the history and waits, and the message they send goes to it
 as to a kept process.
 

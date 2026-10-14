@@ -242,7 +242,7 @@ async fn a_users_subagent_profiles_are_checked_written_and_reach_every_page_of_t
     let explore = json!({
         "name": "explore", "description": "Finds code; it changes nothing.",
         "model": { "providerId": provider, "modelId": "m", "thinkingEffort": null, "serviceTierId": null },
-        "instructions": "Report, never edit.", "canSpawn": false
+        "contextLimit": null, "instructions": "Report, never edit.", "canSpawn": false
     });
     let created = backend.post(PROFILES, Some(&master), explore.clone()).await;
     assert_eq!(created.status, StatusCode::CREATED);
@@ -252,7 +252,7 @@ async fn a_users_subagent_profiles_are_checked_written_and_reach_every_page_of_t
         json!({
             "id": profile.id, "name": "explore", "description": "Finds code; it changes nothing.",
             "model": { "providerId": provider, "modelId": "m", "thinkingEffort": "low", "serviceTierId": null },
-            "instructions": "Report, never edit.", "canSpawn": false, "enabled": true
+            "contextLimit": null, "instructions": "Report, never edit.", "canSpawn": false, "enabled": true
         })
     );
     assert_eq!(synced(&mut page).await.profiles, [profile.clone()]);
@@ -300,7 +300,7 @@ async fn a_users_subagent_profiles_are_checked_written_and_reach_every_page_of_t
         .patch(
             &path,
             &master,
-            json!({ "name": "finder", "model": null, "instructions": null, "canSpawn": true }),
+            json!({ "name": "finder", "model": null, "contextLimit": null, "instructions": null, "canSpawn": true }),
         )
         .await;
     assert_eq!(patched.status, StatusCode::OK);
