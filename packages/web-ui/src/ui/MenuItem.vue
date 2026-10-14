@@ -18,7 +18,7 @@ import { focusByPage } from './focus-by-page'
 import type { SentenceText, TitleText } from './ui-text'
 import {
   createSubmenuController,
-  menuIconlessKey,
+  menuLayoutKey,
   menuRootKey,
   menuSlotKeyboardKey,
   menuSubmenuKey,
@@ -31,7 +31,7 @@ export type MenuIndicator = 'success' | 'warning' | 'muted' | 'accent' | 'danger
 
 defineOptions({ inheritAttrs: false })
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   icon?: Component
   label?: TitleText
   /**
@@ -51,6 +51,7 @@ const props = defineProps<{
   shortcut?: string
   /** A choice row: shows the check gutter, reports aria-checked, and keeps the menu tree open. */
   choice?: boolean
+  /** Whether a choice row is checked; absent, the row is a choice with no check, as a completion is. */
   isSelected?: boolean
   isFocused?: boolean
   hasSubmenu?: boolean
@@ -76,20 +77,24 @@ const props = defineProps<{
    * nothing; another of its group is not choosable meanwhile.
    */
   operation?: Operation
-}>()
-
+}>(), {
+  isSelected: undefined,
+})
 
 const slots = useSlots()
 const { running, blocked, press } = useOperationControl(() => props.operation, true)
 const isChoice = computed(() => props.choice === true)
 const isDisabled = computed(() => props.disabled === true || (blocked.value && !running.value))
 const tooltipContent = computed(() => disabledTooltip(isDisabled.value, props.disabledReason) ?? props.hint)
-const menuIconless = inject(
-  menuIconlessKey,
-  computed(() => false),
-)
 const menuRoot = inject(menuRootKey, null)
-const showIconGutter = computed(() => props.iconless !== true && !menuIconless.value)
+// Where the check goes is the menu's to say (`MenuLayout`): the caller only says which row is checked.
+const layout = inject(menuLayoutKey, null)
+const checkable = computed(() => isChoice.value && props.isSelected !== undefined)
+const checkLeading = computed(() => layout?.checkLeading.value === true)
+const showIconGutter = computed(() => props.iconless !== true && layout?.iconless.value !== true)
+// The leading slot: the icon, or in a menu without icons the check, whose width every row keeps.
+const showGutter = computed(() => showIconGutter.value || checkLeading.value)
+const showTrailingCheck = computed(() => checkable.value && !checkLeading.value)
 const showsSubmenu = computed(() => props.hasSubmenu || slots.submenu != null)
 // The suffix column only exists when something renders in it, so empty rows add no width.
 const hasActions = computed(() => slots.actions != null)
@@ -97,17 +102,23 @@ const hasSuffix = computed(
   () =>
     slots.suffix != null ||
     hasActions.value ||
-    isChoice.value ||
+    showTrailingCheck.value ||
     showsSubmenu.value ||
     !!props.shortcut ||
-    (running.value && !showIconGutter.value)
+    (running.value && !showGutter.value)
 )
 
 const triggerRef = ref<HTMLElement | null>(null)
 
 // In a Menu that lays out its slot, the row its keyboard reaches: focused there, its typed prefix marked.
 const keyboard = inject(menuSlotKeyboardKey, null)
-const slotRow: MenuSlotRow = { label: () => props.label, el: () => triggerRef.value, enter: enterSubmenu }
+const slotRow: MenuSlotRow = {
+  label: () => props.label,
+  el: () => triggerRef.value,
+  enter: enterSubmenu,
+  hasIcon: () => props.icon != null || props.indicator != null,
+  checkable: () => checkable.value,
+}
 const unregister = keyboard?.register(slotRow)
 const keyboardFocused = computed(() => keyboard?.focused.value === slotRow)
 const isFocused = computed(() => props.isFocused || keyboardFocused.value)
@@ -253,7 +264,7 @@ const toneClass = computed(() => {
       role="menuitem"
       class="menu-row h-full w-full cursor-default select-none items-center rounded-md text-chrome transition-colors duration-200 ease-out"
       :class="toneClass"
-      :aria-checked="isChoice ? isSelected : undefined"
+      :aria-checked="checkable ? isSelected : undefined"
       :aria-disabled="isDisabled || undefined"
       :aria-busy="running || undefined"
       :aria-haspopup="showsSubmenu ? 'menu' : undefined"
@@ -263,11 +274,15 @@ const toneClass = computed(() => {
       @mouseleave="leaveSubmenu"
     >
       <span
-        v-if="showIconGutter"
+        v-if="showGutter"
         class="menu-cell-gutter relative flex size-4 shrink-0 items-center justify-center"
         :class="faded ? 'faded' : ''"
       >
-        <IndeterminateSpinner v-if="running && !isChoice" :size="ICON_PX.in28" />
+        <template v-if="checkLeading">
+          <IndeterminateSpinner v-if="running" :size="ICON_PX.in28" />
+          <Check v-else-if="isSelected" :size="ICON_PX.in28" class="text-fg-body" />
+        </template>
+        <IndeterminateSpinner v-else-if="running && !isChoice" :size="ICON_PX.in28" />
         <component
           :is="icon"
           v-else-if="icon"
@@ -293,7 +308,7 @@ const toneClass = computed(() => {
         </span>
         <slot v-else name="suffix">
           <span
-            v-if="isChoice || (running && !showIconGutter)"
+            v-if="showTrailingCheck || (running && !showGutter)"
             class="flex size-3.5 shrink-0 items-center justify-center"
           >
             <IndeterminateSpinner v-if="running" :size="14" class="text-fg-muted" />

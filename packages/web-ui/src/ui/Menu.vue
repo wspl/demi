@@ -11,7 +11,8 @@ import ScrollArea from './ScrollArea.vue'
 import TypeSelectHint from './TypeSelectHint.vue'
 import {
   createSubmenuController,
-  menuIconlessKey,
+  menuLayoutKey,
+  menuLeadingSlot,
   menuSlotKeyboardKey,
   menuSubmenuKey,
   menuSubmenuKeysKey,
@@ -48,7 +49,10 @@ const props = withDefaults(defineProps<{
   filterFn?: (item: T, query: string) => boolean
   autofocus?: boolean
   initialQuery?: string
-  /** Drop the reserved icon column. Default for item lists that have no icons. */
+  /**
+   * Whether the rows have no icons, which `items` and the rows' own icons
+   * already say; set only to force it.
+   */
   iconless?: boolean
 }>(), {
   filterPlaceholder: 'Search…',
@@ -94,21 +98,23 @@ const filteredItems = computed(() => {
   return listItems.value.filter(item => item.label.toLowerCase().includes(q))
 })
 
-const iconless = computed(() => {
-  if (props.iconless != null)
-    return props.iconless
-  if (props.items == null)
-    return false
-  return props.items.every((item) => item.icon == null && item.indicator == null)
-})
-
-provide(menuIconlessKey, iconless)
-
-const elevation = provideLayerElevation()
-
 // The MenuItems of a menu that lays out its slot, which its keyboard reaches through.
 const slotRows = shallowRef<MenuSlotRow[]>([])
 const focusedSlotRow = shallowRef<MenuSlotRow | null>(null)
+
+// The leading slot follows the rows (`MenuLayout`); the callers only give icons, and say which row is checked.
+const leadingSlot = computed(() => menuLeadingSlot(
+  props.items != null
+    ? props.items.map((item) => ({ hasIcon: item.icon != null || item.indicator != null, checkable: true }))
+    : slotRows.value.map((row) => ({ hasIcon: row.hasIcon(), checkable: row.checkable() })),
+  props.iconless,
+))
+const iconless = computed(() => leadingSlot.value.iconless)
+const checkLeading = computed(() => leadingSlot.value.checkLeading)
+
+provide(menuLayoutKey, { iconless, checkLeading })
+
+const elevation = provideLayerElevation()
 
 /** The slot's rows, top to bottom as they show. */
 function orderedSlotRows(): MenuSlotRow[] {

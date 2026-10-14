@@ -18,7 +18,7 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <Menu iconless>
+  <Menu>
     <MenuItem
       v-for="(option, index) in options"
       :key="option.label"
