@@ -34,7 +34,7 @@ const linked = (name: string, target: string, leadsTo: LeadsTo) =>
  * file's text by path, which a test changes as something on the Host would,
  * and every request the page made, as `<route> <path>`.
  */
-function host(folders: Record<string, object[]>, texts: Record<string, string> = {}) {
+function host(folders: Record<string, object[]>, texts: Record<string, string> = {}, answering: Promise<void> = Promise.resolve()) {
   const asked: string[] = []
   const notFound = (path: string) =>
     Response.json({ requestId: 'req_test000000000001', code: 'not_found', message: `No ${path}` }, { status: 404 })
@@ -43,6 +43,7 @@ function host(folders: Record<string, object[]>, texts: Record<string, string> =
     const path = url.searchParams.get('path') ?? ''
     const route = url.pathname.replace('/api/conversations/c1/fs', '') || '/'
     asked.push(`${init?.method === 'HEAD' ? 'HEAD ' : ''}${route} ${path}`)
+    await answering
     if (route === '/') {
       const entries = folders[path]
       return entries ? Response.json({ path, home: '/w', entries }) : notFound(path)
@@ -130,7 +131,7 @@ const workspace = () => [
   linked('secret', '/root/notes', { kind: 'unreadable', reason: 'Permission denied' }),
 ]
 
-test('links show as their targets, unfold at any depth, open their target, and a broken one says why before any read', async () => {
+test('links show as their targets, unfold at any depth, open their target, and a broken one says why, whatever its read answered', async () => {
   const backend = host({
     '/w': workspace(),
     '/w/vendor': [folder('lib'), linked('project', '/w', { kind: 'directory' })],
@@ -138,9 +139,9 @@ test('links show as their targets, unfold at any depth, open their target, and a
   }, { '/w/config.json': '{\n  "theme": "dark",\n  "fontSize": 13\n}\n' })
   const view = show('/w/old.log')
   try {
-    // The sentence is the listing's: the target is never read.
+    // The sentence is the listing's, whatever the read of the file answered.
     await until(shows('Symbolic link to /gone/old.log, which does not exist.'), 'the gone target is said')
-    expect(backend.asked.filter((request) => request.endsWith('old.log'))).toEqual([])
+    expect(document.body.textContent).not.toContain('This file does not exist.')
     expect(rows()).toEqual([
       ['src', '4px', 'false', null],
       ['vendor', '4px', 'false', 'Symbolic link to ../shared/vendor'],
@@ -151,7 +152,6 @@ test('links show as their targets, unfold at any depth, open their target, and a
 
     row('secret').click()
     await until(shows('Symbolic link to /root/notes, which cannot be read: permission denied.'), 'the unreadable target is said')
-    expect(backend.asked.filter((request) => request.endsWith('/root/notes') || request.endsWith('/w/secret'))).toEqual([])
 
     // A link to a folder unfolds into the target's entries, listed by the link's own path, a link back up again.
     row('vendor').click()
@@ -212,7 +212,6 @@ test('a link to an image that is gone says so, and Retry shows the image once it
   const view = show('/w/logo.png')
   try {
     await until(shows('Symbolic link to /srv/logo.png, which does not exist.'), 'the gone image is said')
-    expect(backend.asked.filter((request) => request.includes('/raw'))).toEqual([])
 
     backend.folders['/w'] = [linked('logo.png', '/srv/logo.png', { kind: 'file' })]
     backend.texts['/w/logo.png'] = 'PNG'
@@ -221,6 +220,25 @@ test('a link to an image that is gone says so, and Retry shows the image once it
     await until(() => document.querySelector('img[src*="logo.png"]') !== null, 'the image shows')
     expect(backend.asked).toContain('HEAD /raw /w/logo.png')
   } finally {
+    view.unmount()
+  }
+})
+
+test('a file is asked for at once with its folder\'s listing, not after it', async () => {
+  // Nothing is answered until both are asked: a read that waited for the listing would never be asked.
+  let answer = () => {}
+  const answering = new Promise<void>((resolve) => {
+    answer = resolve
+  })
+  const backend = host({ '/': [folder('w')], '/w': [folder('docs')], '/w/docs': [file('notes.md', 6)] }, { '/w/docs/notes.md': 'Notes\n' }, answering)
+  const view = show('/w/docs/notes.md')
+  try {
+    const both = ['/ /w/docs', '/file /w/docs/notes.md']
+    await until(() => both.every((request) => backend.asked.includes(request)), 'the listing and the file are both asked for')
+    answer()
+    await until(shows('Notes'), 'the file shows')
+  } finally {
+    answer()
     view.unmount()
   }
 })
