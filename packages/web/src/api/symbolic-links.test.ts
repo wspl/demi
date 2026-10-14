@@ -14,7 +14,10 @@ GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/chat' })
 await import('../__tests__/vue-components')
 const { createApp, h, ref } = await import('vue')
 const { default: FileView } = await import('@demicodes/web-ui/files/FileView.vue')
+const { default: FileBrowser } = await import('@demicodes/web-ui/files/FileBrowser.vue')
 const { fileSource } = await import('./files')
+const { createMemoryFileSource, dir, link, textFile } = await import('@demicodes/web-ui/files/memory-source')
+type MemoryDirectory = import('@demicodes/web-ui/files/memory-source').MemoryDirectory
 
 const realFetch = globalThis.fetch
 afterEach(() => {
@@ -36,6 +39,8 @@ const linked = (name: string, target: string, leadsTo: LeadsTo) =>
  */
 function host(folders: Record<string, object[]>, texts: Record<string, string> = {}, answering: Promise<void> = Promise.resolve()) {
   const asked: string[] = []
+  /** While set, every request waits for it before it is answered. */
+  const held: { until: Promise<void> | null } = { until: null }
   const notFound = (path: string) =>
     Response.json({ requestId: 'req_test000000000001', code: 'not_found', message: `No ${path}` }, { status: 404 })
   globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -44,6 +49,7 @@ function host(folders: Record<string, object[]>, texts: Record<string, string> =
     const route = url.pathname.replace('/api/conversations/c1/fs', '') || '/'
     asked.push(`${init?.method === 'HEAD' ? 'HEAD ' : ''}${route} ${path}`)
     await answering
+    await held.until
     if (route === '/') {
       const entries = folders[path]
       return entries ? Response.json({ path, home: '/w', entries }) : notFound(path)
@@ -60,7 +66,13 @@ function host(folders: Record<string, object[]>, texts: Record<string, string> =
     }
     throw new Error(`Unexpected request: ${route} ${path}`)
   }, { preconnect: realFetch.preconnect })
-  return { folders, texts, asked }
+  return { folders, texts, asked, held }
+}
+
+/** Lets the answers given land and what they started run: a few turns of the event loop, no time of its own. */
+async function drain(): Promise<void> {
+  for (let turn = 0; turn < 10; turn++)
+    await new Promise<void>((resolve) => setImmediate(resolve))
 }
 
 /** Resolves once `done` holds, checked at each change of the page. */
@@ -106,18 +118,23 @@ function row(name: string, depth = 0): HTMLElement {
 /** Devices shown so far: the page keeps what it read of a device's files for its lifetime, so each test has its own. */
 let devices = 0
 
-/** The File view of `/w` showing `path`, which a pick in its tree replaces, as the File tab does. */
-function show(path: string | null) {
+/** The conversation's files on the next device, as a view reads them. */
+function source() {
   devices += 1
-  const source = fileSource(
+  return fileSource(
     { directory: '/conversations/c1/fs', text: '/conversations/c1/fs/file', raw: '/conversations/c1/fs/raw' },
     { id: `d${devices}`, platform: 'linux', home: '/w' },
   )
+}
+
+/** The File view of `/w` showing `path`, which a pick in its tree replaces, as the File tab does. */
+function show(path: string | null) {
+  const files = source()
   const shown = ref(path)
   const element = document.createElement('div')
   document.body.append(element)
   const app = createApp({
-    render: () => h(FileView, { source, root: '/w', path: shown.value, onOpen: (to: string) => { shown.value = to } }),
+    render: () => h(FileView, { source: files, root: '/w', path: shown.value, onOpen: (to: string) => { shown.value = to } }),
   })
   app.mount(element)
   return { shown, unmount: () => app.unmount() }
@@ -166,11 +183,16 @@ test('links show as their targets, unfold at any depth, open their target, and a
     ])
     expect(backend.asked).toContain('/ /w/vendor/project')
 
-    // A link to a file shows the target's text under the link's own path.
+    // A link to a file shows the target's text under the link's own path; its folder is
+    // listed again once, by the tree, which the File view does not repeat.
+    const listings = () => backend.asked.filter((request) => request === '/ /w').length
+    const before = listings()
     row('config.json').click()
     await until(shows('"fontSize": 13'), 'the target\'s text shows')
     expect(view.shown.value).toBe('/w/config.json')
     expect(backend.asked).toContain('/file /w/config.json')
+    await drain()
+    expect(listings()).toBe(before + 1)
   } finally {
     view.unmount()
   }
@@ -242,3 +264,124 @@ test('a file is asked for at once with its folder\'s listing, not after it', asy
     view.unmount()
   }
 })
+
+test('a link opened by its path, as from a message, reads its folder again: a target that is back shows', async () => {
+  // A Host that watches its files, so the workspace's listing stays kept as live: the link's
+  // target is outside it, and its coming back changes nothing the folder's watch sees.
+  const files = createMemoryFileSource({
+    platform: 'linux',
+    home: '/w',
+    root: dir({ w: dir({ 'notes.txt': link('/srv/notes.txt', at) }), srv: dir({}) }),
+  })
+  const shown = ref<string | null>(null)
+  const element = document.createElement('div')
+  document.body.append(element)
+  const app = createApp({ render: () => h(FileView, { source: files, root: '/w', path: shown.value }) })
+  app.mount(element)
+  try {
+    await until(() => rows().length === 1, 'the workspace lists')
+    expect(rows()[0]![3]).toBe('Symbolic link to /srv/notes.txt, which does not exist')
+    const srv = files.root.children['srv'] as MemoryDirectory
+    srv.children['notes.txt'] = textFile('Back again\n', at)
+    shown.value = '/w/notes.txt'
+    await until(shows('Back again'), 'the file shows')
+    expect(document.body.textContent).not.toContain('which does not exist')
+  } finally {
+    app.unmount()
+  }
+})
+
+test('a link opened again shows its target once it is back, though its file was read as gone', async () => {
+  // A Host that watches its files: the file's read that found nothing stays kept as live, and
+  // the target's coming back, outside the workspace, changes nothing either watch sees.
+  const files = createMemoryFileSource({
+    platform: 'linux',
+    home: '/w',
+    root: dir({ w: dir({ 'notes.txt': link('/srv/notes.txt', at), 'README.md': textFile('Read me\n', at) }), srv: dir({}) }),
+  })
+  const shown = ref<string | null>('/w/notes.txt')
+  const element = document.createElement('div')
+  document.body.append(element)
+  const app = createApp({ render: () => h(FileView, { source: files, root: '/w', path: shown.value, onOpen: (to: string) => { shown.value = to } }) })
+  app.mount(element)
+  try {
+    await until(shows('Symbolic link to /srv/notes.txt, which does not exist.'), 'the gone target is said')
+    row('README.md').click()
+    await until(shows('Read me'), 'another file shows')
+    const srv = files.root.children['srv'] as MemoryDirectory
+    srv.children['notes.txt'] = textFile('Back again\n', at)
+    row('notes.txt').click()
+    await until(shows('Back again'), 'the file shows')
+  } finally {
+    app.unmount()
+  }
+})
+
+test('a tree that goes away while a link is read again opens nothing when the answer comes', async () => {
+  const backend = host({ '/w': [linked('vendor', '../shared/vendor', { kind: 'directory' })], '/w/vendor': [folder('lib')] })
+  const view = show(null)
+  await until(() => rows().length === 1, 'the workspace lists')
+  let answer = () => {}
+  backend.held.until = new Promise<void>((resolve) => {
+    answer = resolve
+  })
+  const before = backend.asked.length
+  row('vendor').click()
+  await until(() => backend.asked.length > before, 'the folder is listed again')
+  view.unmount()
+  answer()
+  await drain()
+  expect(backend.asked.slice(before)).toEqual(['/ /w'])
+})
+
+/** A file browser over `/w`, as the attachment picker (`file`) and a device's folder dialog (`directory`) show it. */
+function browse(mode: 'file' | 'directory') {
+  const picked: string[] = []
+  const element = document.createElement('div')
+  document.body.append(element)
+  const app = createApp({
+    render: () => h(FileBrowser, { mode, source: source(), initialPath: '/w', onSelect: (path: string) => picked.push(path) }),
+  })
+  app.mount(element)
+  return { picked, unmount: () => app.unmount() }
+}
+
+function option(name: string): HTMLElement | undefined {
+  return [...document.querySelectorAll<HTMLElement>('[role=option]')].find((element) => element.textContent!.trim().startsWith(name))
+}
+
+for (const mode of ['file', 'directory'] as const) {
+  test(`in the ${mode === 'file' ? 'attachment picker' : 'folder dialog'}, a link listed as missing whose target is now a folder opens as one`, async () => {
+    const backend = host({ '/w': [linked('data', '/mnt/data', { kind: 'missing' })] })
+    const view = browse(mode)
+    try {
+      await until(() => option('data') !== undefined, 'the folder lists')
+      backend.folders['/w'] = [linked('data', '/mnt/data', { kind: 'directory' })]
+      backend.folders['/w/data'] = [file('records.csv', 1024)]
+      option('data')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+      await until(() => option('records.csv') !== undefined, 'the link opens as a folder')
+      expect(view.picked).toEqual([])
+    } finally {
+      view.unmount()
+    }
+  })
+
+  test(`in the ${mode === 'file' ? 'attachment picker' : 'folder dialog'}, a link listed as a folder whose target is gone is not entered`, async () => {
+    const backend = host({ '/w': [linked('data', '/mnt/data', { kind: 'directory' })], '/w/data': [file('records.csv', 1024)] })
+    const view = browse(mode)
+    try {
+      await until(() => option('data') !== undefined, 'the folder lists')
+      backend.folders['/w'] = [linked('data', '/mnt/data', { kind: 'missing' })]
+      delete backend.folders['/w/data']
+      option('data')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
+      // The attachment picker takes the link as the file it shows as now; the folder dialog takes nothing, its row now a file's.
+      // The row turns a file's, with its size, as the listing read again lands; the picker answers as that read ends.
+      await until(() => option('data')?.textContent!.includes('9 B') === true, 'the row says what the link is now')
+      await drain()
+      expect(view.picked).toEqual(mode === 'file' ? ['/w/data'] : [])
+      expect(backend.asked).not.toContain('/ /w/data')
+    } finally {
+      view.unmount()
+    }
+  })
+}

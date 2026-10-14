@@ -16,6 +16,7 @@ import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import FileUploadList from './FileUploadList.vue'
 import LinkMark from './LinkMark.vue'
+import { readLinkAgain } from './link-activation'
 import { failureShown } from './file-cache'
 import { followOnScreen } from './on-screen'
 import Tree from './Tree.vue'
@@ -107,6 +108,10 @@ interface Listing {
 }
 
 const listings = shallowReactive(new Map<string, Listing>())
+// Links whose target is read again before they expand or open, and what
+// ends those reads when the tree lets its listings go.
+const followed = shallowReactive(new Set<string>())
+let following = new AbortController()
 // Each unfolded directory's listing follows the Host only while the tree is on screen.
 followOnScreen(() => [...listings.values()].map((entry) => entry.showing))
 
@@ -132,11 +137,14 @@ function fold(path: string): void {
   entry.showing = null
 }
 
-/** Lets every listing go, as a new source or the tree's end asks. */
+/** Lets every listing go, as a new source or the tree's end asks, and drops the links being read again for their rows. */
 function releaseAll(): void {
   for (const entry of listings.values())
     entry.showing?.release()
   listings.clear()
+  following.abort()
+  following = new AbortController()
+  followed.clear()
 }
 
 /** Whether any open directory is being listed. */
@@ -244,11 +252,8 @@ function firstListing(entry: Listing | undefined): boolean {
   return shown?.reading === true && shown.answer === null
 }
 
-// Links whose target is read again before they expand or open.
-const following = shallowReactive(new Set<string>())
-
 function isLoading(row: TreeRow): boolean {
-  return following.has(row.path) || (row.isDirectory && firstListing(listings.get(row.path)))
+  return followed.has(row.path) || (row.isDirectory && firstListing(listings.get(row.path)))
 }
 
 /** Why the directory could not be listed, for the whole row's tooltip and its dot. */
@@ -273,26 +278,25 @@ function activate(row: TreeRow): void {
 }
 
 /**
- * Expands or opens a link as what its target is now (`file-previews.md`
- * § Symbolic links): what the row says is as of its folder's listing, which
- * the folder's watch does not change when the target alone does, so the
- * folder is listed again, which reads each link's target, and the row
- * takes what it found: a link to a folder expands, any other opens, a
- * target that is gone or cannot be read saying so in the file's place.
+ * Expands or opens a link as what its target is now (`readLinkAgain`): a
+ * link to a folder expands, any other opens, a target that is gone or
+ * cannot be read saying so in the file's place. A tree that lets its
+ * listings go meanwhile, for another source or its end, does neither.
  */
 async function followLink(row: TreeRow): Promise<void> {
-  const folder = listings.get(row.parent ?? normalizePath(props.root))
-  if (!folder?.showing || following.has(row.path))
+  if (followed.has(row.path))
     return
-  following.add(row.path)
+  const { signal } = following
+  followed.add(row.path)
+  let now: FileBrowserEntry | undefined
   try {
-    await folder.showing.retry()
+    now = await readLinkAgain(props.source, row.path, signal)
   } finally {
-    following.delete(row.path)
+    if (!signal.aborted)
+      followed.delete(row.path)
   }
   // Folded, or the link went, while its folder was read.
-  const now = folder.open ? entriesOf(folder).find((entry) => entry.name === row.name) : undefined
-  if (!now)
+  if (!now || signal.aborted || listings.get(row.parent ?? normalizePath(props.root))?.open !== true)
     return
   if (now.isDirectory) {
     open(row.path)

@@ -90,8 +90,21 @@ const selectedIndex = computed(() =>
 const listId = useId()
 const keyboard = ref(false)
 
+/** Whether the row is what the browser picks, as its listing says: any row for a file, a folder for a folder. */
 function pickable(entry: FileBrowserEntry) {
   return props.mode === 'file' || entry.isDirectory
+}
+
+/**
+ * Whether a double click opens the row: one that can be picked, or a link,
+ * which may lead elsewhere than its row said (`file-previews.md` § Symbolic
+ * links), and is read again by the browser to act on what it is now. A
+ * link shows, and is selected, as what it was listed as: in folder mode, one
+ * listed as a file is dimmed, and a double click finds whether it leads to a
+ * folder now.
+ */
+function reachable(entry: FileBrowserEntry) {
+  return pickable(entry) || entry.link !== undefined
 }
 
 function pick(entry: FileBrowserEntry) {
@@ -102,7 +115,7 @@ function pick(entry: FileBrowserEntry) {
 }
 
 function activate(entry: FileBrowserEntry) {
-  if (!pickable(entry)) {
+  if (!reachable(entry)) {
     return
   }
   emit('activate', entry)
@@ -335,7 +348,7 @@ defineExpose({
           :key="entry.name"
           role="option"
           :aria-selected="entry.name === selected"
-          :aria-disabled="!pickable(entry) || undefined"
+          :aria-disabled="!reachable(entry) || undefined"
           :data-selected="entry.name === selected || undefined"
           class="grid h-7 shrink-0 select-none grid-cols-[minmax(0,1fr)_5.5rem] items-center rounded-md px-1 text-chrome transition-colors duration-200 ease-out @md:grid-cols-[minmax(0,1fr)_10rem_5.5rem]"
           :class="
@@ -343,7 +356,7 @@ defineExpose({
               ? ['bg-active text-fg-emphasis', keyboard ? 'focus-ring-shown' : '']
               : pickable(entry)
                 ? 'text-fg-body hover:bg-hover'
-                : 'text-fg-faint'
+                : reachable(entry) ? 'text-fg-faint hover:bg-hover' : 'text-fg-faint'
           "
           @click="pick(entry)"
           @dblclick="activate(entry)"
