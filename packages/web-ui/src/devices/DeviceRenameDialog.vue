@@ -3,10 +3,9 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import RenameDialog from '../ui/RenameDialog.vue'
 
 /**
- * A paired device's new name, which every page of the user's then shows; the
- * names conversations gave the device as an attached host stay theirs
- * (`web-api.md` § Workspaces, devices, and attached hosts). The Cloud keeps
- * its name and is never asked about.
+ * A paired device's new name, which every page of the user's then shows,
+ * the conversations it is attached to included (`sessions-and-targets.md`
+ * § Attached hosts). The Cloud keeps its name and is never asked about.
  */
 defineProps<{
   isOpen: boolean

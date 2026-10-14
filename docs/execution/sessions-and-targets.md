@@ -216,8 +216,16 @@ files moved, and how to reach the device left behind with `demi host shell
 runner's report caused, as when the Cloud's home becomes known, carries no
 label of change, since nothing the user did changed: it states the Host as it
 now is, which the model reads in place of the block before. Every
-block ends with the attached hosts, each with its connection and the directory
-its shells start in.
+block ends with the attached hosts, each with its device's id, its connection
+and the directory its shells start in. A node saw a switch when it read a
+block of the revision the switch made or a later one, and saw the attached
+hosts as its latest block lists them, each name with the device it stood for:
+renaming a device announces no switch, and renaming an attached one
+announces a change of the attached hosts, also when two devices trade names
+and the list's names stay the same. A switch made before an upgrade that
+began recording its revision counts as seen by every node, so a switch none
+of its idle nodes had read yet then loses its announcement, while the
+transcript still shows the user the move.
 
 ## Attached hosts
 
@@ -230,7 +238,16 @@ Each device appears once across the primary and attached bindings.
 An attached host goes by its device's name, the one the user sees in the
 header's menu and in Settings, with a numeric suffix when two names collide;
 nobody names it otherwise, so the user never meets a host under a name the
-agent made up, such as `lark` for `dc03-pff-200`. Choosing an attached device
+agent made up, such as `lark` for `dc03-pff-200`. The name is read from the
+device whenever the hosts are listed, never stored, and no name stands for
+two hosts: of two attached devices named `laptop`, the one attached first is
+`laptop` and the other `laptop-2`; an attached device named as the primary
+Host, by the name the header shows for it (`Cloud` for the Cloud), is
+`laptop-2` too, and becomes `laptop` again once the conversation moves
+elsewhere. When the user renames a device in Settings, every conversation it is
+attached to goes by the new name, which its header's menu shows at once and
+its agents' next context block announces as a change of the attached hosts.
+Choosing an attached device
 as the primary Host exchanges the two.
 
 `demi host list` reports accessible primary and attached hosts.

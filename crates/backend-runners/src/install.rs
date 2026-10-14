@@ -357,8 +357,9 @@ if DEMI_HOME="$state" DEMI_RELEASE_ID="$release" "$bin/demi-runner" status --bac
   seen=$(size_of "$log")
   DEMI_HOME="$state" "$bin/demi-runner" announce --backend "$backend" >/dev/null 2>&1 || true
 else
-  status=$?
-  if [ "$status" -eq 3 ]; then
+  # Not `status`, which zsh keeps read-only.
+  runner_status=$?
+  if [ "$runner_status" -eq 3 ]; then
     echo 'Waiting for existing jobs before upgrading this runner…'
     DEMI_HOME="$state" "$bin/demi-runner" drain --backend "$backend"
   fi
@@ -379,13 +380,16 @@ LAUNCHER
   chmod 755 "$state/run.next"
   mv "$state/run.next" "$state/run"
   seen=$(size_of "$log")
-  # The runner writes its log itself. With job control on, it starts in a
-  # process group of its own, so that interrupting this installer at its
-  # terminal leaves the runner running.
-  set -m 2>/dev/null
+  # The runner writes its log itself, and leaves this terminal's session as
+  # it starts, so that interrupting this installer, or closing its terminal,
+  # leaves the runner running. Until then, as a background command of a
+  # shell without job control, it ignores the terminal's interrupt, and
+  # under nohup its closing. Never `set -m`: a shell with job control hands
+  # the terminal back as it turns it off, to the group that had it when
+  # this installer started, which under `curl | sh` was curl's and is gone
+  # by then; dash then exits with an error.
   nohup sh -c 'umask "$1" && exec "$2" run --log' sh "$user_umask" "$state/run" > /dev/null 2>&1 < /dev/null &
   pid=$!
-  set +m
   printf 'Runner installed for %s\n' "$backend"
 fi
 # The installation is in place; the runner's own updates may take its lock

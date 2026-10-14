@@ -84,7 +84,6 @@ impl dyn HostShard + '_ {
             }
             let host = AttachedHostRecord {
                 device: device.id,
-                name: device.name,
                 cwd: None,
             };
             let attached = control

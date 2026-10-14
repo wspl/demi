@@ -18,7 +18,7 @@ use serde_json::json;
 
 use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
 
-use crate::conversations::{FIRST, Socket, transcript};
+use crate::conversations::{FIRST, SECOND, Socket, choose, create, transcript, working_on};
 use crate::subagents::{Scripts, WAIT, say, shell, tree_on};
 use crate::support::{Harness, Paired, Session, TestBackend, eventually, stored_token};
 
@@ -62,11 +62,15 @@ pub(crate) fn target_of(harness: &Harness, id: &str) -> (String, Option<String>)
         .unwrap()
 }
 
-/// The devices attached to the conversation, by name, as storage holds them.
+/// The names of the devices attached to the conversation, as storage holds
+/// them.
 fn attached(harness: &Harness, id: &str) -> Vec<String> {
     harness
         .control_database()
-        .prepare("SELECT name FROM conversation_hosts WHERE conversation_id = ?1 ORDER BY name")
+        .prepare(
+            "SELECT device.name FROM conversation_hosts host JOIN devices device ON device.id = host.device_id
+             WHERE host.conversation_id = ?1 ORDER BY device.name",
+        )
         .unwrap()
         .query_map([id], |row| row.get(0))
         .unwrap()
@@ -188,7 +192,8 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_and_runs_commands_th
             shell("t1", "demi host install-command --system linux"),
             shell("t2", "demi host pair 0000-0000-0000-0000-0000-0000-00"),
             shell("t3", &format!("demi host pair {code} --name build")),
-            shell("t4", "demi host shell --host build 'echo reached'"),
+            shell("t4", &format!("demi host pair {code}")),
+            shell("t5", "demi host shell --host buildbox 'echo reached'"),
             say("done"),
         ],
     );
@@ -202,13 +207,16 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_and_runs_commands_th
         "{}",
         asked[2]
     );
-    // The live code pairs the computer and attaches it under the alias.
+    // No agent names the host: `--name` is no option of the pair.
+    assert!(asked[3].contains("unexpected argument '--name'"), "{}", asked[3]);
+    // The live code pairs the computer and attaches it under its device's
+    // name, the one the user sees.
     assert!(
-        asked[3].contains("Paired as buildbox; attached as build."),
+        asked[4].contains("Paired as buildbox; attached as buildbox."),
         "{}",
-        asked[3]
+        asked[4]
     );
-    assert!(asked[4].contains("reached"), "{}", asked[4]);
+    assert!(asked[5].contains("reached"), "{}", asked[5]);
     // It is the user's device, its runner holds its token, and the
     // conversation reaches it.
     let devices = backend.devices(&master).await;
@@ -217,7 +225,7 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_and_runs_commands_th
         "{devices:?}"
     );
     assert!(!stored_token(&computer).await.is_empty());
-    assert_eq!(attached(&harness, FIRST), ["build"]);
+    assert_eq!(attached(&harness, FIRST), ["buildbox"]);
     backend.close().await;
 }
 
@@ -311,5 +319,74 @@ async fn a_move_a_restart_cut_off_is_made_at_the_next_start_even_to_an_offline_d
     })
     .await;
     assert!(!pending(&harness, FIRST));
+    backend.close().await;
+}
+
+// Several seconds: two real devices, a parent and its child on one, a second
+// conversation on the other, and the child's shell waits across the rename.
+#[tokio::test]
+async fn a_device_rename_reaches_each_conversation_and_node_that_reaches_the_device_once() {
+    let scripts = Arc::new(Scripts::default());
+    let (harness, backend, master, _laptop, root, provider) = tree_on(&scripts, Harness::new()).await;
+    let studio = backend.pair(&master, "studio").await;
+    harness.attach(FIRST, studio.id());
+    create(&backend, &master, SECOND).await;
+    choose(&backend, &master, SECOND, &provider, "m").await;
+    working_on(&harness, &studio, SECOND);
+    let mut first = Socket::connect(&backend, &master, FIRST).await;
+    first.open().await;
+    let mut second = Socket::connect(&backend, &master, SECOND).await;
+    second.open().await;
+
+    // Each node reads the context once before the rename: the conversation
+    // on the studio, the parent, and its child, whose shell then waits.
+    scripts.root(SECOND, vec![say("hello")]);
+    second.chat("s1", "Hello").await;
+    scripts.child(vec![shell("c1", &format!("{WAIT}; demi host list")), say("listed")]);
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t1", "demi agent spawn --description lister <<< 'List the hosts'"),
+            say("dispatched"),
+            // The child's completion wakes the idle parent.
+            say("received"),
+        ],
+    );
+    first.chat("m1", "Delegate the listing").await;
+    let child = |session: &str| session != FIRST && session != SECOND;
+    eventually("the child asked", || async { !scripts.asked(child).is_empty() }).await;
+
+    let renamed = backend
+        .patch(&format!("/api/devices/{}", studio.id()), &master, json!({ "name": "Build Box" }))
+        .await;
+    assert_eq!(renamed.status, StatusCode::OK);
+    std::fs::write(format!("{root}/go"), "").unwrap();
+    first.until_idle().await;
+    scripts.root(FIRST, vec![say("again")]);
+    first.chat("m2", "Anything new?").await;
+    scripts.root(SECOND, vec![say("again")]);
+    second.chat("s2", "Anything new?").await;
+    scripts.root(SECOND, vec![say("still")]);
+    second.chat("s3", "And now?").await;
+
+    // Where the device is attached, each node's history holds one block
+    // that names it anew and says the attached hosts changed, and no
+    // switch: the child's for its request after its shell, the parent's
+    // for its wake, which its next turn does not repeat.
+    let attached = format!("Attached hosts: \\\"Build Box\\\" (host {}, ", studio.id());
+    let parent = scripts.asked(|session| session == FIRST);
+    let children = scripts.asked(child);
+    for latest in [parent.last().unwrap(), children.last().unwrap()] {
+        assert_eq!(latest.matches(&attached).count(), 1, "{latest}");
+        assert_eq!(latest.matches("[Attached hosts changed]").count(), 1, "{latest}");
+        assert!(!latest.contains("[Execution target switched]"), "{latest}");
+    }
+    assert!(!children[0].contains("Build Box"), "{}", children[0]);
+    // Where it is the primary Host, the next block names it anew, once.
+    let on_studio = scripts.asked(|session| session == SECOND);
+    assert!(!on_studio[0].contains("Build Box"), "{}", on_studio[0]);
+    let latest = on_studio.last().unwrap();
+    assert_eq!(latest.matches("Primary host: Build Box").count(), 1, "{latest}");
+    assert_eq!(latest.matches("[Execution context ").count(), 2, "{latest}");
     backend.close().await;
 }

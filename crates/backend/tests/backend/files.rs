@@ -882,8 +882,8 @@ async fn the_host_access_reaches_only_the_callers_conversation_and_the_hosts_bou
         (StatusCode::NOT_FOUND, ErrorCode::HostNotAttached)
     );
     device.execute(
-        "INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at)
-         VALUES (?1, ?2, 'ci', NULL, 0)",
+        "INSERT INTO conversation_hosts (conversation_id, device_id, cwd, attached_at)
+         VALUES (?1, ?2, NULL, 0)",
         &[CONVERSATION, ci.id()],
     );
     let listing = device.get(&on_ci).await;
@@ -1246,7 +1246,7 @@ async fn a_devices_folder_dialog_hears_its_folders_change_through_device_access(
 async fn a_subscription_naming_an_attached_host_is_watched_by_that_hosts_runner() {
     let device = OnDevice::start().await;
     let desk = device.backend.pair(&device.master, "desk").await;
-    device.harness.attach(CONVERSATION, desk.id(), "desk");
+    device.harness.attach(CONVERSATION, desk.id());
     let logs = desk.runner.home_dir().join("logs");
     std::fs::create_dir(&logs).unwrap();
     std::fs::write(logs.join("server.log"), "1\n").unwrap();

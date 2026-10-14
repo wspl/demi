@@ -235,10 +235,40 @@ installers and `run start` start it, rather than the installer redirecting
 its output: it appends to `runner.log`, and when the file passes 10 MiB it
 renames it `runner.log.1`, replacing the one before, and starts a new one.
 So what a runner printed before it crashed is still there after `run start`
-starts it again. The installer and `run start` read the pairing codes and
-the connection's outcome from where the log ended when they began waiting,
-whether they started the runner or found it running, and follow the log
-across a rotation. A runner they find running wrote its state before they
+starts it again.
+
+A runner started with `run --log` also leaves the terminal it was started
+from, first of all: on Linux and macOS it makes a session of its own, which
+has no controlling terminal, so pressing Ctrl-C at the installer, or closing
+its terminal or SSH connection, ends the installer and never the runner or
+its jobs. A process that leads its process group cannot make a session,
+such as a runner a person starts in a terminal's foreground, or one that
+replaced itself with its update. Such a runner asks the system whether it
+still has a terminal: opening `/dev/tty` fails with `ENXIO` only when it has
+none. When it has one, it starts itself again with the same arguments in a
+session of its own, made between the new process's fork and its exec, says
+so on its console, and exits with 0; nothing of the installation is open
+yet at that point, so the new runner takes the lock and the log as the first
+would have. When the question gets no answer, such as with no `/dev/tty` at
+all, the runner refuses to start and says why. Only a runner that has no
+terminal makes the signals its starter ignored on its behalf, `HUP` under
+`nohup` and `INT` and `QUIT` for a background command of a shell without job
+control, take their default action again, so the runner's jobs start with
+the signal actions a person's own programs have.
+
+The installer leaves this to the runner and never turns on the shell's job
+control (`set -m`): with `curl … | sh` at a terminal, a shell turning job
+control off again hands the terminal back to curl's process group, which
+has ended by then, and dash fails there with exit code 2 after the runner
+has started. `run start` starts the runner in a session of its own,
+made between the runner's fork and its exec, so Ctrl-C while `run start`
+waits never reaches the runner, not even before the runner's own first
+step.
+
+The installer and `run start` read the pairing codes and the connection's
+outcome from where the log ended when they began waiting, whether they
+started the runner or found it running, and follow the log across a
+rotation. A runner they find running wrote its state before they
 began, so they first ask it, through its management endpoint, to write its
 current state to its log again: its current pairing code while it waits to
 be paired, the device's name and the removal command once it is paired, or
@@ -339,9 +369,10 @@ server takes about half a second for a round trip. So a filesystem operation
 that the backend needs as one answer is one request, never one per entry. A
 directory listing carries each entry's name, kind, size and modification
 time, and for a symbolic link its target as written and what the target is
-(a file, a directory, another kind, or missing, followed through every link
-on the way), which the runner reads beside the entry as it lists the
-directory: a
+(a file, a directory, another kind, missing when nothing is there, or
+unreadable with the system's reason when it is there but cannot be reached,
+followed through every link on the way), which the runner reads beside the
+entry as it lists the directory: a
 home directory of 105 entries, listed with one request per entry, took about
 fifty seconds to show in the folder picker, and takes one round trip so.
 

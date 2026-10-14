@@ -295,7 +295,6 @@ mod tests {
                 shard.transition(&id, on(&primary)).await.unwrap();
                 let attach = RecordChange::Attach(AttachedHostRecord {
                     device: attached.clone(),
-                    name: "attached".into(),
                     cwd: None,
                 });
                 shard.transition(&id, attach.into()).await.unwrap();

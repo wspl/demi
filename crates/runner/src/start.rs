@@ -195,11 +195,18 @@ fn spawn(directory: &Path, arguments: Vec<String>) -> io::Result<tokio::process:
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
+    // A session of its own from its first instruction on, which has no
+    // controlling terminal: an interrupt at this terminal, such as Ctrl-C
+    // while this process waits, never reaches the runner.
+    // SAFETY: the hook runs in the child between fork and exec and makes
+    // only a `setsid` call, which is async-signal-safe, and allocates
+    // nothing.
     #[cfg(unix)]
-    {
-        // A group of its own: the terminal's interrupt and its closing do
-        // not reach it.
-        command.process_group(0);
+    unsafe {
+        command.pre_exec(|| {
+            rustix::process::setsid()?;
+            Ok(())
+        });
     }
     // No handle of this process: Windows passes every inheritable one to
     // the runner otherwise, and an SSH session whose pipes the runner holds
