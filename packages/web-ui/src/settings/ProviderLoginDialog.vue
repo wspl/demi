@@ -109,8 +109,7 @@ function submitCode(): void {
           class="mt-0.5 text-[13px] leading-5 text-fg-muted"
         >
           <template v-if="phase.kind === 'device'"
-            >Enter this code on the vendor’s page. Demi keeps waiting
-            here.</template
+            >Enter this code on the vendor’s page.</template
           >
           <template v-else-if="phase.kind === 'code'"
             >Sign in on the vendor’s page, then paste the code it
@@ -121,8 +120,7 @@ function submitCode(): void {
             {{ vendorName }}.</template
           >
           <template v-else-if="phase.kind === 'done'"
-            >Signed in. {{ vendorName }} keeps using its active account;
-            activate this one to switch.</template
+            >Signed in. {{ vendorName }} keeps using its active account.</template
           >
           <template v-else>The sign-in did not complete.</template>
         </p>

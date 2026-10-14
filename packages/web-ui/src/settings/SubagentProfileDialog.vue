@@ -190,7 +190,7 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
       <header class="min-w-0 select-none p-5 pb-4 pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          An agent names the profile with <span class="font-mono">demi agent spawn --profile</span>; its description tells the agent when to.
+          An agent picks a profile by its description.
         </p>
       </header>
 
@@ -250,7 +250,7 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
           <SettingsRow
             v-if="context"
             label="Context"
-            description="The context window its subagents use. Default follows your context limit on the model."
+            description="The context window its subagents use."
           >
             <Dropdown
               :overlay-store="overlayStore"
@@ -270,7 +270,7 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               </template>
             </Dropdown>
           </SettingsRow>
-          <SettingsRow label="Instructions" description="Optional. What this kind of subagent is for and how it works; added to Demi’s own instructions." />
+          <SettingsRow label="Instructions" description="Optional. Added to Demi’s own instructions." />
           <div class="px-4 pb-3">
             <TextArea
               v-model="draft.instructions"
@@ -279,7 +279,7 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               aria-label="Instructions"
             />
           </div>
-          <SettingsRow label="Children may spawn" description="Off removes spawn, abort and resume from its children’s demi agent commands.">
+          <SettingsRow label="Children may spawn" description="Lets its subagents start subagents.">
             <Switch v-model="draft.canSpawn" size="sm" class="ml-1" aria-label="Children may spawn" />
           </SettingsRow>
         </div>

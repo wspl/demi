@@ -40,7 +40,7 @@ pub(super) fn relying_party(services: &Services, headers: &HeaderMap) -> Result<
         ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::PasskeysUnavailable,
-            "This server offers no passkeys: its address is not a host name",
+            "This server can’t offer passkeys at its address",
         )
     })
 }

@@ -55,9 +55,7 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
         Reset Cloud Environment
       </h3>
       <p class="text-[13px] leading-5 text-fg-muted">
-        This stops all your Cloud tasks and replaces installed system packages and
-        system settings. Files in your home directory, including every Cloud
-        project, remain.
+        Stops Cloud tasks and resets system packages and settings. Your home files and Cloud projects stay.
       </p>
       <p
         v-if="running"

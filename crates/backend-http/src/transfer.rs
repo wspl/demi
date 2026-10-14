@@ -115,7 +115,7 @@ pub(super) async fn copy_upload(body: Body, upload: OpenUpload) -> UploadEnd {
                 return UploadEnd::Refused(ApiError::new(
                     StatusCode::REQUEST_TIMEOUT,
                     ErrorCode::TransferStalled,
-                    "The upload stalled: nothing arrived for a minute",
+                    "The upload stalled",
                 ));
             }
             Ok(None) => break,

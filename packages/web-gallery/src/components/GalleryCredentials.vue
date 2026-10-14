@@ -42,7 +42,7 @@ const KEEP_MS = { '1h': 60 * 60_000, '1d': 24 * 60 * 60_000, '30d': 30 * 24 * 60
 async function saveCredential(id: string | null, draft: SettingsCredentialDraft) {
   await beat()
   if (props.state.credentials.some((credential) => credential.id !== id && credential.name.toLowerCase() === draft.name.toLowerCase())) {
-    throw new Error(`Another credential is named “${draft.name}”; choose another name.`)
+    throw new Error(`Another credential is named “${draft.name}”. Choose another name.`)
   }
   const existing = props.state.credentials.find((credential) => credential.id === id)
   const before = id === null ? {} : (typed.get(id) ?? DEMO_CREDENTIAL_VALUES[id] ?? {})

@@ -1013,13 +1013,13 @@ async fn a_boot_whose_runner_never_connects_fails_saves_what_it_started_and_says
     );
     assert_eq!(
         refused.error().message,
-        "Your Cloud did not start: its runner did not connect within 3 seconds"
+        "Your Cloud didn’t start. Its runner didn’t connect in 3 seconds."
     );
     let device = the_cloud(&harness);
     assert_eq!(harness.manager.count(&format!("hibernate:{device}")), 1);
     let failed = status(&backend, &master).await;
     assert_eq!(failed.state, CloudState::Off);
-    assert!(failed.error.unwrap().contains("did not start"));
+    assert!(failed.error.unwrap().contains("didn’t start"));
 
     harness.manager.script(|script| script.silent_wake = false);
     let listed = backend.get(&listing, Some(&master)).await;
@@ -1543,7 +1543,7 @@ async fn a_backend_that_stopped_in_the_middle_of_a_reset_finishes_its_disk_step_
     assert_eq!(operation.phase, ResetPhase::Failed);
     assert_eq!(
         operation.error.as_deref(),
-        Some("Reset disks recovered; retry to start Cloud")
+        Some("Reset disks recovered. Retry to start Cloud.")
     );
     let context = || -> i64 {
         harness

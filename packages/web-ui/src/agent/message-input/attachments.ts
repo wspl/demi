@@ -210,7 +210,7 @@ export function composerAttachmentFromFile(file: File): ComposerFileAttachment {
  */
 export function attachmentFileError(file: File): string | undefined {
   if (!file.size || file.size > ATTACHMENT_MAX_BYTES) {
-    return `${file.name}: choose a nonempty file smaller than 25 MB.`
+    return `${file.name} is empty or over 25 MB.`
   }
 }
 

@@ -25,7 +25,7 @@ export function contextPercent(usage: ContextUsage | null): string | null {
 }
 
 /** Why Compact waits while the agent's turn runs, which the session refuses as busy. */
-export const COMPACT_AFTER_TURN = 'Compaction is available once the turn ends.'
+export const COMPACT_AFTER_TURN = 'Available after the turn ends'
 
 /**
  * Why the user may not compact at `usage`, or null when they may: below the

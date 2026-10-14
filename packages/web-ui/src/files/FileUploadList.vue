@@ -78,7 +78,7 @@ function facts(upload: FileUpload): string {
     return folder ? `Completed · ${fileCount(upload, false)}` : 'Completed'
   // One failure says itself; a folder's several say how many.
   if (state.failures.length > 1)
-    return `${state.failures.length} of ${fileCount(upload, false)} failed`
+    return `${state.failures.length} / ${fileCount(upload, false)} failed`
   const failure = state.failures[0]!
   return failure.path ? `${failure.path}: ${failure.message}` : failure.message
 }

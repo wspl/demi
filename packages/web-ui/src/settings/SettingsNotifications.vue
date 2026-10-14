@@ -33,9 +33,9 @@ const asking = ref(false)
 const on = computed(() => asking.value || (enabled.value && props.permission === 'granted'))
 const description = computed(() => {
   if (props.permission === 'denied') {
-    return 'This browser blocks notifications for this site. Allow them in its site settings to turn them on.'
+    return 'Blocked in this browser’s site settings.'
   }
-  return 'On this browser only, while the conversation is not in front.'
+  return 'On this browser only.'
 })
 
 async function turn(value: boolean): Promise<void> {
@@ -76,7 +76,7 @@ async function turn(value: boolean): Promise<void> {
     </SettingsGroup>
     <SettingsGroup
       title="Notify Me When"
-      description="Only while the conversation is not in front. A turn you stop notifies nothing."
+      description="Only while the conversation is not in front."
     >
       <SettingsRow label="A turn finishes">
         <Switch

@@ -34,7 +34,7 @@ defineProps<{
       <h3 class="min-w-0 flex-1 font-medium text-fg-emphasis">
         {{ title }}
       </h3>
-      <span v-if="count > 1" class="shrink-0 tabular-nums text-fg-subtle">1 of {{ count }}</span>
+      <span v-if="count > 1" class="shrink-0 tabular-nums text-fg-subtle">1 / {{ count }}</span>
     </header>
     <slot />
     <footer class="flex flex-wrap justify-end gap-2">

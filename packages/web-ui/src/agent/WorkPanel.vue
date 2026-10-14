@@ -255,7 +255,7 @@ function reorder(from: number, to: number): void {
         v-else
         class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-6 text-center text-[13px] text-fg-faint"
       >
-        <span>{{ beforeFirstMessage ? 'Files and changes appear after the first message.' : 'Nothing open' }}</span>
+        <span>{{ beforeFirstMessage ? 'No files or changes yet' : 'Nothing open' }}</span>
       </div>
       </template>
       </slot>

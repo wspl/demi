@@ -438,7 +438,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             :overlay-store="appOverlayStore"
             account-id="alex"
             email="alex@example.com"
-            email-unavailable="This server cannot send email, which a change needs for its code. Ask your administrator."
+            email-unavailable="This server can’t send email. Ask your administrator."
             :email-phase="{ kind: 'form', currentEmail: 'alex@example.com' }"
             :password-phase="{ kind: 'form' }"
             :sessions="noMailSessions"

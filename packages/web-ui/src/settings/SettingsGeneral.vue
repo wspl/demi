@@ -46,7 +46,7 @@ const sendOptions: readonly SegmentedOption<SendWhileRunning>[] = [
   { value: 'steer', label: SEND_WAY_LABELS.steer },
   { value: 'queue', label: SEND_WAY_LABELS.queue },
 ]
-const sendDescription = `Steer: the agent reads your message in the running turn. Queue: it waits for the turn to end. ${otherWayKeys()} sends one message the other way.`
+const sendDescription = `Steer sends to the running turn. Queue waits for it to end. ${otherWayKeys()} does the other.`
 </script>
 
 <template>
@@ -122,7 +122,7 @@ const sendDescription = `Steer: the agent reads your message in the running turn
       </SettingsRow>
       <SettingsRow
         label="Resume after a usage limit resets"
-        description="A turn that stops at a usage limit goes on by itself at the time the limit resets. Off, it waits for you to resume it."
+        description="Continues a turn that stopped at a usage limit when the limit resets."
       >
         <Switch v-model="resumeAtRetry" size="sm" aria-label="Resume after a usage limit resets" />
       </SettingsRow>

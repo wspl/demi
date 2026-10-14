@@ -176,12 +176,12 @@ const empty = computed(() => props.profiles.length === 0)
 <template>
   <SettingsPage
     title="Subagents"
-    description="Child agents an agent starts for parts of its work. A change reaches the next spawn of every conversation, an open one included."
+    description="Child agents that take on parts of a task."
   >
     <SettingsGroup>
       <SettingsRow
         label="Subagents"
-        description="Turned off, children already running go on."
+        description="Turning off doesn’t stop running subagents."
       >
         <Switch
           :model-value="enabled"
@@ -207,7 +207,7 @@ const empty = computed(() => props.profiles.length === 0)
           @commit="emit('setLimit', 'maxLive', $event)"
           @problem="limitProblems.maxLive = $event"
         >
-          <p>Agents may then start subagents without bound, which can make conversations unstable and spend many tokens.</p>
+          <p>This can make conversations unstable and use many tokens.</p>
         </LimitField>
       </SettingsRow>
       <SettingsRow
@@ -226,14 +226,14 @@ const empty = computed(() => props.profiles.length === 0)
           @commit="emit('setLimit', 'maxDepth', $event)"
           @problem="limitProblems.maxDepth = $event"
         >
-          <p>Subagents may then start subagents of their own without bound, which can make conversations unstable and spend many tokens.</p>
+          <p>This can make conversations unstable and use many tokens.</p>
         </LimitField>
       </SettingsRow>
     </SettingsGroup>
 
     <SettingsGroup
       title="Profiles"
-      description="An agent names one when it spawns; without one, a child inherits its parent."
+      description="Without a profile, a subagent inherits its parent’s settings."
     >
       <template #actions>
         <Button size="sm" @click="open(null)">New Profile…</Button>
@@ -273,7 +273,7 @@ const empty = computed(() => props.profiles.length === 0)
         v-if="empty"
         class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
       >
-        No profiles. Every child inherits its parent’s model and prompt.
+        No profiles
       </div>
     </SettingsGroup>
 
@@ -302,7 +302,7 @@ const empty = computed(() => props.profiles.length === 0)
       @close="deleteOpen = false"
       @confirm="remove"
     >
-      <p>Agents can no longer spawn with it. Children already spawned with it go on as they are.</p>
+      <p>Agents can no longer use it. Running subagents continue.</p>
     </ConfirmDialog>
   </SettingsPage>
 </template>

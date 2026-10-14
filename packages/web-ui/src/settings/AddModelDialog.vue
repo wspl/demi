@@ -91,7 +91,7 @@ function choose(choice: Choice): void {
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Add Model</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          Search models.dev, or choose Custom to add a model by the name you type.
+          Search models.dev or choose Custom.
         </p>
       </header>
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">

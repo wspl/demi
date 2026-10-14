@@ -228,7 +228,7 @@ fn refused(refusal: StartRefusal) -> ApiError {
         StartRefusal::MailFailed => ApiError::new(
             StatusCode::SERVICE_UNAVAILABLE,
             ErrorCode::MailFailed,
-            "Verification email could not be delivered; try again",
+            "Verification email could not be delivered. Try again.",
         ),
     }
 }

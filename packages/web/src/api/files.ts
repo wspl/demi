@@ -86,7 +86,7 @@ function failureSentence(error: ApiError, kind: FileBrowserFailure['kind']): Sen
     case 'cloud_resetting':
       return 'The Cloud is resetting.'
     case 'cloud_capacity':
-      return 'The Cloud cannot start now: the server has no room for it.'
+      return 'The server has no room to start the Cloud.'
     case 'cloud_crash_loop':
       return 'The Cloud stopped starting after repeated failures.'
     case 'cloud_unavailable':

@@ -151,7 +151,7 @@ async function addPasskey(): Promise<void> {
     v-else-if="step === 'password'"
     title="Enter Your Password"
     :icon="KeyRound"
-    message="Confirm it is you to add the passkey."
+    message="Confirm it’s you to add the passkey."
   >
     <form class="flex flex-col gap-2" @submit.prevent="continueButton?.press()">
       <TextInput
