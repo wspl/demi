@@ -56,6 +56,7 @@ use tracing::Instrument as _;
 
 use crate::conversation::claude_cli::ClaudeCli;
 use crate::conversation::pending::PendingWatches;
+use crate::conversation::retry_resume::RetryResumes;
 use crate::conversation::search::SearchIndexer;
 use crate::conversation::titles::Titles;
 use crate::conversation::{self, ConversationParts, ShardHosts};
@@ -144,6 +145,9 @@ pub struct Shard {
     credential_waits: demi_backend_permissions::Waits,
     /// What rearms the expiry of the user's credentials.
     credential_expiry: credentials::CredentialExpiry,
+    /// Each conversation's timer for the retry time of its root's failed
+    /// turn.
+    retry_resumes: RetryResumes,
 }
 
 impl Shard {
@@ -206,6 +210,7 @@ impl Shard {
             pending_watches: PendingWatches::default(),
             credential_waits: demi_backend_permissions::Waits::default(),
             credential_expiry: credentials::CredentialExpiry::default(),
+            retry_resumes: RetryResumes::default(),
         }
     }
 
@@ -228,6 +233,10 @@ impl Shard {
 
     pub(crate) fn pending_watches(&self) -> &PendingWatches {
         &self.pending_watches
+    }
+
+    pub(crate) fn retry_resumes(&self) -> &RetryResumes {
+        &self.retry_resumes
     }
 
     pub(crate) fn idle_watches(&self) -> &ConversationWatches {
@@ -329,6 +338,7 @@ impl Shard {
         self.sync_channels.wait().await;
         self.stop_idle_watches();
         self.pending_watches.clear();
+        self.retry_resumes.clear();
         self.cloud.stop();
         self.titles.abort_all();
         self.tree_openers.close();

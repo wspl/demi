@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ShownError } from '../infra/errors'
 import { provideEditSelection, type EditSelectionHandler } from './edit-selection'
+import { provideResumeAtRetry } from './resume-at-retry'
 import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, watch } from 'vue'
@@ -123,10 +124,16 @@ const props = withDefaults(defineProps<{
    * Connecting row of its own while the conversation's socket waits for it.
    */
   backendAway?: boolean
+  /**
+   * The user's preference to resume a turn by itself at the time its failure
+   * names, which such a failure's record offers; absent, it offers none.
+   */
+  resumeAtRetry?: boolean
 }>(), {
   // Vue reads an absent boolean prop as false, which would offer Open panel
   // where there is no panel; absent stays undefined.
   asideOpen: undefined,
+  resumeAtRetry: undefined,
 })
 /** The share of the session area's height the dock's windows keep; the host keeps it (`dock-window.ts`). */
 const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_WINDOW_SHARE.default })
@@ -134,6 +141,8 @@ const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_W
 const emit = defineEmits<{
   /** The dock windows' share settled: a drag ended, a key or a double-click applied. */
   dockWindowResizeEnd: [share: number]
+  /** A failure's record turned the preference to resume at its time on or off. */
+  'update:resumeAtRetry': [on: boolean]
   openAside: []
   rename: [title: string]
   /** The row menu's commands, from the phone's title sheet; Delete once the user confirmed it. */
@@ -183,6 +192,9 @@ const emit = defineEmits<{
   openInstruction: [entry: InstructionEntry]
 }>()
 provideEditSelection(() => props.selectEdit)
+provideResumeAtRetry(() => props.resumeAtRetry === undefined
+  ? undefined
+  : { on: props.resumeAtRetry, set: (on) => emit('update:resumeAtRetry', on) })
 provideBlockReader(() => props.readBlock)
 // A running call shows its command's output under it; once the call
 // returned, a command that still runs is the dock's (`runtime.md`

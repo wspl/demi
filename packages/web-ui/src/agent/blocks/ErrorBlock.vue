@@ -2,14 +2,21 @@
 import { computed } from 'vue'
 import type { ProviderErrorDiagnostics } from '@demicodes/protocol'
 import ErrorNotice from '@demicodes/web-ui/ui/ErrorNotice.vue'
+import Checkbox from '../../ui/Checkbox.vue'
+import { useClock } from '../../composables/useClock'
+import { useTranscript } from '../edit-selection'
 import { errorFacts, errorPresentation, errorReportText, prettyUpstream } from '../error-detail'
+import { resumeAtLabel, useResumeAtRetry } from '../resume-at-retry'
 
 /**
  * The transcript record of a turn that failed: what its source said on the
  * first line, the full text below only when there is more, when the provider
  * says it works again, the provider's response as it arrived, and Copy. It
  * says what happened and offers no action: recovery sits in the dock above
- * the composer (`product.md` § Recovering an unfinished turn).
+ * the composer (`product.md` § Recovering an unfinished turn). A failure of
+ * the conversation's own agent that names when it works again carries the
+ * one switch that belongs to it until that time: Resume at that time, the
+ * user's preference for every such turn.
  */
 const props = defineProps<{
   /** The upstream error as the provider reported it. */
@@ -29,6 +36,17 @@ const raw = computed(() =>
 const reportText = computed(() =>
   errorReportText(props.message, props.code, props.diagnostics),
 )
+
+const resumeAtRetry = useResumeAtRetry()
+const transcript = useTranscript()
+const now = useClock()
+const ownAgent = transcript === null || transcript.node === null
+/** The preference this record offers, until its time has passed. */
+const resume = computed(() => {
+  const preference = resumeAtRetry()
+  const label = resumeAtLabel(props.retryAt ?? null, ownAgent, preference !== undefined, now.value)
+  return preference && label ? { preference, label } : null
+})
 </script>
 
 <template>
@@ -38,5 +56,13 @@ const reportText = computed(() =>
     :facts="facts"
     :raw="raw"
     :copy-text="reportText"
-  />
+  >
+    <Checkbox
+      v-if="resume"
+      class="mt-0.5"
+      :label="resume.label"
+      :model-value="resume.preference.on"
+      @update:model-value="resume.preference.set($event)"
+    />
+  </ErrorNotice>
 </template>

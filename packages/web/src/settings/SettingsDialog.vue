@@ -420,6 +420,8 @@ function resetShortcuts(): void {
       "
       :send-while-running="preferences.sendWhileRunning"
       @update:send-while-running="preferences.update({ sendWhileRunning: $event })"
+      :resume-at-retry="preferences.resumeAtRetry"
+      @update:resume-at-retry="preferences.update({ resumeAtRetry: $event })"
     />
     <SettingsAccount
       v-else-if="section === 'account'"

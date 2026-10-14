@@ -44,12 +44,14 @@ use std::{
 use demi_agent_store::{
     Checkpoint, CheckpointUpdate, RunningCommand, SessionStore, StoreError, media::HeldMedia,
 };
-use demi_agent_transcript::{ForkEnd, IdSource, TranscriptLog, last_answer, last_failure};
+use demi_agent_transcript::{
+    ForkEnd, IdSource, TranscriptLog, last_answer, last_failure, turn_record,
+};
 use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
 use demi_provider_common::{Ahead, ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
-    AgentMessage, Block, BlockId, Clock, CommandId, ContextUsage, ModelSelection, NodeId, PendingCall,
+    AgentMessage, Block, BlockId, Clock, CommandId, ContextUsage, ErrorBlock, ModelSelection, NodeId, PendingCall,
     PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ShellToolView, ShellViewStatus,
     ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
@@ -530,7 +532,6 @@ impl AgentSession {
             inputs: InputQueue::default(),
             watched: Watched::default(),
             edits: Vec::new(),
-            held: false,
             one_request: false,
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
@@ -596,9 +597,6 @@ impl AgentSession {
             );
         }
         let interrupted = state.phase != SessionPhase::Idle;
-        // A root restored once from its interrupted turn saved its
-        // interruption record, which keeps the hold across a later restore.
-        let held = interrupted || transcript.ends_with_interruption();
         let parts = CoreParts {
             id,
             model: state.model,
@@ -609,7 +607,6 @@ impl AgentSession {
             inputs: InputQueue::restored(state.agent_inputs, state.reports),
             watched,
             edits: state.edits,
-            held,
             one_request: false,
             ids: deps.ids.clone(),
             clock: deps.clock.clone(),
@@ -749,6 +746,15 @@ impl AgentSession {
     pub fn last_failure(&self) -> Option<BlockId> {
         self.shared
             .read(|core| last_failure(core.transcript.blocks()).map(|error| error.id.clone()))
+    }
+
+    /// The record of the last turn when it failed: the `error` block that
+    /// left it unfinished (`failures-and-recovery.md` § The unfinished turn).
+    pub fn failed_turn(&self) -> Option<ErrorBlock> {
+        self.shared.read(|core| match turn_record(core.transcript.blocks()) {
+            Some(Block::Error(error)) => Some(error.clone()),
+            _ => None,
+        })
     }
 
     /// The block of the call `tool_use_id`, which a message its command

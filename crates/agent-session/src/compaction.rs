@@ -761,7 +761,6 @@ fn session_copy(s: &Rc<SessionShared>, window: Vec<Block>, media: HeldMedia) -> 
         inputs: InputQueue::default(),
         watched: Watched::default(),
         edits: Vec::new(),
-        held: false,
         one_request: true,
         ids: s.ids.clone(),
         clock: core.clock(),

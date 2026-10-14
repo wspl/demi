@@ -4,7 +4,7 @@
 //! cannot read.
 
 use demi_host_interface::Signal;
-use demi_provider_common::{ErrorCode, ProviderEvent, ProviderFailure};
+use demi_provider_common::{ErrorCode, Provider as _, ProviderEvent, ProviderFailure};
 use demi_shared_types::TokenUsage;
 use serde_json::{Value, json};
 
@@ -266,4 +266,71 @@ async fn a_call_the_vendor_refused_fails_the_run_once_with_the_code_of_its_http_
         let (events, _) = answer(refused(status, words)).await;
         assert_eq!(failure(&events).code, Some(code), "{status} {words}");
     }
+}
+
+/// A subscription's usage limit names no wait in the CLI's words, so its
+/// failure waits until the account's used-up window resets, as the quota the
+/// CLI's `rate_limit_event` lines report says (`failures-and-recovery.md` §
+/// Reading a failure): far beyond the retry ceiling, so the agent does not
+/// retry it. The stored record reads the same `retryAt`, and a refusal of the
+/// same status that is not the usage limit names none.
+#[tokio::test(flavor = "local")]
+async fn a_usage_limit_waits_until_the_used_up_window_of_the_accounts_quota_resets() {
+    let provider = provider().await;
+    let limited = |api_error: Option<&str>| {
+        let words = "You've hit your session limit · resets 10am (UTC)";
+        let mut result = json!({ "type": "result", "subtype": "success", "is_error": true,
+            "result": words, "api_error_status": 429 });
+        if let Some(api_error) = api_error {
+            result["api_error"] = json!(api_error);
+        }
+        vec![
+            // The windows as the refused call's headers report them: the
+            // session window used up, the weekly one not.
+            json!({ "type": "rate_limit_event", "rate_limit_info": {
+                "status": "rejected", "rateLimitType": "five_hour", "utilization": 1.0,
+                "resetsAt": 1790244000,
+                "unifiedWindows": {
+                    "five_hour": { "utilization": 1.0, "resetsAt": 1790244000 },
+                    "seven_day": { "utilization": 0.4, "resetsAt": 1790740800 },
+                },
+            } }),
+            json!({ "type": "assistant", "error": "rate_limit", "message": {
+                "model": "<synthetic>", "content": [{ "type": "text", "text": words }] } }),
+            result,
+        ]
+    };
+    let run = |lines: Vec<Value>| {
+        let provider = &provider;
+        async move {
+            let (placement, mut starts) = ScriptedPlacement::new();
+            let mut runtime = runtime_of(provider, &placement);
+            let (events, ()) = tokio::join!(
+                all_events(runtime.run(request_without_tools(vec![user("hi")]))),
+                async {
+                    let cli = starts.next().await;
+                    for line in lines {
+                        cli.say(line);
+                    }
+                }
+            );
+            events
+        }
+    };
+
+    let events = run(limited(Some("usage_limit_reached"))).await;
+    let failed = failure(&events);
+    assert_eq!(failed.code, Some(ErrorCode::RateLimit));
+    // NOW is 08:00; the session window resets at 10:00.
+    assert_eq!(failed.retry_after, Some(std::time::Duration::from_secs(2 * 3600)));
+    let diagnostics = failed.diagnostics.as_deref().unwrap();
+    let facts = provider.read_failure(diagnostics, NOW.parse().unwrap());
+    assert_eq!(facts.retry_at, Some("2026-09-24T10:00:00Z".parse().unwrap()));
+
+    // The same refusal without the CLI's usage-limit cause is a rate limit
+    // like any other, retried after the standard waits.
+    let events = run(limited(None)).await;
+    let failed = failure(&events);
+    assert_eq!(failed.code, Some(ErrorCode::RateLimit));
+    assert_eq!(failed.retry_after, None);
 }
