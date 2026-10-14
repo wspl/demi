@@ -111,6 +111,7 @@ impl Shard {
             saved_revision: record.saved_revision,
             panel_revision: record.panel_revision,
             hosts_revision: record.hosts_revision,
+            last_attachment: facts.last_attachment,
             plugin_revisions,
             permission_requests: record.permission_requests,
             unread_permission_requests: record.unread_permission_requests,

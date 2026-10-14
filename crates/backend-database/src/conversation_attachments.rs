@@ -11,7 +11,7 @@ use std::fmt;
 use std::str::FromStr;
 
 use demi_shared_types::{BlobRef, PixelSize};
-use rusqlite::{Connection, OptionalExtension, Row, params};
+use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
 use super::StorageError;
 use super::columns::decode;
@@ -64,28 +64,25 @@ pub struct AttachmentRow {
     pub blob: BlobRef,
 }
 
-/// Writes `rows` in one transaction; a number that has a row keeps it.
-pub fn insert(connection: &mut Connection, rows: &[AttachmentRow]) -> Result<(), StorageError> {
-    let transaction = connection.transaction()?;
-    {
-        let mut insert = transaction.prepare_cached(
-            "INSERT INTO attachments (number, name, media_type, size, width, height, blob)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-             ON CONFLICT (number) DO NOTHING",
-        )?;
-        for row in rows {
-            insert.execute(params![
-                column(row.number.0),
-                row.name,
-                row.media_type,
-                column(row.size),
-                row.pixels.map(|pixels| pixels.width),
-                row.pixels.map(|pixels| pixels.height),
-                row.blob.as_str(),
-            ])?;
-        }
+/// Writes `rows` in `transaction`, the caller's, which gives their numbers
+/// or copies them; a number that has a row keeps it.
+pub fn insert(transaction: &Transaction<'_>, rows: &[AttachmentRow]) -> Result<(), StorageError> {
+    let mut insert = transaction.prepare_cached(
+        "INSERT INTO attachments (number, name, media_type, size, width, height, blob)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+         ON CONFLICT (number) DO NOTHING",
+    )?;
+    for row in rows {
+        insert.execute(params![
+            column(row.number.0),
+            row.name,
+            row.media_type,
+            column(row.size),
+            row.pixels.map(|pixels| pixels.width),
+            row.pixels.map(|pixels| pixels.height),
+            row.blob.as_str(),
+        ])?;
     }
-    transaction.commit()?;
     Ok(())
 }
 
@@ -102,6 +99,16 @@ pub fn read(
         .query_row([column(number.0)], |row| Ok(decode_row(row)))
         .optional()?
         .transpose()
+}
+
+/// The number of the conversation's latest attachment, 0 before its first.
+/// Numbers are given and their rows written in one transaction, so every
+/// number up to it that has no row never will.
+pub fn last(connection: &Connection) -> Result<u64, StorageError> {
+    let number: i64 = connection
+        .prepare_cached("SELECT coalesce(max(number), 0) FROM attachments")?
+        .query_row([], |row| row.get(0))?;
+    decode(TABLE, "number", u64::try_from(number))
 }
 
 /// Every attachment of the conversation, by number, which a Fork copies into

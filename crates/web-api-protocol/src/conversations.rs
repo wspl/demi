@@ -209,6 +209,12 @@ pub struct ConversationSummary {
     /// read state), read the same way.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub hosts_revision: u64,
+    /// The number of the conversation's latest attachment, 3 for `a3`, 0
+    /// before its first (`commands.md` § Attachment commands): a message
+    /// that names a higher number names one still to come, which shows once
+    /// a summary raises this to it.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub last_attachment: u64,
     /// The revision of each plugin's conversation state, in registration
     /// order (`web-api.md` § Conversation state of plugins): a page reads a
     /// state only when its revision is newer than the one it holds, counted

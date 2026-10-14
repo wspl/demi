@@ -180,7 +180,12 @@ impl Shard {
             services
                 .conversations
                 .db(&destination)
-                .call(move |connection| conversation_attachments::insert(connection, &attachments))
+                .call(move |connection| {
+                    let transaction = connection.transaction()?;
+                    conversation_attachments::insert(&transaction, &attachments)?;
+                    transaction.commit()?;
+                    Ok(())
+                })
                 .await?;
         }
         // Its sequences go on from the source's, read after the seed and its
