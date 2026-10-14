@@ -27,6 +27,14 @@ pub struct DeviceRemoval {
     pub conversations: Vec<ConversationId>,
 }
 
+/// A device as a change left it, and the conversations whose execution
+/// context its new name changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangedDevice {
+    pub device: DeviceRecord,
+    pub conversations: Vec<ConversationId>,
+}
+
 /// A workspace that went with its device.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemovedWorkspace {
@@ -402,24 +410,52 @@ impl ControlService {
         .await
     }
 
-    /// Sets what `change` names of `device`, in one statement; none when
-    /// there is no such device.
+    /// Sets what `change` names of `device`; none when there is no such
+    /// device. A conversation that reaches the device, as an attached host
+    /// or as its primary one, calls it by its name, which its attached
+    /// hosts' names count, so a new name advances the execution context and
+    /// the attached hosts' revision of each; the answer names those
+    /// conversations.
     pub async fn change_device(
         &self,
         device: DeviceId,
         change: DeviceChange,
-    ) -> Result<Option<DeviceRecord>, StorageError> {
+    ) -> Result<Option<ChangedDevice>, StorageError> {
         self.call(move |connection, _| {
-            let mut statement = connection.prepare_cached(&format!(
-                "UPDATE devices SET name = coalesce(?1, name), route = coalesce(?2, route)
-                 WHERE id = ?3 RETURNING {DEVICE_COLUMNS}"
-            ))?;
-            statement
-                .query_row(params![change.name, change.route.map(|route| route.to_string()), device.as_str()], |row| {
-                    Ok(device_row(row))
-                })
-                .optional()?
-                .transpose()
+            let transaction = connection.transaction()?;
+            let Some(before) = one(&transaction, "id = ?1", device.as_str())? else {
+                return Ok(None);
+            };
+            let changed = transaction
+                .prepare_cached(&format!(
+                    "UPDATE devices SET name = coalesce(?1, name), route = coalesce(?2, route)
+                     WHERE id = ?3 RETURNING {DEVICE_COLUMNS}"
+                ))?
+                .query_row(
+                    params![change.name, change.route.map(|route| route.to_string()), device.as_str()],
+                    |row| Ok(device_row(row)),
+                )??;
+            let conversations = if changed.name == before.name {
+                Vec::new()
+            } else {
+                transaction
+                    .prepare_cached(
+                        "UPDATE conversations SET context_version = context_version + 1,
+                           hosts_revision = hosts_revision + 1
+                         WHERE id IN (SELECT conversation_id FROM conversation_hosts WHERE device_id = ?1)
+                           OR target_device_id = ?1
+                           OR target_workspace_id IN (SELECT id FROM workspaces WHERE device_id = ?1)
+                         RETURNING id",
+                    )?
+                    .query_map([device.as_str()], |row| row.get::<_, String>(0))?
+                    .map(|id| decode("conversations", "id", ConversationId::try_from(id?.as_str())))
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            transaction.commit()?;
+            Ok(Some(ChangedDevice {
+                device: changed,
+                conversations,
+            }))
         })
         .await
     }

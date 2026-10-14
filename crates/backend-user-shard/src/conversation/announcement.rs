@@ -16,7 +16,7 @@
 
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{
-    AttachedHostRecord, ConversationRecord, ExecutionTarget, TargetSwitch,
+    AttachedHost, ConversationRecord, ExecutionTarget, TargetSwitch,
 };
 use demi_agent_session::left_by_offline_host;
 use demi_backend_database::devices::{CLOUD_NAME, DeviceRecord};
@@ -107,25 +107,22 @@ impl Shard {
                 lines.push(CLOUD_RESET.to_owned());
             }
         }
-        let switch = control.last_switch(record.id.clone()).await?;
-        let announced = match &switch {
-            Some(switch) => {
+        // A node saw the switch when it read a block of the revision the
+        // switch made or a later one, whatever the block called its targets:
+        // their names may have changed since.
+        let announced = match control.last_switch(record.id.clone()).await? {
+            Some((switch, revision))
+                if !seen.iter().any(|text| read_revision(text).is_some_and(|read| read >= revision)) =>
+            {
                 let description = format!(
                     "Previous target: {}. Current target: {}. New shells start in {}.",
                     self.describe(&switch.from).await?,
                     self.describe(&switch.to).await?,
                     switch.to.path()
                 );
-                // The node's latest announcement of a switch tells whether
-                // it saw this one.
-                let observed = seen
-                    .iter()
-                    .rev()
-                    .find(|text| text.contains(SWITCHED))
-                    .is_some_and(|text| text.contains(&description));
-                (!observed).then(|| switch_lines(switch, description, &attached))
+                Some(switch_lines(&switch, description, &attached))
             }
-            None => None,
+            _ => None,
         };
         // A node that read an earlier revision learns that the attached
         // hosts changed since, when they did; a block a runner's report
@@ -306,7 +303,7 @@ impl Shard {
 
     /// The attached hosts as one line: each one's name, connection and
     /// directory, and how to reach them.
-    fn attached_hosts_line(&self, attached: &[AttachedHostRecord]) -> String {
+    fn attached_hosts_line(&self, attached: &[AttachedHost]) -> String {
         const LIST: &str = "`demi host list` shows every host this conversation can reach.";
         if attached.is_empty() {
             return format!("{ATTACHED}none. {LIST}");
@@ -334,21 +331,40 @@ impl Shard {
     }
 }
 
+/// The revision the context block `text` describes, which its first line
+/// names.
+fn read_revision(text: &str) -> Option<u64> {
+    let (_, rest) = text.split_once(CONTEXT)?;
+    rest.split_once(']')?.0.parse().ok()
+}
+
 /// How an attached host's entry in a block's line of attached hosts opens:
-/// its name, which stays while it is attached.
-fn entry(host: &AttachedHostRecord) -> String {
-    format!("\"{}\" (", host.name)
+/// its name and its device.
+fn entry(host: &AttachedHost) -> String {
+    format!("\"{}\" (host {}, ", host.name, host.device)
 }
 
 /// Whether the hosts `attached` now are others than the ones the block
-/// `seen`, a node's latest, listed: a host joined or left. A host's
-/// connection or directory is no change of the attached hosts.
-fn attached_changed(seen: &str, attached: &[AttachedHostRecord]) -> bool {
+/// `seen`, a node's latest, listed, in order: a host joined or left, or a
+/// name now stands for another device, as when a rename gives a device the
+/// name another went by. A host's connection or directory is no change of
+/// the attached hosts.
+fn attached_changed(seen: &str, attached: &[AttachedHost]) -> bool {
     let Some(listed) = seen.lines().find(|line| line.starts_with(ATTACHED)) else {
         return true;
     };
-    listed.matches(STARTS_IN).count() != attached.len()
-        || attached.iter().any(|host| !listed.contains(&entry(host)))
+    if listed.matches(STARTS_IN).count() != attached.len() {
+        return true;
+    }
+    let mut rest = listed;
+    for host in attached {
+        let entry = entry(host);
+        let Some(at) = rest.find(&entry) else {
+            return true;
+        };
+        rest = &rest[at + entry.len()..];
+    }
+    false
 }
 
 /// A switch's announcement: what changed, that no file moved, and how to
@@ -356,7 +372,7 @@ fn attached_changed(seen: &str, attached: &[AttachedHostRecord]) -> bool {
 fn switch_lines(
     switch: &TargetSwitch,
     description: String,
-    attached: &[AttachedHostRecord],
+    attached: &[AttachedHost],
 ) -> Vec<String> {
     let mut lines = vec![
         SWITCHED.to_owned(),
@@ -396,14 +412,248 @@ fn switch_lines(
 mod tests {
     use demi_backend_database::accounts::TokenHash;
     use demi_backend_database::control::testing;
-    use demi_backend_database::conversation_index::{ConversationStart, Creation};
+    use demi_backend_database::control::ControlService;
+    use demi_backend_database::conversation_index::{
+        AttachedHostRecord, ConversationStart, Creation, ExecutionTarget, RecordChange, SwitchEnds,
+        TargetSwitch,
+    };
+    use demi_backend_database::devices::DeviceChange;
     use demi_runner_protocol::wire::{OperatingSystem, RunnerPlatform};
-    use demi_web_api_protocol::ids::ConversationId;
+    use demi_web_api_protocol::conversations::ConversationTarget;
+    use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
+
+    use super::{ATTACHED_CHANGED, SWITCHED};
 
     use crate::services::Services;
     use crate::shard::{ShardPlacement, ShardPool};
 
     const ID: &str = "4f0c2a8e-1d3b-4e6f-9a7c-2b5d8e1f3a60";
+
+    /// A conversation of the master's on its device named `primary` with
+    /// devices named `others` attached in that order, and the pool that
+    /// serves it; answers the owner, the devices and the conversation.
+    async fn on_devices(
+        data: &std::path::Path,
+        primary: &str,
+        others: &[&str],
+    ) -> (ShardPool, UserId, Vec<DeviceId>, ConversationId, ControlService) {
+        let services = Services::start_for_tests(data).await;
+        let control = services.control.clone();
+        let owner = testing::master(&control).await.id;
+        let id = ConversationId::try_from(ID).unwrap();
+        control
+            .create_conversation(owner.clone(), id.clone(), ConversationStart::default())
+            .await
+            .unwrap();
+        let mut devices = Vec::new();
+        for (index, name) in std::iter::once(&primary).chain(others).enumerate() {
+            let device = control
+                .create_device(
+                    owner.clone(),
+                    (*name).into(),
+                    RunnerPlatform::Linux,
+                    TokenHash::of(&index.to_string()),
+                )
+                .await
+                .unwrap();
+            devices.push(device.id);
+        }
+        testing::execute(
+            &control,
+            "UPDATE conversations SET target_kind = 'device', target_device_id = ?2, target_path = '/a'
+             WHERE id = ?1",
+            vec![ID.to_owned(), devices[0].to_string()],
+        )
+        .await;
+        for device in &devices[1..] {
+            let attach = RecordChange::Attach(AttachedHostRecord {
+                device: device.clone(),
+                cwd: None,
+            });
+            control.change_conversation(id.clone(), attach).await.unwrap();
+        }
+        let pool = ShardPool::start(ShardPlacement::Inline, services).await.unwrap();
+        (pool, owner, devices, id, control)
+    }
+
+    /// The context block of a node whose transcript holds `seen`.
+    async fn block(pool: &ShardPool, owner: &UserId, id: &ConversationId, seen: &[String]) -> Option<String> {
+        let id = id.clone();
+        let seen = seen.to_vec();
+        pool.shards()
+            .of(owner)
+            .call(move |shard, _| async move {
+                let seen: Vec<&str> = seen.iter().map(String::as_str).collect();
+                shard.execution_context(&id, &seen).await
+            })
+            .await
+            .unwrap()
+            .unwrap()
+    }
+
+    async fn rename(control: &ControlService, device: &DeviceId, name: &str) {
+        let change = DeviceChange {
+            name: Some(name.into()),
+            route: None,
+        };
+        control.change_device(device.clone(), change).await.unwrap().unwrap();
+    }
+
+    /// A switch is announced to a node once, however its devices are named
+    /// afterwards: renaming either end gives the node a block that names
+    /// them anew and announces no second switch.
+    /// Planted defect this catches: a switch known by its description,
+    /// which names the devices, so a rename announced it again.
+    #[tokio::test(flavor = "local")]
+    async fn a_rename_after_an_announced_switch_announces_no_other_switch() {
+        let data = tempfile::tempdir().unwrap();
+        let (pool, owner, devices, id, control) = on_devices(data.path(), "alpha", &["beta"]).await;
+        let from = ConversationTarget::Device {
+            device_id: devices[0].clone(),
+            path: "/a".into(),
+        };
+        let to = ConversationTarget::Device {
+            device_id: devices[1].clone(),
+            path: "/b".into(),
+        };
+        let switch = TargetSwitch {
+            from: ExecutionTarget::Device {
+                device_id: devices[0].clone(),
+                path: "/a".into(),
+            },
+            to: ExecutionTarget::Device {
+                device_id: devices[1].clone(),
+                path: "/b".into(),
+            },
+        };
+        let ends = SwitchEnds {
+            departed: Some((devices[0].clone(), "/a".into())),
+            arriving: Some(devices[1].clone()),
+        };
+        control
+            .switch_conversation_target(id.clone(), from, to, switch, ends, None)
+            .await
+            .unwrap()
+            .expect("the switch wins");
+        let mut seen = vec![block(&pool, &owner, &id, &[]).await.unwrap()];
+        assert!(seen[0].contains(SWITCHED), "{}", seen[0]);
+
+        rename(&control, &devices[0], "alpha two").await;
+        let renamed = block(&pool, &owner, &id, &seen).await.expect("the context changed");
+        assert!(!renamed.contains(SWITCHED), "{renamed}");
+        assert!(renamed.contains(ATTACHED_CHANGED), "{renamed}");
+        assert!(renamed.contains("\"alpha two\""), "{renamed}");
+        seen.push(renamed);
+        rename(&control, &devices[1], "beta two").await;
+        let renamed = block(&pool, &owner, &id, &seen).await.expect("the context changed");
+        assert!(!renamed.contains(SWITCHED), "{renamed}");
+        assert!(!renamed.contains(ATTACHED_CHANGED), "{renamed}");
+        assert!(renamed.contains("Primary host: beta two"), "{renamed}");
+        seen.push(renamed);
+        assert_eq!(block(&pool, &owner, &id, &seen).await, None);
+    }
+
+    /// A Fork's first switch is announced in the Fork once, though the
+    /// transcript it copied holds blocks of the source's later revisions
+    /// than the Fork's own first ones would be.
+    /// Planted defect this catches: a Fork that starts at revision 0, whose
+    /// first switch, at revision 1, the copied block of revision 7 hid.
+    #[tokio::test(flavor = "local")]
+    async fn a_forks_first_switch_is_announced_once_past_the_blocks_it_copied() {
+        use demi_backend_database::forks::{ForkMetadata, ForkOperation};
+        use demi_shared_types::BlockId;
+
+        let data = tempfile::tempdir().unwrap();
+        let (pool, owner, devices, source, control) = on_devices(data.path(), "alpha", &[]).await;
+        let beta = control
+            .create_device(owner.clone(), "beta".into(), RunnerPlatform::Linux, TokenHash::of("beta"))
+            .await
+            .unwrap()
+            .id;
+        // The source's history holds a block of revision 7, which the Fork
+        // copies.
+        testing::execute(
+            &control,
+            "UPDATE conversations SET context_version = 7 WHERE id = ?1",
+            vec![ID.to_owned()],
+        )
+        .await;
+        let copied = block(&pool, &owner, &source, &[]).await.unwrap();
+        assert!(copied.starts_with("[Execution context 7]"), "{copied}");
+
+        let fork = ConversationId::try_from("9e8d7c6b-5a4f-4e3d-8c2b-1a0f9e8d7c6b").unwrap();
+        let on_alpha = ConversationTarget::Device {
+            device_id: devices[0].clone(),
+            path: "/a".into(),
+        };
+        let operation = ForkOperation {
+            id: fork.clone(),
+            owner: owner.clone(),
+            source: source.clone(),
+            block: BlockId::try_from("text-1").unwrap(),
+            metadata: ForkMetadata {
+                title: "Fork".into(),
+                target: on_alpha.clone(),
+                model: None,
+                created_at: "2026-10-14T08:00:00Z".parse().unwrap(),
+                attached_hosts: Vec::new(),
+                context_version: 7,
+            },
+        };
+        control.reserve_fork(operation).await.unwrap().expect("the id is free");
+        control.publish_fork(fork.clone()).await.unwrap();
+        let to = ConversationTarget::Device {
+            device_id: beta.clone(),
+            path: "/b".into(),
+        };
+        let switch = TargetSwitch {
+            from: ExecutionTarget::Device {
+                device_id: devices[0].clone(),
+                path: "/a".into(),
+            },
+            to: ExecutionTarget::Device {
+                device_id: beta.clone(),
+                path: "/b".into(),
+            },
+        };
+        let ends = SwitchEnds {
+            departed: Some((devices[0].clone(), "/a".into())),
+            arriving: Some(beta),
+        };
+        control
+            .switch_conversation_target(fork.clone(), on_alpha, to, switch, ends, None)
+            .await
+            .unwrap()
+            .expect("the switch wins");
+
+        let mut seen = vec![copied];
+        let announced = block(&pool, &owner, &fork, &seen).await.expect("the context changed");
+        assert!(announced.contains(SWITCHED), "{announced}");
+        seen.push(announced);
+        assert_eq!(block(&pool, &owner, &fork, &seen).await, None);
+    }
+
+    /// Two attached devices that trade names change the attached hosts:
+    /// `--host laptop` now reaches the other device, though the list of
+    /// names reads the same.
+    /// Planted defect this catches: hosts compared by their names alone.
+    #[tokio::test(flavor = "local")]
+    async fn two_attached_devices_that_trade_names_change_the_attached_hosts() {
+        let data = tempfile::tempdir().unwrap();
+        let (pool, owner, devices, id, control) =
+            on_devices(data.path(), "desk", &["laptop", "laptop"]).await;
+        let first = block(&pool, &owner, &id, &[]).await.unwrap();
+        assert!(first.contains(&format!("\"laptop\" (host {}, ", devices[1])), "{first}");
+        assert!(first.contains(&format!("\"laptop-2\" (host {}, ", devices[2])), "{first}");
+
+        // The first attached takes the name the second went by, which goes
+        // by the first's.
+        rename(&control, &devices[1], "laptop-2").await;
+        let traded = block(&pool, &owner, &id, &[first]).await.expect("the context changed");
+        assert!(traded.contains(ATTACHED_CHANGED), "{traded}");
+        assert!(traded.contains(&format!("\"laptop-2\" (host {}, ", devices[1])), "{traded}");
+        assert!(traded.contains(&format!("\"laptop\" (host {}, ", devices[2])), "{traded}");
+    }
 
     /// A model on Windows that is not told what the shell is guesses Git
     /// Bash and writes `/c/…` paths, which the runner's utilities refuse.
