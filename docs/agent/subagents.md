@@ -538,8 +538,8 @@ The model options are `--model <id>`, a model `demi providers list` lists, with
 `--provider <entry>`, the entry's name or id, needed only when more than one
 entry offers that id; `--effort <effort|off>` and `--tier <tier|default>`;
 `--context <full|500K|300K|200K|default>`, where `default` follows the user's
-limit, refused without a model of the profile's own or for a limit the model
-does not offer; and, on `edit`, `--model parent`, which makes the profile inherit the
+limit and is always accepted, and any other choice is refused without a model
+of the profile's own or when the model does not offer it; and, on `edit`, `--model parent`, which makes the profile inherit the
 parent's model again. A profile created without `--model` inherits it. The
 checks are the settings page's, with the same words: a name that is taken or
 malformed, `default`, an effort or tier the model does not offer, a model the
@@ -575,9 +575,9 @@ instructions: |
 profiles:
   - id: explore
     description: Use for finding code and call sites; it reports and changes nothing.
-    model: claude-haiku-4-5
+    model: claude-sonnet-4-6
     effort: low
-    context: 200K
+    context: 300K
     instructions: |
       Read and report where things are. Never change a file.
   - id: reviewer
