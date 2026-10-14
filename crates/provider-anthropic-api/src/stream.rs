@@ -51,9 +51,11 @@ pub(crate) fn run(
                 return;
             }
         };
-        let send = http
-            .post(shared.messages_url.clone())
-            .header("x-api-key", shared.api_key.clone())
+        let mut send = http.post(shared.messages_url.clone());
+        if let Some(key) = &shared.api_key {
+            send = send.header("x-api-key", key.clone());
+        }
+        let send = send
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header(CONTENT_TYPE, "application/json")
             .header(ACCEPT, "text/event-stream")

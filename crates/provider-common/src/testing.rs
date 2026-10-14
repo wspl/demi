@@ -19,7 +19,7 @@ use axum::{
     extract::{Request, State},
     response::Response,
 };
-use demi_shared_types::{AuthState, Clock, Model, RuntimeState, Timestamp, TokenUsage};
+use demi_shared_types::{Clock, Model, Timestamp, TokenUsage};
 use futures_util::{
     Stream, StreamExt,
     future::LocalBoxFuture,
@@ -30,7 +30,7 @@ use tokio::sync::{Notify, watch};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
-    Ahead, InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, ProviderFailure,
+    Ahead, InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure,
     ProviderRun, ProviderRuntime, RequestLimits, ToolCall, ToolDefinition, ToolResultKinds,
     UserPart,
 };
@@ -677,43 +677,6 @@ impl MockVendor {
             .lock()
             .expect("the vendor script is not poisoned")
     }
-}
-
-/// Asserts what the backend's catalog reads of an API-key entry's provider
-/// (`models.md` § Directories): the entry starts no process, is
-/// authenticated by its key and ready, and its models are the directory
-/// built into the provider, never fetched and not stale, with its default
-/// among them. Reading none of it sends `vendor` a request.
-pub async fn assert_built_in_catalog(provider: &dyn Provider, vendor: &MockVendor) {
-    assert!(
-        !provider.capabilities().process_host,
-        "an API-key entry starts no process"
-    );
-    let auth = provider.auth_status().await;
-    assert!(matches!(auth, AuthState::Authenticated { .. }), "{auth:?}");
-    let runtime = provider.runtime_state();
-    assert!(matches!(runtime, RuntimeState::Ready { .. }), "{runtime:?}");
-    let list = provider
-        .list_models()
-        .await
-        .expect("a built-in directory is always read");
-    assert_eq!(
-        (list.source_fetched_at, list.stale),
-        (Timestamp::UNIX_EPOCH, false),
-        "a built-in directory is never fetched"
-    );
-    let default = list
-        .default_model_id
-        .as_deref()
-        .expect("the directory names its default");
-    assert!(
-        list.models.iter().any(|model| model.id == default),
-        "the default {default} is one of the directory's models"
-    );
-    assert!(
-        vendor.requests().is_empty(),
-        "reading the status and the models makes no request"
-    );
 }
 
 async fn answer(State(state): State<Arc<VendorState>>, request: Request) -> Response {

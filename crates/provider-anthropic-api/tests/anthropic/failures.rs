@@ -93,7 +93,7 @@ async fn a_request_without_an_answer_fails_as_overloaded() {
     let address = listener.local_addr().unwrap();
     drop(listener);
     let config = AnthropicConfig {
-        api_key: Secret::try_from("sk-ant-test".to_owned()).unwrap(),
+        api_key: Some(Secret::try_from("sk-ant-test".to_owned()).unwrap()),
         base_url: Some(format!("http://{address}/v1").parse().unwrap()),
         policy: VendorPolicy::default(),
     };

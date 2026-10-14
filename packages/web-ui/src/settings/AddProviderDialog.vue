@@ -9,22 +9,17 @@ import HighlightText from '@demicodes/web-ui/ui/HighlightText.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import type { TitleText } from '../ui/ui-text'
-import {
-  COMPATIBLE_WIRE_APIS,
-  WIRE_API_LABELS,
-  type SettingsVendor,
-  type SettingsWireApi,
-} from './types'
+import { WIRE_API_LABELS, type SettingsVendor } from './types'
 
 /**
  * Adding an API-key provider is one pick of two kinds (`product.md` § Models
- * & providers). A compatible API, for any proxy or server that speaks one of
- * the protocols, comes first and asks the protocol here; its endpoint and key
- * follow in a dialog of their own. A vendor, Anthropic, OpenAI, Google or one
- * models.dev lists, brings its endpoint and catalog, and is then configured on
- * the provider's own page. Subscriptions are not added: every supported one is
- * always listed.
+ * & providers), and the pick creates the entry at once, with no question
+ * before it (`models.md` § A provider is in the list from the start). A
+ * compatible API, for any proxy or server that speaks one of the protocols,
+ * comes first; its protocol, endpoint and key are set on its page. A vendor,
+ * Anthropic, OpenAI, Google or one models.dev lists, brings its endpoint and
+ * catalog, and its page asks for the key. Subscriptions are not added: every
+ * supported one is always listed.
  */
 const props = defineProps<{
   isOpen: boolean
@@ -37,25 +32,16 @@ const emit = defineEmits<{
   retry: []
   close: []
   add: [vendor: SettingsVendor]
-  /** A compatible API speaking this protocol: the host asks its endpoint next. */
-  addCompatible: [wireApi: SettingsWireApi]
+  /** A compatible API, created at once as Anthropic Messages. */
+  addCompatible: []
 }>()
 
 const query = ref('')
 
 const q = computed(() => query.value.trim().toLowerCase())
-const protocols = COMPATIBLE_WIRE_APIS.map(
-  (value): { value: SettingsWireApi; label: TitleText } => ({
-    value,
-    label: WIRE_API_LABELS[value],
-  }),
-)
-// A search for "compatible" finds the group, as a search for a vendor finds the vendor.
-const protocolResults = computed(() =>
-  q.value && !'compatible api'.includes(q.value)
-    ? protocols.filter((p) => p.label.toLowerCase().includes(q.value))
-    : protocols,
-)
+/** The one row a search for "compatible" or a protocol's name finds, as a search for a vendor finds the vendor. */
+const COMPATIBLE_WORDS = ['compatible api', 'proxy', ...Object.values(WIRE_API_LABELS).map((label) => label.toLowerCase())]
+const compatibleShown = computed(() => !q.value || COMPATIBLE_WORDS.some((words) => words.includes(q.value)))
 const ordered = computed(() => vendorsInListOrder(props.vendors))
 const results = computed(() =>
   q.value
@@ -76,29 +62,23 @@ const results = computed(() =>
     label="Add Provider"
     @close="emit('close')"
   >
-    <div v-if="protocolResults.length">
-      <div
-        class="select-none px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
-      >
-        Compatible API
-      </div>
+    <div v-if="compatibleShown">
       <div
         class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float"
       >
         <button
-          v-for="p in protocolResults"
-          :key="p.value"
           type="button"
           class="flex h-10 w-full cursor-default select-none items-center gap-3 px-3 text-left hover:bg-hover"
-          @click="emit('addCompatible', p.value)"
+          @click="emit('addCompatible')"
         >
           <span
             class="inline-flex size-6 items-center justify-center rounded-md bg-overlay/8 text-fg-muted"
             ><Terminal :size="ICON_PX.in24"
           /></span>
           <span class="min-w-0 flex-1 truncate text-chrome text-fg"
-            ><HighlightText :text="p.label" :query="query"
+            ><HighlightText text="Compatible API" :query="query"
           /></span>
+          <span class="shrink-0 truncate text-[12px] text-fg-subtle">A proxy or your own server</span>
         </button>
       </div>
     </div>
@@ -137,7 +117,7 @@ const results = computed(() =>
         </div>
       </div>
       <div
-        v-if="!protocolResults.length && !results.length"
+        v-if="!compatibleShown && !results.length"
         class="select-none py-6 text-center text-[13px] text-fg-subtle"
       >
         Nothing matches.

@@ -3,7 +3,6 @@
 //! its cancellation and what it says about itself. No test calls the real
 //! vendor.
 
-mod provider;
 mod request;
 mod stream;
 
@@ -20,7 +19,7 @@ pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";
 
 pub(crate) fn provider_at(vendor: &MockVendor, base: &str) -> GoogleProvider {
     let config = GoogleConfig {
-        api_key: Secret::try_from("google-key".to_owned()).unwrap(),
+        api_key: Some(Secret::try_from("google-key".to_owned()).unwrap()),
         base_url: Some(vendor.url(base).parse().unwrap()),
     };
     GoogleProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))

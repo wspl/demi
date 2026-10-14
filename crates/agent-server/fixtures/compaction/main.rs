@@ -245,7 +245,7 @@ fn deepseek() -> Result<Rc<OpenAiProvider>, String> {
         reqwest::Url::parse(&base).map_err(|error| format!("DEEPSEEK_BASE_URL: {error}"))?,
     );
     let config = OpenAiConfig {
-        api_key,
+        api_key: Some(api_key),
         base_url,
         wire: WireApi::ChatCompletions,
         policy: VendorPolicy {

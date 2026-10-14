@@ -8,7 +8,9 @@ use std::sync::Arc;
 
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
-use demi_backend_database::providers::{CredentialRow, CredentialWrite, NewProvider, ProviderRow};
+use demi_backend_database::providers::{
+    CredentialRow, CredentialWrite, NewProvider, ProviderRow, ResealConfigs,
+};
 use demi_backend_page_sync::{Part, SyncRegistry};
 use demi_provider_common::Secret;
 use demi_provider_common::credentials::{
@@ -101,7 +103,9 @@ pub struct ApiKeyConfig {
     )]
     #[garde(skip)]
     pub wire_api: Option<WireApi>,
-    /// The models.dev vendor the entry was added from.
+    /// The vendor of a vendor entry: one models.dev lists, or its family's
+    /// own, whose models.dev id is the family's name (`anthropic`,
+    /// `openai`, `google`). A compatible entry names none.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -120,15 +124,34 @@ pub struct ApiKeyConfig {
 
 impl ApiKeyConfig {
     /// Whether the entry is a **compatible entry** (`providers.md` §
-    /// Endpoints): an endpoint the user gave, on no models.dev vendor. A
-    /// vendor entry, of the family's own vendor or of a models.dev vendor,
-    /// uses its vendor's endpoint and lists its vendor's catalog; a
-    /// compatible entry lists only the models the user configures. An entry
-    /// added from a models.dev vendor keeps a copy of the vendor's endpoint
-    /// and stays a vendor entry.
+    /// Endpoints): it names no vendor. A vendor entry uses its vendor's
+    /// endpoint and lists its vendor's catalog; a compatible entry has the
+    /// endpoint the user gives, none until then, and lists only the models
+    /// the user configures.
     pub fn is_compatible(&self) -> bool {
-        self.vendor_id.is_none() && self.base_url.is_some()
+        self.vendor_id.is_none()
     }
+}
+
+/// The format of the sealed configuration document this release writes
+/// and reads, which the control schema names. Format 1, the bare
+/// configuration that 0.1.21 and the builds before this one sealed, told a
+/// compatible entry by its endpoint rather than by its vendor; the control
+/// database's migration re-encodes it ([`ConfigReseal`]).
+const CONFIG_FORMAT: u32 = 2;
+
+/// The sealed document: the configuration under its format.
+#[derive(Serialize)]
+struct SealingConfig<'a> {
+    format: u32,
+    config: &'a ApiKeyConfig,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct SealedConfig {
+    format: u32,
+    config: ApiKeyConfig,
 }
 
 impl ProviderEntry {
@@ -140,15 +163,23 @@ impl ProviderEntry {
     }
 
     /// What the entry lacks to infer, in the order the page lists it
-    /// (`models.md` § A provider is in the list from the start): an API-key
-    /// entry's key, a model when its catalog is its configured list and the
-    /// list is empty (a compatible entry's always is), and a subscription's
-    /// account. An address is never missing: an entry
-    /// without one uses its family's default. Empty for a complete entry.
+    /// (`models.md` § A provider is in the list from the start): a vendor
+    /// entry's key, a compatible entry's endpoint (its key is optional), a
+    /// model when its catalog is its configured list and the list is empty
+    /// (a compatible entry's always is), and a subscription's account. A
+    /// vendor entry's address is never missing: it uses its vendor's. Empty
+    /// for a complete entry.
     pub fn missing(&self) -> Vec<SetupPart> {
         match &self.credential {
             EntryCredential::ApiKey(config) => [
-                (config.api_key.is_none(), SetupPart::ApiKey),
+                (
+                    !config.is_compatible() && config.api_key.is_none(),
+                    SetupPart::ApiKey,
+                ),
+                (
+                    config.is_compatible() && config.base_url.is_none(),
+                    SetupPart::Endpoint,
+                ),
                 (
                     config
                         .models
@@ -176,8 +207,8 @@ impl ProviderEntry {
     }
 
     /// The entry as the web app sees it: never its key. `default_endpoint` is
-    /// its family's default base URL, which an API-key entry that stores no
-    /// endpoint goes to.
+    /// its family's default base URL, which a vendor entry that stores no
+    /// endpoint goes to; a compatible entry without one goes nowhere yet.
     pub fn dto(&self, default_endpoint: Option<EndpointUrl>) -> ProviderDto {
         let config = match &self.credential {
             EntryCredential::ApiKey(config) => Some(config),
@@ -191,7 +222,10 @@ impl ProviderEntry {
             wire_api: config.and_then(|config| config.wire_api),
             vendor_id: config.and_then(|config| config.vendor_id.clone()),
             compatible: config.is_some_and(ApiKeyConfig::is_compatible),
-            endpoint: config.and_then(|config| config.base_url.clone().or(default_endpoint)),
+            endpoint: config.and_then(|config| match config.is_compatible() {
+                true => config.base_url.clone(),
+                false => config.base_url.clone().or(default_endpoint),
+            }),
             has_api_key: config.is_some_and(|config| config.api_key.is_some()),
             models: config.and_then(|config| config.models.clone()),
             created_at: self.created_at,
@@ -465,16 +499,21 @@ impl Vault {
         row.map(|row| self.decode(row)).transpose()
     }
 
-    /// Replaces the entry's label or configuration; `None` for an entry that
-    /// no longer exists.
+    /// Replaces the entry's label, family or configuration; `None` for an
+    /// entry that no longer exists.
     pub async fn update(
         &self,
         id: ProviderId,
         label: Option<String>,
+        family: Option<String>,
         config: Option<ApiKeyConfig>,
     ) -> Result<Option<ProviderEntry>, StorageError> {
         let sealed = config.map(|config| self.seal_config(&id, &config));
-        let row = self.0.control.update_provider(id, label, sealed).await?;
+        let row = self
+            .0
+            .control
+            .update_provider(id, label, family, sealed)
+            .await?;
         if let Some(row) = &row {
             self.mark_changed(&row.owner);
         }
@@ -518,10 +557,7 @@ impl Vault {
     }
 
     fn seal_config(&self, id: &ProviderId, config: &ApiKeyConfig) -> Vec<u8> {
-        // A configuration is strings, numbers and lists, which always
-        // serialize.
-        let document = serde_json::to_vec(config).expect("an entry's configuration serializes");
-        self.0.key.seal(seal::Row::Config(id), &document)
+        seal_config(&self.0.key, id, config)
     }
 
     fn decode(&self, row: ProviderRow) -> Result<ProviderEntry, StorageError> {
@@ -549,24 +585,82 @@ impl Vault {
         })
     }
 
-    /// The configuration sealed for entry `id`: it must open, be UTF-8 JSON
-    /// of the configuration's shape, and keep its rules. A failure names the
-    /// field and the kind of fault, never a value, which may be the key.
+    /// The configuration sealed for entry `id`: it must open and hold a
+    /// configuration of this release's format that keeps its rules
+    /// ([`checked`]). A failure names the field and the kind of fault, never
+    /// a value, which may be the key.
     fn open_config(&self, id: &ProviderId, sealed: &[u8]) -> Result<ApiKeyConfig, StorageError> {
-        let document = self
-            .0
-            .key
-            .open(seal::Row::Config(id), sealed)
-            .map_err(|error| corrupt_config(error.to_string()))?;
-        let text = String::from_utf8(document)
-            .map_err(|_| corrupt_config("the configuration is not UTF-8"))?;
-        let config: ApiKeyConfig =
+        let text = open_text(&self.0.key, id, sealed).map_err(corrupt_config)?;
+        let sealed: SealedConfig =
             decode_secret(&text).map_err(|error| corrupt_config(error.to_string()))?;
-        config
-            .validate()
-            .map_err(|report| corrupt_config(report.to_string()))?;
-        Ok(config)
+        if sealed.format != CONFIG_FORMAT {
+            return Err(corrupt_config(format!(
+                "the configuration's format {} is not {CONFIG_FORMAT}",
+                sealed.format
+            )));
+        }
+        checked(sealed.config).map_err(corrupt_config)
     }
+}
+
+/// The vault's side of the control database's migration to provider
+/// configuration format 2 (`storage.md` § Schemas and migrations): it opens
+/// each configuration of format 1 under the vault's key, decodes and checks
+/// it as any configuration is, and seals it again in format 2. One that
+/// names neither a vendor nor an endpoint was its family's own vendor's
+/// entry and now names that vendor; one with an endpoint and no vendor stays
+/// a compatible entry.
+pub struct ConfigReseal(VaultKey);
+
+impl ConfigReseal {
+    pub fn new(key: VaultKey) -> Self {
+        Self(key)
+    }
+}
+
+impl ResealConfigs for ConfigReseal {
+    fn provider_config(&self, id: &ProviderId, family: &str, sealed: &[u8]) -> Result<Vec<u8>, String> {
+        let text = open_text(&self.0, id, sealed)?;
+        let config = decode_secret::<ApiKeyConfig>(&text).map_err(|error| error.to_string())?;
+        let mut config = checked(config)?;
+        if config.vendor_id.is_none() && config.base_url.is_none() {
+            config.vendor_id = Some(family.to_owned());
+        }
+        Ok(seal_config(&self.0, id, &config))
+    }
+}
+
+/// Entry `id`'s configuration sealed under `key` in this release's format.
+fn seal_config(key: &VaultKey, id: &ProviderId, config: &ApiKeyConfig) -> Vec<u8> {
+    // A configuration is strings, numbers and lists, which always serialize.
+    let document = serde_json::to_vec(&SealingConfig {
+        format: CONFIG_FORMAT,
+        config,
+    })
+    .expect("an entry's configuration serializes");
+    key.seal(seal::Row::Config(id), &document)
+}
+
+/// The text of the configuration sealed for entry `id` under `key`: it must
+/// open and be UTF-8.
+fn open_text(key: &VaultKey, id: &ProviderId, sealed: &[u8]) -> Result<String, String> {
+    let document = key
+        .open(seal::Row::Config(id), sealed)
+        .map_err(|error| error.to_string())?;
+    String::from_utf8(document).map_err(|_| "the configuration is not UTF-8".to_owned())
+}
+
+/// `config` when it keeps its rules, its model ids distinct among them.
+fn checked(config: ApiKeyConfig) -> Result<ApiKeyConfig, String> {
+    config.validate().map_err(|report| report.to_string())?;
+    if config
+        .models
+        .as_ref()
+        .is_some_and(|models| models.repeated_id().is_some())
+    {
+        return Err("a model id appears twice".to_owned());
+    }
+    Ok(config)
 }
 
 fn corrupt_config(reason: impl Into<String>) -> StorageError {
@@ -580,4 +674,107 @@ fn corrupt_config(reason: impl Into<String>) -> StorageError {
 /// A new entry's id.
 fn new_id() -> ProviderId {
     ProviderId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty")
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use demi_backend_database::control::{ControlService, testing};
+    use demi_backend_database::providers::NoSealedConfigs;
+    use demi_backend_database::{DatabaseKind, SchemaFit, schema_fit, schema_testing};
+    use demi_web_api_protocol::settings::InstanceMode;
+
+    use super::*;
+    use crate::vault::seal::VaultKey;
+
+    /// A control database of the schema before provider configuration
+    /// format 2, its entries sealed as 0.1.21 sealed them, upgrades as the
+    /// backend opens it: the family's own vendor's entry names its vendor,
+    /// and an endpoint without a vendor stays a compatible entry. One whose
+    /// configuration does not open under the vault's key stops the open
+    /// and still records the earlier schema.
+    /// Planted defect this catches: format 1 decoded as format 2, or a
+    /// family's own entry left naming no vendor, which reads as a
+    /// compatible entry without an endpoint. Two small databases, a few
+    /// milliseconds.
+    #[tokio::test]
+    async fn a_released_database_names_its_vendors_as_it_upgrades() {
+        let key = [3; 32];
+        let released = |unreadable: bool| async move {
+            let data = tempfile::tempdir().unwrap();
+            let path = data.path().join("control.sqlite");
+            let clock = Arc::new(demi_shared_types::SystemClock);
+            let control = ControlService::open(&path, clock, Arc::new(NoSealedConfigs))
+                .await
+                .unwrap();
+            let master = testing::master(&control).await;
+            let entry = |family: &str, sealed_with: [u8; 32], document: serde_json::Value| {
+                let id = new_id();
+                let sealed = VaultKey::new(sealed_with)
+                    .seal(seal::Row::Config(&id), document.to_string().as_bytes());
+                NewProvider {
+                    id,
+                    owner: master.id.clone(),
+                    family: family.into(),
+                    kind: CredentialKind::ApiKey,
+                    label: family.into(),
+                    config: Some(sealed),
+                    active: None,
+                }
+            };
+            let own = entry("anthropic", key, serde_json::json!({ "apiKey": "sk-1" }));
+            let proxy = entry(
+                "openai",
+                key,
+                serde_json::json!({ "apiKey": "sk-2", "baseUrl": "https://proxy.example/v1", "wireApi": "chat-completions" }),
+            );
+            let mut entries = vec![own.clone(), proxy.clone()];
+            if unreadable {
+                entries.push(entry("google", [4; 32], serde_json::json!({ "apiKey": "sk-3" })));
+            }
+            for entry in entries {
+                control.insert_provider(entry, Vec::new()).await.unwrap();
+            }
+            control.close().await.unwrap();
+            schema_testing::store_as_shipped(&path, DatabaseKind::Control);
+            (data, path, own.id, proxy.id)
+        };
+        let clock = Arc::new(demi_shared_types::SystemClock);
+
+        let (_data, path, own, proxy) = released(false).await;
+        let control = ControlService::open(&path, clock.clone(), Arc::new(ConfigReseal::new(VaultKey::new(key))))
+            .await
+            .unwrap();
+        let vault = Vault::new(
+            control.clone(),
+            VaultKey::new(key),
+            InstanceMode::Isolated,
+            demi_backend_page_sync::SyncRegistry::default(),
+        );
+        let config = |entry: ProviderEntry| match entry.credential {
+            EntryCredential::ApiKey(config) => config,
+            EntryCredential::Subscription { .. } => panic!("an API-key entry"),
+        };
+        let own_config = config(vault.entry(own).await.unwrap().unwrap());
+        assert_eq!(
+            (own_config.vendor_id.as_deref(), own_config.is_compatible(), own_config.base_url),
+            (Some("anthropic"), false, None)
+        );
+        let proxy_config = config(vault.entry(proxy).await.unwrap().unwrap());
+        assert_eq!(
+            (
+                proxy_config.is_compatible(),
+                proxy_config.base_url.map(|url| url.as_str().to_owned()),
+                proxy_config.wire_api,
+            ),
+            (true, Some("https://proxy.example/v1".to_owned()), Some(WireApi::ChatCompletions))
+        );
+        control.close().await.unwrap();
+
+        let (_data, path, _, _) = released(true).await;
+        let refused = ControlService::open(&path, clock, Arc::new(ConfigReseal::new(VaultKey::new(key)))).await;
+        assert!(matches!(refused, Err(StorageError::Migration { .. })), "{:?}", refused.err());
+        assert!(matches!(schema_fit(&path, DatabaseKind::Control), Ok(SchemaFit::Migrates)));
+    }
 }

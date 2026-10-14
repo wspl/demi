@@ -71,9 +71,10 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
         ProviderRefusal::LoginFamily(_)
         | ProviderRefusal::SubscriptionOnly
         | ProviderRefusal::OwnModels(_) => (StatusCode::BAD_REQUEST, ErrorCode::SubscriptionOnly),
-        ProviderRefusal::VendorEndpoint(_) | ProviderRefusal::CompatibleEndpoint(_) => {
+        ProviderRefusal::VendorEndpoint(_) | ProviderRefusal::VendorProtocol(_) => {
             (StatusCode::BAD_REQUEST, ErrorCode::EndpointKind)
         }
+        ProviderRefusal::DuplicateModel(_) => (StatusCode::BAD_REQUEST, ErrorCode::DuplicateModel),
         ProviderRefusal::CatalogUnavailable(_) => {
             (StatusCode::SERVICE_UNAVAILABLE, ErrorCode::CatalogUnavailable)
         }
@@ -131,7 +132,7 @@ fn catalog_unavailable(error: impl ToString) -> ApiError {
     )
 }
 
-/// Creates an API-key entry, from the vendor list or for a custom endpoint;
+/// Creates an API-key entry, a vendor's or a compatible API;
 /// what the body leaves out leaves it incomplete.
 pub(super) async fn create(
     State(services): State<Arc<Services>>,

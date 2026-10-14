@@ -1,20 +1,19 @@
 //! The Anthropic Messages API provider (`crates-and-packages.md` § Vendor
-//! provider crates): an `anthropic` entry authenticated by an API key, its
-//! request and stream mapping, its built-in model directory and the standard
-//! reading of its failure records.
+//! provider crates): an `anthropic` entry, which sends its API key when it
+//! has one, its request and stream mapping and the standard reading of its
+//! failure records.
 
-mod models;
 mod request;
 mod stream;
 
 use std::sync::Arc;
 
 use demi_provider_common::{
-    Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
+    Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
 };
 use demi_shared_types::{
-    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts,
     RuntimeState, Timestamp,
 };
 use futures_util::{
@@ -26,7 +25,8 @@ use reqwest::{Url, header::HeaderValue};
 /// The configuration of an `anthropic` entry, as the backend decoded it.
 #[derive(Debug, Clone)]
 pub struct AnthropicConfig {
-    pub api_key: Secret,
+    /// Sent when set: a compatible server of the user's own may take none.
+    pub api_key: Option<Secret>,
     /// The Messages API base with its version prefix, such as
     /// `https://api.anthropic.com/v1`; `None` for that default. The provider
     /// appends `/messages` unless the URL already ends with it.
@@ -46,7 +46,7 @@ pub struct AnthropicProvider {
 
 /// What the provider and all its runtimes share.
 struct Shared {
-    api_key: HeaderValue,
+    api_key: Option<HeaderValue>,
     messages_url: Url,
     policy: VendorPolicy,
     clock: Arc<dyn Clock>,
@@ -59,7 +59,7 @@ impl AnthropicProvider {
         });
         Self {
             shared: Arc::new(Shared {
-                api_key: config.api_key.header_value(),
+                api_key: config.api_key.as_ref().map(Secret::header_value),
                 messages_url: endpoint_url(&base, "/messages"),
                 policy: config.policy,
                 clock,
@@ -73,8 +73,8 @@ impl Provider for AnthropicProvider {
         Capabilities::default()
     }
 
-    /// An entry always holds a key; whether the vendor accepts it shows on
-    /// the first request.
+    /// Whether the vendor accepts the entry's key, or its lack of one,
+    /// shows on the first request.
     fn auth_status(&self) -> BoxFuture<'_, AuthState> {
         Box::pin(async {
             AuthState::Authenticated {
@@ -89,9 +89,6 @@ impl Provider for AnthropicProvider {
         }
     }
 
-    fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>> {
-        Box::pin(async { Ok(models::directory()) })
-    }
 
     fn read_failure(
         &self,

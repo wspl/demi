@@ -1,19 +1,9 @@
-//! What the provider says about itself: its catalog and how it reads its
-//! failure records.
+//! What the provider says about itself: how it reads its failure records.
 
-use demi_provider_common::{
-    HttpFailureRecord, Provider,
-    testing::{MockVendor, assert_built_in_catalog},
-};
+use demi_provider_common::{HttpFailureRecord, Provider, testing::MockVendor};
 use demi_shared_types::{FailureSource, ProviderErrorDiagnostics};
 
 use crate::provider_at;
-
-#[tokio::test]
-async fn the_catalog_is_the_built_in_directory_served_without_a_request() {
-    let vendor = MockVendor::start().await;
-    assert_built_in_catalog(&provider_at(&vendor, "/v1"), &vendor).await;
-}
 
 #[tokio::test]
 async fn a_failure_record_is_read_by_the_standard_reading() {
