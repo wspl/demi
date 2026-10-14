@@ -287,14 +287,17 @@ impl Drop for Follower {
 }
 
 /// The trees a watch covers: the path, and for a tree also its
-/// repository's `.git` when that lies outside it.
+/// repository's `.git` when that lies outside it, the main repository's in
+/// a linked worktree, which holds the refs it shares.
 fn trees_of(key: &Key) -> Vec<PathBuf> {
     let mut trees = vec![key.path.clone()];
     if key.reach == Reach::Tree
-        && let Some(git_dir) = crate::git::git_dir(&key.path)
-        && !git_dir.starts_with(&key.path)
+        && let Some(dirs) = crate::git::git_dirs(&key.path)
     {
-        trees.push(git_dir);
+        let git = dirs.watched();
+        if !git.starts_with(&key.path) {
+            trees.push(git.to_path_buf());
+        }
     }
     trees
 }

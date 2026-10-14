@@ -237,6 +237,30 @@ async fn the_working_tree_changes_for_edits_modes_and_staging_and_its_last_commi
     .unwrap();
 }
 
+/// In a linked worktree the refs live in the main repository's git
+/// directory: a branch made there changes the worktree's last commit
+/// subscription and its working tree's, as one made in a plain repository
+/// does (`runner.md` § Watching files). Under a second.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_branch_made_in_a_linked_worktrees_repository_is_announced() {
+    tokio::time::timeout(GUARD, async {
+        let (_dir, main) = repository();
+        let outside = tempfile::tempdir().unwrap();
+        let linked = std::fs::canonicalize(outside.path()).unwrap().join("linked");
+        git(&main, &["worktree", "add", "-q", "-b", "linked", linked.to_str().unwrap()]);
+        let (host, mut replies) = server(&linked, "http://127.0.0.1:1");
+        subscribe(&host, "tree", SubscriptionKind::Worktree, &linked);
+        subscribe(&host, "head", SubscriptionKind::Head, &linked);
+        live(&mut replies, &["tree", "head"]).await;
+
+        git(&main, &["branch", "feature"]);
+        changed(&mut replies, &["tree", "head"]).await;
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
 /// A build that writes 20,000 files under the ignored `target/` changes no
 /// working tree subscription and costs the working tree's changes no walk
 /// of the whole tree, while a subscription of a log under `target/`, as a

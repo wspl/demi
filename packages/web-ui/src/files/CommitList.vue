@@ -10,8 +10,9 @@ import { commitSummary, shortCommit, type LoggedCommit } from './history'
 /**
  * One branch's commits under the Change view's files, newest first, as VS
  * Code's commit list shows them beside Source Control
- * (`edit-tracking.md` § Commits mode): each its summary, then its author
- * and how long ago, its whole message, id and time in its tooltip. While the
+ * (`edit-tracking.md` § Commits mode): each one row as high as the file
+ * tree's, its summary cut short, then its author and how long ago dimmed at
+ * the row's end, its whole message, id and time in its tooltip. While the
  * list shows the branch checked out it starts with Uncommitted Changes and
  * its count of files (`uncommitted`). Older commits load as the list
  * scrolls to its end, while `more`. A click selects a row, as the arrows do
@@ -87,15 +88,13 @@ function files(count: number): string {
         v-if="uncommitted !== undefined"
         role="option"
         :aria-selected="selected === null"
-        class="flex h-11 shrink-0 cursor-default select-none flex-col justify-center rounded-md px-2 transition-colors duration-200 ease-out phone:h-14"
+        class="flex h-7 shrink-0 cursor-default select-none items-center gap-1.5 rounded-md px-2 text-chrome transition-colors duration-200 ease-out phone:h-11 phone:text-[16px]"
         :class="selected === null ? 'bg-active text-fg-emphasis' : 'text-fg-body hover:bg-hover'"
         @click="emit('select', null)"
       >
-        <span class="flex min-w-0 items-center gap-1.5 text-chrome phone:text-[16px]">
-          <span class="size-1.5 shrink-0 rounded-full bg-on-warning" aria-hidden="true" />
-          <span class="truncate">Uncommitted Changes</span>
-        </span>
-        <span class="truncate text-[11px] text-fg-subtle phone:text-[13px]">{{ files(uncommitted) }}</span>
+        <span class="size-1.5 shrink-0 rounded-full bg-on-warning" aria-hidden="true" />
+        <span class="min-w-0 flex-1 truncate">Uncommitted Changes</span>
+        <span class="shrink-0 text-fg-subtle">{{ files(uncommitted) }}</span>
       </div>
       <Tooltip
         v-for="commit in commits"
@@ -106,12 +105,16 @@ function files(count: number): string {
         <div
           role="option"
           :aria-selected="selected === commit.id"
-          class="flex h-11 shrink-0 cursor-default select-none flex-col justify-center rounded-md px-2 transition-colors duration-200 ease-out phone:h-14"
+          class="flex h-7 shrink-0 cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome transition-colors duration-200 ease-out phone:h-11 phone:text-[16px]"
           :class="selected === commit.id ? 'bg-active text-fg-emphasis' : 'text-fg-body hover:bg-hover'"
           @click="emit('select', commit.id)"
         >
-          <span class="truncate text-chrome phone:text-[16px]">{{ commitSummary(commit.message) }}</span>
-          <span class="truncate text-[11px] text-fg-subtle phone:text-[13px]">{{ commit.author }} · {{ formatAge(commit.time, now) }}</span>
+          <span class="min-w-0 flex-1 truncate">{{ commitSummary(commit.message) }}</span>
+          <!-- The author gives way before the age, which is never cut. -->
+          <span class="flex max-w-[40%] shrink-0 items-center gap-1 text-fg-subtle">
+            <span class="min-w-0 truncate">{{ commit.author }}</span>
+            <span class="shrink-0">· {{ formatAge(commit.time, now) }}</span>
+          </span>
         </div>
         <template #overlay>
           <div class="flex max-w-96 flex-col gap-1.5">

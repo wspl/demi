@@ -52,9 +52,10 @@ export interface ChangeSetSource {
   /**
    * Shows both sides of one file until released: empty `original` for an
    * added file, empty `modified` for a deleted one. A side that is not text
-   * is the answer `binary` or `too-large`.
+   * is the answer `binary` or `too-large`. A renamed file names `from`,
+   * its earlier path, whose last committed content is the old side.
    */
-  showSides(path: string): Showing<ChangeSides>
+  showSides(path: string, from?: string): Showing<ChangeSides>
   /**
    * Each file as the last commit has it, by the path relative to the
    * workspace, for previews and Download; absent when the source serves no

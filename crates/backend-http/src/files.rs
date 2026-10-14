@@ -495,12 +495,13 @@ pub(super) async fn commit(
     Ok(read_answer(&read_at, unless_held(&headers, &commit)))
 }
 
-/// A commit's file's two sides as text: its first parent's, empty for a
-/// file the commit added or a root commit, and the commit's, empty for a
-/// file it deleted.
+/// A commit's file's two sides as text: its first parent's at `before`, the
+/// earlier path of a file it renamed, empty for a file the commit added or
+/// a root commit, and the commit's at `path`, empty for a file it deleted.
 async fn commit_sides(
     host: &ConversationHost,
     root: &str,
+    before: &str,
     path: &str,
     commit: &str,
 ) -> Result<(ChangeSides, Option<ReadAt>), ApiError> {
@@ -514,7 +515,7 @@ async fn commit_sides(
     let (before, after) = tokio::join!(
         async {
             match &parent {
-                Some(parent) => Some(host.host.git_show(root, path, Some(parent)).await),
+                Some(parent) => Some(host.host.git_show(root, before, Some(parent)).await),
                 None => None,
             }
         },
@@ -542,26 +543,28 @@ async fn commit_sides(
     Ok((ChangeSides { original, modified }, read_at))
 }
 
-/// One changed file's two sides as text: the last commit's, empty for a
-/// new file, and the working tree's, empty for a deleted one; or with
-/// `commit`, that commit's change of it.
+/// One changed file's two sides as text: the last commit's, at `from` for a
+/// renamed file and empty for a new one, and the working tree's, empty for
+/// a deleted one; or with `commit`, that commit's change of it.
 pub(super) async fn changed_file(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     headers: HeaderMap,
     Path(id): Path<String>,
-    QueryParams(TreeFileQuery { path, directory, commit }): QueryParams<TreeFileQuery>,
+    QueryParams(TreeFileQuery { path, from, directory, commit }): QueryParams<TreeFileQuery>,
 ) -> Result<Response, ApiError> {
     let (sides, read_at) = on_host(&state, &user.id, &id, None, async move |host| {
+        // A renamed file's old side is its content at its earlier path.
+        let before = from.as_ref().unwrap_or(&path).as_str();
         if let Some(commit) = commit {
-            return commit_sides(host, &tree_root(host, directory), path.as_str(), commit.as_str()).await;
+            return commit_sides(host, &tree_root(host, directory), before, path.as_str(), commit.as_str()).await;
         }
         // The two sides do not wait for each other (`runner.md` § Host
         // operations).
         let root = tree_root(host, directory);
         let working = format!("{root}/{}", path.as_str());
         let (committed, working) = tokio::join!(
-            host.host.git_show(&root, path.as_str(), None),
+            host.host.git_show(&root, before, None),
             read_working_side(&host.host, &working),
         );
         // The answer holds what both reads hold from the earlier one on.

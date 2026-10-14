@@ -181,9 +181,10 @@ export interface ChangeReads {
   list(held: string | null): Promise<Read<ChangesList>>
   /**
    * Both sides of one changed file, by its path relative to the working
-   * tree; a side that is not text rejects with that answer.
+   * tree, the old side at `from` for a renamed file; a side that is not
+   * text rejects with that answer.
    */
-  sides(path: string, held: string | null): Promise<Read<KeptSides>>
+  sides(path: string, held: string | null, from?: string): Promise<Read<KeptSides>>
   /** The committed side's bytes, by path relative to the working tree. */
   committed?: ContentReads
 }
@@ -222,13 +223,13 @@ export function keptChangeSet(
     size: (list) => list.files.reduce((sum, file) => sum + file.path.length, 0),
     version: (list) => list.version,
   }
-  const sidesSpec = (path: string): KeptSpec<KeptSides> => ({
+  const sidesSpec = (path: string, from?: string): KeptSpec<KeptSides> => ({
     kind: 'sides',
     path: absolute(path),
-    key: root,
+    key: from === undefined ? root : `${root}\u0000${from}`,
     root,
     watch,
-    read: (held) => reads.sides(path, held),
+    read: (held) => reads.sides(path, held, from),
     size: (sides) => sides.original.length + sides.modified.length,
     version: (sides) => sides.version,
   })
@@ -257,7 +258,7 @@ export function keptChangeSet(
     refresh() {
       files.retry(listSpec)
     },
-    showSides: (path: string) => files.show(sidesSpec(path)),
+    showSides: (path: string, from?: string) => files.show(sidesSpec(path, from)),
     ...(reads.committed ? { committed: keptContents(reads.committed, options, 'committed', absolute, root) } : {}),
     show: () => files.show(listSpec),
   })
@@ -273,7 +274,7 @@ export interface HistoryReads {
   branches(): Promise<Answered<BranchList>>
   log(branch: string | null, after: string): Promise<Answered<CommitLogPage>>
   commit(commit: string): Promise<Answered<CommitDetails>>
-  sides(commit: string, path: string): Promise<Answered<ChangeSides>>
+  sides(commit: string, path: string, from?: string): Promise<Answered<ChangeSides>>
   /** A commit's files' bytes, by path relative to the working tree's root. */
   contents?(commit: string): ContentReads
 }
@@ -312,9 +313,9 @@ export function keptHistory(reads: HistoryReads, root: string, options: KeptSour
       () => reads.commit(commit),
       (details) => details.commit.message.length + details.files.reduce((sum, file) => sum + file.path.length, 0),
     )),
-    showSides: (commit, path) => files.show(answer(
-      `sides\u0000${commit}\u0000${path}`,
-      () => reads.sides(commit, path),
+    showSides: (commit, path, from) => files.show(answer(
+      `sides\u0000${commit}\u0000${path}\u0000${from ?? ''}`,
+      () => reads.sides(commit, path, from),
       (sides) => sides.original.length + sides.modified.length,
     )),
     ...(reads.contents

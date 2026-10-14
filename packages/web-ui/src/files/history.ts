@@ -59,8 +59,8 @@ export interface CommitHistorySource {
   showLog(branch: string | null, after: string): Showing<CommitLogPage>
   /** The commit an id or an abbreviation of at least 7 hex digits names. */
   showCommit(commit: string): Showing<CommitDetails>
-  /** The two sides of one file of a commit, by its path relative to the working tree's root. */
-  showSides(commit: string, path: string): Showing<ChangeSides>
+  /** The two sides of one file of a commit, by its path relative to the working tree's root; a renamed file's old side at `from`. */
+  showSides(commit: string, path: string, from?: string): Showing<ChangeSides>
   /** Each file as `commit` has it, by its path relative to the root, for previews and Download; absent when the host serves no bytes. */
   contents?(commit: string): FileContents
 }

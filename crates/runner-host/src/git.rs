@@ -271,6 +271,9 @@ struct Touched {
 pub(crate) struct Located {
     workdir: PathBuf,
     git_dir: PathBuf,
+    /// In a linked worktree, the main repository's git directory, which
+    /// holds the refs and `packed-refs`; none when it is `git_dir`.
+    common_dir: Option<PathBuf>,
     /// The directory relative to the work tree, with `/` separators; empty at the work tree itself.
     pub(crate) prefix: String,
 }
@@ -625,9 +628,9 @@ async fn changes(
     let mut adopted = false;
     match &mut state.watch {
         Watch::Unstarted => {
-            let git_dir = located.git_dir.clone();
+            let dirs = GitDirs::of(&located);
             let touched = touched_paths.clone();
-            let listener = Box::new(move |event: &Event| lock(&touched).record(event, &git_dir));
+            let listener = Box::new(move |event: &Event| lock(&touched).record(event, &dirs));
             let key = Key {
                 path: path.to_owned(),
                 reach: Reach::Tree,
@@ -852,6 +855,9 @@ pub(crate) fn locate(root: &Path) -> Result<Option<Located>, GitError> {
     };
     let workdir = std::fs::canonicalize(workdir).map_err(GitError::Io)?;
     let git_dir = std::fs::canonicalize(repo.git_dir()).map_err(GitError::Io)?;
+    let common_dir = std::fs::canonicalize(repo.common_dir())
+        .map_err(GitError::Io)?;
+    let common_dir = (common_dir != git_dir).then_some(common_dir);
     let prefix = match root.strip_prefix(&workdir) {
         Ok(relative) => unix_path(relative),
         Err(_) => return Ok(None),
@@ -859,6 +865,7 @@ pub(crate) fn locate(root: &Path) -> Result<Option<Located>, GitError> {
     Ok(Some(Located {
         workdir,
         git_dir,
+        common_dir,
         prefix,
     }))
 }
@@ -949,7 +956,8 @@ impl Touched {
     /// changes nothing listed and is not noted, so a build that writes
     /// thousands of files under `target/` leaves nothing to re-examine;
     /// events lost below a folder have it re-examined.
-    fn record(&mut self, event: &Event, git_dir: &Path) {
+    fn record(&mut self, event: &Event, dirs: &GitDirs) {
+        let git_dir = &dirs.git_dir;
         let (path, metadata) = match &event.change {
             Seen::Changed { ignored: true, .. } | Seen::Lost { ignored: true, .. } => return,
             Seen::Changed { path, metadata, .. } => (path, *metadata),
@@ -958,7 +966,7 @@ impl Touched {
                 return;
             }
             Seen::Lost { under: Some(under), .. } => {
-                if under.starts_with(git_dir) || git_dir.starts_with(under) {
+                if dirs.overlaps(under) {
                     self.whole = true;
                 } else {
                     self.touch(under);
@@ -977,6 +985,13 @@ impl Touched {
                     GitPath::Listing => self.whole = true,
                     GitPath::Other => {}
                 }
+            }
+        } else if let Some(common) = dirs.common_dir.as_deref()
+            && path.starts_with(common)
+        {
+            // The refs a linked worktree shares; nothing else there is listed.
+            if !metadata && dirs.shared_ref(path) {
+                self.whole = true;
             }
         } else if !metadata && rules_file(path) {
             self.whole = true;
@@ -1045,10 +1060,56 @@ fn rules_file(path: &Path) -> bool {
     )
 }
 
-/// The `.git` of the repository the canonical `root` lies in, if any, which
-/// a watch below the root also covers.
-pub(crate) fn git_dir(root: &Path) -> Option<PathBuf> {
-    locate(root).ok().flatten().map(|located| located.git_dir)
+/// Where git keeps what a working tree's repository reads: its own git
+/// directory, and in a linked worktree the main one's, which holds the refs
+/// and `packed-refs` every worktree shares (`runner.md` § Watching files).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct GitDirs {
+    pub(crate) git_dir: PathBuf,
+    pub(crate) common_dir: Option<PathBuf>,
+}
+
+impl GitDirs {
+    fn of(located: &Located) -> Self {
+        GitDirs {
+            git_dir: located.git_dir.clone(),
+            common_dir: located.common_dir.clone(),
+        }
+    }
+
+    /// The folders a watch of the work tree covers besides it: the git
+    /// directory, or in a linked worktree the common one that holds it.
+    pub(crate) fn watched(&self) -> &Path {
+        match &self.common_dir {
+            Some(common) if self.git_dir.starts_with(common) => common,
+            _ => &self.git_dir,
+        }
+    }
+
+    /// Whether `path` is a ref or `packed-refs` of the common git directory.
+    pub(crate) fn shared_ref(&self, path: &Path) -> bool {
+        let Some(inside) = self.common_dir.as_deref().and_then(|common| path.strip_prefix(common).ok()) else {
+            return false;
+        };
+        let mut parts = inside.components().map(|part| part.as_os_str().to_string_lossy());
+        match parts.next().as_deref() {
+            Some("refs") => true,
+            Some("packed-refs") => parts.next().is_none(),
+            _ => false,
+        }
+    }
+
+    /// Whether events lost below `under` may have missed one of them.
+    pub(crate) fn overlaps(&self, under: &Path) -> bool {
+        let overlaps = |dir: &Path| under.starts_with(dir) || dir.starts_with(under);
+        overlaps(&self.git_dir) || self.common_dir.as_deref().is_some_and(overlaps)
+    }
+}
+
+/// The git directories of the repository the canonical `root` lies in, if
+/// any, which a watch below the root also covers.
+pub(crate) fn git_dirs(root: &Path) -> Option<GitDirs> {
+    locate(root).ok().flatten().map(|located| GitDirs::of(&located))
 }
 
 /// The `.gitignore` and `.gitattributes` of each directory above the root,
