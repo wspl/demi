@@ -140,8 +140,11 @@ response's `response.error`, or in an HTTP failure's body; a value that is not
 a number reads as absent. Without them, it uses the standard reading. The
 Claude Code CLI's usage limit carries the limited window and its reset in
 the failing assistant line's `api_error_params.rate_limit_info`, the
-request's own, which its reader takes as the moment before the account's
-latest quota, which may be older than the failure.
+request's own: its `resetsAt`, the window's reset, and its
+`overageResetsAt`, the reset of the usage credits that run past the
+subscription. Either one lifts the limit, so its reader takes the earlier
+of those present as the moment, before the account's latest quota, which
+may be older than the failure.
 
 The same reader serves both uses, so there is one implementation:
 
@@ -301,8 +304,9 @@ conversation is open or was put away to save memory, and opens it when the
 moment comes; after a backend restart it starts again when the conversation
 is next opened. A
 usage limit's moment is the one the failure names, such as Codex's
-`resets_at`, else the latest reset among the account's windows that the
-quota shows used up; a limit with neither, such as a spend cap, names no
+`resets_at`, else the latest reset among the windows that the quota of
+the account the failing request used shows used up, which the `error` block
+names under [Account rotation](../providers/providers.md#account-rotation); a limit with neither, such as a spend cap, names no
 moment and waits for the user.
 
 A message is never left outside a turn. A send writes its `user` block as
