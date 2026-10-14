@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { forceCloseDatabase, IDBFactory, IDBKeyRange } from 'fake-indexeddb'
 import { closeDraftStorage, draftSchema, readDraft, readLocalDrafts, writeDraft, type SavedDraft } from './drafts'
+import { newerStorage } from '../state/indexed-db'
 
 // Draft storage keeps a structured clone of what a write stores, and a read
 // validates it with `draftSchema`: a saved draft comes back whole or not at all.
@@ -47,6 +48,7 @@ beforeEach(() => {
 })
 afterEach(() => {
   closeDraftStorage()
+  newerStorage.value = null
   globalThis.indexedDB = realIndexedDB
   globalThis.IDBKeyRange = realKeyRange
 })
@@ -143,6 +145,40 @@ test('a draft saves after the web browser closed the connection without saying s
   opened[0]!.close()
   await writeDraft('user', 'conversation', draft('second'))
   expect((await readDraft('user', 'conversation'))?.text).toBe('second')
+})
+
+test('a draft saves when the web browser closed the connection while writing it', async () => {
+  const opened = watchConnections()
+  await writeDraft('user', 'conversation', draft('first'))
+  const connection = opened[0]!
+  const transaction = connection.transaction.bind(connection)
+  connection.transaction = (stores, mode) => {
+    const running = transaction(stores, mode)
+    queueMicrotask(() => {
+      // A forced close aborts the connection's running transactions with an
+      // AbortError, which fake-indexeddb's forceCloseDatabase does not do:
+      // its internal abort stands in for it.
+      ;(running as unknown as { _abort(name: string): void })._abort('AbortError')
+      forceCloseDatabase(connection as unknown as typeof IDBDatabase)
+    })
+    return running
+  }
+  await writeDraft('user', 'conversation', draft('second'))
+  expect((await readDraft('user', 'conversation'))?.text).toBe('second')
+})
+
+test('a page whose draft storage a newer build upgraded asks to load itself again', async () => {
+  await writeDraft('user', 'conversation', draft('first'))
+  expect(newerStorage.value).toBeNull()
+  // A newer build's page in another tab upgrades the database.
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.open('demi-drafts', 1000)
+    request.onsuccess = () => resolve(request.result.close())
+    request.onerror = () => reject(request.error)
+    request.onblocked = () => reject(new Error('This page kept the draft database open.'))
+  })
+  await expect(writeDraft('user', 'conversation', draft('second'))).rejects.toMatchObject({ name: 'VersionError' })
+  expect(newerStorage.value).not.toBeNull()
 })
 
 test('another page deleting the draft database is not blocked, and a draft saves after it', async () => {
