@@ -1004,9 +1004,6 @@ promise, since a system may clear it.
 - **`DEMI_SCRATCH`** names it in every job of the conversation, on the
   primary Host and on attached ones, so the commands a job runs find it in
   their environment.
-- **Not a change:** the runner marks paths in it `temporary`, as it marks
-  those in the system's temporary directories
-  ([Temporary files](edit-tracking.md#temporary-files)).
 - **It goes with the conversation:** archiving keeps it. When the runner
   connects, the hello's answer names the conversations of the user that
   still exist, and the runner removes every scratch directory of a
