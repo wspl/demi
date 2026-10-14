@@ -338,7 +338,10 @@ milliseconds each way: a laptop behind a proxy on another continent from its
 server takes about half a second for a round trip. So a filesystem operation
 that the backend needs as one answer is one request, never one per entry. A
 directory listing carries each entry's name, kind, size and modification
-time, which the runner reads beside the entry as it lists the directory: a
+time, and for a symbolic link its target as written and what the target is
+(a file, a directory, another kind, or missing, followed through every link
+on the way), which the runner reads beside the entry as it lists the
+directory: a
 home directory of 105 entries, listed with one request per entry, took about
 fifty seconds to show in the folder picker, and takes one round trip so.
 

@@ -89,6 +89,37 @@ GitHub a file's own bar over its contents:
   since the page does not hold the rest; Download gives all of it. Nothing of
   the file stands in the path bar.
 
+### Symbolic links
+
+A symbolic link shows as Visual Studio Code's Explorer shows one: as what it
+points at, with a link mark at the end of its row. For example, a project
+holds `vendor → ../shared/vendor` and `config.json → ~/.config/app.json`:
+
+```text
+▸ 📁 src
+▸ 📁 vendor                 ↪
+  📄 config.json            ↪
+  📄 old.log                ↪      its target is gone
+```
+
+- **It is what its target is.** Its icon is its target's, a folder's or the
+  file type's. A link to a directory opens as a folder, its entries the
+  target's, at any depth: a link back to a folder above it opens again as
+  the Explorer's does, since each level is listed only when opened. A link
+  to a file opens the target's contents, under the link's own path in the
+  path bar.
+- **The mark says it is a link.** A small arrow at the end of the row, in
+  the secondary text color, where the Explorer puts its decorations; its
+  tooltip names the target as written, *Symbolic link to ../shared/vendor*.
+- **A link whose target is missing** shows as a file with the mark, its
+  tooltip *Symbolic link to /tmp/gone.log, which does not exist*; opening it
+  shows that sentence where the file would be.
+
+The listing says what each link's target is
+([Host operations](../execution/runner.md)), so the tree shows all of this
+without a request per link. The attachment picker and a device's folder
+dialog show links the same way.
+
 These show the card: HEIC, TIFF and JPEG XL images, which only Safari
 displays; MKV, AVI and WMV video, which web browsers play unreliably; Office
 documents. HTML and MDX show as source: a page needs its scripts and relative
