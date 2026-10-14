@@ -291,6 +291,26 @@ watch(() => props.path, () => {
   located.value = null
 })
 
+// A file the tree opened, whose link the tree has just read again.
+let openedFromTree: string | null = null
+
+// A link opened, from a message, Back or the crumbs as from the tree, is a
+// link used (`file-previews.md` § Symbolic links): its folder, when kept,
+// is listed again, and the file read again, at once, since neither the
+// folder's watch nor the file's sees its target come or go; so a link its
+// listing called missing whose target is back shows the file. The tree
+// lists a link's folder again itself before it opens it. A read on its way
+// is joined, not repeated.
+watch(() => props.path, (path) => {
+  const fromTree = path !== null && path === openedFromTree
+  openedFromTree = null
+  if (path === null || listed.value?.link === undefined)
+    return
+  if (!fromTree)
+    void folder.retry()
+  void (media.value === null ? shown.retry() : preview.value?.retry())
+}, { immediate: true, flush: 'post' })
+
 /** Whether `path` names a directory, by its parent's listing. */
 async function isDirectory(path: string): Promise<boolean> {
   // The filesystem root has no parent to list.
@@ -335,6 +355,7 @@ async function go(target: string): Promise<void> {
 
 function openFromTree(path: string): void {
   frame.value?.dismiss()
+  openedFromTree = path
   emit('open', path)
 }
 

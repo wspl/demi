@@ -49,6 +49,7 @@ import {
 } from './file-browser-state'
 import { baseName } from '@demicodes/utils'
 import { directoryParts, joinPath, normalizePath, parentPath } from './paths'
+import { readLinkAgain } from './link-activation'
 import { failureShown } from './file-cache'
 import { useShowing } from './showing'
 import {
@@ -266,22 +267,49 @@ function up() {
   }
 }
 
-/** Opens a folder; confirms a file (file mode only, the list enforces it). */
-function activate(entry: FileBrowserEntry) {
-  if (entry.isDirectory) {
-    goTo(joinPath(path.value, entry.name))
-  } else {
-    emit('select', joinPath(path.value, entry.name))
+// Ends a link's reading again when the browser goes away, or to another source or folder.
+let following = new AbortController()
+watch([() => props.source, path], () => {
+  following.abort()
+  following = new AbortController()
+})
+onBeforeUnmount(() => following.abort())
+
+/**
+ * The entry as it is now: a link's folder is listed again, which reads its
+ * target, since its row says what the target was when it was listed
+ * (`readLinkAgain`); undefined when the browser moved on meanwhile.
+ */
+async function current(entry: FileBrowserEntry): Promise<FileBrowserEntry | undefined> {
+  if (!entry.link)
+    return entry
+  const { signal } = following
+  const now = await readLinkAgain(props.source, joinPath(path.value, entry.name), signal)
+  return signal.aborted ? undefined : now
+}
+
+/** Opens a folder; confirms a file in file mode; a link as what it leads to now. */
+async function activate(entry: FileBrowserEntry) {
+  const now = await current(entry)
+  if (!now)
+    return
+  if (now.isDirectory) {
+    goTo(joinPath(path.value, now.name))
+  } else if (props.mode === 'file') {
+    emit('select', joinPath(path.value, now.name))
   }
 }
 
-function confirm() {
+async function confirm() {
   const entry = selectedEntry.value
   if (entry) {
-    if (props.mode === 'file' && entry.isDirectory) {
-      goTo(joinPath(path.value, entry.name))
-    } else {
-      emit('select', joinPath(path.value, entry.name))
+    const now = await current(entry)
+    if (!now)
+      return
+    if (props.mode === 'file' && now.isDirectory) {
+      goTo(joinPath(path.value, now.name))
+    } else if (props.mode === 'file' || now.isDirectory) {
+      emit('select', joinPath(path.value, now.name))
     }
     return
   }
