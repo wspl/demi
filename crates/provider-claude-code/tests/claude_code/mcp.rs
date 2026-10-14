@@ -229,6 +229,44 @@ async fn each_run_that_stops_at_a_batch_ends_with_the_usage_of_the_call_that_wro
     assert_eq!(placement.starts(), 1);
 }
 
+/// The batch's run reported its call's usage; a `result` after it whose
+/// stream brought no call's counts reports none, never the batch's again,
+/// which would count that call twice in the usage ledger.
+// Two runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_result_with_no_new_calls_counts_never_reports_the_batchs_usage_again() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let mut items = vec![user("work")];
+    let (events, mut cli) = tokio::join!(all_events(runtime.run(request(items.clone()))), async {
+        let mut cli = starts.next().await;
+        cli.initialized().await;
+        cli.handshake().await;
+        cli.message_start();
+        cli.streamed_tool_use(0, "toolu_1", &["{\"script\": \"pwd\"}"]);
+        cli.tool_use("toolu_1", "pwd");
+        cli.call("call-1", 1, "toolu_1", "pwd");
+        cli.message_delta(100_000, 10);
+        cli.message_stop();
+        cli
+    });
+    assert_eq!(events.last(), Some(&usage(100_000, 10)), "{events:?}");
+
+    items.push(tool_use("toolu_1", "pwd"));
+    items.push(tool_result("toolu_1", "/tmp"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(items))), async {
+        cli.mcp_reply("call-1").await;
+        cli.say(json!({
+            "type": "result",
+            "subtype": "success",
+            "is_error": false,
+            "usage": { "input_tokens": 100_000, "output_tokens": 10 },
+        }));
+    });
+    assert_eq!(events, [ProviderEvent::Response(None)]);
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_call_of_a_tool_the_request_does_not_offer_is_left_out_of_the_batch_for_the_cli_to_answer()
  {
