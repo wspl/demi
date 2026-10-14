@@ -40,9 +40,10 @@ export function workingTreeReads(conversationId: string, directory?: string): Ch
         throw fileBrowserError(error)
       }
     },
-    async sides(path, version) {
+    async sides(path, version, from) {
       try {
-        const response = await apiRequest(`/conversations/${id}/changes/file?${new URLSearchParams({ path, ...tree })}`, held(version))
+        const query = new URLSearchParams({ path, ...(from === undefined ? {} : { from }), ...tree })
+        const response = await apiRequest(`/conversations/${id}/changes/file?${query}`, held(version))
         const readAt = readAtOf(response.headers)
         if (response.status === 304)
           return { unchanged: true, readAt }
@@ -81,7 +82,7 @@ export function historyReads(conversationId: string, directory?: string): Histor
     branches: () => read('branches', {}, gitBranchesSchema),
     log: (branch, after) => read('log', { ...(branch === null ? {} : { branch }), ...(after === '' ? {} : { after }) }, gitLogSchema),
     commit: (commit) => read('commit', { commit }, gitCommitSchema),
-    sides: (commit, path) => read('file', { commit, path }, changeSidesSchema),
+    sides: (commit, path, from) => read('file', { commit, path, ...(from === undefined ? {} : { from }) }, changeSidesSchema),
     contents: (commit) => rawFileContents(`/conversations/${id}/changes/raw`, { ...tree, commit }),
   }
 }

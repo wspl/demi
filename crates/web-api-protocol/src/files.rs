@@ -283,12 +283,16 @@ pub struct ChangesQuery {
     pub directory: Option<AbsolutePath>,
 }
 
-/// `?path=&directory=&commit=` of a working tree file: `path` is relative to
-/// `directory`, the conversation's execution directory when omitted; with
-/// `commit`, the file as that commit has it against its first parent.
+/// `?path=&from=&directory=&commit=` of a working tree file: `path` is
+/// relative to `directory`, the conversation's execution directory when
+/// omitted; `from`, a renamed file's earlier path, whose content is the
+/// old side; with `commit`, the file as that commit has it against its
+/// first parent.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct TreeFileQuery {
     pub path: TreePath,
+    #[serde(default)]
+    pub from: Option<TreePath>,
     #[serde(default)]
     pub directory: Option<AbsolutePath>,
     #[serde(default)]

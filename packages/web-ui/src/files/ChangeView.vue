@@ -318,12 +318,12 @@ const unkeptText = computed(() => selectedChange.value?.kind === 'deleted'
 const kind = computed(() => selectedChange.value ? previewKind(selectedChange.value.path) : 'text')
 const sourceView = computed(() => selectedChange.value !== null && hasSourceView(selectedChange.value.path))
 /** The committed side's path: a renamed file's is its old one. */
-const committedPath = computed(() => {
+/** A renamed file's earlier path, whose content is the diff's old side. */
+const renamedFrom = computed(() => {
   const change = selectedChange.value
-  if (!change)
-    return ''
-  return 'from' in change && change.from ? change.from : change.path
+  return change && 'from' in change && change.from ? change.from : undefined
 })
+const committedPath = computed(() => renamedFrom.value ?? selectedChange.value?.path ?? '')
 /**
  * Each side's bytes in Commits mode: a commit's file as its first parent
  * and as it has it; the working tree's as the last commit and the disk have it.
@@ -386,7 +386,7 @@ type State =
 const workingSides = useShowing(
   () => mode.value === 'commits' && !showsCommit.value && !mediaPair.value ? workingTree.value : null,
   () => selectedChange.value?.path,
-  (source, path) => source.showSides(path),
+  (source, path) => source.showSides(path, renamedFrom.value),
 )
 // A commit's file's sides, kept by the history.
 const commitSides = useShowing(
@@ -395,7 +395,7 @@ const commitSides = useShowing(
   () => commitDetails.value && selectedChange.value ? `${commitDetails.value.commit.id}\u0000${selectedChange.value.path}` : null,
   (source, key) => {
     const [id, path] = key.split('\u0000') as [string, string]
-    return source.showSides(id, path)
+    return source.showSides(id, path, renamedFrom.value)
   },
 )
 /** The sides shown in Commits mode: the commit's or the working tree's. */
