@@ -90,7 +90,6 @@ mod host_commands {
         .await;
         let attached = AttachedHostRecord {
             device: ci.clone(),
-            name: "ci".into(),
             cwd: None,
         };
         control

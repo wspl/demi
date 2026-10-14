@@ -1259,11 +1259,11 @@ fixes and logging completed*.
 
 | Event | Row |
 | --- | --- |
-| `message` | *Agent sent an update: Fix the socket liveness* |
+| `message` | *Message from agent: Fix the socket liveness*; *Agent sent an update* read as the main agent sending one |
 | `completion`, `completed` | *Agent finished: Fix the socket liveness* |
 | `completion`, `failed` | *Agent failed: Fix the socket liveness*, with the red *Failed* tag |
 | `completion`, `aborted` | *Agent stopped: Fix the socket liveness*, with the grey *Stopped* tag |
-| A message from the parent, in the child's transcript | *Main agent sent a message*, *Main agent* the name |
+| A message from the parent, in the child's transcript | *Message from main agent*, *main agent* the name |
 
 The row carries the agent's mark where a command's carries its bell. A
 notice row, a receipt as a command's notice, does not open: what it would

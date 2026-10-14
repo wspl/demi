@@ -488,7 +488,7 @@ async fn a_conversation_that_left_the_cloud_reaches_it_as_an_attached_host_which
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/work").await;
 
     // On the Cloud, with alpha attached: the Cloud's job reaches alpha.
-    harness.attach(FIRST, alpha.id(), "alpha");
+    harness.attach(FIRST, alpha.id());
     let script = "echo report > report.txt && demi host shell --host alpha 'cat notes.txt'";
     let from_cloud = work
         .turn(vec![shell("t1", script, 30_000), say("reached alpha")])

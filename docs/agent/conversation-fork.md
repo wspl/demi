@@ -169,7 +169,11 @@ the source's resolved directory in its optional `path` field; an ordinary Cloud
 target without that field uses its own conversation directory. Host resolution
 respects the explicit path after a wakeup and a restart.
 
-Attached-host names and directories are copied as configuration; a device
+The destination's execution-context revision starts where the source's stood
+at the Fork, so the context blocks its copied transcript holds are older than
+any it is announced later, its first switch included.
+
+Attached hosts and their directories are copied as configuration; a device
 revoked before the destination is published is left out, as its revocation
 detached it from the source. Processes, shell handles, and jobs are not copied.
 The destination's first ordinary execution uses its own node identity on the

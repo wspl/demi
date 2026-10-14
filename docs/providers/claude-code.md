@@ -101,6 +101,14 @@ as signing in again to a lapsed account should; its ID and the entry's
 active choice stay. The link, the code and the CLI's own words of failure are
 what the user sees; the code is never logged.
 
+The login's stage follows what it waits for, so a Cloud that does not come
+back reads as the Cloud, not as Claude: `waiting_for_cloud` while the Cloud's
+machine access is acquired, its runner woken or awaited, `installing` while
+the CLI is installed, `starting` until the CLI prints its link, then
+`waiting_for_user`. A failure names its stage, such as *Your Cloud did not
+connect within a minute*, which is what the user saw as a hang when the
+Cloud's runner was frozen.
+
 **Using an account.** Each CLI process belongs to one account for its whole
 life ([An account is the unit](providers.md#an-account-is-the-unit)):
 

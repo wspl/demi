@@ -369,20 +369,23 @@ impl Shard {
 
     /// Changes the user's paired device `device`, its name or whether pages
     /// may reach it directly, which every page of the user's sees; none once
-    /// the device is gone. The names the conversations give their attached
-    /// hosts are theirs and stay.
+    /// the device is gone. The conversations that reach it go by its new
+    /// name, which their pages and their agents' next context block see.
     pub async fn change_device(
         &self,
         device: DeviceId,
         change: DeviceChange,
     ) -> Result<Option<DeviceDto>, StorageError> {
-        let Some(renamed) = self.services().control.change_device(device, change).await? else {
+        let Some(changed) = self.services().control.change_device(device, change).await? else {
             return Ok(None);
         };
         self.mark(Part::Devices);
+        for conversation in changed.conversations {
+            self.mark(Part::Conversation(conversation));
+        }
         Ok(Some(
             self.devices()
-                .dto(renamed, self.services().public_url.get()),
+                .dto(changed.device, self.services().public_url.get()),
         ))
     }
 

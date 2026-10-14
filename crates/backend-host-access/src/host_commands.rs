@@ -83,10 +83,6 @@ pub(crate) struct NoArgs {}
 struct AttachArgs {
     /// Device name or id from demi host devices
     device: String,
-    /// The name this conversation gives the host; the device's name by
-    /// default
-    #[schemars(length(min = 1, max = 256))]
-    name: Option<String>,
 }
 
 /// A system the runner installs on.
@@ -114,10 +110,6 @@ struct PairArgs {
     /// The pairing code the computer's installer shows
     #[schemars(length(min = 1))]
     code: String,
-    /// The name this conversation gives the host; the device's name by
-    /// default
-    #[schemars(length(min = 1, max = 256))]
-    name: Option<String>,
 }
 
 /// The input of `demi host detach`.
@@ -340,7 +332,7 @@ async fn attach(
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let Call {
-        args: AttachArgs { device: wanted, name },
+        args: AttachArgs { device: wanted },
         invocation,
     } = call;
     let conversation = conversation_of(&invocation)?;
@@ -358,8 +350,7 @@ async fn attach(
             "{wanted}: no paired device of this name or id (see `demi host devices`); the Cloud is attached only when the conversation moves off it"
         )));
     };
-    let attached =
-        attach_device(&*shard, &conversation, &device.id, &device.name, name.as_deref()).await?;
+    let attached = attach_device(&*shard, &conversation, &device.id, &device.name).await?;
     port.stdout(format!(
         "Attached {} as {attached}; run commands there with `demi host shell --host {attached} <script>`.\n",
         device.name
@@ -369,23 +360,16 @@ async fn attach(
 }
 
 /// Attaches the user's paired device `device`, named `device_name`, to the
-/// conversation as `alias`, the device's name by default, and answers the
-/// name the conversation reaches it by.
+/// conversation, and answers the name the conversation reaches it by: the
+/// device's, with a suffix when a host attached before goes by it already.
 async fn attach_device(
     shard: &dyn HostShard,
     conversation: &ConversationId,
     device: &DeviceId,
     device_name: &str,
-    alias: Option<&str>,
 ) -> Result<String, RpcError> {
-    let alias = alias
-        .map(str::trim)
-        .filter(|name| !name.is_empty())
-        .unwrap_or(device_name)
-        .to_owned();
     let change = RecordChange::Attach(AttachedHostRecord {
         device: device.clone(),
-        name: alias,
         cwd: None,
     });
     match shard.transition(conversation, change.into()).await {
@@ -430,7 +414,7 @@ async fn install_command(
 
 async fn pair(shard: Rc<dyn HostShard>, call: Call<PairArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let Call {
-        args: PairArgs { code, name },
+        args: PairArgs { code },
         invocation,
     } = call;
     let conversation = conversation_of(&invocation)?;
@@ -448,7 +432,7 @@ async fn pair(shard: Rc<dyn HostShard>, call: Call<PairArgs>, port: RpcPort) -> 
         }
         Err(ClaimRefusal::Storage(error)) => return Err(RpcError::Failed(error.to_string())),
     };
-    let attached = attach_device(&*shard, &conversation, &device.id, &device.name, name.as_deref())
+    let attached = attach_device(&*shard, &conversation, &device.id, &device.name)
         .await
         .map_err(|error| {
             RpcError::Failed(format!(
