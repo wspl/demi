@@ -18,16 +18,22 @@ export function useContextCard(openFile: () => ((target: MessageFileTarget) => v
   const settings = useSettingsAddress()
   const providerSettings = useProviderSettings()
 
-  /** The subscription account the entry `providerId` runs on: its active account; none on an API key. */
-  function accountOf(providerId: string) {
+  /**
+   * The subscription account an agent of the entry `providerId` runs on:
+   * `account`, the one its context usage names under account rotation
+   * (`providers.md` § Account rotation), else the entry's active account;
+   * none on an API key.
+   */
+  function accountOf(providerId: string, account: string | null) {
     const provider = resources.providers.find((entry) => entry.id === providerId)
-    const active = provider?.kind === 'subscription' ? provider.accounts.find((entry) => entry.active) : undefined
-    return provider && active ? { provider, account: active } : null
+    const accounts = provider?.kind === 'subscription' ? provider.accounts : []
+    const used = accounts.find((entry) => entry.id === account) ?? accounts.find((entry) => entry.active)
+    return provider && used ? { provider, account: used } : null
   }
 
   /** What the card shows of that account's usage limits (`usage-and-quota.md`). */
-  function limitsOf(providerId: string): UsageLimits | null {
-    const current = accountOf(providerId)
+  function limitsOf(providerId: string, account: string | null): UsageLimits | null {
+    const current = accountOf(providerId, account)
     return current
       ? {
           accountLabel: current.account.label,
@@ -40,8 +46,8 @@ export function useContextCard(openFile: () => ((target: MessageFileTarget) => v
   }
 
   /** The card showed the limits (automatic, at most once a minute per account) or its Refresh usage button was pressed: the store's request, as Settings asks. */
-  function refreshLimits(providerId: string, automatic: boolean): void {
-    const current = accountOf(providerId)
+  function refreshLimits(providerId: string, account: string | null, automatic: boolean): void {
+    const current = accountOf(providerId, account)
     if (current) {
       void providerSettings.refreshUsage(current.provider, current.account.id, automatic)
     }

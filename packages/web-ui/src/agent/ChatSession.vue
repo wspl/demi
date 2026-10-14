@@ -6,7 +6,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { ChevronDown, PanelLeft, PanelRight, Play, TextCursorInput } from '@lucide/vue'
+import { ArrowRightLeft, ChevronDown, PanelLeft, PanelRight, Play, TextCursorInput } from '@lucide/vue'
 import type { InstructionEntry, TranscriptVersion } from '@demicodes/protocol'
 import {
   beginMessageEdit,
@@ -117,7 +117,7 @@ const props = withDefaults(defineProps<{
    * The usage limits of the account a provider entry runs on, which a
    * child's context card in the Agents window shows; absent, it shows none.
    */
-  usageLimits?: (providerId: string) => UsageLimits | null
+  usageLimits?: (providerId: string, account: string | null) => UsageLimits | null
   /**
    * The host's connection banner says the backend is away
    * (`web-application.md` § A page of another build): the transcript adds no
@@ -150,6 +150,12 @@ const emit = defineEmits<{
   archive: []
   delete: []
   retry: []
+  /**
+   * The failed turn's usage limit offered another account of its entry,
+   * without rotation: the host makes it active, then resumes
+   * (`providers.md` § Account rotation).
+   */
+  continueWith: [providerId: string, credentialId: string]
   retryLoad: []
   /** Retry on the message `id`, whose delivery failed. */
   retrySubmission: [id: string]
@@ -186,8 +192,8 @@ const emit = defineEmits<{
   readSubagent: [id: string, at: 'latest' | 'before']
   /** Compact in a child's context card, in the Agents window: that child's context. */
   compactSubagent: [id: string]
-  /** A child's context card asks for the usage limits of the account its entry `providerId` runs on again. */
-  refreshLimits: [providerId: string, automatic: boolean]
+  /** A child's context card asks for the usage limits of the account it runs on, `account` of its entry `providerId`, again. */
+  refreshLimits: [providerId: string, account: string | null, automatic: boolean]
   /** An instruction in a child's context card opens where it is written. */
   openInstruction: [entry: InstructionEntry]
 }>()
@@ -325,6 +331,22 @@ function recover(): void {
     emit('retry')
   }
 }
+/**
+ * The account a usage limit of an entry without rotation offers to go on
+ * with, the one with the most room as the failure's facts name it, beside
+ * Resume; none for any other failure.
+ */
+const continueWith = computed(() => {
+  if (recovery.value !== 'resume') {
+    return null
+  }
+  const record = getVisibleBlocks(latest.value).at(-1)
+  if (record?.type !== 'error' || record.code !== 'usage_limit') {
+    return null
+  }
+  const offered = props.conversation.failures[record.id]?.continueWith
+  return offered ? { providerId: record.model.providerId, ...offered } : null
+})
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit
   && !props.pendingSubmissions?.length
   && !props.conversation.archived
@@ -646,6 +668,13 @@ watch(
                   {{ recovery === 'resume' ? 'Resume' : 'Continue' }}
                 </SessionDockChip>
               </Tooltip>
+              <SessionDockChip
+                v-if="continueWith"
+                @click="emit('continueWith', continueWith.providerId, continueWith.credentialId)"
+              >
+                <ArrowRightLeft :size="ICON_PX.in28" />
+                <span class="min-w-0 truncate">Continue with {{ continueWith.label }}</span>
+              </SessionDockChip>
               <TerminalChip
                 :terminals="terminals"
                 :open="activeTerminalId !== null"
@@ -677,7 +706,7 @@ watch(
             @revealed="emit('revealed')"
             :usage-limits="usageLimits"
             @compact-agent="(id) => emit('compactSubagent', id)"
-            @refresh-limits="(providerId, automatic) => emit('refreshLimits', providerId, automatic)"
+            @refresh-limits="(providerId, account, automatic) => emit('refreshLimits', providerId, account, automatic)"
             @open-instruction="(entry) => emit('openInstruction', entry)"
           />
           <TerminalPanel

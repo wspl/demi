@@ -16,6 +16,7 @@ import ToolCallBlock from './ToolCallBlock.vue'
 import PendingCallBlock from './PendingCallBlock.vue'
 import WorkGroupBlock from './WorkGroupBlock.vue'
 import ErrorBlock from './ErrorBlock.vue'
+import AccountSwitchBlock from './AccountSwitchBlock.vue'
 import StoppedBlock from './StoppedBlock.vue'
 import CompactionBlock from './CompactionBlock.vue'
 import QueueDivider from './QueueDivider.vue'
@@ -221,6 +222,12 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         class="px-[var(--agent-pad-x,2rem)]"
       >
         <StoppedBlock />
+      </div>
+      <div
+        v-else-if="block.type === 'account_switch'"
+        class="px-[var(--agent-pad-x,2rem)]"
+      >
+        <AccountSwitchBlock :block="block" />
       </div>
       <CompactionBlock
         v-else-if="block.type === 'compaction_marker' || block.type === 'compaction_boundary'"

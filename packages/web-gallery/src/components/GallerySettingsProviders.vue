@@ -257,6 +257,14 @@ async function installCli(p: SettingsProviderEntry) {
   cliInstalls.add(timer)
 }
 
+/** Whether the specimen's user went on past the warning about several accounts; a reload asks again. */
+const multiAccountWarned = ref(false)
+
+/** As the product's list shows the order the user dragged to, at once. */
+function reorderAccounts(p: SettingsProviderEntry, ids: string[]) {
+  p.accounts = ids.flatMap((id) => p.accounts.filter((account) => account.id === id))
+}
+
 function activateAccount(p: SettingsProviderEntry, id: string) {
   for (const a of p.accounts) {
     a.active = a.id === id
@@ -489,6 +497,9 @@ function closeLogin() {
     @check-cli="checkCli"
     @install-cli="installCli"
     @activate-account="activateAccount"
+    @reorder-accounts="reorderAccounts"
+    :multi-account-warned="multiAccountWarned"
+    @multi-account-warned="multiAccountWarned = true"
     @remove-account="removeAccount"
     :save-model="saveModel"
     :search-models="searchModels"

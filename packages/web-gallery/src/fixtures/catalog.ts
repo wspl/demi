@@ -107,6 +107,7 @@ export function usageOf(tokens: number, window: number | null, shape: UsageShape
     window,
     compactFrom: window === null ? null : Math.floor(window / 2),
     rows: rows.filter((row) => row.tokens > 0),
+    account: null,
   }
 }
 
