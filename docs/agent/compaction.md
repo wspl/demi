@@ -62,7 +62,7 @@ what started it and the numbers it compared, so a pass is never a mystery.
 | Moment | Condition | Passes |
 | --- | --- | --- |
 | Before a turn: a send, a continuation, a retry, a resume or an edit | The estimate for the current model is at or over its token threshold | One |
-| Inside a turn, after each call to the model | The call's reported usage is at or over the token threshold | One per call; the turn continues after at most three of them |
+| Inside a turn, after each call to the model that requested a tool | The call's reported usage is at or over the token threshold | One per call; the turn continues after at most three of them |
 | A request refused for its tokens (`context_length_exceeded`) | Always | One; the request is then sent once more ([Retries](failures-and-recovery.md#retries)) |
 | Before a model switch | The estimate is at or over the token threshold of the new model | Until it is under, at most eight, stopping when a pass compacts nothing |
 | A `compact` action | The estimate is at least 50% of the window in use, the model has none, or the unfinished turn failed with `request_too_large` | One |
@@ -81,9 +81,10 @@ provider that misreports is found rather than compacting every turn.
 Inside a turn, the session first runs the tools the call requested, holding
 waiting input back, then compacts. When the pass made the estimate smaller, it
 appends a `resume` block and asks the provider to continue. A call that ended
-the turn, an answer that requested no tool, is not continued: the turn ends
-as answered, the pass runs after it, and the next turn starts from the
-summary, so a finished answer is never written twice. When it did not,
+the turn, an answer that requested no tool, starts no pass: the turn ends as
+answered, nothing runs while the conversation waits, and the pass before the
+next turn compacts when the user or an agent sends something, so a finished
+answer is never written twice. When it did not,
 the turn goes on as if no compaction had been due: looping on it would
 summarize its own summaries again and pile up `resume` blocks until the model
 refused the history. A pass before a turn, or after a refused request, appends
