@@ -7,14 +7,17 @@
  */
 import { baseName } from '@demicodes/utils'
 import { parentPath } from './paths'
-import type { FileBrowserEntry, FileBrowserSource } from './types'
+import { FileBrowserError, type FileBrowserEntry, type FileBrowserSource } from './types'
 
 /**
  * Lists the folder of the link at `path` again, joining a listing of it on
  * its way, and answers what the listing now says is at `path`: undefined
- * when it names nothing there any more, when the listing failed, or when
- * `signal` was aborted meanwhile, as by the view that asked going away, so
- * the caller does nothing with it. The listing is held only for the read.
+ * when it names nothing there any more, or when `signal` was aborted
+ * meanwhile, as by the view that asked going away, so the caller does
+ * nothing with it. A listing that could not be made rejects with its
+ * `FileBrowserError`, never answering what was listed before: the caller
+ * says so where it shows its errors and opens nothing. The listing is held
+ * only for the read.
  */
 export async function readLinkAgain(
   source: Pick<FileBrowserSource, 'showListing'>,
@@ -26,6 +29,10 @@ export async function readLinkAgain(
     await showing.retry()
     if (signal.aborted)
       return undefined
+    // The kept listing keeps its last answer beside a read that failed.
+    const failure = showing.entry.failure
+    if (failure)
+      throw new FileBrowserError(failure.kind, failure.message, { requestId: failure.requestId ?? null })
     return showing.entry.value?.find((entry) => entry.name === baseName(path))
   } finally {
     showing.release()
