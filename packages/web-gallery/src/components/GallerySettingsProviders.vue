@@ -55,11 +55,12 @@ function changeProvider(
   patch: Partial<SettingsProviderEntry>,
 ): void {
   Object.assign(entry, patch)
-  if (patch.apiKey) {
-    // As in the product, the page never gets a stored key back: only that one exists.
+  if (patch.apiKey !== undefined) {
+    // As in the product, the page never gets a stored key back: only whether
+    // one exists, none once the field was emptied.
     entry.apiKey = ''
     entry.configured = true
-    entry.keyConfigured = true
+    entry.keyConfigured = patch.apiKey !== ''
   }
   settle(entry)
 }

@@ -871,7 +871,7 @@ async fn a_page_learns_a_login_completed_no_sooner_than_its_account() {
         .post(
             "/api/providers",
             Some(&master),
-            json!({ "source": "custom", "providerType": "openai", "wireApi": "chat-completions", "label": "Lab", "baseUrl": "http://lab.example/v1" }),
+            json!({ "source": "compatible", "providerType": "openai", "wireApi": "chat-completions", "label": "Lab", "baseUrl": "http://lab.example/v1" }),
         )
         .await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));

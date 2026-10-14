@@ -48,10 +48,14 @@ pub struct ConfiguredModel {
     pub id: Trimmed,
     #[garde(length(chars, min = 1, max = 256))]
     pub display_name: Trimmed,
-    /// Tokens.
-    #[garde(range(min = 1))]
-    pub context_window: u32,
-    /// Null for no model-specific limit; never beyond the context window.
+    /// Tokens; null while the window is unknown, as a model added by Custom
+    /// has until the user sets one.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u32>")]
+    #[garde(inner(range(min = 1)))]
+    pub context_window: Option<u32>,
+    /// Null for no model-specific limit; never beyond a known context
+    /// window.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<u32>")]
     #[garde(range(min = 1), custom(within(self.context_window)))]
@@ -71,10 +75,10 @@ pub struct ConfiguredModel {
     pub fast_tier: Option<String>,
 }
 
-/// An output limit is at most the context window.
-fn within(context_window: u32) -> impl FnOnce(&Option<u32>, &()) -> garde::Result {
-    move |output_limit, ()| match output_limit {
-        Some(limit) if *limit > context_window => Err(garde::Error::new(
+/// An output limit is at most the context window, when the window is known.
+fn within(context_window: Option<u32>) -> impl FnOnce(&Option<u32>, &()) -> garde::Result {
+    move |output_limit, ()| match (output_limit, context_window) {
+        (Some(limit), Some(window)) if *limit > window => Err(garde::Error::new(
             "the output limit exceeds the context window",
         )),
         _ => Ok(()),

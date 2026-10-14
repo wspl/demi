@@ -658,18 +658,17 @@ async fn add_model(
 }
 
 /// The models the entry's vendor offers now, as a configured list holds
-/// them. A vendor's catalog offers only models whose window models.dev
-/// states (`models.md` § Catalog sources), so every one of them is kept.
+/// them.
 fn vendor_list(scope: &Scope, entry: &ProviderEntry) -> Vec<ConfiguredModel> {
     let catalog = scope.catalog_of(entry).map(|catalog| &catalog.models[..]).unwrap_or_default();
     catalog
         .iter()
-        .filter_map(|model| {
+        .map(|model| {
             let model = &model.model;
-            Some(ConfiguredModel {
+            ConfiguredModel {
                 id: Trimmed::from(model.id.clone()),
                 display_name: Trimmed::from(model.display_name.clone()),
-                context_window: model.context_window?,
+                context_window: model.context_window,
                 output_limit: model.output_limit,
                 thinking_efforts: model.efforts(),
                 accepted_extensions: model.accepted_extensions.clone(),
@@ -678,7 +677,7 @@ fn vendor_list(scope: &Scope, entry: &ProviderEntry) -> Vec<ConfiguredModel> {
                     .iter()
                     .find(|tier| tier.fast)
                     .map(|tier| tier.id.clone()),
-            })
+            }
         })
         .collect()
 }
@@ -703,7 +702,7 @@ async fn edit_model(
         model.display_name = Trimmed::from(name);
     }
     if let Some(context) = fields.context {
-        model.context_window = context;
+        model.context_window = Some(context);
     }
     if let Some(output) = fields.output {
         model.output_limit = output_limit(&output)?;
@@ -882,14 +881,7 @@ fn new_model(found: Option<&ModelMatch>, fields: ModelFields) -> Result<Configur
         .ok_or_else(|| failed("id: give the model's id with --id, or a search match"))?;
     let context_window = fields
         .context
-        .or_else(|| found.and_then(|found| found.context_window))
-        .ok_or_else(|| match found {
-            Some(found) => failed(format!(
-                "contextWindow: models.dev does not state the context window of {}; give it with --context",
-                found.reference
-            )),
-            None => failed("contextWindow: give the context window with --context"),
-        })?;
+        .or_else(|| found.and_then(|found| found.context_window));
     let output_limit = match fields.output {
         Some(output) => output_limit(&output)?,
         None => found.and_then(|found| found.output_limit),
@@ -1185,7 +1177,7 @@ fn configured_row(model: &ConfiguredModel) -> Vec<String> {
     let mut row = vec![
         model.id.as_str().to_owned(),
         model.display_name.as_str().to_owned(),
-        tokens(model.context_window),
+        model.context_window.map_or_else(|| "-".to_owned(), tokens),
         model
             .output_limit
             .map_or_else(|| "-".to_owned(), |limit| format!("out {}", tokens(limit))),

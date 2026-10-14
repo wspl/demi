@@ -1355,6 +1355,26 @@ async fn a_compatible_entry_starts_empty_and_takes_its_protocol_endpoint_and_key
         (StatusCode::BAD_REQUEST, ErrorCode::DuplicateModel)
     );
 
+    // A model added by Custom has no window yet: it is kept, and listed
+    // with its window unknown.
+    let mut custom = configured("custom");
+    custom["contextWindow"] = Value::Null;
+    let kept = backend
+        .patch(&path, &master, json!({ "models": [configured("m"), custom] }))
+        .await;
+    assert_eq!(kept.status, StatusCode::OK, "{}", String::from_utf8_lossy(&kept.body));
+    let listed = catalog_of(&backend, &master, "").await;
+    let windows: Vec<_> = listed
+        .providers
+        .iter()
+        .find(|provider| provider.provider_id == compatible.id)
+        .expect("the entry is listed")
+        .models
+        .iter()
+        .map(|model| (model.model.id.as_str(), model.model.context_window))
+        .collect();
+    assert_eq!(windows, [("m", Some(64_000)), ("custom", None)]);
+
     // A vendor entry, the family's own included, keeps its vendor's
     // endpoint and protocol.
     let anthropic = create(

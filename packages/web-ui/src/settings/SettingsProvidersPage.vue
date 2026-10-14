@@ -555,15 +555,15 @@ function accountPending(providerId: string, accountId: string, action: 'remove' 
 
 /**
  * A compatible API's endpoint, which it cannot work without: one typed in is
- * an http or https address. An empty field over no endpoint is the entry
- * waiting for one, not a fault; one saved is changed, never emptied here.
+ * an http or https address. An empty field is no fault: left empty, it
+ * removes a saved endpoint, and the entry waits for one.
  */
 const endpointFault = ref<string | null>(null)
 watch(selectedId, () => {
   endpointFault.value = null
 })
 function endpointCheck(value: string) {
-  return value.trim() === '' && !selected.value?.baseUrl ? null : endpointProblem(value)
+  return value.trim() === '' ? null : endpointProblem(value)
 }
 </script>
 

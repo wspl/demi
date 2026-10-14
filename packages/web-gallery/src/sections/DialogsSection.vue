@@ -575,7 +575,7 @@ const resetPhases: {
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="Edit Model" note="The one dialog of every model of a provider’s own list, the one just added included: its ID, name, context window, output limit, efforts, Fast tier and files, in that order, every field editable. An ID another model of the provider has is refused under the field and Save waits; a model without a context window cannot be saved until it has one. Save keeps the change, Cancel drops it, Delete Model asks before the model goes. A catalog’s model shows its facts to read.">
+      <GallerySection title="Edit Model" note="The one dialog of every model of a provider’s own list, the one just added included: its ID, name, context window, output limit, efforts, Fast tier and files, in that order, every field editable. An ID another model of the provider has is refused under the field and Save waits; a model without a context window, as Custom adds one, saves with its window unknown. Save keeps the change, Cancel drops it, Delete Model asks before the model goes. A catalog’s model shows its facts to read.">
         <div class="grid items-start gap-6 xl:grid-cols-2">
           <GallerySpecimen v-for="editor in modelEditors" :key="editor.variant" wide :variant="editor.variant">
             <GalleryDialogFrame v-slot="{ open, close }">

@@ -216,7 +216,7 @@ impl Backend {
             Some(counts) => counts.observe(objects),
             None => objects,
         };
-        let storage = Storage::open(&data_dir, config.clock.clone(), objects).await?;
+        let storage = Storage::open(&data_dir, config.clock.clone(), objects, secret.vault_key()).await?;
         let started = Self::serve(config, storage.clone(), &secret).await;
         if started.is_err() {
             for failure in storage.close().await {
