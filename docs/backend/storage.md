@@ -206,8 +206,8 @@ input, which the multi-worker control service also relies on
   transaction, so a move a restart interrupted is made at the next start,
   as soon as the tree is idle, which a closed tree is. The full agent checkpoint
   belongs to the conversation database. `conversation_hosts` stores attached
-  devices with a name unique within the conversation, the directory their
-  commands start in, and
+  devices in the order they were attached, the directory their commands
+  start in, and
   whether an agent's `demi host detach` waits for the tree to be idle.
   `conversation_panels` stores each conversation's
   [work panel tabs](../product/web-api.md#work-panel-state): the revision,

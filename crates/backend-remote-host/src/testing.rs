@@ -2,15 +2,20 @@
 //! connection driver, a real runner process for a backend at any address
 //! ([`RunnerProcess`]) and one connected to a backend end of its own for one
 //! device ([`RunnerFixture`]), the native fixture package their tests run,
-//! and a connection policy that runs every call in one command set.
+//! a connection policy that runs every call in one command set, and a
+//! pseudo-terminal to run a program at as a person does ([`Terminal`]).
 
 mod process;
 mod runner;
+#[cfg(unix)]
+mod terminal;
 
 pub use process::{
     PAIRING_CODE, RunnerProcess, RunnerProcessOptions, native_fixture_binary, runner_binary,
 };
 pub use runner::{FixtureOptions, RunnerFixture};
+#[cfg(unix)]
+pub use terminal::Terminal;
 
 use std::{
     cell::RefCell,

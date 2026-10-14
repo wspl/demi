@@ -305,8 +305,8 @@ async fn a_detach_takes_the_host_from_the_conversation_and_a_device_not_attached
         .status,
         StatusCode::OK
     );
-    harness.attach(CONVERSATION, ci.id(), "ci");
-    harness.attach(CONVERSATION, spare.id(), "spare");
+    harness.attach(CONVERSATION, ci.id());
+    harness.attach(CONVERSATION, spare.id());
     let listed = hosts(&backend, &master).await;
     assert_eq!(
         (&listed[0]["name"], &listed[0]["cwd"], &listed[0]["state"]),
@@ -361,7 +361,7 @@ async fn until_hosts_revision(page: &mut SyncChannel, revision: u64) {
 // runs `demi host shell` from one on the other. Before the fix, the second
 // shell started in `sub` and the hosts list recorded it.
 #[tokio::test]
-async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_of_the_hosts_raises_the_revision()
+async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_of_the_hosts_or_their_names_raises_the_revision()
  {
     let vendor = MockVendor::start().await;
     let harness = Harness::new().with_file_package();
@@ -373,7 +373,7 @@ async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_
         switch(&backend, &master, target(&laptop, &work)).await.status,
         StatusCode::OK
     );
-    harness.attach(CONVERSATION, ci.id(), "builder");
+    harness.attach(CONVERSATION, ci.id());
     let mut page = backend.sync(&master).await;
     let state = page.snapshot().await;
     assert_eq!(state.conversations[0].hosts_revision, 1);
@@ -383,7 +383,7 @@ async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_
     // one shell moves neither the next one nor the hosts list.
     let provider = anthropic_at(&backend, &master, &vendor, "/laptop").await;
     let mut driven = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/laptop").await;
-    let moved = "demi host shell --host builder 'mkdir -p sub && cd sub' && demi host shell --host builder pwd";
+    let moved = "demi host shell --host ci 'mkdir -p sub && cd sub' && demi host shell --host ci pwd";
     let ran = driven
         .turn(vec![shell("t1", moved, 20_000), say("moved")])
         .await;
@@ -400,9 +400,18 @@ async fn an_attached_hosts_commands_start_where_it_was_attached_and_each_change_
     assert_eq!(hosts(&backend, &master).await[0]["cwd"], Value::Null);
     assert_eq!(summary(&backend, &master).await["hostsRevision"], json!(1));
 
+    // The attached host goes by its device's name: renamed in Settings, the
+    // conversation's page reads it again under the new one.
+    let renamed = backend
+        .patch(&format!("/api/devices/{}", ci.id()), &master, json!({ "name": "Build Box" }))
+        .await;
+    assert_eq!(renamed.status, StatusCode::OK);
+    until_hosts_revision(&mut page, 2).await;
+    assert_eq!(hosts(&backend, &master).await[0]["name"], json!("Build Box"));
+
     let detached = backend.delete(&format!("{route}/{}", ci.id()), &master).await;
     assert_eq!(detached.status, StatusCode::NO_CONTENT);
-    until_hosts_revision(&mut page, 2).await;
+    until_hosts_revision(&mut page, 3).await;
     backend.close().await;
 }
 
