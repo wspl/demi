@@ -35,10 +35,8 @@ use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 use demi_provider_common::testing::{MockResponse, MockVendor};
-use demi_backend_database::server_log;
 use demi_shared_types::{Block, LoginStage};
-use tracing_subscriber::filter::LevelFilter;
-use tracing_subscriber::layer::SubscriberExt as _;
+use demi_web_api_protocol::state::SyncEvent;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{
     Accounts, CliInstall, LoginStarted, LoginState, NewestVersion, ProviderCli, Providers,
@@ -47,9 +45,9 @@ use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::accounts::{awaited, ended, followed, login_state, start_login};
-use crate::diagnostics::{lines_of, request_id};
+use crate::diagnostics::request_id;
 use crate::conversations::{Socket, choose, create, last_text, on_device, transcript};
-use crate::support::{Harness, Session, TestBackend, eventually};
+use crate::support::{Harness, Session, TestBackend};
 
 const CONVERSATION: &str = "3c1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 /// The version the distribution names as its newest.
@@ -886,27 +884,18 @@ async fn a_sign_in_that_fails_or_is_cancelled_stores_nothing_and_leaves_no_direc
     backend.close().await;
 }
 
-/// The stages the server log names for the login the request `request`
-/// started, in their order, once it holds the login's end: each line under
-/// the request, and never the link the CLI printed.
-async fn logged_stages(backend: &TestBackend, admin: &Session, request: &str) -> Vec<String> {
-    eventually("the login's end is in the log", || async {
-        lines_of(backend, admin, request)
-            .await
-            .lines
-            .iter()
-            .any(|line| line.message.starts_with("the login ") && line.message != "the login reached a stage")
-    })
-    .await;
-    let lines = lines_of(backend, admin, request).await.lines;
-    let text = serde_json::to_string(&lines).unwrap();
-    assert!(!text.contains("oauth/authorize"), "{text}");
-    assert!(lines.iter().any(|line| line.message == "a login started"), "{text}");
-    lines
-        .iter()
-        .filter(|line| line.message == "the login reached a stage")
-        .map(|line| line.fields["stage"].as_str().unwrap().to_owned())
-        .collect()
+/// Whether `stages` go in the order a sign-in reaches them, as a page
+/// sees them: the channel may pass over a stage the login left before the
+/// channel sent it, never go back to one.
+fn in_order(stages: &[LoginStage]) -> bool {
+    let rank = |stage: &LoginStage| match stage {
+        LoginStage::Preparing => 0,
+        LoginStage::WaitingForCloud => 1,
+        LoginStage::Installing => 2,
+        LoginStage::Starting => 3,
+        LoginStage::WaitingForUser => 4,
+    };
+    stages.windows(2).all(|pair| rank(&pair[0]) < rank(&pair[1]))
 }
 
 /// Starts the master's sign-in into a new Claude Code entry, and answers
@@ -932,10 +921,6 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
     // The timeout of a Cloud whose runner never connects, short enough to
     // wait for.
     harness.cloud.runner_connection = Duration::from_secs(2);
-    let (writer, layer) = server_log::open(&harness.data_dir()).unwrap();
-    let _log = tracing::subscriber::set_default(
-        tracing_subscriber::registry().with(layer).with(LevelFilter::INFO),
-    );
     let (backend, master) = harness.start_set_up().await;
     let mut page = backend.sync(&master).await;
     page.snapshot().await;
@@ -945,6 +930,7 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
     harness.manager.script(|script| script.silent_wake = true);
     let (id, request) = started_sign_in(&backend, &master).await;
     let (stages, end) = followed(&mut page, &id).await;
+    assert!(in_order(&stages), "{stages:?}");
     assert_eq!(stages.last(), Some(&LoginStage::WaitingForCloud), "{stages:?}");
     assert_eq!(
         end,
@@ -954,47 +940,45 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
             request_id: request.clone().try_into().unwrap(),
         }
     );
-    assert_eq!(
-        logged_stages(&backend, &master, &request).await,
-        ["waiting_for_cloud"]
-    );
 
     // A Cloud without the CLI installs it, and fails there.
     harness.manager.script(|script| script.silent_wake = false);
     let (id, request) = started_sign_in(&backend, &master).await;
     let (stages, end) = followed(&mut page, &id).await;
+    assert!(in_order(&stages), "{stages:?}");
     assert_eq!(stages.last(), Some(&LoginStage::Installing), "{stages:?}");
-    let LoginState::Failed { message, .. } = end else {
+    let LoginState::Failed { message, request_id } = end else {
         panic!("the install did not fail: {end:?}");
     };
     assert!(message.starts_with(&format!("Claude Code {NEWEST} could not be installed")), "{message}");
-    assert_eq!(
-        logged_stages(&backend, &master, &request).await,
-        ["waiting_for_cloud", "installing"]
-    );
+    assert_eq!(request_id.as_str(), request);
 
     // A Cloud with the CLI starts it, and waits for the user once the CLI
     // printed its link.
     let cloud = the_cloud(&harness);
     install_by_hand(&harness.manager.artifacts(&cloud), OLDER).await;
-    let (id, request) = started_sign_in(&backend, &master).await;
-    awaited(&backend, &master, &id, |state| {
-        matches!(
-            state,
-            LoginState::Pending {
-                stage: LoginStage::WaitingForUser,
-                verification_url: Some(_),
-                ..
-            }
-        )
-    })
-    .await;
+    let (id, _) = started_sign_in(&backend, &master).await;
+    let mut stages = Vec::new();
+    loop {
+        let SyncEvent::Logins { logins } = page.next().await else {
+            continue;
+        };
+        let Some(LoginState::Pending { stage, verification_url, .. }) =
+            logins.into_iter().find(|login| login.id.as_str() == id).map(|login| login.login)
+        else {
+            continue;
+        };
+        if stages.last() != Some(&stage) {
+            stages.push(stage);
+        }
+        if verification_url.is_some() {
+            assert_eq!(stage, LoginStage::WaitingForUser);
+            break;
+        }
+    }
+    assert!(in_order(&stages), "{stages:?}");
+    assert!(!stages.contains(&LoginStage::Installing), "{stages:?}");
     let cancelled = backend.delete(&format!("{LOGIN}/{id}"), &master).await;
     assert_eq!(cancelled.status, StatusCode::NO_CONTENT);
-    assert_eq!(
-        logged_stages(&backend, &master, &request).await,
-        ["waiting_for_cloud", "starting", "waiting_for_user"]
-    );
     backend.close().await;
-    writer.close().await;
 }

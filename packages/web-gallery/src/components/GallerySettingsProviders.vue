@@ -346,7 +346,7 @@ function beginLogin(p: SettingsProviderEntry) {
       login.value.phase = {
         kind: 'code',
         url: 'https://claude.com/cai/oauth/authorize?code=true',
-        expiresIn: '15 min',
+        expiresAt: Date.now() + 15 * 60_000,
         submitted: false,
       }
       return
@@ -356,7 +356,7 @@ function beginLogin(p: SettingsProviderEntry) {
       kind: 'device',
       url: grok ? 'https://accounts.x.ai/device' : 'https://auth.openai.com/codex/device',
       code: grok ? 'QK4P-9TWD' : 'HXRV-7K2M',
-      expiresIn: '10 min',
+      expiresAt: Date.now() + 10 * 60_000,
     }
     loginTimer = window.setTimeout(() => {
       if (!login.value) {
@@ -383,7 +383,7 @@ function submitCode(code: string) {
   if (phase?.kind !== 'code') {
     return
   }
-  login.value!.phase = { kind: 'code', url: phase.url, expiresIn: phase.expiresIn, submitted: true }
+  login.value!.phase = { kind: 'code', url: phase.url, expiresAt: phase.expiresAt, submitted: true }
   loginTimer = window.setTimeout(() => {
     if (login.value?.phase.kind !== 'code') {
       return

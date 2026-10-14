@@ -1208,9 +1208,13 @@ unless the user finishes it, and for Claude Code `needsCode: true` and no
 `userCode`: `verificationUrl` is the link the CLI printed, the user signs in
 there and pastes the code the page shows, which
 `POST /api/providers/subscription-login/:id/code { code }` hands to the CLI's
-login (204; 409 `login_not_waiting` when it waits for none). A code the CLI
-refuses leaves the login pending with `codeError`, the CLI's words, until the
-user pastes another. The login then continues as a device login does, `{ status: "completed", providerId,
+login (204; 409 `login_not_waiting` when it waits for none) as its next
+code: `codesTaken` counts the codes the login took. A code the CLI refuses
+leaves the login pending with `codeError`, the CLI's words, until the user
+pastes another; `codeError` is always the refusal of code number
+`codesTaken`, so a refusal of an earlier code that arrives after a later one
+was taken is dropped, and a page that pasted code *n* shows no refusal while
+`codesTaken` is below *n*. The login then continues as a device login does, `{ status: "completed", providerId,
 credentialId }` with the account the login added, or `{ status: "failed",
 message, requestId }`, where `requestId` is the id of the request that started
 the login, under which the server log holds its whole course. Cancel with

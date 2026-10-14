@@ -658,14 +658,15 @@ export const useProviderSettings = defineStore('provider-settings', () => {
    * one a busy start named, or a running one the vault announced, as after
    * a reload. The vault announces each change of it on the channel, which
    * the dialog follows; `failure` is why this page could not start or
-   * answer it, `code` where the last pasted code is, and `seen` whether the
-   * channel has listed it.
+   * answer it, `pasted` the number the code this page pasted last takes
+   * among the codes the sign-in took, and `seen` whether the channel has
+   * listed it.
    */
   const opened = ref<{
     provider: ProductProvider
     id: string | null
     failure: ShownError | null
-    code: 'none' | 'sending' | 'sent'
+    pasted: number | null
     seen: boolean
   } | null>(null)
   /** The sign-ins this page closed, which it never opens again on its own. */
@@ -698,7 +699,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   })
   watch([running, () => opened.value === null, starts], () => {
     if (opened.value === null && starts.value === 0 && running.value) {
-      opened.value = { ...running.value, failure: null, code: 'none', seen: true }
+      opened.value = { ...running.value, failure: null, pasted: null, seen: true }
     }
   }, { immediate: true })
   watch(followed, (login, before) => {
@@ -708,10 +709,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
     shown.seen = true
     const state = login.login
-    // A code the sign-in refused after this page sent it: the dialog shows why and takes another.
-    if (shown.code === 'sent' && state.status === 'pending' && state.codeError) {
-      shown.code = 'none'
-    }
     if (state.status === 'completed' && before?.login.status !== 'completed') {
       select(state.providerId)
     }
@@ -742,16 +739,20 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         return { kind: 'failed', message: state.message, requestId: state.requestId }
       case 'pending':
         if (state.verificationUrl && state.needsCode) {
-          const error = shown.code === 'none' ? state.codeError ?? undefined : undefined
+          // The refusal is of the last code the sign-in took: none of this
+          // page's code while the sign-in has not taken it yet.
+          const taking = shown.pasted !== null && state.codesTaken < shown.pasted
+          const error = taking ? undefined : state.codeError ?? undefined
           return {
             kind: 'code',
             url: state.verificationUrl,
-            submitted: shown.code !== 'none',
+            expiresAt: Date.parse(state.expiresAt),
+            submitted: taking || (state.codesTaken > 0 && !error),
             ...(error ? { error } : {}),
           }
         }
         if (state.verificationUrl && state.userCode) {
-          return { kind: 'device', url: state.verificationUrl, code: state.userCode }
+          return { kind: 'device', url: state.verificationUrl, code: state.userCode, expiresAt: Date.parse(state.expiresAt) }
         }
         return { kind: 'starting', stage: state.stage }
     }
@@ -798,7 +799,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     const provider = providers.value.find(
       (provider) => provider.id === entry.id,
     )!
-    opened.value = { provider, id: null, failure: null, code: 'none', seen: false }
+    opened.value = { provider, id: null, failure: null, pasted: null, seen: false }
     const shown = opened.value
     starts.value++
     try {
@@ -838,10 +839,11 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   async function submitCode(code: string): Promise<void> {
     const shown = opened.value
     const id = shown?.id
-    if (!shown || !id || login.value?.phase.kind !== 'code') {
+    const listed = followed.value?.login
+    if (!shown || !id || listed?.status !== 'pending' || login.value?.phase.kind !== 'code') {
       return
     }
-    shown.code = 'sending'
+    shown.pasted = listed.codesTaken + 1
     try {
       await apiRequest(
         `/providers/subscription-login/${encodeURIComponent(id)}/code`,
@@ -850,7 +852,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           ...jsonBody({ code } satisfies LoginCode),
         },
       )
-      shown.code = 'sent'
     } catch (error) {
       if (opened.value === shown) {
         shown.failure = shownError(error)

@@ -526,7 +526,8 @@ pub enum LoginState {
     /// the user opens the address and enters the code; both are null until
     /// the vendor names them. With `needs_code`, the user signs in at the
     /// address instead and pastes the code the page shows, which the login
-    /// now takes, `code_error` saying why it refused the last one. The
+    /// now takes, numbering them in `codes_taken`, and `code_error` says why
+    /// it refused the last of them, never an earlier one. The
     /// login ends at `expires_at` unless the user finishes it first.
     Pending {
         stage: LoginStage,
@@ -537,8 +538,11 @@ pub enum LoginState {
         #[schemars(with = "Nullable<String>")]
         user_code: Option<String>,
         needs_code: bool,
-        /// Why the sign-in refused the last code pasted, in its own words;
-        /// null until it refuses one, and again once another is pasted.
+        /// How many codes the user pasted the login took.
+        codes_taken: u32,
+        /// Why the sign-in refused the last code it took, code number
+        /// `codes_taken`, in its own words; null until it refuses it, and
+        /// again once another is pasted.
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<String>")]
         code_error: Option<String>,

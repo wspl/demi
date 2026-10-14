@@ -13,7 +13,9 @@ plugin({
   name: 'vue single-file components',
   setup(build) {
     build.onLoad({ filter: /\.vue$/ }, async ({ path }) => {
-      const { descriptor, errors } = parse(await Bun.file(path).text(), { filename: path })
+      // An empty `<script setup>`, as a component of a template alone has,
+      // still makes the component's setup, as Vite's plugin makes it.
+      const { descriptor, errors } = parse(await Bun.file(path).text(), { filename: path, ignoreEmpty: false })
       if (errors.length > 0)
         throw errors[0]
       const id = Bun.hash(path).toString(16)

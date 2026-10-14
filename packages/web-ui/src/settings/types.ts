@@ -338,13 +338,15 @@ export type ProviderLoginPhase =
       kind: 'device'
       url: string
       code: string
-      expiresIn?: string
+      /** When the sign-in ends unless the user finishes it, on the page's clock, which the dialog counts down to. */
+      expiresAt?: number
     }
   | {
       /** The vendor's own sign-in: the user signs in at `url` and pastes back the code the page shows. */
       kind: 'code'
       url: string
-      expiresIn?: string
+      /** As a device sign-in's. */
+      expiresAt?: number
       /** The pasted code is with the sign-in, which is finishing. */
       submitted: boolean
       /** Why the sign-in refused the last code, in the vendor's words; it waits for another. */
