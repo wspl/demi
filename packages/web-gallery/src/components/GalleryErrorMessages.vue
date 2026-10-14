@@ -44,6 +44,7 @@ function errorRecord(
   }
 }
 const records: Block[] = [
+  errorRecord('usage_limit', 429, 'The usage limit has been reached'),
   errorRecord(
     'rate_limit',
     429,

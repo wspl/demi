@@ -1,23 +1,21 @@
 //! Reading a failure of the CLI's (`failures-and-recovery.md` § Reading a
-//! failure): a subscription's usage limit names no wait, only words such as
-//! "You've hit your session limit · resets 9am (UTC)", so the moment it can
-//! succeed again is when the account's limited window resets, as the
-//! account's quota says; any other failure is read by the HTTP rules.
+//! failure): a subscription's usage limit names its reset in the refused
+//! call's own `rate_limit_info`, which the CLI prints on the assistant line
+//! it makes up for the refusal; any other failure is read by the HTTP rules.
 
+use demi_provider_common::quota::unix_seconds;
 use demi_provider_common::read_http_failure;
 use demi_provider_common::wire::ReportedString;
-use demi_shared_types::{
-    FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, QuotaSnapshot, Timestamp,
-};
+use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, Timestamp};
 use serde::Deserialize;
 
-use crate::Shared;
-
-/// The `api_error` the CLI's `result` line names a turn its account's own
-/// usage limit refused with, a plan's session, weekly or per-model limit
-/// (Claude Code 2.1.296): the typed cause the CLI gives for consumers that
-/// key on it rather than on its words, which may change.
-const USAGE_LIMIT: &str = "usage_limit_reached";
+/// The `api_error` the CLI names a call with that its account's own usage
+/// limit refused (Claude Code 2.1.296): a used-up session, weekly or
+/// per-model window, used-up usage credits, or a seat or member whose use is
+/// turned off. The CLI sets it from the refusal's unified rate-limit
+/// headers and never for a 429 that only throttles, so it, not the status
+/// or the words, tells a usage limit.
+pub(crate) const USAGE_LIMIT: &str = "usage_limit_reached";
 
 /// What a `result` line says of the API error that ended the turn.
 #[derive(Deserialize)]
@@ -26,52 +24,45 @@ struct ResultRecord {
     api_error: ReportedString,
 }
 
-impl Shared {
-    /// The facts of a failure this provider produced, received at
-    /// `received_at`: a usage limit can succeed again when the account's
-    /// limited window resets, and any other failure, or a limit whose reset
-    /// the quota does not know, is read by the HTTP rules.
-    pub(crate) fn read_failure(
-        &self,
-        diagnostics: &ProviderErrorDiagnostics,
-        received_at: Timestamp,
-    ) -> ProviderFailureFacts {
-        let reset = is_usage_limit(diagnostics)
-            .then(|| self.quota.latest())
-            .flatten()
-            .and_then(|snapshot| limited_reset(&snapshot, received_at));
-        match reset {
-            Some(reset) => ProviderFailureFacts {
-                retry_at: Some(reset),
-                continue_with: None,
-            },
-            None => read_http_failure(diagnostics, received_at),
-        }
+/// The facts of a failure this provider produced, received at
+/// `received_at`: a usage limit can succeed again at the reset its refused
+/// call names; any other failure, or a limit that names no reset, such as a
+/// seat whose usage credits are turned off, is read by the HTTP rules.
+pub(crate) fn read_failure(
+    diagnostics: &ProviderErrorDiagnostics,
+    received_at: Timestamp,
+) -> ProviderFailureFacts {
+    match usage_limit_reset(diagnostics) {
+        Some(reset) => ProviderFailureFacts {
+            retry_at: Some(reset),
+            continue_with: None,
+        },
+        None => read_http_failure(diagnostics, received_at),
     }
 }
 
-/// Whether the failure's record is a `result` line whose API error is the
-/// account's usage limit. A record that is not such a line is not one.
-fn is_usage_limit(diagnostics: &ProviderErrorDiagnostics) -> bool {
+/// The reset of a usage limit's record: the failing assistant line and the
+/// `result` line, joined by a newline as received, when the result's API
+/// error is the usage limit; the moment is the earlier of the assistant
+/// line's `api_error_params.rate_limit_info.resetsAt`, the window's reset,
+/// and its `overageResetsAt`, the usage credits' reset, of those present,
+/// in Unix seconds, since either lifts the limit. It comes
+/// before the account's quota, which may be older than the refusal; the
+/// quota stands in only for a limit that names no reset, which the backend
+/// reads for any provider.
+fn usage_limit_reset(diagnostics: &ProviderErrorDiagnostics) -> Option<Timestamp> {
     if diagnostics.source != FailureSource::Stream {
-        return false;
+        return None;
     }
-    let Some(upstream) = &diagnostics.upstream else {
-        return false;
-    };
-    serde_json::from_str::<ResultRecord>(upstream)
-        .is_ok_and(|record| record.api_error.as_deref() == Some(USAGE_LIMIT))
-}
-
-/// When the account's limited windows reset: the windows the snapshot says
-/// are used up, whose reset is still to come at `received_at`; with several,
-/// the latest, since the request succeeds only once every one has reset.
-fn limited_reset(snapshot: &QuotaSnapshot, received_at: Timestamp) -> Option<Timestamp> {
-    snapshot
-        .windows
+    let (notice, result) = diagnostics.upstream.as_deref()?.rsplit_once('\n')?;
+    let result: ResultRecord = serde_json::from_str(result).ok()?;
+    if result.api_error.as_deref() != Some(USAGE_LIMIT) {
+        return None;
+    }
+    let notice: serde_json::Value = serde_json::from_str(notice).ok()?;
+    let info = notice.get("api_error_params")?.get("rate_limit_info")?;
+    ["resetsAt", "overageResetsAt"]
         .iter()
-        .filter(|window| window.used_percent.is_some_and(|used| used >= 100.0))
-        .filter_map(|window| window.resets_at)
-        .filter(|reset| *reset > received_at)
-        .max()
+        .filter_map(|key| unix_seconds(info.get(key)?.as_f64()?))
+        .min()
 }

@@ -25,7 +25,7 @@ use demi_provider_common::{
     AccountSwitch, Ahead, ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, RuntimeEnv,
 };
-use demi_backend_providers::llm::rotation::{Candidate, Choice, Holding, USED_UP_FOR_MS, used_up_window};
+use demi_backend_providers::llm::rotation::{Candidate, Choice, Holding, USED_UP_FOR_MS, window_used_up};
 use demi_shared_types::{
     AgentAccount, Model, ModelSelection, NodeId, Rotation, Timestamp, UnavailableSetting,
     session_context_window,
@@ -449,16 +449,18 @@ impl ConversationRuntime {
         let assembly = self.scope.services.assembly.clone();
         let now = self.scope.services.clock.now();
         let model = self.selection.model.clone();
-        let candidates = assembly.candidates(&entry, false).await.map_err(drop)?;
-        let failed = candidates.iter().find(|candidate| candidate.id == used_up);
-        let named = match (&failure.diagnostics, &self.current) {
-            (Some(diagnostics), Some(current)) => {
-                current.provider.read_failure(diagnostics, now).retry_at
-            }
-            _ => None,
-        };
-        let quota = used_up_window(failed.and_then(|failed| failed.snapshot.as_ref()), &model, now);
-        let moment = named.or(quota.as_ref().and_then(|(_, reset)| *reset));
+        // The moment the failure names, else the account's quota's.
+        let moment = self.current.as_ref().and_then(|current| {
+            let named = failure
+                .diagnostics
+                .as_ref()
+                .and_then(|diagnostics| current.provider.read_failure(diagnostics, now).retry_at);
+            named.or_else(|| current.provider.quota()?.used_up_until(now))
+        });
+        let window = self.current.as_ref().and_then(|current| {
+            let snapshot = current.provider.quota()?.latest()?;
+            window_used_up(&snapshot, moment)
+        });
         let until = moment.unwrap_or_else(|| {
             Timestamp::from_millisecond(now.as_millisecond() + USED_UP_FOR_MS)
                 .expect("half an hour from now is a time")
@@ -485,7 +487,7 @@ impl ConversationRuntime {
         let switch = AccountSwitch {
             from: label(&used_up),
             to: label(&next),
-            window: quota.map(|(window, _)| window),
+            window,
             resets_at: moment,
         };
         Ok((switch, agent_account(&next, entry.rotation())))
@@ -590,16 +592,12 @@ fn all_used_up(entry: &ProviderEntry, candidates: &[Candidate]) -> ProviderFailu
         0 | 1 => format!("{} has reached its usage limit", entry.label),
         _ => format!("Every account of {} has reached its usage limit", entry.label),
     };
-    let code = USAGE_LIMIT.parse::<ErrorCode>().unwrap_or_else(|never| match never {});
-    refused(message, Some(code))
+    refused(message, Some(ErrorCode::UsageLimit))
 }
-
-/// A used-up account's failure code.
-const USAGE_LIMIT: &str = "usage_limit";
 
 /// Whether `failure` says the account is used up.
 fn uses_up(failure: &ProviderFailure) -> bool {
-    failure.code.as_ref().is_some_and(|code| code.as_str() == USAGE_LIMIT)
+    failure.code == Some(ErrorCode::UsageLimit)
 }
 
 impl ProviderRuntime for ConversationRuntime {

@@ -13,14 +13,12 @@ use std::sync::Arc;
 
 use demi_conversation_socket_protocol::Failures;
 use demi_provider_common::Provider;
-use demi_shared_types::{Block, ContinueWith, ErrorBlock, ProviderFailureFacts, Rotation};
-use demi_web_api_protocol::ids::ProviderId;
+use demi_provider_common::ErrorCode;
+use demi_shared_types::{Block, ContinueWith, ErrorBlock, ProviderFailureFacts, Rotation, Timestamp};
+use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 
 use demi_backend_providers::llm::assembly::ProviderAssembly;
 use demi_backend_providers::vault::entries::ProviderEntry;
-
-/// A used-up account's failure code.
-const USAGE_LIMIT: &str = "usage_limit";
 
 /// The facts of the error blocks among `blocks`, by block id; none when no
 /// block yields one. A block whose provider entry is gone, or cannot be
@@ -36,7 +34,7 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
             .diagnostics
             .as_ref()
             .filter(|diagnostics| diagnostics.upstream.is_some());
-        let used_up = error.code.as_deref() == Some(USAGE_LIMIT);
+        let used_up = error.code.as_deref() == Some(ErrorCode::UsageLimit.as_str());
         if upstream.is_none() && !used_up {
             continue;
         }
@@ -56,6 +54,9 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
             },
         };
         if used_up {
+            if facts.retry_at.is_none() {
+                facts.retry_at = quota_moment(assembly, reader, error).await;
+            }
             account_facts(assembly, &reader.entry, error, &mut facts).await;
         }
         if facts.retry_at.is_some() || facts.continue_with.is_some() {
@@ -69,6 +70,32 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
 struct Reader {
     entry: ProviderEntry,
     provider: Arc<dyn Provider>,
+}
+
+/// A usage limit's moment when its failure names none: the latest reset
+/// among the windows the quota of the account the failing request used
+/// shows used up, the account the error block names under rotation, else
+/// the active one (`failures-and-recovery.md` § The unfinished turn).
+async fn quota_moment(
+    assembly: &ProviderAssembly,
+    reader: &Reader,
+    error: &ErrorBlock,
+) -> Option<Timestamp> {
+    let named = error
+        .account
+        .as_deref()
+        .and_then(|account| CredentialId::try_from(account).ok());
+    let provider = match named {
+        Some(account) => match assembly.for_account(&reader.entry, &account).await {
+            Ok(provider) => provider?,
+            Err(failure) => {
+                tracing::warn!(provider = %reader.entry.id, error = &failure as &dyn std::error::Error, "a usage limit's account was not read");
+                return None;
+            }
+        },
+        None => reader.provider.clone(),
+    };
+    provider.quota()?.used_up_until(error.created_at)
 }
 
 /// What a usage limit of `entry` adds from its accounts: under rotation,

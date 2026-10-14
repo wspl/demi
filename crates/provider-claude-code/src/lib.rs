@@ -222,14 +222,14 @@ impl Provider for ClaudeCodeProvider {
         Box::pin(models::list(&self.shared.models_dev))
     }
 
-    /// A usage limit can succeed again when the account's limited window
-    /// resets; any other failure is read by the standard HTTP rules.
+    /// A usage limit can succeed again at the reset its refused call names;
+    /// any other failure is read by the standard HTTP rules.
     fn read_failure(
         &self,
         diagnostics: &ProviderErrorDiagnostics,
         received_at: Timestamp,
     ) -> ProviderFailureFacts {
-        self.shared.read_failure(diagnostics, received_at)
+        failure::read_failure(diagnostics, received_at)
     }
 
     fn quota(&self) -> Option<&ProviderQuota> {

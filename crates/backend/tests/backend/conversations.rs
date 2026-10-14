@@ -1392,6 +1392,9 @@ pub(crate) struct Runs {
     pub(crate) used_up: Mutex<Vec<String>>,
     /// The key of each runtime closed, in order.
     pub(crate) closed: Mutex<Vec<String>>,
+    /// Whether a used-up key's runs fail only after some text, as a limit
+    /// reached while the answer streams does.
+    pub(crate) fails_late: std::sync::atomic::AtomicBool,
     /// The input tokens each response reports, 1 unless the test makes the
     /// context large.
     pub(crate) input_tokens: std::sync::atomic::AtomicU64,
@@ -1405,6 +1408,7 @@ impl Runs {
             released: watch::Sender::new(false),
             used_up: Mutex::new(Vec::new()),
             closed: Mutex::new(Vec::new()),
+            fails_late: std::sync::atomic::AtomicBool::new(false),
             input_tokens: std::sync::atomic::AtomicU64::new(1),
         })
     }
@@ -1510,11 +1514,16 @@ impl ProviderRuntime for KeyedRuntime {
             if runs.used_up.lock().unwrap().contains(&key) {
                 let failure = ProviderFailure {
                     message: format!("{key} has reached its usage limit"),
-                    code: Some("usage_limit".parse().unwrap_or_else(|never| match never {})),
+                    code: Some(demi_provider_common::ErrorCode::UsageLimit),
                     diagnostics: None,
                     retry_after: None,
                 };
-                return stream::iter(vec![ProviderEvent::Error(failure)]);
+                let mut events = Vec::new();
+                if runs.fails_late.load(Ordering::SeqCst) {
+                    events.push(ProviderEvent::TextDelta("partial".into()));
+                }
+                events.push(ProviderEvent::Error(failure));
+                return stream::iter(events);
             }
             stream::iter(vec![
                 ProviderEvent::TextDelta(format!("{key}:{count}")),
