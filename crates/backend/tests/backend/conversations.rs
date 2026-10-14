@@ -1161,7 +1161,7 @@ fn compacted(turn: &[ServerFrame]) -> bool {
     })
 }
 
-// A backend, a scripted vendor, three conversations and seven requests:
+// A backend, a scripted vendor, three conversations and eight requests:
 // about a second.
 #[tokio::test]
 async fn a_users_context_limit_on_a_model_applies_to_each_of_their_conversations_with_it() {
@@ -1193,18 +1193,19 @@ async fn a_users_context_limit_on_a_model_applies_to_each_of_their_conversations
         socket.open().await;
         let before = vendor.requests().len();
         vendor.respond(answer(&["An answer."], 170_000, 5));
+        socket.chat("m1", "A question").await;
         if limited {
             vendor.respond(answer(&["The user asked a question."], 10, 5));
-            vendor.respond(answer(&["Continued."], 20, 2));
         }
-        let turn = socket.chat("m1", "A question").await;
+        vendor.respond(answer(&["Another answer."], 20, 2));
+        let turn = socket.chat("m2", "Another question").await;
 
-        // The limited model's turn compacts after the answer and goes on
-        // from the summary; the other model's ends with its answer.
+        // The limited model's next turn compacts before its request and
+        // goes on from the summary; the other model's has only its answer.
         let requests = vendor.requests().len() - before;
         assert_eq!(
             (compacted(&turn), requests),
-            if limited { (true, 3) } else { (false, 1) },
+            if limited { (true, 3) } else { (false, 2) },
             "{id} {model}"
         );
     }

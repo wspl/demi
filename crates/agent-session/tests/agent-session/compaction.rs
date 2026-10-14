@@ -987,6 +987,56 @@ async fn a_turn_whose_usage_keeps_reaching_the_threshold_compacts_at_most_three_
     assert_eq!(provider.remaining(), 0);
 }
 
+// One session and four scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_final_answer_over_the_threshold_ends_its_turn_and_the_next_send_compacts_first() {
+    // The answer requests no tool and reports 900 tokens, over the
+    // threshold of 500: the turn ends as answered, with no pass and no
+    // request asking the model to go on and write it again.
+    let provider = ScriptedRuntime::new([
+        answer("first answer"),
+        Turn::Events(vec![event::text("the report"), event::response(900, 0)]),
+        answer("summary"),
+        answer("welcome"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = small_session(&provider, Vec::new(), &store).await;
+    session
+        .send(text(&"x".repeat(1_200)), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    session
+        .send(text("write the report"), turn("t2"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    assert_eq!(provider.requests().len(), 2);
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        ["user", "text", "response", "user", "text", "response"]
+    );
+
+    // The next send compacts before its turn, from the answer's usage, and
+    // its request starts from the summary.
+    session.send(text("thanks"), turn("t3")).unwrap().await.unwrap();
+
+    let requests = provider.requests();
+    let copies: Vec<bool> = requests.iter().map(is_copy).collect();
+    assert_eq!(copies, [false, false, true, false]);
+    let next = &requests[3];
+    assert_eq!(next.items.first(), Some(&user_item(COMPACTION_NOTE)));
+    assert!(next.items.contains(&summary_item("summary")));
+    assert!(
+        next.items.ends_with(&[user_item("thanks")]),
+        "{:#?}",
+        next.items
+    );
+    assert!(!kinds(&session.transcript().blocks).iter().any(|kind| kind == "resume"));
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_switch_to_a_smaller_window_compacts_with_the_model_before_it() {
     let provider = ScriptedRuntime::new([
