@@ -156,6 +156,11 @@ export interface KeptSpec<T> {
   watch?: WatchChannel | null
   /** For an `answer`: what the answer `value` depends on, none before the first. */
   subjects?(value: T | undefined): Subject[]
+  /**
+   * Its value never changes once read, such as a file at a commit's full
+   * id: it follows nothing and is current from then on.
+   */
+  immutable?: boolean
 }
 
 /** How a view reads an entry: through the route of the place that shows it. */
@@ -308,6 +313,8 @@ class Entry<T> {
    * unknown otherwise, which no change will settle.
    */
   freshness(now: number): Freshness {
+    if (this.spec.immutable && this.state.answer === 'value')
+      return 'current'
     const readAt = this.readAt
     const subscriptions = this.subscriptions.value
     if (this.state.answer === null || readAt === null || subscriptions.length === 0)
@@ -643,9 +650,11 @@ export class HostFiles implements WatchListener {
   /**
    * The Host said something of `subscriptions`: each entry on screen that
    * depends on one and whose answer the numbers now show changed is read
-   * again, at once but a listing and a changes list at most once a second.
-   * An entry off screen is only noted, by the numbers its subscriptions now
-   * hold, and read when it comes on screen.
+   * again, at once but a listing and a changes list at most once a second,
+   * and so is one whose read failed, as a history read outside a repository
+   * does until `git init` makes one there. An entry off screen is only
+   * noted, by the numbers its subscriptions now hold, and read when it
+   * comes on screen.
    */
   heard(subscriptions: readonly Subscription[]): void {
     const heard = new Set(subscriptions)
@@ -653,8 +662,9 @@ export class HostFiles implements WatchListener {
     for (const entry of this.entries.values()) {
       if (entry.shown === 0 || entry.reading || !entry.subscriptions.value.some((subscription) => heard.has(subscription)))
         continue
+      const failed = entry.state.answer === null && entry.state.failure !== null
       const freshness = entry.freshness(now)
-      if (freshness === 'stale' || freshness === 'restarted')
+      if (failed || freshness === 'stale' || freshness === 'restarted')
         this.reread(entry)
     }
   }

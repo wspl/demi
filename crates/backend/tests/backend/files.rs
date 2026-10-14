@@ -250,6 +250,8 @@ async fn the_history_routes_read_branches_a_log_and_a_commits_files_through_the_
     assert_eq!(missing.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
     let gone = device.get("/changes/log?branch=nowhere").await;
     assert_eq!(gone.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
+    let unknown = device.get(&format!("/changes/raw?{}", query(&[("path", "a.txt"), ("commit", "0000000")]))).await;
+    assert_eq!(unknown.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
     let malformed = device.get("/changes/commit?commit=HEAD").await;
     assert_eq!(malformed.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery));
 }

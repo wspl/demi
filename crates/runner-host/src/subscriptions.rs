@@ -204,7 +204,7 @@ impl Index {
     }
 
     /// Notes in `pending` each subscription `event` changes.
-    fn matched(&self, event: &Event, pending: &Pending) {
+    fn matched(&mut self, event: &Event, pending: &Pending) {
         match &event.change {
             Change::Changed {
                 path,
@@ -231,8 +231,8 @@ impl Index {
                     // What lies below a folder that came, went or was renamed.
                     self.below(path, |id| pending.note(id, event.at));
                 }
-                for (id, subject) in &self.trees {
-                    if tree_changed(subject, path, *metadata, *entry, *ignored) {
+                for (id, subject) in &mut self.trees {
+                    if rebound(subject, path) || tree_changed(subject, path, *metadata, *entry, *ignored) {
                         pending.note(id, event.at);
                     }
                 }
@@ -279,6 +279,21 @@ impl Index {
             ids.keys().for_each(|id| each(id));
         }
     }
+}
+
+/// Whether a working tree that was in no repository is in one now that
+/// `path` changed in its `.git`, as `git init` makes it: its subject then
+/// follows the new repository's git directory, and has changed.
+fn rebound(subject: &mut Subject, path: &Path) -> bool {
+    let (root, dirs) = match subject {
+        Subject::Worktree { root, repo: dirs @ None } | Subject::Head { root, git_dir: dirs @ None } => (root, dirs),
+        _ => return false,
+    };
+    if !path.starts_with(root.join(".git")) {
+        return false;
+    }
+    *dirs = crate::git::git_dirs(root);
+    dirs.is_some()
 }
 
 /// Whether a change at `path` changes a working tree's list or its last

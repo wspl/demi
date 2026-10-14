@@ -4,7 +4,9 @@
 //! first parent with the branches it is on.
 
 use std::{
+    cell::RefCell,
     collections::{BTreeMap, HashSet},
+    rc::Rc,
     io,
     path::Path,
     sync::atomic::{AtomicBool, Ordering},
@@ -219,7 +221,7 @@ pub fn commit(
         }
         files.insert(file.path.clone(), file);
     }
-    let branches = containing(&repo, id, commit.time().map_err(internal)?.seconds, interrupt)?;
+    let branches = containing(&repo, id, interrupt)?;
     Ok(wire::GitCommit {
         commit: wire::GitCommitEntry {
             id: logged.id,
@@ -308,35 +310,34 @@ fn commit_file(
 }
 
 /// The local branches whose history holds `id`, the checked-out one first,
-/// then most recently committed first. Each walk stops at commits older than
-/// `id`'s, which cannot lead to it.
-fn containing(
-    repo: &gix::Repository,
-    id: ObjectId,
-    time: i64,
-    interrupt: &AtomicBool,
-) -> Result<Vec<String>, GitError> {
-    use gix::revision::walk::Sorting;
-    use gix::traverse::commit::simple::CommitTimeOrder;
+/// then most recently committed first. Commit times say nothing of
+/// ancestry, as a rebase or a skewed clock shows, so each walk goes until it
+/// finds `id`; one that ends without it has seen only commits that cannot
+/// lead to it, which later walks skip.
+fn containing(repo: &gix::Repository, id: ObjectId, interrupt: &AtomicBool) -> Result<Vec<String>, GitError> {
     let current = current_branch(repo)?;
+    let unrelated: Rc<RefCell<HashSet<ObjectId>>> = Rc::default();
     let mut found = Vec::new();
     for branch in local_branches(repo)? {
         let mut holds = branch.tip == id;
-        if !holds && branch.time >= time {
+        if !holds {
+            let known = Rc::clone(&unrelated);
             let walk = repo
                 .rev_walk([branch.tip])
-                .sorting(Sorting::ByCommitTimeCutoff {
-                    order: CommitTimeOrder::NewestFirst,
-                    seconds: time,
-                })
-                .all()
+                .selected(move |commit| !known.borrow().contains(commit))
                 .map_err(internal)?;
+            let mut seen = Vec::new();
             for info in walk {
                 interrupted(interrupt)?;
-                if info.map_err(internal)?.id == id {
+                let commit = info.map_err(internal)?.id;
+                if commit == id {
                     holds = true;
                     break;
                 }
+                seen.push(commit);
+            }
+            if !holds {
+                unrelated.borrow_mut().extend(seen);
             }
         }
         if holds {

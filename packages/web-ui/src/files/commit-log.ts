@@ -11,9 +11,12 @@ export interface CommitLogView {
   readonly loading: ComputedRef<boolean>
   /** The branch is gone: deleted since it was shown. */
   readonly gone: ComputedRef<boolean>
-  /** Why the newest page could not be read. */
+  /** Why a page could not be read, the newest or a later one, which `loadMore` reads again. */
   readonly failure: ComputedRef<string | null>
-  /** Shows the next page, while older commits follow and the last one shown has come. */
+  /**
+   * Reads a page that could not be read again, else shows the next page,
+   * while older commits follow and the last one shown has come.
+   */
   loadMore(): void
 }
 
@@ -44,7 +47,7 @@ export function useCommitLog(
   const chain = computed(() => {
     const read: CommitLogPage[] = []
     for (const [index, after] of pages.value.entries()) {
-      const page = shown.value.get(after)?.value
+      const page = shown.entries.value.get(after)?.value
       if (!page)
         break
       const before = read.at(-1)
@@ -57,22 +60,33 @@ export function useCommitLog(
   // A page that no longer follows the one before it is let go.
   watch(chain, (read) => {
     const next = pages.value[read.length]
-    if (next !== undefined && shown.value.get(next)?.value)
+    if (next !== undefined && shown.entries.value.get(next)?.value)
       pages.value = pages.value.slice(0, read.length)
   })
   const commits = computed(() => chain.value.flatMap((page) => page.commits))
   const more = computed(() => chain.value.at(-1)?.more ?? false)
-  const first = computed(() => shown.value.get(''))
+  const first = computed(() => shown.entries.value.get(''))
+  /** The first page asked for that could not be read and has nothing to show. */
+  const failed = computed(() => pages.value.find((after) => {
+    const entry = shown.entries.value.get(after)
+    return entry?.failure && entry.answer === null && entry.value === undefined
+  }))
   return {
     commits,
     more,
-    loading: computed(() => [...shown.value.values()].some((entry) => entry.value === undefined && entry.failure === null && entry.answer === null)),
+    loading: computed(() => [...shown.entries.value.values()].some((entry) => entry.value === undefined && entry.failure === null && entry.answer === null)),
     gone: computed(() => first.value?.answer === 'gone'),
     failure: computed(() => {
-      const entry = first.value
-      return entry?.failure && entry.answer === null ? entry.failure.message ?? 'The commits could not be listed.' : null
+      const after = failed.value
+      if (after === undefined)
+        return null
+      return shown.entries.value.get(after)?.failure?.message ?? 'The commits could not be listed.'
     }),
     loadMore() {
+      if (failed.value !== undefined) {
+        void shown.retry(failed.value)
+        return
+      }
       const read = chain.value
       if (read.length !== pages.value.length || !more.value)
         return
