@@ -24,6 +24,17 @@ const KERNEL_DEFAULT_PIPE_SIZE: usize = 64 * 1024;
 /// use rustix::io::Result for functions without read/write fallback
 type PipeRes = crate::context::io::Result<Result<(), ()>>;
 
+/// Whether the zero-copy paths run: not in an invocation under its owner's
+/// control (`crate::context::control`), whose reads and writes go through
+/// the context for its cancellation. A caller asks before it grows a pipe it
+/// does not own for splicing: a grown pipe that is then written to normally
+/// only holds more, up to 1 MiB, so the writer keeps writing after its
+/// reader has gone, where a 64 KiB pipe would end it with EPIPE.
+#[inline]
+pub fn zero_copy() -> bool {
+    crate::context::control().is_none()
+}
+
 /// return pipe and try to extend its size
 /// SIZE_REQUIRED should be true if you want to fail when changing pipe size failed
 /// e.g. writing size to pipe should not hang
@@ -52,7 +63,7 @@ pub fn pipe<const SIZE_REQUIRED: bool>() -> crate::context::io::Result<(PipeRead
 #[inline]
 pub fn splice(source: &impl AsFd, target: &impl AsFd, len: usize) -> rustix::io::Result<usize> {
     crate::context::check_cancelled();
-    if crate::context::control().is_some() {
+    if !zero_copy() {
         // The caller's read/write fallback preserves execution-owned cancellation.
         return Err(rustix::io::Errno::NOSYS);
     }
@@ -87,6 +98,10 @@ pub fn drain_pipe(pipe: &PipeReader, dest: &impl AsFd, len: usize) -> PipeRes {
 /// This includes read ahead and optimization for stdout's pipe size
 #[inline]
 pub fn splice_unbounded_auto(source: &impl AsFd, dest: &mut impl AsFd) -> PipeRes {
+    if !zero_copy() {
+        // The caller's read/write fallback, into `dest` as it is.
+        return Ok(Err(()));
+    }
     // A broker belongs to one transfer; sharing it mixes concurrent invocations.
     let Ok((pipe_rd, pipe_wr)) = pipe::<false>() else {
         return Ok(Err(()));
@@ -125,7 +140,7 @@ pub fn send_n_bytes(
     target: impl AsFd,
     n: u64,
 ) -> crate::context::io::Result<u64> {
-    if crate::context::control().is_some() {
+    if !zero_copy() {
         return crate::context::io::copy(&mut RawReader(input).take(n), &mut RawWriter(target));
     }
     let pipe_size = MAX_ROOTLESS_PIPE_SIZE.min(n as usize);
@@ -170,7 +185,7 @@ pub fn send_n_bytes(
 /// Err(b) means we discarded b bytes, but we should try to discarding remaining bytes by read
 #[inline]
 pub fn discard_n_bytes(fd: impl AsFd, n: usize) -> Result<usize, usize> {
-    if crate::context::control().is_some() {
+    if !zero_copy() {
         // Report zero consumed bytes so the caller uses its controlled reader.
         return Err(0);
     }

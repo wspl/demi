@@ -837,7 +837,19 @@ come back, with Try Again, instead of a spinner over *Contacting Claude
 Code…* that never moves. A page opened or reloaded meanwhile receives the
 running login with the product state and shows it again, Cancel included, so
 a reload never leaves a login nobody can reach; a second start on the
-reserved entry opens the running one. The vault logs a login's start, each
+reserved entry opens the running one. A login that makes a new entry reserves
+that family's new entry of its user in the same way, so two tabs that press
+Add Account on the first Claude account at the same moment share one login.
+A login the user cancels, on any page, closes its dialog on every page; it is
+not shown as a failure there. A failed login's dialog offers Try Again and
+Close, since nothing is left to cancel. Leaving the page, or closing it, does
+not end a login: only Cancel does, on any of the starter's pages, or the
+login's own end, so a second tab that shows Providers and is closed leaves
+the first tab's sign-in as it was. A login a backend restart dropped reads,
+on the page that showed it, *This sign-in is no longer running*, with Try
+Again. The dialog shows the expiry the login carries, as a device login's
+countdown does, and a refusal of a pasted code belongs to that code, so a
+refusal of an earlier code never shows after a later one was taken. The vault logs a login's start, each
 stage it reaches with the time it took, and its end, under the request that
 started it, never a link's or a code's contents.
 
