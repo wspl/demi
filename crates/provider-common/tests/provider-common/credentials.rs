@@ -389,6 +389,7 @@ fn io<'a>(
 ) -> LoginIo<'a> {
     LoginIo {
         pending: report,
+        stage: &|_| {},
         codes: tokio::sync::mpsc::unbounded_channel().1,
         stop: stop.clone(),
     }

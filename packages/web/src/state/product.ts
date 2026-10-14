@@ -129,6 +129,8 @@ function partEvent(state: ProductState, part: Part): PartEvent {
       return { type: 'providers', providers: state.providers }
     case 'cloud':
       return { type: 'cloud', cloud: state.cloud }
+    case 'logins':
+      return { type: 'logins', logins: state.logins }
     case 'subagents':
       return { type: 'subagents', subagents: state.subagents }
     case 'instructions':
@@ -176,6 +178,8 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
       return { ...state, providers: event.providers }
     case 'cloud':
       return { ...state, cloud: event.cloud }
+    case 'logins':
+      return { ...state, logins: event.logins }
     case 'subagents':
       return { ...state, subagents: event.subagents }
     case 'instructions':

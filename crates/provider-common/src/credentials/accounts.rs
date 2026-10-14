@@ -7,7 +7,7 @@
 use std::future::Future;
 use std::sync::Arc;
 
-use demi_shared_types::{AccountInfo, Clock, LoginPending};
+use demi_shared_types::{AccountInfo, Clock, LoginPending, LoginStage};
 use futures_util::future::BoxFuture;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
@@ -60,6 +60,13 @@ pub enum LoginKind {
 /// codes the user pastes, and when to stop.
 pub struct LoginIo<'a> {
     pub pending: &'a (dyn Fn(LoginPending) + Send + Sync),
+    /// What the login waits for before it has anything to show, for a
+    /// family whose login prepares in steps the user should see, such as a
+    /// Claude sign-in waiting for the Cloud (`claude-code.md` § Accounts
+    /// and sign-in). A login is `preparing` until it reports another stage,
+    /// and `waiting_for_user` once it reports `pending`; a family whose
+    /// login prepares in one step reports none.
+    pub stage: &'a (dyn Fn(LoginStage) + Send + Sync),
     /// The codes the user pastes, in order; a login that takes none leaves
     /// them.
     pub codes: mpsc::UnboundedReceiver<Secret>,

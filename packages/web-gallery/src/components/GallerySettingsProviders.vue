@@ -6,6 +6,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import ProviderLoginDialog, {
   type ProviderLoginPhase,
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
+import type { ProviderLoginStage } from '@demicodes/web-ui/settings/types'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import {
   type SettingsCompatibleDraft,
@@ -327,10 +328,18 @@ function beginLogin(p: SettingsProviderEntry) {
   const mock = p as MockProvider
   login.value = {
     provider: p,
-    phase: { kind: 'starting' },
+    phase: { kind: 'starting', stage: 'preparing' },
   }
-  loginTimer = window.setTimeout(() => {
+  // As the product's: a Claude sign-in waits for the Cloud and the command-line tool's start first.
+  const stages: ProviderLoginStage[] = mock.family === 'claude-code' ? ['waiting_for_cloud', 'starting'] : []
+  const next = () => {
     if (!login.value) {
+      return
+    }
+    const stage = stages.shift()
+    if (stage) {
+      login.value.phase = { kind: 'starting', stage }
+      loginTimer = window.setTimeout(next, 1200)
       return
     }
     if (mock.family === 'claude-code') {
@@ -360,7 +369,8 @@ function beginLogin(p: SettingsProviderEntry) {
         active: login.value.provider.accounts.length === 0,
       }
     }, 4000)
-  }, 900)
+  }
+  loginTimer = window.setTimeout(next, 900)
 }
 
 /**

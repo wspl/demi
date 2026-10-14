@@ -17,7 +17,7 @@ use demi_provider_common::credentials::{
     AccountKit, AccountsCapability, LoginError, LoginIo, LoginKind, NewAccount, SecretDocument,
     decode_secret,
 };
-use demi_shared_types::{LoginPending, StreamKind, Timestamp};
+use demi_shared_types::{LoginPending, LoginStage, StreamKind, Timestamp};
 use futures_util::future::BoxFuture;
 use futures_util::{FutureExt as _, StreamExt as _};
 use reqwest::Url;
@@ -28,7 +28,7 @@ use tokio_util::sync::CancellationToken;
 use crate::account::ClaudeSecret;
 use crate::cli;
 use crate::live::{Tail, exit_message};
-use crate::placement::{AccountMachine, AccountWork, Placed, Placement};
+use crate::placement::{AccountMachine, AccountWork, Placed, Placement, StartStage};
 
 /// The file the CLI writes its tokens to in its configuration directory.
 const CREDENTIALS: &str = ".credentials.json";
@@ -37,6 +37,8 @@ const CONFIG: &str = ".claude.json";
 
 /// What the sign-in shows the user while it runs.
 enum Shown {
+    /// What the sign-in waits for before the CLI prints its link.
+    Stage(LoginStage),
     /// The link the CLI printed.
     Link(String),
     /// The CLI refused the code the user pasted, in these words, and waits
@@ -70,10 +72,11 @@ impl AccountKit for ClaudeKit {
 
 }
 
-/// Runs the CLI's sign-in on `machine` and relays it: the link the CLI
-/// prints goes to `io.pending`, and the codes the user pastes go to the
-/// CLI. It ends with the account the CLI signed in, or once the sign-in
-/// failed or was stopped, after the sign-in's directory went.
+/// Runs the CLI's sign-in on `machine` and relays it: what the start waits
+/// for goes to `io.stage`, the link the CLI prints to `io.pending`, and the
+/// codes the user pastes go to the CLI. It ends with the account the CLI
+/// signed in, or once the sign-in failed or was stopped, after the
+/// sign-in's directory went.
 async fn sign_in(
     machine: Arc<dyn AccountMachine>,
     entry: String,
@@ -81,6 +84,7 @@ async fn sign_in(
 ) -> Result<NewAccount, LoginError> {
     let LoginIo {
         pending,
+        stage,
         codes,
         stop,
     } = io;
@@ -100,6 +104,7 @@ async fn sign_in(
     loop {
         tokio::select! {
             next = link.recv(), if shown => match next {
+                Some(Shown::Stage(reached)) => stage(reached),
                 Some(Shown::Link(url)) => {
                     pending(LoginPending {
                         verification_url: url.clone(),
@@ -149,11 +154,23 @@ async fn sign_in_at(
             () = abandoned.cancelled() => {}
         }
     };
+    // The login is gone once it stopped waiting, and a stage nobody shows
+    // matters to nobody.
+    let stages = {
+        let shown = shown.clone();
+        move |reached: StartStage| {
+            let _ = shown.send(Shown::Stage(match reached {
+                StartStage::Machine => LoginStage::WaitingForCloud,
+                StartStage::Install => LoginStage::Installing,
+                StartStage::Process => LoginStage::Starting,
+            }));
+        }
+    };
     // A start given up removes what it made.
     let Placed {
         process, config, ..
     } = tokio::select! {
-        placed = placement.start(&cli::login_request) => {
+        placed = placement.start(&cli::login_request, &stages) => {
             placed.map_err(|error| LoginError::Failed(error.0))?
         }
         () = stopped() => return Err(LoginError::Stopped),

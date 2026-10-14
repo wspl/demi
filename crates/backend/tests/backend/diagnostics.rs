@@ -13,13 +13,13 @@ use tracing_subscriber::layer::SubscriberExt as _;
 use crate::support::{Answer, Harness, Session, TestBackend, eventually};
 
 /// The ID an answer's `X-Request-Id` names.
-fn request_id(answer: &Answer) -> String {
+pub(crate) fn request_id(answer: &Answer) -> String {
     answer.headers["x-request-id"].to_str().unwrap().to_owned()
 }
 
 /// The lines the server log keeps of `request`, as an administrator reads
 /// them.
-async fn lines_of(backend: &TestBackend, admin: &Session, request: &str) -> ServerLog {
+pub(crate) async fn lines_of(backend: &TestBackend, admin: &Session, request: &str) -> ServerLog {
     let read = backend
         .get(&format!("/api/server/log?request={request}"), Some(admin))
         .await;

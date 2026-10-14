@@ -350,6 +350,7 @@ impl Services {
             operations.clone(),
             providers.logins,
             clock.clone(),
+            sync.clone(),
         );
         Ok(Self {
             mode: settings.mode,

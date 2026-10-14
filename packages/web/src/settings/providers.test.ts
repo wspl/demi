@@ -3,7 +3,8 @@ import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick } from 'vue'
 import { productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
-import type { ProductState } from '../api/generated/web-api'
+import type { ListedLogin, ProductState } from '../api/generated/web-api'
+import type { LoginStage } from '@demicodes/protocol'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
 import { useProviderSettings } from './providers'
@@ -29,6 +30,10 @@ let write: (body: Record<string, unknown>) => Promise<Response>
 let probe: (body: string, signal: AbortSignal | null | undefined) => Promise<Response>
 /** What the backend answers to making another account the active one. */
 let activate: () => Promise<Response>
+/** What the backend answers to a sign-in's start, by the path it was sent to. */
+let startLogin: (path: string) => Promise<Response>
+/** The sign-ins the page cancelled, by their ids. */
+let cancelled: string[]
 
 beforeEach(async () => {
   pinia = createPinia()
@@ -54,6 +59,10 @@ beforeEach(async () => {
   writes = 0
   probe = async () => Response.json({})
   activate = async () => new Response(null, { status: 204 })
+  startLogin = async () => {
+    throw new Error('No sign-in starts in this test')
+  }
+  cancelled = []
   write = async (body) => {
     if (typeof body.label === 'string') {
       state.providers[0]!.label = body.label
@@ -123,6 +132,13 @@ beforeEach(async () => {
     }
     if (path === '/api/providers/codex/accounts/active' && init?.method === 'PUT') {
       return activate()
+    }
+    if (path.endsWith('/login') && init?.method === 'POST') {
+      return startLogin(path)
+    }
+    if (path.startsWith('/api/providers/subscription-login/') && init?.method === 'DELETE') {
+      cancelled.push(path.slice('/api/providers/subscription-login/'.length))
+      return new Response(null, { status: 204 })
     }
     if (path === '/api/providers/configured/quota' && init?.method === 'POST') {
       return probe(String(init.body), init.signal)
@@ -568,4 +584,101 @@ test('Activate moves the Active mark at once, and a refused switch moves it back
   await switching
   expect(activeAccount()).toBe('a')
   expect(toasts.map((toast) => toast.title)).toEqual(['Could Not Switch Accounts'])
+})
+
+/** Sign-in `id` into `providerId`'s entry, or a new Codex entry, as the channel lists it while it runs at `stage`. */
+function runningLogin(id: string, stage: LoginStage, providerId: string | null = null): ListedLogin {
+  return {
+    id,
+    providerId,
+    providerType: 'codex',
+    login: {
+      status: 'pending',
+      stage,
+      verificationUrl: stage === 'waiting_for_user' ? 'https://auth.openai.com/codex/device' : null,
+      userCode: stage === 'waiting_for_user' ? 'HXRV-7K2M' : null,
+      needsCode: false,
+      codeError: null,
+      expiresAt: '2026-09-10T00:10:00.000Z',
+    },
+  }
+}
+
+test('a page loaded while a sign-in runs shows it again, follows it, and Cancel cancels it for good', async () => {
+  // A reload: a new page whose snapshot lists the running sign-in.
+  useProduct().stop()
+  disposePinia(pinia)
+  pinia = createPinia()
+  setActivePinia(pinia)
+  state.logins = [runningLogin('running', 'waiting_for_cloud')]
+  useProduct().start()
+  channels.last().connect(state)
+  await useProduct().loadVendors()
+  const settings = useProviderSettings()
+  await waitFor(() => settings.login !== null)
+  expect(settings.login?.provider.id).toBe('codex')
+  expect(settings.login?.phase).toEqual({ kind: 'starting', stage: 'waiting_for_cloud' })
+
+  // The dialog follows what the vault announces.
+  state.logins = [runningLogin('running', 'waiting_for_user')]
+  channels.last().send({ type: 'logins', logins: state.logins })
+  await waitFor(() => settings.login?.phase.kind === 'device')
+  expect(settings.login?.phase).toEqual({ kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M' })
+
+  // Cancel cancels it, and the dialog stays closed when its end is announced.
+  await settings.closeLogin()
+  expect(cancelled).toEqual(['running'])
+  expect(settings.login).toBeNull()
+  state.logins = [{
+    ...runningLogin('running', 'waiting_for_user'),
+    login: { status: 'failed', message: 'The login was cancelled', requestId: 'req_started' },
+  }]
+  channels.last().send({ type: 'logins', logins: state.logins })
+  await nextTick()
+  expect(settings.login).toBeNull()
+})
+
+test('a start the entry’s running sign-in holds opens that sign-in, whose failure names the request that started it', async () => {
+  const entry = {
+    ...state.providers[0]!,
+    id: 'subscription',
+    kind: 'subscription' as const,
+    providerType: 'codex',
+    label: 'Codex',
+    hasApiKey: false,
+  }
+  state.providers.push(entry)
+  // Another page of the user's started it.
+  state.logins = [runningLogin('running', 'waiting_for_user', 'subscription')]
+  channels.last().send({ type: 'providers', providers: state.providers })
+  const settings = useProviderSettings()
+  await waitFor(() => settings.providers.some((provider) => provider.id === 'subscription'))
+  const starts: string[] = []
+  startLogin = async (path) => {
+    starts.push(path)
+    // The channel lists it by the time the start is refused.
+    channels.last().send({ type: 'logins', logins: state.logins })
+    return Response.json(
+      { code: 'provider_busy', message: 'Another provider operation is still running', requestId: 'req_refused', loginId: 'running' },
+      { status: 409 },
+    )
+  }
+  await settings.beginLogin(settings.providers.find((provider) => provider.id === 'subscription')!)
+  expect(starts).toEqual(['/api/providers/subscription/accounts/login'])
+  expect(settings.login?.phase).toEqual({ kind: 'device', url: 'https://auth.openai.com/codex/device', code: 'HXRV-7K2M' })
+
+  state.logins = [{
+    ...state.logins[0]!,
+    login: { status: 'failed', message: 'Your Cloud did not reconnect within 60 seconds', requestId: 'req_started' },
+  }]
+  channels.last().send({ type: 'logins', logins: state.logins })
+  await waitFor(() => settings.login?.phase.kind === 'failed')
+  expect(settings.login?.phase).toEqual({
+    kind: 'failed',
+    message: 'Your Cloud did not reconnect within 60 seconds',
+    requestId: 'req_started',
+  })
+  // Nothing to cancel: it ended.
+  await settings.closeLogin()
+  expect(cancelled).toEqual([])
 })

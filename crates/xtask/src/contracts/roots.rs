@@ -57,6 +57,7 @@ pub fn protocol() -> Vec<Root> {
         receives::<core::RuntimeState>(),
         receives::<core::AccountInfo>(),
         receives::<core::LoginPending>(),
+        receives::<core::LoginStage>(),
         receives::<core::QuotaSnapshot>(),
         receives::<core::WireApi>(),
         receives::<core::PreviewType>(),

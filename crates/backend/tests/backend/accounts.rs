@@ -7,12 +7,12 @@
 
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use std::time::Duration;
 
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_provider_common::quota::{ProbeCost, QuotaError};
 use demi_provider_common::testing::{MockResponse, MockVendor};
-use demi_shared_types::{QuotaWindow, SnapshotSource};
+use demi_shared_types::{LoginStage, QuotaWindow, SnapshotSource};
+use demi_web_api_protocol::state::SyncEvent;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{
@@ -26,7 +26,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::families::{Directory, LoginScript, QuotaScript, ScriptedSubscription};
-use crate::support::{Harness, Session, TestBackend};
+use crate::support::{Harness, Session, SyncChannel, TestBackend};
 
 pub(crate) struct Scripts {
     pub(crate) login: Arc<LoginScript>,
@@ -97,23 +97,51 @@ pub(crate) async fn login_state(backend: &TestBackend, session: &Session, id: &s
         .login
 }
 
-/// The login's state once `settled` says it has moved on, polled for up to
-/// thirty seconds: a Claude sign-in may first wake the Cloud and install its
-/// CLI there.
+/// The login's state once `settled` says it has moved on, as the vault
+/// announces it to the session's pages: in the product state, then in each
+/// `logins` message.
 pub(crate) async fn awaited(
     backend: &TestBackend,
     session: &Session,
     id: &str,
     settled: impl Fn(&LoginState) -> bool,
 ) -> LoginState {
-    for _ in 0..3000 {
-        let state = login_state(backend, session, id).await;
-        if settled(&state) {
-            return state;
+    let mut page = backend.sync(session).await;
+    let mut logins = page.snapshot().await.logins;
+    loop {
+        let login = logins.into_iter().find(|login| login.id.as_str() == id);
+        if let Some(login) = login.filter(|login| settled(&login.login)) {
+            return login.login;
         }
-        tokio::time::sleep(Duration::from_millis(10)).await;
+        logins = loop {
+            if let SyncEvent::Logins { logins } = page.next().await {
+                break logins;
+            }
+        };
     }
-    panic!("login {id} did not settle");
+}
+
+/// The stages login `id` is announced at on `page`, a channel past its
+/// snapshot, in their order, until it ends, and how it ended. Stages the
+/// vault passes between two messages are not seen.
+pub(crate) async fn followed(page: &mut SyncChannel, id: &str) -> (Vec<LoginStage>, LoginState) {
+    let mut stages = Vec::new();
+    loop {
+        let SyncEvent::Logins { logins } = page.next().await else {
+            continue;
+        };
+        let Some(login) = logins.into_iter().find(|login| login.id.as_str() == id) else {
+            continue;
+        };
+        match login.login {
+            LoginState::Pending { stage, .. } => {
+                if stages.last() != Some(&stage) {
+                    stages.push(stage);
+                }
+            }
+            ended => return (stages, ended),
+        }
+    }
 }
 
 pub(crate) fn ended(state: &LoginState) -> bool {
@@ -306,6 +334,7 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
     assert_eq!(
         pending,
         LoginState::Pending {
+            stage: LoginStage::WaitingForUser,
             verification_url: Some("https://verify.example/device".into()),
             user_code: Some("ABCD-1234".into()),
             needs_code: false,
@@ -348,7 +377,7 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
     };
     assert!(outcomes.iter().any(|state| matches!(
         state,
-        LoginState::Failed { message } if message == "This scope already has a device subscription"
+        LoginState::Failed { message, .. } if message == "This scope already has a device subscription"
     )));
     let providers = backend
         .get("/api/providers", Some(&master))
@@ -488,18 +517,31 @@ async fn a_login_into_an_entry_holds_it_until_it_ends_and_cancelling_stops_it_at
             busy.refusal(),
             (StatusCode::CONFLICT, ErrorCode::ProviderBusy)
         );
+        // A change of another kind names no login.
+        assert_eq!(busy.error().login_id, None);
     }
+    // A second start names the running login, which the page opens rather
+    // than a second one.
+    let again = backend
+        .post(&format!("{path}/accounts/login"), Some(&master), json!({}))
+        .await;
+    assert_eq!(
+        again.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ProviderBusy)
+    );
+    assert_eq!(
+        again.error().login_id.map(|login| login.into_string()),
+        Some(id.clone())
+    );
     let cancelled = backend
         .delete(&format!("/api/providers/subscription-login/{id}"), &master)
         .await;
     assert_eq!(cancelled.status, StatusCode::NO_CONTENT);
     assert_eq!(scripts.login.cancelled.load(Ordering::SeqCst), 1);
-    assert_eq!(
+    assert!(matches!(
         login_state(&backend, &master, &id).await,
-        LoginState::Failed {
-            message: "The login was cancelled".into()
-        }
-    );
+        LoginState::Failed { message, .. } if message == "The login was cancelled"
+    ));
     assert_eq!(
         backend
             .patch(&path, &master, json!({ "label": "Ready" }))

@@ -121,6 +121,37 @@ pub struct AccountInfo {
     pub updated_at: Option<Timestamp>,
 }
 
+/// What a login waits for (`claude-code.md` § Accounts and sign-in): it is
+/// `preparing` from its start, and `waiting_for_user` once it has a link or
+/// a code to show. A Claude sign-in waits for the Cloud, for the CLI's
+/// install and for the CLI's start in between.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LoginStage {
+    Preparing,
+    /// The Cloud's machine access is acquired: its runner woken or awaited.
+    WaitingForCloud,
+    /// The CLI is installed on the Cloud.
+    Installing,
+    /// The CLI runs and has not printed its link yet.
+    Starting,
+    /// The user opens the link, enters the code or pastes one back.
+    WaitingForUser,
+}
+
+impl LoginStage {
+    /// The stage's name, as the API and the server log write it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Preparing => "preparing",
+            Self::WaitingForCloud => "waiting_for_cloud",
+            Self::Installing => "installing",
+            Self::Starting => "starting",
+            Self::WaitingForUser => "waiting_for_user",
+        }
+    }
+}
+
 /// What a login asks the user to do, reported while the login
 /// waits (`providers.md` § Login and publication). When the login ends is
 /// the vault's, not the vendor's.

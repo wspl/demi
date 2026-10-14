@@ -43,6 +43,7 @@ impl Shard {
         let mut conversations = self.conversation_summaries(false).await?;
         conversations.extend(self.conversation_summaries(true).await?);
         let cloud = self.cloud_shard().cloud_status().await?;
+        let logins = services.logins.listed(self.user());
         let runner_release = match services.runner_releases.current().await {
             Ok(release) => release.map(|release| release.release),
             Err(error) => {
@@ -88,6 +89,7 @@ impl Shard {
             runner_release,
             conversations,
             cloud,
+            logins,
             subagents,
             instructions,
             credentials,
@@ -188,6 +190,9 @@ impl Shard {
             }
             Part::Providers => SyncEvent::Providers {
                 providers: self.provider_states(user).await?,
+            },
+            Part::Logins => SyncEvent::Logins {
+                logins: self.services().logins.listed(self.user()),
             },
             Part::Cloud => SyncEvent::Cloud {
                 cloud: self.cloud_shard().cloud_status().await?,

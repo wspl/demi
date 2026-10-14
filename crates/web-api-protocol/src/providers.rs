@@ -4,8 +4,8 @@
 //! material.
 
 use demi_shared_types::{
-    AccountInfo, AuthState, FileExtension, ModelSelection, Nullable, ProviderModel, QuotaSnapshot,
-    RuntimeState, Timestamp, WireApi,
+    AccountInfo, AuthState, FileExtension, LoginStage, ModelSelection, Nullable, ProviderModel,
+    QuotaSnapshot, RequestId, RuntimeState, Timestamp, WireApi,
 };
 use garde::Validate;
 use schemars::JsonSchema;
@@ -522,13 +522,14 @@ pub struct LoginAnswer {
     rename_all_fields = "camelCase"
 )]
 pub enum LoginState {
-    /// Waiting for the user, who opens the address and enters the code;
-    /// both are null until the vendor names them. With `needs_code`, the
-    /// user signs in at the address instead and pastes the code the page
-    /// shows, which the login now takes, `code_error` saying why it refused
-    /// the last one. The login ends at `expires_at`
-    /// unless the user finishes it first.
+    /// Running: `stage` says what it waits for. Once it waits for the user,
+    /// the user opens the address and enters the code; both are null until
+    /// the vendor names them. With `needs_code`, the user signs in at the
+    /// address instead and pastes the code the page shows, which the login
+    /// now takes, `code_error` saying why it refused the last one. The
+    /// login ends at `expires_at` unless the user finishes it first.
     Pending {
+        stage: LoginStage,
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<String>")]
         verification_url: Option<String>,
@@ -549,9 +550,30 @@ pub enum LoginState {
         provider_id: ProviderId,
         credential_id: CredentialId,
     },
+    /// The login failed, expired or was cancelled: `message` says which,
+    /// naming the stage it failed at, and `request_id` is the request that
+    /// started it, under which the server log holds its whole course.
     Failed {
         message: String,
+        request_id: RequestId,
     },
+}
+
+/// One of the user's sign-ins, as the `logins` message and the product
+/// state list them (`web-api.md` § Page synchronization).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ListedLogin {
+    pub id: LoginId,
+    /// The entry the login adds an account to; null for a login that makes
+    /// a new entry.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<ProviderId>")]
+    pub provider_id: Option<ProviderId>,
+    /// The entry's family, or the family of the entry the login makes.
+    pub provider_type: String,
+    /// As `GET /providers/subscription-login/:id` answers it.
+    pub login: LoginState,
 }
 
 /// `GET /models`: the catalog of every entry the caller infers with.
