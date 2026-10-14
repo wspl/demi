@@ -111,6 +111,10 @@ holds `vendor → ../shared/vendor` and `config.json → ~/.config/app.json`:
 - **The mark says it is a link.** A small arrow at the end of the row, in
   the secondary text color, where the Explorer puts its decorations; its
   tooltip names the target as written, *Symbolic link to ../shared/vendor*.
+- **It sorts as what its target is**: a link to a directory among the
+  folders, as the Explorer sorts it. A link to something that is neither a
+  file nor a directory, such as a device or a pipe, shows and opens as a
+  file does.
 - **A link whose target is missing** shows as a file with the mark, its
   tooltip *Symbolic link to /tmp/gone.log, which does not exist*; opening it
   shows that sentence where the file would be.
