@@ -6,7 +6,7 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::{Nullable, Timestamp};
+use crate::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 
 /// The latest report of one account.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
@@ -91,7 +91,7 @@ pub struct QuotaWindow {
     /// stated it reads as unknown.
     #[serde(default)]
     #[schemars(with = "Nullable<u64>")]
-    #[garde(skip)]
+    #[garde(range(max = MAX_SAFE_INTEGER))]
     pub period_seconds: Option<u64>,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<QuotaSeverity>")]
