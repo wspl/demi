@@ -215,5 +215,10 @@ async fn resume_at_retry(shard: Weak<Shard>, conversation: ConversationId, error
     if live.is_closing() {
         return;
     }
+    #[cfg(feature = "testing")]
+    live.services()
+        .retries
+        .pass(crate::holds::RetryStep::Started)
+        .await;
     live.resume_failed_turn(&conversation, &id).await;
 }

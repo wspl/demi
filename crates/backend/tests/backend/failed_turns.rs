@@ -385,9 +385,9 @@ async fn after_a_restart_opening_the_conversation_waits_again_only_for_a_moment_
     world.backend.close().await;
 }
 
-/// The moment comes while the backend shuts down: the resume counts among
-/// the tree's openers before it reads anything, so the close waits for it,
-/// and it opens nothing once the close began.
+/// The moment comes while the backend shuts down: the resume opens nothing
+/// once the close began. That the close waits for a resume already past this
+/// check is the next test's.
 // One conversation and a close on the paused clock: well under a second.
 #[tokio::test(flavor = "local")]
 async fn a_resume_whose_moment_comes_during_the_shutdown_opens_nothing() {
@@ -417,4 +417,41 @@ async fn a_resume_whose_moment_comes_during_the_shutdown_opens_nothing() {
     assert_eq!(world.script.asked().len(), 1);
     assert_eq!(world.script.built.load(Ordering::SeqCst), 1, "no tree opened again");
     assert!(!std::fs::read_to_string(&world.log).unwrap().contains(RESUMED));
+}
+
+/// The shutdown begins while a resume that found the backend open is under
+/// way: the close waits for it, so the tree it opens is one the close puts
+/// away, and no tree outlives the backend.
+// One conversation and a close on the paused clock: well under a second.
+#[tokio::test(flavor = "local")]
+async fn a_shutdown_waits_for_a_resume_under_way() {
+    let world = World::start().await;
+    world.prefer(true).await;
+    let mut socket = world.socket().await;
+    world.fail(&mut socket, "m1", "first", 1).await;
+    world.leave(socket, 1).await;
+    world.pass(11).await;
+    eventually("the tree is put away", || async {
+        world.script.closed.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    create(&world.backend, &world.master, SECOND).await;
+    let mut watching = Socket::connect(&world.backend, &world.master, SECOND).await;
+
+    let started = world.backend.hold_retries(demi_backend_user_shard::holds::RetryStep::Started);
+    // The resumed turn hangs until the shutdown stops it.
+    world.script.push(Vec::new());
+    world.pass(49).await;
+    started.until_arrived(1).await;
+    tokio::join!(world.backend.close(), async {
+        watching.closed().await;
+        started.release();
+    });
+    let built = world.script.built.load(Ordering::SeqCst);
+    assert_eq!(built, 2, "the resume opened the tree again");
+    assert_eq!(
+        world.script.closed.load(Ordering::SeqCst),
+        built,
+        "every tree the backend opened was put away by its close"
+    );
 }

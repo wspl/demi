@@ -1,9 +1,9 @@
-import { afterEach, beforeEach, expect, test } from 'bun:test'
+import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import type { Preferences } from '../api/generated/web-api'
 import { productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
-import { waitFor } from '@demicodes/utils'
+import { deferred, waitFor } from '@demicodes/utils'
 import { usePreferences } from './preferences'
 import { useProduct } from './product'
 import { useResources } from './resources'
@@ -157,18 +157,76 @@ test("a model or an entry the user turns off is saved in the user's preferences,
   expect(resources.providers[0]?.enabled).toBe(false)
 })
 
+/** Lets the event loop turn once, which fake timers leave real. */
+const turn = () => new Promise((resolve) => setImmediate(resolve))
+
 // A change made just before the page went was lost: its write waited for the
 // user's pause, which never came. The page hidden or gone flushes it at once,
 // and the pause sends nothing more.
-test('a change waiting for the pause is sent at once when the page flushes, and once', async () => {
-  useProduct().start()
-  channels.last().connect(productState({ preferences: saved }))
-  const preferences = usePreferences()
-  preferences.update({ resumeAtRetry: true })
-  expect(patches).toEqual([])
-  await preferences.flush()
-  expect(patches).toEqual([{ resumeAtRetry: true }])
-  await new Promise((resolve) => setTimeout(resolve, 250))
-  expect(patches).toHaveLength(1)
-  expect(preferences.resumeAtRetry).toBe(true)
+test("a slider's change waiting for the pause is sent at once when the page flushes, and once", async () => {
+  jest.useFakeTimers()
+  try {
+    useProduct().start()
+    channels.last().connect(productState({ preferences: saved }))
+    const preferences = usePreferences()
+    preferences.update({ appearance: { fontSize: 17 } }, { bursty: true })
+    await turn()
+    expect(patches).toEqual([])
+    await preferences.flush()
+    expect(patches).toEqual([{ appearance: { fontSize: 17 } }])
+    jest.advanceTimersByTime(1_000)
+    await turn()
+    expect(patches).toHaveLength(1)
+    expect(preferences.appearance.fontSize).toBe(17)
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+// A fixed bug: a switch turned and the page reloaded at once lost the change,
+// whose write waited for a pause and then behind the write before it. A
+// switch's change is written at once, and a flush as the page goes sends
+// what still waits at once, with keepalive, not behind a write in flight.
+test("a switch's change is written at once, and one behind a write in flight goes at once when the page flushes", async () => {
+  const held = deferred<Response>()
+  const sent: { body: unknown; keepalive: boolean | undefined }[] = []
+  globalThis.fetch = (async (input, init) => {
+    if (String(input) === '/api/settings/preferences' && init?.method === 'PATCH') {
+      const body = JSON.parse(String(init.body))
+      sent.push({ body, keepalive: init.keepalive })
+      saved = { ...saved, ...body }
+      const answer = Response.json({ preferences: saved })
+      return sent.length === 1 ? held.promise : answer
+    }
+    throw new Error(`Unexpected request: ${String(input)}`)
+  }) as typeof fetch
+  jest.useFakeTimers()
+  try {
+    useProduct().start()
+    channels.last().connect(productState({ preferences: saved }))
+    const preferences = usePreferences()
+
+    // Ticked: written without a pause, and held on its way.
+    preferences.update({ resumeAtRetry: true })
+    await turn()
+    expect(sent).toEqual([{ body: { resumeAtRetry: true }, keepalive: true }])
+
+    // Unticked: it waits behind the held write until the page goes.
+    preferences.update({ resumeAtRetry: false })
+    await turn()
+    expect(sent).toHaveLength(1)
+    void preferences.flush()
+    expect(sent).toEqual([
+      { body: { resumeAtRetry: true }, keepalive: true },
+      { body: { resumeAtRetry: false }, keepalive: true },
+    ])
+
+    // The held write ends; nothing is sent again.
+    held.resolve(Response.json({ preferences: { ...saved, resumeAtRetry: true } }))
+    jest.advanceTimersByTime(1_000)
+    await turn()
+    expect(sent).toHaveLength(2)
+  } finally {
+    jest.useRealTimers()
+  }
 })
