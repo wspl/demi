@@ -12,6 +12,7 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationChange;
 use demi_backend_database::conversations::ConversationDb;
 use demi_backend_host_access::transition::ChangeRefusal;
+use demi_backend_page_sync::Part;
 use demi_backend_host_access::HostShard;
 use demi_backend_host_access::access::Conversations;
 use demi_backend_host_access::plugin_files::{DirectorySets, PluginInstalls};
@@ -112,6 +113,10 @@ impl HostShard for Shard {
         change: ConversationChange,
     ) -> LocalBoxFuture<'a, Result<(), ChangeRefusal>> {
         Box::pin(Shard::transition(self, conversation, change))
+    }
+
+    fn summary_changed(&self, conversation: &ConversationId) {
+        self.mark(Part::Conversation(conversation.clone()));
     }
 
     fn settle_when_idle(&self, conversation: &ConversationId) {

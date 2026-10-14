@@ -757,6 +757,10 @@ The sign-in page works again:
 - **Numbers.** Attachments are `a1`, `a2`, … in the conversation, from its
   `attachment` sequence, never given twice
   ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)).
+  A number and its record are stored in one transaction, and the backend
+  then sends the conversation's summary, which carries the number as its
+  `lastAttachment`, to the user's pages
+  ([Sidebar mutations and read state](../product/web-api.md#sidebar-mutations-and-read-state)).
   A Fork's destination keeps its source's attachments, since its history
   names them.
 - **Files.** A path resolves against the invocation's cwd. A path that is not

@@ -17,7 +17,7 @@ import { useWorkPanel } from './work'
 import { usePermissions } from './permissions'
 import { conversationFiles } from './files'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
-import { lookupAttachment } from '../api/attachments'
+import { useMessageAttachments } from './attachments'
 import { lookupCodeFiles } from '../api/code-files'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
@@ -176,13 +176,16 @@ const selectEdit = computed<EditSelectionHandler | undefined>(() => {
   return (selection) => work.openIn(current.id, { intent: 'edit', payload: selection })
 })
 
+/** The attachments the conversation's messages name. */
+const attachments = useMessageAttachments(() => props.id)
+
 /**
  * The Host files the conversation's messages name: images from the files
  * the conversation's service keeps, at the version its file watch keeps
  * current, files opened through the `file` intent while a plugin opens it,
  * at their lines, and which paths of a reply's inline code are files, from
  * the Host, whose home a `~/` path starts from; and the attachments they
- * name, from the attachment route.
+ * name.
  */
 const files = computed<ConversationFiles | undefined>(() => {
   const current = conversation.value
@@ -197,7 +200,7 @@ const files = computed<ConversationFiles | undefined>(() => {
       ? ({ path, line, root }) => work.openIn(current.id, { intent: 'file', payload: { path, ...(line === null ? {} : { line }), ...(root === undefined ? {} : { root }) } })
       : undefined,
     codeFiles: (paths) => lookupCodeFiles(current.id, paths, primaryHost.value?.state ?? 'offline'),
-    attachment: (id) => lookupAttachment(current.id, id),
+    ...(attachments.value ? { attachment: attachments.value } : {}),
   }
 })
 

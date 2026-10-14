@@ -6,8 +6,8 @@ license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [lib]
-# Its tests reach the transfers' registration and the answers a download's
-# metadata decides, so they are unit tests and the crate has no integration
+# Its tests reach the transfers' registration, the answers a download's
+# metadata decides and an attachment's commit, so they are unit tests and the crate has no integration
 # tests (`crates-and-packages.md` § Module layout); the operations over a
 # shard are tested in `backend-user-shard`, which implements `HostShard`. No doc
 # examples.
@@ -44,5 +44,8 @@ tracing.workspace = true
 url = "2"
 
 [dev-dependencies]
+demi-backend-database = { path = "../backend-database", features = ["testing"] }
 demi-backend-remote-host = { path = "../backend-remote-host", features = ["testing"] }
+rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }
+tempfile = "3"
 tokio = { workspace = true, features = ["test-util"] }
