@@ -29,11 +29,14 @@ export const COMPACT_AFTER_TURN = 'Compaction is available once the turn ends.'
 
 /**
  * Why the user may not compact at `usage`, or null when they may: below the
- * estimate the backend takes a `compact` frame from. A model without a
- * window, and a usage not known yet, leave the decision to the backend.
+ * estimate the backend takes a `compact` frame from, unless the unfinished
+ * turn failed for its size (`sizeRefused`, `refusedForSize`), which the
+ * backend compacts at any share (`compaction.md` § When compaction runs). A
+ * model without a window, and a usage not known yet, leave the decision to
+ * the backend.
  */
-export function compactionRefusal(usage: ContextUsage | null): string | null {
-  if (!usage?.window || usage.compactFrom == null || usage.tokens >= usage.compactFrom) {
+export function compactionRefusal(usage: ContextUsage | null, sizeRefused = false): string | null {
+  if (sizeRefused || !usage?.window || usage.compactFrom == null || usage.tokens >= usage.compactFrom) {
     return null
   }
   const from = formatPercent(usage.compactFrom, usage.window)

@@ -188,6 +188,16 @@ export function turnRecovery(
   return end?.type === 'abort' ? 'continue' : null
 }
 
+/**
+ * Whether the unfinished turn among `blocks` failed because its request was
+ * too large for the vendor (`failures-and-recovery.md` § Retries): Compact
+ * then summarizes the media away at any share, and Resume continues the turn.
+ */
+export function refusedForSize(blocks: readonly RecordCandidate[]): boolean {
+  const end = turnRecord(blocks)
+  return end?.type === 'error' && end.code === 'request_too_large'
+}
+
 /** What `turnRecovery` reads of a block. */
 interface RecordCandidate {
   type: string

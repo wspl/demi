@@ -10,7 +10,7 @@ use std::{
 };
 
 use demi_agent_session::{
-    AgentSession, EditCheck, EditSubmission, accepted, compaction_refusal, edit_digest,
+    AgentSession, EditCheck, EditSubmission, accepted, edit_digest,
 };
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
@@ -475,10 +475,10 @@ impl<H: HostResolver> Connection<H> {
         // read media, during which an action can start, so the phase
         // is checked again with nothing awaited before the admission.
         if kind == ClientFrameKind::Compact {
-            let refusal = match session.context_usage().await {
-                Ok(usage) => compaction_refusal(&usage).or_else(|| busy(session)),
-                Err(report) => Some(report.message),
-            };
+            let refusal = session
+                .compaction_refusal()
+                .await
+                .or_else(|| busy(session));
             if let Some(refusal) = refusal {
                 self.reject(kind, refusal);
                 return;

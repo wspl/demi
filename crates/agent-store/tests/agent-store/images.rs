@@ -5,7 +5,7 @@ use std::io::Cursor;
 
 use demi_agent_store::{
     images::{Fitted, Unfit, fit},
-    testing::png as png_of,
+    testing::{illustration, png as png_of, speckled},
 };
 use demi_shared_types::B64Bytes;
 use image::{
@@ -104,46 +104,29 @@ async fn an_image_over_the_byte_limit_enters_as_jpeg_and_one_that_does_not_decod
     ));
 }
 
-/// A PNG of `width` × `height` px whose colors change smoothly with a
-/// little noise in them, as a drawn illustration's: it
-/// compresses poorly as PNG and well as JPEG. Each pixel's alpha is
-/// `alpha(x, y)`.
-fn illustration(width: u32, height: u32, alpha: impl Fn(u32, u32) -> u8) -> B64Bytes {
-    let mut state: u32 = 7;
-    let mut noise = move || {
-        state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
-        (state >> 28) as u8
-    };
-    let image = RgbaImage::from_fn(width, height, |x, y| {
-        let r = (x * 255 / width) as u8;
-        let g = (y * 255 / height) as u8;
-        Rgba([r.saturating_add(noise()), g.saturating_add(noise()), 128 + noise(), alpha(x, y)])
-    });
-    let mut bytes = Vec::new();
-    DynamicImage::ImageRgba8(image)
-        .write_with_encoder(PngEncoder::new(&mut bytes))
-        .unwrap();
-    B64Bytes::from(bytes)
-}
-
-// Three images of under half a megapixel, encoded twice: about a second in
-// an unoptimized build.
+// Four images of at most 1.2 megapixels, each encoded once or twice: about
+// a second in an unoptimized build.
 #[tokio::test]
-async fn a_png_over_500_kb_enters_as_a_smaller_jpeg_and_a_lighter_one_as_it_came() {
+async fn a_png_over_500_kb_enters_as_a_jpeg_when_that_is_smaller_and_otherwise_as_it_came() {
     let opaque = |_, _| 255;
     let heavy = illustration(800, 500, opaque);
     assert!(heavy.len() > 500_000, "{}", heavy.len());
     let fitted = fit(heavy.clone(), "image/png").await.unwrap();
     assert_eq!(sizes(&fitted), ("image/jpeg", (800, 500), (800, 500), true));
     assert!(fitted.data.len() < heavy.len() / 2, "{}", fitted.data.len());
-    // Every later request carries the same bytes.
-    assert_eq!(fit(heavy, "image/png").await.unwrap(), fitted);
 
     let light = illustration(300, 200, opaque);
     assert!((100_000..=500_000).contains(&light.len()), "{}", light.len());
     let fitted = fit(light.clone(), "image/png").await.unwrap();
     assert_eq!(fitted.data, light);
     assert_eq!(sizes(&fitted), ("image/png", (300, 200), (300, 200), false));
+
+    // As a JPEG it would be larger: it enters as it came.
+    let specks = speckled(1_200, 1_000);
+    assert!(specks.len() > 500_000, "{}", specks.len());
+    let fitted = fit(specks.clone(), "image/png").await.unwrap();
+    assert_eq!(fitted.data, specks);
+    assert_eq!(sizes(&fitted), ("image/png", (1_200, 1_000), (1_200, 1_000), false));
 
     // Its transparency is flattened onto white: a transparent pixel shows
     // white, not the color it hid.

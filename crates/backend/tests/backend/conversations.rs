@@ -1069,9 +1069,9 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     backend.close().await;
 }
 
-// A backend, a scripted vendor and two requests: about half a second.
+// A backend, a scripted vendor and four requests: about half a second.
 #[tokio::test]
-async fn a_request_the_vendor_refuses_for_its_size_fails_the_turn_without_compacting() {
+async fn a_request_refused_for_its_size_fails_the_turn_and_compact_at_any_share_lets_resume_finish_it() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -1092,8 +1092,8 @@ async fn a_request_the_vendor_refuses_for_its_size_fails_the_turn_without_compac
     socket.chat("m1", "First question").await;
 
     // The second request is refused for its size, as a compatible endpoint
-    // with a smaller limit than the API's would: a size is never compacted,
-    // and the failure is terminal.
+    // with a smaller limit than the API's would: a size is never compacted
+    // nor retried, and the turn fails with it.
     let refusal = json!({ "type": "error", "error": { "type": "request_too_large", "message": "Request exceeds the maximum size" } });
     vendor.respond(
         MockResponse::status(413)
@@ -1119,6 +1119,23 @@ async fn a_request_the_vendor_refuses_for_its_size_fails_the_turn_without_compac
         panic!("{blocks:?}");
     };
     assert_eq!(error.code.as_deref(), Some("request_too_large"));
+
+    // Compact is taken far below half the window, and Resume then finishes
+    // the turn from the summary.
+    vendor.respond(answer(&["The user asked two questions."], 10, 5));
+    socket.send(&ClientFrame::Compact { node: None }).await;
+    let compaction = socket.until_idle().await;
+    assert!(compacted(&compaction), "{compaction:?}");
+    vendor.respond(answer(&["Second answer."], 8, 2));
+    socket.send(&ClientFrame::Resume {}).await;
+    socket.until_idle().await;
+
+    assert_eq!(vendor.requests().len(), 4);
+    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    let Some(Block::Text(answer)) = blocks.iter().rev().nth(1) else {
+        panic!("{blocks:?}");
+    };
+    assert_eq!(answer.text, "Second answer.");
     backend.close().await;
 }
 

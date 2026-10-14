@@ -52,6 +52,8 @@ const props = defineProps<{
   isCompacting?: boolean
   /** Why Compact cannot run now apart from the usage, such as a running turn. */
   unavailableReason?: string | null
+  /** The unfinished turn failed for its size, so Compact runs at any share (`refusedForSize`). */
+  sizeRefused?: boolean
   /** The card shows without a click, as a gallery specimen pins it open. */
   pinned?: boolean
   /** What the newest instructions block holds, in its order; the card lists nothing of them while it holds none. */
@@ -137,7 +139,7 @@ function tokensLabel(tokens: number, estimated: boolean): string {
 
 const percent = computed(() => contextPercent(props.usage ?? null))
 const ratio = computed(() => contextRatio(props.usage ?? null) ?? 0)
-const blockedReason = computed(() => props.unavailableReason ?? compactionRefusal(props.usage ?? null))
+const blockedReason = computed(() => props.unavailableReason ?? compactionRefusal(props.usage ?? null, props.sizeRefused))
 /** While compacting the card holds no Compact; it has details while anything else is left to show. */
 const hasDetails = computed(() => !props.isCompacting || rows.value.length > 0 || props.limits != null || instructionList.value.length > 0)
 

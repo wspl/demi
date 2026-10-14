@@ -726,7 +726,7 @@ async fn the_usage_and_the_compact_gate_count_against_the_limit_the_user_set() {
         (400, Some(1_000), Some(500))
     );
     assert_eq!(
-        compaction_refusal(&full).as_deref(),
+        compaction_refusal(&full, false).as_deref(),
         Some("Compaction is available from 50% context usage (now 40%)")
     );
 
@@ -737,7 +737,7 @@ async fn the_usage_and_the_compact_gate_count_against_the_limit_the_user_set() {
         (limited.tokens, limited.window, limited.compact_from),
         (400, Some(600), Some(300))
     );
-    assert_eq!(compaction_refusal(&limited), None);
+    assert_eq!(compaction_refusal(&limited, false), None);
     assert_eq!(session.held_context_usage().await, Some(limited));
 }
 
@@ -2416,16 +2416,15 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
 }
 
 /// A round that calls `shoot`.
-fn shot(call: &str) -> Turn {
+fn shot_round(call: &str) -> Turn {
     Turn::Events(vec![
         event::tool_call(call, "shoot", json!({})),
         event::response(1, 1),
     ])
 }
 
-/// A tool whose result is a screenshot.
-fn shoot() -> (String, Invoke) {
-    let png = B64Bytes::from(b"\x89PNG\r\n\x1a\n\0\0\0\x01".to_vec());
+/// A tool whose result is the screenshot `png`.
+fn shoot(png: B64Bytes) -> (String, Invoke) {
     tool("shoot", move |_| {
         let image = ResultPart::Image(MediaBytes {
             data: png.clone(),
@@ -2440,11 +2439,11 @@ fn shoot() -> (String, Invoke) {
     })
 }
 
-/// A vendor that takes `images` images a request.
-fn taking_images(images: u32) -> RequestLimits {
+/// A vendor that takes `images` images or `body_bytes` bytes a request.
+fn taking(images: Option<u32>, body_bytes: Option<u64>) -> RequestLimits {
     RequestLimits {
-        body_bytes: None,
-        images: Some(images),
+        body_bytes,
+        images,
         tool_results: demi_provider_common::ToolResultKinds::ALL,
     }
 }
@@ -2456,59 +2455,88 @@ fn compacted(blocks: &[Block]) -> bool {
         .any(|block| matches!(block, Block::CompactionBoundary(_) | Block::CompactionMarker(_)))
 }
 
-// Two sessions of a few scripted requests each: a few milliseconds.
-#[tokio::test(flavor = "local")]
-async fn screenshots_near_a_vendors_image_limit_never_compact_a_history_under_the_token_threshold() {
-    // The vendor takes five images a request, so a request of four is at
-    // 80% of its limit, with a few thousand tokens of a 100,000-token
-    // window.
-    let provider = ScriptedRuntime::new([
-        shot("shot-1"),
-        shot("shot-2"),
-        shot("shot-3"),
-        shot("shot-4"),
+/// A session on `limits` whose model reads PNG, after four rounds that
+/// each returned `shot` and an answer. The summary a pass would ask for is
+/// scripted after them, so that one shows as a request rather than a wait.
+async fn after_four_shots(
+    shot: &B64Bytes,
+    limits: Option<RequestLimits>,
+) -> (AgentSession, ScriptedRuntime) {
+    let rounds = [
+        shot_round("shot-1"),
+        shot_round("shot-2"),
+        shot_round("shot-3"),
+        shot_round("shot-4"),
         answer("four shots"),
-    ])
-    .with_limits(taking_images(5));
+        answer("summary of the shots"),
+    ];
+    let provider = match limits {
+        Some(limits) => ScriptedRuntime::new(rounds).with_limits(limits),
+        None => ScriptedRuntime::new(rounds),
+    };
     let store = MemoryTreeStore::new();
-    let session = start(&provider, vec![shoot()], &store, SessionConfig::default()).await;
-    let reads = [FileExtension::Png];
+    let tools = vec![shoot(shot.clone())];
+    let session = start(&provider, tools, &store, SessionConfig::default()).await;
     session
         .update_model(ModelSwitch {
-            model: Box::new(model_reading("stub", "model-a", &reads)),
+            model: Box::new(model_reading("stub", "model-a", &[FileExtension::Png])),
             runtime: None,
         })
         .unwrap();
-
     session
         .send(text("watch the screen"), turn("t1"))
         .unwrap()
         .await
         .unwrap();
+    (session, provider)
+}
 
-    // Compaction runs on tokens only: no summary request, no pass.
-    assert_eq!(provider.requests().len(), 5);
-    assert!(!provider.requests().iter().any(is_copy));
-    assert!(!compacted(&session.transcript().blocks));
+// Four sessions of a few scripted requests each: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn screenshots_near_a_vendors_image_or_byte_limit_never_compact_a_history_under_the_token_threshold() {
+    let header = b"\x89PNG\r\n\x1a\n\0\0\0\x01".as_slice();
+    // Four screenshots of 4,000 bytes of base64 each, a tenth of the window
+    // in tokens. The vendor takes five images, or 20,000 bytes, a request,
+    // so a request that carries four is at 80% of its limit.
+    let shot = B64Bytes::from([header, &[0; 2_988]].concat());
+    let cases = [
+        ("images", taking(Some(5), None)),
+        ("bytes", taking(None, Some(20_000))),
+    ];
+    for (limit, limits) in cases {
+        // Compaction runs on tokens only: no summary request, no pass, and
+        // the last request carries the four screenshots.
+        let (session, provider) = after_four_shots(&shot, Some(limits)).await;
+        let requests = provider.requests();
+        assert_eq!(requests.len(), 5, "{limit}");
+        let results = requests[4]
+            .items
+            .iter()
+            .filter(|item| matches!(item, InferenceItem::ToolResult { .. }))
+            .count();
+        assert_eq!(results, 4, "{limit}");
+        assert!(!compacted(&session.transcript().blocks), "{limit}");
 
-    // A switch to a vendor that takes three images a request does not
-    // compact either, with the model before it or after.
-    let second = ScriptedRuntime::new([answer("after the switch")]).with_limits(taking_images(3));
-    session
-        .update_model(ModelSwitch {
-            model: Box::new(model_reading("other", "model-b", &reads)),
-            runtime: Some(Box::new(second.clone())),
-        })
-        .unwrap();
-    session
-        .send(text("and now?"), turn("t2"))
-        .unwrap()
-        .await
-        .unwrap();
+        // A switch to that vendor from one without limits does not compact
+        // either, with the model before it or after.
+        let (session, provider) = after_four_shots(&shot, None).await;
+        let after = ScriptedRuntime::new([answer("after the switch")]).with_limits(limits);
+        session
+            .update_model(ModelSwitch {
+                model: Box::new(model_reading("other", "model-b", &[FileExtension::Png])),
+                runtime: Some(Box::new(after.clone())),
+            })
+            .unwrap();
+        session
+            .send(text("and now?"), turn("t2"))
+            .unwrap()
+            .await
+            .unwrap();
 
-    assert_eq!(provider.requests().len(), 5);
-    assert_eq!(second.requests().len(), 1);
-    assert!(!compacted(&session.transcript().blocks));
+        assert_eq!(provider.requests().len(), 5, "{limit}");
+        assert_eq!(after.requests().len(), 1, "{limit}");
+        assert!(!compacted(&session.transcript().blocks), "{limit}");
+    }
 }
 
 #[tokio::test(flavor = "local")]
@@ -2544,6 +2572,40 @@ async fn a_request_refused_for_its_size_is_not_compacted() {
     );
     assert_eq!(provider.requests().len(), 2);
     assert_eq!(provider.remaining(), 2);
+    assert!(!compacted(&session.transcript().blocks));
+}
+
+// One session of five scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_summary_request_refused_for_its_size_fails_the_pass_without_a_smaller_window() {
+    let refused = Turn::Events(vec![ProviderEvent::Error(ProviderFailure {
+        message: "Request exceeds the maximum size".into(),
+        code: ErrorCode::from_http(413, ""),
+        diagnostics: None,
+        retry_after: None,
+    })]);
+    let provider = ScriptedRuntime::new([
+        answer("one"),
+        answer("two"),
+        answer("three"),
+        refused,
+        // A summary of a smaller window stays unasked.
+        answer("summary of the first half"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = small_session_with(&provider, Vec::new(), &store, only_when_asked()).await;
+    for name in ["A", "B", "C"] {
+        session.send(text(name), turn(name)).unwrap().await.unwrap();
+    }
+
+    let failed = session.compact().unwrap().await;
+
+    assert_eq!(
+        failed.unwrap_err().code.as_deref(),
+        Some("request_too_large")
+    );
+    assert_eq!(summary_sizes(&provider).len(), 1);
+    assert_eq!(provider.remaining(), 1);
     assert!(!compacted(&session.transcript().blocks));
 }
 

@@ -43,6 +43,8 @@ const props = defineProps<{
   compacting: boolean
   /** Why Compact cannot run now apart from the usage, such as the child's running turn. */
   unavailableReason: string | null
+  /** The child's unfinished turn failed for its size, so Compact runs at any share. */
+  sizeRefused?: boolean
   /** What the child's newest instructions block holds. */
   instructions: readonly InstructionEntry[]
   /** The usage limits of the account the child runs on; none for a model on an API key. */
@@ -137,6 +139,7 @@ const forked = computed(() => (props.run.forkedFrom === null ? null : agents()?.
         segment
         class="shrink-0"
         :usage="usage"
+        :size-refused="sizeRefused"
         :is-compacting="compacting"
         :unavailable-reason="unavailableReason"
         :instructions="instructions"

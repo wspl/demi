@@ -11,7 +11,7 @@ use demi_agent_store::{
 use demi_agent_transcript::{
     RequestView, TranscriptLog, compaction_window,
     estimate::{block_tokens, context_tokens, text_tokens},
-    kept_messages, last_assistant_text,
+    kept_messages, last_assistant_text, turn_record,
 };
 use demi_provider_common::{ErrorCode, RequestLimits, ToolDefinition};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
@@ -398,8 +398,12 @@ pub(super) async fn report_context_usage(s: &SessionShared, cancel: &TurnCancel)
 }
 
 /// Why a `compact` frame is refused at `usage`, or none when it is taken.
-pub fn compaction_refusal(usage: &ContextUsage) -> Option<String> {
-    if usage.admits_compaction() {
+/// A history whose unfinished turn failed for its size (`size_refused`)
+/// takes it at any share: its media, not its tokens, are what the vendor
+/// refused, and summarizing them away is how the user continues it
+/// (`compaction.md` § When compaction runs).
+pub fn compaction_refusal(usage: &ContextUsage, size_refused: bool) -> Option<String> {
+    if size_refused || usage.admits_compaction() {
         return None;
     }
     let window = usage.window?;
@@ -407,6 +411,13 @@ pub fn compaction_refusal(usage: &ContextUsage) -> Option<String> {
         "Compaction is available from {MANUAL_COMPACTION_PERCENT}% context usage (now {}%)",
         usage.tokens * 100 / window
     ))
+}
+
+/// Whether the turn the history leaves unfinished failed because its
+/// request was too large for the vendor (`request_too_large`).
+pub(super) fn size_refused(blocks: &[Block]) -> bool {
+    matches!(turn_record(blocks), Some(Block::Error(error))
+        if error.code.as_deref() == Some(ErrorCode::RequestTooLarge.as_str()))
 }
 
 /// Before a turn: one pass when the history is over the current model's
