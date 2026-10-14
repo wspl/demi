@@ -813,8 +813,15 @@ protocol: it ends when the user confirms or the vendor refuses, and stops at
 once when the vault drops it. A device login lasts ten minutes from the moment
 the vault starts it, whatever the vendor's code allows: at that moment the
 vault drops the flow and the login fails as expired. The `expiresAt` the user
-sees is that same moment, which the vault sets when the login starts, so the
-shown expiry is the real end. Demi does not read the vendor code's own
+sees is that same moment, so the shown expiry is the real end. A login's kind,
+and so its lifetime, is known only once its preparation has read the entry and
+built the provider; until then it is listed as `preparing` with no
+`expiresAt`, and its lifetime still counts from its start. The vault owns a
+login from the moment it reserves the entry: preparation runs in the login's
+own tracked task, so a cancel, the lifetime's end or a shutdown stops it there
+too, and a start whose request is dropped still ends the login visibly. The
+login's end is recorded and its reservation released before the end is
+announced. Demi does not read the vendor code's own
 lifetime. A code that expires sooner ends the login early only through the
 vendor's answer to the next poll: an RFC 8628 server such as Grok Build's
 answers `expired_token`, which the flow reports as a failure with that reason,

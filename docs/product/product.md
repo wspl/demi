@@ -649,7 +649,10 @@ user's preference to resume such a turn by itself
 the same as Settings › General's *Resume after a usage limit resets*. It is
 a preference, not a choice for this record: ticked on one record, it holds
 for every later one and in Settings, and the record whose time has passed
-shows it no more.
+shows it no more. The fact and the checkbox name the same time, rounded up
+to the minute so it is never before the reset: a reset at 7:03:55 PM reads
+*Resets at 7:04 PM* and *Resume at 7:04 PM*, with the weekday when it is not
+today; on a phone the fact wraps rather than cutting the time.
 One recovery control sits in the dock, directly over the input, where the
 user's next action already is:
 
