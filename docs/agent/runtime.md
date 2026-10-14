@@ -1046,8 +1046,10 @@ Where the output is kept:
   16 MiB ([Pipes and output](../execution/runner.md#pipes-and-output)).
 - When the command ends, the backend stores its output before any result
   reports the end. When each stream stayed within its first 8 KiB, which is
-  most commands, the backend already holds the whole output, in the order the
-  runner read it, and stores that; otherwise it reads the Host's kept output
+  most commands, and every byte of them reached the backend, the backend
+  already holds the whole output, in the order the runner read it, and stores
+  that; otherwise, as when bytes printed while the Host's connection was
+  lost were not read again before the end, it reads the Host's kept output
   once, as it reads the command's edit copies
   ([Edit tracking](../execution/edit-tracking.md)). The output becomes a blob
   in the conversation owner's namespace, and the conversation records it by
