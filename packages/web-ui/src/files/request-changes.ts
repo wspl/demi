@@ -104,9 +104,9 @@ export function changeFile(file: ChangedFile | EditedFile): ChangeFile {
   }
 }
 
-/** The files a shell call's pills show: those it changed, but in a temporary directory. */
+/** The files a shell call's pills show: those it changed, but outside its agent's working directory. */
 export function callPills(block: ToolCallBlock): ChangeFile[] {
-  return (storedShellView(block)?.files ?? []).filter((file) => !file.temporary).map(changeFile)
+  return (storedShellView(block)?.files ?? []).filter((file) => !file.outside).map(changeFile)
 }
 
 /**

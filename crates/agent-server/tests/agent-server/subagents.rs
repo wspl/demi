@@ -22,6 +22,7 @@ use demi_provider_common::{
 };
 use demi_agent_tools::{Profile, ProfileModel, SubagentSettings};
 use demi_shared_types::{
+    ChangedFile, EditKind, EditSegment, EditedFile, ToolCallBlock, ToolView,
     AgentMessage, AgentMessageEvent, Block, BlockId, CommandId, CompletionId, CompletionOutcome, EXECUTION_SOURCE, NodeId,
     QueuedMessage, SessionPhase, TextBlock, Timestamp, TurnId, UserBlock,
 };
@@ -2043,4 +2044,93 @@ async fn a_child_works_in_the_conversations_directory_once_the_conversation_move
         unreachable!();
     };
     assert_eq!(job.child.cwd, "/elsewhere");
+}
+
+/// A shell call's lists hold only what its agent changed in the working
+/// directory its call started in (`edit-tracking.md` § Within the working
+/// directory): a child that works in `/workspace/sub` writes there and in
+/// the conversation's `/workspace`, and its pills and lists name its own
+/// directory's file alone, while its call keeps the other in its record,
+/// though the conversation moved, and the child's directory with it, while
+/// the call ran.
+// One restored child on a paused clock: a few milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_childs_lists_hold_only_what_it_changed_in_its_own_directory() {
+    let store = MemoryTreeStore::new();
+    store
+        .create_node(NodeRecord::root(root(), Timestamp::UNIX_EPOCH), checkpoint(Vec::new(), Vec::new()))
+        .await
+        .unwrap();
+    let brief = QueuedMessage {
+        id: TurnId::try_from("brief").unwrap(),
+        content: text("task edit"),
+    };
+    let editor = NodeRecord {
+        cwd: Some(ChildDirectory {
+            cwd: "/workspace/sub".into(),
+            under: Placement {
+                device: Some("scripted".into()),
+                directory: "/workspace".into(),
+            },
+        }),
+        ..child_record("editor", 1, "conversation", None)
+    };
+    store.create_node(editor, checkpoint(vec![brief], Vec::new())).await.unwrap();
+    let model = Model::default();
+    model.root([said("noted")]);
+    let edit = Turn::Events(vec![event::tool_call(
+        "c1",
+        "shell",
+        json!({"script": "edit", "description": "Edit", "intervalMs": 600000}),
+    )]);
+    model.child("task edit", [edit, said("edited")]);
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide_runtime("stub", model.clone());
+    let shells = Rc::new(ScriptedShells::default());
+    let hosts = Rc::new(LiveHosts::default());
+    let server = scripted_host_server_in(providers, shells.clone(), store.clone(), hosts.clone());
+    let page = TestClient::connect(&server, &root());
+    page.send(open()).await;
+    until(|| shells.0.borrow().iter().any(|shell| !shell.started_in.borrow().is_empty())).await;
+    assert_eq!(*shells.last().started_in.borrow(), [Some("/workspace/sub".to_owned())]);
+    hosts.move_to("/elsewhere");
+
+    let written = |path: &str| EditedFile {
+        path: path.into(),
+        kind: EditKind::Added,
+        from: None,
+        added: 1,
+        removed: 0,
+        outside: false,
+        edits: vec![EditSegment { copies: None }],
+    };
+    shells
+        .last()
+        .exit_with(vec![written("/workspace/b.ts"), written("/workspace/sub/a.ts")]);
+    until(|| model.requests_of("task edit").len() == 2).await;
+
+    let editor = NodeId::try_from("editor").unwrap();
+    let transcript = store.checkpoint(&editor).expect("the child is stored").transcript;
+    let view = transcript
+        .iter()
+        .find_map(|block| match block {
+            Block::ToolCall(ToolCallBlock {
+                view: Some(ToolView::Shell(view)),
+                ..
+            }) => Some(view.clone()),
+            _ => None,
+        })
+        .expect("the child's call has its view");
+    let outside: Vec<(&str, bool)> = view
+        .files
+        .iter()
+        .flatten()
+        .map(|file| (file.path.as_str(), file.outside))
+        .collect();
+    assert_eq!(outside, [("/workspace/b.ts", true), ("/workspace/sub/a.ts", false)]);
+    let paths = |files: &Option<Vec<ChangedFile>>| -> Vec<String> {
+        files.iter().flatten().map(|file| file.path.clone()).collect()
+    };
+    assert_eq!(paths(&view.run_files), ["/workspace/sub/a.ts"]);
+    assert_eq!(paths(&view.request_files), ["/workspace/sub/a.ts"]);
 }

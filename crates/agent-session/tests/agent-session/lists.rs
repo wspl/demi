@@ -31,7 +31,7 @@ fn shell_tool(release: oneshot::Receiver<()>) -> (String, Invoke) {
                     from: None,
                     added: 1,
                     removed: 0,
-                    temporary: false,
+                    outside: false,
                     edits: vec![EditSegment {
                         copies: Some(EditCopies {
                             original: BlobRef::of(text(2).as_bytes()),
@@ -47,7 +47,6 @@ fn shell_tool(release: oneshot::Receiver<()>) -> (String, Invoke) {
             .flatten()
             .map(|path| PathChange::Removed {
                 path: path.as_str().unwrap().into(),
-                temporary: false,
             })
             .collect();
         let view = ToolView::Shell(ShellToolView {

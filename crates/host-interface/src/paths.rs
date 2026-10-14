@@ -150,9 +150,67 @@ pub fn relative_to(directory: &str, path: &str) -> Option<String> {
     Some(if relative.is_empty() { ".".to_owned() } else { relative })
 }
 
+/// Whether `path` is `directory` or inside it, judged by their parts
+/// after `.` and `..` are taken out, without following a link
+/// (`edit-tracking.md` § Within the working directory). Both are read in
+/// the spelling `directory` has: a Windows one, by its drive or share,
+/// takes `\` and `/` as separators and compares its parts as Windows
+/// does, ignoring case; a Posix one compares them exactly, a `\` part of a
+/// name. A relative `path` is read under `directory`.
+pub fn is_inside(directory: &str, path: &str) -> bool {
+    use typed_path::{Utf8Component, Utf8TypedPath};
+    match Utf8TypedPath::derive(directory) {
+        Utf8TypedPath::Unix(directory) => {
+            let path = directory.join(path).normalize();
+            path.starts_with(directory.normalize())
+        }
+        Utf8TypedPath::Windows(directory) => {
+            // A part as Windows compares it: a share's prefix with either
+            // separator, and every part in either case.
+            let parts = |path: &typed_path::Utf8WindowsPath| -> Vec<String> {
+                path.components()
+                    .map(|part| part.as_str().replace('/', "\\").to_lowercase())
+                    .collect()
+            };
+            let path = directory.join(path).normalize();
+            let directory = directory.normalize();
+            let (path, directory) = (parts(&path), parts(&directory));
+            path.starts_with(&directory)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::HostPaths::{Posix, Windows};
+    use super::is_inside;
+
+    /// What the conversation shows as changed is judged by these
+    /// (`edit-tracking.md` § Within the working directory). Pure, under a
+    /// millisecond.
+    #[test]
+    fn a_path_is_inside_a_directory_by_its_parts() {
+        let cases = [
+            ("/home/u/shop", "/home/u/shop/src/cart.ts", true),
+            ("/home/u/shop/", "/home/u/shop", true),
+            ("/home/u/shop", "/home/u/shop/../.zshrc", false),
+            ("/home/u/shop", "/home/u/shop/./src/../a.ts", true),
+            ("/home/u/shop", "/home/u/shop-old/x.ts", false),
+            ("/home/u/shop", "/home/u/Shop/x.ts", false),
+            ("/home/u/shop", "/tmp/x", false),
+            ("/home/u/shop", "src/a.ts", true),
+            ("/home/u/shop", "../x", false),
+            (r"C:\Users\u\shop", r"C:\Users\u\shop\src\cart.ts", true),
+            ("C:/Users/u/shop", r"C:\Users\u\shop\src", true),
+            (r"C:\Users\u\shop", "c:/users/U/SHOP/src/cart.ts", true),
+            (r"C:\Users\u\shop", r"C:\Users\u\shop\..\.gitconfig", false),
+            (r"C:\Users\u\shop", r"D:\Users\u\shop\a.ts", false),
+            (r"\\server\team\shop", "//server/team/shop/a.ts", true),
+        ];
+        for (directory, path, inside) in cases {
+            assert_eq!(is_inside(directory, path), inside, "{path} in {directory}");
+        }
+    }
 
     #[test]
     fn a_name_is_joined_with_the_hosts_separator() {

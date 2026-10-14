@@ -1811,15 +1811,10 @@ pub struct JobFileChange {
     pub added: u64,
     #[garde(skip)]
     pub removed: u64,
-    /// Whether `path` is in one of the Host's temporary directories
-    /// (`edit-tracking.md` § Temporary files).
-    #[garde(skip)]
-    pub temporary: bool,
 }
 
 /// A rename or a removal of a job's embedded utilities, as its edit record
-/// names it, with whether a rename's `to` or a removed path is in one of
-/// the Host's temporary directories (`edit-tracking.md` § The report).
+/// names it (`edit-tracking.md` § The report).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum JobPathChange {
@@ -1828,14 +1823,10 @@ pub enum JobPathChange {
         from: String,
         #[garde(length(min = 1), custom(without_nul))]
         to: String,
-        #[garde(skip)]
-        temporary: bool,
     },
     Removed {
         #[garde(length(min = 1), custom(without_nul))]
         path: String,
-        #[garde(skip)]
-        temporary: bool,
     },
 }
 

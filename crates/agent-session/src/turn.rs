@@ -524,7 +524,7 @@ async fn run_tools(
             // The user sent a message now: no other call starts
             // (`runtime.md` § Send now).
             for call in std::iter::once(first).chain(calls.by_ref()) {
-                record_result(s, &call, ToolOutcome::not_run()).await;
+                record_result(s, &call, ToolOutcome::not_run(), None).await;
             }
             break;
         }
@@ -544,6 +544,11 @@ async fn run_tools(
                     core.calls.insert(call.tool_use_id.clone(), handle.clone());
                 }
             });
+            // Where the step's calls start: a call's files are judged
+            // against it once its result is stored, whatever directory the
+            // node works in by then (`edit-tracking.md` § Within the working
+            // directory).
+            let started_in = s.runtime.directory().await;
             let invocations = step
                 .iter()
                 .zip(&handles)
@@ -569,7 +574,7 @@ async fn run_tools(
                         let outcome = outcome.unwrap_or_else(|failure| {
                             ToolOutcome::error(format!("Tool failed: {}", failure.0))
                         });
-                        record_result(s, &step[index], outcome).await;
+                        record_result(s, &step[index], outcome, started_in.as_deref()).await;
                     }
                     Ok(None) => break Ok(()),
                     Err(stopped) => {
@@ -588,7 +593,7 @@ async fn run_tools(
         } else {
             for call in &step {
                 let outcome = ToolOutcome::error(format!("Tool not found: {}", call.tool_name));
-                record_result(s, call, outcome).await;
+                record_result(s, call, outcome, None).await;
             }
             Ok(())
         };
@@ -603,16 +608,20 @@ async fn run_tools(
 
 /// `view` with the lists the conversation shows of the shell call that
 /// `at` finds in the transcript (`edit-tracking.md` § What the conversation
-/// shows): its own files, its run's and its request's, counted from the
-/// edit copies in the conversation's blob namespace. A call the transcript
-/// no longer holds, as after an edit cut it, keeps `view` as it is.
+/// shows): its own files, its run's and its request's, within the working
+/// directory, counted from the edit copies in the conversation's blob
+/// namespace. The call's own files are judged against `started_in`, the
+/// directory it started in; with none they keep the marks `view` has, as a
+/// call listed again does. A call the transcript no longer holds, as after
+/// an edit cut it, keeps `view` as it is.
 async fn with_lists(
     s: &SessionShared,
     at: impl Fn(&SessionCore) -> Option<usize>,
     mut view: ShellToolView,
+    started_in: Option<&str>,
 ) -> ShellToolView {
     let planned = s.read(|core| {
-        at(core).map(|index| changes::plan(core.transcript.blocks(), index, &view))
+        at(core).map(|index| changes::plan(core.transcript.blocks(), index, &view, started_in))
     });
     let Some(planned) = planned else {
         return view;
@@ -645,7 +654,8 @@ async fn relist_later_calls(s: &SessionShared, tool_use_id: &str) {
     });
     for (id, view) in later {
         let at = |core: &SessionCore| core.transcript.position(&id);
-        let view = with_lists(s, at, view).await;
+        // Its own files were judged as it was stored.
+        let view = with_lists(s, at, view, None).await;
         s.update(|core| core.replace_view(&id, ToolView::Shell(view)));
     }
 }
@@ -653,7 +663,12 @@ async fn relist_later_calls(s: &SessionShared, tool_use_id: &str) {
 /// Records the result of `call`, and watches the command it left running;
 /// its media are stored before it enters the transcript, and the session
 /// holds their bytes (`runtime.md` § Media).
-async fn record_result(s: &Rc<SessionShared>, call: &PendingCall, outcome: ToolOutcome) {
+async fn record_result(
+    s: &Rc<SessionShared>,
+    call: &PendingCall,
+    outcome: ToolOutcome,
+    started_in: Option<&str>,
+) {
     let (output, held) = media::store_result(outcome.output, s.store.blobs()).await;
     // A call that ran a command ran on the turn's Host: the Host an earlier
     // call found offline is back.
@@ -661,7 +676,7 @@ async fn record_result(s: &Rc<SessionShared>, call: &PendingCall, outcome: ToolO
     let view = match outcome.view {
         Some(ToolView::Shell(view)) => {
             let at = |core: &SessionCore| core.transcript.executing_call(&call.tool_use_id);
-            Some(ToolView::Shell(with_lists(s, at, view).await))
+            Some(ToolView::Shell(with_lists(s, at, view, started_in).await))
         }
         view => view,
     };

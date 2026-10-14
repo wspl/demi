@@ -948,6 +948,22 @@ impl ScriptedShell {
         self.feed.changed(&record);
     }
 
+    /// The running command exits, having changed `files`, as its runner
+    /// reports a job's exit with its edit report.
+    pub fn exit_with(&self, files: Vec<demi_shared_types::EditedFile>) {
+        let record = self.command.borrow().clone().expect("the command started");
+        let mut command = record.borrow_mut();
+        command.set_files(demi_host_interface::EditedFiles {
+            files,
+            path_changes: Vec::new(),
+            truncated: false,
+        });
+        command.settle(Ending::Exited(0), Arc::new(WholeOutput::default()), None, Vec::new(), "");
+        drop(command);
+        self.feed.changed(&record);
+        self.ends.send_replace(());
+    }
+
     /// The running command ends, as its runner reports a stop's end.
     pub fn end(&self) {
         assert!(!self.detached.get(), "the environment let go of its command");
