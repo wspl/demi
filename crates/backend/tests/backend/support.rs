@@ -848,8 +848,8 @@ impl TestBackend {
         self.backend.local_addr()
     }
 
-    /// Holds every commit of a conversation's checkpoint from now on, until
-    /// the hold is released or dropped.
+    /// Holds every commit of a conversation's checkpoint or stored
+    /// attachment from now on, until the hold is released or dropped.
     pub fn hold_commits(&self) -> demi_backend_database::conversations::CommitHold {
         self.backend.hold_commits()
     }

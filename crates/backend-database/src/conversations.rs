@@ -197,8 +197,8 @@ impl ConversationStores {
         self.0.lock().open.len()
     }
 
-    /// Holds every commit of a checkpoint from now on, until the hold is
-    /// released.
+    /// Holds every commit of a checkpoint or of a stored attachment from
+    /// now on, until the hold is released.
     #[cfg(feature = "testing")]
     pub fn hold_commits(&self) -> CommitHold {
         let (hold, waiting) = Hold::new();
@@ -335,7 +335,7 @@ impl ConversationDb {
         .await?
     }
 
-    /// Where a save's transaction commits.
+    /// Where a save's transaction, or a stored attachment's, commits.
     pub fn commit_point(&self) -> CommitPoint {
         CommitPoint {
             #[cfg(feature = "testing")]
@@ -358,8 +358,8 @@ impl ConversationDb {
     }
 }
 
-/// Where a save's transaction commits: at once, unless a test holds the
-/// commits there (`CommitHold`).
+/// Where a save's transaction, or a stored attachment's, commits: at once,
+/// unless a test holds the commits there (`CommitHold`).
 pub struct CommitPoint {
     #[cfg(feature = "testing")]
     hold: Option<Arc<Hold>>,
@@ -378,9 +378,10 @@ impl CommitPoint {
     }
 }
 
-/// A hold on the commits of the conversations' checkpoints, for the
-/// scenarios that stop a save at its commit (`message-editing.md`
-/// § Durability and failure boundaries). From `Backend::hold_commits` until
+/// A hold on the commits of the conversations' checkpoints and stored
+/// attachments, for the scenarios that stop a save at its commit
+/// (`message-editing.md` § Durability and failure boundaries) or a call
+/// while its attachment's commit waits (`attachment_commands`). From `Backend::hold_commits` until
 /// it is released or dropped, a save has written its rows and waits before
 /// its transaction commits, on its database's writer thread: where a process
 /// that dies inside the save leaves it.
