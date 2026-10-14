@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, provide, ref, watch } from 'vue'
 import { useElementSize, useMutationObserver } from '@vueuse/core'
 import { Ellipsis, X } from '@lucide/vue'
 import { useStackedWindow } from '../ui/window-stack'
@@ -15,6 +15,7 @@ import Tooltip from '../ui/Tooltip.vue'
 import TabStrip from './TabStrip.vue'
 import { usePhone } from '../ui/phone'
 import { useBackClose } from '../overlay/back-close'
+import { iconTabsKey } from './tab-strip'
 import { DOCK_WINDOW_SHARE, dockWindowBounds, dockWindowHeight, dockWindowKey, dockWindowShare } from './dock-window'
 
 /**
@@ -87,6 +88,8 @@ const stacked = useStackedWindow({
 })
 
 const phone = usePhone()
+// On a phone this window's tabs narrow to their icons (`TabItem`).
+provide(iconTabsKey, true)
 
 const space = inject(dockWindowKey)
 if (!space) {
