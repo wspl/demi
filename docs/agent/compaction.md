@@ -48,21 +48,19 @@ tokens compacts at 967,000; one of 200,000 that writes up to 64,000 at
 model its user limited to 300K at 267,000. A summary written late is written
 once, where an early one is written again and again, each losing detail; a
 request the estimate let through and the vendor refused is compacted then
-([Retries](failures-and-recovery.md#retries)). The size thresholds are 80% of
-each of the model's request limits
-([Request limits](../providers/models.md#request-limits)), and a request
-reaches one when its size or its number of images
-([Request size](#request-size)) is at or over it. For example, 50 screenshots
-of 400 KB weigh 26.7 MB as the vendor receives them, over 80% of the Anthropic
-API's 32 MB, so the request that would carry the fiftieth compacts first.
+([Retries](failures-and-recovery.md#retries)). Compaction runs on
+tokens only: a request's bytes and its number of images never start a pass.
+Images can bring a request near its vendor's limits long before its tokens
+fill the window, and replay then leaves its oldest media out instead
+([Media left out to fit](runtime.md#media-left-out-to-fit)). Each pass logs
+what started it and the numbers it compared, so a pass is never a mystery.
 
 | Moment | Condition | Passes |
 | --- | --- | --- |
 | Before a turn: a send, a continuation, a retry, a resume or an edit | The estimate for the current model is at or over its token threshold | One |
-| Before each request | The request reaches a size threshold of its model | One |
 | Inside a turn, after a provider response | The response's reported usage is at or over the token threshold | One per response; the turn continues after at most three of them |
-| A request refused as too large (`context_length_exceeded`) | Always | One; the request is then sent once more ([Retries](failures-and-recovery.md#retries)) |
-| Before a model switch | The estimate or the request is at or over a threshold of the new model | Until both are under, at most eight, stopping when a pass compacts nothing |
+| A request refused for its tokens (`context_length_exceeded`) | Always | One; the request is then sent once more ([Retries](failures-and-recovery.md#retries)) |
+| Before a model switch | The estimate is at or over the token threshold of the new model | Until it is under, at most eight, stopping when a pass compacts nothing |
 | A `compact` action | The estimate is at least 50% of the window in use, or the model has none | One |
 
 A response's usage is that of its last call to the model, the size of what
@@ -78,7 +76,7 @@ waiting input back, then compacts. When the pass made the estimate smaller, it
 appends a `resume` block and asks the provider to continue. When it did not,
 the turn goes on as if no compaction had been due: looping on it would
 summarize its own summaries again and pile up `resume` blocks until the model
-refused the history. A pass before a request, or after a refused one, appends
+refused the history. A pass before a turn, or after a refused request, appends
 a `resume` block too when the request continues a running turn; before a
 turn's first request the new input is already last. A pass that leaves the
 request as large as it was is not repeated: the request goes out, and a
@@ -169,7 +167,7 @@ request after the pass.
 
 The summary request is a request the vendor has already taken with the
 instruction added, so it fits wherever that request did. When it does not,
-because the vendor refuses it as too large (`context_length_exceeded`), or
+because the vendor refuses it for its tokens (`context_length_exceeded`), or
 because no request was answered since the last compaction and the window is
 larger than any request the vendor took, the pass retries with the first half
 of the window, halving again until one block is left; a previous boundary and
@@ -193,7 +191,7 @@ The copy is closed on every path.
 
 A pass never summarizes the input it keeps, so input that is too large for
 the model on its own cannot be made to fit. The pass summarizes what came
-before it, the request is refused as too large, and the turn fails with
+before it, the request is refused for its tokens, and the turn fails with
 `context_length_exceeded` as any request does that the vendor refuses again
 after its pass, or whose pass compacted nothing
 ([When compaction runs](#when-compaction-runs)). No pass is repeated for it,
@@ -467,18 +465,6 @@ browser for the next time it opens, as a disclosure in Finder does.
 - **A row with no tokens is left out**, and so are Summary before the first
   compaction and Skills while no skill is on.
 
-### Request size
-
-A request's size is what its content weighs as the vendor receives it: the
-base64 length of each image, video and document it replays, plus the UTF-8
-length of its system prompt and texts. Its images are the image blocks it
-replays, in user messages, steers and tool results alike. Both are read off the
-request's items ([Replay](runtime.md#replay)), after the media the model does
-not accept, or that are too large for its requests, became text, so they count
-what the request sends. The bytes the
-vendor's format adds, such as JSON keys and escapes, are left to the fifth of
-each limit above its threshold.
-
 ### Text bounds
 
 The replay bound keeps one long text from filling a request:
@@ -543,8 +529,9 @@ a real model.
 | Something runs at the pass | The `context` block after the marker names each running command and live subagent of the agent; with none, no block |
 | No request answered since the last boundary, then `resume` over the threshold | The window ends before the stopped message; the next request carries the summary, then the message, the stopped answer and the `resume` block as written |
 | Input too large for the model on its own | No summary request carries it; the request after the pass carries it after the summary, and the turn fails with `context_length_exceeded` when that request is refused |
-| Screenshots accumulate toward an image limit that the scripted provider sets, within a turn and before a switch to a vendor that takes fewer | The request that would reach 80% of the limit compacts first, a switch with the model before it; no request reaches the limit. The runtimes' own limits are constants ([Request limits](../providers/models.md#request-limits)), which no test restates |
-| A request refused as too large (HTTP 413, or too many images) | One pass, then the request is sent again; a second refusal fails the turn |
+| Images bring requests near a byte or image limit that the scripted provider sets, within a turn and before a switch to a vendor that takes fewer, with the estimate under the token threshold | No pass runs, and no compaction is logged ([Media left out to fit](runtime.md#media-left-out-to-fit)) |
+| A request refused for its tokens (`context_length_exceeded`) | One pass, then the request is sent again; a second refusal fails the turn |
+| A request refused for its size (`request_too_large`) | No pass runs |
 | The latest answer's reasoning is kept past a summary | The Anthropic provider leaves it out of every later request; the other providers replay it |
 | The model calls a tool during a summary | Nothing runs; with text beside the call, the text is the summary; with no text, the summary request is retried, and a second such answer fails the pass |
 | Stop during a summary | No boundary; the copy is closed; the action ends as stopped |
