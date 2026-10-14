@@ -25,6 +25,7 @@ fn review_team() -> ConversationProfiles {
         name: "Review Team".into(),
         profiles: vec![
             WorkflowChild {
+                context_limit: None,
                 name: "explore".into(),
                 description: "Finds code.".into(),
                 instructions: Some("Read and report.".into()),
@@ -32,6 +33,7 @@ fn review_team() -> ConversationProfiles {
                 model: Some(Ok(model_of("stub", "fast-model"))),
             },
             WorkflowChild {
+                context_limit: None,
                 name: "slow".into(),
                 description: "Thinks long.".into(),
                 instructions: None,
@@ -52,6 +54,7 @@ fn product() -> TestProduct {
         let mut settings = product.subagents.borrow_mut();
         settings.enabled = false;
         settings.profiles = vec![Profile {
+            context_limit: None,
             name: "helper".into(),
             description: "Helps.".into(),
             model: None,

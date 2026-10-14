@@ -678,8 +678,11 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         })
     }
 
+    /// The window the product gives `model`, with the Context the node's
+    /// profile chose in place of the user's limit.
     fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
-        self.providers.context_window(model)
+        let own = self.record.borrow().context_limit;
+        self.providers.context_window(model, own)
     }
 
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>> {

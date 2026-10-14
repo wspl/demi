@@ -129,8 +129,8 @@ impl AgentTreeStore for SqliteTreeStore {
                     transaction.execute(
                         "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at,
                            can_spawn, closed_phase, closed_at, result, failure, delivered, state, block_count,
-                           output_revision, forked_from, cwd, cwd_device, cwd_under)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, 0, ?16, ?17, ?18, ?19)",
+                           output_revision, forked_from, cwd, cwd_device, cwd_under, context_limit)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, 0, ?16, ?17, ?18, ?19, ?20)",
                         params![
                             record.id.as_str(),
                             integer(record.number),
@@ -151,6 +151,7 @@ impl AgentTreeStore for SqliteTreeStore {
                             record.cwd.as_ref().map(|own| &own.cwd),
                             record.cwd.as_ref().and_then(|own| own.under.device.as_ref()),
                             record.cwd.as_ref().map(|own| &own.under.directory),
+                            record.context_limit,
                         ],
                     )?;
                     if let Err(refused) = write_checkpoint(&transaction, &record.id, &initial, &completions)? {
@@ -622,7 +623,8 @@ fn node_state(
 
 const NODE_COLUMNS: &str =
     "id, number, parent_id, description, profile, instructions, round, started_at, can_spawn,
-     closed_phase, closed_at, result, failure, delivered, forked_from, cwd, cwd_device, cwd_under";
+     closed_phase, closed_at, result, failure, delivered, forked_from, cwd, cwd_device, cwd_under,
+     context_limit";
 
 fn node_by_id(connection: &Connection, id: &NodeId) -> Result<Option<NodeRecord>, StorageError> {
     let mut statement =
@@ -713,6 +715,10 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
         description: row.get("description")?,
         profile: row.get("profile")?,
         instructions: row.get("instructions")?,
+        context_limit: row
+            .get::<_, Option<i64>>("context_limit")?
+            .map(|tokens| decode(TABLE, "context_limit", u32::try_from(tokens)))
+            .transpose()?,
         round: decode(TABLE, "round", u64::try_from(row.get::<_, i64>("round")?))?,
         started_at: instant(row, TABLE, "started_at")?,
         can_spawn_subagents: row.get("can_spawn")?,
@@ -1423,6 +1429,7 @@ mod tests {
             description: format!("{node} task"),
             profile: None,
             instructions: None,
+            context_limit: None,
             round: 1,
             started_at: Timestamp::UNIX_EPOCH,
             can_spawn_subagents: true,

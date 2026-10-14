@@ -67,8 +67,9 @@ impl ReadBlob for NoBlobs {
 /// messages saved for later, and the one with them before administered
 /// accounts, the one with administered accounts before a conversation's
 /// workflow, the one with the workflow before the edits and sends of
-/// saved messages were kept, and the one with them before an attached host
-/// went by its device's name. The schemas with the subagent
+/// saved messages were kept, the one with them before an attached host
+/// went by its device's name, and the one with device names before a
+/// subagent profile had a Context of its own. The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
 /// and the server's migrate through them.
@@ -159,8 +160,19 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.saved-edits.sql"),
             migration: Migration::Code(control_from_saved_edits),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.device-names.sql"),
+            migration: Migration::Sql(CONTROL_FROM_DEVICE_NAMES),
+        },
     ],
 };
+
+/// From the control schema in which an attached host goes by its device's
+/// name to the one in which a subagent profile has a Context of its own
+/// (`subagents.md` § Profiles): every stored profile follows the user's
+/// limit, as it did.
+const CONTROL_FROM_DEVICE_NAMES: &str =
+    "ALTER TABLE subagent_profiles ADD COLUMN context_limit INTEGER CHECK (context_limit >= 1);";
 
 /// From the control schema that kept the edits and sends of saved messages
 /// to the one where an attached host goes by its device's name
@@ -547,8 +559,9 @@ CREATE TABLE plugin_oauth_clients (
 /// The schemas of transcript block formats 4 and 5 before it no server
 /// keeps, but development databases do, and the server's migrate through
 /// them, as they do through the one before a node said which agent it was
-/// forked from and through the one of transcript block format 6 before a
-/// child's row kept its working directory.
+/// forked from, through the one of transcript block format 6 before a
+/// child's row kept its working directory, and through the one with child
+/// directories before a node kept its profile's Context.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -592,8 +605,19 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.block-format-6.sql"),
             migration: Migration::Code(nodes_with_their_directories),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.child-directories.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_CHILD_DIRECTORIES),
+        },
     ],
 };
+
+/// From the conversation schema in which a child's row keeps its working
+/// directory to the one in which it keeps the Context its profile chose
+/// (`subagents.md` § Profiles): every stored node follows the user's limit,
+/// as it did.
+const CONVERSATION_FROM_CHILD_DIRECTORIES: &str =
+    "ALTER TABLE nodes ADD COLUMN context_limit INTEGER CHECK (context_limit >= 1);";
 
 /// From the conversation schema of transcript block format 6, whose
 /// checkpoint state (format 2) kept the node's working directory, to the
@@ -1680,6 +1704,9 @@ CREATE TABLE subagent_profiles (
   instructions TEXT,
   can_spawn    INTEGER NOT NULL CHECK (can_spawn IN (0, 1)),
   enabled      INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+  -- The profile's own Context in tokens, its model's full window or a
+  -- limit; null for the user's limit, and always without a model.
+  context_limit INTEGER CHECK (context_limit >= 1),
   UNIQUE (user_id, name)
 ) STRICT;
 
@@ -2159,6 +2186,9 @@ CREATE TABLE nodes (
   cwd              TEXT CHECK (cwd <> ''),
   cwd_device       TEXT,
   cwd_under        TEXT CHECK (cwd_under <> ''),
+  -- The Context its profile chose, in tokens, which its sessions use in
+  -- place of the user's limit; null for the user's limit.
+  context_limit    INTEGER CHECK (context_limit >= 1),
   CHECK ((closed_phase IS NULL) = (closed_at IS NULL)),
   CHECK (result IS NULL OR closed_phase = 'completed'),
   CHECK (failure IS NULL OR closed_phase = 'error')

@@ -131,6 +131,9 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
                     "demi agent profiles create e2 --description x --model n --effort max </dev/null".to_owned(),
                     "demi agent profiles create e3 --description x --model zzz --provider Tree </dev/null".to_owned(),
                     "demi agent profiles create e4 --description x --model n --provider Spare </dev/null".to_owned(),
+                    "demi agent profiles create e5 --description x --context 500K </dev/null".to_owned(),
+                    "demi agent profiles create e6 --description x --model n --context full </dev/null".to_owned(),
+                    "demi agent profiles create e7 --description x --model n --context 400K </dev/null".to_owned(),
                 ]
                 .join("\n"),
             ),
@@ -149,6 +152,9 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
         "demi agent profiles create: The model does not offer the thinking effort \"max\"",
         "demi agent profiles create: The provider does not list that model",
         "demi agent profiles create: the provider entry \"Spare\" is turned off in Settings > Providers",
+        "demi agent profiles create: context: the profile inherits the parent's model, which follows the user's context limit; give the profile a model of its own first",
+        "demi agent profiles create: context: model \"n\" has a window of 100K and offers no choice of context; use default",
+        "\"400K\" is not a context: use full, 500K, 300K, 200K or default",
     ] {
         assert_shows(&asked, refusal);
     }
@@ -213,7 +219,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     let shown = &scripts.asked(|session| session == FIRST)[5];
     assert_shows(
         shown,
-        "name          explore\ndescription   Finds code; it changes nothing.\nmodel         n from Tree, effort high, tier default\nspawning      no\nenabled       yes\ninstructions\nYou only report.\n",
+        "name          explore\ndescription   Finds code; it changes nothing.\nmodel         n from Tree, effort high, tier default\ncontext       default\nspawning      no\nenabled       yes\ninstructions\nYou only report.\n",
     );
     let child = scripts
         .asked(|session| session != FIRST)

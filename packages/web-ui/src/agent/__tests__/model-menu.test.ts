@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { ModelInfo, ProviderInfo } from '../../transport/protocol'
 import { modelMenuRows } from '../model-menu'
+import { profileContextChoice, profileContextOptions } from '../context-limit'
 
 // A profile's model is chosen with the composer's own menu, the same items
 // plus Parent's Model at its top (`product.md` § Settings): nothing the
@@ -44,6 +45,25 @@ test('the profile menu offers the composer’s items for a model with Fast and c
     [['Claude Opus', true]],
     [['GPT-5', false]],
   ])
+})
+
+// A profile's own Context (`subagents.md` § Profiles) offers the Context
+// row's windows after Default, which names the window the user's limit
+// gives; the full window is stored as its own size, never as null.
+test('a profile’s Context offers Default with the user’s window, then the model’s windows, and nothing for a small window', () => {
+  expect(profileContextOptions(opus)).toEqual([
+    { label: 'Default (500K)', tokens: null },
+    { label: '1M', tokens: 1_000_000 },
+    { label: '500K', tokens: 500_000 },
+    { label: '300K', tokens: 300_000 },
+    { label: '200K', tokens: 200_000 },
+  ])
+  expect(profileContextOptions(gpt)).toEqual([])
+  expect(profileContextChoice(opus, 300_000)).toBe(300_000)
+  expect(profileContextChoice(opus, null)).toBeNull()
+  // 500K stored on a model whose window grew to 800K, which offers no
+  // 500K: the full window applies, as a session's does.
+  expect(profileContextChoice({ ...opus, contextWindow: 800_000 }, 500_000)).toBe(800_000)
 })
 
 test('with Parent’s Model chosen, the profile menu marks it and no model', () => {

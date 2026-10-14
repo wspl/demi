@@ -12,7 +12,7 @@ use demi_agent_tools::{
     ChosenWorkflow, ConversationProfiles, EFFORT_OFF, HostResolver, NewProfileDraft, Profile,
     ProfileEdit, SubagentSettings, Unavailable, WorkflowListing,
 };
-use demi_shared_types::{ModelSelection, THINKING_OFF, WorkflowChoice};
+use demi_shared_types::{ModelSelection, THINKING_OFF, WorkflowChoice, context_word, offers_context};
 use futures_util::future::join_all;
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -35,6 +35,9 @@ pub(super) struct Setup {
     /// when it adds none, and for the inherit profile, whose child copies
     /// its parent's.
     pub(super) instructions: Option<String>,
+    /// The Context the profile chose, in tokens, in place of the user's
+    /// limit; none for the user's. The inherit profile's is its parent's.
+    pub(super) context_limit: Option<u32>,
     pub(super) can_spawn: bool,
     /// The limits the settings set at that moment, which the spawn checks
     /// next ([`Limits`]).
@@ -106,6 +109,7 @@ impl<H: HostResolver> Tree<H> {
         let inherit = || Setup {
             model: owner.session().model(),
             instructions: None,
+            context_limit: owner.record().context_limit,
             can_spawn: true,
             limits,
         };
@@ -133,6 +137,7 @@ impl<H: HostResolver> Tree<H> {
                 Ok(Setup {
                     model,
                     instructions: child.instructions.clone(),
+                    context_limit: child.context_limit,
                     can_spawn: child.can_spawn,
                     limits,
                 })
@@ -166,6 +171,7 @@ impl<H: HostResolver> Tree<H> {
                 Ok(Setup {
                     model,
                     instructions: profile.instructions.clone(),
+                    context_limit: profile.context_limit,
                     can_spawn: profile.can_spawn,
                     limits,
                 })
@@ -284,6 +290,9 @@ struct ShownProfile {
     description: String,
     /// Null for the parent's model.
     model: Option<ShownModel>,
+    /// The context window its children use, as `--context` names it:
+    /// `default` for the user's limit, `full`, or a limit such as `500K`.
+    context: String,
     /// Null for none.
     instructions: Option<String>,
     /// Whether its children may spawn children of their own.
@@ -388,9 +397,10 @@ impl ProfileAnswer {
             }
         };
         let mut text = format!(
-            "name          {}\ndescription   {}\nmodel         {model}\nspawning      {}\nenabled       {}\n",
+            "name          {}\ndescription   {}\nmodel         {model}\ncontext       {}\nspawning      {}\nenabled       {}\n",
             profile.name,
             profile.description,
+            profile.context,
             yes(profile.spawning),
             yes(profile.enabled),
         );
@@ -413,10 +423,24 @@ impl ProfileAnswer {
 
 /// `profile` as `show` gives it, checked now.
 async fn answer<H: HostResolver>(server: &AgentServer<H>, profile: &Profile) -> ProfileAnswer {
-    let missing = match &profile.model {
-        Some(model) => server.deps.providers.profile_selection(model).await.err(),
+    let selection = match &profile.model {
+        Some(model) => Some(server.deps.providers.profile_selection(model).await),
         None => None,
     };
+    let window = match &selection {
+        Some(Ok(selection)) => Some(selection.model.context_window),
+        _ => None,
+    };
+    // What applies now: a stored choice the window no longer offers is the
+    // full window, as for a session.
+    let context = match (profile.context_limit, window) {
+        (None, _) => "default".to_owned(),
+        (Some(tokens), Some(window)) if !offers_context(window, tokens) || tokens == window => {
+            "full".to_owned()
+        }
+        (Some(tokens), _) => context_word(tokens),
+    };
+    let missing = selection.and_then(Result::err);
     ProfileAnswer {
         profile: ShownProfile {
             name: profile.name.clone(),
@@ -434,6 +458,7 @@ async fn answer<H: HostResolver>(server: &AgentServer<H>, profile: &Profile) -> 
                 }),
                 tier: model.service_tier_id.clone(),
             }),
+            context,
             instructions: profile.instructions.clone(),
             spawning: profile.can_spawn,
             enabled: profile.enabled,
