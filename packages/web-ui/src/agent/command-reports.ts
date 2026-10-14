@@ -35,7 +35,7 @@ export function reportNotice(report: CommandReport): string | null {
           return 'Command stopped'
       }
     case 'lost':
-      return 'Command lost'
+      return 'Lost track of command'
   }
 }
 
