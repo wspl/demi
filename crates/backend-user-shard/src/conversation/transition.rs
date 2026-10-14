@@ -600,7 +600,6 @@ mod tests {
                 // ones.
                 let attach = RecordChange::Attach(AttachedHostRecord {
                     device: one.clone(),
-                    name: "one".into(),
                     cwd: None,
                 });
                 shard.transition(&id, attach.into()).await.unwrap();

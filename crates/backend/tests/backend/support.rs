@@ -522,17 +522,17 @@ impl Harness {
         connection
     }
 
-    /// Attaches `device` to the conversation `id` under `name` as the attach
-    /// does, written to the control database: the conversation's agents
-    /// attach devices, and the page has no route for it
-    /// (`sessions-and-targets.md` § Attached hosts).
-    pub fn attach(&self, id: &str, device: &str, name: &str) {
+    /// Attaches `device` to the conversation `id` as the attach does,
+    /// written to the control database: the conversation's agents attach
+    /// devices, and the page has no route for it (`sessions-and-targets.md`
+    /// § Attached hosts).
+    pub fn attach(&self, id: &str, device: &str) {
         let control = self.control_database();
         control
             .execute(
-                "INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at)
-                 VALUES (?1, ?2, ?3, NULL, 0)",
-                [id, device, name],
+                "INSERT INTO conversation_hosts (conversation_id, device_id, cwd, attached_at)
+                 VALUES (?1, ?2, NULL, 0)",
+                [id, device],
             )
             .unwrap();
         control
