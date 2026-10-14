@@ -229,12 +229,11 @@ As of October 2026, based on each product's documentation.
 
 Most of Demi is released under the [Apache License 2.0](LICENSE): the agent
 runtime, the model providers, the runner you install on your machines, the
-commands, the plugins and their SDK, the protocols and the docs. Use them for
-anything.
+commands, the plugins and their SDK, the UI component library and its
+gallery, the protocols and the docs. Use them for anything.
 
 The server and the web app (`crates/backend*`, `crates/server`,
-`crates/machine-manager`, `packages/web`, `packages/web-ui` and
-`packages/web-gallery`) are released under the [Demi License](LICENSE-DEMI),
+`crates/machine-manager` and `packages/web`) are released under the [Demi License](LICENSE-DEMI),
 which is the Apache License 2.0 with additional conditions:
 
 - **Free to use**: Use, modify and run them, including at your company for

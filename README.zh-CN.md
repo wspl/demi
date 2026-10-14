@@ -175,9 +175,9 @@ curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | su
 
 ## 许可证
 
-Demi 的大部分代码采用 [Apache License 2.0](LICENSE) 发布，包括 Agent 运行时、模型提供方、装在你机器上的 Runner、命令、插件及其 SDK、各类协议和文档，可以用于任何用途。
+Demi 的大部分代码采用 [Apache License 2.0](LICENSE) 发布，包括 Agent 运行时、模型提供方、装在你机器上的 Runner、命令、插件及其 SDK、UI 组件库及其图库、各类协议和文档，可以用于任何用途。
 
-服务器和网页应用（`crates/backend*`、`crates/server`、`crates/machine-manager`、`packages/web`、`packages/web-ui` 和 `packages/web-gallery`）采用 [Demi License](LICENSE-DEMI) 发布，即在 Apache License 2.0 基础上附加了以下条件：
+服务器和网页应用（`crates/backend*`、`crates/server`、`crates/machine-manager` 和 `packages/web`）采用 [Demi License](LICENSE-DEMI) 发布，即在 Apache License 2.0 基础上附加了以下条件：
 
 - **免费使用**：可以使用、修改和运行，包括在公司内部供自己的团队使用。
 - **可提供商业支持**：可以为他人自行运行的 Demi 提供收费的部署、集成或支持服务。
