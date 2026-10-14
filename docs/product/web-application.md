@@ -401,7 +401,10 @@ conversation; the panel button covers the screen with the work panel, and
 - **Whole-screen panels.** The work panel slides over the whole screen, its
   bar *‹ Conversation*, its tabs in a strip that scrolls sideways, and the
   strip's controls; the Agents and Running windows rise as whole-screen
-  sheets. The sidebar is a drawer over a scrim, 85% of the width and at most
+  sheets. Their tab strips show each tab as its icon, with its status dot,
+  and only the selected tab adds its name, so five agents fit on an iPhone
+  as they would not by name, as Chrome narrows its tabs to their icons and
+  keeps the active one's title; a long press opens the tab's menu. The sidebar is a drawer over a scrim, 85% of the width and at most
   320 pixels, so the conversation shows beside it; a tap on the scrim or a
   swipe left closes it. In the File view the tree covers the file's whole
   width and slides away when a file is picked.

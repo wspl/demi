@@ -1296,6 +1296,7 @@ Words used for session data:
 | `tool_call` | The provider's call, completed by the session with the result | The call and, once completed, its result | Yes |
 | `response` | The provider: the usage of one completed request | Nothing; its usage anchors the context estimate | No |
 | `error` | A failed request or an interrupted turn ([The failure record](failures-and-recovery.md#the-failure-record)); `outsideTurn` when the failure ended no turn ([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)) | Nothing | Yes |
+| `account_switch` | [Account rotation](../providers/providers.md#account-rotation): the account that reached its limit, the window and its reset, and the account the agent continues with | Nothing | Yes, as a neutral line, its time in the viewer's zone |
 | `compaction_boundary` | Compaction: the summary, inserted where the kept history begins | A user message: "Previous conversation summary:" and the summary | Through its marker; at its own place only when an edit removed the marker |
 | `compaction_marker` | Compaction: the estimated size of what was summarized, appended at the end | Nothing | Yes, as the compaction's divider, with its boundary's summary size |
 
@@ -2020,7 +2021,7 @@ Host, with the handle checks of [Running shell tools](#running-shell-tools).
 | `transcript_reset` | `start`, the blocks from that index to the end, whole, the transcript's `length`, the version `{ epoch, revision }`, and `failures` ([Where a reset starts](#where-a-reset-starts)) |
 | `transcript_patch` | Patches, the new revision, and `failures` |
 | `phase` | `idle`, `running` or `compacting`, and `subagentId` when it is a live subagent's: a page opening the conversation receives one for the root and each live child, and a child's tail row reads its own, so a child idle beside a running command shows no Requesting row |
-| `context_usage` | `node`, the agent whose context it is, and the estimate of that node's next request in `tokens`, the `window` in use and `compactFrom`, the estimate from which `compact` is taken; both null for a model without a window. Right after the open handshake when the session can tell it without reading a blob ([Context estimate](compaction.md#context-estimate)) |
+| `context_usage` | `node`, the agent whose context it is, and the estimate of that node's next request in `tokens`, the `window` in use and `compactFrom`, the estimate from which `compact` is taken; both null for a model without a window; and `account`, the account the node's requests use under [Account rotation](../providers/providers.md#account-rotation), null when the entry has none or the node has not chosen one yet. Right after the open handshake when the session can tell it without reading a blob ([Context estimate](compaction.md#context-estimate)) |
 | `queue` | The queued messages, each `{ id, content }` |
 | `pending_steers` | The complete list of pending steers |
 | `steer_result` | The steer id and an `outcome`: `{ status: "accepted" }` or `{ status: "rejected", reason }` |

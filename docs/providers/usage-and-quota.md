@@ -156,6 +156,7 @@ is one limit the vendor meters:
 | `usedPercent` | The share used, from 0 to 100, or null when unknown; a reported share above 100 counts as 100, and one below 0 as 0 |
 | `used`, `limit`, `unit` | Amounts, when the vendor reports them, in the window's unit, such as `credits`, `requests` or `tokens` |
 | `resetsAt` | When the window resets, or null when unknown |
+| `periodSeconds` | How long one period of the window lasts, as the vendor states it (Codex's `limit_window_seconds`, Claude's five-hour and seven-day windows, Grok's weekly credits or billing period), or null when unknown |
 | `severity` | `critical` from 95% used, `warning` from 80%, `normal` below that, and null when the share is unknown; a severity the vendor states is used instead |
 | `scope` | What the window applies to when that is narrower than the account, such as one model |
 
@@ -163,8 +164,9 @@ is one limit the vendor meters:
   percentage. A vendor field that Demi cannot read is left out, and the rest
   of the snapshot still shows.
 - A snapshot holds no token material and no vendor payload.
-- A snapshot is information for the user. Inference admission never reads it,
-  and neither does the agent.
+- A snapshot is information for the user and for choosing an account under
+  [Account rotation](providers.md#account-rotation). Inference admission
+  never reads it, and the model never sees it.
 
 Every surface that shows a window says its use and its reset the same way, on
 one line over its bar, the window's name, then its reset and its use at the
