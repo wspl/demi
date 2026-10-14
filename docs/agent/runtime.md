@@ -125,9 +125,10 @@ action starts
   compact first when the history is over the threshold
   |
   +-> write pending steers and agent messages into the transcript
-  |   compact first when the request reaches a size threshold
+  |   leave older media out when the request nears a size limit
   |   request the provider, retrying transient failures
-  |   refused as too large: compact once and request again
+  |   refused for its tokens: compact once and request again
+  |   refused for its size: leave older media out and request again
   |   apply the provider's events to the transcript as they stream
   |   save, then run the requested tools one at a time, in order
   |   usage reached the compaction threshold: compact, append `resume`, loop
@@ -143,8 +144,10 @@ A turn ends when a response requests no tool. Input that arrived during the
 round overrides that: the turn asks the provider once more. Transient provider
 failures are retried inside the request
 ([Retries](failures-and-recovery.md#retries)); compaction inside a turn,
-before a request that would be too large and after one that was refused, is
-described in [Compaction](compaction.md#when-compaction-runs).
+after a response over the threshold and after a request refused for its
+tokens, is described in [Compaction](compaction.md#when-compaction-runs), and
+the media a request leaves out to fit its vendor's limits in
+[Media left out to fit](#media-left-out-to-fit).
 
 While an action runs, its stage is one of: preparing (before the first
 request), streaming from the provider, running tools, compacting, or
@@ -1286,6 +1289,7 @@ Words used for session data:
 | `error` | A failed request or an interrupted turn ([The failure record](failures-and-recovery.md#the-failure-record)); `outsideTurn` when the failure ended no turn ([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)) | Nothing | Yes |
 | `compaction_boundary` | Compaction: the summary, inserted where the kept history begins | A user message: "Previous conversation summary:" and the summary | Through its marker; at its own place only when an edit removed the marker |
 | `compaction_marker` | Compaction: the estimated size of what was summarized, appended at the end | Nothing | Yes, as the compaction's divider, with its boundary's summary size |
+| `media_cutoff` | Before a request that nears a size limit of its model, or after one refused for its size: how many media, counted from the start of the replay, requests leave out, appended at the end ([Media left out to fit](#media-left-out-to-fit)) | Nothing; the media it counts are replayed as text | No |
 
 Each block carries the time it began by the backend's clock: a `text` block
 the arrival of its first text, a tool block the call's start. The page shows a
@@ -1371,16 +1375,70 @@ for the history around it:
 | --- | --- |
 | Of a type the model does not accept | `[<kind>:<name>, not sent: the model does not accept it]` |
 | Over half of the model's body limit | `[<kind>:<name>, not sent: too large for the model's requests]` |
+| Counted by the latest `media_cutoff` ([Media left out to fit](#media-left-out-to-fit)) | `[<kind>:<name>, not sent: left out to fit the request's size; view it again if needed]` |
 
 The kind is `image`, `video` or `document`, and the name is the media type of
 an image or a video and the file name of a document. The text depends only on
-the medium and the request's model, so every request to that model carries the
-same text. For example, after a switch to a model without video, a tool
+the medium, the request's model and the latest cutoff, so every request to that
+model carries the same text until a cutoff changes it. For example, after a switch to a model without video, a tool
 result's video reaches that model as
 `[video:video/mp4, not sent: the model does not accept it]` in every request,
 and a switch back sends the video again.
 The token estimates for a model weigh such a medium as that text
 ([Block estimates](compaction.md#block-estimates)).
+
+#### Request size
+
+A request's size is what its content weighs as the vendor receives it: the
+base64 length of each image, video and document it replays, plus the UTF-8
+length of its system prompt and texts. Its images are the image blocks it
+replays, in user messages, steers and tool results alike. Both are read off the
+request's items ([Replay](#replay)), after the media the model does
+not accept, that are too large for its requests or that a cutoff counts became
+text, so they count what the request sends. The bytes the
+vendor's format adds, such as JSON keys and escapes, are left to the fifth of
+each limit above the 80% at which media are left out.
+
+#### Media left out to fit
+
+A request's media can outgrow its vendor's limits long before its tokens fill
+the window: 26 images of about 1 MB carry 25.6 MB of base64, 80% of the
+Anthropic API's 32 MB, in a request of 281,000 tokens to a 1,000,000-token
+model. Compaction runs on tokens only
+([When compaction runs](compaction.md#when-compaction-runs)), so replay keeps
+such a request under its limits by leaving its oldest media out. Nothing is
+summarized, the transcript still shows every image where it was, and the model
+can view a file again when it needs it.
+
+Before each request the session sizes it ([Request size](#request-size)), with
+the media the latest cutoff already leaves out. When its size or its number of
+images is at or over 80% of a limit of its model
+([Request limits](../providers/models.md#request-limits)), the session appends
+a `media_cutoff` block that leaves out the oldest media, in replay order, until
+the request is at most half of each limit, and saves before it sends. A request
+refused for its size (`request_too_large`,
+[Retries](failures-and-recovery.md#retries)) shows that its vendor takes less
+than the model's stated limits, as a compatible endpoint may: the session
+appends a cutoff that leaves the oldest media out until the request is at
+most half of the refused one, in bytes and in images, and sends it once more.
+A refusal with no medium left to leave out, or a second refusal, is terminal.
+
+A `media_cutoff` holds a count: the replay's first N media, counted from its
+start, the media of the messages the last `compaction_boundary` keeps
+included, are replayed as text. Every medium counts, whatever it is replayed
+as. Only the latest cutoff after the last `compaction_boundary` applies, and it
+holds the whole count, never an increment; a compaction starts the count
+again. An edit that removes a cutoff with the blocks after the edited message
+brings its media back.
+
+Leaving media out down to half of the limit, rather than just under the
+threshold, keeps cutoffs rare: each one changes what earlier requests carried
+and costs the vendor's cache once ([Prompt cache](../providers/providers.md#prompt-cache)),
+and the next one waits until the media have grown by another 30% of the limit.
+For example, with images of about 400 KB, a request to the Anthropic API that
+reaches 25.6 MB leaves its oldest images out down to 16 MB, and the next cutoff
+comes about 24 images later. The token estimates weigh a medium left out as its
+text ([Block estimates](compaction.md#block-estimates)).
 
 Reasoning between the last `compaction_boundary` and its marker, which
 compaction kept after the summary, is marked as kept past a summary: the
@@ -1395,8 +1453,8 @@ request's model accepts, never an ID or a time, and a block keeps its place.
 The same history therefore gives the same items for the same model in any
 session. Each request's items begin with the previous request's: new blocks
 are appended, a tool call's result completes a call no request has carried
-yet, and a view is never replayed. Only compaction, a model switch and an edit
-change what an earlier request carried; a retry and a resume cut back to an
+yet, and a view is never replayed. Only compaction, a media cutoff, a model switch and an
+edit change what an earlier request carried; a retry and a resume cut back to an
 earlier request. This is how a session keeps its vendor's cache
 ([Prompt cache](../providers/providers.md#prompt-cache)).
 
@@ -1525,18 +1583,22 @@ An image enters the transcript once: when a tool result attaches it
 becomes its native medium
 ([Attachments](../product/product.md#attachments)). It is fitted then to what
 every provider accepts of one image, at most 2,000 px on each side and
-5,000,000 bytes as base64, which is 3,750,000 bytes of image, and it never
-changes afterwards, so every request sends the same bytes.
+5,000,000 bytes as base64, which is 3,750,000 bytes of image, and kept light,
+since every request replays it. It never changes afterwards, so every request
+sends the same bytes.
 
 | The image | What enters the transcript |
 | --- | --- |
-| PNG, JPEG or WebP, at most 2,000 px on each side and 3,750,000 bytes | The image, unchanged |
+| PNG, JPEG or WebP, at most 2,000 px on each side and 500,000 bytes | The image, unchanged |
 | Larger than 2,000 px on a side | The image turned upright by its EXIF orientation and scaled down to fit 2,000 × 2,000 px, keeping its aspect ratio: a JPEG as JPEG at quality 90, a PNG or WebP as PNG |
 | A GIF | Its first frame as PNG, fitted the same way |
-| Over 3,750,000 bytes after that | The fitted image as JPEG at quality 85 |
+| Over 500,000 bytes after that | The fitted image as JPEG at quality 85, its transparency flattened onto white, when that is smaller |
 | Still over 3,750,000 bytes, not decodable, or needing more than 256 MiB to decode | No image: a tool result says why, and an upload stays an attachment the model reads by path |
 
-For example, a screenshot of 3,000 × 1,500 px enters as 2,000 × 1,000 px. The
+For example, a screenshot of 3,000 × 1,500 px enters as 2,000 × 1,000 px, and
+an illustration of 1,672 × 941 px saved as a PNG of 2.2 MB enters as a JPEG of
+about 440 KB. Half a megabyte keeps a screenshot of text, seldom heavier as PNG,
+lossless, while a photograph or an illustration enters at a fifth of its size. The
 limits follow the vendors: the Anthropic API refuses a request with more than
 20 images when a side of any of them exceeds 2,000 px, and OpenAI and Gemini
 scale a larger image down themselves; the vendors' strictest limit for one
@@ -1551,7 +1613,7 @@ on the Host and in its upload blob, whose attachment record keeps the
 original's size and hash. Fitting decodes and encodes on the
 blocking pool ([Blocking work](../architecture/concurrency.md#blocking-work)).
 Videos and documents are not fitted; they count toward the request's size
-([Request size](compaction.md#request-size)).
+([Request size](#request-size)).
 
 ### Views
 
@@ -2318,3 +2380,8 @@ where a tool runs; no test calls a real model.
 | A switch to a model that does not accept video | Every request to it carries the history's videos as the same text |
 | A video whose base64 is over half of a model's request body limit | A tool result does not attach it, and replay sends one already in the history as the same text in every request to that model |
 | An image over 2,000 px enters from a tool result and from an upload | It enters fitted, every later request carries the same bytes, and the original stays on the Host |
+| A PNG illustration of 2 MB and a PNG screenshot of 150 KB enter from tool results | The illustration enters as a smaller JPEG and the screenshot unchanged; later requests carry the same bytes |
+| Images bring a request to 80% of a byte or an image limit the scripted provider sets, with the estimate under the token threshold | A `media_cutoff` is saved before the request, which replays the oldest media as their text down to half of each limit; no compaction runs; each later request begins with that request's body until the next cutoff |
+| A request refused for its size, then refused again | One cutoff and one more attempt, then the turn fails with `request_too_large` |
+| An edit of a message before a cutoff | The cutoff goes with the blocks after the message, and the next request carries the media again |
+| A compaction after a cutoff | The count starts again at the boundary: the kept messages' media are sent |
