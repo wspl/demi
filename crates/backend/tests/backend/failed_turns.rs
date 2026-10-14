@@ -23,9 +23,10 @@ use demi_provider_common::{
     Capabilities, CatalogError, InferenceItem, InferenceRequest, Provider, ProviderEvent,
     ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits, RuntimeEnv, RuntimeError,
 };
+use demi_conversation_socket_protocol::ServerFrame;
 use demi_shared_types::{
     AuthState, FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
-    RuntimeState, Timestamp,
+    RuntimeState, SessionPhase, Timestamp,
 };
 use demi_web_api_protocol::providers::CredentialKind;
 use futures_util::future::{BoxFuture, LocalBoxFuture};
@@ -217,6 +218,23 @@ impl World {
         socket
     }
 
+    /// A page's socket once the root's turn under way, such as a resume
+    /// that has asked the model, has ended. A message sent while it runs
+    /// waits in the queue and runs right after it, with no phase frame
+    /// between: the handshake said `running`, so its `chat` would never see
+    /// its turn start.
+    async fn idle_socket(&self) -> Socket {
+        let idle = ServerFrame::Phase {
+            subagent_id: None,
+            phase: SessionPhase::Idle,
+        };
+        let mut socket = Socket::connect(&self.backend, &self.master, FIRST).await;
+        if !socket.open().await.contains(&idle) {
+            socket.until(|frame| *frame == idle).await;
+        }
+        socket
+    }
+
     async fn prefer(&self, on: bool) {
         let turned = self
             .backend
@@ -329,7 +347,7 @@ async fn the_wait_outlives_the_trees_eviction_a_newer_failure_replaces_it_and_of
 
     // At 09:00 a failure that can succeed at 10:00; at 09:30 another, at
     // 10:30: only the newer waits, and it is turned off before its moment.
-    let mut socket = world.socket().await;
+    let mut socket = world.idle_socket().await;
     world.fail(&mut socket, "m2", "second", 2).await;
     world.pass(30).await;
     world.fail(&mut socket, "m3", "third", 3).await;
@@ -369,7 +387,7 @@ async fn after_a_restart_opening_the_conversation_waits_again_only_for_a_moment_
     eventually("the turn resumed", || async { world.asked() == 2 }).await;
 
     // A failure at 09:00, then a restart at 11:00, after its moment.
-    let mut socket = world.socket().await;
+    let mut socket = world.idle_socket().await;
     world.fail(&mut socket, "m2", "second", 3).await;
     drop((socket, _socket));
     world.backend.close().await;
