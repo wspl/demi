@@ -37,6 +37,28 @@ across your own machines, and tasks keep running when you close the tab.
 > [!NOTE]
 > Demi is in early development. Expect breaking changes between releases.
 
+## Quick start
+
+**Requirements**: a Linux server (Ubuntu 22.04+ or Debian 12+) with root
+access, a domain name, and HTTPS in front of it.
+
+```sh
+curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
+```
+
+The installer asks for your domain and HTTPS setup, then prints the address
+of your server. From there:
+
+1. Open the address and create the admin account.
+2. Go to **Settings › Providers** and sign in with a subscription or add an
+   API key.
+3. Start a conversation. It runs in your cloud sandbox.
+4. To work on your own computer, choose **Add Device** from the conversation's
+   host menu and run the command it shows on that computer.
+
+See the [installation guide](docs/delivery/installation.md) for all options and
+[upgrades](docs/delivery/upgrades.md) for moving to a new release.
+
 ## Key features
 
 ### Chat, work and code
@@ -130,28 +152,6 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 - **Built for long jobs**: Commands keep running in the background and report
   back when they finish, so dev servers and test suites never block the
   conversation.
-
-## Quick start
-
-**Requirements**: a Linux server (Ubuntu 22.04+ or Debian 12+) with root
-access, a domain name, and HTTPS in front of it.
-
-```sh
-curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
-```
-
-The installer asks for your domain and HTTPS setup, then prints the address
-of your server. From there:
-
-1. Open the address and create the admin account.
-2. Go to **Settings › Providers** and sign in with a subscription or add an
-   API key.
-3. Start a conversation. It runs in your cloud sandbox.
-4. To work on your own computer, choose **Add Device** from the conversation's
-   host menu and run the command it shows on that computer.
-
-See the [installation guide](docs/delivery/installation.md) for all options and
-[upgrades](docs/delivery/upgrades.md) for moving to a new release.
 
 ## Architecture
 
