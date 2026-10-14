@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import {
+  continueWithOffer,
   conversationPageKind,
   sessionFailureNotice,
   resumeWaitsFor,
@@ -137,4 +138,27 @@ test('Resume after a turn its offline Host left unfinished waits for the current
   expect(resumeWaitsFor([{ type: 'user' }, { type: 'error', code: 'overloaded' }], { ...mac, state: 'offline' })).toBeNull()
   // Behind a compaction the record still holds Resume back.
   expect(resumeWaitsFor([...blocks, { type: 'compaction_boundary' }], { ...mac, state: 'offline' })).toBe('MacBook Pro')
+})
+
+// Continue with reads the unfinished turn's record as Resume does: a
+// child's report or a compaction written behind the usage limit keeps it,
+// and another end or a running turn offers none (`providers.md` § Account
+// rotation). Microseconds.
+test('a usage limit offers to continue with another account while late input follows it', () => {
+  const model = { providerId: 'claude' }
+  const failures = { e1: { continueWith: { credentialId: 'a2', label: 'sam@example.com' } } }
+  const offer = { providerId: 'claude', credentialId: 'a2', label: 'sam@example.com' }
+  const failed = [{ type: 'user' }, { type: 'error', id: 'e1', code: 'usage_limit', model }]
+  expect(continueWithOffer('idle', failed, failures)).toEqual(offer)
+  const late = [
+    ...failed,
+    { type: 'agent_message' },
+    { type: 'wakeup', placement: 'steer' },
+    { type: 'compaction_marker' },
+  ]
+  expect(continueWithOffer('idle', late, failures)).toEqual(offer)
+  expect(continueWithOffer('running', late, failures)).toBeNull()
+  expect(continueWithOffer('idle', [...failed, { type: 'user' }, { type: 'text' }], failures)).toBeNull()
+  expect(continueWithOffer('idle', [{ type: 'user' }, { type: 'error', id: 'e1', code: 'rate_limited', model }], failures)).toBeNull()
+  expect(continueWithOffer('idle', failed, {})).toBeNull()
 })

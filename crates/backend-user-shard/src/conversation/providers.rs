@@ -25,7 +25,7 @@ use demi_provider_common::{
     AccountSwitch, Ahead, ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, RuntimeEnv,
 };
-use demi_backend_providers::llm::rotation::{Candidate, Choice, Holding, USED_UP_FOR_MS, window_used_up};
+use demi_backend_providers::llm::rotation::{Candidate, Choice, Running, USED_UP_FOR_MS, window_used_up};
 use demi_shared_types::{
     AgentAccount, Model, ModelSelection, NodeId, Rotation, Timestamp, UnavailableSetting,
     session_context_window,
@@ -122,7 +122,8 @@ impl ProviderResolver for ConversationProviders {
                 selection: model.clone(),
                 current: None,
                 prepares_ahead: false,
-                holding: None,
+                account: None,
+                running: None,
                 unannounced: false,
             };
             // The active account's runtime until the session's first
@@ -262,10 +263,15 @@ struct ConversationRuntime {
     /// Whether the entry's provider runs a process it prepares ahead; its
     /// family, and so this, never changes.
     prepares_ahead: bool,
-    /// The agent's hold on the account it took under the entry's rotation;
-    /// none under Manual (`providers.md` § Account rotation).
-    holding: Option<Holding>,
-    /// Whether the held account was taken ahead of a request, so the next
+    /// The account the agent took under the entry's rotation, which it
+    /// keeps while idle; none under Manual (`providers.md` § Account
+    /// rotation).
+    account: Option<CredentialId>,
+    /// The agent counted as running a turn on `account`, from a request
+    /// until the session's action ends; Balanced spreads agents by these
+    /// counts, and an idle agent is not among them.
+    running: Option<Running>,
+    /// Whether the account was taken ahead of a request, so the next
     /// request that names none tells the session of it.
     unannounced: bool,
 }
@@ -320,7 +326,13 @@ impl ConversationRuntime {
     /// limit, which the entry's configured model decides when it has a
     /// configured list; the request's own cap is not the model's, and stays
     /// (`models.md` § Output limit).
-    async fn admit(&mut self, request: &InferenceRequest) -> Result<Admitted, ProviderFailure> {
+    /// `runs` says whether the request runs now, which counts the agent as
+    /// running on its account, or is only readied ahead.
+    async fn admit(
+        &mut self,
+        request: &InferenceRequest,
+        runs: bool,
+    ) -> Result<Admitted, ProviderFailure> {
         let entry = self.entry().await?;
         let requested = ModelSelection {
             provider_id: self.selection.provider_id.clone(),
@@ -337,13 +349,14 @@ impl ConversationRuntime {
         let rotation = entry.rotation();
         let (account, announce) = match rotation {
             Rotation::Manual => {
-                self.holding = None;
+                self.account = None;
+                self.running = None;
                 let announce = request.account.is_some().then_some(None);
                 (entry.active().cloned(), announce)
             }
             Rotation::InOrder | Rotation::Balanced => {
                 let (account, announce) = self
-                    .agent_account(&entry, &selection.model, request.account.as_ref())
+                    .agent_account(&entry, &selection.model, request.account.as_ref(), runs)
                     .await?;
                 (Some(account), announce)
             }
@@ -376,45 +389,44 @@ impl ConversationRuntime {
     }
 
     /// The account the agent uses under `entry`'s rotation: `named`, the
-    /// one the session keeps, while the entry still holds it and its
-    /// rotation is the one it was taken under; else one taken now, which
-    /// the session is told of.
+    /// one the session keeps, while the entry still has it, its rotation is
+    /// the one it was taken under and it is not marked used up; else one
+    /// taken now, which the session is told of. A request that `runs`
+    /// counts the agent as running on it.
     async fn agent_account(
         &mut self,
         entry: &ProviderEntry,
         model: &Model,
         named: Option<&AgentAccount>,
+        runs: bool,
     ) -> Result<(CredentialId, Option<Option<AgentAccount>>), ProviderFailure> {
-        let assembly = &self.scope.services.assembly;
+        let assembly = self.scope.services.assembly.clone();
         let rotation = entry.rotation();
+        let now = self.scope.services.clock.now();
         if let Some(named) = named.filter(|named| named.rotation == rotation) {
             let accounts = assembly
                 .vault()
                 .accounts(entry.id.clone())
                 .await
                 .map_err(|error| refused(entry_unreadable(&error), None))?;
-            if let Some(kept) = accounts
-                .into_iter()
-                .find(|account| account.id.as_str() == named.credential_id)
-            {
-                let held = self
-                    .holding
-                    .as_ref()
-                    .is_some_and(|holding| *holding.account() == kept.id);
-                if !held {
-                    self.holding = Some(assembly.rotation().hold(&entry.id, &kept.id));
-                }
+            let kept = accounts.into_iter().find(|account| {
+                account.id.as_str() == named.credential_id
+                    && !assembly.rotation().is_used_up(&entry.id, &account.id, now)
+            });
+            if let Some(kept) = kept {
+                self.keep(entry, kept.id.clone(), runs);
                 self.unannounced = false;
                 return Ok((kept.id, None));
             }
         }
         if named.is_none()
             && self.unannounced
-            && let Some(holding) = &self.holding
+            && let Some(account) = self.account.clone()
+            && !assembly.rotation().is_used_up(&entry.id, &account, now)
         {
             // Taken ahead of this request: the session learns of it now.
+            self.keep(entry, account.clone(), runs);
             self.unannounced = false;
-            let account = holding.account().clone();
             return Ok((account.clone(), Some(Some(agent_account(&account, rotation)))));
         }
         let (choice, candidates) = assembly
@@ -422,10 +434,12 @@ impl ConversationRuntime {
             .await
             .map_err(|error| refused(error.to_string(), None))?;
         match choice {
-            Some(Choice::Account(holding)) => {
-                let account = holding.account().clone();
-                self.holding = Some(holding);
-                self.unannounced = true;
+            Some(Choice::Account(running)) => {
+                let account = running.account().clone();
+                self.account = Some(account.clone());
+                // Readied ahead, the agent is idle and counts on none.
+                self.running = runs.then_some(running);
+                self.unannounced = !runs;
                 Ok((account.clone(), Some(Some(agent_account(&account, rotation)))))
             }
             Some(Choice::AllUsedUp { .. }) => Err(all_used_up(entry, &candidates)),
@@ -433,22 +447,33 @@ impl ConversationRuntime {
         }
     }
 
-    /// The agent's account failed with `failure`, a usage limit: it is
+    /// Makes `account` the agent's, counted as running on it when the
+    /// request `runs` and it is not already.
+    fn keep(&mut self, entry: &ProviderEntry, account: CredentialId, runs: bool) {
+        let counted = self
+            .running
+            .as_ref()
+            .is_some_and(|running| *running.account() == account);
+        if runs && !counted {
+            self.running = Some(self.scope.services.assembly.rotation().run(&entry.id, &account));
+        } else if !counted {
+            self.running = None;
+        }
+        self.account = Some(account);
+    }
+
+    /// The agent's account failed with `failure`, a usage limit: marks it
     /// used up until the moment the failure or its quota names, or for 30
-    /// minutes, and the agent takes another account, whose runtime serves
-    /// the same request again. Answers the move, or the failure when every
-    /// account is used up (`providers.md` § Account rotation).
-    async fn switch_account(
+    /// minutes, whether the request is sent again or not, so no agent takes
+    /// it meanwhile. Answers the account, the moment and the window used
+    /// up.
+    fn mark_used_up(
         &mut self,
+        entry: &ProviderEntry,
         failure: &ProviderFailure,
-    ) -> Result<(AccountSwitch, AgentAccount), ()> {
-        let Some(used_up) = self.holding.as_ref().map(|holding| holding.account().clone()) else {
-            return Err(());
-        };
-        let entry = self.entry().await.map_err(drop)?;
-        let assembly = self.scope.services.assembly.clone();
+    ) -> Option<(CredentialId, Option<Timestamp>, Option<String>)> {
+        let used_up = self.account.clone()?;
         let now = self.scope.services.clock.now();
-        let model = self.selection.model.clone();
         // The moment the failure names, else the account's quota's.
         let moment = self.current.as_ref().and_then(|current| {
             let named = failure
@@ -465,16 +490,37 @@ impl ConversationRuntime {
             Timestamp::from_millisecond(now.as_millisecond() + USED_UP_FOR_MS)
                 .expect("half an hour from now is a time")
         });
-        assembly.rotation().mark_used_up(&entry.id, &used_up, until);
-        // The used-up account's hold goes before the choice, which then
-        // counts the agent nowhere.
-        self.holding = None;
+        self.scope
+            .services
+            .assembly
+            .rotation()
+            .mark_used_up(&entry.id, &used_up, until);
+        Some((used_up, moment, window))
+    }
+
+    /// The agent's account failed with `failure`, a usage limit, before
+    /// anything of the run reached the agent: the account is marked used
+    /// up, and the agent takes another, whose runtime serves the same
+    /// request again. Answers the move, or nothing when every account is
+    /// used up (`providers.md` § Account rotation).
+    async fn switch_account(
+        &mut self,
+        failure: &ProviderFailure,
+    ) -> Result<(AccountSwitch, AgentAccount), ()> {
+        let entry = self.entry().await.map_err(drop)?;
+        let (used_up, moment, window) = self.mark_used_up(&entry, failure).ok_or(())?;
+        let assembly = self.scope.services.assembly.clone();
+        let model = self.selection.model.clone();
+        // The agent stops counting on the used-up account before the
+        // choice, which then counts it nowhere.
+        self.running = None;
         let (choice, candidates) = assembly.take_account(&entry, &model).await.map_err(drop)?;
-        let Some(Choice::Account(holding)) = choice else {
+        let Some(Choice::Account(running)) = choice else {
             return Err(());
         };
-        let next = holding.account().clone();
-        self.holding = Some(holding);
+        let next = running.account().clone();
+        self.account = Some(next.clone());
+        self.running = Some(running);
         self.unannounced = false;
         let selection = self.selection.clone();
         self.serve(&entry, selection, Some(&next)).await.map_err(drop)?;
@@ -611,7 +657,7 @@ impl ProviderRuntime for ConversationRuntime {
         Box::pin(async_stream::stream! {
             let cancel = request.cancel.clone();
             let admitted = tokio::select! {
-                admitted = self.admit(&request) => admitted,
+                admitted = self.admit(&request, true) => admitted,
                 () = cancel.cancelled() => return,
             };
             let admitted = match admitted {
@@ -630,16 +676,17 @@ impl ProviderRuntime for ConversationRuntime {
             };
             loop {
                 let mut used_up = None;
+                let mut shown = false;
                 {
                     let Some(current) = self.current.as_mut() else {
                         unreachable!("an admitted request has its runtime");
                     };
                     let mut events = current.runtime.run(request.clone());
-                    let mut shown = false;
                     while let Some(event) = events.next().await {
                         match event {
+                            // The run ends with its error.
                             ProviderEvent::Error(failure)
-                                if admitted.rotates && !shown && uses_up(&failure) =>
+                                if admitted.rotates && uses_up(&failure) =>
                             {
                                 used_up = Some(failure);
                             }
@@ -653,6 +700,16 @@ impl ProviderRuntime for ConversationRuntime {
                 let Some(failure) = used_up else {
                     return;
                 };
+                if shown {
+                    // Part of the answer reached the agent, so the request
+                    // is not sent again, but no agent takes the account
+                    // until its moment.
+                    if let Ok(entry) = self.entry().await {
+                        self.mark_used_up(&entry, &failure);
+                    }
+                    yield ProviderEvent::Error(failure);
+                    return;
+                }
                 let switched = tokio::select! {
                     switched = self.switch_account(&failure) => switched,
                     () = cancel.cancelled() => return,
@@ -682,9 +739,16 @@ impl ProviderRuntime for ConversationRuntime {
                 runtime: current.runtime.fresh(),
             }),
             prepares_ahead: self.prepares_ahead,
-            holding: None,
+            account: None,
+            running: None,
             unannounced: false,
         })
+    }
+
+    /// The session's action ended: the agent keeps its account, but no
+    /// longer counts as running on it.
+    fn idle(&mut self) {
+        self.running = None;
     }
 
     fn prepares_ahead(&self) -> bool {
@@ -693,7 +757,8 @@ impl ProviderRuntime for ConversationRuntime {
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async move {
-            self.holding = None;
+            self.account = None;
+            self.running = None;
             self.close_current().await;
         })
     }
@@ -704,7 +769,7 @@ impl ProviderRuntime for ConversationRuntime {
     /// says why.
     fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {
         Box::pin(async move {
-            let admitted = match self.admit(&request).await {
+            let admitted = match self.admit(&request, false).await {
                 Ok(admitted) => admitted,
                 Err(failure) => {
                     tracing::debug!(

@@ -53,7 +53,7 @@ import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
-import { endsWithErrorRecord, resumeWaitsFor, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
+import { continueWithOffer, endsWithErrorRecord, resumeWaitsFor, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import { latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
@@ -336,17 +336,11 @@ function recover(): void {
  * with, the one with the most room as the failure's facts name it, beside
  * Resume; none for any other failure.
  */
-const continueWith = computed(() => {
-  if (recovery.value !== 'resume') {
-    return null
-  }
-  const record = getVisibleBlocks(latest.value).at(-1)
-  if (record?.type !== 'error' || record.code !== 'usage_limit') {
-    return null
-  }
-  const offered = props.conversation.failures[record.id]?.continueWith
-  return offered ? { providerId: record.model.providerId, ...offered } : null
-})
+const continueWith = computed(() =>
+  canRecover.value
+    ? continueWithOffer(props.conversation.phase, getVisibleBlocks(latest.value), props.conversation.failures)
+    : null,
+)
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit
   && !props.pendingSubmissions?.length
   && !props.conversation.archived

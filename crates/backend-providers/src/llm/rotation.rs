@@ -1,8 +1,9 @@
 //! Account rotation (`providers.md` § Account rotation): which of an
 //! entry's accounts an agent takes under In Order and Balanced, the accounts
-//! used up until their moment, and how many agents hold each account, so
-//! that agents started together spread over the accounts before their
-//! snapshots change.
+//! used up until their moment, and how many agents run a turn on each
+//! account, so that agents started together spread over the accounts
+//! before their snapshots change. An idle agent keeps its account without
+//! counting on it.
 //!
 //! For example, Balanced compares a Max account whose 5-hour window is 80%
 //! used with 3 hours to go (room 0.2 / 0.6 = 0.33) and a Pro account at 10%
@@ -23,7 +24,7 @@ pub const USED_UP_FOR_MS: i64 = 30 * 60 * 1000;
 const NEARLY_USED_UP: f64 = 0.9;
 
 /// Accounts whose room is within this share of the best are equal, and the
-/// one fewer agents hold is taken.
+/// one fewer agents run a turn on is taken.
 const EQUAL_ROOM: f64 = 0.1;
 
 type Account = (ProviderId, CredentialId);
@@ -39,8 +40,9 @@ pub struct Candidate {
 /// What a choice found.
 #[derive(Debug)]
 pub enum Choice {
-    /// The account the agent takes, held for it until the hold drops.
-    Account(Holding),
+    /// The account the agent takes, counted among those running on it
+    /// until the count drops.
+    Account(Running),
     /// Every account is used up; the earliest moment one can be used again,
     /// when known.
     AllUsedUp { earliest: Option<Timestamp> },
@@ -57,30 +59,32 @@ pub struct AccountRotation {
 struct State {
     /// The accounts used up, each until the moment it can be used again.
     used_up: HashMap<Account, Timestamp>,
-    /// How many agents hold each account.
-    holders: HashMap<Account, usize>,
+    /// How many agents run a turn on each account. An idle agent keeps
+    /// its account, but counts on none.
+    running: HashMap<Account, usize>,
 }
 
-/// An agent's hold on its account; dropping it lets the account go.
+/// An agent counted among those running a turn on an account, until it
+/// drops: Balanced spreads agents of equal room by these counts.
 #[derive(Debug)]
-pub struct Holding {
+pub struct Running {
     rotation: Arc<AccountRotation>,
     account: Account,
 }
 
-impl Holding {
+impl Running {
     pub fn account(&self) -> &CredentialId {
         &self.account.1
     }
 }
 
-impl Drop for Holding {
+impl Drop for Running {
     fn drop(&mut self) {
         let mut state = self.rotation.lock();
-        if let Some(count) = state.holders.get_mut(&self.account) {
+        if let Some(count) = state.running.get_mut(&self.account) {
             *count -= 1;
             if *count == 0 {
-                state.holders.remove(&self.account);
+                state.running.remove(&self.account);
             }
         }
     }
@@ -98,8 +102,8 @@ impl AccountRotation {
     }
 
     /// Takes an account of `entry` among `candidates` for an agent of
-    /// `model` under `rotation` and holds it for the agent. Manual takes
-    /// none: its agents use the active account.
+    /// `model` under `rotation`, and counts the agent as running on it.
+    /// Manual takes none: its agents use the active account.
     pub fn take(
         self: &Arc<Self>,
         entry: &ProviderId,
@@ -114,11 +118,11 @@ impl AccountRotation {
             Rotation::Manual => return None,
             Rotation::InOrder => rooms.iter().position(|room| room.usable()),
             Rotation::Balanced => {
-                let holders = |index: usize| {
+                let running = |index: usize| {
                     let key = (entry.clone(), candidates[index].id.clone());
-                    state.holders.get(&key).copied().unwrap_or(0)
+                    state.running.get(&key).copied().unwrap_or(0)
                 };
-                most_room(&rooms, holders)
+                most_room(&rooms, running)
             }
         };
         let Some(index) = index else {
@@ -127,27 +131,27 @@ impl AccountRotation {
             });
         };
         let account = (entry.clone(), candidates[index].id.clone());
-        *state.holders.entry(account.clone()).or_default() += 1;
-        Some(Choice::Account(Holding {
+        *state.running.entry(account.clone()).or_default() += 1;
+        Some(Choice::Account(Running {
             rotation: self.clone(),
             account,
         }))
     }
 
-    /// Holds `account` of `entry` for an agent that keeps the one it took,
-    /// such as one restored after a restart.
-    pub fn hold(self: &Arc<Self>, entry: &ProviderId, account: &CredentialId) -> Holding {
+    /// Counts an agent that runs a turn on `account` of `entry`, the one
+    /// it keeps, as running on it.
+    pub fn run(self: &Arc<Self>, entry: &ProviderId, account: &CredentialId) -> Running {
         let account = (entry.clone(), account.clone());
-        *self.lock().holders.entry(account.clone()).or_default() += 1;
-        Holding {
+        *self.lock().running.entry(account.clone()).or_default() += 1;
+        Running {
             rotation: self.clone(),
             account,
         }
     }
 
     /// The account with the most room among `candidates` for `model`, by
-    /// Balanced's rule, whoever holds it; none when every one is used up.
-    /// It holds nothing: *Continue with* offers it to a Manual entry.
+    /// Balanced's rule; none when every one is used up. It counts nothing:
+    /// *Continue with* offers it to a Manual entry.
     pub fn most_room(
         &self,
         entry: &ProviderId,
@@ -157,11 +161,11 @@ impl AccountRotation {
     ) -> Option<CredentialId> {
         let state = self.lock();
         let rooms = rooms(&state, entry, candidates, model, now);
-        let holders = |index: usize| {
+        let running = |index: usize| {
             let key = (entry.clone(), candidates[index].id.clone());
-            state.holders.get(&key).copied().unwrap_or(0)
+            state.running.get(&key).copied().unwrap_or(0)
         };
-        most_room(&rooms, holders).map(|index| candidates[index].id.clone())
+        most_room(&rooms, running).map(|index| candidates[index].id.clone())
     }
 
     /// When every account among `candidates` is used up for `model`, the
@@ -178,6 +182,14 @@ impl AccountRotation {
         (!rooms.iter().any(Room::usable)).then(|| earliest(&rooms))
     }
 
+    /// Whether `account` of `entry` is marked used up at `now`.
+    pub fn is_used_up(&self, entry: &ProviderId, account: &CredentialId, now: Timestamp) -> bool {
+        self.lock()
+            .used_up
+            .get(&(entry.clone(), account.clone()))
+            .is_some_and(|until| *until > now)
+    }
+
     /// Marks `account` of `entry` used up until `until`.
     pub fn mark_used_up(&self, entry: &ProviderId, account: &CredentialId, until: Timestamp) {
         self.lock()
@@ -185,8 +197,8 @@ impl AccountRotation {
             .insert((entry.clone(), account.clone()), until);
     }
 
-    /// Forgets the marks of a deleted entry's accounts; their holds go with
-    /// the agents that hold them.
+    /// Forgets the marks of a deleted entry's accounts; their running
+    /// counts go with the agents that run on them.
     pub fn forget_entry(&self, entry: &ProviderId) {
         self.lock().used_up.retain(|(held, _), _| held != entry);
     }
@@ -298,9 +310,9 @@ fn applies(window: &QuotaWindow, model: &Model) -> bool {
 
 /// The index of the account with the most room: a window over 90% used
 /// leaves its account out while another account has room; among those
-/// within a tenth of the best room, the one `holders` says fewest agents
-/// hold, then the first in the list.
-fn most_room(rooms: &[Room], holders: impl Fn(usize) -> usize) -> Option<usize> {
+/// within a tenth of the best room, the one `running` says fewest agents
+/// run a turn on, then the first in the list.
+fn most_room(rooms: &[Room], running: impl Fn(usize) -> usize) -> Option<usize> {
     let left: Vec<(usize, f64, f64)> = rooms
         .iter()
         .enumerate()
@@ -318,7 +330,7 @@ fn most_room(rooms: &[Room], holders: impl Fn(usize) -> usize) -> Option<usize> 
     eligible
         .into_iter()
         .filter(|(_, room, _)| *room >= best * (1.0 - EQUAL_ROOM))
-        .min_by_key(|(index, _, _)| (holders(*index), *index))
+        .min_by_key(|(index, _, _)| (running(*index), *index))
         .map(|(index, _, _)| *index)
 }
 
@@ -406,17 +418,17 @@ mod tests {
         ProviderId::try_from("entry").unwrap()
     }
 
-    /// The account `rotation` takes, kept held.
+    /// The account `rotation` takes, its agent kept running.
     fn take(
         rotation: &Arc<AccountRotation>,
         how: Rotation,
         accounts: &[Candidate],
-        holds: &mut Vec<Holding>,
+        running: &mut Vec<Running>,
     ) -> String {
         match rotation.take(&entry(), how, accounts, &model("Opus"), now()) {
-            Some(Choice::Account(holding)) => {
-                let id = holding.account().to_string();
-                holds.push(holding);
+            Some(Choice::Account(taken)) => {
+                let id = taken.account().to_string();
+                running.push(taken);
                 id
             }
             other => panic!("{other:?}"),
@@ -509,9 +521,9 @@ mod tests {
     }
 
     /// Agents started together spread over accounts of equal room, the
-    /// first in the list first, and a hold that drops frees its account.
-    /// Planted defect this catches: a choice that ignores the holders, or
-    /// a hold never released. Microseconds.
+    /// first in the list first, and an agent whose turn ends no longer
+    /// counts. Planted defect this catches: a choice that ignores the
+    /// running agents, or a count never released. Microseconds.
     #[test]
     fn agents_started_together_spread_over_accounts_within_a_tenth_of_the_best() {
         let rotation = AccountRotation::new();
@@ -520,13 +532,13 @@ mod tests {
             account("pro", vec![window(54.0, Some(5.0), Some(5))]),
             account("team", vec![window(80.0, Some(5.0), Some(5))]),
         ];
-        let mut holds = Vec::new();
+        let mut running = Vec::new();
         let taken: Vec<_> = (0..4)
-            .map(|_| take(&rotation, Rotation::Balanced, &accounts, &mut holds))
+            .map(|_| take(&rotation, Rotation::Balanced, &accounts, &mut running))
             .collect();
         assert_eq!(taken, ["max", "pro", "max", "pro"]);
-        holds.retain(|holding| holding.account().as_str() != "pro");
-        assert_eq!(take(&rotation, Rotation::Balanced, &accounts, &mut holds), "pro");
+        running.retain(|agent| agent.account().as_str() != "pro");
+        assert_eq!(take(&rotation, Rotation::Balanced, &accounts, &mut running), "pro");
     }
 
     /// In Order takes the first account not used up, by its snapshot or by
@@ -542,10 +554,10 @@ mod tests {
             account("b", vec![window(99.0, Some(4.0), Some(5))]),
             account("c", Vec::new()),
         ];
-        let mut holds = Vec::new();
-        assert_eq!(take(&rotation, Rotation::InOrder, &accounts, &mut holds), "b");
+        let mut running = Vec::new();
+        assert_eq!(take(&rotation, Rotation::InOrder, &accounts, &mut running), "b");
         rotation.mark_used_up(&entry(), &accounts[1].id, at(3.0));
-        assert_eq!(take(&rotation, Rotation::InOrder, &accounts, &mut holds), "c");
+        assert_eq!(take(&rotation, Rotation::InOrder, &accounts, &mut running), "c");
         rotation.mark_used_up(&entry(), &accounts[2].id, at(1.0));
         match rotation.take(&entry(), Rotation::InOrder, &accounts, &model("Opus"), now()) {
             Some(Choice::AllUsedUp { earliest }) => assert_eq!(earliest, Some(at(1.0))),
@@ -554,7 +566,7 @@ mod tests {
         // A mark's moment passed: the account is back.
         let later = at(1.5);
         match rotation.take(&entry(), Rotation::InOrder, &accounts, &model("Opus"), later) {
-            Some(Choice::Account(holding)) => assert_eq!(holding.account().as_str(), "c"),
+            Some(Choice::Account(taken)) => assert_eq!(taken.account().as_str(), "c"),
             other => panic!("{other:?}"),
         }
         assert!(rotation.take(&entry(), Rotation::Manual, &accounts, &model("Opus"), now()).is_none());
