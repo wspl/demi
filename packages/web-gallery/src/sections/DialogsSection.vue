@@ -277,8 +277,9 @@ const modelEditors: {
     error: correction('Another model of this provider has this ID'),
   },
 ]
-const modelSearches: { variant: string; adding?: boolean; error?: ShownError }[] = [
+const modelSearches: { variant: string; startText?: string; adding?: boolean; error?: ShownError }[] = [
   { variant: 'search' },
+  { variant: 'a name typed', startText: 'gemini 3.8' },
   { variant: 'adding the model chosen', adding: true },
   { variant: 'refused', error: requestFailure('The provider is busy. Try again in a moment.') },
 ]
@@ -566,6 +567,7 @@ const resetPhases: {
                 :is-open="open"
                 :overlay-store="appOverlayStore"
                 :search="searchMockModels"
+                :start-text="search.startText"
                 :adding="search.adding"
                 :error="search.error"
                 @close="close"
