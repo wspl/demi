@@ -394,8 +394,8 @@ export function mockProviders(): MockProvider[] {
       models: [
         model(
           {
-            id: 'claude-opus-4-1',
-            name: 'Claude Opus 4.1',
+            id: 'claude-opus-5-5',
+            name: 'Claude Opus 5.5',
             contextWindow: 200_000,
             outputLimit: 32_000,
             tools: true,
@@ -412,8 +412,8 @@ export function mockProviders(): MockProvider[] {
         ),
         model(
           {
-            id: 'claude-sonnet-4-5',
-            name: 'Claude Sonnet 4.5',
+            id: 'claude-sonnet-5-5',
+            name: 'Claude Sonnet 5.5',
             contextWindow: 1_000_000,
             outputLimit: 64_000,
             tools: true,
@@ -431,8 +431,8 @@ export function mockProviders(): MockProvider[] {
         ),
         model(
           {
-            id: 'claude-haiku-4-5',
-            name: 'Claude Haiku 4.5',
+            id: 'claude-haiku-5-5',
+            name: 'Claude Haiku 5.5',
             contextWindow: 200_000,
             outputLimit: 64_000,
             tools: true,
@@ -497,8 +497,8 @@ export function mockProviders(): MockProvider[] {
       models: [
         model(
           {
-            id: 'claude-opus-4-1',
-            name: 'Claude Opus 4.1',
+            id: 'claude-opus-5-5',
+            name: 'Claude Opus 5.5',
             contextWindow: 200_000,
             outputLimit: 32_000,
             tools: true,
@@ -515,8 +515,8 @@ export function mockProviders(): MockProvider[] {
         ),
         model(
           {
-            id: 'claude-sonnet-4-5',
-            name: 'Claude Sonnet 4.5',
+            id: 'claude-sonnet-5-5',
+            name: 'Claude Sonnet 5.5',
             contextWindow: 1_000_000,
             outputLimit: 64_000,
             tools: true,
@@ -533,8 +533,8 @@ export function mockProviders(): MockProvider[] {
         ),
         model(
           {
-            id: 'claude-haiku-4-5',
-            name: 'Claude Haiku 4.5',
+            id: 'claude-haiku-5-5',
+            name: 'Claude Haiku 5.5',
             contextWindow: 200_000,
             outputLimit: 64_000,
             tools: true,
@@ -721,7 +721,7 @@ export const mockModelMatches: SettingsModelMatch[] = [
   ['google', 'gemini-3.8-pro', 'Gemini 3.8 Pro', 1_000_000, 65_536, ['low', 'medium', 'high']],
   ['openai', 'gpt-5.5', 'GPT-5.5', 400_000, 128_000, ['low', 'medium', 'high']],
   ['openai', 'gpt-5.5-mini', 'GPT-5.5 Mini', 400_000, 128_000, ['low', 'medium']],
-  ['anthropic', 'claude-opus-4-7', 'Claude Opus 4.7', 1_000_000, 64_000, ['low', 'medium', 'high', 'max']],
+  ['anthropic', 'claude-opus-5-5', 'Claude Opus 5.5', 1_000_000, 64_000, ['low', 'medium', 'high', 'max']],
   ['deepseek', 'deepseek-v4-pro', 'DeepSeek V4 Pro', 512_000, 64_000, []],
 ].map(([vendor, id, name, contextWindow, outputLimit, efforts]) => ({
   ref: `${vendor}/${id}`,

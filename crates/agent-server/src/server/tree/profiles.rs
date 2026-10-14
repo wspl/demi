@@ -36,7 +36,7 @@ pub(super) struct Setup {
     /// its parent's.
     pub(super) instructions: Option<String>,
     /// The Context the profile chose, in tokens, in place of the user's
-    /// limit; none for the user's. The inherit profile's is its parent's.
+    /// limit; none for the user's. With the parent's model, the parent's.
     pub(super) context_limit: Option<u32>,
     pub(super) can_spawn: bool,
     /// The limits the settings set at that moment, which the spawn checks
@@ -106,12 +106,19 @@ impl<H: HostResolver> Tree<H> {
     ) -> Result<Setup, String> {
         let settings = read(server).await?;
         let limits = Limits::of(&settings);
-        let inherit = || Setup {
-            model: owner.session().model(),
-            instructions: None,
-            context_limit: owner.record().context_limit,
-            can_spawn: true,
-            limits,
+        // The parent's model comes with the parent's Context, for the
+        // inherit profile and for a profile without a model of its own
+        // alike (`subagents.md` § Profiles).
+        let parents = || (owner.session().model(), owner.record().context_limit);
+        let inherit = || {
+            let (model, context_limit) = parents();
+            Setup {
+                model,
+                instructions: None,
+                context_limit,
+                can_spawn: true,
+                limits,
+            }
         };
         match self.conversation_profiles(server).await? {
             ConversationProfiles::Off => Err(OFF_HERE.to_owned()),
@@ -127,9 +134,9 @@ impl<H: HostResolver> Tree<H> {
                     .iter()
                     .find(|child| child.name == name)
                     .ok_or_else(|| unknown_in(name, &workflow))?;
-                let model = match &child.model {
-                    None => owner.session().model(),
-                    Some(Ok(selection)) => selection.clone(),
+                let (model, context_limit) = match &child.model {
+                    None => parents(),
+                    Some(Ok(selection)) => (selection.clone(), child.context_limit),
                     Some(Err(missing)) => {
                         return Err(format!("profile \"{name}\" is unavailable: {missing}"));
                     }
@@ -137,7 +144,7 @@ impl<H: HostResolver> Tree<H> {
                 Ok(Setup {
                     model,
                     instructions: child.instructions.clone(),
-                    context_limit: child.context_limit,
+                    context_limit,
                     can_spawn: child.can_spawn,
                     limits,
                 })
@@ -159,19 +166,22 @@ impl<H: HostResolver> Tree<H> {
                         "profile \"{name}\" is disabled in settings; omit --profile to inherit the parent, or ask the user to enable it in Settings > Subagents."
                     ));
                 }
-                let model = match &profile.model {
-                    Some(model) => server
-                        .deps
-                        .providers
-                        .profile_selection(model)
-                        .await
-                        .map_err(|missing| unavailable(name, &missing))?,
-                    None => owner.session().model(),
+                let (model, context_limit) = match &profile.model {
+                    Some(model) => (
+                        server
+                            .deps
+                            .providers
+                            .profile_selection(model)
+                            .await
+                            .map_err(|missing| unavailable(name, &missing))?,
+                        profile.context_limit,
+                    ),
+                    None => parents(),
                 };
                 Ok(Setup {
                     model,
                     instructions: profile.instructions.clone(),
-                    context_limit: profile.context_limit,
+                    context_limit,
                     can_spawn: profile.can_spawn,
                     limits,
                 })

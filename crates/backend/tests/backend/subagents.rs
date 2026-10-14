@@ -846,11 +846,16 @@ async fn a_profiles_context_replaces_the_users_limit_for_its_children_alone() {
         .await;
     assert_eq!(created.status, StatusCode::CREATED);
 
-    // A large answer reports 480,000 tokens: over the 467,000 at which a
-    // window of 500K compacts, under the 967,000 of the model's 1M, which
-    // the root, with no limit of the user's, uses.
-    // The child's is a shell call, so its next request comes after it.
-    let large = |text: &str| vec![event::text(text), event::response(480_000, 5)];
+    // The user limits the model to 300K: the root uses it, the profile's
+    // children their 500K.
+    let limit = json!({ "contextLimit": { "providerId": wide, "modelId": "wide", "tokens": 300000 } });
+    let limited = backend.patch("/api/settings/preferences", &master, limit).await;
+    assert_eq!(limited.status, StatusCode::OK);
+
+    // The child's shell call reports 480,000 tokens: over the 467,000 at
+    // which a window of 500K compacts, so its next request follows a pass.
+    // The root's answer reports 250,000: under the 267,000 of the user's
+    // 300K.
     let mut looked = shell("c2", "true");
     looked[1] = event::response(480_000, 5);
     scripts.child(vec![
@@ -858,35 +863,34 @@ async fn a_profiles_context_replaces_the_users_limit_for_its_children_alone() {
         looked,
         say("The parent asked to look."),
         say("found it"),
+        shell("c3", "until [ -f again ]; do sleep 0.05; done"),
+        say("looked again"),
     ]);
     scripts.root(
         FIRST,
         vec![
             shell("t1", "demi agent spawn --profile half <<< 'Look'"),
-            large("dispatched"),
+            vec![event::text("dispatched"), event::response(250_000, 5)],
             say("received"),
         ],
     );
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
+    let closed = |frame: &ServerFrame| {
+        matches!(
+            frame,
+            ServerFrame::Subagent {
+                event: SubagentEvent::Closed,
+                ..
+            }
+        )
+    };
     let mut frames = socket.chat("m1", "Look").await;
     std::fs::write(format!("{root}/go"), "").unwrap();
-    frames.extend(
-        socket
-            .until(|frame| {
-                matches!(
-                    frame,
-                    ServerFrame::Subagent {
-                        event: SubagentEvent::Closed,
-                        ..
-                    }
-                )
-            })
-            .await,
-    );
+    frames.extend(socket.until(closed).await);
     frames.extend(socket.until_idle().await);
 
-    let compacting = |subagent: bool| {
+    let compacting = |frames: &[ServerFrame], subagent: bool| {
         frames.iter().any(|frame| {
             matches!(
                 frame,
@@ -895,14 +899,106 @@ async fn a_profiles_context_replaces_the_users_limit_for_its_children_alone() {
             )
         })
     };
-    assert!(compacting(true), "the child compacts at the threshold of 500K");
-    assert!(!compacting(false), "the root keeps the model's 1M");
+    assert!(compacting(&frames, true), "the child compacts at the threshold of 500K");
+    assert!(!compacting(&frames, false), "the root's answer is under the user's 300K");
     assert_eq!(scripts.asked(|session| session != FIRST).len(), 4);
     assert_eq!(scripts.asked(|session| session == FIRST).len(), 3);
     let (roots, children) = usage_windows(&frames);
-    assert!(!roots.is_empty() && roots.iter().all(|window| *window == 1_000_000), "{roots:?}");
+    assert!(!roots.is_empty() && roots.iter().all(|window| *window == 300_000), "{roots:?}");
     assert!(!children.is_empty() && children.iter().all(|window| *window == 500_000), "{children:?}");
+
+    // The profile goes to 200K; the child resumed keeps the 500K it was
+    // spawned with, as it keeps its instructions.
+    let id = created.json::<demi_web_api_protocol::subagents::ProfileAnswer>().profile.id;
+    let edited = backend
+        .patch(&format!("/api/subagents/profiles/{id}"), &master, json!({ "contextLimit": 200000 }))
+        .await;
+    assert_eq!(edited.status, StatusCode::OK, "{}", String::from_utf8_lossy(&edited.body));
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t2", "demi agent resume 1 <<< 'Look again'"),
+            say("resumed"),
+            say("received again"),
+        ],
+    );
+    let mut frames = socket.chat("m2", "Again").await;
+    std::fs::write(format!("{root}/again"), "").unwrap();
+    frames.extend(socket.until(closed).await);
+    frames.extend(socket.until_idle().await);
+    let (_, children) = usage_windows(&frames);
+    assert!(!children.is_empty() && children.iter().all(|window| *window == 500_000), "{children:?}");
+    assert_eq!(scripts.asked(|session| session != FIRST).len(), 6);
     backend.close().await;
+}
+
+/// The Context a profile keeps through its model's changes (`subagents.md`
+/// § Profiles).
+// A backend and a few requests, no conversation: well under a second.
+#[tokio::test]
+async fn a_profiles_context_stays_while_its_model_offers_it_and_goes_with_the_parents_model() {
+    let scripts = Arc::new(Scripts::default());
+    let (_harness, backend, master, _paired, _root, small) = tree(&scripts).await;
+    let wide = backend
+        .post(
+            "/api/providers",
+            Some(&master),
+            json!({
+                "source": "custom", "providerType": "tree", "label": "Wide", "apiKey": "k",
+                "models": [
+                    {
+                        "id": "wide", "displayName": "Wide", "contextWindow": 1000000, "outputLimit": null,
+                        "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
+                    },
+                    {
+                        "id": "medium", "displayName": "Medium", "contextWindow": 800000, "outputLimit": null,
+                        "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
+                    }
+                ]
+            }),
+        )
+        .await;
+    assert_eq!(wide.status, StatusCode::CREATED);
+    let wide = wide.json::<ProviderAnswer>().provider.id.as_str().to_owned();
+    let model = |provider: &str, id: &str| {
+        json!({ "providerId": provider, "modelId": id, "thinkingEffort": null, "serviceTierId": null })
+    };
+    let created = backend
+        .post(
+            "/api/subagents/profiles",
+            Some(&master),
+            json!({
+                "name": "scout", "description": "Looks.", "model": model(&wide, "wide"),
+                "contextLimit": 300000, "instructions": null, "canSpawn": false
+            }),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    let id = created.json::<demi_web_api_protocol::subagents::ProfileAnswer>().profile.id;
+    let path = format!("/api/subagents/profiles/{id}");
+    let patched = |answer: crate::support::Answer| {
+        assert_eq!(answer.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answer.body));
+        let profile = answer.json::<demi_web_api_protocol::subagents::ProfileAnswer>().profile;
+        (profile.model.map(|model| model.model_id), profile.context_limit)
+    };
+
+    // Medium's 800K offers 300K, which stays; the small model offers no
+    // choice, and the parent's model takes none: both go back to default.
+    for (body, after) in [
+        (json!({ "model": model(&wide, "medium") }), (Some("medium"), Some(300_000))),
+        (json!({ "model": model(&small, "m") }), (Some("m"), None)),
+        (json!({ "model": model(&wide, "wide"), "contextLimit": 500000 }), (Some("wide"), Some(500_000))),
+        (json!({ "model": null }), (None, None)),
+    ] {
+        let (model, context) = patched(backend.patch(&path, &master, body.clone()).await);
+        assert_eq!((model.as_deref(), context), after, "{body}");
+    }
+
+    // A Context for the parent's model is refused.
+    let refused = backend.patch(&path, &master, json!({ "contextLimit": 500000 })).await;
+    let text = String::from_utf8_lossy(&refused.body);
+    assert_eq!(refused.status, StatusCode::BAD_REQUEST, "{text}");
+    assert!(text.contains("context: the profile inherits the parent's model"), "{text}");
 }
 
 /// The `started` jobs among `frames`.

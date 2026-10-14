@@ -28,6 +28,7 @@ profiles:
   - id: explore
     description: Finds code.
     model: claude-opus-4-8
+    context: 300K
   - id: slow
     description: Thinks long.
     model: nowhere-model
