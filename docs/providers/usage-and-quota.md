@@ -32,9 +32,9 @@ two users, Ana and Ben, chat with it:
       usage it reports                         quota it reports
              |                                        |
              v                                        v
-  usage ledger: one row per request       quota snapshot: one per account,
-  user, conversation, entry, model,       also filled by free probes:
-  token counts                            windows used, reset times, plan
+  usage ledger: one row per call          quota snapshot: one per account,
+  user, conversation, agent, account,     also filled by free probes:
+  model, token counts, observed quota     windows used, reset times, plan
              |                                        |
              v                                        v
   usage totals per user                   the account's usage in settings
@@ -42,51 +42,57 @@ two users, Ana and Ben, chat with it:
 
 ## Usage ledger
 
-A provider run ends with one response event, which carries the token usage of
-the run's final API call, unless the run fails or is cancelled, or is a Claude
-Code run that stops at a tool-call batch ([A run](providers.md#a-run)). The
-backend meters these events: each one becomes a ledger row holding the user,
-the conversation, the provider entry, the model, the input, output, cache-read
-and cache-write token counts, and the time
-([Storage](../backend/storage.md#control-records)).
+The ledger has one row for every call Demi makes to a vendor, so the user
+can reconcile what a conversation spent with what the vendor counted. For
+example, the lead of a conversation answers one message with a turn of 40
+calls through the Claude Code CLI, each reading 630,000 tokens from the
+cache, while two subagents make 30 calls each. The ledger then holds 100
+rows, each naming the agent, the turn, the account and the purpose, and the
+row of the call after which the account's 5-hour window was observed at 31%
+says so ([Vendor quota](#vendor-quota)).
 
-Every request a conversation makes passes the same metered runtime: the turns
-of its root session and of its subagents, their continuations and automatic
-retries, compaction, and title requests
-([Conversation titles](../product/product.md#conversation-titles)).
+| Field | Meaning |
+|---|---|
+| `user_id`, `conversation_id` | Whose call it was |
+| `agent` | The number of the session in the conversation's tree, 0 for the root ([Subagents](../agent/subagents.md)); null for a request outside a session, such as a title |
+| `turn_id` | The turn the call belongs to; null outside a turn |
+| `purpose` | `turn`, `compaction` or `title`: what the call was for |
+| `provider_id`, `account_id`, `model_id` | The provider entry, its subscription account (null for an API key) and the model |
+| `request_id` | Demi's id of the request, under which the server log holds its course |
+| `vendor_id` | The vendor's id of the call, such as a Messages API message id, when the vendor gives one |
+| `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cache_write_1h_tokens` | The vendor's counts for this call alone ([Usage](providers.md#usage)); `cache_write_1h_tokens` is the part of the cache write kept for an hour, which a vendor prices apart, 0 where the vendor has no such tier |
+| `outcome` | `answered`, or the failure code of a call the vendor refused ([Failures and recovery](../agent/failures-and-recovery.md)), whose counts are what the vendor reported, often none |
+| `quota` | The windows of the account's quota observed during the call, `[{ label, usedPercent, resetsAt }]`, or null when the call brought no observation |
+| `started_at`, `ended_at` | When the call was sent and when it ended |
 
-- **Written before the agent continues.** The backend writes the row before
-  the response event reaches the agent, so the row exists when the agent moves
-  on. A write that fails is logged and the request goes on: inference never
-  fails because accounting did.
-- **As the vendor reports it.** An HTTP provider's usage comes from the
-  vendor's response, with its cache reads and writes apart from the input it
-  processed in full ([Usage](providers.md#usage)). Claude Code's usage comes
-  from the CLI's stream-json output, relayed over the runner connection from
-  the user's Cloud, so its accuracy also depends on the CLI. The CLI reports
-  usage once, on the `result` line that ends its turn, and the run's response
-  carries the usage of the turn's last API call. When the CLI calls tools
-  during a turn, only that last API call therefore has a row
-  ([Requests over stream-json](claude-code.md#requests-over-stream-json)). The
-  ledger is not an independently verified billing record.
-- **Answered requests only.** A request that ends without a response event has
-  no row: one that fails, is cancelled, or is refused before it reaches the
-  vendor. A request that fails or is cancelled can still have consumed the
-  vendor's tokens. A row whose write failed is lost.
+- **Every call.** Every call a conversation makes passes the same metered
+  runtime: the turns of its root session and of its subagents, their
+  continuations and automatic retries, compaction, and title requests
+  ([Conversation titles](../product/product.md#conversation-titles)). A run
+  of several calls, such as a Claude Code run in which the CLI calls tools,
+  writes one row per call: the CLI's stream gives each call's
+  `message_start` and `message_delta`, read as the run's response usage is
+  ([Requests over stream-json](claude-code.md#requests-over-stream-json)),
+  never the `result` line's sum.
+- **Written as each call ends.** The backend writes a call's row when the
+  call ends, and the row of a run's last call before the run's response
+  reaches the agent. A write that fails is logged and the request goes on:
+  inference never fails because accounting did, and the row is lost.
+- **As the vendor reports it.** The counts are the vendor's: an HTTP
+  provider's from its response, Claude Code's from the CLI's stream relayed
+  from the user's Cloud, so their accuracy also depends on the CLI. The
+  ledger is a record for reconciliation, not a bill.
+- **A call cancelled before the vendor answered** has a row with the outcome
+  `cancelled` and no counts; the vendor may still have counted its input.
 - **Totals when read.** The ledger keeps the rows as written and computes
   totals when they are read: one group per provider entry and model, in the
-  order each pair was first used, with the number of requests and the sum of
+  order each pair was first used, with the number of calls and the sum of
   each token count. Each user sees their own totals; on a shared instance an
   administrator also sees the instance's totals per user
   ([Instance mode](../product/product.md#instance-mode-shared-vs-isolated),
   [Web API](../product/web-api.md#resource-index)).
-
-**Open decision: durable accounting.** As the cases above show, the ledger
-does not hold a row for every attempted request or for every API call a
-request makes. Billing or strict budgets would need one durable row for each,
-with a rule for requests that fail and for writes that fail. Whether Demi
-needs that guarantee is not decided, and nothing in the product relies on the
-ledger being complete.
+- **Kept** as long as the account that made the calls; deleting a
+  conversation keeps its rows ([Storage](../backend/storage.md#control-records)).
 
 ## Rate limit
 
