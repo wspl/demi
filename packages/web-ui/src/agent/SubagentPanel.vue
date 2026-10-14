@@ -18,6 +18,7 @@ import { useCallTerminals, type TerminalRecord } from './terminals'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
 import type { UsageLimits } from './context-usage'
 import { loadedInstructions } from './instructions'
+import { refusedForSize } from './session-status'
 
 const props = withDefaults(
   defineProps<{
@@ -105,6 +106,7 @@ const context = computed(() => {
   }
   return {
     ...agentCompaction(agent),
+    sizeRefused: refusedForSize(latestBlocks(agent.history)),
     instructions: loadedInstructions(latestBlocks(agent.history)),
     limits: props.usageLimits?.(agent.model.providerId) ?? null,
   }
@@ -200,6 +202,7 @@ function closeTab(id: string): void {
         :usage="active.contextUsage"
         :compacting="context?.compacting ?? false"
         :unavailable-reason="context?.unavailableReason ?? null"
+        :size-refused="context?.sizeRefused ?? false"
         :instructions="context?.instructions ?? []"
         :limits="context?.limits ?? null"
         @compact="emit('compactAgent', active.id)"

@@ -10,6 +10,7 @@
 
 use std::sync::LazyLock;
 
+use demi_agent_store::testing::{illustration, speckled};
 use demi_backend_blobs::counting::ObjectCounts;
 use demi_conversation_socket_protocol::{
     ClientContent, ClientFrame, EditOutcome, EditRequest, MediaRef, ServerFrame, SteerOutcome,
@@ -654,6 +655,78 @@ fn first_image(request: &serde_json::Value) -> String {
         + 8;
     let end = start + text[start..].find('"').unwrap();
     text[start..end].to_owned()
+}
+
+/// The base64 of every image a Messages API request carries, in order.
+fn all_images(request: &serde_json::Value) -> Vec<String> {
+    let text = request["messages"].to_string();
+    text.split("\"data\":\"")
+        .skip(1)
+        .map(|rest| rest[..rest.find('"').unwrap()].to_owned())
+        .collect()
+}
+
+// About two seconds: two uploads of half a megabyte and a shell's output
+// reach a real device, and three images are fitted.
+#[tokio::test]
+async fn an_image_over_500_kb_enters_as_a_smaller_jpeg_from_an_upload_and_a_tool_or_as_it_came() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new().with_file_package();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    let (_paired, root) = on_device(&harness, &backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    // An illustration a JPEG holds in a fifth of its PNG, and specks a JPEG
+    // would hold in more.
+    let drawn = illustration(800, 500, |_, _| 255).as_bytes().to_vec();
+    let specks = speckled(1_200, 1_000).as_bytes().to_vec();
+    assert!(drawn.len() > 500_000 && specks.len() > 500_000);
+    std::fs::write(format!("{root}/drawn.png"), &drawn).unwrap();
+    let drawn_upload = upload(&backend, &master, "drawn.png", "image/png", &drawn).await;
+    let specks_upload = upload(&backend, &master, "specks.png", "image/png", &specks).await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+
+    vendor.respond(tool_use(
+        "toolu_1",
+        "shell",
+        &json!({ "description": "Show it", "script": "demi file view drawn.png", "intervalMs": 60_000 }),
+    ));
+    vendor.respond(answer(&["Seen."], 1, 1));
+    socket
+        .send(&with_upload(
+            "m1",
+            "Look",
+            &[(&drawn_upload, "drawn.png"), (&specks_upload, "specks.png")],
+        ))
+        .await;
+    socket.until_idle().await;
+
+    // The illustration enters as a JPEG, the same bytes from the upload and
+    // from the tool; the specks enter as they came. A later request carries
+    // the same bytes.
+    let requests: Vec<serde_json::Value> = vendor
+        .requests()
+        .iter()
+        .map(|request| request.json())
+        .collect();
+    let first = all_images(&requests[0]);
+    let [jpeg, as_it_came] = first.as_slice() else {
+        panic!("{first:?}");
+    };
+    let bytes = data_encoding::BASE64.decode(jpeg.as_bytes()).unwrap();
+    assert!(bytes.starts_with(b"\xff\xd8\xff") && bytes.len() < drawn.len() / 2);
+    assert_eq!(as_it_came, &data_encoding::BASE64.encode(&specks));
+    assert_eq!(all_images(&requests[1]), [jpeg.clone(), as_it_came.clone(), jpeg.clone()]);
+    let result = requests[1]["messages"].to_string();
+    assert!(
+        result.contains(
+            "[image 1: attached as image/jpeg of 800 × 500 px, fitted from image/png of 800 × 500 px]"
+        ),
+        "{result}"
+    );
+    backend.close().await;
 }
 
 // About a second: an upload and a shell's output reach a real device.

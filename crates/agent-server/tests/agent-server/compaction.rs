@@ -14,7 +14,10 @@ use demi_agent_tools::{SubagentSettings, Toolset};
 use demi_agent_transcript::testing::SequentialIds;
 use demi_conversation_socket_protocol::{ClientFrame, ClientFrameKind, ServerFrame};
 use demi_host_interface::CommandSet;
-use demi_provider_common::testing::{FixedClock, ScriptedRuntime, Turn, event};
+use demi_provider_common::{
+    ErrorCode,
+    testing::{FixedClock, ScriptedRuntime, Turn, event},
+};
 use demi_shared_types::{
     Block, ContextRowKind, EXECUTION_SOURCE, NodeId, SessionPhase, WORKING_DIRECTORY_SOURCE,
 };
@@ -115,6 +118,52 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
         panic!("the compaction reported no usage: {compaction:?}");
     };
     assert!(usage.tokens < WINDOW / 2, "{usage:?}");
+}
+
+// One session of five scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_turn_refused_for_its_size_compacts_at_any_share_and_then_resumes() {
+    let script = ScriptedRuntime::new([
+        answer("a", 30_000),
+        // The vendor refuses the second request for its size, at 30% of
+        // the window.
+        Turn::Events(vec![event::error(
+            "Request exceeds the maximum size",
+            Some(ErrorCode::RequestTooLarge),
+        )]),
+        answer("the summary", 10),
+        answer("done", 10),
+    ]);
+    let fixture = Fixture::new(&script);
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "first")).await;
+    client.next_until(is_idle).await;
+    client.send(send("m2", "second")).await;
+    let failed = client.next_until(is_idle).await;
+    assert_eq!(usage(last_usage(&failed)).map(|usage| usage.0 < WINDOW / 2), Some(true));
+
+    // Compact is taken below half the window: the media the vendor refused
+    // are summarized away.
+    client.send(ClientFrame::Compact { node: None }).await;
+    let compaction = client.next_until(is_idle).await;
+    assert!(
+        compaction.contains(&ServerFrame::Phase {
+            subagent_id: None,
+            phase: SessionPhase::Compacting
+        }),
+        "{compaction:?}"
+    );
+    // The turn is still the unfinished one, and Resume finishes it.
+    client.send(ClientFrame::Resume {}).await;
+    client.next_until(is_idle).await;
+
+    let blocks = session_of(&fixture).transcript().blocks;
+    assert_eq!(
+        kinds(&blocks)[kinds(&blocks).len() - 3..],
+        ["compaction_marker", "text", "response"]
+    );
+    assert!(matches!(blocks.iter().rev().nth(1), Some(Block::Text(text)) if text.text == "done"));
+    assert_eq!(script.remaining(), 0);
 }
 
 #[tokio::test(flavor = "local")]
