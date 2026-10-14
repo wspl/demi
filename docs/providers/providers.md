@@ -826,7 +826,7 @@ used with 3 hours to go has 0.2 / 0.6 = 0.33; a weekly window 30% used with
 2 days to go has 0.7 / 0.29 = 2.4. An account's room is its smallest
 window's, so the tightest window decides, and a window that resets soon
 counts as roomy, since what is left of it is lost at the reset. A window
-not yet started, or reported without a reset time, has a room of 1, all
+not yet started, or reported without a reset time or a period length, has a room of 1, all
 of it left over all of its period; a window
 used up before its reset leaves the account out, and so does a window over
 90% used while another account has room. Among the accounts within a tenth
