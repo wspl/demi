@@ -14,15 +14,37 @@ import type { HostKind } from '../hosts/types'
 
 export type { Showing, ShownEntry } from './file-cache'
 
-/** One row of a directory listing. Size and time are shown when the source knows them. */
+/**
+ * One row of a directory listing. Size and time are shown when the source
+ * knows them. A symbolic link is what its target is (`file-previews.md`
+ * § Symbolic links): a link to a directory opens as a folder, its entries
+ * the target's, and any other link as a file.
+ */
 export interface FileBrowserEntry {
   name: string
+  /** Whether it opens as a folder: a directory, or a link to one. */
   isDirectory: boolean
-  /** Bytes; files only. */
+  /** Bytes; files only. A link's are its own, as `lstat` reports them. */
   size?: number
   /** ISO timestamp of the last modification. */
   modifiedAt?: string
+  /** Where a symbolic link points; absent for any other entry. */
+  link?: FileBrowserLink
 }
+
+/** A symbolic link's target as written, and why it cannot be reached, as of its listing. */
+export interface FileBrowserLink {
+  target: string
+  /** Absent while the target can be reached. */
+  broken?: FileBrowserLinkBreak
+}
+
+/**
+ * Why a link's target cannot be reached (`file-previews.md` § Symbolic
+ * links): nothing is there, or something may be but cannot be read, for the
+ * system's `reason`, such as a folder on the way closed to the user.
+ */
+export type FileBrowserLinkBreak = { kind: 'missing' } | { kind: 'unreadable'; reason: string }
 
 /**
  * Why a directory could not be listed, a file read or written. `kind` picks

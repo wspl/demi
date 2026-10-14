@@ -160,9 +160,9 @@ impl Operations for Fake {
                 Some(DirectoryEntry {
                     name: name.into(),
                     is_directory: false,
-                    is_symbolic_link: false,
                     size: bytes.len() as u64,
                     modified_at: demi_shared_types::Timestamp::from_millisecond(0).unwrap(),
+                    link: None,
                 })
             })
             .collect();

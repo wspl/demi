@@ -14,18 +14,21 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use typed_path::Utf8TypedPath;
 
-/// One entry of a listing. An entry that disappears while the directory is
-/// listed is left out.
+/// One entry of a listing, with its own size and time, as `lstat` reports
+/// them. A symbolic link is no directory itself and carries `link`, where
+/// it points and what is there (`file-previews.md` § Symbolic links). An
+/// entry that disappears while the directory is listed is left out.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase")]
 #[garde(allow_unvalidated)]
 pub struct DirectoryEntry {
     pub name: String,
     pub is_directory: bool,
-    pub is_symbolic_link: bool,
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub size: u64,
     pub modified_at: Timestamp,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<crate::wire::SymbolicLink>,
 }
 
 impl DirectoryEntry {
@@ -35,9 +38,9 @@ impl DirectoryEntry {
         Some(Self {
             name: entry.name,
             is_directory: entry.is_directory,
-            is_symbolic_link: entry.is_symbolic_link,
             size: entry.size,
             modified_at: Timestamp::from_millisecond(entry.mtime.0).ok()?,
+            link: entry.link,
         })
     }
 }

@@ -150,11 +150,15 @@ function startEdit() {
   })
 }
 
+/**
+ * Goes to the typed path. The path shown now goes there too, as Enter in a
+ * web browser's address bar loads the page again: the caller reads it
+ * again, so a link whose target came or went since is shown as it is now
+ * (`file-previews.md` § Symbolic links).
+ */
 function commit() {
   editing.value = false
-  const next = typedPath(draft.value, { home: props.source.home, root: props.base })
-  if (next !== props.path)
-    emit('navigate', next)
+  emit('navigate', typedPath(draft.value, { home: props.source.home, root: props.base }))
 }
 
 function onKeydown(event: KeyboardEvent) {
