@@ -90,6 +90,7 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
     preferences.locale = patch.locale.or(preferences.locale);
     preferences.color_scheme = patch.color_scheme.or(preferences.color_scheme);
     preferences.send_while_running = patch.send_while_running.or(preferences.send_while_running);
+    preferences.resume_at_retry = patch.resume_at_retry.or(preferences.resume_at_retry);
     if let Some(hidden) = patch.hidden_providers {
         preferences.hidden_providers = hidden;
     }

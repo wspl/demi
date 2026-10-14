@@ -69,15 +69,16 @@ export const usePreferences = defineStore('preferences', () => {
   /**
    * The preference writes on their way, which go one at a time in order:
    * the backend answers each with the whole document, so the document is
-   * the one thing they change.
+   * the one thing they change. Only a flush as the page goes passes them.
    */
   const writes = new SerialQueue()
   let timer: ReturnType<typeof setTimeout> | null = null
   let controller = new AbortController()
   /**
-   * The changes the user made that wait for the pause before their write,
-   * which shows them meanwhile (`web-application.md` § Responding to the
-   * user), and the one patch that makes them all.
+   * The changes the user made that wait for their write, behind a write in
+   * flight or for the pause after a bursty control, which shows them
+   * meanwhile (`web-application.md` § Responding to the user), and the one
+   * patch that makes them all.
    */
   let queued: { patch: PreferencesPatch; changes: ProductChange[] } = { patch: {}, changes: [] }
 
@@ -87,6 +88,11 @@ export const usePreferences = defineStore('preferences', () => {
   const sendWhileRunning = computed(() =>
     product.snapshot?.preferences.sendWhileRunning ?? DEFAULT_SEND_WHILE_RUNNING,
   )
+  /**
+   * Whether a turn that failed with a known time to try again resumes by
+   * itself at that time (`web-api.md` § User preferences); absent means no.
+   */
+  const resumeAtRetry = computed(() => product.snapshot?.preferences.resumeAtRetry ?? false)
 
   /**
    * Whether the user turned the provider entry `providerId` off in
@@ -111,7 +117,7 @@ export const usePreferences = defineStore('preferences', () => {
     }
     const hidden = (product.snapshot?.preferences.hiddenProviders ?? [])
       .filter((candidate) => candidate !== providerId)
-    update({ hiddenProviders: shown ? hidden : [...hidden, providerId] }, true)
+    update({ hiddenProviders: shown ? hidden : [...hidden, providerId] })
   }
 
   /** Turns the model `modelId` of the entry `providerId` on or off in every model menu, at once. */
@@ -121,7 +127,7 @@ export const usePreferences = defineStore('preferences', () => {
     }
     const hidden = (product.snapshot?.preferences.hiddenModels ?? [])
       .filter((candidate) => candidate.providerId !== providerId || candidate.modelId !== modelId)
-    update({ hiddenModels: shown ? hidden : [...hidden, { providerId, modelId }] }, true)
+    update({ hiddenModels: shown ? hidden : [...hidden, { providerId, modelId }] })
   }
 
   /**
@@ -168,10 +174,12 @@ export const usePreferences = defineStore('preferences', () => {
   )
 
   /**
-   * Changes the preferences as `patch` says, at once; the write follows once
-   * the user pauses, or at once when `immediate`.
+   * Changes the preferences as `patch` says, at once, and writes the change
+   * after the writes before it (`web-api.md` § User preferences): at once,
+   * as for a switch, or once the user pauses when the control is `bursty`,
+   * as a slider is.
    */
-  function update(patch: PreferencesPatch, immediate = false): void {
+  function update(patch: PreferencesPatch, { bursty = false } = {}): void {
     queued = {
       patch: mergePatch(queued.patch, patch),
       changes: [...queued.changes, show(patch)],
@@ -180,42 +188,60 @@ export const usePreferences = defineStore('preferences', () => {
       clearTimeout(timer)
       timer = null
     }
-    if (immediate) {
-      void flush()
+    const current = controller
+    const write = () => void writes.run('preferences', () => sendWaiting(current))
+    if (!bursty) {
+      write()
       return
     }
     timer = setTimeout(() => {
       timer = null
-      void flush()
+      write()
     }, 200)
   }
 
-  /** Sends the changes waiting for their write, as one, after the earlier writes. */
-  async function flush(): Promise<void> {
-    const current = controller
-    await writes.run('preferences', async () => {
-      if (current.signal.aborted || !queued.changes.length) {
-        return
-      }
-      const { patch, changes } = queued
-      queued = { patch: {}, changes: [] }
+  /**
+   * Sends the changes still waiting for their write at once, as the page is
+   * hidden, reloaded or closed: not after the user's pause, nor behind a
+   * write in flight, which would hold it past the page's end. Its request
+   * starts before this returns, and the web browser sends it after the page
+   * is gone.
+   */
+  function flush(): Promise<void> {
+    if (timer !== null) {
+      clearTimeout(timer)
+      timer = null
+    }
+    return sendWaiting(controller)
+  }
+
+  /**
+   * Writes the changes waiting for their write as one, with `keepalive` so
+   * that the page's end does not cancel it; nothing when none wait, as when
+   * a flush sent them already.
+   */
+  async function sendWaiting(current: AbortController): Promise<void> {
+    if (current.signal.aborted || !queued.changes.length) {
+      return
+    }
+    const { patch, changes } = queued
+    queued = { patch: {}, changes: [] }
+    for (const change of changes) {
+      change.send()
+    }
+    try {
+      const answer = await save(patch, current.signal, true)
       for (const change of changes) {
-        change.send()
+        change.land(answer)
       }
-      try {
-        const answer = await save(patch, current.signal, true)
-        for (const change of changes) {
-          change.land(answer)
-        }
-      } catch (error) {
-        for (const change of changes) {
-          change.drop()
-        }
-        if (!current.signal.aborted) {
-          reportError('Could Not Update Settings', error, { userVisible: true })
-        }
+    } catch (error) {
+      for (const change of changes) {
+        change.drop()
       }
-    })
+      if (!current.signal.aborted) {
+        reportError('Could Not Update Settings', error, { userVisible: true })
+      }
+    }
   }
 
   /** The report in flight, so a second trigger does not repeat it. */
@@ -312,6 +338,7 @@ export const usePreferences = defineStore('preferences', () => {
     lastModel,
     lastProjectHost,
     sendWhileRunning,
+    resumeAtRetry,
     contextLimit,
     setContextLimit,
     hidesProvider,

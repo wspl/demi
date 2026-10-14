@@ -1,6 +1,7 @@
 //! A test's hold on a flow at one of its steps, for the scenarios that race
 //! something against a flow while it waits: the runners' hellos
-//! (`HelloStep`) and the pages' synchronization channels (`SyncStep`). From
+//! (`HelloStep`), the pages' synchronization channels (`SyncStep`) and a
+//! failed turn's resume at its retry time (`RetryStep`). From
 //! `StepHolds::hold` until the hold is released or dropped, whatever passes
 //! the held step waits there.
 
@@ -99,4 +100,16 @@ pub enum HelloStep {
     /// In the shard of the device's owner, which took the socket and has not
     /// bound it to the device yet.
     Bind,
+}
+
+/// Where a failed turn's resume at its retry time waits while a test holds
+/// it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetryStep {
+    /// The time came, and the resume counts as opening the conversation's
+    /// tree; it has read neither the preference nor the tree.
+    Firing,
+    /// The resume found the shard open and goes on to read the preference
+    /// and open the tree: a close that begins now waits for it.
+    Started,
 }

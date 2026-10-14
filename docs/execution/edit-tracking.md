@@ -30,30 +30,32 @@ web app fetches them when a file is opened.
 | Files created or modified by `demi file edit` and `demi file patch`, including when one call changes several files. | Edits prepared by a native command but never written, or successfully rolled back. |
 | Every in-process part of the job: subshells, functions, background tasks, process substitutions. | Reads, and the empty file `mktemp` creates. |
 
-### Temporary files
+### Within the working directory
 
-What the conversation shows as changed is what the user would review: the
-files the work leaves behind, wherever they are, in the project, in `~` or in
-`/etc`. A scratch file the agent writes on its way is not among them. For
-example, the agent writes `/tmp/fix.py` and runs it: no pill and no row of
-the Change view shows it. An edit of `/etc/nginx/nginx.conf` or `~/.zshrc`
-shows as any edit does.
+What the conversation shows as changed is what the agent changed in its
+working directory, the directory its commands start in: the root's is the
+conversation's, a subagent's its own
+([Working directory](../agent/subagents.md#working-directory)). For example,
+the agent works in `~/shop`, writes `/tmp/fix.py`, runs it, edits
+`~/shop/src/cart.ts` and `~/.zshrc`: the pills and the Change view show
+`src/cart.ts` alone. Uncommitted mode reads the same directory
+([Working tree](runner.md#working-tree)), so both modes show the same part
+of the Host.
 
-- **A file in a temporary directory** of its Host is temporary: `/tmp`,
-  `/var/tmp`, `$TMPDIR`, macOS's per-user `/private/var/folders/…/T`, and
-  `%TEMP%` on Windows, as the operating system defines them, as Time Machine
-  and Spotlight pass them over, and the conversation's scratch directory
-  ([Scratch directory](runner.md#scratch-directory)), where the agent keeps
-  what only it needs. A path in the scratch directory is temporary first of all, even
-  inside the working directory, as under `~`, which holds `DEMI_HOME`;
-  otherwise a path inside the working directory of the agent that
-  wrote it is never temporary, even when that directory is itself in a
-  temporary directory, as a development runner's can be: the agent's own
-  work always shows. The runner records its edits as any others,
-  so a later `mv /tmp/page.ts.new src/page.ts` still carries them to
-  `src/page.ts`, and marks each path it reports, in `files` and as a
-  rename's `to`, `temporary` when it is in one of them. A file whose path
-  as the request lists it, after its renames, is temporary is not shown.
+- **A file outside the working directory** the agent's call started in is
+  not shown, wherever it is: a scratch file, the conversation's scratch
+  directory, a file in `~` or `/etc`. The runner records every edit as
+  before, so a later `mv /tmp/page.ts.new src/page.ts` still carries them to
+  `src/page.ts`; the backend, which computes every list
+  ([What the conversation shows](#what-the-conversation-shows)), leaves out
+  a path outside the directory, as the request lists it after its renames.
+  A path is compared by its parts after `.` and `..` are resolved, in the
+  Host's own spelling, case and `\` included on Windows, so
+  `~/shop/../.zshrc` is outside `~/shop` and `C:\Users\u\shop\src` is
+  inside `C:/Users/u/shop`; a symbolic link is not followed. A call's files
+  are judged against the directory it started in, once, when it is stored,
+  and a later call of the request never judges them again, so a `demi agent
+  cwd` between two calls changes only what follows.
 - **A file the request created and removed** is not in the request's list
   in the Change view, which shows what the request left behind. A call's
   pills show what that call did and never change after it: the call that
@@ -183,14 +185,12 @@ and `to`, whether or not the job changed the file, and `removed` with
 removal also clears the job's own edits at or under its path, so a file made
 there again starts anew. A path the job itself created and then removed is
 not listed, since nothing of it was there before or is there after, as
-`printf x > scratch.txt; rm scratch.txt` lists nothing. A removal's `path`
-and a rename's `to` carry `temporary` the way a file does. Each entry of `files`:
+`printf x > scratch.txt; rm scratch.txt` lists nothing. Each entry of `files`:
 
 | Field | Meaning |
 | --- | --- |
 | `path` | Absolute, as the target names it. The web app displays it relative to the workspace root when under it, absolute otherwise, with `/` separators. |
 | `kind` | `added` or `modified`. |
-| `temporary` | True when `path` is in one of its Host's temporary directories ([Temporary files](#temporary-files)); a rename's `to` carries it the same way. |
 | `added`, `removed` | Total line additions and removals across this job's retained edit segments. A segment without contents contributes zero. |
 | `edits` | Ordered segments for this file. Each has `original` and `modified` snapshot paths on the target. `original` is absent when that segment created the file. Both are absent when contents were not retained. |
 
@@ -334,14 +334,17 @@ it holds, as a pill does,
 - **The Change view.** A pill opens the `edit` intent, which the work panel's
   Change view opens in Conversation mode on the request
   ([Intents](../architecture/plugin-pages.md#intents)); with the `changes`
-  plugin off, a pill is no control. The sidebar lists the request's files as
-  the request's latest call stored them in `requestFiles`, in the order they
-  were first changed: each with its kind (added, modified, deleted, or
+  plugin off, a pill is no control. The sidebar shows the request's files as
+  the request's latest call stored them in `requestFiles`, as a tree of the
+  working directory, the way VS Code's Source Control shows changes as a
+  tree: folders that hold a changed file, folders first and names in order,
+  a folder whose only content is one folder joined with it into one row
+  (`src/web/app`), every folder open; each file with its kind (added, modified, deleted, or
   renamed with its old path), All Changes' line counts, and its edits, each
   naming its call and the two edit copies, so the page reads copies only to
-  draw a diff, never to count. A file in a temporary directory, or one the
+  draw a diff, never to count. A file outside the agent's working directory, or one the
   request created and removed, is not listed
-  ([Temporary files](#temporary-files)). A file shows **All Changes**, from its
+  ([Within the working directory](#within-the-working-directory)). A file shows **All Changes**, from its
   contents before the request's first edit to after its last, and a control
   steps through each edit of the request in order, `Edit 2 of 3`, each named
   by its call's title. All Changes is offered when the first edit's original
@@ -366,7 +369,8 @@ comes back, as any tab keeps what it shows. Its header counts always
 describe the uncommitted working tree, not the request. The two sides of an
 edit come from the blob route ([Edit copies](#edit-copies)); All Changes
 takes its original from the first edit and its result from the last. Only
-Uncommitted mode lists the working tree's files and has a refresh.
+Uncommitted mode lists the working tree's files and has a refresh; it shows
+them as the same tree.
 
 ## Responsibilities
 

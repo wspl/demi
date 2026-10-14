@@ -36,12 +36,10 @@ test('a message with no sentence to lead with gets the neutral line over its tex
   expect(errorPresentation('')).toEqual({ label: 'The turn failed', detail: null })
 })
 
-test('the facts line says when the provider says it works again, to the minute, and nothing without it', () => {
-  const [line] = errorFacts(`${new Date().getFullYear()}-09-22T07:37:39.000Z`)
-  // In English and to the minute, whatever the locale: neither the seconds
-  // nor the year of a raw timestamp.
-  expect(line).toMatch(/^Resets \w+day, September \d+ at \d{1,2}:\d{2} [AP]M$/)
-  expect(errorFacts(null)).toEqual([])
+test('the facts line says when the provider says it works again, and nothing without it', () => {
+  const now = new Date(2026, 9, 11, 8, 15)
+  expect(errorFacts(new Date(2026, 9, 11, 19, 3, 55).toISOString(), now)).toEqual(['Resets at 7:04 PM'])
+  expect(errorFacts(null, now)).toEqual([])
 })
 
 test('the report is the upstream message followed by every diagnostic', () => {

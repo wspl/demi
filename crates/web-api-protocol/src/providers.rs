@@ -4,8 +4,8 @@
 //! material.
 
 use demi_shared_types::{
-    AccountInfo, AuthState, FileExtension, ModelSelection, Nullable, ProviderModel, QuotaSnapshot,
-    RuntimeState, Timestamp, WireApi,
+    AccountInfo, AuthState, FileExtension, LoginStage, ModelSelection, Nullable, ProviderModel,
+    QuotaSnapshot, RequestId, RuntimeState, Timestamp, WireApi,
 };
 use garde::Validate;
 use schemars::JsonSchema;
@@ -528,6 +528,13 @@ fn one_line(code: &Trimmed, (): &()) -> garde::Result {
     Ok(())
 }
 
+/// The answer of a pasted code: its number among the codes the login took,
+/// counting from one, which `codesTaken` and a refusal of it then name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CodeTaken {
+    pub code: u32,
+}
+
 /// The 202 answer of a login start: `{ login: { id, status: "pending" } }`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct LoginStarted {
@@ -561,13 +568,15 @@ pub struct LoginAnswer {
     rename_all_fields = "camelCase"
 )]
 pub enum LoginState {
-    /// Waiting for the user, who opens the address and enters the code;
-    /// both are null until the vendor names them. With `needs_code`, the
-    /// user signs in at the address instead and pastes the code the page
-    /// shows, which the login now takes, `code_error` saying why it refused
-    /// the last one. The login ends at `expires_at`
-    /// unless the user finishes it first.
+    /// Running: `stage` says what it waits for. Once it waits for the user,
+    /// the user opens the address and enters the code; both are null until
+    /// the vendor names them. With `needs_code`, the user signs in at the
+    /// address instead and pastes the code the page shows, which the login
+    /// now takes, numbering them in `codes_taken`, and `code_error` says why
+    /// it refused the last of them, never an earlier one. The
+    /// login ends at `expires_at` unless the user finishes it first.
     Pending {
+        stage: LoginStage,
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<String>")]
         verification_url: Option<String>,
@@ -575,12 +584,19 @@ pub enum LoginState {
         #[schemars(with = "Nullable<String>")]
         user_code: Option<String>,
         needs_code: bool,
-        /// Why the sign-in refused the last code pasted, in its own words;
-        /// null until it refuses one, and again once another is pasted.
+        /// How many codes the user pasted the login took.
+        codes_taken: u32,
+        /// Why the sign-in refused the last code it took, code number
+        /// `codes_taken`, in its own words; null until it refuses it, and
+        /// again once another is pasted.
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<String>")]
         code_error: Option<String>,
-        expires_at: Timestamp,
+        /// Null while the login is `preparing`, until it knows its kind and
+        /// so its lifetime, which counts from its start.
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<Timestamp>")]
+        expires_at: Option<Timestamp>,
     },
     /// The login stored its account: `credentialId`, which is the entry's
     /// active account only when the entry had none.
@@ -588,9 +604,33 @@ pub enum LoginState {
         provider_id: ProviderId,
         credential_id: CredentialId,
     },
+    /// The user cancelled the login, on any of their pages; nothing was
+    /// stored.
+    Cancelled,
+    /// The login failed or expired: `message` says which, naming the stage
+    /// it failed at, and `request_id` is the request that started it, under
+    /// which the server log holds its whole course.
     Failed {
         message: String,
+        request_id: RequestId,
     },
+}
+
+/// One of the user's sign-ins, as the `logins` message and the product
+/// state list them (`web-api.md` § Page synchronization).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ListedLogin {
+    pub id: LoginId,
+    /// The entry the login adds an account to; null for a login that makes
+    /// a new entry.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<ProviderId>")]
+    pub provider_id: Option<ProviderId>,
+    /// The entry's family, or the family of the entry the login makes.
+    pub provider_type: String,
+    /// As `GET /providers/subscription-login/:id` answers it.
+    pub login: LoginState,
 }
 
 /// `GET /models`: the catalog of every entry the caller infers with.

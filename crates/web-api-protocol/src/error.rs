@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use demi_shared_types::RequestId;
 
+use crate::ids::LoginId;
 use crate::passkeys::PasskeyId;
 
 /// A JSON error answer: `{ code, message, requestId }`, and a plugin's own
@@ -23,6 +24,10 @@ pub struct ErrorBody {
     /// the page tells the browser no account has.
     #[serde(default, rename = "credentialId", skip_serializing_if = "Option::is_none")]
     pub credential_id: Option<PasskeyId>,
+    /// With `provider_busy` for a login start, the starter's own login that
+    /// holds the entry, which the page opens rather than a second one.
+    #[serde(default, rename = "loginId", skip_serializing_if = "Option::is_none")]
+    pub login_id: Option<LoginId>,
     /// The request the answer is of, as its `X-Request-Id` names it.
     #[serde(rename = "requestId")]
     pub request_id: RequestId,

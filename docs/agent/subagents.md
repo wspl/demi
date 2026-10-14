@@ -1323,6 +1323,10 @@ conversation's own transcript into view; its mark is the robot alone. A number t
 the link's text alone and opens nothing. The product's instructions tell the model to link the agents
 it names this way ([System prompt](system-prompt.md)).
 
+An agent's tab menu offers **Stop Agent**, **Copy Agent ID**, which copies
+the agent's number as the `demi agent` commands take it, `278`, and **Close
+Tab**.
+
 ### What an agent runs on
 
 Wherever the page names a child it says, in two groups, what the child is

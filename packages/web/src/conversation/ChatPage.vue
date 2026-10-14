@@ -13,6 +13,7 @@ import { useConversations } from './store'
 import { useConversationNavigation } from './navigation'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
+import { usePreferences } from '../state/preferences'
 import { useWorkPanel } from './work'
 import { usePermissions } from './permissions'
 import { conversationFiles } from './files'
@@ -29,6 +30,7 @@ const resources = useResources()
 const dockWindowShare = ref(resources.dockWindowShare)
 watch(() => resources.dockWindowShare, (share) => { dockWindowShare.value = share })
 const product = useProduct()
+const preferences = usePreferences()
 const work = useWorkPanel()
 const permissions = usePermissions()
 /**
@@ -227,6 +229,8 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :conversation="conversation"
     :has-provider="hasProvider"
     :backend-away="product.connection !== null"
+    :resume-at-retry="preferences.resumeAtRetry"
+    @update:resume-at-retry="preferences.update({ resumeAtRetry: $event })"
     :fork="fork"
     :select-edit="selectEdit"
     :files="files"

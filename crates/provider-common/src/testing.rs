@@ -411,6 +411,7 @@ pub fn login_io(
 ) -> crate::credentials::LoginIo<'_> {
     crate::credentials::LoginIo {
         pending,
+        stage: &|_| {},
         codes: tokio::sync::mpsc::unbounded_channel().1,
         stop: CancellationToken::new(),
     }

@@ -482,9 +482,9 @@ test('a completed earlier preference write cannot discard a newer model selectio
     thinkingEffort: 'high', serviceTierId: 'priority',
   }
   const latest = { ...first, modelId: 'latest-model', thinkingEffort: 'low' }
-  preferences.update({ lastModel: first }, true)
+  preferences.update({ lastModel: first })
   await started.promise
-  preferences.update({ lastModel: latest }, true)
+  preferences.update({ lastModel: latest })
   expect(preferences.lastModel).toEqual(latest)
   release.resolve()
   await preferences.flush()

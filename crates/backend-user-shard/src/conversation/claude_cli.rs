@@ -33,7 +33,7 @@ use demi_host_interface::{
 };
 use demi_provider_claude_code::{
     AccountMachine, AccountWork, CliSite, CliStart, CliSystem, ConfigDir, Placed, Placement,
-    PreparedProcesses, StartError, StartSteps,
+    PreparedProcesses, StartError, StartStage, StartSteps,
 };
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{CliInstall, CliMachine};
@@ -140,12 +140,14 @@ impl Placement for CloudPlacement {
     fn start<'a>(
         &'a self,
         start: &'a dyn Fn(&CliSite) -> CliStart,
+        stages: &'a dyn Fn(StartStage),
     ) -> LocalBoxFuture<'a, Result<Placed, StartError>> {
         Box::pin(async move {
             let shard = self
                 .shard
                 .upgrade()
                 .ok_or_else(|| StartError("The backend is shutting down".into()))?;
+            stages(StartStage::Machine);
             // Each step's time, which the run's span carries
             // (`claude-code.md` § Preparing a process ahead).
             let mut steps = StartSteps::default();
@@ -162,10 +164,11 @@ impl Placement for CloudPlacement {
                 .map_err(|error| StartError(error.to_string()))?;
             lap(&mut steps.admit);
             let executable = shard
-                .cli_executable_at(&access, &self.work)
+                .cli_executable_at(&access, &self.work, stages)
                 .await
                 .map_err(StartError)?;
             lap(&mut steps.executable);
+            stages(StartStage::Process);
             let run_dir = run_dir(&access.home);
             access
                 .host
@@ -426,11 +429,12 @@ impl Shard {
     }
 
     /// The CLI's executable on the Cloud `access` holds, installed first
-    /// when the Cloud has none.
+    /// when the Cloud has none, which it reports to `stages`.
     async fn cli_executable_at(
         &self,
         access: &MachineAccess,
         work: &ProcessWork,
+        stages: &dyn Fn(StartStage),
     ) -> Result<String, String> {
         let control = &self.services().control;
         let context = match work {
@@ -448,7 +452,7 @@ impl Shard {
             home: access.home.clone(),
             context,
         };
-        self.cli_executable(&target)
+        self.cli_executable(&target, stages)
             .await
             .map_err(|error| error.to_string())
     }
@@ -459,11 +463,16 @@ impl Shard {
     /// version never waits for the release pointer: without a believed
     /// answer it starts its newest, and the pointer is read in the
     /// background for a later start. Only a Cloud with none waits for the
-    /// read and the install.
-    async fn cli_executable(&self, target: &CliTarget) -> Result<String, CliError> {
+    /// read and the install, which it reports to `stages`.
+    async fn cli_executable(
+        &self,
+        target: &CliTarget,
+        stages: &dyn Fn(StartStage),
+    ) -> Result<String, CliError> {
         let releases = &self.services().claude_releases;
         let installed = installed(self.services(), target).await?;
         let Some(newest) = installed.first() else {
+            stages(StartStage::Install);
             let wanted = releases.latest(false).await?;
             return ensure(self.services(), target, &wanted).await;
         };
@@ -577,7 +586,7 @@ impl Shard {
             .machine_access()
             .await
             .map_err(|error| error.to_string())?;
-        self.cli_executable_at(&access, &ProcessWork::Account(entry.clone()))
+        self.cli_executable_at(&access, &ProcessWork::Account(entry.clone()), &|_| {})
             .await
     }
 

@@ -21,6 +21,8 @@ pub enum SyncStep {
     /// Once a change woke it, before it takes and reads the parts that
     /// changed.
     Changes,
+    /// Once it has read the providers, in the product state or as a part.
+    Providers,
 }
 
 impl Shard {

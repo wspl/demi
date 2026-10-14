@@ -281,6 +281,17 @@ pub struct Preferences {
     #[schemars(with = "SendWhileRunning")]
     #[garde(skip)]
     pub send_while_running: Option<SendWhileRunning>,
+    /// Whether a turn that failed with a known time to try again, such as a
+    /// usage limit that resets at 09:00, resumes by itself at that time
+    /// (`failures-and-recovery.md` § The unfinished turn). Absent means no.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub resume_at_retry: Option<bool>,
     /// The limit the user set on the context window of each model, in
     /// tokens, by provider entry id and then model id (`models.md` § Context
     /// limit); a model it does not name uses its full window.
@@ -433,6 +444,17 @@ pub struct PreferencesPatch {
     #[schemars(with = "SendWhileRunning")]
     #[garde(skip)]
     pub send_while_running: Option<SendWhileRunning>,
+    /// Whether a turn that failed with a known time to try again, such as a
+    /// usage limit that resets at 09:00, resumes by itself at that time
+    /// (`failures-and-recovery.md` § The unfinished turn). Absent means no.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub resume_at_retry: Option<bool>,
     /// One model's context limit; the other models keep theirs.
     #[serde(
         default,

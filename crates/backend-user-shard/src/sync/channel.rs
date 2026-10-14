@@ -6,6 +6,7 @@
 //! session, at shutdown, when the page sends anything, and when a part cannot
 //! be read.
 
+use std::collections::BTreeSet;
 use std::convert::Infallible;
 use std::rc::Rc;
 
@@ -148,15 +149,41 @@ impl Channel<'_> {
                         .syncs
                         .pass(super::SyncStep::Changes)
                         .await;
-                    let marked = self.registration.take();
-                    if marked.session_ended {
-                        return Err(End::SessionEnded);
-                    }
-                    for part in &marked.parts {
-                        if choosing && *part != Part::User {
+                    // The parts go in their order, each read only after the
+                    // change that marked it (`web-api.md` § Page
+                    // synchronization): a part marked while another was read
+                    // goes first when it comes before it, and the part read
+                    // is read again after it, since the read may show a
+                    // later change than what the page has of the part
+                    // before. A login's completion, read after the provider
+                    // publication that marked the providers first, thereby
+                    // never reaches the page before its account.
+                    let mut pending = BTreeSet::new();
+                    loop {
+                        let marked = self.registration.take();
+                        if marked.session_ended {
+                            return Err(End::SessionEnded);
+                        }
+                        pending.extend(marked.parts);
+                        let Some(part) = pending.pop_first() else {
+                            break;
+                        };
+                        if choosing && part != Part::User {
                             continue;
                         }
-                        self.send_part(part).await?;
+                        let Some(event) = self.read_part(&part).await? else {
+                            continue;
+                        };
+                        let marked = self.registration.take();
+                        if marked.session_ended {
+                            return Err(End::SessionEnded);
+                        }
+                        pending.extend(marked.parts);
+                        if pending.first().is_some_and(|first| *first < part) {
+                            pending.insert(part);
+                            continue;
+                        }
+                        self.send_read(event).await?;
                         if choosing && !self.session.user.chooses_password {
                             // The choice landed: the rest of the state follows.
                             choosing = false;
@@ -219,8 +246,16 @@ impl Channel<'_> {
 
     /// Reads `part` now and sends it.
     async fn send_part(&mut self, part: &Part) -> Result<(), End> {
-        let read = self
-            .shard
+        match self.read_part(part).await? {
+            Some(event) => self.send_read(event).await,
+            None => Ok(()),
+        }
+    }
+
+    /// Reads `part` now, as the message that carries it; none when the
+    /// page is sent nothing of it.
+    async fn read_part(&mut self, part: &Part) -> Result<Option<SyncEvent>, End> {
+        self.shard
             .read_part(part, &self.session.user, &self.session.token)
             .await
             .map_err(|error| {
@@ -230,10 +265,11 @@ impl Channel<'_> {
                     "a part of a page's state could not be read"
                 );
                 End::InternalError
-            })?;
-        let Some(event) = read else {
-            return Ok(());
-        };
+            })
+    }
+
+    /// Sends `event`, a part just read.
+    async fn send_read(&mut self, event: SyncEvent) -> Result<(), End> {
         let mut promoted = false;
         if let SyncEvent::User { user } = &event {
             // An account made an admin starts to see the accounts.

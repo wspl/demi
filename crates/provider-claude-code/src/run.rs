@@ -463,6 +463,13 @@ fn run(
                                 if let Some(diagnostics) = &mut failure.diagnostics {
                                     diagnostics.http_status = status;
                                 }
+                                // A usage limit waits until its window
+                                // resets, longer than any retry waits.
+                                let shared = runtime.shared.clone();
+                                let failure = failure.with_retry_wait(
+                                    |diagnostics, received_at| shared.read_failure(diagnostics, received_at),
+                                    shared.clock.now(),
+                                );
                                 yield ProviderEvent::Error(failure);
                             }
                         }

@@ -12,7 +12,8 @@ decisions read, and diagnostics, which the user and support read:
 
 | Code | Meaning | Retried automatically |
 | --- | --- | --- |
-| `rate_limit` | A quota or throttling failure | Yes |
+| `usage_limit` | The account cannot be used until a reset or a change of its plan: a used-up subscription window, credits or a spend cap, or use its administrator turned off | No; with [account rotation](../providers/providers.md#account-rotation) the agent moves to another account |
+| `rate_limit` | Throttling: too many requests or tokens for a short while | Yes |
 | `rate_limited` | The backend's own request rate limit refused the attempt before it reached the vendor ([Rate limit](../providers/usage-and-quota.md#rate-limit)) | No |
 | `overloaded` | A transient failure: HTTP 5xx, a timeout, a network or socket failure | Yes |
 | An authentication code | A missing, invalid or expired credential, or one that could not be refreshed | No |
@@ -24,8 +25,19 @@ decisions read, and diagnostics, which the user and support read:
 Invalid requests are terminal as well. The complete set of codes belongs to the
 provider contract ([Providers](../providers/providers.md)).
 
-An HTTP failure gets its code from its status: 401 and 403 are
-`auth_expired`, 429 is `rate_limit`, 408, 409, 425 and every 5xx are
+A vendor's own sign of a used-up account comes first, read by that vendor's
+provider, as its own client reads it: Codex's 429 whose `error.type` is
+`usage_limit_reached`, or whose `error.type` or `error.code` is
+`insufficient_quota`, `credit_balance_exhausted` or a `…_spend_limit_exceeded`
+or `…_usage_limit_exceeded`, over HTTP or in a WebSocket error frame; Grok
+Build's 402, and its 403 whose text says `run out of credits`; the Claude
+Code CLI's `result` line whose `api_error` is `usage_limit_reached`, which
+the CLI sets for a 429 whose unified rate-limit headers name a used-up
+window or spend cap, or a seat or member whose use is turned off, and never
+for a 429 that only throttles, whose text says *not your usage limit* (CLI 2.1.296, against a
+scripted vendor, three runs each). Each is `usage_limit`, and no wording
+stands in for these signs. Otherwise an HTTP failure gets its code from its status:
+401 and 403 are `auth_expired`, 429 is `rate_limit`, 408, 409, 425 and every 5xx are
 `overloaded`, and 413 is `request_too_large`, as is a 400 whose text
 mentions `too many images`, `many-image`, `request too large` or `payload too
 large`: the first two are the Anthropic API's refusals of a request with more
@@ -41,7 +53,8 @@ match the vendor's own code stands:
 | --- | --- |
 | `too many images`, `many image`, `request too large`, `payload too large` | `request_too_large` |
 | `context`, `too long`, `too large`, or a word starting with `max` followed later by `token` or `tokens` | `context_length_exceeded` |
-| `rate`, a word starting with `ratelimit`, `quota`, `usage limit`, `billing`, `balance` | `rate_limit` |
+| `quota`, `billing`, `balance`, `out of credits` | `usage_limit` |
+| `rate`, a word starting with `ratelimit` | `rate_limit` |
 | `auth`, `authentication`, `authorization`, or `invalid` or `expired` before or after an API, access or auth key or token | `auth_expired` |
 | a word starting with `overload`, `unavailable`, `server error`, `internal error`, `api error`, `timeout`, `timed out`, `fetch failed`, `network`, `socket`, a word starting with `econn` | `overloaded` |
 
@@ -124,12 +137,10 @@ of seconds after the failure was received. The Codex reader looks for them in
 the failure's `error`, in a WebSocket envelope's `event.error`, in a failed
 response's `response.error`, or in an HTTP failure's body; a value that is not
 a number reads as absent. Without them, it uses the standard reading. The
-Claude Code CLI names no wait for a subscription's usage limit, only words
-such as *You've hit your session limit · resets 9am (UTC)*; its reader takes
-the moment the limited window resets from the account's quota, which the
-provider already reads ([Vendor quota](../providers/usage-and-quota.md#claude-code)),
-when the failure is a usage limit, so the limit is terminal on its first
-attempt rather than retried four times against a window that is still closed.
+Claude Code CLI's usage limit carries the limited window and its reset in
+the failing assistant line's `api_error_params.rate_limit_info`, the
+request's own, which its reader takes as the moment; it never reads the
+account's latest quota for it, which may be older than the failure.
 
 The same reader serves both uses, so there is one implementation:
 
@@ -288,9 +299,10 @@ itself. The backend keeps the wait while it runs, whether the
 conversation is open or was put away to save memory, and opens it when the
 moment comes; after a backend restart it starts again when the conversation
 is next opened. A
-usage limit's moment is the latest reset among the account's windows that
-the quota shows used up; a limit with no such window, such as a spend cap,
-names no moment and is retried as any `rate_limit`.
+usage limit's moment is the one the failure names, such as Codex's
+`resets_at`, else the latest reset among the account's windows that the
+quota shows used up; a limit with neither, such as a spend cap, names no
+moment and waits for the user.
 
 A message is never left outside a turn. A send writes its `user` block as
 soon as its action starts, before its model switch lands
@@ -388,7 +400,7 @@ injected clock; no test calls a real model.
 | Text streamed before a transient failure | The failure is terminal and becomes an `error` block |
 | Four transient failures in a row | Three `retry_scheduled` frames, then a terminal `error` block; each delay is within its cap |
 | A vendor wait longer than 30 seconds | The failure is terminal at once |
-| A Claude Code usage limit whose account's quota names the window's reset | `retryAt` is that reset; the failure is terminal on its first attempt |
+| A Claude Code usage limit | `retryAt` is the reset its `rate_limit_info` names; the failure is terminal on its first attempt |
 | A root's turn fails, then two children report and a command ends | Two receipts and a notice are written into the failed turn; no turn starts, Resume stays offered and answers them |
 | The same, with a `retryAt` | With `resumeAtRetry` off, nothing starts at that moment; with it on, the turn resumes then, once |
 | A failure after a completed tool call, then `resume` | The tool does not run again; the model continues after its result |

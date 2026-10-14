@@ -173,6 +173,7 @@ async fn the_snapshot_is_the_users_product_state() {
             stun_urls: Vec::new(),
             runner_release: None,
             conversations: Vec::new(),
+            logins: Vec::new(),
             credentials: Vec::new(),
             // A new user has no passkeys; the handle is the bytes of the
             // user's id.
