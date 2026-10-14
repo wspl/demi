@@ -22,9 +22,8 @@ import {
   type SettingsProviderModel,
   type SettingsVendor,
 } from '@demicodes/web-ui/settings/types'
-import { apiRequest, jsonBody, readResponse } from '../api/client'
+import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
-  loginAnswerSchema,
   loginStartedSchema,
   modelSearchResultsSchema,
   providerAnswerSchema,
@@ -34,6 +33,7 @@ import {
   type ConfiguredModel,
   type CreateProvider,
   type ProviderPatch,
+  type ListedLogin,
   type LoginCode,
   type QuotaRequest,
   type SubscriptionLogin,
@@ -652,117 +652,155 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       })
   }
 
-  const login = ref<{
+  /**
+   * The sign-in the dialog shows (`providers.md` § Login and publication):
+   * one this page started, whose `id` is null until the start answers, the
+   * one a busy start named, or a running one the vault announced, as after
+   * a reload. The vault announces each change of it on the channel, which
+   * the dialog follows; `failure` is why this page could not start or
+   * answer it, `code` where the last pasted code is, and `seen` whether the
+   * channel has listed it.
+   */
+  const opened = ref<{
     provider: ProductProvider
-    phase: ProviderLoginPhase
+    id: string | null
+    failure: ShownError | null
+    code: 'none' | 'sending' | 'sent'
+    seen: boolean
   } | null>(null)
-  let loginController: AbortController | null = null
-  let loginId: string | null = null
-  let loginTimer: ReturnType<typeof setTimeout> | null = null
-  /** When the last pasted code reached the login. */
-  let codeSentAt = 0
+  /** The sign-ins this page closed, which it never opens again on its own. */
+  const dismissed = ref<string[]>([])
+  /** The starts on their way: the sign-in one makes is this page's, and not opened as another's. */
+  const starts = ref(0)
+  const logins = computed(() => product.snapshot?.logins ?? [])
+  /** The opened sign-in as the channel last listed it. */
+  const followed = computed(() => {
+    const id = opened.value?.id
+    return id ? logins.value.find((login) => login.id === id) ?? null : null
+  })
 
-  function cancelLogin(): void {
-    loginController?.abort()
-    loginController = null
-    if (loginTimer !== null) {
-      clearTimeout(loginTimer)
-    }
-    loginTimer = null
-    const id = loginId
-    loginId = null
-    if (id) {
-      void apiRequest(
-        `/providers/subscription-login/${encodeURIComponent(id)}`,
-        {
-          method: 'DELETE',
-        },
-      ).catch((error: unknown) => report('Could Not Cancel the Sign-In', error))
-    }
+  /** The provider a listed sign-in is for: its entry, or the subscription it makes. */
+  function providerOf(login: ListedLogin): ProductProvider | undefined {
+    return providers.value.find((provider) => login.providerId === null
+      ? provider.kind === 'subscription' && provider.providerType === login.providerType
+      : provider.id === login.providerId)
   }
 
-  function closeLogin(): void {
-    cancelLogin()
-    login.value = null
-  }
-
-  async function pollLogin(controller: AbortController): Promise<void> {
-    const polled = Date.now()
-    try {
-      const response = await apiRequest(
-        `/providers/subscription-login/${encodeURIComponent(loginId!)}`,
-        { signal: controller.signal },
-      )
-      const result = (await readResponse(response, loginAnswerSchema)).login
-      controller.signal.throwIfAborted()
-      if (!login.value) {
-        return
+  /** A running sign-in this page has not closed, with its provider, which the dialog opens when it shows none. */
+  const running = computed(() => {
+    for (const login of logins.value) {
+      const provider = login.login.status === 'pending' && !dismissed.value.includes(login.id) ? providerOf(login) : undefined
+      if (provider) {
+        return { id: login.id, provider }
       }
-      if (result.status === 'completed') {
-        loginId = null
-        // The account the login added shows once the channel brings it.
-        await product.until((state) => state.providers.some((entry) =>
-          entry.id === result.providerId &&
-          (entry.details.type !== 'read' || entry.details.accounts.some((account) => account.id === result.credentialId)),
-        ), controller.signal)
-        const provider = resources.providers.find(
-          (entry) => entry.id === result.providerId,
-        )
-        // The account this login added, which is not the active one when another already was.
-        const added = provider?.accounts.find((account) => account.id === result.credentialId)
-        login.value.phase = {
-          kind: 'done',
-          account: added?.label ?? 'Account connected',
-          active: added?.active ?? false,
-        }
-        select(result.providerId)
-      } else if (result.status === 'failed') {
-        loginId = null
-        // The vendor's words, which a successful answer carried: no request failed.
-        login.value.phase = { kind: 'failed', message: result.message, requestId: null }
-      } else {
-        if (result.verificationUrl && result.needsCode) {
-          // A pasted code keeps the dialog signing in until the login ends or
-          // refuses it; an answer asked before the code reached the login
-          // still names the refusal of the code before.
-          const shown = login.value.phase.kind === 'code' ? login.value.phase : null
-          const error = polled >= codeSentAt ? result.codeError ?? undefined : shown?.error
-          login.value.phase = {
+    }
+    return null
+  })
+  watch([running, () => opened.value === null, starts], () => {
+    if (opened.value === null && starts.value === 0 && running.value) {
+      opened.value = { ...running.value, failure: null, code: 'none', seen: true }
+    }
+  }, { immediate: true })
+  watch(followed, (login, before) => {
+    const shown = opened.value
+    if (!shown || !login) {
+      return
+    }
+    shown.seen = true
+    const state = login.login
+    // A code the sign-in refused after this page sent it: the dialog shows why and takes another.
+    if (shown.code === 'sent' && state.status === 'pending' && state.codeError) {
+      shown.code = 'none'
+    }
+    if (state.status === 'completed' && before?.login.status !== 'completed') {
+      select(state.providerId)
+    }
+  })
+
+  /** What the dialog shows of the opened sign-in. */
+  function phaseOf(shown: NonNullable<typeof opened.value>): ProviderLoginPhase {
+    if (shown.failure) {
+      return { kind: 'failed', ...shown.failure }
+    }
+    const listed = followed.value
+    if (!listed) {
+      // Gone from the list while it ran, as when the server restarted.
+      return shown.seen
+        ? { kind: 'failed', message: 'This sign-in is no longer running.', requestId: null }
+        : { kind: 'starting', stage: 'preparing' }
+    }
+    const state = listed.login
+    switch (state.status) {
+      case 'completed': {
+        // The channel brings the entries before the sign-ins, so the account is listed by now.
+        const added = resources.providers
+          .find((entry) => entry.id === state.providerId)
+          ?.accounts.find((account) => account.id === state.credentialId)
+        return { kind: 'done', account: added?.label ?? 'Account connected', active: added?.active ?? false }
+      }
+      case 'failed':
+        return { kind: 'failed', message: state.message, requestId: state.requestId }
+      case 'pending':
+        if (state.verificationUrl && state.needsCode) {
+          const error = shown.code === 'none' ? state.codeError ?? undefined : undefined
+          return {
             kind: 'code',
-            url: result.verificationUrl,
-            submitted: !!shown?.submitted && !error,
+            url: state.verificationUrl,
+            submitted: shown.code !== 'none',
             ...(error ? { error } : {}),
           }
-        } else if (result.verificationUrl && result.userCode) {
-          login.value.phase = {
-            kind: 'device',
-            url: result.verificationUrl,
-            code: result.userCode,
-          }
         }
-        loginTimer = setTimeout(() => void pollLogin(controller), 1500)
-      }
-    } catch (error) {
-      if (!controller.signal.aborted && login.value) {
-        login.value.phase = {
-          kind: 'failed',
-          ...shownError(error),
+        if (state.verificationUrl && state.userCode) {
+          return { kind: 'device', url: state.verificationUrl, code: state.userCode }
         }
-      }
+        return { kind: 'starting', stage: state.stage }
     }
   }
 
+  const login = computed(() => opened.value && {
+    provider: opened.value.provider,
+    phase: phaseOf(opened.value),
+  })
+
+  /**
+   * Closes the dialog: a sign-in still running is cancelled, and the close
+   * resolves once it has ended; a start still on its way is cancelled when
+   * it answers.
+   */
+  async function closeLogin(): Promise<void> {
+    const shown = opened.value
+    opened.value = null
+    const id = shown?.id
+    if (!id) {
+      return
+    }
+    dismissed.value.push(id)
+    const listed = logins.value.find((login) => login.id === id)
+    // An ended sign-in, or one gone, has nothing to cancel.
+    if (listed ? listed.login.status !== 'pending' : shown.seen) {
+      return
+    }
+    await cancelLogin(id)
+  }
+
+  async function cancelLogin(id: string): Promise<void> {
+    await apiRequest(`/providers/subscription-login/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      .catch((error: unknown) => report('Could Not Cancel the Sign-In', error))
+  }
+
+  /**
+   * Starts a sign-in into `entry`, after the one the dialog showed is
+   * cancelled and has ended. A start the entry's running sign-in holds
+   * opens that one instead.
+   */
   async function beginLogin(entry: SettingsProviderEntry): Promise<void> {
-    cancelLogin()
+    await closeLogin()
     const provider = providers.value.find(
       (provider) => provider.id === entry.id,
     )!
-    const controller = new AbortController()
-    loginController = controller
-    login.value = {
-      provider,
-      phase: { kind: 'starting' },
-    }
+    opened.value = { provider, id: null, failure: null, code: 'none', seen: false }
+    const shown = opened.value
+    starts.value++
     try {
       const response = await apiRequest(
         provider.configured
@@ -776,51 +814,46 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         },
       )
       const result = await readResponse(response, loginStartedSchema)
-      if (controller.signal.aborted) {
-        await apiRequest(
-          `/providers/subscription-login/${encodeURIComponent(result.login.id)}`,
-          { method: 'DELETE' },
-        )
+      if (opened.value !== shown) {
+        dismissed.value.push(result.login.id)
+        await cancelLogin(result.login.id)
         return
       }
-      loginId = result.login.id
-      await pollLogin(controller)
+      shown.id = result.login.id
     } catch (error) {
-      if (!controller.signal.aborted && login.value) {
-        login.value.phase = {
-          kind: 'failed',
-          ...shownError(error),
-        }
+      if (opened.value !== shown) {
+        return
       }
+      if (error instanceof ApiError && error.code === 'provider_busy' && error.loginId) {
+        shown.id = error.loginId
+        return
+      }
+      shown.failure = shownError(error)
+    } finally {
+      starts.value--
     }
   }
 
   /** Hands the code the user pasted to the sign-in, which then finishes on its own. */
   async function submitCode(code: string): Promise<void> {
-    const current = login.value
-    const controller = loginController
-    const id = loginId
-    if (!current || !controller || !id || current.phase.kind !== 'code') {
+    const shown = opened.value
+    const id = shown?.id
+    if (!shown || !id || login.value?.phase.kind !== 'code') {
       return
     }
-    current.phase = { kind: 'code', url: current.phase.url, submitted: true }
-    codeSentAt = Number.POSITIVE_INFINITY
+    shown.code = 'sending'
     try {
       await apiRequest(
         `/providers/subscription-login/${encodeURIComponent(id)}/code`,
         {
           method: 'POST',
-          signal: controller.signal,
           ...jsonBody({ code } satisfies LoginCode),
         },
       )
-      codeSentAt = Date.now()
+      shown.code = 'sent'
     } catch (error) {
-      if (!controller.signal.aborted && login.value === current) {
-        current.phase = {
-          kind: 'failed',
-          ...shownError(error),
-        }
+      if (opened.value === shown) {
+        shown.failure = shownError(error)
       }
     }
   }
@@ -830,7 +863,8 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     () => {
       lifetime.abort()
       lifetime = new AbortController()
-      closeLogin()
+      opened.value = null
+      dismissed.value = []
       edits.value = {}
       modelEditor.value = null
       manualDrafts.value = {}
@@ -844,7 +878,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   onScopeDispose(() => {
     lifetime.abort()
     quotaRefreshCache.clear()
-    cancelLogin()
   })
 
   return {

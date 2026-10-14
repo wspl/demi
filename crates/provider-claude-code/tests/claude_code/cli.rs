@@ -15,7 +15,7 @@ use demi_host_interface::{
 };
 use demi_provider_claude_code::{
     ClaudeCodeConfig, ClaudeCodeProvider, CliSite, CliStart, CliSystem, ConfigDir, Placed,
-    Placement, PreparedProcesses, StartError, StartSteps,
+    Placement, PreparedProcesses, StartError, StartStage, StartSteps,
 };
 use demi_provider_common::credentials::{
     AccountMeta, CredentialPool, MemoryCredentialPool, credential_id_for,
@@ -267,6 +267,7 @@ impl Placement for ScriptedPlacement {
     fn start<'a>(
         &'a self,
         start: &'a dyn Fn(&CliSite) -> CliStart,
+        _stages: &'a dyn Fn(StartStage),
     ) -> LocalBoxFuture<'a, Result<Placed, StartError>> {
         Box::pin(async move {
             if let Some(failure) = self.failure.borrow_mut().take() {

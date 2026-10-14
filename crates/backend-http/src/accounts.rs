@@ -24,6 +24,7 @@ use demi_web_api_protocol::providers::{
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
+use super::request_id;
 use super::providers::{configures, reserve, scoped};
 use demi_backend_user_shard::services::Services;
 use demi_backend_user_shard::shard::Shards;
@@ -94,9 +95,10 @@ pub(super) async fn start_login(
     };
     let owner = services.vault.owner_for(&user.id).await?;
     let machine = Arc::new(ShardMachine::new(shards, user.id.clone()));
+    let request = request_id::current_or_new();
     let id = services
         .logins
-        .start(owner, user.id, family, label, None, machine)
+        .start(owner, user.id, family, label, None, machine, request)
         .await?;
     Ok(started(id))
 }
@@ -122,9 +124,10 @@ pub(super) async fn login_into(
     let label = entry.label.clone();
     let owner = entry.owner.clone();
     let machine = Arc::new(ShardMachine::new(shards, user.id.clone()));
+    let request = request_id::current_or_new();
     let id = services
         .logins
-        .start(owner, user.id, family, label, Some(entry), machine)
+        .start(owner, user.id, family, label, Some(entry), machine, request)
         .await?;
     Ok(started(id))
 }

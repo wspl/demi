@@ -28,6 +28,9 @@ pub enum Part {
     Workspaces,
     Devices,
     Providers,
+    /// The user's sign-ins; after the entries, so that a completed login's
+    /// account is listed when the page learns it completed.
+    Logins,
     Cloud,
     /// The Subagents switch, the limits and the subagent profiles.
     Subagents,

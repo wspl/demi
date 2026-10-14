@@ -90,7 +90,16 @@ function submitCode(): void {
         class="flex items-center gap-2 py-4 text-chrome text-fg-muted"
       >
         <IndeterminateSpinner :size="ICON_PX.in24" />
-        Contacting {{ vendorName }}…
+        <template v-if="phase.stage === 'waiting_for_cloud'"
+          >Waiting for your Cloud to connect…</template
+        >
+        <template v-else-if="phase.stage === 'installing'"
+          >Installing the command-line tool on your Cloud…</template
+        >
+        <template v-else-if="phase.stage === 'starting'"
+          >Starting the command-line tool…</template
+        >
+        <template v-else>Contacting {{ vendorName }}…</template>
       </div>
 
       <div v-else-if="phase.kind === 'device'" class="flex flex-col gap-4">

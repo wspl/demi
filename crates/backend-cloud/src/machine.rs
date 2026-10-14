@@ -555,7 +555,10 @@ impl dyn CloudShard {
             // Let the failed-boot path save what the sandbox wrote.
             () = self.closed() => return Err(CloudError::Closed),
             connected = tokio::time::timeout(connection, self.devices().until_online(device)) => {
-                connected.map_err(|_| CloudError::Failed("Cloud boot timeout: its runner did not connect".into()))?;
+                connected.map_err(|_| CloudError::Failed(format!(
+                    "Your Cloud did not start: its runner did not connect within {} seconds",
+                    connection.as_secs()
+                )))?;
             }
         }
         // The lifetime cap counts from here, also after a backend restart
@@ -620,7 +623,12 @@ impl dyn CloudShard {
             let connection = self.cloud_services().tuning.runner_connection;
             return tokio::time::timeout(connection, self.devices().until_online(device))
                 .await
-                .map_err(|_| CloudError::Failed("Cloud runner reconnect timeout".into()));
+                .map_err(|_| {
+                    CloudError::Failed(format!(
+                        "Your Cloud did not reconnect within {} seconds",
+                        connection.as_secs()
+                    ))
+                });
         }
         {
             let mut phase = machine.phase();

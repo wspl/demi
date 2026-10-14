@@ -47,7 +47,7 @@ use reqwest::Url;
 
 pub use placement::{
     AccountMachine, AccountWork, CliSite, CliStart, CliSystem, ConfigDir, Placed, Placement,
-    StartError, StartSteps,
+    StartError, StartStage, StartSteps,
 };
 pub use prepared::PreparedProcesses;
 
