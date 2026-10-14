@@ -304,6 +304,7 @@ impl TranscriptLog {
         code: Option<String>,
         diagnostics: Option<ProviderErrorDiagnostics>,
         outside_turn: bool,
+        account: Option<String>,
     ) {
         let (id, created_at) = self.stamp();
         self.append(Block::Error(ErrorBlock {
@@ -315,6 +316,7 @@ impl TranscriptLog {
             diagnostics,
             outside_turn,
             device: None,
+            account,
         }));
     }
 
@@ -333,6 +335,7 @@ impl TranscriptLog {
             diagnostics: None,
             outside_turn: false,
             device: Some(device),
+            account: None,
         }));
     }
 

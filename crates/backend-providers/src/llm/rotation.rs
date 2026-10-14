@@ -351,3 +351,215 @@ pub fn used_up_window(
         .max_by_key(|window| window.resets_at)
         .map(|window| (window.label.clone(), window.resets_at))
 }
+
+#[cfg(test)]
+mod tests {
+    use demi_shared_types::QuotaScope;
+
+    use super::*;
+
+    const HOUR: i64 = 3_600_000;
+
+    fn now() -> Timestamp {
+        "2026-09-24T08:00:00.000Z".parse().unwrap()
+    }
+
+    fn at(hours: f64) -> Timestamp {
+        Timestamp::from_millisecond(now().as_millisecond() + (hours * HOUR as f64) as i64).unwrap()
+    }
+
+    fn window(used: f64, resets_in_hours: Option<f64>, period_hours: Option<u64>) -> QuotaWindow {
+        QuotaWindow {
+            id: "w".into(),
+            label: "5h session".into(),
+            used_percent: Some(used),
+            used: None,
+            limit: None,
+            unit: None,
+            resets_at: resets_in_hours.map(at),
+            period_seconds: period_hours.map(|hours| hours * 3600),
+            severity: None,
+            scope: None,
+        }
+    }
+
+    fn account(id: &str, windows: Vec<QuotaWindow>) -> Candidate {
+        Candidate {
+            id: CredentialId::try_from(id).unwrap(),
+            label: format!("{id}@example.com"),
+            snapshot: Some(QuotaSnapshot {
+                observed_at: now(),
+                source: demi_shared_types::SnapshotSource::Probe,
+                plan: None,
+                account_label: None,
+                windows,
+            }),
+        }
+    }
+
+    fn model(name: &str) -> Model {
+        serde_json::from_value(serde_json::json!({
+            "id": name.to_lowercase(), "name": name, "contextWindow": 200000,
+            "outputLimit": null, "thinking": [], "acceptedExtensions": null
+        }))
+        .unwrap()
+    }
+
+    fn entry() -> ProviderId {
+        ProviderId::try_from("entry").unwrap()
+    }
+
+    /// The account `rotation` takes, kept held.
+    fn take(
+        rotation: &Arc<AccountRotation>,
+        how: Rotation,
+        accounts: &[Candidate],
+        holds: &mut Vec<Holding>,
+    ) -> String {
+        match rotation.take(&entry(), how, accounts, &model("Opus"), now()) {
+            Some(Choice::Account(holding)) => {
+                let id = holding.account().to_string();
+                holds.push(holding);
+                id
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// The doc's example: a 5-hour window 80% used with 3 hours to go has
+    /// 0.2 / 0.6 = 0.33, a weekly window 30% used with 2 days to go 2.4, so
+    /// the account's room is 0.33 and one whose 5-hour window is 10% used
+    /// with 4 hours to go (1.1) has more. A window not started has 1, and
+    /// so has one without a reset; a used-up window leaves its account out,
+    /// and a window over 90% used does while another account has room.
+    /// Planted defect this catches: the largest window deciding, a soon
+    /// reset counted as tight, or the 90% rule ignored. Microseconds.
+    #[test]
+    fn balanced_takes_the_account_whose_tightest_window_has_the_most_room() {
+        let weekly = |used, days: f64| window(used, Some(days * 24.0), Some(7 * 24));
+        let cases: Vec<(&str, Vec<Candidate>, &str)> = vec![
+            (
+                "the tightest window decides",
+                vec![
+                    account("max", vec![window(80.0, Some(3.0), Some(5)), weekly(30.0, 2.0)]),
+                    account("pro", vec![window(10.0, Some(4.0), Some(5))]),
+                ],
+                "pro",
+            ),
+            (
+                "a weekly window spent early is tighter than a fresh 5-hour one",
+                vec![
+                    account("max", vec![weekly(70.0, 6.0)]),
+                    account("pro", vec![window(0.0, None, Some(5))]),
+                ],
+                "pro",
+            ),
+            (
+                "a window that resets soon counts as roomy",
+                vec![
+                    account("max", vec![window(50.0, Some(4.5), Some(5))]),
+                    account("pro", vec![window(85.0, Some(0.25), Some(5))]),
+                ],
+                "pro",
+            ),
+            (
+                "a used-up window leaves the account out",
+                vec![
+                    account("max", vec![window(100.0, Some(4.0), Some(5))]),
+                    account("pro", vec![weekly(85.0, 1.0)]),
+                ],
+                "pro",
+            ),
+            (
+                "over 90% used is out while another has room",
+                vec![
+                    account("max", vec![window(95.0, Some(0.1), Some(5))]),
+                    account("pro", vec![window(60.0, Some(4.0), Some(5))]),
+                ],
+                "pro",
+            ),
+            (
+                "over 90% used counts when every account is",
+                vec![
+                    account("max", vec![window(99.0, Some(4.0), Some(5))]),
+                    account("pro", vec![window(95.0, Some(4.0), Some(5))]),
+                ],
+                "pro",
+            ),
+            (
+                "a window on another model does not count",
+                vec![
+                    account(
+                        "max",
+                        vec![QuotaWindow {
+                            scope: Some(QuotaScope {
+                                kind: "model".into(),
+                                label: Some("Sonnet".into()),
+                            }),
+                            ..window(100.0, Some(48.0), Some(7 * 24))
+                        }],
+                    ),
+                    account("pro", vec![window(40.0, Some(4.0), Some(5))]),
+                ],
+                "max",
+            ),
+        ];
+        for (case, accounts, expected) in cases {
+            let rotation = AccountRotation::new();
+            let taken = take(&rotation, Rotation::Balanced, &accounts, &mut Vec::new());
+            assert_eq!(taken, expected, "{case}");
+        }
+    }
+
+    /// Agents started together spread over accounts of equal room, the
+    /// first in the list first, and a hold that drops frees its account.
+    /// Planted defect this catches: a choice that ignores the holders, or
+    /// a hold never released. Microseconds.
+    #[test]
+    fn agents_started_together_spread_over_accounts_within_a_tenth_of_the_best() {
+        let rotation = AccountRotation::new();
+        let accounts = vec![
+            account("max", vec![window(50.0, Some(5.0), Some(5))]),
+            account("pro", vec![window(54.0, Some(5.0), Some(5))]),
+            account("team", vec![window(80.0, Some(5.0), Some(5))]),
+        ];
+        let mut holds = Vec::new();
+        let taken: Vec<_> = (0..4)
+            .map(|_| take(&rotation, Rotation::Balanced, &accounts, &mut holds))
+            .collect();
+        assert_eq!(taken, ["max", "pro", "max", "pro"]);
+        holds.retain(|holding| holding.account().as_str() != "pro");
+        assert_eq!(take(&rotation, Rotation::Balanced, &accounts, &mut holds), "pro");
+    }
+
+    /// In Order takes the first account not used up, by its snapshot or by
+    /// a failure's mark until its moment; with every one used up the
+    /// choice names the earliest moment, and Manual takes none. Planted
+    /// defect this catches: a mark that outlives its moment, or the latest
+    /// moment named. Microseconds.
+    #[test]
+    fn in_order_takes_the_first_account_not_used_up_and_names_the_earliest_moment() {
+        let rotation = AccountRotation::new();
+        let accounts = vec![
+            account("a", vec![window(100.0, Some(2.0), Some(5))]),
+            account("b", vec![window(99.0, Some(4.0), Some(5))]),
+            account("c", Vec::new()),
+        ];
+        let mut holds = Vec::new();
+        assert_eq!(take(&rotation, Rotation::InOrder, &accounts, &mut holds), "b");
+        rotation.mark_used_up(&entry(), &accounts[1].id, at(3.0));
+        assert_eq!(take(&rotation, Rotation::InOrder, &accounts, &mut holds), "c");
+        rotation.mark_used_up(&entry(), &accounts[2].id, at(1.0));
+        match rotation.take(&entry(), Rotation::InOrder, &accounts, &model("Opus"), now()) {
+            Some(Choice::AllUsedUp { earliest }) => assert_eq!(earliest, Some(at(1.0))),
+            other => panic!("{other:?}"),
+        }
+        // A mark's moment passed: the account is back.
+        let later = at(1.5);
+        match rotation.take(&entry(), Rotation::InOrder, &accounts, &model("Opus"), later) {
+            Some(Choice::Account(holding)) => assert_eq!(holding.account().as_str(), "c"),
+            other => panic!("{other:?}"),
+        }
+        assert!(rotation.take(&entry(), Rotation::Manual, &accounts, &model("Opus"), now()).is_none());
+    }
+}

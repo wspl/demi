@@ -922,6 +922,7 @@ impl SessionCore {
             Some(INTERRUPTED_CODE.to_owned()),
             None,
             false,
+            None,
         );
     }
 
@@ -1633,6 +1634,9 @@ impl SessionCore {
             failure.code.clone(),
             failure.diagnostics.clone(),
             outside_turn,
+            self.account
+                .as_ref()
+                .map(|account| account.credential_id.clone()),
         );
     }
 

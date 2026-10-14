@@ -164,10 +164,14 @@ impl LoginScript {
     }
 }
 
-/// What a scripted family's quota probe answers.
+/// What a scripted family's quota probe answers: the reading, with the
+/// windows scripted for the probed account in place of its own, and how
+/// many probes ran.
 pub struct QuotaScript {
     pub cost: Option<ProbeCost>,
     pub reading: Mutex<Result<ProbeReading, QuotaError>>,
+    pub windows_of: Mutex<std::collections::HashMap<String, Vec<QuotaWindow>>>,
+    pub probes: AtomicUsize,
 }
 
 impl QuotaScript {
@@ -179,6 +183,8 @@ impl QuotaScript {
                 account_label: Some("device@example.test".into()),
                 windows,
             })),
+            windows_of: Mutex::default(),
+            probes: AtomicUsize::new(0),
         }
     }
 }
@@ -192,6 +198,10 @@ pub struct ScriptedSubscription {
     /// Where its runtimes answer with the account's ID and wait as the test
     /// says; without it, each run answers `ok`.
     pub runs: Option<Arc<crate::conversations::Runs>>,
+    /// Whether its provider says it runs a process, as Claude Code's does,
+    /// so a session gets its runtime for its account through the family's
+    /// process runtime.
+    pub process_host: bool,
 }
 
 impl ProviderFamily for ScriptedSubscription {
@@ -209,7 +219,7 @@ impl ProviderFamily for ScriptedSubscription {
         let accounts = Accounts::new(subscription.pool, kit, args.clock.clone());
         let quota = subscription.account.as_ref().map(|binding| {
             ProviderQuota::new(
-                Box::new(Probe(self.quota.clone())),
+                Box::new(Probe(self.quota.clone(), binding.credential_id.clone())),
                 binding.quota.clone(),
                 args.clock.clone(),
             )
@@ -219,8 +229,31 @@ impl ProviderFamily for ScriptedSubscription {
             accounts: Some(Box::new(accounts)),
             quota,
             account: subscription.account.map(|binding| binding.credential_id),
-            process_host: false,
+            process_host: self.process_host,
             runs: self.runs.clone(),
+        }))
+    }
+
+    /// A runtime keyed by the account it is built for, as a Claude Code
+    /// process holds its one account's token.
+    fn process_runtime(
+        &self,
+        args: FamilyArgs,
+        _: RuntimeEnv,
+        _: Rc<dyn Placement>,
+    ) -> Option<Result<Box<dyn ProviderRuntime>, FamilyError>> {
+        if !self.process_host {
+            return None;
+        }
+        let FamilyCredential::Subscription(subscription) = args.credential else {
+            return Some(Err(FamilyError::WrongCredential));
+        };
+        let account = subscription.account.map(|binding| binding.credential_id);
+        Some(Ok(match (&self.runs, account) {
+            (Some(runs), Some(account)) => {
+                Box::new(crate::conversations::KeyedRuntime::new(account, runs.clone()))
+            }
+            _ => answers_ok(),
         }))
     }
 }
@@ -279,7 +312,8 @@ impl AccountKit for Kit {
     }
 }
 
-struct Probe(Arc<QuotaScript>);
+/// The probe of one account, by its ID.
+struct Probe(Arc<QuotaScript>, String);
 
 impl QuotaSource for Probe {
     fn probe_cost(&self) -> Option<ProbeCost> {
@@ -287,7 +321,11 @@ impl QuotaSource for Probe {
     }
 
     fn probe(&self) -> BoxFuture<'_, Result<ProbeReading, QuotaError>> {
-        let reading = self.0.reading.lock().unwrap().clone();
+        self.0.probes.fetch_add(1, Ordering::SeqCst);
+        let mut reading = self.0.reading.lock().unwrap().clone();
+        if let (Ok(reading), Some(windows)) = (&mut reading, self.0.windows_of.lock().unwrap().get(&self.1)) {
+            reading.windows = windows.clone();
+        }
         Box::pin(async move { reading })
     }
 
