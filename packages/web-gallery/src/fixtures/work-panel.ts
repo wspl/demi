@@ -28,6 +28,7 @@ import { galleryRequest } from './transcripts'
 import { galleryBrowser, type GalleryBrowser } from './live-browser'
 import { GalleryPanel, galleryBrowserPlugin } from './panel'
 import { createSlotChangeSet, type createGalleryWorkspace } from './workspace'
+import { sharedHistory } from './history'
 import { browserPlugin, galleryPageHost } from './plugins'
 
 /** The gallery workspace as the work panel's kinds read a conversation's files. */
@@ -38,6 +39,8 @@ export function galleryFiles(workspace: ReturnType<typeof createGalleryWorkspace
     workspace: { source: workspace.source, root: workspace.root },
     root: workspace.root,
     changes: (directory) => directory === undefined || directory === workspace.root ? workspace.changes : (slot ??= createSlotChangeSet(200)),
+    // One repository stands behind every working tree of the gallery.
+    history: () => sharedHistory.source,
     edit: readGalleryEdit,
     request: galleryRequest,
     // The gallery's working tree changes only when a specimen changes it.

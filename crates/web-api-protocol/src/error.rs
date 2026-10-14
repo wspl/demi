@@ -244,6 +244,8 @@ pub enum ErrorCode {
     ChangesTimeout,
     /// The directory is not inside a git repository.
     NotRepository,
+    /// A commit's abbreviation names more than one commit.
+    Ambiguous,
     /// The working tree could not be read.
     ChangesFailed,
     /// The Host failed the operation in a way no other code names.

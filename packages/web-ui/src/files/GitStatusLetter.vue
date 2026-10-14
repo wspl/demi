@@ -11,7 +11,7 @@ import { gitMark, type GitMarkColor } from './git-status'
  * list.
  */
 const props = defineProps<{
-  /** git's two status letters, as `git status --porcelain` prints them. */
+  /** git's two status letters, as `git status --porcelain` prints them, or a commit's file's one. */
   status: string
 }>()
 

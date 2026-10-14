@@ -9,12 +9,25 @@ const presentation = ref<'diff' | 'preview'>('diff')
 <script setup lang="ts">
 import { computed, watch } from 'vue'
 import { ChangeView, joinPath, treeLayout, usePage } from '@demicodes/plugin-sdk'
-import { changePath, goBack, goForward, holdShownChange, showChange, showEdit, viewDirectory, type ChangeData } from './data'
+import {
+  changePath,
+  goBack,
+  goForward,
+  holdShownChange,
+  placeBranch,
+  showBranch,
+  showChange,
+  showEdit,
+  showItem,
+  viewDirectory,
+  type ChangeData,
+} from './data'
 import { useChangeSources } from './sources'
 
 /**
  * The Change view of one conversation (`file-previews.md` § Changes): the
- * working tree's changes in Uncommitted, a request's in Conversation, over
+ * repository's commits and uncommitted changes in Commits, a request's in
+ * Conversation, over
  * the conversation's files service, which reads the request from the
  * transcript as it is now, so the view follows calls that end later.
  */
@@ -59,9 +72,13 @@ function open(path: string): void {
   <ChangeView
     v-model:tree="treeLayout.open.value"
     v-model:tree-width="treeLayout.width.value"
+    v-model:commits-height="treeLayout.commitsHeight.value"
     v-model:presentation="presentation"
     :mode="data.mode"
     :selected="selected"
+    :commit="data.commit"
+    :branch="data.branch"
+    :place="data.place"
     :changes="changes"
     :edit="data.request?.edit ?? null"
     :root="root"
@@ -73,6 +90,9 @@ function open(path: string): void {
     @update:mode="emit('update', showChange(data, $event, changePath(data, $event)))"
     @update:edit="emit('update', showEdit(data, $event))"
     @update:selected="emit('update', showChange(data, data.mode, $event))"
+    @update:commit="emit('update', showItem(data, $event))"
+    @update:branch="emit('update', showBranch(data, $event))"
+    @placed="emit('update', placeBranch(data, $event))"
     @back="emit('update', goBack(data))"
     @forward="emit('update', goForward(data))"
     @open="open"
