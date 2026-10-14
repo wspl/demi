@@ -18,13 +18,15 @@ use crate::subagents::{fixture, is_closed, refused, root, said, spawn};
 use crate::support::{Fixture, Model, TestProduct, agent, agent_call};
 
 /// The workflow Review Team: `explore`, whose model the user's entries
-/// offer, and `slow`, whose model none of them does.
+/// offer, with a Context of 300K, and `slow`, whose model none of them
+/// does.
 fn review_team() -> ConversationProfiles {
     ConversationProfiles::Workflow(ChosenWorkflow {
         id: "review".into(),
         name: "Review Team".into(),
         profiles: vec![
             WorkflowChild {
+                context_limit: Some(300_000),
                 name: "explore".into(),
                 description: "Finds code.".into(),
                 instructions: Some("Read and report.".into()),
@@ -32,6 +34,7 @@ fn review_team() -> ConversationProfiles {
                 model: Some(Ok(model_of("stub", "fast-model"))),
             },
             WorkflowChild {
+                context_limit: None,
                 name: "slow".into(),
                 description: "Thinks long.".into(),
                 instructions: None,
@@ -52,6 +55,7 @@ fn product() -> TestProduct {
         let mut settings = product.subagents.borrow_mut();
         settings.enabled = false;
         settings.profiles = vec![Profile {
+            context_limit: None,
             name: "helper".into(),
             description: "Helps.".into(),
             model: None,
@@ -118,6 +122,8 @@ async fn a_chosen_workflows_profiles_replace_the_users_and_one_whose_model_no_en
     client.next_until(is_closed(&child)).await;
     let asked = &model.requests_of("task explore")[0];
     assert_eq!(asked.model_id, "fast-model");
+    // And with its Context.
+    assert_eq!(fixture.store.record(&child).unwrap().context_limit, Some(300_000));
     assert!(
         asked.system_prompt.ends_with("Instructions for this subagent:\n\nRead and report."),
         "{}",

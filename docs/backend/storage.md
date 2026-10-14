@@ -269,8 +269,10 @@ input, which the multi-worker control service also relies on
   entry. See
   [Providers](../providers/providers.md#credential-vault) and
   [Models](../providers/models.md#catalog-cache).
-- **Usage and attachments:** `usage_ledger` stores user, conversation,
-  provider, model, token counts, and observation time; when a row is written
+- **Usage and attachments:** `usage_ledger` stores one row per vendor call:
+  user, conversation, agent, turn, purpose, provider, account, model, request
+  and vendor ids, token counts, outcome, observed quota and times; rows a
+  release before it wrote keep null for the fields they lacked. When a row is written
   and what the ledger promises are defined in
   [Usage and quota](../providers/usage-and-quota.md#usage-ledger).
   `attachments` stores owner, media type, byte length, content hash, a text

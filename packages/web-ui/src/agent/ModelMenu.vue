@@ -4,6 +4,7 @@ import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import type { ContextLimitChange } from './context-limit'
 import { modelSwitch, type ModelSettings, type ModelSettingsChange } from './model-selection'
 import { modelMenuRows } from './model-menu'
+import ContextMenu from './ContextMenu.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuGroup from '@demicodes/web-ui/ui/MenuGroup.vue'
@@ -23,6 +24,11 @@ const props = defineProps<{
    * a subagent profile, whose children may infer with their parent's model.
    */
   parentModel?: boolean
+  /**
+   * Leaves out the Context row, the user's limit, as a subagent profile's
+   * editor does, whose Context is the profile's own.
+   */
+  withoutContext?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -35,6 +41,7 @@ const emit = defineEmits<{
 }>()
 
 const rows = computed(() => modelMenuRows(props.providers, props.models, props.settings, props.parentModel === true))
+const context = computed(() => (props.withoutContext ? null : rows.value.context))
 
 function setFast(enabled: boolean) {
   const fast = rows.value.fast
@@ -111,24 +118,18 @@ function selectParent() {
       </template>
     </MenuItem>
     <MenuItem
-      v-if="rows.context"
+      v-if="context"
       label="Context"
-      :value="rows.context.value"
+      :value="context.value"
     >
       <template #submenu>
-        <Menu iconless>
-          <MenuItem
-            v-for="option in rows.context.options"
-            :key="option.window"
-            :label="option.label"
-            choice
-            :is-selected="option.selected"
-            @select="setContextLimit(option.tokens)"
-          />
-        </Menu>
+        <ContextMenu
+          :options="context.options"
+          @select="setContextLimit(context.options[$event].tokens)"
+        />
       </template>
     </MenuItem>
-    <MenuDivider v-if="rows.fast || rows.reasoning || rows.context" />
+    <MenuDivider v-if="rows.fast || rows.reasoning || context" />
     <MenuItem label="Model" :value="rows.model.value">
       <template #submenu>
         <Menu iconless>

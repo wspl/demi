@@ -80,7 +80,7 @@ function shell(
 
 const OPUS: JobModel = { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false }
 const SONNET: JobModel = { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Sonnet 5.5', effort: 'medium', fast: false }
-const HAIKU: JobModel = { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Haiku 5', effort: 'low', fast: false }
+const HAIKU: JobModel = { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Haiku 5.5', effort: 'low', fast: false }
 
 /**
  * What a gallery child runs on (`subagents.md` § What an agent runs on): its

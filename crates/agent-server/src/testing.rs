@@ -104,9 +104,14 @@ impl ProviderResolver for ScriptedProviders {
         })
     }
 
-    /// The model's own window: no user limits it here.
-    fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
-        let window = model.model.context_window;
+    /// The model's own window, or the profile's Context: no user limits it
+    /// here.
+    fn context_window<'a>(
+        &'a self,
+        model: &'a ModelSelection,
+        own: Option<u32>,
+    ) -> LocalBoxFuture<'a, u32> {
+        let window = demi_shared_types::session_context_window(model.model.context_window, own, None);
         Box::pin(async move { window })
     }
 

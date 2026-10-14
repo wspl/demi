@@ -1192,6 +1192,7 @@ pub(crate) fn child_record(
         description: id.into(),
         profile: profile.map(str::to_owned),
         instructions: None,
+        context_limit: None,
         round: 1,
         started_at: Timestamp::UNIX_EPOCH,
         can_spawn_subagents: true,
@@ -1696,6 +1697,7 @@ fn contexts(fixture: &Fixture, node: &NodeId) -> usize {
 async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_execution_context_itself()
  {
     let worker = Profile {
+        context_limit: Some(500_000),
         name: "worker".into(),
         description: "Works through a task list.".into(),
         model: Some(ProfileModel {
@@ -1767,6 +1769,86 @@ async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_exec
         assert_eq!(contexts(&fixture, node), 1, "{node}");
     }
     assert!(request_text(inner_asked).contains(ON_THE_CLOUD));
+    // With the worker's model comes the worker's Context.
+    for node in [&outer, &inner] {
+        assert_eq!(fixture.store.record(node).unwrap().context_limit, Some(500_000), "{node}");
+    }
+    assert!(model.is_done());
+}
+
+/// A profile without a model of its own runs its children on their
+/// parent's model with their parent's Context (`subagents.md` § Profiles),
+/// as no profile does.
+#[tokio::test(flavor = "local")]
+async fn a_profile_without_a_model_of_its_own_gives_its_children_their_parents_context() {
+    let worker = Profile {
+        name: "worker".into(),
+        description: "Works through a task list.".into(),
+        model: Some(ProfileModel {
+            provider_name: None,
+            provider_id: "stub".into(),
+            model_id: "worker-model".into(),
+            thinking_effort: None,
+            service_tier_id: None,
+        }),
+        context_limit: Some(500_000),
+        instructions: None,
+        can_spawn: true,
+        enabled: true,
+    };
+    let helper = Profile {
+        name: "helper".into(),
+        description: "Helps.".into(),
+        model: None,
+        context_limit: None,
+        instructions: Some("helper prompt".into()),
+        can_spawn: false,
+        enabled: true,
+    };
+    let product = TestProduct {
+        subagents: RefCell::new(SubagentSettings {
+            enabled: true,
+            max_live: None,
+            max_depth: None,
+            profiles: vec![helper, worker],
+        }),
+        ..TestProduct::default()
+    };
+    let model = Model::default();
+    let (outer_gate, inner_gate) = (Gate::new(), Gate::new());
+    model.root([said("noted")]);
+    model.child(
+        "task outer",
+        [held_said(&outer_gate, "delegated"), said("outer done")],
+    );
+    model.child("task inner", [held_said(&inner_gate, "inner done")]);
+    let fixture = fixture(&model, product);
+    fixture
+        .resolver
+        .list("stub", vec![listed_model("worker-model", &[], &[])]);
+    let mut client = fixture.opened().await;
+
+    let outer = spawn(
+        &fixture,
+        &root(),
+        json!({ "prompt": "task outer", "profile": "worker" }),
+    )
+    .await;
+    let inner_start = spawn_during_turn(
+        &fixture,
+        &outer,
+        json!({ "prompt": "task inner", "profile": "helper" }),
+    );
+    outer_gate.open();
+    let inner = inner_start.await.unwrap();
+    inner_gate.open();
+    client.next_until(is_closed(&outer)).await;
+    client.next_until(is_idle).await;
+
+    let inner_asked = &model.requests_of("task inner")[0];
+    assert_eq!(inner_asked.model_id, "worker-model");
+    assert!(inner_asked.system_prompt.ends_with("Instructions for this subagent:\n\nhelper prompt"));
+    assert_eq!(fixture.store.record(&inner).unwrap().context_limit, Some(500_000));
     assert!(model.is_done());
 }
 

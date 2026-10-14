@@ -156,17 +156,30 @@ and [picker visibility](https://github.com/openai/codex/blob/3dc1e2a58406dc69db5
 
 ### A provider is in the list from the start
 
-Adding a provider asks only what kind it is: a vendor from the list, or a
-compatible API of a protocol, which also asks its endpoint. The entry joins the providers list at once,
-selected, named after its vendor or family, and its page shows what it still
-needs, as Mail adds an account that waits for its password. For example, the
-user adds Google: *Google* stands in the list with a yellow dot, and on its
-page the API key field waits, empty, for the key.
+Adding a provider asks only what kind it is: a vendor from the list, or
+*Compatible API*. Choosing one creates the entry at once, with no dialog
+before it, and it joins the providers list selected, and its page, the same
+page every entry has, shows what it still needs, as Mail adds an account
+that waits for its password. For example, the user adds Google: *Google*
+stands in the list with a yellow dot, and on its page the API key field
+waits, empty, for the key. The user adds a compatible API: *Compatible API*
+stands in the list, its protocol Anthropic Messages, its endpoint and key
+empty, its models none, and every one of them can be set on its page.
 
-An entry that cannot infer yet is **incomplete**: an API-key entry without a
-key, an entry whose catalog is its configured list while the list is empty,
-or a subscription entry without an account. An address is never missing: an
-entry without one uses its family's default endpoint
+A new entry is named after its vendor, or *Compatible API*; when the user
+already has an entry of that name, it takes the first free *(2)*, *(3)* and
+so on: *Google (2)*. A name the user gives later need not be unique.
+
+A compatible entry's protocol, Anthropic Messages, OpenAI Chat Completions
+or OpenAI Responses, is a choice on its page that the user may change at any
+time; the endpoint, the key and the models stay. Its key is optional, since
+a server of the user's own may take none: it is sent when set. Its endpoint
+is what it cannot work without.
+
+An entry that cannot infer yet is **incomplete**: a vendor entry without a
+key, a compatible entry without an endpoint, an entry whose catalog is its
+configured list while the list is empty, or a subscription entry without an
+account. A vendor entry's address is never missing: it uses its vendor's
 ([Endpoints](providers.md#endpoints)). The page knows whether a key is saved
 from the entry's `hasApiKey`, and shows the masked key only then. What it
 lacks is shown plainly, never in red, since nothing failed
@@ -178,7 +191,7 @@ needs-you yellow the sidebar uses, and its models show in the model menu
 dimmed, with *Finish setting up this provider in Settings* as the reason they
 cannot be chosen ([What the web app receives](#what-the-web-app-receives)). Its
 availability is `unavailable` for the reason `setup`, with that sentence and
-the list of what it lacks (`apiKey`, `models`, `account`), from which the
+the list of what it lacks (`apiKey`, `endpoint`, `models`, `account`), from which the
 page marks its fields. The dot goes the
 moment the last missing part is saved. Nothing is checked against the vendor
 while the user types: **Test** stays the way to try the entry.
@@ -199,14 +212,24 @@ An entry whose catalog is its configured list gets a model in one step:
  └─────────────────────────────────────────────────┘
 ```
 
-1. **Add Model** opens a dialog with one field, the model's name as the user
-   will see it in the menu. Typing searches models.dev; the list under the
-   field shows the matches, *Custom* always first.
-2. Choosing a match fills the whole model at once and shows it: its name, its
-   id as the entry's vendor names it, its context window, output limit,
-   thinking efforts and the files it reads. Every field stays editable.
-3. **Add** saves it. Choosing *Custom* shows the same fields empty but the
-   name typed so far.
+1. **Add Model** opens a search: typing searches models.dev, and the list
+   under the field shows the matches, *Custom* always first.
+2. Choosing a match adds the model to the entry at once, filled from
+   models.dev, and opens it in **Edit Model**, the dialog every model of the
+   list opens: its id as the entry's vendor names it, its name in the menu,
+   its context window, output limit, thinking efforts and the files it
+   reads, in that order, every field editable, the id included. Choosing
+   *Custom* adds a model whose id and name are the text typed so far, and
+   opens it the same way.
+3. Edit Model saves a change with **Save**, drops it with **Cancel**, and
+   removes the model with **Delete Model**. Cancel on a model just added
+   keeps it as it was added, as Cancel does for any model; Delete Model
+   removes it.
+
+A model's id is unique in its entry: an id another model of the list has
+is refused in the dialog, *Another model of this provider has this ID*, and
+a model added with a taken id takes the first free *-2*, *-3* suffix, which
+the user can change.
 
 The search offers only models an agent can work with, by the same rule as a
 vendor's catalog: output that includes text, tool calls and a stated context
@@ -525,10 +548,10 @@ of either keeps the cache.
 ### Context limit
 
 The window Demi uses for a model is the model's context window, unless the
-user limited it. For example, Claude Opus on a user's Claude Code entry has a
+user limited it. For example, Claude Opus 5.5 on a user's Claude Code entry has a
 window of 1,000,000 tokens. The user sets its Context to 300K in the model
 menu of one conversation. From then on every conversation of that user that
-infers with Claude Opus on that entry compacts at 240,000 tokens instead of
+infers with Claude Opus 5.5 on that entry compacts at 240,000 tokens instead of
 800,000, and its usage indicator counts against 300K. A conversation that
 switches to GPT-5.5 uses GPT-5.5's own setting, and another user of the same
 shared instance still has 1M.
@@ -623,7 +646,7 @@ whose modalities are only `text` reads none, and one the catalog gives no
 modalities for has a null list. The modalities say what the model reads,
 kind by kind; models.dev's single attachment flag does not, since most
 models it marks read images but no PDF: `deepseek-v4-flash` takes `text` and
-`image`, `claude-sonnet-4-5` `text`, `image` and `pdf`. A model
+`image`, `claude-sonnet-5-5` `text`, `image` and `pdf`. A model
 whose catalog states its exact types, such as a model of a configured list,
 uses them instead, including an empty list or null. A provider's catalog
 lists only the types its wire carries in a message: `grok-build` and `codex`

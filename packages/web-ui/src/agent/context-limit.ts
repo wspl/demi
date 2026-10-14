@@ -1,5 +1,6 @@
 import { contextLimits } from '@demicodes/protocol'
 import type { ModelInfo } from '../transport/protocol'
+import { formatTokens } from '../ui/token-count'
 
 /**
  * One model's context limit as the model menu changes it (`models.md`
@@ -38,4 +39,36 @@ export function contextLimitOptions(model: ModelInfo): ContextLimitOption[] {
     { window: full, tokens: null },
     ...limits.map((tokens) => ({ window: tokens, tokens })),
   ]
+}
+
+/** One option of a subagent profile's Context: its label, and the tokens the profile stores, null for the user's limit. */
+export interface ProfileContextOption {
+  label: string
+  tokens: number | null
+}
+
+/**
+ * A subagent profile's Context options on `model` (`subagents.md`
+ * § Profiles): Default, the user's limit on the model, with the window it
+ * gives now; then the Context row's options, the full window stored as its
+ * own size. None for a model without a Context row.
+ */
+export function profileContextOptions(model: ModelInfo): ProfileContextOption[] {
+  const options = contextLimitOptions(model)
+  if (options.length === 0) {
+    return []
+  }
+  return [
+    { label: `Default (${formatTokens(contextWindowInUse(model))})`, tokens: null },
+    ...options.map((option) => ({ label: formatTokens(option.window), tokens: option.window })),
+  ]
+}
+
+/**
+ * The profile's Context `tokens` as `model` offers it, null for Default: a
+ * choice the window no longer offers is the full window, as for a session.
+ */
+export function profileContextChoice(model: ModelInfo, tokens: number | null): number | null {
+  const offered = profileContextOptions(model).some((option) => option.tokens === tokens)
+  return tokens === null || offered ? tokens : model.contextWindow
 }

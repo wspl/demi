@@ -25,7 +25,7 @@ use demi_provider_common::{
     Ahead, ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, RuntimeEnv,
 };
-use demi_shared_types::{Model, ModelSelection, NodeId, UnavailableSetting, effective_context_window};
+use demi_shared_types::{Model, ModelSelection, NodeId, UnavailableSetting, session_context_window};
 use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
@@ -127,11 +127,19 @@ impl ProviderResolver for ConversationProviders {
         })
     }
 
-    /// The model's window, or the limit the user stored on the model while
-    /// its window offers it, read from the user's preferences at each check.
-    fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
+    /// The model's window, or the profile's Context `own` of a subagent, or
+    /// else the limit the user stored on the model, read from the user's
+    /// preferences at each check; either while the window offers it.
+    fn context_window<'a>(
+        &'a self,
+        model: &'a ModelSelection,
+        own: Option<u32>,
+    ) -> LocalBoxFuture<'a, u32> {
         Box::pin(async move {
             let window = model.model.context_window;
+            if own.is_some() {
+                return session_context_window(window, own, None);
+            }
             let preferences = match self.services.control.preferences(self.user.clone()).await {
                 Ok(preferences) => preferences,
                 Err(error) => {
@@ -152,7 +160,7 @@ impl ProviderResolver for ConversationProviders {
                 .find(|(provider, _)| provider.as_str() == model.provider_id)
                 .and_then(|(_, models)| models.get(&model.model.id))
                 .copied();
-            effective_context_window(window, limit)
+            session_context_window(window, None, limit)
         })
     }
 

@@ -36,7 +36,7 @@ import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
 import { createSubagentState, demoSubagentProfiles } from '../fixtures/subagent-profiles'
 import { productWould } from '../product-would'
 import { demoProviders } from '../fixtures/catalog'
-import { composerModels, setGalleryContextLimit } from '../fixtures/context-limits'
+import { composerModels } from '../fixtures/context-limits'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import type { SettingsSessionHost } from '@demicodes/web-ui/settings/types'
@@ -217,10 +217,11 @@ function pinnedEditor(id: string | null) {
         name: profile.name,
         description: profile.description,
         model: profile.model,
+        contextLimit: profile.contextLimit,
         instructions: profile.instructions,
         canSpawn: profile.canSpawn,
       }
-    : { name: '', description: '', model: null, instructions: null, canSpawn: true }
+    : { name: '', description: '', model: null, contextLimit: null, instructions: null, canSpawn: true }
   return { open: ref(true), draft }
 }
 /** The Credentials section without a credential: its list says how one comes. */
@@ -246,6 +247,7 @@ function deletedCredential(editor: ReturnType<typeof pinnedCredentialEditor>) {
 
 const inheritEditor = pinnedEditor(null)
 const ownEditor = pinnedEditor('explore')
+const contextEditor = pinnedEditor('scout')
 
 async function saved(editor: ReturnType<typeof pinnedEditor>, draft: SettingsSubagentDraft) {
   await slow()
@@ -527,7 +529,6 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             :catalog-models="composerModels"
             @close="inheritEditor.open.value = false"
             @save="saved(inheritEditor, $event)"
-            @context-limit="setGalleryContextLimit"
           />
         </GalleryOverlayWell>
       </GallerySection>
@@ -548,8 +549,28 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             :catalog-models="composerModels"
             @close="ownEditor.open.value = false"
             @save="saved(ownEditor, $event)"
-            @context-limit="setGalleryContextLimit"
             @delete="deleted(ownEditor)"
+          />
+        </GalleryOverlayWell>
+      </GallerySection>
+
+      <GallerySection
+        title="Profile Editor · Own Context"
+        note="The scout profile on Claude Opus, whose 1M window offers a choice: its subagents use 500K while the user’s conversations on Opus keep their own limit. Default names the window that limit gives; the Context row leaves with Parent’s Model or a model of 500K or less."
+      >
+        <GalleryOverlayWell size="tall">
+          <Button v-if="!contextEditor.open.value" size="md" @click="contextEditor.open.value = true">Open</Button>
+          <SubagentProfileDialog
+            :is-open="contextEditor.open.value"
+            :overlay-store="appOverlayStore"
+            mode="edit"
+            :profile="contextEditor.draft"
+            :providers="demoProviders"
+            :models="composerModels"
+            :catalog-models="composerModels"
+            @close="contextEditor.open.value = false"
+            @save="saved(contextEditor, $event)"
+            @delete="deleted(contextEditor)"
           />
         </GalleryOverlayWell>
       </GallerySection>

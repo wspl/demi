@@ -361,8 +361,13 @@ impl ProviderResolver for DeepSeek {
         Box::pin(async move { runtime })
     }
 
-    /// The model's own window: the fixture has no user to limit it.
-    fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32> {
+    /// The model's own window: the fixture has no user to limit it, and its
+    /// root has no profile.
+    fn context_window<'a>(
+        &'a self,
+        model: &'a ModelSelection,
+        _own: Option<u32>,
+    ) -> LocalBoxFuture<'a, u32> {
         let window = model.model.context_window;
         Box::pin(async move { window })
     }
