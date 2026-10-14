@@ -1,34 +1,43 @@
 //! Logins (`providers.md` § Login and publication): each login runs the
-//! family's login as a task of the backend's, reports what the user must do
-//! while it waits, hands it the codes the user pastes, and publishes the
-//! account when it completes. A login into a new entry authenticates against
-//! a pool held in memory and publishes the entry with its account in one
-//! transaction; a login into an existing entry holds the entry until it
-//! ends. The vault alone ends a login the user does not finish: it stops the
-//! family's login once the login's lifetime from its start has passed, and
-//! that moment is the expiry the user is shown. Cancelling a login stops it
-//! at once. A stopped login ends once it has released what it held, such as
-//! the CLI process and directory of a Claude sign-in, and the cancel, the
-//! expiry and shutdown wait for that. Its result is kept for ten minutes
-//! after it ends.
+//! family's login as a task of the backend's, reports what it waits for and
+//! what the user must do, hands it the codes the user pastes, and publishes
+//! the account when it completes. A login into a new entry authenticates
+//! against a pool held in memory and publishes the entry with its account
+//! in one transaction; a login into an existing entry holds the entry until
+//! it ends. The vault alone ends a login the user does not finish: it stops
+//! the family's login once the login's lifetime from its start has passed,
+//! and that moment is the expiry the user is shown. Cancelling a login
+//! stops it at once. A stopped login ends once it has released what it
+//! held, such as the CLI process and directory of a Claude sign-in, and the
+//! cancel, the expiry and shutdown wait for that. Its result is kept for ten
+//! minutes after it ends.
+//!
+//! A login is followed, never asked about: each change of its state, its
+//! start, its stage, its link or code, a code handed over or refused, its
+//! end and its drop, is announced on its starter's pages as the `logins`
+//! part. The server log holds its start, each stage with the time the one
+//! before took, and its end, under the request that started it, never a
+//! link's or a code's contents.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
+use demi_backend_page_sync::{Part, SyncRegistry};
 use demi_provider_claude_code::AccountMachine;
 use demi_provider_common::Secret;
 use demi_provider_common::credentials::{LoginError, LoginIo, LoginKind, MemoryCredentialPool};
-use demi_shared_types::{Clock, LoginPending, Timestamp};
-use demi_web_api_protocol::ids::{CredentialId, LoginId, UserId};
-use demi_web_api_protocol::providers::{CredentialKind, LoginState};
+use demi_shared_types::{Clock, LoginPending, LoginStage, RequestId, Timestamp};
+use demi_web_api_protocol::ids::{CredentialId, LoginId, ProviderId, UserId};
+use demi_web_api_protocol::providers::{CredentialKind, ListedLogin, LoginState};
 use tokio::sync::{mpsc, watch};
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
+use tracing::Instrument as _;
 
 use super::entries::ProviderEntry;
-use super::operations::{OperationGuard, ProviderOperations};
+use super::operations::{Held, HeldBy, OperationGuard, ProviderOperations};
 use crate::llm::assembly::{AssemblyError, LoginAccounts, ProviderAssembly};
 
 /// How long a login waits for its user, and how long its result is kept.
@@ -71,9 +80,11 @@ pub enum LoginRefusal {
     /// The owner already holds the family's subscription entry.
     #[error("This scope already has a {0} subscription")]
     Exists(String),
-    /// Another change holds the entry, or the backend is shutting down.
+    /// Another change holds the entry, or the backend is shutting down:
+    /// the starter's own login into the entry, which it names, or a change
+    /// of another kind, which names none.
     #[error("Another provider operation is still running")]
-    Busy,
+    Busy(Option<LoginId>),
     #[error(transparent)]
     Assembly(#[from] AssemblyError),
 }
@@ -85,6 +96,8 @@ pub struct LoginFlows {
     timing: LoginTiming,
     /// The wall clock the expiry a login shows is read from.
     clock: Arc<dyn Clock>,
+    /// Where a login's change is announced to its starter's pages.
+    sync: SyncRegistry,
     tasks: TaskTracker,
     closing: CancellationToken,
     /// A `std` mutex: the edge's requests and the login tasks update the
@@ -103,25 +116,79 @@ pub enum CodeRefusal {
 }
 
 struct Flow {
+    /// The user who started it, the only one who reads, answers and
+    /// cancels it.
     owner: UserId,
-    kind: LoginKind,
+    /// How the user finishes it, once the family's login is made; none
+    /// while the login prepares it.
+    kind: Option<LoginKind>,
+    /// The entry the login adds an account to; none for a login that makes
+    /// a new entry.
+    provider_id: Option<ProviderId>,
+    family: String,
+    /// The request that started it, which its failure names.
+    request: RequestId,
+    started: Instant,
+    /// When the login reached its stage, for the time the stage took.
+    stage_since: Instant,
     state: LoginState,
     /// Where the codes the user pastes go, while the login runs.
     codes: mpsc::UnboundedSender<Secret>,
     cancel: CancellationToken,
-    /// When the login ended; its result goes once the retention has passed.
-    ended_at: Option<Instant>,
     /// Turns true when the login's task has recorded how it ended.
     ended: watch::Receiver<bool>,
 }
 
-/// How a login's task ends: at `deadline`, when `cancel` fires, or when
-/// the flow finishes, whereupon it turns `ended` true.
+impl Flow {
+    fn listed(&self, id: &LoginId) -> ListedLogin {
+        ListedLogin {
+            id: id.clone(),
+            provider_id: self.provider_id.clone(),
+            provider_type: self.family.clone(),
+            login: self.state.clone(),
+        }
+    }
+
+    /// Moves the running login to `stage`, and logs the time the stage
+    /// before took; `false` when it is there already or has ended.
+    fn reach(&mut self, stage: LoginStage) -> bool {
+        let LoginState::Pending { stage: current, .. } = &mut self.state else {
+            return false;
+        };
+        if *current == stage {
+            return false;
+        }
+        let now = Instant::now();
+        tracing::info!(
+            stage = stage.as_str(),
+            previous = current.as_str(),
+            took_ms = millis(now - self.stage_since),
+            "the login reached a stage"
+        );
+        *current = stage;
+        self.stage_since = now;
+        true
+    }
+}
+
+fn millis(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+}
+
+/// How a login's family login ends: at `deadline`, when `cancel` fires, or
+/// when the flow finishes; with the codes the user pastes meanwhile.
 struct Ending {
     deadline: Instant,
     cancel: CancellationToken,
-    ended: watch::Sender<bool>,
     codes: mpsc::UnboundedReceiver<Secret>,
+    /// The entry the login adds to or makes, held until it ends.
+    held: OperationGuard,
+}
+
+/// How a login ended without an account.
+enum Unfinished {
+    Cancelled,
+    Failed(String),
 }
 
 /// Where a login publishes its account.
@@ -132,11 +199,8 @@ enum Target {
         label: String,
         staged: MemoryCredentialPool,
     },
-    /// An existing entry, held until the login ends.
-    Existing {
-        entry: Box<ProviderEntry>,
-        _held: OperationGuard,
-    },
+    /// An existing entry.
+    Existing { entry: Box<ProviderEntry> },
 }
 
 impl LoginFlows {
@@ -145,12 +209,14 @@ impl LoginFlows {
         operations: Arc<ProviderOperations>,
         timing: LoginTiming,
         clock: Arc<dyn Clock>,
+        sync: SyncRegistry,
     ) -> Arc<Self> {
         Arc::new(Self {
             assembly,
             operations,
             timing,
             clock,
+            sync,
             tasks: TaskTracker::new(),
             closing: CancellationToken::new(),
             flows: Mutex::default(),
@@ -162,10 +228,15 @@ impl LoginFlows {
         self.flows.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Starts `starter`'s login of `family`: into `existing`, or into a new
-    /// entry of `owner`'s labelled `label`. A login that runs a process runs
-    /// it on `machine`, the starter's. Only `starter` reads, answers and
-    /// cancels it.
+    /// Announces a change of `owner`'s logins to the owner's pages.
+    fn announce(&self, owner: &UserId) {
+        self.sync.mark(owner, Part::Logins);
+    }
+
+    /// Starts `starter`'s login of `family`, which the request `request`
+    /// asked for: into `existing`, or into a new entry of `owner`'s
+    /// labelled `label`. A login that runs a process runs it on `machine`,
+    /// the starter's. Only `starter` reads, answers and cancels it.
     pub async fn start(
         self: &Arc<Self>,
         owner: UserId,
@@ -174,112 +245,180 @@ impl LoginFlows {
         label: String,
         existing: Option<ProviderEntry>,
         machine: Arc<dyn AccountMachine>,
+        request: RequestId,
     ) -> Result<LoginId, LoginRefusal> {
         if self.closing.is_cancelled() {
-            return Err(LoginRefusal::Busy);
+            return Err(LoginRefusal::Busy(None));
         }
         let registered = self.assembly.family(&family)?;
         if registered.credential() != CredentialKind::Subscription {
             return Err(LoginRefusal::NoLoginFlow(family));
         }
-        self.prune();
         let id = LoginId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
-        let (accounts, target) = match existing {
-            Some(entry) => {
-                let held = self
-                    .operations
-                    .reserve(&entry.id)
-                    .ok_or(LoginRefusal::Busy)?;
-                let accounts = self.assembly.login_accounts(&entry, machine).await?;
-                let entry = Box::new(entry);
-                (accounts, Target::Existing { entry, _held: held })
-            }
-            None => {
-                let entries = self
-                    .assembly
-                    .vault()
-                    .entries(owner.clone())
-                    .await
-                    .map_err(AssemblyError::from)?;
-                if entries.iter().any(|entry| entry.family == family) {
-                    return Err(LoginRefusal::Exists(family));
-                }
-                let staged = MemoryCredentialPool::new();
-                let accounts = self.assembly.detached_login_accounts(
-                    &family,
-                    id.as_str(),
-                    &label,
-                    Arc::new(staged.clone()),
-                    machine,
-                )?;
-                (
-                    accounts,
-                    Target::New {
-                        family: family.clone(),
-                        label,
-                        staged,
-                    },
-                )
-            }
+        let provider_id = existing.as_ref().map(|entry| entry.id.clone());
+        // The entry the login adds to or makes is held from here, so a
+        // second start meanwhile is refused and names this login to its
+        // starter.
+        let held = match &existing {
+            Some(entry) => Held::Entry(entry.id.clone()),
+            None => Held::NewEntry {
+                owner: owner.clone(),
+                family: family.clone(),
+            },
         };
-        let Some(kind) = accounts
-            .accounts()
-            .and_then(|accounts| accounts.capability().login)
-        else {
-            return Err(LoginRefusal::NoLoginFlow(family));
+        let by = HeldBy {
+            login: id.clone(),
+            starter: starter.clone(),
+        };
+        let held = self.operations.hold(held, Some(by)).map_err(|holder| {
+            LoginRefusal::Busy(
+                holder
+                    .filter(|holder| holder.starter == starter)
+                    .map(|holder| holder.login),
+            )
+        })?;
+        // The login is listed and announced from here, so a page that a
+        // second start sent to it finds it, and learns its end, a failure
+        // of its start included.
+        let started = Instant::now();
+        let started_at = self.clock.now();
+        let cancel = self.closing.child_token();
+        let (ended, ending) = watch::channel(false);
+        let (codes, pasted) = mpsc::unbounded_channel();
+        // Every event of the login is logged under the request that started
+        // it, whose ID its failure names.
+        let span = tracing::info_span!(
+            "login",
+            request_id = %request,
+            user = %starter,
+            login = %id,
+            family = %family,
+            provider = provider_id.as_ref().map(tracing::field::display),
+        );
+        let flow = Flow {
+            owner: starter.clone(),
+            kind: None,
+            provider_id,
+            family: family.clone(),
+            request,
+            started,
+            stage_since: started,
+            state: LoginState::Pending {
+                stage: LoginStage::Preparing,
+                verification_url: None,
+                user_code: None,
+                needs_code: false,
+                codes_taken: 0,
+                code_error: None,
+                // Until the login knows its kind, and so its lifetime
+                // (`providers.md` § Login and publication).
+                expires_at: None,
+            },
+            codes,
+            cancel: cancel.clone(),
+            ended: ending,
+        };
+        span.in_scope(|| tracing::info!("a login started"));
+        self.lock().insert(id.clone(), flow);
+        self.announce(&starter);
+        let prepared = async {
+            let (accounts, target) = match existing {
+                Some(entry) => {
+                    let accounts = self.assembly.login_accounts(&entry, machine).await?;
+                    let entry = Box::new(entry);
+                    (accounts, Target::Existing { entry })
+                }
+                None => {
+                    let entries = self
+                        .assembly
+                        .vault()
+                        .entries(owner.clone())
+                        .await
+                        .map_err(AssemblyError::from)?;
+                    if entries.iter().any(|entry| entry.family == family) {
+                        return Err(LoginRefusal::Exists(family.clone()));
+                    }
+                    let staged = MemoryCredentialPool::new();
+                    let accounts = self.assembly.detached_login_accounts(
+                        &family,
+                        id.as_str(),
+                        &label,
+                        Arc::new(staged.clone()),
+                        machine,
+                    )?;
+                    (
+                        accounts,
+                        Target::New {
+                            family: family.clone(),
+                            label,
+                            staged,
+                        },
+                    )
+                }
+            };
+            let kind = accounts
+                .accounts()
+                .and_then(|accounts| accounts.capability().login)
+                .ok_or_else(|| LoginRefusal::NoLoginFlow(family.clone()))?;
+            Ok((accounts, target, kind))
+        }
+        .instrument(span.clone())
+        .await;
+        let (accounts, target, kind) = match prepared {
+            Ok(prepared) => prepared,
+            Err(refusal) => {
+                // The start answers the refusal; the login ends with it,
+                // as every page that shows it learns.
+                span.in_scope(|| self.end(&id, Err(Unfinished::Failed(refusal.to_string()))));
+                ended.send_replace(true);
+                self.tasks
+                    .spawn(self.clone().retire(id, starter).instrument(span));
+                return Err(refusal);
+            }
         };
         // The login's end, read on both clocks at its start: the task stops
-        // the flow at `deadline`, and the user is shown `expires_at`.
+        // the flow at `deadline`, and the user is shown `expires_at`, which
+        // is announced.
         let lifetime = self.timing.lifetime(kind);
-        let deadline = Instant::now() + lifetime;
-        let expires_at = self
-            .clock
-            .now()
+        let deadline = started + lifetime;
+        let expires_at = started_at
             .to_jiff()
             .saturating_add(lifetime)
             .map(Timestamp::truncate)
             .expect("adding a duration, unlike a calendar span, never fails");
-        let cancel = self.closing.child_token();
-        let (ended, ending) = watch::channel(false);
-        let (codes, pasted) = mpsc::unbounded_channel();
-        let flow = Flow {
-            owner: starter,
-            kind,
-            state: LoginState::Pending {
-                verification_url: None,
-                user_code: None,
-                needs_code: false,
-                code_error: None,
-                expires_at,
-            },
-            codes,
-            cancel: cancel.clone(),
-            ended_at: None,
-            ended: ending,
-        };
-        self.lock().insert(id.clone(), flow);
+        if let Some(flow) = self.lock().get_mut(&id) {
+            flow.kind = Some(kind);
+            if let LoginState::Pending { expires_at: shown, .. } = &mut flow.state {
+                *shown = Some(expires_at);
+            }
+        }
+        self.announce(&starter);
         let ending = Ending {
             deadline,
             cancel,
-            ended,
             codes: pasted,
+            held,
         };
         let flows = self.clone();
         let login = id.clone();
-        self.tasks
-            .spawn(async move { flows.run(login, owner, accounts, target, ending).await });
+        self.tasks.spawn(
+            async move { flows.run(login, owner, accounts, target, ending, ended).await }
+                .instrument(span),
+        );
         Ok(id)
     }
 
     /// Hands `code`, which the owner pasted, to the owner's login, which
-    /// waits for one once it has shown its link; the refusal of an earlier
-    /// code no longer stands. The code is never kept.
+    /// waits for one once it has shown its link, and answers its number
+    /// among the codes the login took, counting from one, which a refusal of
+    /// it names; the refusal of an earlier code no longer stands. The code
+    /// is never kept.
     pub fn submit_code(
         &self,
         id: &LoginId,
         owner: &UserId,
         code: Secret,
-    ) -> Result<(), CodeRefusal> {
+    ) -> Result<u32, CodeRefusal> {
         let mut flows = self.lock();
         let flow = flows
             .get_mut(id)
@@ -287,6 +426,7 @@ impl LoginFlows {
             .ok_or(CodeRefusal::NotFound)?;
         let LoginState::Pending {
             needs_code: true,
+            codes_taken,
             code_error,
             ..
         } = &mut flow.state
@@ -299,18 +439,33 @@ impl LoginFlows {
         flow.codes
             .send(code)
             .map_err(|_| CodeRefusal::NotWaiting)?;
+        *codes_taken += 1;
         *code_error = None;
-        Ok(())
+        let taken = *codes_taken;
+        drop(flows);
+        tracing::info!(login = %id, code = taken, "a code was handed to the login");
+        self.announce(owner);
+        Ok(taken)
     }
 
     /// The login's state, for its owner.
     pub fn state(&self, id: &LoginId, owner: &UserId) -> Option<LoginState> {
-        self.prune();
-        let flows = self.lock();
-        flows
+        self.lock()
             .get(id)
             .filter(|flow| flow.owner == *owner)
             .map(|flow| flow.state.clone())
+    }
+
+    /// The logins `owner` started that run or ended within the retention,
+    /// in the order they started.
+    pub fn listed(&self, owner: &UserId) -> Vec<ListedLogin> {
+        let flows = self.lock();
+        let mut owned: Vec<_> = flows
+            .iter()
+            .filter(|(_, flow)| flow.owner == *owner)
+            .collect();
+        owned.sort_by_key(|(_, flow)| flow.started);
+        owned.into_iter().map(|(id, flow)| flow.listed(id)).collect()
     }
 
     /// Cancels the owner's login and waits until it has ended; `false` for a
@@ -336,18 +491,8 @@ impl LoginFlows {
         self.tasks.wait().await;
     }
 
-    /// Drops the results that have been kept long enough.
-    fn prune(&self) {
-        let retention = self.timing.retention;
-        self.lock().retain(|_, flow| {
-            flow.ended_at
-                .is_none_or(|ended| ended.elapsed() < retention)
-        });
-    }
-
-    /// Runs the login until it completes, fails, expires or is cancelled, and
-    /// records how it ended. A login that expires or is cancelled is stopped,
-    /// and its end awaited, so that it has released what it held.
+    /// Runs the login, records how it ended, whereupon it turns `ended`
+    /// true, and drops its result once the retention has passed.
     async fn run(
         self: Arc<Self>,
         id: LoginId,
@@ -355,17 +500,93 @@ impl LoginFlows {
         accounts: LoginAccounts,
         target: Target,
         ending: Ending,
+        ended: watch::Sender<bool>,
     ) {
+        let ended_as = self.attempt(&id, owner, accounts, target, ending).await;
+        let starter = self.end(&id, ended_as);
+        ended.send_replace(true);
+        self.retire(id, starter).await;
+    }
+
+    /// Records how the login ended, announces it, and answers its starter.
+    fn end(&self, id: &LoginId, ended_as: Result<(ProviderId, CredentialId), Unfinished>) -> UserId {
+        let starter = {
+            let mut flows = self.lock();
+            let flow = flows
+                .get_mut(id)
+                .expect("a login's flow stays until it is retired");
+            let took_ms = millis(flow.started.elapsed());
+            let LoginState::Pending { stage, .. } = &flow.state else {
+                unreachable!("a login ends once");
+            };
+            let stage = stage.as_str();
+            flow.state = match ended_as {
+                Ok((provider_id, credential_id)) => {
+                    tracing::info!(took_ms, stage, "the login completed");
+                    LoginState::Completed {
+                        provider_id,
+                        credential_id,
+                    }
+                }
+                Err(Unfinished::Cancelled) => {
+                    tracing::info!(took_ms, stage, "the login was cancelled");
+                    LoginState::Cancelled
+                }
+                Err(Unfinished::Failed(message)) => {
+                    tracing::info!(took_ms, stage, reason = message, "the login failed");
+                    LoginState::Failed {
+                        message,
+                        request_id: flow.request.clone(),
+                    }
+                }
+            };
+            flow.owner.clone()
+        };
+        self.announce(&starter);
+        starter
+    }
+
+    /// Drops the ended login's result once the retention has passed, and
+    /// announces it.
+    async fn retire(self: Arc<Self>, id: LoginId, starter: UserId) {
+        // Shutdown drops what is kept at once; nobody reads it any more.
+        tokio::select! {
+            () = tokio::time::sleep(self.timing.retention) => {}
+            () = self.closing.cancelled() => {}
+        }
+        self.lock().remove(&id);
+        self.announce(&starter);
+    }
+
+    /// Runs the family's login until it completes, fails, expires or is
+    /// cancelled, and publishes its account; answers the entry and the
+    /// account, or why it ended without one. A login that expires or is
+    /// cancelled is stopped, and its end awaited, so that it has released
+    /// what it held; the entry it held, the provider and the flow are
+    /// released when this returns.
+    async fn attempt(
+        self: &Arc<Self>,
+        id: &LoginId,
+        owner: UserId,
+        accounts: LoginAccounts,
+        target: Target,
+        ending: Ending,
+    ) -> Result<(ProviderId, CredentialId), Unfinished> {
         let Ending {
             deadline,
             cancel,
-            ended,
             codes,
+            held: _held,
         } = ending;
         let pending = {
             let flows = self.clone();
             let id = id.clone();
             move |pending: LoginPending| flows.pending(&id, pending)
+        };
+        let stage = {
+            let flows = self.clone();
+            let id = id.clone();
+            move |stage: LoginStage| flows.stage(&id, stage)
         };
         let accounts = accounts
             .accounts()
@@ -373,6 +594,7 @@ impl LoginFlows {
         let stop = CancellationToken::new();
         let login = accounts.login(LoginIo {
             pending: &pending,
+            stage: &stage,
             codes,
             stop: stop.clone(),
         });
@@ -390,58 +612,107 @@ impl LoginFlows {
                 login.await
             }
         };
-        let outcome = match outcome {
-            Ok(account) => Ok(account),
-            Err(LoginError::Stopped) if expired => Err("The login expired".to_owned()),
-            Err(LoginError::Stopped) => Err("The login was cancelled".to_owned()),
-            Err(error) => Err(error.to_string()),
-        };
-        let state = match outcome {
-            Ok(account) => self.publish(owner, target, account.id).await,
-            Err(message) => LoginState::Failed { message },
-        };
-        if let Some(flow) = self.lock().get_mut(&id) {
-            flow.state = state;
-            flow.ended_at = Some(Instant::now());
+        match outcome {
+            Ok(account) => self
+                .publish(owner, target, account.id)
+                .await
+                .map_err(Unfinished::Failed),
+            Err(LoginError::Stopped) if expired => {
+                Err(Unfinished::Failed("The login expired".to_owned()))
+            }
+            Err(LoginError::Stopped) => Err(Unfinished::Cancelled),
+            Err(error) => Err(Unfinished::Failed(error.to_string())),
         }
-        ended.send_replace(true);
+    }
+
+    /// Moves the login to `stage`, while it prepares.
+    fn stage(&self, id: &LoginId, stage: LoginStage) {
+        let mut flows = self.lock();
+        let Some(flow) = flows.get_mut(id) else {
+            return;
+        };
+        // Once the user is asked, the login waits for them until it ends.
+        let asked = matches!(
+            flow.state,
+            LoginState::Pending {
+                stage: LoginStage::WaitingForUser,
+                ..
+            }
+        );
+        if asked || flow.cancel.is_cancelled() || !flow.reach(stage) {
+            return;
+        }
+        let owner = flow.owner.clone();
+        drop(flows);
+        self.announce(&owner);
     }
 
     /// Stores what the vendor asked the user to do, while the login waits;
-    /// the login still ends when it started to.
+    /// the login still ends when it started to. A refusal of a code before
+    /// the last one the login took is no longer news: the user pasted
+    /// another since.
     fn pending(&self, id: &LoginId, pending: LoginPending) {
         let mut flows = self.lock();
         let Some(flow) = flows.get_mut(id) else {
             return;
         };
-        let LoginState::Pending { expires_at, .. } = flow.state else {
+        let LoginState::Pending {
+            expires_at,
+            codes_taken,
+            ..
+        } = flow.state
+        else {
             return;
         };
         if flow.cancel.is_cancelled() {
             return;
         }
-        flow.state = LoginState::Pending {
+        let code_error = match pending.code_error {
+            Some(refused) if refused.code == codes_taken => {
+                tracing::info!(code = refused.code, "the login's sign-in refused a code");
+                Some(refused.message)
+            }
+            Some(refused) => {
+                tracing::info!(
+                    code = refused.code,
+                    codes_taken,
+                    "the login's sign-in refused a code the user has pasted another after"
+                );
+                None
+            }
+            None => None,
+        };
+        let state = LoginState::Pending {
+            stage: LoginStage::WaitingForUser,
             verification_url: Some(pending.verification_url),
             user_code: pending.user_code,
-            needs_code: flow.kind == LoginKind::PastedCode,
-            code_error: pending.code_error,
+            needs_code: flow.kind == Some(LoginKind::PastedCode),
+            codes_taken,
+            code_error,
             expires_at,
         };
+        if state == flow.state {
+            return;
+        }
+        flow.reach(LoginStage::WaitingForUser);
+        flow.state = state;
+        let owner = flow.owner.clone();
+        drop(flows);
+        self.announce(&owner);
     }
 
     /// Publishes the login's account: a new entry with its staged accounts,
     /// which a concurrent login of the same family may have won, or the
     /// existing entry, whose provider and catalog then start afresh.
-    async fn publish(&self, owner: UserId, target: Target, account: String) -> LoginState {
-        let account = match CredentialId::try_from(account) {
-            Ok(account) => account,
-            Err(error) => {
-                return LoginState::Failed {
-                    message: error.to_string(),
-                };
-            }
-        };
-        let published = match target {
+    /// Answers the entry and the account, or why it failed.
+    async fn publish(
+        &self,
+        owner: UserId,
+        target: Target,
+        account: String,
+    ) -> Result<(ProviderId, CredentialId), String> {
+        let account = CredentialId::try_from(account).map_err(|error| error.to_string())?;
+        let provider_id = match target {
             Target::New {
                 family,
                 label,
@@ -453,23 +724,20 @@ impl LoginFlows {
                     .create_subscription(owner, family.clone(), label, &staged)
                     .await;
                 match created {
-                    Ok(Some(entry)) => Ok(entry.id),
-                    Ok(None) => Err(LoginRefusal::Exists(family).to_string()),
-                    Err(error) => Err(error.to_string()),
+                    Ok(Some(entry)) => entry.id,
+                    Ok(None) => return Err(LoginRefusal::Exists(family).to_string()),
+                    Err(error) => return Err(error.to_string()),
                 }
             }
-            Target::Existing { entry, .. } => match self.assembly.invalidate(&entry.id).await {
-                Ok(()) => Ok(entry.id),
-                Err(error) => Err(error.to_string()),
-            },
+            Target::Existing { entry, .. } => {
+                self.assembly
+                    .invalidate(&entry.id)
+                    .await
+                    .map_err(|error| error.to_string())?;
+                entry.id
+            }
         };
-        match published {
-            Ok(provider_id) => LoginState::Completed {
-                provider_id,
-                credential_id: account,
-            },
-            Err(message) => LoginState::Failed { message },
-        }
+        Ok((provider_id, account))
     }
 }
 
@@ -478,7 +746,7 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use demi_backend_database::control::{ControlService, testing};
-    use demi_backend_page_sync::SyncRegistry;
+    use demi_backend_page_sync::Registration;
     use demi_provider_claude_code::{AccountWork, StartError};
     use demi_provider_common::Provider;
     use demi_provider_common::credentials::{
@@ -490,7 +758,8 @@ mod tests {
         Capabilities, CatalogError, ProviderRuntime, RuntimeEnv, RuntimeError,
     };
     use demi_shared_types::{
-        AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
+        AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RefusedCode,
+        RuntimeState,
     };
     use demi_web_api_protocol::settings::InstanceMode;
     use futures_util::future::BoxFuture;
@@ -583,6 +852,255 @@ mod tests {
         }
     }
 
+    /// A family whose login takes pasted codes and refuses the code the
+    /// test names, when the test names it, then acknowledges it.
+    struct Refusing {
+        refusals: Arc<Mutex<Option<mpsc::UnboundedReceiver<(u32, tokio::sync::oneshot::Sender<()>)>>>>,
+    }
+
+    impl ProviderFamily for Refusing {
+        fn credential(&self) -> CredentialKind {
+            CredentialKind::Subscription
+        }
+
+        fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
+            let FamilyCredential::Subscription(subscription) = args.credential else {
+                return Err(FamilyError::WrongCredential);
+            };
+            let kit = RefusingKit {
+                refusals: self.refusals.clone(),
+            };
+            Ok(Arc::new(Waiting(Accounts::new(
+                subscription.pool,
+                kit,
+                args.clock,
+            ))))
+        }
+    }
+
+    struct RefusingKit {
+        refusals: Arc<Mutex<Option<mpsc::UnboundedReceiver<(u32, tokio::sync::oneshot::Sender<()>)>>>>,
+    }
+
+    impl AccountKit for RefusingKit {
+        fn capability(&self) -> AccountsCapability {
+            AccountsCapability {
+                login: Some(LoginKind::PastedCode),
+            }
+        }
+
+        fn login<'a>(
+            &'a self,
+            io: LoginIo<'a>,
+        ) -> Option<BoxFuture<'a, Result<NewAccount, LoginError>>> {
+            let mut refusals = self.refusals.lock().unwrap().take().expect("one login");
+            Some(Box::pin(async move {
+                let link = || "https://sign-in.example/authorize".to_owned();
+                (io.pending)(LoginPending {
+                    verification_url: link(),
+                    user_code: None,
+                    code_error: None,
+                });
+                let refusing = async {
+                    // The codes stay taken while the login runs; the test
+                    // names the refusals itself.
+                    let _codes = &io.codes;
+                    while let Some((code, refused)) = refusals.recv().await {
+                        (io.pending)(LoginPending {
+                            verification_url: link(),
+                            user_code: None,
+                            code_error: Some(RefusedCode {
+                                code,
+                                message: format!("Invalid code {code}"),
+                            }),
+                        });
+                        // The test waits for it.
+                        let _ = refused.send(());
+                    }
+                    std::future::pending().await
+                };
+                LoginIo::until_stopped(&io.stop, refusing).await
+            }))
+        }
+    }
+
+    // Instant: nothing waits for time.
+    #[tokio::test]
+    async fn a_refused_code_shows_only_while_no_later_code_was_taken() {
+        let (refuse, refusals) = mpsc::unbounded_channel();
+        let families = FamilyRegistry::default().with(
+            "pasted",
+            Refusing {
+                refusals: Arc::new(Mutex::new(Some(refusals))),
+            },
+        );
+        let clock = Arc::new(TokioClock::new("2026-09-24T08:00:00.000Z".parse().unwrap()));
+        let Backend {
+            _data,
+            sync,
+            flows,
+            master,
+            ..
+        } = backend(families, clock, LoginTiming::default()).await;
+        let page = sync.watch(&master);
+        let id = flows
+            .start(
+                master.clone(),
+                master.clone(),
+                "pasted".into(),
+                "Pasted".into(),
+                None,
+                Arc::new(NoMachine),
+                RequestId::try_from("req_starting".to_owned()).unwrap(),
+            )
+            .await
+            .unwrap();
+        while !matches!(
+            &announced(&page, &flows, &master).await[..],
+            [ListedLogin { login: LoginState::Pending { verification_url: Some(_), .. }, .. }]
+        ) {}
+        let refused = |code| {
+            let (acknowledged, acknowledgement) = tokio::sync::oneshot::channel();
+            refuse.send((code, acknowledged)).unwrap();
+            async { acknowledgement.await.unwrap() }
+        };
+        let shown = || match flows.state(&id, &master) {
+            Some(LoginState::Pending {
+                codes_taken,
+                code_error,
+                ..
+            }) => (codes_taken, code_error),
+            other => panic!("the login ended: {other:?}"),
+        };
+
+        // The user pastes a second code before the sign-in judges the
+        // first: the first's refusal is not shown over the second.
+        for code in ["first", "second"] {
+            flows
+                .submit_code(&id, &master, Secret::try_from(code.to_owned()).unwrap())
+                .unwrap();
+        }
+        assert_eq!(shown(), (2, None));
+        refused(1).await;
+        assert_eq!(shown(), (2, None));
+
+        // The second's refusal is.
+        refused(2).await;
+        assert_eq!(shown(), (2, Some("Invalid code 2".to_owned())));
+        flows.close().await;
+    }
+
+    /// A subscription family whose accounts offer no login, which a start
+    /// finds only once it has read the owner's entries.
+    struct NoLogin;
+
+    impl ProviderFamily for NoLogin {
+        fn credential(&self) -> CredentialKind {
+            CredentialKind::Subscription
+        }
+
+        fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
+            let FamilyCredential::Subscription(subscription) = args.credential else {
+                return Err(FamilyError::WrongCredential);
+            };
+            Ok(Arc::new(Waiting(Accounts::new(
+                subscription.pool,
+                NoLoginKit,
+                args.clock,
+            ))))
+        }
+    }
+
+    struct NoLoginKit;
+
+    impl AccountKit for NoLoginKit {
+        fn capability(&self) -> AccountsCapability {
+            AccountsCapability { login: None }
+        }
+
+        fn login<'a>(
+            &'a self,
+            _io: LoginIo<'a>,
+        ) -> Option<BoxFuture<'a, Result<NewAccount, LoginError>>> {
+            None
+        }
+    }
+
+    // Instant: the first start is polled up to its first wait.
+    #[tokio::test]
+    async fn a_start_refused_by_a_login_that_then_fails_finds_it_listed_and_learns_its_failure() {
+        let families = FamilyRegistry::default().with("none", NoLogin);
+        let clock = Arc::new(TokioClock::new("2026-09-24T08:00:00.000Z".parse().unwrap()));
+        let Backend {
+            _data,
+            sync,
+            flows,
+            master,
+            ..
+        } = backend(families, clock, LoginTiming::default()).await;
+        // Two tabs of the user's.
+        let (one, other) = (sync.watch(&master), sync.watch(&master));
+        let request = RequestId::try_from("req_first".to_owned()).unwrap();
+        let start = || {
+            flows.start(
+                master.clone(),
+                master.clone(),
+                "none".into(),
+                "None".into(),
+                None,
+                Arc::new(NoMachine),
+                request.clone(),
+            )
+        };
+
+        // The first start holds the new entry and waits for the entries.
+        let mut first = Box::pin(start());
+        assert!(futures_util::poll!(&mut first).is_pending());
+        let Err(LoginRefusal::Busy(Some(id))) = start().await else {
+            panic!("the second start was not refused with the first's login");
+        };
+        // The login it names is listed, preparing, and announced to both
+        // tabs.
+        assert_eq!(
+            flows.listed(&master).iter().map(|listed| &listed.id).collect::<Vec<_>>(),
+            [&id]
+        );
+        for tab in [&one, &other] {
+            let [listed] = &announced(tab, &flows, &master).await[..] else {
+                panic!("the tab lists other logins");
+            };
+            assert_eq!(listed.id, id);
+            assert!(matches!(
+                listed.login,
+                LoginState::Pending { stage: LoginStage::Preparing, .. }
+            ));
+        }
+
+        // Its start fails, and both tabs learn it, with the starting request.
+        let refused = first.await.unwrap_err();
+        assert!(matches!(refused, LoginRefusal::NoLoginFlow(_)), "{refused:?}");
+        for tab in [&one, &other] {
+            let [listed] = &announced(tab, &flows, &master).await[..] else {
+                panic!("the tab lists other logins");
+            };
+            assert_eq!(
+                (&listed.id, &listed.login),
+                (
+                    &id,
+                    &LoginState::Failed {
+                        message: "none has no login".into(),
+                        request_id: request.clone(),
+                    }
+                )
+            );
+        }
+        // The new entry is no longer held.
+        let Err(LoginRefusal::NoLoginFlow(_)) = start().await else {
+            panic!("the entry is still held");
+        };
+        flows.close().await;
+    }
+
     /// The machine of a backend whose logins run no process.
     struct NoMachine;
 
@@ -593,9 +1111,9 @@ mod tests {
     }
 
     /// A provider that only logs in.
-    struct Waiting(Accounts<Kit>);
+    struct Waiting<K>(Accounts<K>);
 
-    impl Provider for Waiting {
+    impl<K: AccountKit + 'static> Provider for Waiting<K> {
         fn capabilities(&self) -> Capabilities {
             Capabilities::default()
         }
@@ -629,8 +1147,17 @@ mod tests {
         }
     }
 
-    #[tokio::test(start_paused = true)]
-    async fn a_login_ends_at_the_expiry_it_shows_from_its_start_and_its_result_goes_later() {
+    /// The vault's logins over a new control database with its master, for
+    /// `families`.
+    struct Backend {
+        _data: tempfile::TempDir,
+        vault: Vault,
+        sync: SyncRegistry,
+        flows: Arc<LoginFlows>,
+        master: UserId,
+    }
+
+    async fn backend(families: FamilyRegistry, clock: Arc<TokioClock>, timing: LoginTiming) -> Backend {
         let data = tempfile::tempdir().unwrap();
         let control = ControlService::open(
             &data.path().join("control.sqlite"),
@@ -639,19 +1166,12 @@ mod tests {
         .await
         .unwrap();
         let master = testing::master(&control).await.id;
-        let clock = Arc::new(TokioClock::new("2026-09-24T08:00:00.000Z".parse().unwrap()));
+        let sync = SyncRegistry::default();
         let vault = Vault::new(
             control.clone(),
             VaultKey::new([3; 32]),
             InstanceMode::Shared,
-            SyncRegistry::default(),
-        );
-        let dropped = Arc::new(AtomicUsize::new(0));
-        let families = FamilyRegistry::default().with(
-            "device",
-            Unconfirmed {
-                dropped: dropped.clone(),
-            },
+            sync.clone(),
         );
         let edge = tokio::runtime::Handle::current();
         let models_dev = ModelsDevClient::new(
@@ -668,15 +1188,70 @@ mod tests {
             reqwest::Client::new(),
             clock.clone(),
         ));
-        let timing = LoginTiming::default();
-        assert_eq!(timing.device_lifetime, Duration::from_secs(10 * 60));
         let flows = LoginFlows::new(
             assembly,
             Arc::new(ProviderOperations::default()),
             timing,
-            clock.clone(),
+            clock,
+            sync.clone(),
         );
+        Backend {
+            _data: data,
+            vault,
+            sync,
+            flows,
+            master,
+        }
+    }
 
+    /// The owner's logins as the vault announces them next on a page's
+    /// channel.
+    async fn announced(
+        channel: &Registration,
+        flows: &LoginFlows,
+        owner: &UserId,
+    ) -> Vec<ListedLogin> {
+        // A day of the paused clock passes at once: a change the vault does
+        // not announce fails here rather than hanging.
+        let announced = async {
+            loop {
+                channel.marked().await;
+                if channel.take().parts.contains(&Part::Logins) {
+                    return flows.listed(owner);
+                }
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(24 * 60 * 60), announced)
+            .await
+            .expect("the vault announces the login's next change")
+    }
+
+    // Instant: the paused clock jumps to each of the login's moments.
+    #[tokio::test(start_paused = true)]
+    async fn a_login_announces_each_change_ends_at_the_expiry_it_shows_and_its_result_goes_later()
+    {
+        let clock = Arc::new(TokioClock::new("2026-09-24T08:00:00.000Z".parse().unwrap()));
+        let dropped = Arc::new(AtomicUsize::new(0));
+        let families = FamilyRegistry::default().with(
+            "device",
+            Unconfirmed {
+                dropped: dropped.clone(),
+            },
+        );
+        let timing = LoginTiming::default();
+        assert_eq!(timing.device_lifetime, Duration::from_secs(10 * 60));
+        let Backend {
+            _data,
+            vault,
+            sync,
+            flows,
+            master,
+        } = backend(families, clock.clone(), timing).await;
+        let page = sync.watch(&master);
+        let request = RequestId::try_from("req_starting".to_owned()).unwrap();
+
+        // The start is announced, preparing, and so is its expiry once the
+        // login knows its kind, before the start answers.
         let id = flows
             .start(
                 master.clone(),
@@ -685,58 +1260,81 @@ mod tests {
                 "Device".into(),
                 None,
                 Arc::new(NoMachine),
+                request.clone(),
             )
             .await
             .unwrap();
         // Nothing awaits between the start's last step and these reads.
         let started = Instant::now();
         let started_at = clock.now();
-        let mut ended = flows.lock()[&id].ended.clone();
-
-        // The vendor names its code later; the expiry shown still counts
-        // from the start.
-        tokio::time::sleep_until(started + timing.device_lifetime - Duration::from_millis(1)).await;
-        let LoginState::Pending {
-            verification_url,
-            user_code,
-            expires_at,
-            ..
-        } = flows.state(&id, &master).unwrap()
-        else {
-            panic!("the login ended before its expiry");
+        let [started_login] = &announced(&page, &flows, &master).await[..] else {
+            panic!("the start announced other logins");
         };
         assert_eq!(
-            (verification_url.as_deref(), user_code.as_deref()),
-            (Some("https://verify.example/device"), Some("ABCD-1234"))
+            (
+                &started_login.id,
+                started_login.provider_id.as_ref(),
+                started_login.provider_type.as_str()
+            ),
+            (&id, None, "device")
         );
+        let LoginState::Pending {
+            stage: LoginStage::Preparing,
+            verification_url: None,
+            expires_at: Some(expires_at),
+            ..
+        } = started_login.login
+        else {
+            panic!("the login did not start preparing: {started_login:?}");
+        };
         assert_eq!(
             expires_at.to_jiff().duration_since(started_at.to_jiff()),
             jiff::SignedDuration::from_mins(10)
         );
-        assert_eq!(dropped.load(Ordering::SeqCst), 0);
 
-        // The login ends at the moment it showed, and drops its flow.
-        tokio::time::timeout(timing.device_lifetime, ended.wait_for(|ended| *ended))
-            .await
-            .expect("the login ends at its expiry")
-            .unwrap();
+        // The vendor names its code later, and the page learns it then; the
+        // expiry shown still counts from the start.
+        let [shown] = &announced(&page, &flows, &master).await[..] else {
+            panic!("the code announced other logins");
+        };
+        assert_eq!(Instant::now(), started + VENDOR_ANSWERS_AFTER);
+        assert_eq!(
+            shown.login,
+            LoginState::Pending {
+                stage: LoginStage::WaitingForUser,
+                verification_url: Some("https://verify.example/device".into()),
+                user_code: Some("ABCD-1234".into()),
+                needs_code: false,
+                codes_taken: 0,
+                code_error: None,
+                expires_at: Some(expires_at),
+            }
+        );
+        assert_eq!(flows.state(&id, &master), Some(shown.login.clone()));
+
+        // The login ends at the moment it showed, drops its flow, and the
+        // page learns its failure with the request that started it.
+        let [ended] = &announced(&page, &flows, &master).await[..] else {
+            panic!("the end announced other logins");
+        };
         assert_eq!(Instant::now(), started + timing.device_lifetime);
         assert_eq!(clock.now(), expires_at);
         assert_eq!(
-            flows.state(&id, &master),
-            Some(LoginState::Failed {
-                message: "The login expired".into()
-            })
+            ended.login,
+            LoginState::Failed {
+                message: "The login expired".into(),
+                request_id: request,
+            }
         );
         assert_eq!(dropped.load(Ordering::SeqCst), 1);
 
-        // Its result stays for the retention, and then goes.
+        // Its result stays for the retention, and its drop is announced.
         let ended_at = Instant::now();
-        tokio::time::sleep_until(ended_at + timing.retention - Duration::from_millis(1)).await;
-        assert!(flows.state(&id, &master).is_some());
-        tokio::time::sleep_until(ended_at + timing.retention).await;
+        assert_eq!(announced(&page, &flows, &master).await, []);
+        assert_eq!(Instant::now(), ended_at + timing.retention);
         assert_eq!(flows.state(&id, &master), None);
         // An expired login stored nothing.
         assert!(vault.entries(master).await.unwrap().is_empty());
+        flows.close().await;
     }
 }

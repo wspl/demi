@@ -121,6 +121,37 @@ pub struct AccountInfo {
     pub updated_at: Option<Timestamp>,
 }
 
+/// What a login waits for (`claude-code.md` § Accounts and sign-in): it is
+/// `preparing` from its start, and `waiting_for_user` once it has a link or
+/// a code to show. A Claude sign-in waits for the Cloud, for the CLI's
+/// install and for the CLI's start in between.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LoginStage {
+    Preparing,
+    /// The Cloud's machine access is acquired: its runner woken or awaited.
+    WaitingForCloud,
+    /// The CLI is installed on the Cloud.
+    Installing,
+    /// The CLI runs and has not printed its link yet.
+    Starting,
+    /// The user opens the link, enters the code or pastes one back.
+    WaitingForUser,
+}
+
+impl LoginStage {
+    /// The stage's name, as the API and the server log write it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Preparing => "preparing",
+            Self::WaitingForCloud => "waiting_for_cloud",
+            Self::Installing => "installing",
+            Self::Starting => "starting",
+            Self::WaitingForUser => "waiting_for_user",
+        }
+    }
+}
+
 /// What a login asks the user to do, reported while the login
 /// waits (`providers.md` § Login and publication). When the login ends is
 /// the vault's, not the vendor's.
@@ -134,9 +165,17 @@ pub struct LoginPending {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub user_code: Option<String>,
-    /// Why the vendor's sign-in refused the code the user pasted, in its
-    /// own words, while it waits for another; null otherwise.
+    /// The code the vendor's sign-in refused, while it waits for another;
+    /// null otherwise.
     #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<String>")]
-    pub code_error: Option<String>,
+    #[schemars(with = "Nullable<RefusedCode>")]
+    pub code_error: Option<RefusedCode>,
+}
+
+/// A code the user pasted that the vendor's sign-in refused: the `code`th
+/// the login took, counting from one, and why, in the sign-in's own words.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct RefusedCode {
+    pub code: u32,
+    pub message: String,
 }

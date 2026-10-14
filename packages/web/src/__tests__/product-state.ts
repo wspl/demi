@@ -41,6 +41,7 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
       limits: { systemBytes: 16 * 1024 ** 3, homeBytes: 32 * 1024 ** 3 },
       newerImage: false,
     },
+    logins: [],
     subagents: {
       enabled: true,
       maxLive: { limit: 10, unlimited: false },

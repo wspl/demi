@@ -30,6 +30,8 @@ export class ApiError extends Error {
   readonly credentialId: string | null
   /** The request the backend named in its answer, which the page shows with the error. */
   readonly requestId: string | null
+  /** With `provider_busy` for a sign-in's start, the caller's own sign-in that holds the entry. */
+  readonly loginId: string | null
 
   constructor(
     status: number,
@@ -41,6 +43,7 @@ export class ApiError extends Error {
     statusText = '',
     credentialId: string | null = null,
     requestId: string | null = headers.get(REQUEST_ID_HEADER),
+    loginId: string | null = null,
   ) {
     super(message)
     this.name = 'ApiError'
@@ -52,6 +55,7 @@ export class ApiError extends Error {
     this.headers = headers
     this.credentialId = credentialId
     this.requestId = requestId
+    this.loginId = loginId
   }
 }
 
@@ -303,6 +307,7 @@ export function apiError(status: number, text: string, headers: Headers = new He
     statusText,
     parsed.success ? parsed.data.credentialId ?? null : null,
     parsed.success ? parsed.data.requestId : headers.get(REQUEST_ID_HEADER),
+    parsed.success ? parsed.data.loginId ?? null : null,
   )
 }
 
