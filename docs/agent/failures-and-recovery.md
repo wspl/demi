@@ -12,7 +12,7 @@ decisions read, and diagnostics, which the user and support read:
 
 | Code | Meaning | Retried automatically |
 | --- | --- | --- |
-| `usage_limit` | The account's usage is used up until a reset or a purchase: a subscription window, credits or a spend cap | No; with [account rotation](../providers/providers.md#account-rotation) the agent moves to another account |
+| `usage_limit` | The account cannot be used until a reset or a change of its plan: a used-up subscription window, credits or a spend cap, or use its administrator turned off | No; with [account rotation](../providers/providers.md#account-rotation) the agent moves to another account |
 | `rate_limit` | Throttling: too many requests or tokens for a short while | Yes |
 | `rate_limited` | The backend's own request rate limit refused the attempt before it reached the vendor ([Rate limit](../providers/usage-and-quota.md#rate-limit)) | No |
 | `overloaded` | A transient failure: HTTP 5xx, a timeout, a network or socket failure | Yes |
@@ -33,8 +33,8 @@ or `…_usage_limit_exceeded`, over HTTP or in a WebSocket error frame; Grok
 Build's 402, and its 403 whose text says `run out of credits`; the Claude
 Code CLI's `result` line whose `api_error` is `usage_limit_reached`, which
 the CLI sets for a 429 whose unified rate-limit headers name a used-up
-window, a subscription window or a spend cap, and never for a 429 that only
-throttles, whose text says *not your usage limit* (CLI 2.1.296, against a
+window or spend cap, or a seat or member whose use is turned off, and never
+for a 429 that only throttles, whose text says *not your usage limit* (CLI 2.1.296, against a
 scripted vendor, three runs each). Each is `usage_limit`, and no wording
 stands in for these signs. Otherwise an HTTP failure gets its code from its status:
 401 and 403 are `auth_expired`, 429 is `rate_limit`, 408, 409, 425 and every 5xx are
