@@ -284,8 +284,10 @@ continues then; with it off, the hold lasts until the user acts. The
 preference is read when the moment comes, so turning it off before then
 keeps the turn waiting. Only a moment still to come is waited for: a
 conversation opened after its failure's moment has passed never resumes by
-itself. The wait lives with the conversation's open tree, so after a
-backend restart it starts again when the conversation is next opened. A
+itself. The backend keeps the wait while it runs, whether the
+conversation is open or was put away to save memory, and opens it when the
+moment comes; after a backend restart it starts again when the conversation
+is next opened. A
 usage limit's moment is the latest reset among the account's windows that
 the quota shows used up; a limit with no such window, such as a spend cap,
 names no moment and is retried as any `rate_limit`.
