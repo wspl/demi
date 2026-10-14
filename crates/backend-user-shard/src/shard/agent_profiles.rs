@@ -7,9 +7,10 @@
 use demi_agent_tools::{
     EFFORT_OFF, ModelChoice, ModelEdit, NewProfileDraft, ProfileEdit, TIER_DEFAULT,
 };
+use demi_backend_accounts::subagents::ContextRefusal;
 use demi_backend_database::StorageError;
 use demi_backend_providers::vault::entries::ProviderEntry;
-use demi_shared_types::THINKING_OFF;
+use demi_shared_types::{ContextChoice, THINKING_OFF};
 use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::ProviderId;
 use demi_web_api_protocol::providers::{Availability, CatalogProvider};
@@ -58,10 +59,15 @@ impl Shard {
             Some(choice) => Some(self.chosen_model(choice, None).await?),
             None => None,
         };
+        let context_limit = match draft.context {
+            Some(choice) => self.context_tokens(choice, model.as_ref()).await?,
+            None => None,
+        };
         let profile = NewProfile {
             name: draft.name,
             description: draft.description,
             model,
+            context_limit,
             instructions: draft.instructions,
             can_spawn: draft.can_spawn,
         };
@@ -84,10 +90,22 @@ impl Shard {
                 Some(Some(self.chosen_model(choice, stored.model.as_ref()).await?))
             }
         };
+        let context_limit = match edit.context {
+            Some(choice) => {
+                // The model the profile has once the edit is made.
+                let after = match &model {
+                    Some(model) => model.as_ref(),
+                    None => stored.model.as_ref(),
+                };
+                Some(self.context_tokens(choice, after).await?)
+            }
+            None => None,
+        };
         let patch = ProfilePatch {
             name: edit.name,
             description: edit.description,
             model,
+            context_limit,
             instructions: edit.instructions,
             can_spawn: edit.can_spawn,
             enabled: edit.enabled,
@@ -103,6 +121,29 @@ impl Shard {
         self.delete_profile(stored.id)
             .await
             .map_err(|refusal| refusal.to_string())
+    }
+
+    /// The tokens a profile on `model`, none for the parent's, stores for
+    /// the `--context` choice `choice`: `full` is the model's window, read
+    /// from its catalog now. The save path checks the result as it checks
+    /// the settings page's.
+    async fn context_tokens(
+        &self,
+        choice: ContextChoice,
+        model: Option<&ModelSettings>,
+    ) -> Result<Option<u32>, String> {
+        match choice {
+            ContextChoice::Default => Ok(None),
+            ContextChoice::Limit(tokens) => Ok(Some(tokens)),
+            ContextChoice::Full => {
+                let model = model.ok_or_else(|| ContextRefusal::NoModel.to_string())?;
+                let (_, window) = self
+                    .profile_model(model)
+                    .await
+                    .map_err(|refusal| refusal.to_string())?;
+                Ok(Some(window))
+            }
+        }
     }
 
     /// The user's profile `name`, enabled or not.

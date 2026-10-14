@@ -2,6 +2,7 @@
 //! format of `.demi/workflows/<id>.yaml`, the one parser that reads it, and
 //! the help that teaches the format, kept together so they never disagree.
 
+use demi_shared_types::ContextChoice;
 use garde::Validate;
 use serde::Deserialize;
 
@@ -42,6 +43,7 @@ Fields:
     model         A model id demi providers list lists; the first of the user's provider entries that offers it serves it. Optional: without it, the child runs on its parent's model.
     effort        An effort the model lists, or off for no thinking. Optional, the model's first effort by default; needs model.
     tier          A service tier the model offers, such as fast. Optional, the vendor's default tier by default; needs model.
+    context       The context window its children use: full, 500K, 300K or 200K, as the model offers them, or default for the user's context limit on the model. Optional, default by default; needs model.
 
 A workflow sets no limits: how many subagents run at once and how deep they go stay the user's Settings > Subagents. Check a file you wrote or changed with demi agent workflows check <file> before you report it.
 
@@ -56,6 +58,7 @@ profiles:
     description: Use for finding code and call sites; it reports and changes nothing.
     model: claude-haiku-4-5
     effort: low
+    context: 200K
     instructions: |
       Read and report where things are. Never change a file.
   - id: reviewer
@@ -109,6 +112,11 @@ pub struct WorkflowProfile {
     #[serde(default)]
     #[garde(inner(length(chars, min = 1)), custom(needs_model(&self.model)))]
     pub tier: Option<String>,
+    /// The Context its children use; none, as `default`, for the user's
+    /// limit on the model.
+    #[serde(default)]
+    #[garde(custom(context_needs_model(&self.model)))]
+    pub context: Option<ContextChoice>,
 }
 
 /// Why a workflow file does not read: the line and the field that are
@@ -180,12 +188,23 @@ fn unique_ids(profiles: &[WorkflowProfile], _: &()) -> garde::Result {
     Ok(())
 }
 
-fn needs_model(model: &Option<String>) -> impl FnOnce(&Option<String>, &()) -> garde::Result + '_ {
+fn needs_model<T>(model: &Option<String>) -> impl FnOnce(&Option<T>, &()) -> garde::Result + '_ {
     move |value, _| {
         if value.is_some() && model.is_none() {
             return Err(garde::Error::new("needs model"));
         }
         Ok(())
+    }
+}
+
+/// A Context of its own needs a model of its own; `default`, the user's
+/// limit, needs none.
+fn context_needs_model(
+    model: &Option<String>,
+) -> impl FnOnce(&Option<ContextChoice>, &()) -> garde::Result + '_ {
+    move |value, context| {
+        let own = value.filter(|choice| *choice != ContextChoice::Default);
+        needs_model(model)(&own, context)
     }
 }
 
@@ -217,6 +236,7 @@ mod tests {
                 model: Some("claude-haiku-4-5".into()),
                 effort: Some("low".into()),
                 tier: None,
+                context: Some(ContextChoice::Limit(200_000)),
             },
         );
         assert_eq!(workflow.profiles[1].id, "reviewer");
@@ -243,6 +263,14 @@ mod tests {
             (
                 "name: Review\nprofiles:\n  - id: explore\n    description: Finds code.\n    effort: low\n",
                 "line 5 column 13: validation error: needs model for `profiles[0].effort`",
+            ),
+            (
+                "name: Review\nprofiles:\n  - id: explore\n    description: Finds code.\n    context: 500K\n",
+                "line 5 column 14: validation error: needs model for `profiles[0].context`",
+            ),
+            (
+                "name: Review\nprofiles:\n  - id: explore\n    description: Finds code.\n    model: m\n    context: 400K\n",
+                "line 6 column 14: \"400K\" is not a context: use full, 500K, 300K, 200K or default",
             ),
             (
                 "name: Review\nprofiles:\n  - id: explore\n    description: Finds code.\n  - id: explore\n    description: Finds more.\n",

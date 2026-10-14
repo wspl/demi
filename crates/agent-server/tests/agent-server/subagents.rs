@@ -1108,6 +1108,7 @@ pub(crate) fn child_record(
         description: id.into(),
         profile: profile.map(str::to_owned),
         instructions: None,
+        context_limit: None,
         round: 1,
         started_at: Timestamp::UNIX_EPOCH,
         can_spawn_subagents: true,
@@ -1612,6 +1613,7 @@ fn contexts(fixture: &Fixture, node: &NodeId) -> usize {
 async fn a_grandchild_inherits_its_parents_profile_and_every_node_reads_the_execution_context_itself()
  {
     let worker = Profile {
+        context_limit: None,
         name: "worker".into(),
         description: "Works through a task list.".into(),
         model: Some(ProfileModel {

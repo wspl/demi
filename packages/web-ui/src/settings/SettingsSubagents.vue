@@ -2,7 +2,6 @@
 import { formError, type ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import { TriangleAlert } from '@lucide/vue'
-import type { ContextLimitChange } from '../agent/context-limit'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import Button from '../ui/Button.vue'
@@ -15,6 +14,7 @@ import Tag from '../ui/Tag.vue'
 import TagLine from '../ui/TagLine.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import { ICON_PX } from '../ui/icon-metrics'
+import { formatTokens } from '../ui/token-count'
 import type { SentenceText } from '../ui/ui-text'
 import { answerInDialog } from './dialog-work'
 import SettingsGroup from './SettingsGroup.vue'
@@ -66,8 +66,6 @@ const emit = defineEmits<{
   /** A new limit; Unlimited only once the page confirmed it. */
   setLimit: [limit: 'maxLive' | 'maxDepth', value: LimitValue]
   switchProfile: [id: string, enabled: boolean]
-  /** The user's context limit on a model, set from a profile's model menu as from the composer's. */
-  contextLimit: [change: ContextLimitChange]
 }>()
 
 /** What each limit's field says of text that is no limit. */
@@ -88,6 +86,7 @@ const NEW_PROFILE: SettingsSubagentDraft = {
   name: '',
   description: '',
   model: null,
+  contextLimit: null,
   instructions: null,
   canSpawn: true,
 }
@@ -100,6 +99,7 @@ function missing(profile: SettingsSubagentProfile): string | null {
 function traits(profile: SettingsSubagentProfile): string[] {
   return [
     profileModelLabel(profile.model, props.providers, props.catalogModels),
+    ...(profile.contextLimit === null ? [] : [`Context ${formatTokens(profile.contextLimit)}`]),
     profile.instructions === null ? 'No instructions' : 'Own instructions',
     profile.canSpawn ? 'Children may spawn' : 'No spawning',
   ]
@@ -113,6 +113,7 @@ function open(profile: SettingsSubagentProfile | null): void {
           name: profile.name,
           description: profile.description,
           model: profile.model,
+          contextLimit: profile.contextLimit,
           instructions: profile.instructions,
           canSpawn: profile.canSpawn,
         }
@@ -291,7 +292,6 @@ const empty = computed(() => props.profiles.length === 0)
       @close="editor.open = false"
       @save="save"
       @delete="deleteOpen = true"
-      @context-limit="emit('contextLimit', $event)"
     />
     <ConfirmDialog
       :is-open="deleteOpen"
