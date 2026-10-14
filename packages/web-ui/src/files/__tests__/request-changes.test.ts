@@ -109,7 +109,7 @@ const s2 = shellCall('s2', 's1', 'Tighten the check', [own('/w/login.ts', 'modif
   run: [listed('/w/notes.md', 'added', [], [1, 0]), login(['s1', 's2'])],
   request: [listed('/w/notes.md', 'added', [], [1, 0]), login(['s1', 's2'])],
 })
-const s3 = shellCall('s3', 's1', 'Draft a fix', [own('/tmp/fix.py', 'added', 20, { temporary: true })], {
+const s3 = shellCall('s3', 's1', 'Draft a fix', [own('/tmp/fix.py', 'added', 20, { outside: true })], {
   run: [listed('/w/notes.md', 'added', [], [1, 0]), login(['s1', 's2'])],
   request: [listed('/w/notes.md', 'added', [], [1, 0]), login(['s1', 's2'])],
 })
@@ -155,7 +155,7 @@ describe('the files a request shows', () => {
 describe('the pills', () => {
   const requests = storedRequests(transcript)
 
-  test('of a call show what it did: removed struck, renamed under the new name, never a temporary file', () => {
+  test('of a call show what it did: removed struck, renamed under the new name, never a file outside the agent’s directory', () => {
     expect(callPills(s1).map((file) => [file.path, file.kind])).toEqual([['/w/notes.md', 'added'], ['/w/login.ts', 'modified']])
     expect(callPills(s3)).toEqual([])
     expect(callPills(s4).map((file) => [file.path, file.kind, file.from])).toEqual([

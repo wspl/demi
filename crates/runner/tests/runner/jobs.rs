@@ -2,7 +2,7 @@
 //! output through functions and compound pipelines drains, and a kill ends a
 //! job that blocks in a utility.
 
-use std::{collections::BTreeMap, path::Path, time::Duration};
+use std::{collections::BTreeMap, time::Duration};
 
 use demi_runner_protocol::wire::{Inbound, JobFileChange, JobPathChange, Outbound, OutputStream, Signal};
 
@@ -329,20 +329,17 @@ async fn reported(host: &mut Host, job: &str) -> (Vec<JobFileChange>, Vec<JobPat
     }
 }
 
-/// A job's report marks what it wrote in a temporary directory, so the
-/// conversation leaves it out, and a later move out of it into the job's
-/// working directory carries the file's edits to a name that is not
-/// temporary, wherever that directory is (`edit-tracking.md` § Temporary
-/// files); a removal there is marked temporary too, and a file a job made
-/// and removed is not listed at all (§ The report). About a second: three
-/// jobs start a login shell.
+/// A job's report names what it wrote wherever it is, so a later move out
+/// of `/tmp` into the job's working directory carries the file's edits to
+/// its new name, which the backend then shows (`edit-tracking.md` § Within
+/// the working directory); a file a job made and removed is not listed at
+/// all (§ The report). About a second: three jobs start a login shell.
 #[tokio::test]
-async fn a_file_in_a_temporary_directory_is_reported_temporary_and_a_move_out_of_it_is_not() {
+async fn a_move_out_of_tmp_carries_the_files_edits_and_a_made_and_removed_file_is_not_listed() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let mut host = Host::start(BTreeMap::new()).await.online().await;
         // `/tmp` itself, which macOS links to `/private/tmp`; the jobs run
-        // in the Host's home, whose files are never temporary to them, even
-        // where the home is itself in a temporary directory.
+        // in the Host's home.
         let scratch = tempfile::tempdir_in("/tmp").unwrap();
         let written = scratch.path().join("x").to_string_lossy().into_owned();
         let moved = std::fs::canonicalize(host.home())
@@ -356,7 +353,7 @@ async fn a_file_in_a_temporary_directory_is_reported_temporary_and_a_move_out_of
         let [file] = files.as_slice() else {
             panic!("{files:?}");
         };
-        assert_eq!((file.path.as_str(), file.temporary), (written.as_str(), true));
+        assert_eq!(file.path, written);
 
         start_job(
             &mut host,
@@ -368,7 +365,7 @@ async fn a_file_in_a_temporary_directory_is_reported_temporary_and_a_move_out_of
         let [file] = files.as_slice() else {
             panic!("{files:?}");
         };
-        assert_eq!((file.path.as_str(), file.temporary), (moved.as_str(), false));
+        assert_eq!(file.path, moved);
         let [edit] = file.edits.as_slice() else {
             panic!("{:?}", file.edits);
         };
@@ -379,7 +376,6 @@ async fn a_file_in_a_temporary_directory_is_reported_temporary_and_a_move_out_of
             [JobPathChange::Renamed {
                 from: written.clone(),
                 to: moved.clone(),
-                temporary: false,
             }]
         );
 
@@ -389,13 +385,7 @@ async fn a_file_in_a_temporary_directory_is_reported_temporary_and_a_move_out_of
         start_job(&mut host, "remove", &format!("rm {old}; printf 'x\n' > {made}; rm {made}")).await;
         let (files, path_changes) = reported(&mut host, "remove").await;
         assert_eq!(files, []);
-        assert_eq!(
-            path_changes,
-            [JobPathChange::Removed {
-                path: old.clone(),
-                temporary: true,
-            }]
-        );
+        assert_eq!(path_changes, [JobPathChange::Removed { path: old.clone() }]);
         host.close().await;
     })
     .await
@@ -403,17 +393,12 @@ async fn a_file_in_a_temporary_directory_is_reported_temporary_and_a_move_out_of
 }
 
 /// A conversation's job finds its scratch directory made and named by
-/// `DEMI_SCRATCH`, and what it writes there is reported temporary, while
-/// what it writes in its working directory is not, though that directory is
-/// in a temporary one (`runner.md` § Scratch directory, `edit-tracking.md`
-/// § Temporary files). About a second: two jobs start a login shell.
+/// `DEMI_SCRATCH` (`runner.md` § Scratch directory). About a second: a job
+/// starts a login shell.
 #[tokio::test]
-async fn a_job_writes_in_its_scratch_directory_as_temporary_and_in_its_working_directory_as_work() {
+async fn a_job_finds_its_scratch_directory_made_and_named() {
     tokio::time::timeout(Duration::from_secs(60), async {
-        // The runner's state, `DEMI_HOME`, is out of the system's temporary
-        // directories, in Cargo's own, and the job works in `/tmp`.
-        let outside = Path::new(env!("CARGO_TARGET_TMPDIR"));
-        let mut host = Host::start_in(BTreeMap::new(), Some(outside)).await.online().await;
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
         let working = tempfile::tempdir_in("/tmp").unwrap();
         let scratch = host.state().join("scratch").join(crate::CONVERSATION);
         let scratch = scratch.to_string_lossy().into_owned();
@@ -437,21 +422,6 @@ async fn a_job_writes_in_its_scratch_directory_as_temporary_and_in_its_working_d
             }
         }
         assert_eq!(String::from_utf8(named).unwrap(), scratch);
-
-        start_job_in(
-            &mut host,
-            "write",
-            working.path(),
-            r#"echo hi > "$DEMI_SCRATCH/x.txt"; echo hi > y.txt"#,
-        )
-        .await;
-        let (files, _) = reported(&mut host, "write").await;
-        let mut marked: Vec<_> = files
-            .iter()
-            .map(|file| (Path::new(&file.path).file_name().unwrap().to_owned(), file.temporary))
-            .collect();
-        marked.sort();
-        assert_eq!(marked, [("x.txt".into(), true), ("y.txt".into(), false)]);
         host.close().await;
     })
     .await

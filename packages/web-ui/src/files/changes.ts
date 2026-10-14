@@ -3,7 +3,8 @@ import { compareFileNames } from './file-browser-state'
 import { baseName } from '@demicodes/utils'
 import type { Showing } from './file-cache'
 import type { TreeRow } from './tree'
-import type { RequestChangeSource } from './request-changes'
+import type { RequestChangeSource, RequestFile } from './request-changes'
+import { relativePath, resolveHostPath } from './paths'
 import type { FileContents } from './types'
 
 /**
@@ -104,47 +105,96 @@ export const emptyChangeSet: ChangeSetSource = {
   }),
 }
 
-/** One row of the change tree: a directory on the way to changed files (no change), or a changed file. */
-export interface ChangeTreeRow extends TreeRow {
-  change: WorkingTreeChange | null
+/**
+ * A changed file as the Change view's tree shows it, in either mode: its
+ * key, its path within the tree, how it changed, its line counts when they
+ * are known, and in Uncommitted mode git's status letters for it.
+ */
+export interface ChangeTreeFile {
+  /** The file's key: the path the view selects it by. */
+  key: string
+  /** Its path from the tree's root, with `/` separators. */
+  path: string
+  kind: ChangeFile['kind']
+  /** The path before a rename, as the file's tooltip names it. */
+  from?: string
+  /** Absent when they are not known. */
+  lines?: { added: number; removed: number }
+  /** Git's two status letters, in Uncommitted mode (`gitMark`). */
+  status?: string
 }
 
 /**
- * The changed files as a tree, directories first at every level and sorted
- * by name, with the directories in `folded` closed: their rows stay, what is
- * under them does not.
+ * A request's files as the change tree shows them: each by its path from
+ * `root`, the workspace, in the spelling of the root's Host, so a Windows
+ * file `C:\Users\u\shop\src\cart.ts` under `C:\Users\u\shop` is in `src`.
  */
-export function changeTreeRows(files: readonly WorkingTreeChange[], folded: ReadonlySet<string>): ChangeTreeRow[] {
-  interface Node {
-    dirs: Map<string, Node>
-    files: WorkingTreeChange[]
+export function requestTreeFiles(root: string, files: readonly RequestFile[]): ChangeTreeFile[] {
+  return files.map((file) => ({
+    key: file.path,
+    path: relativePath(root, resolveHostPath(root, file.path)),
+    kind: file.kind,
+    ...(file.from ? { from: file.from } : {}),
+    ...(file.lines ? { lines: file.lines } : {}),
+  }))
+}
+
+/**
+ * One row of the change tree: a folder on the way to changed files, its
+ * name the folders it joins, such as `src/web/app`, or a changed file,
+ * whose row's path is its key.
+ */
+export interface ChangeTreeRow extends TreeRow {
+  file: ChangeTreeFile | null
+}
+
+/**
+ * The changed files as a tree, as VS Code's Source Control shows changes
+ * as a tree (`edit-tracking.md` § What the conversation shows): only the
+ * folders that hold a changed file, folders first and then files at every
+ * level, each sorted by name, and a folder whose only content is one folder
+ * joined with it into one row, `src/web/app`. The folders in `folded`, by
+ * their path from the root, are closed: their rows stay, what is under
+ * them does not.
+ */
+export function changeTreeRows(files: readonly ChangeTreeFile[], folded: ReadonlySet<string>): ChangeTreeRow[] {
+  interface Folder {
+    folders: Map<string, Folder>
+    files: ChangeTreeFile[]
   }
-  const root: Node = { dirs: new Map(), files: [] }
+  const root: Folder = { folders: new Map(), files: [] }
   for (const file of files) {
-    const segments = file.path.split('/')
-    let node = root
+    const segments = file.path.split('/').filter((segment) => segment !== '')
+    let folder = root
     for (const segment of segments.slice(0, -1)) {
-      let child = node.dirs.get(segment)
-      if (!child) {
-        child = { dirs: new Map(), files: [] }
-        node.dirs.set(segment, child)
+      let inner = folder.folders.get(segment)
+      if (!inner) {
+        inner = { folders: new Map(), files: [] }
+        folder.folders.set(segment, inner)
       }
-      node = child
+      folder = inner
     }
-    node.files.push(file)
+    folder.files.push(file)
   }
   const rows: ChangeTreeRow[] = []
-  const walk = (node: Node, prefix: string, depth: number, parent: string | null): void => {
-    for (const name of [...node.dirs.keys()].sort(compareFileNames)) {
-      const path = prefix ? `${prefix}/${name}` : name
+  const walk = (folder: Folder, prefix: string, depth: number, parent: string | null): void => {
+    for (const name of [...folder.folders.keys()].sort(compareFileNames)) {
+      let inner = folder.folders.get(name)!
+      let joined = name
+      while (inner.files.length === 0 && inner.folders.size === 1) {
+        const [next, only] = [...inner.folders][0]!
+        joined = `${joined}/${next}`
+        inner = only
+      }
+      const path = prefix ? `${prefix}/${joined}` : joined
       const open = !folded.has(path)
-      rows.push({ path, name, isDirectory: true, depth, parent, open, change: null })
+      rows.push({ path, name: joined, isDirectory: true, depth, parent, open, file: null })
       if (open) {
-        walk(node.dirs.get(name)!, path, depth + 1, path)
+        walk(inner, path, depth + 1, path)
       }
     }
-    for (const change of [...node.files].sort((a, b) => compareFileNames(baseName(a.path), baseName(b.path)))) {
-      rows.push({ path: change.path, name: baseName(change.path), isDirectory: false, depth, parent, open: false, change })
+    for (const file of [...folder.files].sort((a, b) => compareFileNames(baseName(a.path), baseName(b.path)))) {
+      rows.push({ path: file.key, name: baseName(file.path), isDirectory: false, depth, parent, open: false, file })
     }
   }
   walk(root, '', 0, null)

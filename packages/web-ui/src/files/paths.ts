@@ -70,12 +70,22 @@ export { baseName } from '@demicodes/utils'
 
 /** `path` as it reads from `root`: `a/b` under it, `''` for `root` itself, any other path whole. */
 export function relativePath(root: string, path: string): string {
-  const base = normalizePath(root)
-  const target = normalizePath(path)
-  if (target === base)
+  // A Windows root reads both in Windows' spelling: `\` and `/` separate,
+  // and case does not tell names apart.
+  const windows = isWindowsPath(root)
+  const spelled = (text: string): string => normalizePath(windows ? text.replaceAll('\\', '/') : text)
+  const same = (a: string, b: string): boolean => windows ? a.toLowerCase() === b.toLowerCase() : a === b
+  const base = spelled(root)
+  const target = spelled(path)
+  if (same(target, base))
     return ''
   const prefix = base === '/' ? '/' : `${base}/`
-  return target.startsWith(prefix) ? target.slice(prefix.length) : target
+  return same(target.slice(0, prefix.length), prefix) ? target.slice(prefix.length) : target
+}
+
+/** Whether `path` is written as a Windows path: from a drive, `C:\`, or a share, `\\server\share`. */
+function isWindowsPath(path: string): boolean {
+  return /^[A-Za-z]:([\\/]|$)/.test(path) || path.startsWith('\\\\')
 }
 
 /** `path` as a person reads it on a Host whose home is `home`: `~` and `~/a/b` under it, any other path whole. */

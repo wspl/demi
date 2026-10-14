@@ -201,12 +201,13 @@ pub struct EditedFile {
     pub added: u32,
     #[garde(skip)]
     pub removed: u32,
-    /// Whether `path` is in one of its Host's temporary directories
-    /// (`edit-tracking.md` § Temporary files). Absent means false, as in
-    /// every view stored before the field.
+    /// Whether `path` is outside the working directory of the agent whose
+    /// call it is, as the backend found it when it stored the view
+    /// (`edit-tracking.md` § Within the working directory): the call's
+    /// pills leave it out. Absent means false.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     #[garde(skip)]
-    pub temporary: bool,
+    pub outside: bool,
     /// At least one for a file the command wrote; none for one it removed
     /// or only renamed.
     #[garde(custom(segments_fit(&self.kind)), dive)]
@@ -328,20 +329,10 @@ pub enum PathChange {
         from: String,
         #[garde(length(chars, min = 1))]
         to: String,
-        /// Whether `to` is in one of its Host's temporary directories;
-        /// absent means false.
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        #[garde(skip)]
-        temporary: bool,
     },
     Removed {
         #[garde(length(chars, min = 1))]
         path: String,
-        /// Whether `path` is in one of its Host's temporary directories;
-        /// absent means false.
-        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-        #[garde(skip)]
-        temporary: bool,
     },
 }
 
