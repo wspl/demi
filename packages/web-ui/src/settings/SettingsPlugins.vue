@@ -24,7 +24,7 @@ const emit = defineEmits<{
 <template>
   <SettingsPage
     title="Plugins"
-    description="What the agent and this app can do. A change shows here at once; an open conversation offers to reload so its agent has the commands that are on."
+    description="What the agent and this app can do."
   >
     <SettingsGroup>
       <SettingsRow

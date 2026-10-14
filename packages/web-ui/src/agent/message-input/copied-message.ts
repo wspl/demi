@@ -314,7 +314,7 @@ export function missingFilesToast(names: readonly string[]): { title: 'Couldn’
   return {
     title: 'Couldn’t Attach',
     message: names.length === 1
-      ? `${list} couldn’t be added, so its name was pasted instead.`
-      : `${list} couldn’t be added, so their names were pasted instead.`,
+      ? `${list}: pasted the name instead.`
+      : `${list}: pasted the names instead.`,
   }
 }

@@ -2,7 +2,7 @@
 import type { ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import type { CloudState } from './types'
-import { formatBytes } from '../files/format'
+import { formatByteRatio, formatBytes } from '../files/format'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import SettingsGroup from '../settings/SettingsGroup.vue'
@@ -53,8 +53,8 @@ const busy = computed(
 const storage = computed(() => {
   const { volumes, limits } = props.cloud
   const size = (current: number | undefined, limit: number) =>
-    current === undefined ? `up to ${formatBytes(limit)}` : `${formatBytes(current)} of ${formatBytes(limit)}`
-  return `System: ${size(volumes?.systemBytes, limits.systemBytes)} · Home: ${size(volumes?.homeBytes, limits.homeBytes)}`
+    current === undefined ? `${formatBytes(limit)} max` : formatByteRatio(current, limit)
+  return `System ${size(volumes?.systemBytes, limits.systemBytes)} · Home ${size(volumes?.homeBytes, limits.homeBytes)}`
 })
 /** The Cloud's one line, as a device's row has: its system and how this page reaches it. */
 const line = computed(() => {
@@ -79,7 +79,7 @@ function reset() {
 <template>
   <SettingsGroup
     title="Cloud"
-    description="All your Cloud projects share this environment. It starts automatically when needed."
+    description="Shared by all your Cloud projects."
   >
     <SettingsRow
       label="Your Cloud environment"
@@ -98,7 +98,7 @@ function reset() {
     <SettingsRow
       v-if="cloud.newerImage"
       label="A newer system image is available"
-      description="Reset the environment to use it. Your home files stay; system packages you installed go."
+      description="Resetting keeps your home files and removes installed system packages."
     />
     <SettingsRow label="Storage" :description="storage" />
     <CloudResetDialog

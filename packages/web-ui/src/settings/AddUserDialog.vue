@@ -73,7 +73,7 @@ function submit(): unknown {
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Add User</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          Demi makes a first password, which they replace with one of their own at their first sign-in.
+          They choose their own password at first sign-in.
         </p>
       </header>
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">

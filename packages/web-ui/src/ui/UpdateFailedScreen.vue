@@ -20,7 +20,7 @@ defineEmits<{ reload: [] }>()
     <CircleX :size="20" class="text-fg-faint" aria-hidden="true" />
     <h1 class="text-[15px] font-medium leading-5 text-fg-emphasis">This Page Could Not Be Updated</h1>
     <p class="max-w-sm text-chrome text-fg-muted">
-      Demi runs a newer version, but loading the page again still gave this one, as when a cache in front of Demi keeps an earlier page.
+      Demi has a newer version, but reloading still shows the old page.
     </p>
     <Button size="sm" class="mt-1" @click="$emit('reload')">Reload</Button>
   </div>

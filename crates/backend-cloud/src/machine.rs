@@ -556,7 +556,7 @@ impl dyn CloudShard {
             () = self.closed() => return Err(CloudError::Closed),
             connected = tokio::time::timeout(connection, self.devices().until_online(device)) => {
                 connected.map_err(|_| CloudError::Failed(format!(
-                    "Your Cloud did not start: its runner did not connect within {} seconds",
+                    "Your Cloud didn’t start. Its runner didn’t connect in {} seconds.",
                     connection.as_secs()
                 )))?;
             }

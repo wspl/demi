@@ -61,9 +61,9 @@ const body = computed(() => {
   const count = files + folders
   const rest = count === 0 ? 'nothing' : `the other ${countUnlessOne(count, noun(files, folders))}`
   const answers = merges.value
-    ? `Merge adds yours to ${them}, writing over files with the same names; Replace deletes ${them} with everything in ${them} first`
-    : `Replace writes over ${them}`
-  return `${listed.value} ${one ? 'is' : 'are'} already in ${props.directory}. ${answers}; Skip leaves ${them} and uploads ${rest}.`
+    ? `Merge keeps both, replacing files with the same names. Replace deletes ${them} first.`
+    : `Replace writes over ${them}.`
+  return `${listed.value} ${one ? 'is' : 'are'} already in ${props.directory}. ${answers} Skip leaves ${them} and uploads ${rest}.`
 })
 </script>
 

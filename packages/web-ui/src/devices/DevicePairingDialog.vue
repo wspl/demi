@@ -85,7 +85,7 @@ function submit() {
             {{
               system === 'windows'
                 ? 'Run in PowerShell on the device. Keep it open.'
-                : 'Run in a terminal on the device, locally or over SSH. Keep it open.'
+                : 'Run in a terminal on the device. Keep it open.'
             }}
           </p>
           <CopyCode :code="command" copy-label="Copy install command" />

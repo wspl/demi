@@ -75,7 +75,7 @@ export {
 export type { FileBrowserSource } from '@demicodes/web-ui/files/types'
 export { baseName, joinPath, relativePath } from '@demicodes/web-ui/files/paths'
 export { downloadUrl } from '@demicodes/web-ui/files/download'
-export { formatBytes } from '@demicodes/web-ui/files/format'
+export { formatByteRatio, formatBytes } from '@demicodes/web-ui/files/format'
 export { treeLayout } from '@demicodes/web-ui/files/tree-layout'
 
 // Components: settings, controls, progress, navigation, files and icons.

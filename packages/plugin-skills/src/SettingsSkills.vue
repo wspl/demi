@@ -82,13 +82,13 @@ function skillStatuses(skill: SettingsSkill): SettingsRowStatus[] {
   if (skill.takenBy) {
     statuses.push({
       label: 'Name taken',
-      detail: `A skill named "${skill.name}" from ${skill.takenBy} is on. Turn it off to turn this one on.`,
+      detail: `A skill named “${skill.name}” from ${skill.takenBy} is on. Turn it off to use this one.`,
     })
   }
   if (skill.disableModelInvocation) {
     statuses.push({
       label: 'Never offered',
-      detail: 'It sets disable-model-invocation, so the agent is never offered it.',
+      detail: 'It sets disable-model-invocation.',
     })
   }
   return statuses
@@ -166,7 +166,7 @@ async function confirmRemove(): Promise<void> {
 <template>
   <SettingsPage
     title="Skills"
-    description="Packaged workflows the agent can follow. Off keeps the files but hides them from the agent."
+    description="Packaged workflows the agent can follow."
   >
     <SettingsGroup title="Sources">
       <template #actions>
@@ -302,7 +302,7 @@ async function confirmRemove(): Promise<void> {
     >
       <p>
         {{ removing?.skills.length
-          ? 'Its skills go with it, and the agent is no longer offered them. You can add the repository again later.'
+          ? 'Its skills go with it. You can add the repository again later.'
           : 'The source leaves your skills. You can add the repository again later.' }}
       </p>
     </ConfirmDialog>

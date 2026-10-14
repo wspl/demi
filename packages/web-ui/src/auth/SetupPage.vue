@@ -78,7 +78,7 @@ function submit() {
   <AuthPage
     v-if="phase.passkey"
     title="Add a Passkey"
-    message="Sign in next time with Touch ID, Face ID or your password manager, without your password. You can add one later in Settings › Account."
+    message="Sign in with Touch ID, Face ID or your password manager. You can also add one later in Settings."
   >
     <div class="flex flex-col gap-4">
       <!-- The line keeps its height with nothing to say, so a message never moves the buttons. -->
@@ -114,7 +114,7 @@ function submit() {
   <AuthPage
     v-else
     title="Set Up Demi"
-    message="Create the master account. It manages Demi and every account you add."
+    message="Create the master account that manages Demi."
   >
     <form class="flex flex-col gap-4" @submit.prevent="submit">
       <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">

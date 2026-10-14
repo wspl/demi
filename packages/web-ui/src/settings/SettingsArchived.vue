@@ -63,7 +63,7 @@ const shown = computed(() => {
 <template>
   <SettingsPage
     title="Archived"
-    description="Conversations put away from the sidebar. Click one to read it; Restore brings it back, and Delete removes it for good."
+    description="Conversations removed from the sidebar."
   >
     <SettingsGroup>
       <template #header>

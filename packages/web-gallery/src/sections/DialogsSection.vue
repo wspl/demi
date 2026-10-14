@@ -206,7 +206,7 @@ const claudePhases: { variant: string; phase: ProviderLoginPhase }[] = [
     variant: 'Claude Code · failed waiting for the Cloud',
     phase: {
       kind: 'failed',
-      ...requestFailure('Your Cloud did not start: its runner did not connect within 60 seconds'),
+      ...requestFailure('Your Cloud didn’t start. Its runner didn’t connect in 60 seconds.'),
     },
   },
   {
@@ -497,7 +497,7 @@ const resetPhases: {
                 @confirm="finishSlowly(close, 'Remove the Provider')"
               >
                 <p>Its API key and its 4 models go with it.</p>
-                <p>Conversations that use one of its models keep their history, and their next message needs another model.</p>
+                <p>Conversations using its models keep their history and need another model.</p>
               </ConfirmDialog>
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -512,7 +512,7 @@ const resetPhases: {
                 @close="close"
                 @confirm="finishSlowly(close, 'Remove the Skill Source')"
               >
-                <p>Its skills go with it, and the agent is no longer offered them. You can add the repository again later.</p>
+                <p>Its skills go with it. You can add the repository again later.</p>
               </ConfirmDialog>
             </GalleryDialogFrame>
           </GallerySpecimen>
