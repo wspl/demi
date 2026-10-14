@@ -157,8 +157,9 @@ sent then, as every control does under the
 a page never shows a failure about the connection, and a call fails only for
 the backend's own answer. A read of a plugin's state waits the same way. The
 backend's `503 backend_closing`, which it answers while it shuts down without
-doing the request, and a proxy's 502, 503 or 504 without the backend's error
-body count as not reached. A call whose caller goes away, as a panel that
+doing the request, and a proxy's 502, 503 or 504, or Cloudflare's 520 to 524,
+which it answers when the origin gave it nothing usable, without the
+backend's error body count as not reached. A call whose caller goes away, as a panel that
 closes, is dropped and never sent. For example, the user presses Reload in a browser
 tab while Demi restarts; the tab shows it loading, and the reload reaches
 the browser once Demi is back.
