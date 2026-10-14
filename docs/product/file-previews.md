@@ -136,7 +136,13 @@ holds `vendor → ../shared/vendor` and `config.json → ~/.config/app.json`:
 The listing says what each link's target is
 ([Host operations](../execution/runner.md)), so the tree shows all of this
 without a request per link. The attachment picker and a device's folder
-dialog show links the same way.
+dialog show links the same way, and act on what a link leads to when it is
+chosen, after reading it again, as the tree does: a link to a folder opens
+as one, and choosing a link whose target is missing or unreadable attaches
+nothing and says its sentence where the picker shows its errors, as Finder
+says an alias's original cannot be found. In the folder dialog a link to a
+file is dimmed like a file, and opening it on a double-click reads it again,
+so one whose target has become a folder opens.
 
 These show the card: HEIC, TIFF and JPEG XL images, which only Safari
 displays; MKV, AVI and WMV video, which web browsers play unreliably; Office

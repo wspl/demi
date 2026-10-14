@@ -701,10 +701,10 @@ impl Link {
             })
         };
         match read.await {
-            Ok(output) => self.0.device_jobs.resynced(job, Some(&output), lengths),
+            Ok(output) => self.0.device_jobs.resynced(self, job, Some(&output), lengths),
             Err(error) => {
                 tracing::info!(device = %self.0.device, %job, "the job's kept output was not read again: {error}");
-                self.0.device_jobs.resynced(job, None, lengths);
+                self.0.device_jobs.resynced(self, job, None, lengths);
             }
         }
     }

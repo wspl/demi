@@ -518,19 +518,24 @@ async fn expect_cases(setup: &str, cases: &[(&str, u8, &str, &str)]) {
 /// stderr, as SIGPIPE ends GNU's in a shell: `diff` panicked, `cmp` and the
 /// coreutils printed "Broken pipe" and exited 1 or 2, and `du`'s walk
 /// reported its printer's end as "sending on a closed channel". Each
-/// output is well over a 64 KiB pipe buffer, so the reader is gone before
-/// the writer ends: `cmp -l` lists each differing byte, so it compares `l1`
-/// with `l0`, which differs in every zero (1.7 MB), not with `l2`, which
-/// differs in one byte a line (30 KB). `rg 0 .` searches its files in
-/// parallel: before, its workers' end on the closed pipe panicked the walk
-/// (`rg: utility thread panicked`). Runs in about 1.7 s; the `rg` case
-/// added 0.7 s.
+/// output is well over 128 KiB, what a 64 KiB pipe and `head`'s first read
+/// of up to 64 KiB take together, so the writer still has bytes to write
+/// once its reader is gone, however the threads are scheduled: `sort` sorts
+/// `l2 l1` (244 KB), since `l1` alone (122 KB) fit in the pipe after `head`'s
+/// read and often ended with 0 on Linux; `cmp -l` lists each differing
+/// byte, so it compares `l1` with `l0`, which differs in every zero
+/// (1.7 MB), not with `l2`, which differs in one byte a line (30 KB). On
+/// Linux, `cat`'s splice path grew its output pipe to 1 MiB before it found
+/// splice off in a job, so `cat l1 l1 l1` (366 KB) fit and ended with 0.
+/// `rg 0 .` searches its files in parallel: before, its workers' end on the
+/// closed pipe panicked the walk (`rg: utility thread panicked`). Runs in
+/// about 1.7 s; the `rg` case added 0.7 s.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn a_closed_pipe_ends_utilities_quietly_as_sigpipe_does() {
     let setup = "seq -f '%060g' 1 2000 > l1; seq -f '%060g' 2001 4000 > l2; tr 0 1 < l1 > l0; \
                  mkdir t; seq -f 't/%060g' 1 3000 | xargs touch";
     let cases: Vec<(String, u8, &str, &str)> = [
-        "diff l1 l2", "diff -u l1 l2", "diff -y l1 l2", "cmp -l l1 l0", "cat l1 l1 l1", "sort l1", "du -a t",
+        "diff l1 l2", "diff -u l1 l2", "diff -y l1 l2", "cmp -l l1 l0", "cat l1 l1 l1", "sort l2 l1", "du -a t",
         "rg 0 .",
     ]
     .into_iter()
