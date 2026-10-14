@@ -518,18 +518,21 @@ async fn each_providers_requests_begin_with_the_one_before_and_a_summary_or_a_th
         );
         extends(family, second, third, "the next message");
         extends(family, third, fourth, "the result of a command left running");
-        // The summary request is the latest answered request, the fourth,
-        // with the instruction alone after it.
+        // The summary request is the session's next request, the fourth
+        // with its answer, then the instruction.
         extends(family, fourth, summary, "the summary request");
         let summary_parts = cached(family, summary).1;
-        assert_eq!(
-            summary_parts.len(),
-            cached(family, fourth).1.len() + 1,
-            "{family:?}"
-        );
-        let instruction = summary_parts.last().unwrap().to_string();
+        let [.., answer, instruction] = summary_parts.as_slice() else {
+            panic!("{family:?}: {summary_parts:#?}");
+        };
         assert!(
-            instruction.contains(COMPACTION_SUMMARY_INSTRUCTION.lines().next().unwrap()),
+            answer.to_string().contains("The build runs."),
+            "{family:?}: {answer}"
+        );
+        assert!(
+            instruction
+                .to_string()
+                .contains(COMPACTION_SUMMARY_INSTRUCTION.lines().next().unwrap()),
             "{family:?}: {instruction}"
         );
         // After the summary the messages start again at it, after the system

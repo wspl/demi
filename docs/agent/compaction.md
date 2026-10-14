@@ -62,22 +62,28 @@ what started it and the numbers it compared, so a pass is never a mystery.
 | Moment | Condition | Passes |
 | --- | --- | --- |
 | Before a turn: a send, a continuation, a retry, a resume or an edit | The estimate for the current model is at or over its token threshold | One |
-| Inside a turn, after a provider response | The response's reported usage is at or over the token threshold | One per response; the turn continues after at most three of them |
+| Inside a turn, after each call to the model | The call's reported usage is at or over the token threshold | One per call; the turn continues after at most three of them |
 | A request refused for its tokens (`context_length_exceeded`) | Always | One; the request is then sent once more ([Retries](failures-and-recovery.md#retries)) |
 | Before a model switch | The estimate is at or over the token threshold of the new model | Until it is under, at most eight, stopping when a pass compacts nothing |
 | A `compact` action | The estimate is at least 50% of the window in use, the model has none, or the unfinished turn failed with `request_too_large` | One |
 
-A response's usage is that of its last call to the model, the size of what
-the model read for it; a provider whose run makes several calls, as Claude
-Code's does when the model calls tools, reports the last one's, never their
-sum ([Claude Code](../providers/claude-code.md)). A reported input above the
+A call's usage is the size of what the model read for it. A provider whose
+run makes several calls, as Claude Code's does when the model calls tools,
+reports each call's usage when its tool calls come out, not only the last
+one's at the run's end, and never their sum
+([Claude Code](../providers/claude-code.md)): a Claude Code turn of 190 tool
+calls on a 300K window is compacted at the call that crossed 267,000, not
+at its end at 463,000. A reported input above the
 model's window cannot be one call's: the response triggers no compaction,
 and the backend logs an error naming the provider and the numbers, so a
 provider that misreports is found rather than compacting every turn.
 
-Inside a turn, the session first runs the tools the response requested, holding
+Inside a turn, the session first runs the tools the call requested, holding
 waiting input back, then compacts. When the pass made the estimate smaller, it
-appends a `resume` block and asks the provider to continue. When it did not,
+appends a `resume` block and asks the provider to continue. A call that ended
+the turn, an answer that requested no tool, is not continued: the turn ends
+as answered, the pass runs after it, and the next turn starts from the
+summary, so a finished answer is never written twice. When it did not,
 the turn goes on as if no compaction had been due: looping on it would
 summarize its own summaries again and pile up `resume` blocks until the model
 refused the history. A pass before a turn, or after a refused request, appends

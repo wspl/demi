@@ -245,6 +245,7 @@ fn block_entries(
     if past_summary {
         kept.retain(|entry| !is_reasoning(entry));
     }
+    extend_recorded(&mut kept, block_items);
     let split = kept.iter().position(is_result).unwrap_or(kept.len());
     let results = kept.split_off(split);
     let (mut calls, mut results) = (kept, results);
@@ -274,6 +275,35 @@ fn block_entries(
         }
     }
     (calls, results)
+}
+
+/// Gives each `user` entry that recorded one of `items`' user messages the
+/// blocks the message gained after it, as a summary request's instruction
+/// joins the input that ends its history (`compaction.md` § The summary
+/// request): the recorded blocks stay as they were, and so does every other
+/// entry of the block, such as the metadata the CLI wrote before the
+/// message. An entry whose blocks are not the start of the message's stays
+/// as it is.
+fn extend_recorded(entries: &mut [Value], items: &[InferenceItem]) {
+    let messages = items.iter().filter_map(|item| match item {
+        InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
+            Some(content)
+        }
+        _ => None,
+    });
+    let recorded = entries.iter_mut().filter(|entry| is_user_message(entry));
+    for (entry, content) in recorded.zip(messages) {
+        let message = serde_json::to_value(Message::user(content)).expect("a message serializes");
+        let Value::Array(blocks) = &message["content"] else {
+            continue;
+        };
+        let Some(Value::Array(written)) = entry.pointer_mut("/message/content") else {
+            continue;
+        };
+        if blocks.len() > written.len() && blocks.starts_with(written) {
+            written.extend_from_slice(&blocks[written.len()..]);
+        }
+    }
 }
 
 /// Whether an entry is the model's reasoning.

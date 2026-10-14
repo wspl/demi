@@ -1656,7 +1656,11 @@ impl SessionCore {
         request_id: String,
         cancel: CancellationToken,
     ) -> InferenceRequest {
-        let replayed = replay(&self.request_view(view));
+        let mut replayed = replay(&self.request_view(view));
+        // A session copy's instruction joins the input that ends its history.
+        if self.one_request {
+            super::compaction::join_instruction(&mut replayed);
+        }
         let mut items = Vec::with_capacity(replayed.items.len());
         let mut blocks = Vec::with_capacity(replayed.blocks.len());
         for block in replayed.blocks {

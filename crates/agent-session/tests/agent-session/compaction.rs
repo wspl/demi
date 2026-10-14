@@ -102,12 +102,15 @@ fn long_message() -> Vec<demi_shared_types::UserContentBlock> {
     text(&"x".repeat(3_000))
 }
 
-/// Whether `request` is a summary request: it carries the summary
-/// instruction, which no request of the session does.
+/// Whether `request` is a summary request: its last user message ends with
+/// the summary instruction, which no request of the session carries.
 fn is_copy(request: &demi_provider_common::InferenceRequest) -> bool {
-    request
-        .items
-        .contains(&user_item(COMPACTION_SUMMARY_INSTRUCTION))
+    request.items.iter().any(|item| match item {
+        InferenceItem::UserMessage { content } | InferenceItem::UserSteer { content } => {
+            content.last() == Some(&UserPart::Text(COMPACTION_SUMMARY_INSTRUCTION.to_owned()))
+        }
+        _ => false,
+    })
 }
 
 /// How many items each summary request held, in order.
@@ -124,6 +127,14 @@ fn user_item(message: &str) -> InferenceItem {
     InferenceItem::UserMessage {
         content: sent_text(message),
     }
+}
+
+/// The user's `message` with the summary instruction as one more text
+/// block, as a summary request ends a history that ends with the message.
+fn instructed_item(message: &str) -> InferenceItem {
+    let mut content = sent_text(message);
+    content.push(UserPart::Text(COMPACTION_SUMMARY_INSTRUCTION.to_owned()));
+    InferenceItem::UserMessage { content }
 }
 
 /// The summary of a `compaction_boundary` as the model receives it.
@@ -186,15 +197,19 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
     let [first, summary, second] = requests.as_slice() else {
         panic!("{requests:?}");
     };
-    // The copy's request is the session's latest answered request, the
-    // first, as the session sent it, then the instruction; same system
-    // prompt, tools and model.
+    // The copy's request is the request the second message would have
+    // made, the first as the session sent it, its answer and the message,
+    // with the instruction as one more text block of that message; same
+    // system prompt, tools and model.
     assert!(is_copy(summary) && !is_copy(second));
     // It carries the session's id, which keeps it with the session's
     // requests at the vendor.
     assert_eq!(summary.session_id, first.session_id);
     let mut expected = first.items.to_vec();
-    expected.push(user_item(COMPACTION_SUMMARY_INSTRUCTION));
+    expected.extend([
+        answer_item("small-model", "first answer"),
+        instructed_item(&"y".repeat(400)),
+    ]);
     assert_eq!(summary.items.as_ref(), expected.as_slice());
     assert_eq!(summary.system_prompt, second.system_prompt);
     assert_eq!(summary.model_id, "small-model");
@@ -334,15 +349,17 @@ async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_it
     let [a, b, summary, c, d, d_again] = requests.as_slice() else {
         panic!("{requests:?}");
     };
-    // The summary request is the latest answered request that leaves the
-    // recent work after it, with the instruction after it: a, since the
-    // 166 estimated tokens after its end, the question B among them, reach
-    // the 150 a 1,000-token window keeps, and the 23 after b do not.
+    // The summary request is the whole history, b and its answer, with the
+    // instruction after it as a message of its own, since the history ends
+    // with an answer.
     assert_eq!(
         summary.items.as_ref(),
         [
-            a.items.to_vec(),
-            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
+            b.items.to_vec(),
+            vec![
+                answer_item("small-model", "answer B"),
+                user_item(COMPACTION_SUMMARY_INSTRUCTION)
+            ]
         ]
         .concat()
     );
@@ -363,9 +380,12 @@ async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_it
         assert_eq!(request.system_prompt, a.system_prompt);
         assert_eq!(request.tools, a.tools);
     }
-    // A pass starts the prefix again at its boundary, which keeps the
-    // message A, with what came after a's end as it was written, and the
-    // next request repeats that.
+    // A pass starts the prefix again at its boundary, which stands at the
+    // end of a, the latest answered request that leaves the recent work
+    // after it: the 166 estimated tokens after its end, the question B
+    // among them, reach the 150 a 1,000-token window keeps, and the 23
+    // after b do not. The boundary keeps the message A, with what came
+    // after a's end as it was written, and the next request repeats that.
     assert_eq!(
         c.items.as_ref(),
         [
@@ -408,10 +428,11 @@ async fn a_request_repeats_the_one_before_as_its_prefix_a_pass_restarts_it_at_it
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_summary_request_that_exceeds_the_context_is_retried_with_half_the_window() {
+async fn a_summary_request_that_exceeds_the_context_is_retried_with_the_window_then_half_of_it() {
     let provider = ScriptedRuntime::new([
         answer("one"),
         answer("two"),
+        too_long(),
         too_long(),
         answer("summary of the first half"),
         answer("done"),
@@ -435,10 +456,12 @@ async fn a_summary_request_that_exceeds_the_context_is_retried_with_half_the_win
         .await
         .unwrap();
 
-    // The first summary request held what the second request carried, its
-    // three items, and the instruction; the second the first half of that
-    // window, two blocks.
-    assert_eq!(summary_sizes(&provider), [4, 3]);
+    // The first summary request held the whole history, five items, the
+    // instruction joined to the third message; the second the window alone,
+    // what the second request carried, three items, the instruction joined
+    // to its second message; the third the first half of that window, two
+    // blocks, and the instruction after the answer.
+    assert_eq!(summary_sizes(&provider), [5, 3, 3]);
     let blocks = session.transcript().blocks;
     let boundaries = blocks
         .iter()
@@ -1285,9 +1308,11 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_w
         too_long(),
         too_long(),
         too_long(),
+        too_long(),
         answer("recovered"),
         answer("summary"),
         answer("fourth answer"),
+        too_long(),
         too_long(),
         too_long(),
         too_long(),
@@ -1318,13 +1343,14 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_w
 
     let failed = session.compact().unwrap().await;
 
-    // What the second request carried, four blocks, then their first two,
-    // then the first alone: the overflow fails the action, reported once,
-    // and the history gains only its failure record.
+    // The whole history, then what the second request carried, four
+    // blocks, then their first two, then the first alone, each with the
+    // instruction joined to a message that ends it: the overflow fails the
+    // action, reported once, and the history gains only its failure record.
     let failure = failed.unwrap_err();
     assert_eq!(failure.code.as_deref(), Some("context_length_exceeded"));
     assert_eq!(*errors.borrow(), [*failure]);
-    assert_eq!(summary_sizes(&provider), [4, 3, 2]);
+    assert_eq!(summary_sizes(&provider), [5, 3, 3, 1]);
     assert_failure_recorded(&session, &before);
     // The session goes on.
     session
@@ -1353,7 +1379,8 @@ async fn a_summary_that_exceeds_the_context_down_to_one_block_fails_the_action_w
     );
     // The boundary replays as three messages: the note, the first message
     // it kept, and the summary.
-    assert_eq!(summary_sizes(&provider), [4, 3, 2, 2, 10, 7, 5, 5]);
+    // The pass between asked once, with the whole history, seven items.
+    assert_eq!(summary_sizes(&provider), [5, 3, 3, 1, 7, 11, 9, 7, 5, 5]);
     assert_failure_recorded(&session, &before);
 }
 
@@ -1398,8 +1425,10 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
     session.retry().unwrap().await.unwrap();
 
     // Rewound to its message, the history is over the threshold: the pass
-    // summarizes what the first request carried before the rerun, whose
-    // request starts with the summary and that request's answer.
+    // asks with the rerun's request and the instruction joined to its
+    // message, and summarizes what the first request carried before the
+    // rerun, whose request starts with the summary and that request's
+    // answer.
     let requests = provider.requests();
     let [summary, rerun] = &requests[2..] else {
         panic!("{requests:?}");
@@ -1408,7 +1437,8 @@ async fn a_retry_over_the_threshold_compacts_before_it_reruns_and_a_stop_during_
         summary.items.as_ref(),
         [
             user_item(&question),
-            user_item(COMPACTION_SUMMARY_INSTRUCTION),
+            answer_item("small-model", "old answer"),
+            instructed_item("retry this"),
         ]
     );
     assert_eq!(
@@ -1494,14 +1524,18 @@ async fn a_resume_over_the_threshold_keeps_the_stopped_message_after_the_summary
     let [summary, continuation] = &requests[3..] else {
         panic!("{requests:?}");
     };
-    // The first boundary's kept message, the old question, stays kept.
+    // The summary request is the continuation's, with the instruction
+    // joined to the resume; the first boundary's kept message, the old
+    // question, stays kept.
     assert_eq!(
         summary.items.as_ref(),
         [
             boundary_items(&["old question"], "summary one"),
             vec![
                 answer_item("small-model", &old_answer),
-                user_item(COMPACTION_SUMMARY_INSTRUCTION),
+                user_item(&question),
+                answer_item("small-model", &partial),
+                instructed_item(RESUME_TEXT),
             ],
         ]
         .concat()
@@ -1765,15 +1799,22 @@ async fn a_round_whose_usage_with_its_cache_reaches_the_threshold_summarizes_wha
     let [_, summary, continuation] = requests.as_slice() else {
         panic!("{requests:?}");
     };
-    // The pass summarizes what the round's request carried; the call and its
-    // result are kept, and the model continues after them.
+    // The summary request carries the call and its result, the instruction
+    // after them as a message of its own, which a provider puts in the
+    // results' message; the pass summarizes what the round's request
+    // carried, the call and its result are kept, and the model continues
+    // after them.
+    let [message, call, result, instruction] = summary.items.as_ref() else {
+        panic!("{:?}", summary.items);
+    };
     assert_eq!(
-        summary.items.as_ref(),
+        [message, instruction],
         [
-            user_item("use the tool"),
-            user_item(COMPACTION_SUMMARY_INSTRUCTION)
+            &user_item("use the tool"),
+            &user_item(COMPACTION_SUMMARY_INSTRUCTION)
         ]
     );
+    assert_eq!(item_kinds(&[call.clone(), result.clone()]), ["tool_use", "tool_result"]);
     assert_eq!(
         item_kinds(&continuation.items),
         [
@@ -2022,7 +2063,10 @@ async fn a_second_pass_folds_the_first_summary_in_and_a_restored_session_replays
         second_summary.items.as_ref(),
         [
             third_request.items.to_vec(),
-            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
+            vec![
+                answer_item("small-model", &long("third")),
+                instructed_item("fourth"),
+            ]
         ]
         .concat()
     );
@@ -2033,7 +2077,8 @@ async fn a_second_pass_folds_the_first_summary_in_and_a_restored_session_replays
             vec![
                 answer_item("small-model", &long("second")),
                 user_item("third"),
-                user_item(COMPACTION_SUMMARY_INSTRUCTION),
+                answer_item("small-model", &long("third")),
+                instructed_item("fourth"),
             ],
         ]
         .concat()
@@ -2136,8 +2181,9 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
     let requests = provider.requests();
     assert_eq!(
         item_kinds(&requests[2].items),
-        ["user_message", "assistant_text", "user_message", "user_message"]
+        ["user_message", "assistant_text", "user_message", "assistant_text", "user_message"]
     );
+    assert_eq!(requests[2].items.last(), Some(&instructed_item(&third)));
     let steer = InferenceItem::UserSteer {
         content: sent_text("mind the tests"),
     };
@@ -2349,8 +2395,9 @@ async fn an_edit_that_cuts_a_marker_anchors_no_estimate_on_a_usage_measured_befo
     session.settled().await;
 
     // The marker went with C, and B's usage, over the threshold of 500,
-    // stays invalid: no pass runs before the replacement's turn.
-    assert_eq!(summary_sizes(&provider), [2]);
+    // stays invalid: no pass runs before the replacement's turn. The one
+    // summary request held the whole history, five items.
+    assert_eq!(summary_sizes(&provider), [5]);
     assert_eq!(
         provider.requests().last().unwrap().items.as_ref(),
         [
@@ -2394,16 +2441,20 @@ async fn a_pass_after_an_edit_summarizes_only_the_history_the_edit_kept() {
         .unwrap();
     session.settled().await;
 
-    // What the edit kept is over the threshold: the pass summarizes what
-    // the request of A carried, and no request holds an answer the edit
-    // removed.
+    // What the edit kept is over the threshold: the pass asks with the
+    // replacement's request and summarizes what the request of A carried,
+    // and no request holds an answer the edit removed.
     let requests = provider.requests();
     let [summary, replacement] = &requests[3..] else {
         panic!("{requests:?}");
     };
     assert_eq!(
         summary.items.as_ref(),
-        [user_item(&first), user_item(COMPACTION_SUMMARY_INSTRUCTION),]
+        [
+            user_item(&first),
+            answer_item("small-model", "answer A"),
+            instructed_item("B2"),
+        ]
     );
     assert_eq!(
         replacement.items.as_ref(),
@@ -2609,6 +2660,83 @@ async fn a_summary_request_refused_for_its_size_fails_the_pass_without_a_smaller
     assert!(!compacted(&session.transcript().blocks));
 }
 
+// One session and four scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_summary_request_gives_the_claude_code_cli_its_instruction_inside_the_message_the_cli_recorded()
+ {
+    // The CLI recorded the second message, after the metadata it writes
+    // before one, before the vendor refused its request; the pass after the
+    // refusal asks with that message last.
+    let date = json!({
+        "type": "attachment",
+        "uuid": "recorded-date",
+        "attachment": { "type": "date_change", "newDate": "2026-10-14" },
+    });
+    let meta = json!({
+        "type": "user",
+        "uuid": "recorded-meta",
+        "isMeta": true,
+        "message": { "role": "user", "content": "<model-switch>small-model</model-switch>" },
+    });
+    let recorded = json!({
+        "type": "user",
+        "uuid": "recorded-two",
+        "message": { "role": "user", "content": [{ "type": "text", "text": "two" }] },
+    });
+    let provider = ScriptedRuntime::new([
+        answer("first"),
+        Turn::Events(vec![
+            ProviderEvent::Entries {
+                of: EntriesOf::Item(2),
+                entries: vec![date.clone(), meta.clone(), recorded],
+            },
+            ProviderEvent::Error(ProviderFailure {
+                message: "prompt is too long".into(),
+                code: Some(ErrorCode::ContextLengthExceeded),
+                diagnostics: None,
+                retry_after: None,
+            }),
+        ]),
+        answer("summary of the first message"),
+        answer("second"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let session = small_session(&provider, Vec::new(), &store).await;
+    session.send(text("one"), turn("t1")).unwrap().await.unwrap();
+
+    session.send(text("two"), turn("t2")).unwrap().await.unwrap();
+
+    // The session file a new CLI process resumes ends with the metadata as
+    // the CLI wrote it, then one message, the recorded second with the
+    // instruction as one more text block: two messages in a row would make
+    // the CLI add a line break to the first one's text.
+    let requests = provider.requests();
+    let summary = &requests[2];
+    assert!(is_copy(summary));
+    let file = demi_provider_claude_code::testing::session(summary, "2026-10-14T12:00:00.000Z");
+    let entries: Vec<serde_json::Value> = String::from_utf8(file)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    let [.., written_date, written_meta, last] = entries.as_slice() else {
+        panic!("{entries:#?}");
+    };
+    for (written, recorded) in [(written_date, &date), (written_meta, &meta)] {
+        assert_eq!(written["uuid"], recorded["uuid"]);
+        assert_eq!(written["attachment"], recorded["attachment"]);
+        assert_eq!(written["message"], recorded["message"]);
+    }
+    assert_eq!(last["uuid"], "recorded-two");
+    assert_eq!(
+        last["message"]["content"],
+        json!([
+            { "type": "text", "text": "two" },
+            { "type": "text", "text": COMPACTION_SUMMARY_INSTRUCTION },
+        ])
+    );
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_request_refused_for_its_tokens_compacts_once_and_goes_again_and_a_second_refusal_fails_the_turn()
  {
@@ -2644,8 +2772,9 @@ async fn a_request_refused_for_its_tokens_compacts_once_and_goes_again_and_a_sec
         .await
         .unwrap();
 
-    // The refused request left nothing behind; the pass summarized what the
-    // first request carried, and the request went again from the summary.
+    // The refused request left nothing behind; the pass asked with it and
+    // the instruction joined to its message, summarized what the first
+    // request carried, and the request went again from the summary.
     let requests = provider.requests();
     let [first, refused, summary, again] = &requests[..4] else {
         panic!("{requests:?}");
@@ -2654,7 +2783,10 @@ async fn a_request_refused_for_its_tokens_compacts_once_and_goes_again_and_a_sec
         summary.items.as_ref(),
         [
             first.items.to_vec(),
-            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
+            vec![
+                answer_item("small-model", "first"),
+                instructed_item("two")
+            ]
         ]
         .concat()
     );
@@ -2777,16 +2909,14 @@ async fn the_cut_keeps_the_recent_work_at_the_end_of_an_answered_request() {
     // last two leave the 150 a 1,000-token window keeps: the window ends
     // where the request that carried the third call's result ended, and the
     // fourth and fifth calls stay as they were, each with its result.
+    // The summary request is the fifth request, the fifth call and its
+    // result, then the instruction.
     let requests = five_calls("o".repeat(240)).await;
-    let (fourth, summary, continuation) = (&requests[3], &requests[5], &requests[6]);
-    assert_eq!(
-        summary.items.as_ref(),
-        [
-            fourth.items.to_vec(),
-            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
-        ]
-        .concat()
-    );
+    let (fifth, summary, continuation) = (&requests[4], &requests[5], &requests[6]);
+    let (sent, after) = summary.items.split_at(fifth.items.len());
+    assert_eq!(sent, fifth.items.as_ref());
+    assert_eq!(item_kinds(after), ["tool_use", "tool_result", "user_message"]);
+    assert_eq!(after.last(), Some(&user_item(COMPACTION_SUMMARY_INSTRUCTION)));
     assert_eq!(
         item_kinds(&continuation.items),
         [
@@ -2809,14 +2939,7 @@ async fn the_cut_keeps_the_recent_work_at_the_end_of_an_answered_request() {
     // answered request's content ended: only the fifth call stays.
     let requests = five_calls("ok".to_owned()).await;
     let (fifth, summary, continuation) = (&requests[4], &requests[5], &requests[6]);
-    assert_eq!(
-        summary.items.as_ref(),
-        [
-            fifth.items.to_vec(),
-            vec![user_item(COMPACTION_SUMMARY_INSTRUCTION)]
-        ]
-        .concat()
-    );
+    assert_eq!(summary.items[..fifth.items.len()], fifth.items[..]);
     assert_eq!(
         item_kinds(&continuation.items[3..]),
         ["tool_use", "tool_result", "user_message"]
