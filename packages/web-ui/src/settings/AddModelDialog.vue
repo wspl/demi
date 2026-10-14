@@ -25,6 +25,8 @@ const props = defineProps<{
   overlayStore: OverlayStore
   /** Asks models.dev for the matches of the typed text; without it only *Custom* is offered. */
   search?: SettingsModelSearch
+  /** The text the field starts with on each opening; a specimen's way to show a search under way. */
+  startText?: string
   /** Whether a chosen model is being added: the field waits for it. */
   adding?: boolean
   /** Why the last add failed, with the request it came from. */
@@ -38,12 +40,12 @@ const emit = defineEmits<{
 }>()
 
 const text = ref('')
-// Each opening starts with an empty field.
+// Each opening starts with the same text, empty in the product.
 watch(
   () => props.isOpen,
   (open) => {
     if (open) {
-      text.value = ''
+      text.value = props.startText ?? ''
     }
   },
   { immediate: true },
@@ -112,17 +114,17 @@ function choose(choice: Choice): void {
             @choose="choose"
           >
             <template #item="{ item }">
-              <template v-if="item.kind === 'custom'">
+              <span v-if="item.kind === 'custom'" class="flex min-w-0 flex-1 items-center gap-2">
                 <span class="shrink-0">Custom</span>
                 <span class="min-w-0 flex-1 truncate text-fg-subtle">{{ text.trim() }}</span>
-              </template>
-              <template v-else>
+              </span>
+              <span v-else class="flex min-w-0 flex-1 items-center gap-2">
                 <span class="min-w-0 flex-1 truncate">{{ item.match.model.name }}</span>
                 <span class="shrink-0 text-fg-subtle">{{ item.match.vendor }}</span>
                 <span class="w-12 shrink-0 text-right tabular-nums text-fg-subtle">{{
                   formatTokens(item.match.model.contextWindow)
                 }}</span>
-              </template>
+              </span>
             </template>
           </Autocomplete>
         </SettingsRow>
