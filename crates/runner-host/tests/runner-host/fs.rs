@@ -156,3 +156,71 @@ async fn filesystem_wire_preserves_binary_dates_links_and_error_codes() {
     assert_eq!(error["type"], "fs_error");
     assert_eq!(error["code"], "ENOENT");
 }
+
+/// A listing names each symbolic link's target as written and what is
+/// there after every link on the way: nothing there is `missing`, and a
+/// target that cannot be reached, behind a directory closed to the user or
+/// round a loop of links, is `unreadable` with the system's reason; neither
+/// fails the listing (`runner.md` § Host operations).
+// Cost: a temporary directory; a few milliseconds.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_listing_says_where_each_link_points_and_never_fails_for_one() {
+    use std::os::unix::fs::{PermissionsExt, symlink};
+    use wire::LinkTarget::{Directory, File, Missing, Unreadable};
+
+    let root = tempfile::tempdir().unwrap();
+    let at = |name: &str| root.path().join(name);
+    std::fs::write(at("notes.txt"), "four").unwrap();
+    std::fs::create_dir(at("shared")).unwrap();
+    std::fs::create_dir(at("closed")).unwrap();
+    std::fs::write(at("closed/secret.txt"), "hidden").unwrap();
+    symlink("notes.txt", at("to-file")).unwrap();
+    symlink("shared", at("to-dir")).unwrap();
+    let gone = at("gone.log").to_string_lossy().into_owned();
+    symlink(&gone, at("broken")).unwrap();
+    symlink("notes.txt/inside", at("through-file")).unwrap();
+    symlink("loop-b", at("loop-a")).unwrap();
+    symlink("loop-a", at("loop-b")).unwrap();
+    symlink("to-dir", at("chain")).unwrap();
+    symlink("closed/secret.txt", at("denied")).unwrap();
+    // The directory on the way to `denied`'s target may not be searched.
+    std::fs::set_permissions(at("closed"), std::fs::Permissions::from_mode(0o000)).unwrap();
+
+    let mut entries = call::<Vec<wire::DirEntry>>(
+        Inbound::FsReaddir {
+            id: "test".into(),
+            path: ".".into(),
+            cwd: None,
+        },
+        root.path(),
+    )
+    .await;
+    std::fs::set_permissions(at("closed"), std::fs::Permissions::from_mode(0o755)).unwrap();
+    entries.sort_by(|a, b| a.name.cmp(&b.name));
+    let listed: Vec<_> = entries
+        .iter()
+        .map(|entry| {
+            let link = entry.link.as_ref().map(|link| (link.target.as_str(), link.leads_to.clone()));
+            (entry.name.as_str(), entry.is_file, entry.is_directory, link)
+        })
+        .collect();
+    let unreadable = |reason: &str| Unreadable { reason: reason.to_owned() };
+    let looped = unreadable("Too many levels of symbolic links");
+    assert_eq!(
+        listed,
+        [
+            ("broken", false, false, Some((gone.as_str(), Missing))),
+            ("chain", false, false, Some(("to-dir", Directory))),
+            ("closed", false, true, None),
+            ("denied", false, false, Some(("closed/secret.txt", unreadable("Permission denied")))),
+            ("loop-a", false, false, Some(("loop-b", looped.clone()))),
+            ("loop-b", false, false, Some(("loop-a", looped))),
+            ("notes.txt", true, false, None),
+            ("shared", false, true, None),
+            ("through-file", false, false, Some(("notes.txt/inside", Missing))),
+            ("to-dir", false, false, Some(("shared", Directory))),
+            ("to-file", false, false, Some(("notes.txt", File))),
+        ]
+    );
+}

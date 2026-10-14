@@ -15,7 +15,7 @@ import type { WatchLink } from '@demicodes/web-ui/files/watch-channel'
 import { reconnectNow } from '@demicodes/web-ui/transport/liveness'
 import { relayWatchLink, watchReceiver, watchText, type OpenConversationWatchLink } from '../conversation/file-watch'
 import { ApiError } from '../api/client'
-import { fileBrowserError } from '../api/files'
+import { fileBrowserEntry, fileBrowserError } from '../api/files'
 import {
   errorCodeSchema,
   listedSchema,
@@ -118,13 +118,7 @@ export function directFileReads(routeOf: RouteOf, relay: FileReads): FileReads {
       either(async (peer, route) => {
         const channel = await peer.open({ ...route.scope, op: 'list', path }, listedSchema)
         const listed = await channel.answer()
-        const entries = listed.entries.map((entry) => ({
-          name: entry.name,
-          isDirectory: entry.isDirectory,
-          size: entry.size,
-          modifiedAt: entry.modifiedAt,
-        }))
-        return { value: entries, readAt: listed.readAt }
+        return { value: listed.entries.map(fileBrowserEntry), readAt: listed.readAt }
       }, () => relay.list(path)),
     ...(relay.contents
       ? {

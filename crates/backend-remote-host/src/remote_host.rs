@@ -13,9 +13,9 @@ use demi_command_protocol::{
 };
 use demi_host_interface::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
-    HostErrorKind, HostFs, HostIdentity, HostKey, HostPaths, HostProcess, JobCaller, MkdirOptions, Process,
+    HostErrorKind, HostFs, HostIdentity, HostKey, HostPaths, HostProcess, JobCaller, LinkTarget, MkdirOptions, Process,
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnRequest,
-    WhenExists, WholeOutput, WriteOptions,
+    SymbolicLink, WhenExists, WholeOutput, WriteOptions,
 };
 use demi_runner_protocol::wire::{
     self, FsResult, GitChanges, GitResult, Inbound, LogLine, PipeRef, ReadAt, STDIN_CHUNK_BYTES,
@@ -1834,13 +1834,23 @@ fn dir_entry(entry: wire::DirEntry) -> Result<DirEntry, HostError> {
         kind: kind(
             entry.is_file,
             entry.is_directory,
-            entry.is_symbolic_link,
+            entry.link.is_some(),
             None,
             None,
         ),
         size: entry.size,
         modified: timestamp(entry.mtime)?,
         name: entry.name,
+        link: entry.link.map(|link| SymbolicLink {
+            target: link.target,
+            leads_to: match link.leads_to {
+                wire::LinkTarget::File => LinkTarget::File,
+                wire::LinkTarget::Directory => LinkTarget::Directory,
+                wire::LinkTarget::Other => LinkTarget::Other,
+                wire::LinkTarget::Missing => LinkTarget::Missing,
+                wire::LinkTarget::Unreadable { reason } => LinkTarget::Unreadable { reason },
+            },
+        }),
     })
 }
 

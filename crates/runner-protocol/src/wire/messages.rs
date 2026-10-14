@@ -1504,16 +1504,50 @@ pub fn file_version(size: u64, modified_ms: i64) -> String {
 
 /// One entry of a directory listing, with its type, size and modification
 /// time as the entry's own metadata reports them, as `lstat` does: a
-/// symbolic link's are the link's.
+/// symbolic link's are the link's, and it is neither a file nor a
+/// directory. A symbolic link, and on Windows a junction, carries `link`;
+/// no other entry does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DirEntry {
     pub name: String,
     pub is_file: bool,
     pub is_directory: bool,
-    pub is_symbolic_link: bool,
     pub size: u64,
     pub mtime: Timestamp,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    pub link: Option<SymbolicLink>,
+}
+
+/// Where a symbolic link of a listing points (`runner.md` § Host
+/// operations): its target as written, and what is there once every link
+/// on the way is followed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SymbolicLink {
+    pub target: String,
+    pub leads_to: LinkTarget,
+}
+
+/// What a symbolic link leads to (`file-previews.md` § Symbolic links).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum LinkTarget {
+    File,
+    Directory,
+    /// Neither a file nor a directory, such as a device or a pipe.
+    Other,
+    /// Nothing is there: a name on the way does not exist, or is no
+    /// directory.
+    Missing,
+    /// Something may be there but cannot be reached: a directory on the way
+    /// may not be searched, the links go round in a loop, the disk fails.
+    /// `reason` is the system's, as `strerror` words it.
+    Unreadable { reason: String },
 }
 
 /// One file of a directory an `fs_writeDirectory` writes: its path inside
