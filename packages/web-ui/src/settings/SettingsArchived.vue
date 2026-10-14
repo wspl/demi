@@ -99,7 +99,7 @@ const shown = computed(() => {
           class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
         >
           {{
-            query ? 'No archived conversation matches.' : 'Nothing is archived.'
+            query ? 'No matches' : 'No archived conversations'
           }}
         </div>
       </AsyncRegion>

@@ -33,6 +33,8 @@ provideEditSelection(() => work.selectEdit)
 // A link in the child's messages opens the panel for the directory the child wrote it in.
 const conversationFiles = galleryConversationFiles(workspace.source, ({ path, line, root }) => {
   work.openIn({ intent: 'file', payload: { path, ...(line === null ? {} : { line }), ...(root === undefined ? {} : { root }) } })
+}, ({ commit, root }) => {
+  work.openIn({ intent: 'commit', payload: { commit, ...(root === undefined ? {} : { root }) } })
 })
 provideMessageFiles(() => ({ ...conversationFiles, cwd: workspace.root }))
 

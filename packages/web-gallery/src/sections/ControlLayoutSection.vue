@@ -23,10 +23,10 @@ const segmentOptions: readonly SegmentedOption<string>[] = [
   { value: 'second', label: 'Second' },
   { value: 'third', label: 'Third' },
 ]
-// Two labelled options, as the Changes view switches between Uncommitted and Conversation.
-const changes = ref('uncommitted')
+// Two labelled options, as the Change view switches between Commits and Conversation.
+const changes = ref('commits')
 const changesOptions: readonly SegmentedOption<string>[] = [
-  { value: 'uncommitted', label: 'Uncommitted' },
+  { value: 'commits', label: 'Commits' },
   { value: 'conversation', label: 'Conversation' },
 ]
 // More segments than a narrow container holds, as the sign-in page's states on a phone.

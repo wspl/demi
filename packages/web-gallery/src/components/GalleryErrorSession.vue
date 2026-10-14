@@ -11,7 +11,7 @@ import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import type { ConnectionProblem } from '@demicodes/web-ui/transport/connection'
 import type { Block } from '@demicodes/protocol'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
-import { generationErrorBlock, hostOfflineErrorBlock, shortTranscriptBlocks, usageLimitErrorBlock } from '../fixtures/blocks'
+import { accountSwitchBlocks, generationErrorBlock, hostOfflineErrorBlock, shortTranscriptBlocks, usageLimitErrorBlock } from '../fixtures/blocks'
 import { galleryMessages } from '../fixtures/send-while-running'
 import {
   compactedAfterFailedTurnTranscript,
@@ -173,6 +173,28 @@ const cases: SessionCase[] = [
     composer: 'default',
   },
   {
+    variant: 'Usage limit · Continue with another account',
+    note: 'The entry has more accounts and no rotation: beside Resume, the dock offers to continue with the account that has the most room now, which becomes the active account in Settings and resumes the turn there.',
+    session: state('usage-limit-other', {
+      blocks: [...shortTranscriptBlocks(), usageLimitErrorBlock('usage-limit-other-error', limitResets)],
+      failures: {
+        'usage-limit-other-error': {
+          retryAt: limitResets,
+          continueWith: { credentialId: 'a2', label: 'sam@example.com' },
+        },
+      },
+    }),
+    composer: 'default',
+  },
+  {
+    variant: 'Account rotation · the agent moved to another account',
+    note: 'Not a failure. With In Order or Balanced, the agent’s account reached its limit before anything of the answer showed: the same request went at once to the next account, the transcript says so in a neutral line, with the reset in the viewer’s time zone, and the answer follows. Nothing to click.',
+    session: state('account-switch', {
+      blocks: [...shortTranscriptBlocks(), ...accountSwitchBlocks(limitResets)],
+    }),
+    composer: 'default',
+  },
+  {
     variant: 'Usage limit · its time has passed',
     note: 'The same failure after the limit reset: the record still says when it reset, but the switch is gone, since there is no time left to resume at. Resume in the dock goes on.',
     session: state('usage-limit-passed', {
@@ -268,6 +290,7 @@ const cases: SessionCase[] = [
                 :primary-host="item.primary"
                 v-model:resume-at-retry="galleryMessages.resumeAtRetry"
                 @retry="productWould('Resume the Turn')"
+                @continue-with="(_provider, account) => productWould(`Make ${account === 'a2' ? 'sam@example.com' : account} the Active Account and Resume the Turn`)"
                 @retry-load="productWould('Load the Conversation Again')"
                 @rename="item.session.title = $event"
                 @save-scroll="(_id, value) => (item.session.scroll = value)"

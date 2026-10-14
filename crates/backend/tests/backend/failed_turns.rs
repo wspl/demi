@@ -152,6 +152,7 @@ impl Provider for LimitedProvider {
         }
         ProviderFailureFacts {
             retry_at: Some(Timestamp::truncate(received_at.to_jiff() + SignedDuration::from_hours(1))),
+            continue_with: None,
         }
     }
 
@@ -414,6 +415,7 @@ async fn a_usage_limit_naming_no_moment_resumes_when_the_quotas_used_up_window_r
         limit: None,
         unit: None,
         resets_at: Some(resets.parse().unwrap()),
+        period_seconds: None,
         severity: None,
         scope: None,
     };

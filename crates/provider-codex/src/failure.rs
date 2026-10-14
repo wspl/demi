@@ -94,6 +94,7 @@ pub fn read_codex_failure(
         if let Some(resets_at) = limit.get("resets_at").and_then(serde_json::Value::as_f64) {
             return ProviderFailureFacts {
                 retry_at: unix_seconds(resets_at),
+                continue_with: None,
             };
         }
         if let Some(seconds) = limit
@@ -103,6 +104,7 @@ pub fn read_codex_failure(
             let lifts = received_at.as_millisecond() as f64 / 1000.0 + seconds;
             return ProviderFailureFacts {
                 retry_at: unix_seconds(lifts),
+                continue_with: None,
             };
         }
     }

@@ -291,6 +291,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(accounts::list),
         )
         .route("/providers/{id}/accounts/active", put(accounts::activate))
+        .route("/providers/{id}/accounts/order", put(accounts::reorder))
         .route("/providers/{id}/accounts/login", post(accounts::login_into))
         .route(
             "/providers/{id}/accounts/{credential}",
@@ -434,6 +435,9 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/conversations/{id}/changes", get(files::changes))
         .route("/conversations/{id}/changes/file", get(files::changed_file))
         .route("/conversations/{id}/changes/raw", get(files::committed))
+        .route("/conversations/{id}/changes/branches", get(files::branches))
+        .route("/conversations/{id}/changes/log", get(files::log))
+        .route("/conversations/{id}/changes/commit", get(files::commit))
         .fallback(no_route)
         .method_not_allowed_fallback(no_route)
         // After the fallbacks, so the gate covers them too.

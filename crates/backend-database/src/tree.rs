@@ -1455,6 +1455,7 @@ mod tests {
             intervals: Vec::new(),
             model: test_model(),
             edits: Vec::new(),
+            account: None,
         }
     }
 

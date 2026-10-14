@@ -198,6 +198,92 @@ async fn the_changes_routes_read_the_directory_the_request_names_and_the_convers
     assert_eq!(relative.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery));
 }
 
+// Under a minute: a repository on a paired device's runner.
+#[tokio::test]
+async fn the_history_routes_read_branches_a_log_and_a_commits_files_through_the_host_access() {
+    let device = OnDevice::start().await;
+    // Outside a repository, the history says so.
+    let outside = device.get("/changes/branches").await;
+    assert_eq!(outside.refusal(), (StatusCode::CONFLICT, ErrorCode::NotRepository));
+
+    git(&device.root, &["init", "-q", "-b", "main"]);
+    std::fs::write(device.root.join("a.txt"), "1\n").unwrap();
+    git(&device.root, &["add", "."]);
+    git(&device.root, &["commit", "-q", "-m", "First"]);
+    git(&device.root, &["branch", "old"]);
+    std::fs::write(device.root.join("a.txt"), "1\n2\n").unwrap();
+    git(&device.root, &["commit", "-q", "-am", "Second\n\nWith a body."]);
+
+    let branches: Value = device.get("/changes/branches").await.json();
+    assert_eq!(branches["current"], json!("main"));
+    assert_eq!(branches["head"], Value::Null);
+    let log: Value = device.get("/changes/log").await.json();
+    assert_eq!(log["more"], json!(false));
+    let commits = log["commits"].as_array().unwrap();
+    assert_eq!(
+        commits.iter().map(|commit| commit["message"].as_str().unwrap().trim()).collect::<Vec<_>>(),
+        ["Second\n\nWith a body.", "First"]
+    );
+    let second = commits[0]["id"].as_str().unwrap().to_owned();
+    let old: Value = device.get("/changes/log?branch=old").await.json();
+    assert_eq!(old["commits"].as_array().unwrap().len(), 1);
+
+    // A commit by its abbreviation: its files against its parent, and the branches it is on.
+    let commit: Value = device.get(&format!("/changes/commit?commit={}", &second[..7])).await.json();
+    assert_eq!(commit["commit"]["id"], json!(second));
+    assert_eq!(
+        commit["files"],
+        json!([{ "path": "a.txt", "status": "M", "kind": "modified", "added": 1, "removed": 0 }])
+    );
+    assert_eq!(commit["branches"], json!(["main"]));
+    // A file's two sides at that commit, and its bytes as the commit has it.
+    let sides = device.get(&format!("/changes/file?{}", query(&[("path", "a.txt"), ("commit", &second)]))).await;
+    assert_eq!(sides.json::<Value>(), json!({ "original": "1\n", "modified": "1\n2\n" }));
+    let first = commits[1]["id"].as_str().unwrap();
+    let root_sides = device.get(&format!("/changes/file?{}", query(&[("path", "a.txt"), ("commit", first)]))).await;
+    assert_eq!(root_sides.json::<Value>(), json!({ "original": "", "modified": "1\n" }));
+    let raw = device.get(&format!("/changes/raw?{}", query(&[("path", "a.txt"), ("commit", first)]))).await;
+    assert_eq!(&raw.body[..], b"1\n");
+
+    // A commit the repository lacks, a branch it lacks, and a name that is no commit's.
+    let missing = device.get("/changes/commit?commit=0000000").await;
+    assert_eq!(missing.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
+    let gone = device.get("/changes/log?branch=nowhere").await;
+    assert_eq!(gone.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
+    let unknown = device.get(&format!("/changes/raw?{}", query(&[("path", "a.txt"), ("commit", "0000000")]))).await;
+    assert_eq!(unknown.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
+    let malformed = device.get("/changes/commit?commit=HEAD").await;
+    assert_eq!(malformed.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery));
+}
+
+// Under a minute: a repository on a paired device's runner.
+#[tokio::test]
+async fn a_renamed_files_old_side_is_read_at_its_earlier_path_uncommitted_and_in_a_commit() {
+    let device = OnDevice::start().await;
+    git(&device.root, &["init", "-q", "-b", "main"]);
+    std::fs::write(device.root.join("old.txt"), "1\n2\n3\n").unwrap();
+    git(&device.root, &["add", "."]);
+    git(&device.root, &["commit", "-q", "-m", "First"]);
+    git(&device.root, &["mv", "old.txt", "new.txt"]);
+    std::fs::write(device.root.join("new.txt"), "1\n2\n3\n4\n").unwrap();
+    git(&device.root, &["add", "."]);
+
+    // Uncommitted: the last commit's side at the earlier path.
+    let sides = device.get(&format!("/changes/file?{}", query(&[("path", "new.txt"), ("from", "old.txt")]))).await;
+    assert_eq!(sides.json::<Value>(), json!({ "original": "1\n2\n3\n", "modified": "1\n2\n3\n4\n" }));
+
+    // In a commit: its first parent's side at the earlier path.
+    git(&device.root, &["commit", "-q", "-m", "Rename"]);
+    let log: Value = device.get("/changes/log").await.json();
+    let renamed = log["commits"][0]["id"].as_str().unwrap().to_owned();
+    let commit: Value = device.get(&format!("/changes/commit?commit={renamed}")).await.json();
+    assert_eq!(commit["files"][0]["from"], json!("old.txt"));
+    let sides = device
+        .get(&format!("/changes/file?{}", query(&[("path", "new.txt"), ("from", "old.txt"), ("commit", &renamed)])))
+        .await;
+    assert_eq!(sides.json::<Value>(), json!({ "original": "1\n2\n3\n", "modified": "1\n2\n3\n4\n" }));
+}
+
 // Several seconds: a listing over the runner's message limit needs about 21,000
 // files in one directory.
 #[tokio::test]

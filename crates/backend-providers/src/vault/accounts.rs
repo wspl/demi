@@ -26,6 +26,9 @@ pub enum AccountRefusal {
     Unsupported(&'static str),
     #[error("No such account")]
     NotFound,
+    /// An order that does not name every account of the entry once.
+    #[error("credentialIds: name every account of this provider once")]
+    Order,
     #[error(transparent)]
     Assembly(#[from] AssemblyError),
 }
@@ -76,6 +79,26 @@ pub async fn activate(
     assembly.vault().mark_changed(&entry.owner);
     assembly.invalidate(&entry.id).await?;
     Ok(account)
+}
+
+/// Puts the entry's accounts in the order `accounts` names them, which In
+/// Order follows and the list shows; it names every account once.
+pub async fn reorder(
+    assembly: &ProviderAssembly,
+    entry: &ProviderEntry,
+    accounts: Vec<CredentialId>,
+) -> Result<(), AccountRefusal> {
+    subscription(entry)?;
+    let ordered = assembly
+        .vault()
+        .control()
+        .set_credential_order(entry.id.clone(), accounts)
+        .await?;
+    if !ordered {
+        return Err(AccountRefusal::Order);
+    }
+    assembly.vault().mark_changed(&entry.owner);
+    Ok(())
 }
 
 /// Removes an account, the active one included, with its quota snapshot,

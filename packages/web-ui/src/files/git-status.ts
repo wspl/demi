@@ -108,8 +108,21 @@ export const GIT_MARKS: Record<GitResourceStatus, GitMark> = {
   'both-modified': { letter: '!', text: 'Conflict: both modified', color: 'conflicting', strike: false },
 }
 
-/** How VS Code marks a file with git's two letters; `null` when it does not. */
+/** The marks of a commit's files, by the one letter git's log gives each, in VS Code's colors. */
+const COMMIT_MARKS: Record<string, GitMark> = {
+  A: { letter: 'A', text: 'Added', color: 'added', strike: false },
+  M: { letter: 'M', text: 'Modified', color: 'modified', strike: false },
+  D: { letter: 'D', text: 'Deleted', color: 'deleted', strike: true },
+  R: { letter: 'R', text: 'Renamed', color: 'renamed', strike: false },
+}
+
+/**
+ * How VS Code marks a file with git's two letters, or a commit's file with
+ * the one letter git's log gives it; `null` when it does not.
+ */
 export function gitMark(status: string): GitMark | null {
+  if (status.length === 1)
+    return COMMIT_MARKS[status] ?? null
   const resource = gitResourceStatus(status)
   return resource ? GIT_MARKS[resource] : null
 }

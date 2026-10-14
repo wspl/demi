@@ -93,6 +93,12 @@ export const usePreferences = defineStore('preferences', () => {
    * itself at that time (`web-api.md` § User preferences); absent means no.
    */
   const resumeAtRetry = computed(() => product.snapshot?.preferences.resumeAtRetry ?? false)
+  /**
+   * Whether the user went on past the warning about several subscription
+   * accounts, which then never shows again (`providers.md` § Account
+   * rotation); absent means no.
+   */
+  const multiAccountWarned = computed(() => product.snapshot?.preferences.multiAccountWarned ?? false)
 
   /**
    * Whether the user turned the provider entry `providerId` off in
@@ -339,6 +345,7 @@ export const usePreferences = defineStore('preferences', () => {
     lastProjectHost,
     sendWhileRunning,
     resumeAtRetry,
+    multiAccountWarned,
     contextLimit,
     setContextLimit,
     hidesProvider,

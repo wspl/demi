@@ -51,7 +51,7 @@ pub(super) async fn callback(
             StatusCode::BAD_REQUEST,
             page(
                 "Sign-in expired",
-                "This sign-in expired or was already used. Close this tab and sign in again in Demi.",
+                "This sign-in expired, was already used, or was started by another account. Close this tab and sign in again in Demi.",
             ),
         ),
         Err(CallbackError::Denied { vendor, error }) => (

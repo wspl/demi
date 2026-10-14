@@ -157,11 +157,11 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
   }
   if (kind === 'none') {
     return {
-      label: 'No conversation open.',
+      label: 'No conversation open',
       action: 'create',
     }
   }
-  return { label: 'No messages yet.' }
+  return { label: 'No messages' }
 }
 
 /**
@@ -197,6 +197,29 @@ export function turnRecovery(
 export function refusedForSize(blocks: readonly RecordCandidate[]): boolean {
   const end = turnRecord(blocks)
   return end?.type === 'error' && end.code === 'request_too_large'
+}
+
+/**
+ * The account a usage limit that ended the unfinished turn offers to go on
+ * with, beside Resume, on an entry without rotation (`providers.md`
+ * § Account rotation): the one its failure's facts name. It reads the
+ * turn's record as Resume does, so input written behind the failure, such
+ * as a child's report, keeps it. Null while running, and for any other end.
+ */
+export function continueWithOffer(
+  phase: 'idle' | string,
+  blocks: readonly (RecordCandidate & { id?: string; model?: { providerId: string } })[],
+  failures: Readonly<Record<string, { continueWith?: { credentialId: string; label: string } | null }>>,
+): { providerId: string; credentialId: string; label: string } | null {
+  if (phase !== 'idle') {
+    return null
+  }
+  const end = turnRecord(blocks)
+  if (end?.type !== 'error' || end.code !== 'usage_limit' || !end.id || !end.model) {
+    return null
+  }
+  const offered = failures[end.id]?.continueWith
+  return offered ? { providerId: end.model.providerId, ...offered } : null
 }
 
 /** What `turnRecovery` reads of a block. */

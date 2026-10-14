@@ -20,6 +20,14 @@ export interface IntentPayloads {
    * names them: the request, its file, and the edit of it or All Changes.
    */
   edit: RequestEditSelection
+  /**
+   * A commit of the repository a message's agent worked in, by its id or an
+   * abbreviation of it, as a `commit:3f2a9c1` link names it
+   * (`edit-tracking.md` § Commits mode). `root` is the directory the view
+   * opens for, the working directory of the agent that wrote the link;
+   * absent, the conversation's.
+   */
+  commit: { commit: string; root?: string }
 }
 
 export type IntentName = keyof IntentPayloads

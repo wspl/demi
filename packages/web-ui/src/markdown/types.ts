@@ -87,6 +87,18 @@ export interface ConversationFiles {
    * shows its alt text.
    */
   attachment?(id: string): AttachmentLookup
+  /**
+   * Shows a commit a message links as `commit:3f2a9c1` in the Change view's
+   * Commits mode, through the `commit` intent; absent while no plugin the
+   * user has on opens it, so such a link shows as text.
+   */
+  openCommit?(target: MessageCommitTarget): void
+}
+
+/** A commit a message links, by its id or an abbreviation; `root` as a file's target has it. */
+export interface MessageCommitTarget {
+  commit: string
+  root?: string
 }
 
 /** The same for one message, with the working directory its relative paths resolve against. */

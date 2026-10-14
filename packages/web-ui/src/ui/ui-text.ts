@@ -13,16 +13,16 @@ export type TitleText = string
 /** Sentence style: a switch or checkbox label, a settings row label, a tooltip, a description, a message. */
 export type SentenceText = string
 
-/**
- * A headline that is either a fragment or a sentence: an alert's, a toast's
- * or a dialog's title, or what an empty list says. Title style for a fragment
- * ("Rename Failed", "No Results"), sentence style with its ending punctuation
- * for a complete sentence ("Remove this project?").
+/** * A headline that is either a fragment or a sentence: an alert's, a toast's
+ * or a dialog's title. Title style for a fragment ("Rename Failed"), sentence
+ * style with its ending punctuation for a complete sentence ("Remove this
+ * project?"). What an empty list says is not one: it is sentence style
+ * without a period ("No results").
  */
 export type HeadlineText = string
 
 /** What a search or a filter that matches nothing says, as macOS's search fields do. */
-export const NO_RESULTS: HeadlineText = 'No Results'
+export const NO_RESULTS: SentenceText = 'No results'
 
 /**
  * A field's hint: sentence style without ending punctuation ("Search

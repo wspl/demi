@@ -227,7 +227,7 @@ const displayName = computed(() =>
               <div
                 v-if="!filtered.length"
                 class="select-none px-2 py-3 text-[12px] text-fg-subtle"
-              >Nothing matches.</div>
+              >No matches</div>
               <div
                 v-for="(group, index) in filtered"
                 :key="group.label ?? index"

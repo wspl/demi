@@ -17,7 +17,7 @@ use demi_backend_providers::vault::logins::CodeRefusal;
 use demi_backend_user_shard::conversation::claude_cli::ShardMachine;
 use demi_provider_common::Secret;
 use demi_web_api_protocol::providers::{
-    Accounts, ActivateAccount, ActiveAccount, CodeTaken, CredentialKind, LoginAnswer, LoginCode,
+    AccountOrder, Accounts, ActivateAccount, ActiveAccount, CodeTaken, CredentialKind, LoginAnswer, LoginCode,
     LoginStarted, PendingStatus, RemovedAccount, StartedLogin, SubscriptionLogin,
 };
 
@@ -54,6 +54,20 @@ pub(super) async fn activate(
     let _held = reserve(&services, &entry)?;
     let active = accounts::activate(&services.assembly, &entry, activate.credential_id).await?;
     Ok(Json(ActiveAccount { active }))
+}
+
+/// Puts the entry's accounts in the order the body names them.
+pub(super) async fn reorder(
+    State(services): State<Arc<Services>>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+    JsonBody(order): JsonBody<AccountOrder>,
+) -> Result<StatusCode, ApiError> {
+    configures(&services, &user)?;
+    let entry = scoped(&services, &user, &id).await?;
+    let _held = reserve(&services, &entry)?;
+    accounts::reorder(&services.assembly, &entry, order.credential_ids).await?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Removes an account, the active one included, and answers the account the
