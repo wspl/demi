@@ -2283,6 +2283,7 @@ dependencies = [
 name = "demi-backend-user-shard"
 version = "0.1.21"
 dependencies = [
+ "async-stream",
  "axum",
  "bytes",
  "demi-agent-server",

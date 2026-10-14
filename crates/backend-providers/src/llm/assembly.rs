@@ -12,12 +12,13 @@ use demi_backend_database::StorageError;
 use demi_provider_claude_code::{AccountMachine, Placement};
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
 use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
-use demi_shared_types::Clock;
+use demi_shared_types::{Clock, Model, Rotation};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use demi_web_api_protocol::providers::{ProviderDto, SETUP_MESSAGE};
 use demi_web_api_protocol::text::EndpointUrl;
 
 use super::catalog_cache::ModelCatalogCache;
+use super::rotation::{AccountRotation, Candidate, Choice};
 use super::families::{
     AccountBinding, ApiKeyArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry,
     ProviderFamily, SubscriptionArgs,
@@ -46,9 +47,16 @@ pub enum AssemblyError {
     Incomplete,
 }
 
-/// An entry's provider for its active account, with the entry read it was
+/// An entry's provider for one of its accounts, with the entry read it was
 /// built from.
 type Built = (ProviderEntry, Arc<dyn Provider>);
+
+/// The provider of an entry and an account: the active one's, or another's
+/// that an agent took under the entry's rotation.
+type BuiltKey = (ProviderId, Option<CredentialId>);
+
+/// How old a snapshot Balanced compares may be before it is read again.
+const SNAPSHOT_FRESH_MS: i64 = 5 * 60 * 1000;
 
 /// The account operations a login runs: its family's own over the machine
 /// its sign-in runs on, or else the provider's.
@@ -77,9 +85,10 @@ pub struct ProviderAssembly {
     /// requests with.
     http: reqwest::Client,
     clock: Arc<dyn Clock>,
-    /// The provider of each entry's active account, with the entry it was
+    /// The provider of each entry and account in use, with the entry it was
     /// built from. A `std` mutex: lookups never await under it.
-    built: Mutex<HashMap<ProviderId, Built>>,
+    built: Mutex<HashMap<BuiltKey, Built>>,
+    rotation: Arc<AccountRotation>,
 }
 
 impl ProviderAssembly {
@@ -101,7 +110,17 @@ impl ProviderAssembly {
             http,
             clock,
             built: Mutex::default(),
+            rotation: AccountRotation::new(),
         }
+    }
+
+    pub fn rotation(&self) -> &Arc<AccountRotation> {
+        &self.rotation
+    }
+
+    /// Now, by the clock the assembly's choices read.
+    pub fn now(&self) -> demi_shared_types::Timestamp {
+        self.clock.now()
     }
 
     pub fn vault(&self) -> &Vault {
@@ -124,7 +143,7 @@ impl ProviderAssembly {
         &self.vendors
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<ProviderId, Built>> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<BuiltKey, Built>> {
         // A section only looks up or replaces one entry's provider.
         self.built.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -136,18 +155,28 @@ impl ProviderAssembly {
         &self,
         entry: &ProviderEntry,
     ) -> Result<Arc<dyn Provider>, AssemblyError> {
+        self.provider_of(entry, entry.active()).await
+    }
+
+    /// The provider of `entry` for `account`: the one built before while
+    /// the entry is unchanged, otherwise a new one.
+    async fn provider_of(
+        &self,
+        entry: &ProviderEntry,
+        account: Option<&CredentialId>,
+    ) -> Result<Arc<dyn Provider>, AssemblyError> {
+        let key = (entry.id.clone(), account.cloned());
         let reused = self
             .lock()
-            .get(&entry.id)
+            .get(&key)
             .filter(|(built_from, _)| built_from == entry)
             .map(|(_, provider)| provider.clone());
         if let Some(provider) = reused {
             return Ok(provider);
         }
-        let provider = self.build(entry, entry.active()).await?;
+        let provider = self.build(entry, account).await?;
         // Two builds for one entry race only to insert the same provider.
-        self.lock()
-            .insert(entry.id.clone(), (entry.clone(), provider.clone()));
+        self.lock().insert(key, (entry.clone(), provider.clone()));
         Ok(provider)
     }
 
@@ -168,7 +197,74 @@ impl ProviderAssembly {
         if stored.is_none() {
             return Ok(None);
         }
-        self.build(entry, Some(account)).await.map(Some)
+        self.provider_of(entry, Some(account)).await.map(Some)
+    }
+
+    /// The entry's accounts in the list's order with their snapshots, for
+    /// a choice under its rotation; with `fresh`, a snapshot older than five
+    /// minutes, or none, is read again first by a free probe, and one that
+    /// fails leaves the snapshot as it was (`providers.md` § Account
+    /// rotation).
+    pub async fn candidates(
+        &self,
+        entry: &ProviderEntry,
+        fresh: bool,
+    ) -> Result<Vec<Candidate>, AssemblyError> {
+        let records = self.vault.accounts(entry.id.clone()).await?;
+        let now = self.clock.now().as_millisecond();
+        let mut stale = Vec::new();
+        for record in &records {
+            let latest = self.quotas.latest(&entry.id, record);
+            let old = latest
+                .as_ref()
+                .is_none_or(|snapshot| now - snapshot.observed_at.as_millisecond() > SNAPSHOT_FRESH_MS);
+            if fresh && old {
+                stale.push(self.provider_of(entry, Some(&record.id)).await?);
+            }
+        }
+        // The probes run at the edge, whose client the providers send with,
+        // together; the choice waits for all of them.
+        let probes = stale.into_iter().map(|provider| {
+            self.quotas.edge().spawn(async move {
+                if let Some(quota) = provider.quota()
+                    && let Err(error) = quota.probe().await
+                {
+                    tracing::debug!(%error, "an account's usage was not read before a choice; its snapshot stays");
+                }
+            })
+        });
+        for probe in futures_util::future::join_all(probes).await {
+            // A probe that panicked read nothing; the snapshot stays.
+            if let Err(error) = probe {
+                tracing::warn!(%error, "an account's usage probe ended without an answer");
+            }
+        }
+        Ok(records
+            .iter()
+            .map(|record| Candidate {
+                id: record.id.clone(),
+                label: record.label.clone(),
+                snapshot: self.quotas.latest(&entry.id, record),
+            })
+            .collect())
+    }
+
+    /// Takes an account of `entry` under its rotation for an agent of
+    /// `model`, reading stale snapshots first for Balanced; none for a
+    /// Manual entry.
+    pub async fn take_account(
+        &self,
+        entry: &ProviderEntry,
+        model: &Model,
+    ) -> Result<(Option<Choice>, Vec<Candidate>), AssemblyError> {
+        let rotation = entry.rotation();
+        let candidates = self
+            .candidates(entry, rotation == Rotation::Balanced)
+            .await?;
+        let choice = self
+            .rotation
+            .take(&entry.id, rotation, &candidates, model, self.clock.now());
+        Ok((choice, candidates))
     }
 
     /// The account operations a login into `entry` runs, whose sign-in runs
@@ -239,13 +335,14 @@ impl ProviderAssembly {
     /// Forgets the entry's provider and catalog after its configuration or
     /// active account changed.
     pub async fn invalidate(&self, id: &ProviderId) -> Result<(), StorageError> {
-        self.lock().remove(id);
+        self.lock().retain(|(built, _), _| built != id);
         self.catalogs.invalidate(id).await
     }
 
     /// Forgets everything held of a deleted entry.
     pub async fn forget(&self, id: &ProviderId) -> Result<(), StorageError> {
         self.quotas.forget_entry(id);
+        self.rotation.forget_entry(id);
         self.invalidate(id).await
     }
 

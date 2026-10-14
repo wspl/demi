@@ -52,6 +52,7 @@ beforeEach(async () => {
         compatible: false,
         endpoint: null,
         hasApiKey: true,
+        rotation: 'manual' as const,
         models: null,
         createdAt: '2026-09-10T00:00:00.000Z',
         details: { type: 'failed', message: 'Not read in this test' },
@@ -106,6 +107,7 @@ beforeEach(async () => {
         compatible: body.source === 'compatible',
         endpoint: null,
         hasApiKey: false,
+        rotation: 'manual' as const,
         models: null,
         createdAt: '2026-09-11T00:00:00.000Z',
       }
@@ -293,6 +295,7 @@ test('the page shows an entry’s kind and effective endpoint as the read model 
     compatible,
     endpoint,
     hasApiKey: true,
+    rotation: 'manual' as const,
     models: null,
     createdAt: '2026-09-10T00:00:00.000Z',
     details: { type: 'failed' as const, message: 'Not read in this test' },
@@ -635,6 +638,7 @@ test('Activate moves the Active mark at once, and a refused switch moves it back
     compatible: false,
     endpoint: null,
     hasApiKey: false,
+    rotation: 'manual' as const,
     models: null,
     createdAt: '2026-09-10T00:00:00.000Z',
     details: {
@@ -725,6 +729,7 @@ test('a start the entry’s running sign-in holds opens that sign-in, whose fail
     providerType: 'codex',
     label: 'Codex',
     hasApiKey: false,
+    rotation: 'manual' as const,
   }
   state.providers.push(entry)
   // Another page of the user's started it.
@@ -830,6 +835,7 @@ test('a completed sign-in says done the moment the page learns it, and an accoun
     providerType: 'codex',
     label: 'Codex',
     hasApiKey: false,
+    rotation: 'manual' as const,
     details: {
       type: 'read' as const,
       auth: { status: 'authenticated' as const },

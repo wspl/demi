@@ -75,6 +75,9 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
             (StatusCode::BAD_REQUEST, ErrorCode::EndpointKind)
         }
         ProviderRefusal::DuplicateModel(_) => (StatusCode::BAD_REQUEST, ErrorCode::DuplicateModel),
+        ProviderRefusal::RotationNeedsAccounts => {
+            (StatusCode::BAD_REQUEST, ErrorCode::RotationNeedsAccounts)
+        }
         ProviderRefusal::CatalogUnavailable(_) => {
             (StatusCode::SERVICE_UNAVAILABLE, ErrorCode::CatalogUnavailable)
         }

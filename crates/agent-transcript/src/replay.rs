@@ -187,7 +187,11 @@ pub fn replay(request: &RequestView) -> Replay {
                     content: vec![UserPart::Text(summary_text(&bound_text(&boundary.summary)))],
                 });
             }
-            Block::Abort(_) | Block::Response(_) | Block::Error(_) | Block::CompactionMarker(_) => {
+            Block::Abort(_)
+            | Block::Response(_)
+            | Block::Error(_)
+            | Block::AccountSwitch(_)
+            | Block::CompactionMarker(_) => {
             }
         }
         if items.len() > first {

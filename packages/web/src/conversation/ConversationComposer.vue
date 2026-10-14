@@ -119,7 +119,9 @@ const sizeRefused = computed(() => refusedForSize(latestBlocks(props.conversatio
 
 const card = useContextCard(() => props.openFile)
 /** What the context card shows of the usage limits of the account the conversation's model runs on. */
-const limits = computed(() => card.limitsOf(props.conversation.model.providerId))
+const limits = computed(() =>
+  card.limitsOf(props.conversation.model.providerId, props.conversation.contextUsage?.account ?? null),
+)
 
 const execution = computed(() => executionFor(props.conversation))
 
@@ -251,7 +253,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :size-refused="sizeRefused"
       :instructions="instructions"
       :limits="limits"
-      @refresh-limits="card.refreshLimits(conversation.model.providerId, $event)"
+      @refresh-limits="card.refreshLimits(conversation.model.providerId, conversation.contextUsage?.account ?? null, $event)"
       :remote-files="remoteHosts.length > 0"
       :archived="conversation.archived"
       :hold="hold"

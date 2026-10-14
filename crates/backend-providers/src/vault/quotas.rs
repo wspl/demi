@@ -73,6 +73,12 @@ impl AccountQuotas {
         }
     }
 
+    /// The edge's runtime, where a request with a provider's own HTTP
+    /// client runs (`concurrency.md` § Programs and threads).
+    pub fn edge(&self) -> &tokio::runtime::Handle {
+        &self.edge
+    }
+
     /// Forgets a removed account's snapshot.
     pub fn forget_account(&self, provider: &ProviderId, account: &CredentialId) {
         self.lock().remove(&(provider.clone(), account.clone()));

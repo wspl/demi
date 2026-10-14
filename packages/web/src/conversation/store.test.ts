@@ -41,7 +41,7 @@ const model = {
 /** The provider entry a conversation infers with, as the product state lists it. */
 const stubProvider = {
   id: 'stub', kind: 'api_key' as const, providerType: 'stub', label: 'Stub',
-  wireApi: null, vendorId: null, compatible: false, endpoint: null, hasApiKey: true, models: null, createdAt: '2026-09-09T00:00:00.000Z',
+  wireApi: null, vendorId: null, compatible: false, endpoint: null, hasApiKey: true, rotation: 'manual' as const, models: null, createdAt: '2026-09-09T00:00:00.000Z',
   details: { type: 'failed' as const, message: 'Not read in this test' },
 }
 /** The state the page read lists the stub provider entry too. */
@@ -2561,7 +2561,7 @@ test('a conversation that opens again after its socket dropped shows what ended 
   const brief = { ...shownBlock, id: 'brief' }
   const calls = (status: 'executing' | 'completed') =>
     ['cmd-1', 'cmd-2'].map((id) => execCall(`call-${id}`, `serve ${id}`, status))
-  const usage = { tokens: 10, window: 100, compactFrom: 50, rows: [] }
+  const usage = { tokens: 10, window: 100, compactFrom: 50, rows: [], account: null }
   const command = (commandId: string) => ({
     type: 'shell_output' as const,
     subagentId: 'reader',
@@ -3684,7 +3684,7 @@ test('a child\'s usage frame sets its own record\'s usage', () => {
       profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work', phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
     },
   })
-  const usage = { tokens: 60_000, window: 100_000, compactFrom: 50_000, rows: [] }
+  const usage = { tokens: 60_000, window: 100_000, compactFrom: 50_000, rows: [], account: null }
   applyConversationEvent(conversation, { type: 'context_usage', node: 'child', usage })
   expect(conversation.subagents.find((agent) => agent.id === 'child')!.contextUsage).toEqual(usage)
   applyConversationEvent(conversation, { type: 'context_usage', node: conversation.id, usage: { ...usage, tokens: 1_000 } })

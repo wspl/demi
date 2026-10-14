@@ -108,7 +108,7 @@ impl Provider for TitlingProvider {
     }
 
     fn read_failure(&self, _: &ProviderErrorDiagnostics, _: Timestamp) -> ProviderFailureFacts {
-        ProviderFailureFacts { retry_at: None }
+        ProviderFailureFacts { retry_at: None, continue_with: None }
     }
 
     fn runtime(&self, _: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {

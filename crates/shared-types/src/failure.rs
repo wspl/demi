@@ -94,4 +94,22 @@ pub struct ProviderFailureFacts {
     #[schemars(with = "Nullable<Timestamp>")]
     #[garde(skip)]
     pub retry_at: Option<Timestamp>,
+    /// For a usage limit of an entry without rotation that has other
+    /// accounts, the account with the most room now, which the dock offers
+    /// to continue with (`providers.md` § Account rotation); omitted
+    /// otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub continue_with: Option<ContinueWith>,
+}
+
+/// An account a failed turn can continue with: its id and the label
+/// Settings shows for it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct ContinueWith {
+    #[garde(length(min = 1))]
+    pub credential_id: String,
+    #[garde(skip)]
+    pub label: String,
 }

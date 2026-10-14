@@ -146,6 +146,28 @@ export const WIRE_API_LABELS: Record<SettingsWireApi, string> = {
   'openai-chat': 'OpenAI Chat Completions',
 }
 
+/**
+ * Which account each agent of a subscription uses (`providers.md` § Account
+ * rotation): the active one, the first in the list that is not used up, or
+ * the one with the most room.
+ */
+export type SettingsRotation = 'manual' | 'in_order' | 'balanced'
+
+export const ROTATIONS: readonly SettingsRotation[] = ['manual', 'in_order', 'balanced']
+
+export const ROTATION_LABELS: Record<SettingsRotation, TitleText> = {
+  manual: 'Manual',
+  in_order: 'In Order',
+  balanced: 'Balanced',
+}
+
+/** What each rotation does, as the menu's row says it. */
+export const ROTATION_HINTS: Record<SettingsRotation, SentenceText> = {
+  manual: 'Every agent uses the active account.',
+  in_order: 'Agents use the first account in the list that has not reached its limit.',
+  balanced: 'Each agent takes the account with the most room left.',
+}
+
 /** The protocols a compatible API can speak, which its page offers (`product.md` § Models & providers). */
 export const COMPATIBLE_WIRE_APIS: readonly SettingsWireApi[] = [
   'anthropic-messages',
@@ -269,7 +291,10 @@ export interface SettingsProviderEntry {
   testedWith?: string
   enabled: boolean
   models: SettingsProviderModel[]
+  /** In the order In Order follows, which the user changes by dragging. */
   accounts: SettingsProviderAccount[]
+  /** A subscription's rotation; absent for an API key. */
+  rotation?: SettingsRotation
   /** The vendor supports a free quota request when an account becomes visible. */
   autoRefreshUsage?: boolean
   /** The vendor mark (`providerLogo`); null falls back to an initial. */
