@@ -163,8 +163,9 @@ is one limit the vendor meters:
   percentage. A vendor field that Demi cannot read is left out, and the rest
   of the snapshot still shows.
 - A snapshot holds no token material and no vendor payload.
-- A snapshot is information for the user. Inference admission never reads it,
-  and neither does the agent.
+- A snapshot is information for the user and for choosing an account under
+  [Account rotation](providers.md#account-rotation). Inference admission
+  never reads it, and the model never sees it.
 
 Every surface that shows a window says its use and its reset the same way, on
 one line over its bar, the window's name, then its reset and its use at the
