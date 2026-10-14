@@ -489,9 +489,14 @@ Every release carries `LICENSE` and `NOTICE` from the repository's root and
 release really contains: for each Rust crate linked into a shipped program,
 the vendored ones included, and each npm package bundled into `web/`, its
 name, version, license text and copyright lines, MPL-2.0 packages also
-naming where their source is. The server release's root holds the three
-files, every GitHub release has them as assets, and the web front end shows
-the third-party notices at Settings › About › Acknowledgements. A
+naming where their source is. `bun xtask notices` writes the file
+into the built web app as `third-party-notices.txt`, from cargo-about's
+reading of each shipped program's crates and from Vite's list of the
+packages its bundle holds; the server release's root holds `LICENSE`,
+`NOTICE` and a copy of it as `THIRD-PARTY-NOTICES`, every GitHub release
+has the three as assets, and the web front end shows the web app's copy at
+Settings › About › Acknowledgements, beside the version it was built as. A
+server release always has a web app, so it always has the notices. A
 dependency whose license the generator cannot read, or whose license is not
 one of those the project accepts, fails the release, so a new dependency
 never ships without its notice.
