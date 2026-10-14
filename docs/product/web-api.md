@@ -911,7 +911,7 @@ not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, hiddenProviders?, hiddenModels? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, multiAccountWarned?, hiddenProviders?, hiddenModels? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
@@ -921,7 +921,10 @@ the web app's defaults. `PATCH` accepts any subset of appearance fields
 patch sets it. `resumeAtRetry` is whether a turn that failed with a known
 time to try again, such as a usage limit that resets at 09:00, resumes by
 itself at that time ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
-absent means `false`. Settings › General shows it as *Resume after a usage
+absent means `false`. `multiAccountWarned` is true once the user went on
+past the dialog about using several subscription accounts
+([Account rotation](../providers/providers.md#account-rotation)), which
+then never shows again. Settings › General shows `resumeAtRetry` as *Resume after a usage
 limit resets*, and so does the error record of such a failure, as *Resume at
 09:00* ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
 `{ providerId, modelId }` pairs, are the switches of Settings › Providers that
@@ -1111,7 +1114,7 @@ CLI its requests start on the user's Cloud, such as `demi.claude-code`, or
 null when its requests are HTTP; the page knows by it that the provider
 needs the Cloud. The entries of the product state carry the same `cliPackage`. `availability` is
 `{ type: "unavailable", reason: "setup", message, missing }` while the entry
-is incomplete, `missing` naming what it lacks (`apiKey`, `models`,
+is incomplete, `missing` naming what it lacks (`apiKey`, `endpoint`, `models`,
 `account`)
 ([A provider is in the list from the start](../providers/models.md#a-provider-is-in-the-list-from-the-start)),
 `{ type: "unavailable", reason: "authentication", message }` while the
@@ -1195,6 +1198,11 @@ Every subscription account comes from a sign-in, below.
 `GET /api/providers/:id/accounts` lists public
 account metadata and the active account as `{ accounts, active }`.
 `PUT …/accounts/active` takes `{ credentialId }` and answers `{ active }`.
+`PUT …/accounts/order` takes `{ credentialIds }`, every account of the entry
+once, in the order In Order uses and the list shows. `PATCH
+/api/providers/:id` takes `rotation`, `manual`, `in_order` or `balanced`
+([Account rotation](../providers/providers.md#account-rotation)); an entry
+with fewer than two accounts keeps `manual` (400 `rotation_needs_accounts`).
 `DELETE …/accounts/:credentialId` removes any account, the active one
 included, and answers `{ active }`, the account now active or null when the
 entry has none left

@@ -42,13 +42,20 @@ the agent works in `~/shop`, writes `/tmp/fix.py`, runs it, edits
 ([Working tree](runner.md#working-tree)), so both modes show the same part
 of the Host.
 
-- **A file outside the working directory** of the agent that wrote it is
+- **A file outside the working directory** the agent's call started in is
   not shown, wherever it is: a scratch file, the conversation's scratch
   directory, a file in `~` or `/etc`. The runner records every edit as
   before, so a later `mv /tmp/page.ts.new src/page.ts` still carries them to
   `src/page.ts`; the backend, which computes every list
   ([What the conversation shows](#what-the-conversation-shows)), leaves out
   a path outside the directory, as the request lists it after its renames.
+  A path is compared by its parts after `.` and `..` are resolved, in the
+  Host's own spelling, case and `\` included on Windows, so
+  `~/shop/../.zshrc` is outside `~/shop` and `C:\Users\u\shop\src` is
+  inside `C:/Users/u/shop`; a symbolic link is not followed. A call's files
+  are judged against the directory it started in, once, when it is stored,
+  and a later call of the request never judges them again, so a `demi agent
+  cwd` between two calls changes only what follows.
 - **A file the request created and removed** is not in the request's list
   in the Change view, which shows what the request left behind. A call's
   pills show what that call did and never change after it: the call that
