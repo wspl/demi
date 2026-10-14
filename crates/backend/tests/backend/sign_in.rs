@@ -81,13 +81,13 @@ async fn the_callback_signs_in_only_the_user_who_started_and_no_secret_reaches_a
         .post(
             &format!("/api/plugins/{PLUGIN}/calls/save_key"),
             Some(&master),
-            json!({ "key": "sk-live-abcd1234" }),
+            json!({ "key": "sk-example-1234" }),
         )
         .await;
     assert_eq!(saved.status, StatusCode::OK);
     let product = serde_json::to_string(&backend.sync(&master).await.snapshot().await).unwrap();
     assert!(product.contains(r#""keyEnding":"1234""#), "{product}");
-    for secret in ["sk-live-abcd1234", "access-", "refresh-", "client-"] {
+    for secret in ["sk-example-1234", "access-", "refresh-", "client-"] {
         assert!(!product.contains(secret), "the product state holds {secret}");
     }
 

@@ -3,6 +3,7 @@ name = "demi-backend-host-access"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 
 [lib]
 # Its tests reach the transfers' registration and the answers a download's

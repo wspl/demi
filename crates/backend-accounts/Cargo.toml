@@ -3,6 +3,7 @@ name = "demi-backend-accounts"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 
 [lib]
 # Its tests reach the lockout's internals, so they are unit tests and the

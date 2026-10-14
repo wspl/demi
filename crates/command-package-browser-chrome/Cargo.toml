@@ -3,6 +3,7 @@ name = "demi-command-package-browser-chrome"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 
 [lib]
 # Its tests reach the layers' internals, so they are unit tests and the crate

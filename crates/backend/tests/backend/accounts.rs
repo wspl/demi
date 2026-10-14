@@ -587,7 +587,7 @@ async fn a_free_probe_fills_the_accounts_snapshot_which_outlives_a_restart() {
 /// A failed probe reaches the page as the backend's answer, with its reason.
 /// Behind Cloudflare it would not as a 502: Cloudflare replaces an origin's
 /// 502 or 504 with its own page, which the web app reads as the backend being
-/// away, so it sent the probe again and again (prod, Claude Code, 0.1.20).
+/// away, so it sent the probe again and again (a production server, Claude Code, 0.1.20).
 #[tokio::test]
 async fn a_probe_the_vendor_fails_answers_its_reason_in_a_status_a_cdn_passes_through() {
     let scripts = scripts(Some(ProbeCost::Free));

@@ -77,7 +77,7 @@ test('a device paired from beside the device menu is selected there once the men
 test('a device project\'s button says Add Project for a directory that exists and Create Project for one Demi makes, from the completion\'s own listings', async () => {
   const folder = (name: string): FileBrowserEntry => ({ name, isDirectory: true })
   const tree: Record<string, FileBrowserEntry[]> = {
-    '/Users/zan': [folder('Projects')],
+    '/Users/alex': [folder('Projects')],
     '/Users/alex/Projects': [folder('demi'), { name: 'notes.md', isDirectory: false }],
     '/Users/alex/Projects/demi': [folder('src')],
   }
@@ -87,7 +87,7 @@ test('a device project\'s button says Add Project for a directory that exists an
   const watched = new SimulatedWatch()
   const source = keptSource({
     platform: 'macos',
-    home: '/Users/zan',
+    home: '/Users/alex',
     list(path: string): Promise<Answered<FileBrowserEntry[]>> {
       const readAt = watched.readAt()
       listed.push(path)
@@ -152,6 +152,6 @@ test('a device project\'s button says Add Project for a directory that exists an
   await answer()
   expect(action.value).toBe('Create Project')
   // The button reads the listings the completion asked for, and asks for none of its own.
-  expect(listed).toEqual(['/Users/alex/Projects/demi', '/Users/alex/Projects', '/Users/alex/Projects/new', '/Users/zan', '/Users/alex/Documents'])
+  expect(listed).toEqual(['/Users/alex/Projects/demi', '/Users/alex/Projects', '/Users/alex/Projects/new', '/Users/alex', '/Users/alex/Documents'])
   scope.stop()
 })

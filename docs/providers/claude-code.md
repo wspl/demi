@@ -596,7 +596,7 @@ sends SIGKILL and waits for it.
 
 ### Preparing a process ahead
 
-A request that finds no kept process waits for a new one: on prod the median
+A request that finds no kept process waits for a new one: on a production server the median
 first turn of a subagent waited 3.0 s before its CLI was ready and 5.7 s for
 its first word, against 1.4 s for a kept process, and a long conversation's
 new process took 5.3 s before its CLI was ready. So the runtime starts the
@@ -645,7 +645,7 @@ of each step of the placement (waking or admitting the Cloud, finding the
 executable, the directories, writing the session file and its size, the
 spawn on the Host), of the `initialize` answer, and of the first content
 delta, counted from the request; the backend logs them at `info` when the
-run ends, so the time to a first word can be read from prod's journal
+run ends, so the time to a first word can be read from the server's journal
 without turning on the wire trace.
 
 A runtime stands for one account. Selecting another account builds a new

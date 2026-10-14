@@ -38,8 +38,8 @@ test('a name resolves to a glyph the package has, under the file name its manife
 })
 
 test('the root and the home are known by their place, not their name', () => {
-  const source = { platform: 'macos', home: '/Users/zan' } as const
+  const source = { platform: 'macos', home: '/Users/alex' } as const
   expect(landmarkIcon('/', source)).toBe('folder-macos')
-  expect(landmarkIcon('/Users/zan', source)).toBe('folder-home')
+  expect(landmarkIcon('/Users/alex', source)).toBe('folder-home')
   expect(landmarkIcon('/Users', source)).toBeUndefined()
 })

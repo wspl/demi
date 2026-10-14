@@ -61,7 +61,7 @@ function picture(
 }
 
 const SELECT: LiveControl = {
-  token: '2d1f7a0c-6f2b-4d5e-9d6d-2b4f7a0c6f2b',
+  token: '00000000-0000-4000-8000-0000000000c2',
   revision: 0,
   kind: 'select',
   label: 'Status',

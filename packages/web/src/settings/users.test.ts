@@ -15,9 +15,9 @@ let channels: ReturnType<typeof playChannels>
 let answers: Record<string, Array<[number, unknown]>>
 
 const master = {
-  id: 'zan',
-  email: 'zan@example.test',
-  nickname: 'Zan',
+  id: 'alex',
+  email: 'alex@example.test',
+  nickname: 'Alex',
   role: 'master' as const,
   createdAt: '2026-09-01T00:00:00.000Z',
   disabled: false,
@@ -66,10 +66,10 @@ test('the list is the channel’s users part, keeps an empty nickname, and follo
   }))
   const users = useUserSettings()
   expect(users.users.map((user) => [user.nickname, user.choosesPassword, user.lastActiveAt])).toEqual([
-    ['Zan', false, '2026-10-13T08:00:00.000Z'],
+    ['Alex', false, '2026-10-13T08:00:00.000Z'],
     ['', true, null],
   ])
-  expect(users.host?.viewerId).toBe('zan')
+  expect(users.host?.viewerId).toBe('alex')
   // The channel brings a change: no request asks for it.
   channels.last().send({ type: 'users', users: listed(master, { ...bo, choosesPassword: false }) })
   expect(users.users.map((user) => user.choosesPassword)).toEqual([false, false])
@@ -78,10 +78,10 @@ test('the list is the channel’s users part, keeps an empty nickname, and follo
 
 test('Add User sends the email and the role alone, and answers the first password the server made', async () => {
   channels.last().connect(productState())
-  answers['POST /api/users'] = [[201, { user: bo, password: 'Ab3dEf6hIj9lMn2pQr5T' }]]
+  answers['POST /api/users'] = [[201, { user: bo, password: 'example-generated-password' }]]
   const outcome = await useUserSettings().host!.add({ email: 'bo@example.test', role: 'user' })
   expect(sent).toEqual(['POST /api/users {"email":"bo@example.test","role":"user"}'])
-  expect(outcome).toEqual({ kind: 'added', id: 'bo', nickname: 'bo@example.test', password: 'Ab3dEf6hIj9lMn2pQr5T' })
+  expect(outcome).toEqual({ kind: 'added', id: 'bo', nickname: 'bo@example.test', password: 'example-generated-password' })
 })
 
 test('an action the session has not been verified for says the administrator must confirm, and a taken address is the dialog’s to say', async () => {

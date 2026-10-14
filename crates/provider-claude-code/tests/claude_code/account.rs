@@ -61,7 +61,7 @@ async fn a_sign_in_is_an_account_named_by_its_email_that_signs_in_on_a_machine_a
     let account = seed(&pool, sign_in(TOKEN, REFRESH, "2026-09-24T16:00:00Z")).await;
     let provider = provider_of(&pool, &account, &NOWHERE);
     let signed_in = AuthState::Authenticated {
-        account_label: Some("zan@example.test".into()),
+        account_label: Some("alex@example.test".into()),
     };
     assert_eq!(provider.auth_status().await, signed_in);
     assert!(provider.capabilities().process_host);

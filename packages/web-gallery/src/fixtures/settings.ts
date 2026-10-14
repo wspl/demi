@@ -572,7 +572,7 @@ export function mockProviders(): MockProvider[] {
     }),
     provider({
       id: 'openai', name: 'OpenAI', kind: 'api_key', family: 'openai', vendorId: 'openai',
-      baseUrl: 'https://api.openai.com/v1', wireApi: 'openai-responses', apiKey: 'sk-proj-91ce4a7b2d8f6e1c3a5b9d7f',
+      baseUrl: 'https://api.openai.com/v1', wireApi: 'openai-responses', apiKey: 'sk-proj-example-not-a-real-key',
       state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: '3 days ago',
       models: [
         model(
@@ -616,7 +616,7 @@ export function mockProviders(): MockProvider[] {
     }),
     provider({
       id: 'kimi', name: 'Kimi', kind: 'api_key', family: 'anthropic', vendorId: 'moonshotai',
-      baseUrl: 'https://api.moonshot.cn/anthropic', wireApi: 'anthropic-messages', apiKey: 'example-not-a-real-key', testedIn: '412 ms',
+      baseUrl: 'https://api.moonshot.cn/anthropic', wireApi: 'anthropic-messages', apiKey: 'sk-example-not-a-real-key', testedIn: '412 ms',
       modelSource: 'manual',
       models: [
         model(
@@ -648,7 +648,7 @@ export function mockProviders(): MockProvider[] {
     }),
     provider({
       id: 'vertex', name: 'Google Vertex', kind: 'api_key', family: 'google', vendorId: 'google-vertex',
-      baseUrl: 'https://us-central1-aiplatform.googleapis.com', wireApi: 'openai-chat', apiKey: 'ya29.a0AfB_byC1d2E3f4G5h6', state: 'disabled', enabled: false,
+      baseUrl: 'https://us-central1-aiplatform.googleapis.com', wireApi: 'openai-chat', apiKey: 'ya29.example-not-a-real-token', state: 'disabled', enabled: false,
       catalogFetched: '1 h ago',
       models: [
         model(

@@ -1897,7 +1897,7 @@ async fn the_summary_names_the_roots_latest_ended_turn_as_its_status_says_it_end
 /// migrations): after an upgrade, the database of the previous release's
 /// schema migrates as its conversation opens, holding its write lock for as
 /// long as the migration takes, and a page's summaries that come meanwhile
-/// still say how its turn ended. On prod the summary read migrated the
+/// still say how its turn ended. On a production server the summary read migrated the
 /// database itself beside the open, gave up on the lock after its busy
 /// timeout and listed the conversation idle, with revision 0. A turn and a
 /// restart against the mock vendor, under a second.

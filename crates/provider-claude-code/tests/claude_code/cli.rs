@@ -72,17 +72,17 @@ pub fn sign_in(token: &str, refresh: &str, expires_at: &str) -> String {
         "scopes": ["user:inference", "user:profile"],
         "subscriptionType": "max",
         "accountId": "account-1",
-        "email": "zan@example.test",
+        "email": "alex@example.test",
     })
     .to_string()
 }
 
 /// Stores `secret` as the one account of `pool`, and answers its id.
 pub async fn seed(pool: &MemoryCredentialPool, secret: String) -> String {
-    let id = credential_id_for(Some("account:account-1"), "zan@example.test");
+    let id = credential_id_for(Some("account:account-1"), "alex@example.test");
     let meta = AccountMeta {
         id: id.clone(),
-        label: "zan@example.test".into(),
+        label: "alex@example.test".into(),
         detail: Some("max".into()),
         updated_at: NOW.parse().unwrap(),
         source: "login:code".into(),
