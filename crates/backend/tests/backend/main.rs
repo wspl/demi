@@ -56,6 +56,7 @@ mod permissions;
 mod plugins;
 mod provider_commands;
 mod providers;
+mod rotation;
 mod real_browser;
 mod real_cloud;
 mod runners;

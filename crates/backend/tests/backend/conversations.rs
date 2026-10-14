@@ -25,7 +25,7 @@ use demi_conversation_socket_protocol::{
 };
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_provider_common::{
-    Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderRun,
+    Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, RuntimeEnv, RuntimeError,
 };
 use demi_shared_types::{
@@ -1387,6 +1387,14 @@ pub(crate) struct Runs {
     pub(crate) runtimes: AtomicUsize,
     calls: Mutex<Vec<(String, usize)>>,
     pub(crate) released: watch::Sender<bool>,
+    /// The keys whose runs fail with a usage limit, as a used-up account's
+    /// do.
+    pub(crate) used_up: Mutex<Vec<String>>,
+    /// The key of each runtime closed, in order.
+    pub(crate) closed: Mutex<Vec<String>>,
+    /// The input tokens each response reports, 1 unless the test makes the
+    /// context large.
+    pub(crate) input_tokens: std::sync::atomic::AtomicU64,
 }
 
 impl Runs {
@@ -1395,6 +1403,9 @@ impl Runs {
             runtimes: AtomicUsize::new(0),
             calls: Mutex::new(Vec::new()),
             released: watch::Sender::new(false),
+            used_up: Mutex::new(Vec::new()),
+            closed: Mutex::new(Vec::new()),
+            input_tokens: std::sync::atomic::AtomicU64::new(1),
         })
     }
 
@@ -1496,10 +1507,19 @@ impl ProviderRuntime for KeyedRuntime {
                 let mut released = runs.released.subscribe();
                 let _ = released.wait_for(|released| *released).await;
             }
-            stream::iter([
+            if runs.used_up.lock().unwrap().contains(&key) {
+                let failure = ProviderFailure {
+                    message: format!("{key} has reached its usage limit"),
+                    code: Some("usage_limit".parse().unwrap_or_else(|never| match never {})),
+                    diagnostics: None,
+                    retry_after: None,
+                };
+                return stream::iter(vec![ProviderEvent::Error(failure)]);
+            }
+            stream::iter(vec![
                 ProviderEvent::TextDelta(format!("{key}:{count}")),
                 ProviderEvent::Response(Some(TokenUsage {
-                    input_tokens: 1,
+                    input_tokens: runs.input_tokens.load(Ordering::SeqCst),
                     output_tokens: output,
                     cache_read_tokens: 0,
                     cache_write_tokens: 0,
@@ -1519,6 +1539,7 @@ impl ProviderRuntime for KeyedRuntime {
     }
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
+        self.runs.closed.lock().unwrap().push(self.key.clone());
         Box::pin(async {})
     }
 

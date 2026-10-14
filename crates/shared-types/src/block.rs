@@ -942,6 +942,18 @@ pub struct ErrorBlock {
     #[schemars(with = "ErrorDevice")]
     #[garde(dive)]
     pub device: Option<ErrorDevice>,
+    /// The account the failing request used, when the entry's rotation
+    /// gave the agent one of its own, whose quota a usage limit that names
+    /// no moment reads (`failures-and-recovery.md` § The unfinished turn);
+    /// omitted otherwise.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    #[garde(skip)]
+    pub account: Option<String>,
 }
 
 /// The code of the error block a turn ends with when a call of it failed
