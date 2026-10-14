@@ -46,18 +46,26 @@ You need:
   - Ubuntu 22.04 or later, Debian 12 or later
   - Fedora, RHEL 10, Rocky Linux, AlmaLinux
   - Arch Linux
-- A domain name, with HTTPS in front of the server.
+- A domain name. The easiest way to get HTTPS is to manage its DNS on
+  [Cloudflare](https://www.cloudflare.com/): add an `A` record for the server
+  with the proxy on (the orange cloud), and set **SSL/TLS** to **Flexible**.
+  Cloudflare then serves HTTPS, and the server needs no certificate and no
+  proxy of its own.
 
-Then run:
+Then run, with your domain:
 
 ```sh
-curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh \
+  | sudo bash -s -- --domain demi.example.com --listen 0.0.0.0:80
 ```
 
-The installer asks for your domain and HTTPS setup, then prints the address
-of your server. From there:
+With Flexible, Cloudflare reaches the server over plain HTTP. To encrypt that
+leg too, or to use another proxy such as Caddy or nginx, see the
+[installation guide](docs/delivery/installation.md#https). The installer
+checks the machine, starts Demi and checks your domain from outside. From
+there:
 
-1. Open the address and create the admin account.
+1. Open your domain right away and create the admin account.
 2. Go to **Settings › Providers** and sign in with a subscription or add an
    API key.
 3. Start a conversation. It runs in your cloud sandbox.
