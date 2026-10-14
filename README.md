@@ -1,115 +1,242 @@
-# Demi
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/lockup-dark.svg">
+    <img alt="Demi" src="brand/lockup-light.svg" height="72">
+  </picture>
+</p>
 
-> **Status: early.** Demi is pre-1.0 and changes quickly. The one-command
-> server install has not yet been tried on a fresh machine by anyone outside
-> the project; expect rough edges, and please report them.
+<p align="center">
+  <strong>A self-hosted AI agent for chat, work and code.<br>
+  Use it from any browser. Let it work in the cloud and on all your computers.</strong>
+</p>
 
-Demi is a hosted coding-agent product that people use in a web browser. A user
-talks to an agent in a conversation. The agent runs in the backend and works on
-the user's files through a runner, either on a device the user paired or on the
-user's Cloud, a gVisor sandbox on a Linux host. The backend, the runner, the
-native command programs and the Cloud machine manager are Rust programs in one
-Cargo workspace; the browser application is Vue and TypeScript.
+<p align="center">
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/badge/license-Demi%20License-blue"></a>
+  <a href="https://github.com/wspl/demi/releases/latest"><img alt="Release" src="https://img.shields.io/github/v/release/wspl/demi"></a>
+  <a href="https://github.com/wspl/demi/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/wspl/demi/actions/workflows/ci.yml/badge.svg"></a>
+</p>
 
-- **Provider-agnostic.** One provider contract, with providers for Claude
-  Code, Codex, the Anthropic API, the OpenAI API, Google Gemini and Grok Build.
-- **One backend, many targets.** A conversation runs on its user's Cloud or on
-  a paired device, through the same runner; switching targets is a first-class
-  operation.
-- **One command manifest.** Every root command (`demi …`) is declared once in
-  the backend and served to every surface; the runner caches the manifest and
-  makes the roots real executables.
-- **Protocols carry references, never bulk bytes.** Output stays on the target,
-  media reaches the browser by reference, and file contents travel as brokered
-  HTTP streams.
+<p align="center">
+  <b>English</b> · <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-The design is documented under [docs/](docs/README.md). Start with the
-[overview](docs/overview.md);
-[Crates and packages](docs/architecture/crates-and-packages.md) defines what
-every crate and package owns.
+<!-- Screenshot -->
 
-## Self-hosting
+Demi is a self-hosted AI agent you use from any browser. Ask it a question or
+hand it a job: research, operating websites, working with files, writing
+code, all in the same conversation.
 
-A Demi server runs on Linux (Ubuntu 22.04+ or Debian 12+, with root, cgroup v2
-and a kernel that runs gVisor) behind HTTPS. One command installs it and
-walks through its setup:
+Every conversation lives on your server, in one place for all your devices.
+Your computers only run the work: the agent works in a cloud sandbox or
+across your own machines, and tasks keep running when you close the tab.
+
+<p align="center">
+  <img src="docs/assets/concept.webp" alt="From a computer or a phone, you reach one Demi server, which holds every conversation and works through runners on your laptop, desktop, HomeLab and VPS, or in cloud sandboxes." width="800">
+</p>
+
+> [!NOTE]
+> Demi is in early development. Expect breaking changes between releases.
+
+## Key features
+
+### Chat, work and code
+
+- **One conversation for everything**: Ask a quick question or hand off a
+  multi-step job in the same place. No modes to switch.
+- **Coding**: Edit repositories, run builds and tests, and review every change
+  as a diff.
+- **Research**: Search the web and read pages, PDFs and documents.
+- **Real browser**: Demi drives Chrome to sign in, fill in forms and download
+  files. Watch it in the side panel and take over at any time.
+- **Files and data**: Work with documents, spreadsheets and images, and get the
+  results back as attachments.
+
+### Anywhere, on any machine
+
+- **Works in any browser**: Desktop, tablet or phone, with nothing to install.
+- **Always on**: Tasks keep running on the server after you close the tab.
+- **One place for every conversation**: Conversations are stored on the
+  server, not scattered across the machines the agent worked on. Start on your
+  laptop and continue on your phone, live.
+- **QR code and passkey sign-in**: Scan a code to sign in on your phone, or use
+  Touch ID, Face ID or Windows Hello.
+- **Private cloud sandbox**: Every user gets their own Linux sandbox on your
+  server, isolated with gVisor.
+- **Bring your own computers**: Connect macOS, Windows and Linux machines with
+  a single command. No open ports needed.
+- **Multi-machine tasks**: Use several machines in one conversation, for
+  example to build on a Mac and test on Windows.
+- **Switch machines mid-task**: Move a conversation between the cloud and your
+  computers without starting over.
+- **Share a preview**: Expose a dev server on any machine through a temporary
+  public URL.
+
+### Agent
+
+- **Multi-agent**: Demi splits a large task across a team of agents that work
+  in parallel, then combines their results.
+- **Agent profiles**: Define specialist agents, such as a researcher or a
+  reviewer, each with its own model, reasoning effort, instructions and
+  commands.
+- **Workflows**: Bundle a set of agent profiles with instructions for one kind
+  of work. Keep workflows in a project's `.demi/workflows/`, pick one in the
+  message box, and share them with your team through the repository.
+- **Skills**: Install skills to teach Demi new tasks.
+- **Secure credentials**: API keys and passwords are requested through a secure
+  form and never appear in the conversation.
+
+### Models and teams
+
+- **Use your subscriptions**: Sign in with Claude, ChatGPT or Grok Build
+  accounts. Add several accounts per subscription and switch between them,
+  with each account's usage limits in view.
+- **Any API**: Anthropic, OpenAI, Gemini, or any compatible endpoint.
+- **Switch models any time**: Change the model or reasoning effort, even in the
+  middle of a task.
+- **Multi-user**: Each user has their own sandbox, models, devices and
+  conversations.
+- **Admin tools**: Add users, manage roles, reset passwords and send phone
+  sign-in codes.
+- **One-line install and upgrades**: Set up a server with one command and
+  upgrade it with another.
+
+## A harness built on a shell
+
+Demi is both the app and the agent harness. It doesn't wrap Claude Code or
+Codex: its own runtime drives every model, and a Claude or ChatGPT
+subscription is used only for the model.
+
+Most harnesses give the model a long list of tools. Demi gives it one: a
+shell. Everything else, from the browser to other machines to subagents, is a
+`demi` command inside it:
+
+```sh
+demi browser open http://localhost:5173 && demi browser screenshot t1 | demi file view
+demi host shell --host windows 'cargo test'
+demi agent spawn --profile research --description "Compare pricing pages" < brief.md
+```
+
+- **Composable**: Commands chain with pipes and `&&`, so the agent does in one
+  step what usually takes several tool calls.
+- **Lean prompts**: The model sees one line per command group and reads
+  `--help` when it needs more. New capabilities don't bloat every request.
+- **Same everywhere**: Every machine runs the same bash-compatible shell and
+  GNU tools, written in Rust ([brush](https://github.com/reubeno/brush),
+  [uutils](https://github.com/uutils/coreutils), ripgrep,
+  [jaq](https://github.com/01mf02/jaq)). A script that works in the cloud
+  works on macOS and Windows too.
+- **Same for every model**: Every provider sees the same single tool, so
+  switching models doesn't change what the agent can do.
+- **Built for long jobs**: Commands keep running in the background and report
+  back when they finish, so dev servers and test suites never block the
+  conversation.
+
+## Quick start
+
+**Requirements**: a Linux server (Ubuntu 22.04+ or Debian 12+) with root
+access, a domain name, and HTTPS in front of it.
 
 ```sh
 curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
 ```
 
-[Installation](docs/delivery/installation.md) gives every requirement and
-parameter, and [Upgrades](docs/delivery/upgrades.md) how a server moves
-between releases.
+The installer asks for your domain and HTTPS setup, then prints the address
+of your server. From there:
 
-## Development
+1. Open the address and create the admin account.
+2. Go to **Settings › Providers** and sign in with a subscription or add an
+   API key.
+3. Start a conversation. It runs in your cloud sandbox.
+4. To work on your own computer, choose **Add Device** from the conversation's
+   host menu and run the command it shows on that computer.
 
-You need:
+See the [installation guide](docs/delivery/installation.md) for all options and
+[upgrades](docs/delivery/upgrades.md) for moving to a new release.
 
-- Rust through rustup. `rust-toolchain.toml` pins the toolchain and lists its
-  targets, which rustup installs with it. Host builds also need a C compiler.
-- The cross tools, to build for a platform other than your own
-  ([Toolchain](docs/delivery/builds-and-releases.md#toolchain)).
-- Bun, for the browser packages.
-- Node, for the web application's dev server, `bun run web:dev`
-  ([Development and checks](docs/product/web-application.md#development-and-checks)).
+## Architecture
 
-```sh
-cargo check --workspace --all-targets --features demi-runner/test-fixtures
-cargo test --workspace --features demi-runner/test-fixtures  # the Rust tests
-
-bun install
-bun run contracts       # generate the browser's TypeScript contracts from the Rust types
-bun run typecheck:web   # type-check web-ui, web-gallery and web
-bun run test            # the TypeScript tests
-bun run web:dev         # the web application, against a running backend
-bun run web:gallery     # the component gallery
+```text
+  Browsers (computer, phone, tablet)
+        │  HTTPS + WebSocket
+        ▼
+  ┌──────────────────────────┐   HTTPS   ┌────────────────────┐
+  │ Demi server              │──────────▶│ Model providers    │
+  │ users, conversations,    │           └────────────────────┘
+  │ agents                   │
+  └──────────────────────────┘
+        ▲                ▲
+        │ WebSocket      │ WebSocket
+  ┌─────┴──────────┐  ┌──┴───────────────────────────┐
+  │ Runner in your │  │ Runners on your computers    │
+  │ cloud sandbox  │  │ and servers (macOS, Windows, │
+  │ (gVisor)       │  │ Linux)                       │
+  └────────────────┘  └──────────────────────────────┘
 ```
 
-Every Rust command selects the whole workspace with the runner's test
-fixtures, so they share one build
-([Validation](docs/delivery/builds-and-releases.md#validation)).
+- **The server runs the agent, runners do the work**: Conversations, agents
+  and settings live on the server. A small runner on each machine only handles
+  files, commands and the browser. It connects out to the
+  server, so it works behind NAT and firewalls.
+- **One runner everywhere**: The cloud sandbox and your computers run the same
+  runner, so every feature works on every machine.
+- **Light on bandwidth**: Large outputs and files stay on the machine that made
+  them. The browser loads them only when you open them.
+- **Native**: The server, the runner and the agent's tools are written in Rust.
+  The web app is built with Vue and TypeScript.
 
-To run the product locally with the native programs you built, assemble a
-server release of the targets your Hosts use and start the backend with it;
-it publishes those programs into the local store of its data directory and
-serves them to the runners itself:
+Read the [design docs](docs/README.md), starting with the
+[overview](docs/overview.md).
 
-```sh
-bun xtask native build --target <triple>...
-bun xtask server-release --output .cache/release-<build> \
-  --files .cache/release-<build>-files --target <triple>...
-cargo build --workspace --all-targets --features demi-runner/test-fixtures
-DEMI_RELEASE=.cache/release-<build> DEMI_INSTANCE_MODE=isolated \
-  DEMI_BACKEND_PUBLIC_URL=<URL> DEMI_MACHINE_MANAGER_SOCKET=<socket> \
-  target/debug/demi-backend
-```
+## Comparison
 
-[Development backend](docs/backend/backend.md#development-backend) gives each
-step and variable. The generated TypeScript is not committed; the frontend
-scripts that need it generate it first.
-[Web application](docs/product/web-application.md#development-and-checks)
-describes running the product locally, and
-[Builds and releases](docs/delivery/builds-and-releases.md) covers cross builds
-and release packages. [CONTRIBUTING.md](CONTRIBUTING.md) lists the rules a
-change must follow.
+As of October 2026, based on each product's documentation.
 
-## Extending
+| | Demi | [Pi](https://github.com/earendil-works/pi) | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | [OpenHands](https://github.com/OpenHands/OpenHands) | [opencode](https://github.com/anomalyco/opencode) | [Orca](https://github.com/stablyai/orca) | [herdr](https://github.com/herdrdev/herdr) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Source code | Public ([Demi License](LICENSE)) | MIT | MIT | MIT | MIT | MIT | Apache-2.0 |
+| Harness | Its own | Its own | Its own | Its own, or wraps ACP agents | Its own | Wraps Claude Code, Codex, OpenCode, Pi and others | Wraps Claude Code, Codex, OpenCode, Pi and others |
+| Interface | Web app for many users, on any device | Terminal | Local web app and terminal | Web app | Terminal, web, desktop | Desktop app, mobile companion | Terminal UI |
+| Where conversations live | On your server, one place for all devices | On each machine | On each machine | On each backend | On each machine or server | On each machine | On each machine |
+| Where tasks run | Cloud sandbox or any of your computers | The machine it runs on | The machine it runs on | Local, Docker, VM or cloud | The machine it runs on | Local worktrees, SSH hosts or your cloud VMs | Local or SSH machines |
+| Several machines in one conversation | Yes | — | — | — | No | No | No |
+| Tool design | Shell only | Tool calls; optional code mode | Tool calls; optional code mode | Tool calls | Tool calls; code mode for MCP tools | Those of the wrapped agent | Those of the wrapped agent |
+| Models | Any, including Claude, ChatGPT and Grok subscriptions | Many providers and subscriptions | DeepSeek and others by API key | Any | Any | Those of the wrapped agents | Those of the wrapped agents |
+| Browser automation | On any of your machines | Through extensions | Experimental plugin | In the SDK | — | Built-in browser | — |
+| Teams and admin | Yes | — | Shared access token | Enterprise edition | Shared password | — | — |
 
-- **A new provider.** Add a provider crate that implements the provider
-  contract for one vendor family; see
-  [Add a provider](docs/guides/add-a-provider.md).
+— Not mentioned in the product's documentation.
+
+<details>
+<summary>Sources</summary>
+
+- Pi: [README](https://github.com/earendil-works/pi), [Sessions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sessions.md), [Providers](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/providers.md), [Settings](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md)
+- DeepSeek Harness: [README](https://github.com/deepseek-ai/deepseek-harness), [Architecture](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md), [Providers](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/providers.md), [Tool catalog](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/tool-catalog.md), [Public deployments](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/public-deployments.md)
+- OpenHands: [README](https://github.com/OpenHands/OpenHands), [Backends](https://docs.openhands.dev/openhands/usage/agent-canvas/backends), [Enterprise vs. open source](https://docs.openhands.dev/enterprise/enterprise-vs-oss), [Browser use](https://docs.openhands.dev/sdk/guides/agent-browser-use)
+- opencode: [Web](https://opencode.ai/docs/web/), [Server](https://opencode.ai/docs/server/), [Tools](https://opencode.ai/docs/tools/), [Providers](https://opencode.ai/docs/providers/)
+- Orca: [README](https://github.com/stablyai/orca), [Supported agents](https://www.onorca.dev/docs/agents/supported), [Ways to run](https://www.onorca.dev/docs/ways-to-run), [Browser](https://www.onorca.dev/docs/browser/overview)
+- herdr: [README](https://github.com/herdrdev/herdr), [Agents](https://herdr.dev/docs/agents/), [Connecting machines](https://herdr.dev/docs/connecting-machines/), [Session state](https://herdr.dev/docs/session-state/)
+
+</details>
+
+## Documentation
+
+- [Design docs](docs/README.md): how every part of Demi works.
+- [Contributing](CONTRIBUTING.md): development setup, checks, and adding a
+  provider.
+- [Security](SECURITY.md): reporting vulnerabilities and where data is stored.
 
 ## License
 
-Demi is licensed under the [Demi License](LICENSE): the Apache License 2.0
-with additional conditions. You may use it, change it and run it, a company
-included, for its own people, and charge others for deploying, integrating
-or supporting Demi they run themselves. You may not offer Demi to
-others for a fee, as a hosted or multi-tenant service or as a product that
-is substantially Demi, nor remove or change the Demi name, logo or copyright
-notices the web front end shows, unless The Demi Authors permit it in
-writing; to ask, write to [support@demi.sh](mailto:support@demi.sh).
+Demi is released under the [Demi License](LICENSE), which is the Apache License
+2.0 with additional conditions:
 
-Versions released before this license under the Apache License 2.0 alone
-keep that license.
+- **Free to use**: Use, modify and run Demi, including at your company for your
+  own team.
+- **Free to support**: Charge for deploying, integrating or supporting Demi
+  that others run themselves.
+- **Not for resale as a service**: Don't offer Demi to others for a fee as a
+  hosted or multi-tenant service, or as a product that is substantially Demi.
+- **Keep the branding**: Don't remove or change the Demi name, logo or
+  copyright notices in the web app.
+
+For other uses, contact [support@demi.sh](mailto:support@demi.sh).
