@@ -49,6 +49,8 @@ uuid = { version = "1", features = ["v4"] }
 
 [target.'cfg(unix)'.dependencies]
 rustix = { version = "1", features = ["process", "stdio", "system"] }
+# A runner in the background resets the signals its starter ignored.
+libc = "0.2"
 
 # The standard handles a runner in the background points at its log.
 [target.'cfg(windows)'.dependencies]
@@ -58,9 +60,6 @@ windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
 # its unoptimized software fallback on supported Unix ARM hosts.
 [target.'cfg(all(unix, target_arch = "aarch64"))'.dependencies]
 sha2 = { version = "0.10", features = ["asm"] }
-
-[target.'cfg(unix)'.dev-dependencies]
-libc = "0.2"
 
 [dev-dependencies]
 demi-command-protocol = { path = "../command-protocol", features = ["testing"] }

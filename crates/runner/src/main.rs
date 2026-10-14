@@ -273,6 +273,11 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             if let Some(grace) = unreached_grace_ms {
                 unreached_grace = std::time::Duration::from_millis(grace);
             }
+            // First of all: until it leaves, the terminal reaches it.
+            #[cfg(unix)]
+            if log && let console::Departure::Restarted = console::leave_terminal()? {
+                return Ok(0);
+            }
             (installation, managed_boot, name, managed, artifacts, log, false)
         }
         Action::Status { installation } => {
