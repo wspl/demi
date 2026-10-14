@@ -49,8 +49,7 @@ An entry's catalog comes from one source, chosen in this order:
 3. **The provider's own directory** ([Directories](#directories)).
 
 A source that is unavailable is not replaced by the next one. A vendor entry
-whose vendor models.dev does not list has an empty catalog, not its family's
-built-in list.
+whose vendor models.dev does not list has an empty catalog.
 
 Each model in a catalog states the following facts. A capability the source
 does not state is null, which means unknown.
@@ -100,7 +99,7 @@ entry's catalog is kept.
 
 | Family | Directory |
 |---|---|
-| `anthropic`, `openai`, `google` | For a vendor entry of the family's own vendor, a list built into the provider for its family; reading it makes no request. A compatible entry has no directory: its catalog is the configured model list alone, empty until the user adds a model ([Endpoints](providers.md#endpoints)). |
+| `anthropic`, `openai`, `google` | None of their own: a vendor entry, the family's own vendor's included, lists its vendor's models from models.dev. A compatible entry has no directory: its catalog is the configured model list alone, empty until the user adds a model ([Endpoints](providers.md#endpoints)). |
 | `codex` | The account's model list on the ChatGPT backend ([The Codex catalog](#the-codex-catalog)). |
 | `grok-build` | `GET /v1/models` on the Grok Build service, with the account's session. The service answers a `data` envelope or a bare list. A model is named by its `id`, else its `model`; one that names neither is skipped. Its efforts are its `reasoning_efforts`, in the service's order. Every model takes tools and images; its context window is unknown unless the service states one. A catalog that cannot be read is a failed refresh: the service is unreachable or refuses, the account has no session, the payload cannot be read, or it lists no model. |
 | `claude-code` | The `anthropic` vendor of the models.dev document: the models whose id starts with `claude-` and whose version is 4.6 or later. Opus models come first, then Sonnet, then Haiku, then others, newest version first within each family. An id whose version cannot be read is skipped with a warning. Thinking cannot be turned off, because the CLI's `--effort` option only levels it. |
@@ -357,7 +356,7 @@ running refreshes and waits for them before it closes storage.
 catalog, `sourceFetchedAt`, `stale` and `warnings`, and with the provider's
 authentication and runtime state, which the backend reads when it answers and
 never stores. One entry's failure leaves the other entries and every configured
-list intact. A configured or built-in list, and the empty catalog of an entry
+list intact. A configured list, and the empty catalog of an entry
 that no refresh has filled, carry the Unix epoch as their `sourceFetchedAt`,
 because they were never fetched. The backend builds each model's selection
 ([Request parameters](#request-parameters)) and sends it with the model, so
