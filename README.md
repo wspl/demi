@@ -39,9 +39,16 @@ across your own machines, and tasks keep running when you close the tab.
 
 ## Quick start
 
-**Requirements**: a Linux server with root access (Ubuntu 22.04+, Debian 12+,
-Fedora, RHEL 10, Rocky Linux, AlmaLinux or Arch Linux; Linux 5.14+ with systemd
-and cgroup v2), a domain name, and HTTPS in front of it.
+You need:
+
+- A Linux server you have root on, running one of these
+  ([details](docs/delivery/installation.md#distributions)):
+  - Ubuntu 22.04 or later, Debian 12 or later
+  - Fedora, RHEL 10, Rocky Linux, AlmaLinux
+  - Arch Linux
+- A domain name, with HTTPS in front of the server.
+
+Then run:
 
 ```sh
 curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
