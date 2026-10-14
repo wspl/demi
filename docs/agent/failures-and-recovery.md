@@ -12,7 +12,8 @@ decisions read, and diagnostics, which the user and support read:
 
 | Code | Meaning | Retried automatically |
 | --- | --- | --- |
-| `rate_limit` | A quota or throttling failure | Yes |
+| `usage_limit` | The account's usage is used up until a reset or a purchase: a subscription window, credits or a spend cap | No; with [account rotation](../providers/providers.md#account-rotation) the agent moves to another account |
+| `rate_limit` | Throttling: too many requests or tokens for a short while | Yes |
 | `rate_limited` | The backend's own request rate limit refused the attempt before it reached the vendor ([Rate limit](../providers/usage-and-quota.md#rate-limit)) | No |
 | `overloaded` | A transient failure: HTTP 5xx, a timeout, a network or socket failure | Yes |
 | An authentication code | A missing, invalid or expired credential, or one that could not be refreshed | No |
@@ -24,8 +25,15 @@ decisions read, and diagnostics, which the user and support read:
 Invalid requests are terminal as well. The complete set of codes belongs to the
 provider contract ([Providers](../providers/providers.md)).
 
-An HTTP failure gets its code from its status: 401 and 403 are
-`auth_expired`, 429 is `rate_limit`, 408, 409, 425 and every 5xx are
+A vendor's own sign of a used-up account comes first, read by that vendor's
+provider, as its own client reads it: Codex's 429 whose `error.type` is
+`usage_limit_reached`, or whose `error.type` or `error.code` is
+`insufficient_quota`, `credit_balance_exhausted` or a `…_spend_limit_exceeded`
+or `…_usage_limit_exceeded`, over HTTP or in a WebSocket error frame; Grok
+Build's 402, and its 403 whose text says `run out of credits`; the Claude
+Code CLI's usage-limit words, such as *You've hit your session limit*. Each
+is `usage_limit`. Otherwise an HTTP failure gets its code from its status:
+401 and 403 are `auth_expired`, 429 is `rate_limit`, 408, 409, 425 and every 5xx are
 `overloaded`, and 413 is `request_too_large`, as is a 400 whose text
 mentions `too many images`, `many-image`, `request too large` or `payload too
 large`: the first two are the Anthropic API's refusals of a request with more
@@ -41,7 +49,8 @@ match the vendor's own code stands:
 | --- | --- |
 | `too many images`, `many image`, `request too large`, `payload too large` | `request_too_large` |
 | `context`, `too long`, `too large`, or a word starting with `max` followed later by `token` or `tokens` | `context_length_exceeded` |
-| `rate`, a word starting with `ratelimit`, `quota`, `usage limit`, `billing`, `balance` | `rate_limit` |
+| `usage limit`, `session limit`, `weekly limit`, `quota`, `billing`, `balance`, `out of credits` | `usage_limit` |
+| `rate`, a word starting with `ratelimit` | `rate_limit` |
 | `auth`, `authentication`, `authorization`, or `invalid` or `expired` before or after an API, access or auth key or token | `auth_expired` |
 | a word starting with `overload`, `unavailable`, `server error`, `internal error`, `api error`, `timeout`, `timed out`, `fetch failed`, `network`, `socket`, a word starting with `econn` | `overloaded` |
 
@@ -288,9 +297,10 @@ itself. The backend keeps the wait while it runs, whether the
 conversation is open or was put away to save memory, and opens it when the
 moment comes; after a backend restart it starts again when the conversation
 is next opened. A
-usage limit's moment is the latest reset among the account's windows that
-the quota shows used up; a limit with no such window, such as a spend cap,
-names no moment and is retried as any `rate_limit`.
+usage limit's moment is the one the failure names, such as Codex's
+`resets_at`, else the latest reset among the account's windows that the
+quota shows used up; a limit with neither, such as a spend cap, names no
+moment and waits for the user.
 
 A message is never left outside a turn. A send writes its `user` block as
 soon as its action starts, before its model switch lands
