@@ -2026,12 +2026,7 @@ async fn an_unread_output_ends_with_the_newest_bytes_the_runner_sent() {
         error: Some("the job's output is gone".into()),
     })
     .await;
-    let whole = loop {
-        drain(&mut link).await;
-        if let Some(whole) = shell.status(&started.command_id).unwrap().whole {
-            break whole;
-        }
-    };
+    let whole = whole_once_ended(&shell, &started.command_id).await;
     assert_eq!(
         whole.output.records(),
         [
@@ -2182,12 +2177,142 @@ fn read_at() -> demi_runner_protocol::wire::ReadAt {
     }
 }
 
+/// A message of `job`'s stdout at `offset`, as its runner sends it.
+fn stdout(job: &str, offset: u64, bytes: &[u8]) -> Outbound {
+    Outbound::JobOutput {
+        job_id: job.into(),
+        stream: OutputStream::Stdout,
+        offset,
+        bytes: WireBytes(bytes.to_vec()),
+    }
+}
+
+/// `job`'s exit with code 0 after `stdout_bytes` of stdout.
+fn exited_after(job: &str, stdout_bytes: u64) -> Outbound {
+    Outbound::JobExit {
+        job_id: job.into(),
+        exit_code: Some(0),
+        signal: None,
+        spawn_error: None,
+        output: Some(OutputLengths {
+            stdout_bytes,
+            stderr_bytes: 0,
+        }),
+        files: Vec::new(),
+        path_changes: Vec::new(),
+        files_truncated: false,
+    }
+}
+
+/// `job` as a hello lists it: with `stdout_bytes` of stdout, and ended
+/// with code 0 when `ended`.
+fn kept_job(job: &str, stdout_bytes: u64, ended: bool) -> demi_runner_protocol::wire::KeptJob {
+    demi_runner_protocol::wire::KeptJob {
+        job_id: job.into(),
+        ended: ended.then(|| demi_runner_protocol::wire::KeptEnd {
+            exit_code: Some(0),
+            signal: None,
+            unreached: false,
+        }),
+        output: OutputLengths {
+            stdout_bytes,
+            stderr_bytes: 0,
+        },
+        media: 0,
+        outliving: Vec::new(),
+    }
+}
+
+/// `bytes` as the kept output holds them, one read of stdout.
+fn kept_stdout(bytes: &[u8]) -> Vec<u8> {
+    encode_record(&KeptRecord::Output(OutputStream::Stdout, WireBytes(bytes.to_vec()))).unwrap()
+}
+
+/// Waits for the backend's read of `job`'s kept output, under the hang
+/// guard, and answers its request id and pipe.
+async fn requested_read(
+    link: &mut TestLink,
+    job: &str,
+) -> (String, demi_runner_protocol::wire::PipeRef) {
+    loop {
+        let message = tokio::time::timeout(Duration::from_secs(10), link.next())
+            .await
+            .expect("a read within the hang guard");
+        if let Inbound::JobRead { id, job_id, output } = message
+            && job_id == job
+        {
+            return (id, output);
+        }
+    }
+}
+
+/// The command's end and its whole output, once it ended, under the hang
+/// guard.
+async fn whole_once_ended(
+    shell: &RemoteShellEnvironment,
+    command: &CommandId,
+) -> demi_host_interface::WholeView {
+    tokio::time::timeout(Duration::from_secs(10), shell.ended(command))
+        .await
+        .expect("an end within the hang guard")
+        .unwrap();
+    shell.status(command).unwrap().whole.expect("the whole output")
+}
+
+/// The output's text, each part left out shown where it was.
+fn printed(output: &WholeOutput) -> String {
+    output
+        .records()
+        .iter()
+        .map(|record| match record {
+            OutputRecord::Output(_, bytes) => String::from_utf8_lossy(bytes).into_owned(),
+            OutputRecord::LeftOut(bytes) => format!("[{bytes} left out]"),
+        })
+        .collect()
+}
+
+/// A command whose runner printed while no connection served: the first
+/// connection gets "a", the runner prints "bc" meanwhile, and the next
+/// connection's read of the kept output is under way when "d" and, with
+/// `ended`, the job's end arrive, and that connection is lost too. The
+/// device's runner is instance 1.
+async fn away_twice(
+    device: &TestDevice,
+    shell: &RemoteShellEnvironment,
+    ended: bool,
+) -> (CommandId, String) {
+    let mut link = device.connect(None);
+    let started = shell
+        .exec(exec("print"), CancellationToken::new())
+        .await
+        .unwrap();
+    let Inbound::JobStart { job_id, .. } = link.next().await else {
+        panic!("expected a job")
+    };
+    link.send(stdout(&job_id, 0, b"a")).await;
+    drain(&mut link).await;
+    link.close().await;
+
+    let mut link = device.connect_with(None, 1, vec![kept_job(&job_id, 3, false)]);
+    requested_read(&mut link, &job_id).await;
+    link.send(stdout(&job_id, 3, b"d")).await;
+    if ended {
+        link.send(exited_after(&job_id, 4)).await;
+    }
+    drain(&mut link).await;
+    link.close().await;
+    // The command is as it was when the first connection was lost.
+    let status = shell.status(&started.command_id).unwrap();
+    assert!(status.whole.is_none(), "the command waits for the next connection");
+    (started.command_id, job_id)
+}
+
 /// A job that goes on over a new connection gets the output its runner
 /// printed while no connection served: the backend reads the kept output
 /// again and delivers what its consumer did not receive, before what the
 /// job prints from then on and before its end, which may both come while
-/// the read is under way (`runner.md` § Command lifetime). A few
-/// milliseconds.
+/// the read is under way (`sessions-and-targets.md` § Recovery and
+/// persistence). A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhile() {
     let device = device();
@@ -2195,31 +2320,14 @@ async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhi
     let host = device.host("/work", Admission::Free);
     let job = host.start_job(job_start("print")).await.unwrap();
     drain(&mut link).await;
-    let output = |offset: u64, bytes: &[u8]| Outbound::JobOutput {
-        job_id: job.id().to_owned(),
-        stream: OutputStream::Stdout,
-        offset,
-        bytes: WireBytes(bytes.to_vec()),
-    };
-    link.send(output(0, b"a")).await;
+    link.send(stdout(job.id(), 0, b"a")).await;
     link.close().await;
 
-    let kept = demi_runner_protocol::wire::KeptJob {
-        job_id: job.id().to_owned(),
-        ended: None,
-        output: OutputLengths {
-            stdout_bytes: 3,
-            stderr_bytes: 0,
-        },
-        media: 0,
-        outliving: Vec::new(),
-    };
-    let mut link = device.connect_with(None, 1, vec![kept]);
+    let mut link = device.connect_with(None, 1, vec![kept_job(job.id(), 3, false)]);
     // Output and the end that arrive during the read wait for it.
-    link.send(output(3, b"d")).await;
-    link.send(job_exit(job.id(), Some(0), None)).await;
-    let record = KeptRecord::Output(OutputStream::Stdout, WireBytes(b"abc".to_vec()));
-    answer_read(&device, &mut link, job.id(), encode_record(&record).unwrap()).await;
+    link.send(stdout(job.id(), 3, b"d")).await;
+    link.send(exited_after(job.id(), 4)).await;
+    answer_read(&device, &mut link, job.id(), kept_stdout(b"abc")).await;
 
     let mut received = Vec::new();
     while let Some(chunk) = job.next_output().await {
@@ -2230,6 +2338,117 @@ async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhi
         [(0, b"a".to_vec()), (1, b"bc".to_vec()), (3, b"d".to_vec())]
     );
     assert_eq!(job.end().await.status, ProcessEnd::Exited(0));
+}
+
+/// While a read of the kept output stalls, a job that goes on printing
+/// has only its first bytes and its newest ones held for after the read,
+/// at their offsets, as a job nobody follows sends them; its end gives the
+/// lengths that tell the rest is on the Host (`sessions-and-targets.md`
+/// § Recovery and persistence). A few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_stalled_read_holds_only_the_first_and_the_newest_output() {
+    let device = device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let job = host.start_job(job_start("print")).await.unwrap();
+    drain(&mut link).await;
+    link.close().await;
+
+    // The runner printed a byte while no connection served; the rest of
+    // the first bytes comes after the hello.
+    let view = JOB_VIEW_BYTES as u64;
+    let mut link = device.connect_with(None, 1, vec![kept_job(job.id(), 1, false)]);
+    let (id, _) = requested_read(&mut link, job.id()).await;
+    link.send(stdout(job.id(), 1, &vec![b'f'; JOB_VIEW_BYTES - 1])).await;
+    // A megabyte beyond the first bytes, a kilobyte at a time, its last
+    // kilobyte a different letter.
+    let kilobyte = 1024;
+    for at in 0..1024u64 {
+        let letter = if at == 1023 { b'n' } else { b'x' };
+        link.send(stdout(job.id(), view + at * kilobyte, &vec![letter; 1024]))
+            .await;
+    }
+    let length = view + 1024 * kilobyte;
+    link.send(exited_after(job.id(), length)).await;
+    // The read answers at last, with nothing it could read.
+    link.send(Outbound::JobRead {
+        id,
+        error: Some("the kept output is gone".into()),
+    })
+    .await;
+
+    let mut received = Vec::new();
+    while let Some(chunk) = job.next_output().await {
+        received.push((chunk.offset, chunk.bytes.len(), chunk.bytes.last().copied()));
+    }
+    assert_eq!(
+        received,
+        [
+            (1, JOB_VIEW_BYTES - 1, Some(b'f')),
+            (length - view, JOB_VIEW_BYTES, Some(b'n')),
+        ]
+    );
+    let end = job.end().await;
+    assert_eq!(end.output.map(|lengths| lengths.stdout_bytes), Some(length));
+}
+
+/// A connection lost again while the read after a reconnect is under way,
+/// with output and the job's end waiting behind it, leaves the command
+/// running; the next connection's read completes it, and the end stores
+/// the whole output (`sessions-and-targets.md` § Recovery and
+/// persistence). A few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn an_end_that_waited_through_another_loss_completes_with_the_next_connection() {
+    let device = device();
+    let shell = environment(device.host("/work", Admission::Free));
+    let (command, job) = away_twice(&device, &shell, true).await;
+
+    // The runner lists the job as ended and sends its exit again.
+    let mut link = device.connect_with(None, 1, vec![kept_job(&job, 4, true)]);
+    link.send(exited_after(&job, 4)).await;
+    answer_read(&device, &mut link, &job, kept_stdout(b"abcd")).await;
+    let whole = whole_once_ended(&shell, &command).await;
+    assert_eq!(printed(&whole.output), "abcd");
+    assert_eq!(whole.output.missing(), None);
+}
+
+/// The same loss before the job ended: the job goes on over the next
+/// connection, whose read gives what the runner printed meanwhile, and
+/// the command ends with all of it. A few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_job_that_runs_through_another_loss_gets_all_its_output_with_the_next_connection() {
+    let device = device();
+    let shell = environment(device.host("/work", Admission::Free));
+    let (command, job) = away_twice(&device, &shell, false).await;
+
+    let mut link = device.connect_with(None, 1, vec![kept_job(&job, 5, false)]);
+    answer_read(&device, &mut link, &job, kept_stdout(b"abcde")).await;
+    link.send(stdout(&job, 5, b"f")).await;
+    link.send(exited_after(&job, 6)).await;
+    let whole = whole_once_ended(&shell, &command).await;
+    assert_eq!(printed(&whole.output), "abcdef");
+    assert_eq!(whole.output.missing(), None);
+}
+
+/// The same loss, after which the runner comes back without the job, as
+/// one that started anew after the grace: the command is lost, with the
+/// output that arrived up to the first gap and a note that counts the
+/// rest; "d", past the gap, is not joined to "a". A few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_job_whose_runner_comes_back_without_it_keeps_what_arrived_and_says_the_rest_is_missing() {
+    let device = device();
+    let shell = environment(device.host("/work", Admission::Free));
+    let (command, _) = away_twice(&device, &shell, true).await;
+
+    let _link = device.connect_with(None, 2, Vec::new());
+    let whole = whole_once_ended(&shell, &command).await;
+    assert_eq!(printed(&whole.output), "a");
+    let missing = whole.output.missing().expect("the rest is missing");
+    assert_eq!(missing.bytes, 3);
+    let CommandState::Lost { reason, .. } = shell.status(&command).unwrap().state else {
+        panic!("the command is lost")
+    };
+    assert_eq!(reason, demi_backend_remote_host::RUNNER_RESTARTED);
 }
 
 /// Output its runner printed while no connection served, which the read
@@ -2249,67 +2468,22 @@ async fn a_command_whose_output_the_backend_missed_ends_with_it_read_from_its_ho
     let Inbound::JobStart { job_id, .. } = link.next().await else {
         panic!("expected a job")
     };
-    let output = |offset: u64, bytes: &[u8]| Outbound::JobOutput {
-        job_id: job_id.clone(),
-        stream: OutputStream::Stdout,
-        offset,
-        bytes: WireBytes(bytes.to_vec()),
-    };
-    link.send(output(0, b"a")).await;
+    link.send(stdout(&job_id, 0, b"a")).await;
     drain(&mut link).await;
     link.close().await;
 
-    let kept = demi_runner_protocol::wire::KeptJob {
-        job_id: job_id.clone(),
-        ended: None,
-        output: OutputLengths {
-            stdout_bytes: 3,
-            stderr_bytes: 0,
-        },
-        media: 0,
-        outliving: Vec::new(),
-    };
-    let mut link = device.connect_with(None, 1, vec![kept]);
-    let id = loop {
-        let message = tokio::time::timeout(Duration::from_secs(10), link.next())
-            .await
-            .expect("a read within the hang guard");
-        if let Inbound::JobRead { id, .. } = message {
-            break id;
-        }
-    };
+    let mut link = device.connect_with(None, 1, vec![kept_job(&job_id, 3, false)]);
+    let (id, _) = requested_read(&mut link, &job_id).await;
     link.send(Outbound::JobRead {
         id,
         error: Some("the read failed".into()),
     })
     .await;
-    link.send(output(3, b"d")).await;
-    link.send(Outbound::JobExit {
-        job_id: job_id.clone(),
-        exit_code: Some(0),
-        signal: None,
-        spawn_error: None,
-        output: Some(OutputLengths {
-            stdout_bytes: 4,
-            stderr_bytes: 0,
-        }),
-        files: Vec::new(),
-        path_changes: Vec::new(),
-        files_truncated: false,
-    })
-    .await;
-    let record = KeptRecord::Output(OutputStream::Stdout, WireBytes(b"abcd".to_vec()));
-    answer_read(&device, &mut link, &job_id, encode_record(&record).unwrap()).await;
-    let whole = loop {
-        drain(&mut link).await;
-        if let Some(whole) = shell.status(&started.command_id).unwrap().whole {
-            break whole;
-        }
-    };
-    assert_eq!(
-        whole.output.records(),
-        [OutputRecord::Output(StreamKind::Stdout, b"abcd".to_vec().into())]
-    );
+    link.send(stdout(&job_id, 3, b"d")).await;
+    link.send(exited_after(&job_id, 4)).await;
+    answer_read(&device, &mut link, &job_id, kept_stdout(b"abcd")).await;
+    let whole = whole_once_ended(&shell, &started.command_id).await;
+    assert_eq!(printed(&whole.output), "abcd");
 }
 
 /// A command stopped with the call that watches it, as a Stop of the action

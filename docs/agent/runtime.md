@@ -1057,7 +1057,8 @@ Where the output is kept:
   Host then removes the job's directory. The result that reports the end is
   made from the stored output, so the lines it names are the pages' lines.
 - A command that ended because its Host's connection was lost keeps what the
-  backend received, followed by the line
+  backend received of each stream from its start, up to the first byte it
+  missed, followed by the line
   `[... 1048576 bytes lost with the Host's connection ...]` when there was
   more. So does a command whose kept output the backend could not read from
   its Host, with the line

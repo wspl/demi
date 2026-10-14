@@ -93,11 +93,113 @@ pub(crate) struct JobEntry {
 }
 
 /// What arrives of a job while its kept output is read again after a new
-/// connection: its output, and its end, which comes last.
+/// connection, which waits for the read to follow it: from a connection
+/// lost before the read answered, until the next one's read
+/// (`sessions-and-targets.md` § Recovery and persistence). It holds what a
+/// job nobody follows sends, since the kept output holds the rest and the
+/// end reads what it lacks.
 #[derive(Default)]
 struct Resync {
-    waiting: Vec<JobOutput>,
+    /// The bytes within each stream's first `JOB_VIEW_BYTES`, in the order
+    /// they came.
+    first: Vec<JobOutput>,
+    /// Each stream's newest bytes beyond them.
+    newest: [Newest; 2],
+    /// The job's end, which comes last.
     end: Option<JobEnd>,
+}
+
+impl Resync {
+    /// Holds `chunk`: its part within its stream's first `JOB_VIEW_BYTES`
+    /// as it is, and its part beyond them among the stream's newest bytes.
+    fn hold(&mut self, chunk: JobOutput) {
+        let view = JOB_VIEW_BYTES as u64;
+        let within = usize::try_from(view.saturating_sub(chunk.offset))
+            .unwrap_or(usize::MAX)
+            .min(chunk.bytes.len());
+        if within > 0 {
+            self.first.push(JobOutput {
+                stream: chunk.stream,
+                offset: chunk.offset,
+                bytes: chunk.bytes.slice(..within),
+            });
+        }
+        if within < chunk.bytes.len() {
+            self.newest[stream_index(chunk.stream)]
+                .keep(chunk.offset + within as u64, &chunk.bytes[within..]);
+        }
+    }
+
+    /// Delivers what it holds to `job`, and answers the end it held.
+    fn release(self, job: &mut JobEntry) -> Option<JobEnd> {
+        for chunk in self.first {
+            job.deliver(chunk);
+        }
+        for (stream, newest) in [StreamKind::Stdout, StreamKind::Stderr]
+            .into_iter()
+            .zip(self.newest)
+        {
+            if !newest.is_empty() {
+                job.deliver(JobOutput {
+                    stream,
+                    offset: newest.offset(),
+                    bytes: bytes::Bytes::from(newest.into_bytes()),
+                });
+            }
+        }
+        self.end
+    }
+}
+
+/// A stream's newest bytes beyond its first `JOB_VIEW_BYTES`, at most
+/// `JOB_VIEW_BYTES` of them, and where they start in the stream.
+#[derive(Default)]
+pub(crate) struct Newest {
+    offset: u64,
+    bytes: Vec<u8>,
+}
+
+impl Newest {
+    /// Adds `bytes` at `offset`: they continue or overlap the ones before,
+    /// or replace them; the newest `JOB_VIEW_BYTES` stay.
+    pub(crate) fn keep(&mut self, offset: u64, bytes: &[u8]) {
+        let end = self.offset + self.bytes.len() as u64;
+        if self.bytes.is_empty() || offset < self.offset || offset > end {
+            self.bytes = bytes.to_vec();
+            self.offset = offset;
+        } else {
+            self.bytes
+                .truncate(usize::try_from(offset - self.offset).expect("within the bytes"));
+            self.bytes.extend_from_slice(bytes);
+        }
+        let excess = self.bytes.len().saturating_sub(JOB_VIEW_BYTES);
+        self.bytes.drain(..excess);
+        self.offset += excess as u64;
+    }
+
+    pub(crate) fn offset(&self) -> u64 {
+        self.offset
+    }
+
+    pub(crate) fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.bytes.is_empty()
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
+        self.bytes
+    }
+}
+
+/// Where a stream's facts are in a job's per-stream arrays.
+fn stream_index(stream: StreamKind) -> usize {
+    match stream {
+        StreamKind::Stdout => 0,
+        StreamKind::Stderr => 1,
+    }
 }
 
 /// What a job's consumer holds of it.
@@ -256,7 +358,7 @@ impl DeviceJobs {
     /// unknown; while its kept output is read again, it waits for the read.
     pub(crate) fn output(&self, id: &str, chunk: JobOutput) {
         self.with(id, |job| match &mut job.resyncing {
-            Some(resync) => resync.waiting.push(chunk),
+            Some(resync) => resync.hold(chunk),
             None => job.deliver(chunk),
         });
     }
@@ -280,39 +382,27 @@ impl DeviceJobs {
         true
     }
 
-    /// `link` ended: the jobs on it wait for the next connection.
+    /// `link` ended: the jobs on it wait for the next connection. A read of
+    /// a job's kept output under way cannot answer any more: what waits
+    /// behind it, the job's end among it, waits on for the next
+    /// connection's read, and the job stays as it was when the first
+    /// connection was lost.
     pub(crate) fn detach(&self, link: &Link) {
-        let mut table = self.0.borrow_mut();
-        let mut ended = Vec::new();
-        for (id, job) in &mut table.jobs {
+        for job in self.0.borrow_mut().jobs.values_mut() {
             if job.attached.as_ref().is_some_and(|attached| attached.is(link)) {
                 job.attached = None;
                 job.away_since = Some(Instant::now());
-                // A read again the ended connection cannot finish delivers
-                // what waited for it, and the end that came meanwhile; the
-                // consumer counts what the read would have given as not
-                // received, so the job's end reads it.
-                if let Some(resync) = job.resyncing.take() {
-                    for chunk in resync.waiting {
-                        job.deliver(chunk);
-                    }
-                    if let Some(end) = resync.end {
-                        ended.push((id.clone(), end));
-                    }
-                }
             }
-        }
-        for (id, end) in ended {
-            settle(&mut table, &id, end);
         }
     }
 
-    /// Ends every job as lost for `reason`, as when the device goes.
+    /// Ends every job as lost for `reason`, as when the device goes, after
+    /// the output that waited for a read of its kept output; an end that
+    /// waited too gives way to the loss, since its output cannot be read.
     pub fn lose_all(&self, reason: &str) {
         let jobs: Vec<JobEntry> = self.0.borrow_mut().jobs.drain().map(|(_, job)| job).collect();
         for job in jobs {
-            job.cancel.cancel();
-            job.shared.finish(JobEnd::lost(reason));
+            job.lose(reason);
         }
     }
 
@@ -371,10 +461,11 @@ impl DeviceJobs {
                 job.shared.outlived_by(kept.outliving.clone());
             }
             // A job that runs and printed what its consumer did not
-            // receive has its kept output read again.
+            // receive has its kept output read again, and so does one
+            // whose read a lost connection left waiting, ended or not.
             let missed = kept.output.stdout_bytes > job.seen[0]
                 || kept.output.stderr_bytes > job.seen[1];
-            if kept.ended.is_none() && missed {
+            if (kept.ended.is_none() && missed) || job.resyncing.is_some() {
                 job.resyncing.get_or_insert_with(Resync::default);
                 adoption.resync.push((kept.job_id.clone(), kept.output));
             }
@@ -391,8 +482,7 @@ impl DeviceJobs {
             .collect();
         for id in unlisted {
             if let Some(job) = table.jobs.remove(&id) {
-                job.cancel.cancel();
-                job.shared.finish(JobEnd::lost(lost));
+                job.lose(lost);
             }
         }
         // A recorded job the runner does not list was lost; its agent
@@ -407,12 +497,14 @@ impl DeviceJobs {
         adoption
     }
 
-    /// Delivers what a read of the job's kept output gave after a new
-    /// connection, `output` with each stream's length `lengths`, then the
-    /// output that arrived meanwhile, then the end when it came meanwhile;
-    /// with no `output`, only the latter two.
+    /// Delivers what a read of the job's kept output over `link` gave,
+    /// `output` with each stream's length `lengths`, then the output that
+    /// arrived meanwhile, then the end when it came meanwhile; with no
+    /// `output`, only the latter two. A read over a connection that ended
+    /// first delivers nothing: what waits, waits for the next one's read.
     pub(crate) fn resynced(
         &self,
+        link: &Link,
         id: &str,
         output: Option<&demi_host_interface::WholeOutput>,
         lengths: wire::OutputLengths,
@@ -421,8 +513,9 @@ impl DeviceJobs {
         let Some(job) = table.jobs.get_mut(id) else {
             return;
         };
-        // A connection that ended before the read did delivered what
-        // waited for it.
+        if !job.attached.as_ref().is_some_and(|attached| attached.is(link)) {
+            return;
+        }
         let Some(resync) = job.resyncing.take() else {
             return;
         };
@@ -431,10 +524,7 @@ impl DeviceJobs {
                 job.deliver(chunk);
             }
         }
-        for chunk in resync.waiting {
-            job.deliver(chunk);
-        }
-        if let Some(end) = resync.end {
+        if let Some(end) = resync.release(job) {
             settle(&mut table, id, end);
         }
     }
@@ -486,13 +576,21 @@ impl JobEntry {
         }
     }
 
+    /// Ends the job as lost for `reason`, after the output that waited for
+    /// a read of its kept output.
+    fn lose(mut self, reason: &str) {
+        if let Some(resync) = self.resyncing.take() {
+            // The loss replaces the end that waited.
+            let _end = resync.release(&mut self);
+        }
+        self.cancel.cancel();
+        self.shared.finish(JobEnd::lost(reason));
+    }
+
     /// Passes `chunk` to the consumer: the part of a stream's first
     /// `JOB_VIEW_BYTES` that reached it already is left out.
     fn deliver(&mut self, chunk: JobOutput) {
-        let index = match chunk.stream {
-            StreamKind::Stdout => 0,
-            StreamKind::Stderr => 1,
-        };
+        let index = stream_index(chunk.stream);
         let end = chunk.offset + chunk.bytes.len() as u64;
         self.seen[index] = self.seen[index].max(end);
         if chunk.offset >= JOB_VIEW_BYTES as u64 {
@@ -528,10 +626,7 @@ fn kept_chunks(
 ) -> Vec<JobOutput> {
     use demi_host_interface::OutputRecord;
     let lengths = [lengths.stdout_bytes, lengths.stderr_bytes];
-    let index = |stream: StreamKind| match stream {
-        StreamKind::Stdout => 0,
-        StreamKind::Stderr => 1,
-    };
+    let index = stream_index;
     let records = output.records();
     let gap = records
         .iter()
