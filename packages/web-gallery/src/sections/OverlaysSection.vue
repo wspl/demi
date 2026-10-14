@@ -339,7 +339,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
 
       <GallerySection
         title="Menu"
-        note="Actions, choices, submenus, tall, and filter. Enabled choices use normal text; being unselected does not dim them. Disabled rows keep their status dot and explain why they cannot be chosen. Paired devices show online status. Cloud shows no connection or lifecycle status and remains selectable while asleep; operations wake it automatically. Keys: Up and Down Arrow move, typing a name jumps to it, Return chooses; Right Arrow or Return opens a submenu, Left Arrow or Escape closes it. A group’s first row scrolls into view with its heading. When a menu closes, the focus returns to its opener, or to what had it before when the opener takes no focus; a click on another control keeps it."
+        note="Actions, choices, submenus, tall, and filter. A checked choice shows its check where the menu puts it, which the menu decides from its rows, as macOS does: with no icons the check takes the leading slot, the other rows keeping its width empty so labels align; with icons the icon keeps the leading slot and the check goes to the trailing end. A caller only says which row is checked. Enabled choices use normal text; being unselected does not dim them. Disabled rows keep their status dot and explain why they cannot be chosen. Paired devices show online status. Cloud shows no connection or lifecycle status and remains selectable while asleep; operations wake it automatically. Keys: Up and Down Arrow move, typing a name jumps to it, Return chooses; Right Arrow or Return opens a submenu, Left Arrow or Escape closes it. A group’s first row scrolls into view with its heading. When a menu closes, the focus returns to its opener, or to what had it before when the opener takes no focus; a click on another control keeps it."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="actions">
@@ -371,8 +371,8 @@ function openSharedMenu(row: string, event: MouseEvent): void {
               />
             </Menu>
           </GallerySpecimen>
-          <GallerySpecimen variant="choices">
-            <Menu :autofocus="false" iconless>
+          <GallerySpecimen variant="choices · no icons · check leading">
+            <Menu :autofocus="false">
               <MenuGroup label="Paradigm">
                 <MenuItem
                   label="Neutral"
@@ -415,7 +415,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
               </MenuGroup>
             </Menu>
           </GallerySpecimen>
-          <GallerySpecimen variant="choice · icon · focus">
+          <GallerySpecimen variant="choices · icons · check trailing · focus">
             <Menu :autofocus="false">
               <MenuItem
                 :icon="Pencil"
@@ -446,7 +446,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
         </div>
         <GalleryOverlayWell size="wide">
           <GallerySpecimen variant="iconless · submenu">
-            <Menu :autofocus="false" iconless>
+            <Menu :autofocus="false">
               <MenuItem label="Fast Mode" @select="submenuFast = !submenuFast">
                 <template #suffix>
                   <Switch
@@ -462,7 +462,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                 :value="submenuReasoningLabels[submenuReasoning]"
               >
                 <template #submenu>
-                  <Menu iconless>
+                  <Menu>
                     <MenuItem
                       v-for="(label, index) in submenuReasoningLabels"
                       :key="label"
@@ -478,7 +478,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                 :value="itemLabel(submenuModel, submenuModels)"
               >
                 <template #submenu>
-                  <Menu iconless>
+                  <Menu>
                     <MenuItem
                       label="Claude Sonnet"
                       choice
@@ -548,13 +548,13 @@ function openSharedMenu(row: string, event: MouseEvent): void {
         </GallerySpecimen>
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="label/value · columns">
-            <Menu :autofocus="false" iconless>
+            <Menu :autofocus="false">
               <MenuItem
                 label="Reasoning"
                 :value="itemLabel(columnsEffort, effortItems)"
               >
                 <template #submenu>
-                  <Menu iconless>
+                  <Menu>
                     <MenuItem
                       v-for="item in effortItems"
                       :key="item.id"
@@ -571,7 +571,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                 :value="itemLabel(columnsModel, submenuModels)"
               >
                 <template #submenu>
-                  <Menu iconless>
+                  <Menu>
                     <MenuItem
                       v-for="item in submenuModels"
                       :key="item.id"
@@ -596,7 +596,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
             </Menu>
           </GallerySpecimen>
           <GallerySpecimen variant="shortcuts · columns">
-            <Menu :autofocus="false" iconless>
+            <Menu :autofocus="false">
               <MenuItem label="Rename" shortcut="↵" @select="productWould('Rename')" />
               <MenuItem
                 label="Duplicate Conversation"
@@ -610,7 +610,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
         </div>
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="tall">
-            <Menu :autofocus="false" iconless>
+            <Menu :autofocus="false">
               <MenuItem
                 v-for="label in tallActions"
                 :key="label"
@@ -723,7 +723,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
             <Dropdown variant="ghost" :overlay-store="appOverlayStore">
               <template #trigger>claude-sonnet</template>
               <template #content="{ close }">
-                <Menu iconless>
+                <Menu>
                   <MenuItem
                     v-for="item in items"
                     :key="item.id"
@@ -743,7 +743,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
             >
               <template #trigger>{{ itemLabel(dropdownEffortSelected, effortItems) }}</template>
               <template #content="{ close }">
-                <Menu iconless>
+                <Menu>
                   <MenuItem
                     v-for="item in effortItems"
                     :key="item.id"
@@ -763,7 +763,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
             >
               <template #trigger>Menu</template>
               <template #content="{ close }">
-                <Menu iconless @click="close">
+                <Menu @click="close">
                   <MenuItem label="Rename" shortcut="↵" @select="productWould('Rename')" />
                   <MenuItem label="Duplicate" shortcut="⌘D" @select="productWould('Duplicate')" />
                 </Menu>
@@ -815,7 +815,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
             >
               <template #trigger>{{ itemLabel(dropdownInlineSelected) }}</template>
               <template #content>
-                <Menu iconless>
+                <Menu>
                   <MenuItem
                     v-for="item in items"
                     :key="item.id"
@@ -1180,14 +1180,14 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                         {{ itemLabel(layersModel, submenuModels) }} · {{ itemLabel(layersReasoning, effortItems) }}
                       </template>
                       <template #content="{ close }">
-                        <Menu iconless @click="close">
+                        <Menu @click="close">
                           <MenuItem
                             submenu-open
                             label="Reasoning"
                             :value="itemLabel(layersReasoning, effortItems)"
                           >
                             <template #submenu>
-                              <Menu iconless>
+                              <Menu>
                                 <MenuItem
                                   v-for="item in effortItems"
                                   :key="item.id"
@@ -1204,7 +1204,7 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                             :value="itemLabel(layersModel, submenuModels)"
                           >
                             <template #submenu>
-                              <Menu iconless>
+                              <Menu>
                                 <MenuItem
                                   v-for="item in submenuModels"
                                   :key="item.id"

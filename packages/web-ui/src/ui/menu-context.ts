@@ -16,7 +16,37 @@ export interface MenuListItem {
   disabledReason?: SentenceText
 }
 
-export const menuIconlessKey: InjectionKey<ComputedRef<boolean>> = Symbol('menuIconless')
+/**
+ * How a Menu lays out the leading slot of its rows, which it alone decides
+ * from what its rows are, as macOS's menus do:
+ * - A menu whose rows have icons keeps the icon there, and a checked row
+ *   shows its check at the trailing end.
+ * - A menu whose rows have no icons has no icon column; when a row can be
+ *   checked, the check takes the leading slot, and every other row keeps
+ *   the slot's width empty so labels align.
+ */
+export interface MenuLayout {
+  /** No row has an icon: the leading slot holds no icons. */
+  iconless: ComputedRef<boolean>
+  /** The leading slot holds the checks: the rows have no icons and some can be checked. */
+  checkLeading: ComputedRef<boolean>
+}
+
+/** What a menu's layout needs of one of its rows. */
+export interface MenuRowShape {
+  /** The row shows an icon or a status dot in the leading slot. */
+  hasIcon: boolean
+  /** The row says whether it is checked, so the menu reserves a place for its check. */
+  checkable: boolean
+}
+
+/** The leading slot of a menu whose rows are `rows`; `iconless` forces whether they have icons. */
+export function menuLeadingSlot(rows: readonly MenuRowShape[], iconless?: boolean): { iconless: boolean; checkLeading: boolean } {
+  const noIcons = iconless ?? !rows.some((row) => row.hasIcon)
+  return { iconless: noIcons, checkLeading: noIcons && rows.some((row) => row.checkable) }
+}
+
+export const menuLayoutKey: InjectionKey<MenuLayout> = Symbol('menuLayout')
 
 export interface MenuRoot {
   dismiss: () => void
@@ -30,6 +60,10 @@ export interface MenuSlotRow {
   el: () => HTMLElement | null
   /** Opens the row's submenu with the keys in it; false when the row has none to open. */
   enter: () => boolean
+  /** The row shows an icon or a status dot in the leading slot. */
+  hasIcon: () => boolean
+  /** The row says whether it is checked, so the menu reserves a place for its check. */
+  checkable: () => boolean
 }
 
 /**
