@@ -20,6 +20,10 @@ covers.
 
 ## Setup and checks
 
+`bun xtask dev` starts a development backend and web app with an account
+already made; `bun xtask dev --unseeded` starts one with none, so the page
+opens on Set Up Demi.
+
 ```sh
 cargo check --workspace --all-targets --features demi-runner/test-fixtures
 cargo test --workspace --features demi-runner/test-fixtures  # the Rust tests and the crate boundary check
