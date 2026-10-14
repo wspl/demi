@@ -467,6 +467,16 @@ impl Backend {
         self.services.hellos.hold(step)
     }
 
+    /// Holds every failed turn's resume at its retry time at `step` from now
+    /// on, until the hold is released.
+    #[cfg(feature = "testing")]
+    pub fn hold_retries(
+        &self,
+        step: demi_backend_user_shard::holds::RetryStep,
+    ) -> demi_backend_user_shard::holds::StepHold {
+        self.services.retries.hold(step)
+    }
+
     /// Holds every page's synchronization channel at `step` from now on,
     /// until the hold is released.
     #[cfg(feature = "testing")]

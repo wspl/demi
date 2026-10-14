@@ -4,6 +4,7 @@ import {
   sessionFailureNotice,
   resumeWaitsFor,
   turnRecovery,
+  endsWithErrorRecord,
   sessionPaneStatus,
   sessionStatusCopy,
 } from '../session-status'
@@ -88,6 +89,20 @@ test('agent messages and reports written behind a failure keep its Resume', () =
   expect(turnRecovery('idle', [{ type: 'user' }, { type: 'error' }, ...late])).toBe('resume')
   expect(turnRecovery('idle', [{ type: 'user' }, { type: 'text' }, ...late])).toBeNull()
   expect(turnRecovery('idle', [{ type: 'user' }, { type: 'error' }, { type: 'wakeup', placement: 'new_turn' }])).toBeNull()
+})
+
+// The failure's `error` frame names it while the page is live, and the
+// record says it too: receipts written behind the record do not make the
+// tail notice repeat it, as a reload, which has no frame, never did.
+test('a failure the record says is not repeated under the receipts written behind it', () => {
+  const failed = { message: 'You’ve hit your session limit', requestId: 'req_1' }
+  const late = [{ type: 'agent_message' }, { type: 'agent_message' }, { type: 'wakeup', placement: 'steer' }]
+  const behind = endsWithErrorRecord([{ type: 'user' }, { type: 'error' }, ...late])
+  expect(behind).toBe(true)
+  expect(sessionFailureNotice('ready', failed, true, behind)).toBeNull()
+  // A new turn that the reports opened is not the record's.
+  expect(endsWithErrorRecord([{ type: 'user' }, { type: 'error' }, { type: 'wakeup', placement: 'new_turn' }])).toBe(false)
+  expect(endsWithErrorRecord([{ type: 'user' }, { type: 'text' }, ...late])).toBe(false)
 })
 
 // The user compacted after a turn ended: the divider is the last block, and

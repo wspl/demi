@@ -156,3 +156,19 @@ test("a model or an entry the user turns off is saved in the user's preferences,
   expect(resources.providerInfos[0]?.isAvailable).toBe(false)
   expect(resources.providers[0]?.enabled).toBe(false)
 })
+
+// A change made just before the page went was lost: its write waited for the
+// user's pause, which never came. The page hidden or gone flushes it at once,
+// and the pause sends nothing more.
+test('a change waiting for the pause is sent at once when the page flushes, and once', async () => {
+  useProduct().start()
+  channels.last().connect(productState({ preferences: saved }))
+  const preferences = usePreferences()
+  preferences.update({ resumeAtRetry: true })
+  expect(patches).toEqual([])
+  await preferences.flush()
+  expect(patches).toEqual([{ resumeAtRetry: true }])
+  await new Promise((resolve) => setTimeout(resolve, 250))
+  expect(patches).toHaveLength(1)
+  expect(preferences.resumeAtRetry).toBe(true)
+})

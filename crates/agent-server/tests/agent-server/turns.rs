@@ -647,13 +647,9 @@ async fn a_crash_during_a_turn_is_recorded_as_an_interruption_when_the_conversat
     let ServerFrame::TranscriptReset { blocks, .. } = &frames[1] else {
         panic!("{frames:?}");
     };
-    assert_eq!(kinds(blocks), ["user"]);
-    // The record follows the handshake, and it is saved at once.
-    assert!(
-        frames[5..]
-            .iter()
-            .any(|frame| matches!(frame, ServerFrame::TranscriptPatch { .. }))
-    );
+    // The restore recorded the interruption before anything could arrive,
+    // so the handshake shows it, and it is saved at once.
+    assert_eq!(kinds(blocks), ["user", "error"]);
     let checkpoint = crashed.checkpoint(&conversation()).unwrap();
     assert_eq!(kinds(&checkpoint.transcript), ["user", "error"]);
     assert_eq!(checkpoint.state.phase, SessionPhase::Idle);

@@ -28,7 +28,6 @@ const props = defineProps<{
 }>()
 
 const presentation = computed(() => errorPresentation(props.message))
-const facts = computed(() => errorFacts(props.retryAt ?? null))
 // The provider's response as it arrived, whole.
 const raw = computed(() =>
   props.diagnostics?.upstream ? prettyUpstream(props.diagnostics.upstream) : null,
@@ -40,6 +39,7 @@ const reportText = computed(() =>
 const resumeAtRetry = useResumeAtRetry()
 const transcript = useTranscript()
 const now = useClock()
+const facts = computed(() => errorFacts(props.retryAt ?? null, new Date(now.value)))
 const ownAgent = transcript === null || transcript.node === null
 /** The preference this record offers, until its time has passed. */
 const resume = computed(() => {

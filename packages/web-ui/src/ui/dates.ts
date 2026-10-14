@@ -65,22 +65,26 @@ export function formatMoment(timestamp: string, now: Date = new Date()): string 
 }
 
 /**
- * The control that resumes a failed turn at `timestamp`, the moment its
- * failure can succeed again, named by when that is from `now`: "Resume at
- * 9:00 AM" on the same day, "Resume Sat at 9:00 AM" within the week, then
- * "Resume Oct 24 at 9:00 AM", with the year when it is not this one. A
- * moment is named by its nearest minute, as a reset is.
+ * When a failed request can succeed again, `timestamp`, after `verb`, as a
+ * failure's record says it and as the control that resumes the turn then
+ * names it (`product.md` § Recovering an unfinished turn): "Resets at
+ * 9:00 AM" on `now`'s day, "Resume Sat at 9:00 AM" within a week either way,
+ * then "Resets Oct 24 at 9:00 AM", with the year when it is not this one. The
+ * moment is rounded up to the minute, so neither ever names a time before
+ * the reset: 7:03:55 PM is 7:04 PM.
  */
-export function formatResumeAt(timestamp: string, now: Date): string {
-  const moment = dayjs(timestamp).add(30, 'second').startOf('minute')
+export function formatRetryAt(verb: 'Resets' | 'Resume', timestamp: string, now: Date): string {
+  const exact = dayjs(timestamp)
+  const minute = exact.startOf('minute')
+  const moment = minute.isSame(exact) ? minute : minute.add(1, 'minute')
   const clock = moment.format(CLOCK)
   if (moment.isSame(now, 'day')) {
-    return `Resume at ${clock}`
+    return `${verb} at ${clock}`
   }
-  if (moment.diff(now) < WEEK_MS - DAY_MS) {
-    return `Resume ${moment.format('ddd')} at ${clock}`
+  if (Math.abs(moment.diff(now)) < WEEK_MS - DAY_MS) {
+    return `${verb} ${moment.format('ddd')} at ${clock}`
   }
-  return `Resume ${moment.format(byYear(moment, now, MONTH_DAY, MONTH_DAY_YEAR))} at ${clock}`
+  return `${verb} ${moment.format(byYear(moment, now, MONTH_DAY, MONTH_DAY_YEAR))} at ${clock}`
 }
 
 /**

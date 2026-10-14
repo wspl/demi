@@ -216,6 +216,16 @@ function turnRecord<T extends RecordCandidate>(blocks: readonly T[]): T | undefi
   )
 }
 
+/**
+ * Whether the transcript ends with an error record, read past the agent
+ * messages and command reports a failed root's turn took after it ended
+ * (`failures-and-recovery.md` § The unfinished turn): the record still says
+ * the failure, so nothing below repeats it.
+ */
+export function endsWithErrorRecord(blocks: readonly RecordCandidate[]): boolean {
+  return blocks.findLast((block) => !isLateInput(block))?.type === 'error'
+}
+
 /** Input a turn takes without opening one: an agent message, or command reports placed as a steer. */
 function isLateInput(block: RecordCandidate): boolean {
   return block.type === 'agent_message' || (block.type === 'wakeup' && block.placement === 'steer')
