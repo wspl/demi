@@ -41,17 +41,18 @@ Demi 是一个自托管的 AI Agent，在任何浏览器中都能使用。随口
   - Ubuntu 22.04 及以上、Debian 12 及以上
   - Fedora、RHEL 10、Rocky Linux、AlmaLinux
   - Arch Linux
-- 一个域名，并在服务器前配置好 HTTPS。
+- 一个域名。最省事的 HTTPS 方案是把域名的 DNS 托管到 [Cloudflare](https://www.cloudflare.com/)：为服务器添加一条开启代理（橙色云朵）的 `A` 记录，并把 **SSL/TLS** 设为 **Flexible**。这样 HTTPS 由 Cloudflare 提供，服务器上不需要证书，也不需要自己的反向代理。
 
-然后运行：
+然后把域名换成你的，运行：
 
 ```sh
-curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh \
+  | sudo bash -s -- --domain demi.example.com --listen 0.0.0.0:80
 ```
 
-安装程序会询问域名和 HTTPS 配置，完成后输出服务器地址。接下来：
+使用 Flexible 时，Cloudflare 到服务器这一段是明文 HTTP。如果这一段也要加密，或者想用 Caddy、nginx 等其他代理，请参阅[安装指南](docs/delivery/installation.md#https)。安装程序会检查机器、启动 Demi，并从外部检查你的域名。接下来：
 
-1. 打开该地址，创建管理员账号。
+1. 立即打开你的域名，创建管理员账号。
 2. 进入 **Settings › Providers**，用订阅账号登录或添加 API 密钥。
 3. 开始一个对话，它会在你的云端沙箱中运行。
 4. 如需在自己的电脑上工作，在对话的 Host 菜单中选择 **Add Device**，然后在那台电脑上运行显示的命令。
