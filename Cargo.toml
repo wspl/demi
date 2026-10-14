@@ -71,7 +71,7 @@ members = [
 [workspace.package]
 version = "0.1.21"
 edition = "2024"
-license = "LicenseRef-Demi-License"
+license = "Apache-2.0"
 publish = false
 
 [workspace.dependencies]

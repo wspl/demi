@@ -270,7 +270,7 @@ struct ReportCrate {
 
 /// cargo-about's settings: the accepted licenses; no build or development
 /// dependency, which no program links; and no crate of the workspace,
-/// which LICENSE covers. The vendored crates are published ones, and so
+/// which LICENSE and LICENSE-DEMI cover. The vendored crates are published ones, and so
 /// are listed. Its workarounds read ring's and rustls's license files,
 /// which hold several licenses each.
 fn about_config() -> String {

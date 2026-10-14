@@ -2,7 +2,7 @@
 name = "demi-server"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
+license = "LicenseRef-Demi-License"
 publish.workspace = true
 
 [[bin]]
