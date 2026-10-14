@@ -1208,17 +1208,22 @@ unless the user finishes it, and for Claude Code `needsCode: true` and no
 `userCode`: `verificationUrl` is the link the CLI printed, the user signs in
 there and pastes the code the page shows, which
 `POST /api/providers/subscription-login/:id/code { code }` hands to the CLI's
-login (204; 409 `login_not_waiting` when it waits for none) as its next
-code: `codesTaken` counts the codes the login took. A code the CLI refuses
-leaves the login pending with `codeError`, the CLI's words, until the user
-pastes another; `codeError` is always the refusal of code number
-`codesTaken`, so a refusal of an earlier code that arrives after a later one
-was taken is dropped, and a page that pasted code *n* shows no refusal while
-`codesTaken` is below *n*. The login then continues as a device login does, `{ status: "completed", providerId,
-credentialId }` with the account the login added, or `{ status: "failed",
-message, requestId }`, where `requestId` is the id of the request that started
-the login, under which the server log holds its whole course. Cancel with
-DELETE at the same path. A login is its starter's to read and cancel; another
+login as its next code and answers `{ code }`, the number the login gave
+it, counting from one (409 `login_not_waiting` when it waits for none);
+`codesTaken` counts the codes the login took. A code the CLI refuses leaves
+the login pending with `codeError`, the CLI's words, until the user pastes
+another; `codeError` is always the refusal of code number `codesTaken`, so a
+refusal of an earlier code that arrives after a later one was taken is
+dropped. A page shows a refusal only of the code its own request was
+answered for, and *Signing in…* until that answer comes, so of two tabs
+that paste a code each, neither shows the other's refusal as its own. The login then continues as a device login does, `{ status: "completed", providerId,
+credentialId }` with the account the login added, `{ status: "cancelled" }`
+once the user cancelled it, or `{ status: "failed", message, requestId }`,
+where `requestId` is the id of the request that started the login, under
+which the server log holds its whole course. The vault publishes the entry
+before it announces the login's end, but a channel may send the end first,
+so a page shows a completed login once its product state lists the account.
+Cancel with DELETE at the same path. A login is its starter's to read and cancel; another
 id answers 404 `login_not_found`. Terminal results are retained for ten
 minutes. A start on an entry that a login of the same user reserves answers
 409 `provider_busy` with `loginId`, that login's id, so the page opens it

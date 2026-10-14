@@ -17,7 +17,7 @@ use demi_backend_providers::vault::logins::CodeRefusal;
 use demi_backend_user_shard::conversation::claude_cli::ShardMachine;
 use demi_provider_common::Secret;
 use demi_web_api_protocol::providers::{
-    Accounts, ActivateAccount, ActiveAccount, CredentialKind, LoginAnswer, LoginCode,
+    Accounts, ActivateAccount, ActiveAccount, CodeTaken, CredentialKind, LoginAnswer, LoginCode,
     LoginStarted, PendingStatus, RemovedAccount, StartedLogin, SubscriptionLogin,
 };
 
@@ -155,13 +155,13 @@ pub(super) async fn login_state(
 }
 
 /// Hands the code the caller pasted to the caller's login, which waits for
-/// one once it has shown its link.
+/// one once it has shown its link, and answers the number the login gave it.
 pub(super) async fn submit_code(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     JsonBody(body): JsonBody<LoginCode>,
-) -> Result<StatusCode, ApiError> {
+) -> Result<Json<CodeTaken>, ApiError> {
     configures(&services, &user)?;
     let id = LoginId::try_from(id).map_err(|_| login_not_found())?;
     // The body allows one line only, which is what a secret is.
@@ -173,7 +173,7 @@ pub(super) async fn submit_code(
         )
     })?;
     match services.logins.submit_code(&id, &user.id, code) {
-        Ok(()) => Ok(StatusCode::NO_CONTENT),
+        Ok(code) => Ok(Json(CodeTaken { code })),
         Err(CodeRefusal::NotFound) => Err(login_not_found()),
         Err(refusal @ CodeRefusal::NotWaiting) => Err(ApiError::new(
             StatusCode::CONFLICT,

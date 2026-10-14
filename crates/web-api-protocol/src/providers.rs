@@ -489,6 +489,13 @@ fn one_line(code: &Trimmed, (): &()) -> garde::Result {
     Ok(())
 }
 
+/// The answer of a pasted code: its number among the codes the login took,
+/// counting from one, which `codesTaken` and a refusal of it then name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CodeTaken {
+    pub code: u32,
+}
+
 /// The 202 answer of a login start: `{ login: { id, status: "pending" } }`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct LoginStarted {
@@ -554,9 +561,12 @@ pub enum LoginState {
         provider_id: ProviderId,
         credential_id: CredentialId,
     },
-    /// The login failed, expired or was cancelled: `message` says which,
-    /// naming the stage it failed at, and `request_id` is the request that
-    /// started it, under which the server log holds its whole course.
+    /// The user cancelled the login, on any of their pages; nothing was
+    /// stored.
+    Cancelled,
+    /// The login failed or expired: `message` says which, naming the stage
+    /// it failed at, and `request_id` is the request that started it, under
+    /// which the server log holds its whole course.
     Failed {
         message: String,
         request_id: RequestId,

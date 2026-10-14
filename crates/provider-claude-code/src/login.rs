@@ -98,38 +98,45 @@ async fn sign_in(
     });
     let ran = machine.run(entry, work);
     tokio::pin!(ran);
-    let mut shown = true;
     let mut link_url = None;
-    loop {
-        tokio::select! {
-            next = link.recv(), if shown => match next {
-                Some(Shown::Stage(reached)) => stage(reached),
-                Some(Shown::Link(url)) => {
-                    pending(LoginPending {
-                        verification_url: url.clone(),
-                        user_code: None,
-                        code_error: None,
-                    });
-                    link_url = Some(url);
-                }
-                Some(Shown::CodeRefused(refused)) => {
-                    // The CLI reads codes only after it printed its link.
-                    if let Some(url) = &link_url {
-                        pending(LoginPending {
-                            verification_url: url.clone(),
-                            user_code: None,
-                            code_error: Some(refused),
-                        });
-                    }
-                }
-                None => shown = false,
-            },
-            ran = &mut ran => {
-                ran.map_err(|error| LoginError::Failed(error.0))?;
-                break;
+    let mut show = |next: Shown| match next {
+        Shown::Stage(reached) => stage(reached),
+        Shown::Link(url) => {
+            pending(LoginPending {
+                verification_url: url.clone(),
+                user_code: None,
+                code_error: None,
+            });
+            link_url = Some(url);
+        }
+        Shown::CodeRefused(refused) => {
+            // The CLI reads codes only after it printed its link.
+            if let Some(url) = &link_url {
+                pending(LoginPending {
+                    verification_url: url.clone(),
+                    user_code: None,
+                    code_error: Some(refused),
+                });
             }
         }
+    };
+    let mut shown = true;
+    let ran = loop {
+        tokio::select! {
+            biased;
+            next = link.recv(), if shown => match next {
+                Some(next) => show(next),
+                None => shown = false,
+            },
+            ran = &mut ran => break ran,
+        }
+    };
+    // What the sign-in reported before it ended is shown first, in its
+    // order, so that its outcome names the stage it reached.
+    while let Ok(next) = link.try_recv() {
+        show(next);
     }
+    ran.map_err(|error| LoginError::Failed(error.0))?;
     answered.await.unwrap_or_else(|_| {
         Err(LoginError::Failed(
             "The Claude sign-in ended without an answer".into(),

@@ -1,16 +1,13 @@
 //! Request IDs, the page's own error reports and the server log
 //! (`backend.md` § Request IDs and the server log).
 
-use demi_backend_database::server_log;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::diagnostics::{LogLevel, ServerLog};
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
 use serde_json::json;
-use tracing_subscriber::filter::LevelFilter;
-use tracing_subscriber::layer::SubscriberExt as _;
 
-use crate::support::{Answer, Harness, Session, TestBackend, eventually};
+use crate::support::{Answer, Harness, ServerLogCapture, Session, TestBackend, eventually};
 
 /// The ID an answer's `X-Request-Id` names.
 pub(crate) fn request_id(answer: &Answer) -> String {
@@ -19,7 +16,7 @@ pub(crate) fn request_id(answer: &Answer) -> String {
 
 /// The lines the server log keeps of `request`, as an administrator reads
 /// them.
-async fn lines_of(backend: &TestBackend, admin: &Session, request: &str) -> ServerLog {
+pub(crate) async fn lines_of(backend: &TestBackend, admin: &Session, request: &str) -> ServerLog {
     let read = backend
         .get(&format!("/api/server/log?request={request}"), Some(admin))
         .await;
@@ -62,12 +59,7 @@ async fn every_answer_names_its_request_and_an_error_carries_the_id() {
 #[tokio::test]
 async fn the_server_log_finds_a_requests_lines_from_its_shard_for_an_administrator_alone() {
     let harness = Harness::new();
-    let (writer, layer) = server_log::open(&harness.data_dir()).unwrap();
-    // The process's log as `main` sets it up; here it serves this test's
-    // thread and the shard threads its backend starts.
-    let _log = tracing::subscriber::set_default(
-        tracing_subscriber::registry().with(layer).with(LevelFilter::INFO),
-    );
+    let log = ServerLogCapture::open(&harness);
     let (backend, master) = harness.start_set_up().await;
     let created = backend
         .post(
@@ -147,7 +139,7 @@ async fn the_server_log_finds_a_requests_lines_from_its_shard_for_an_administrat
         .await;
     assert_eq!(refused.refusal(), (StatusCode::FORBIDDEN, ErrorCode::Forbidden));
     backend.close().await;
-    writer.close().await;
+    log.close().await;
 }
 
 /// A page's report of its own failure is logged as a warning under the
@@ -156,10 +148,7 @@ async fn the_server_log_finds_a_requests_lines_from_its_shard_for_an_administrat
 #[tokio::test]
 async fn a_page_reports_its_own_errors_thirty_a_minute() {
     let harness = Harness::new();
-    let (writer, layer) = server_log::open(&harness.data_dir()).unwrap();
-    let _log = tracing::subscriber::set_default(
-        tracing_subscriber::registry().with(layer).with(LevelFilter::INFO),
-    );
+    let log = ServerLogCapture::open(&harness);
     let (backend, master) = harness.start_set_up().await;
     let report = json!({
         "title": "Could Not Read the Plugin's Data",
@@ -195,5 +184,5 @@ async fn a_page_reports_its_own_errors_thirty_a_minute() {
         json!("sections.0.title: expected string, received number")
     );
     backend.close().await;
-    writer.close().await;
+    log.close().await;
 }
