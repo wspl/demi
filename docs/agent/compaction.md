@@ -51,8 +51,10 @@ request the estimate let through and the vendor refused is compacted then
 ([Retries](failures-and-recovery.md#retries)). Compaction runs on
 tokens only: a request's bytes and its number of images never start a pass.
 Images can bring a request near its vendor's limits long before its tokens
-fill the window, and replay then leaves its oldest media out instead
-([Media left out to fit](runtime.md#media-left-out-to-fit)). Each pass logs
+fill the window; they are kept light where they enter
+([Images in the transcript](runtime.md#images-in-the-transcript)), and a
+request the vendor still refuses for its size fails its turn
+([Retries](failures-and-recovery.md#retries)). Each pass logs
 what started it and the numbers it compared, so a pass is never a mystery.
 
 | Moment | Condition | Passes |
@@ -61,7 +63,7 @@ what started it and the numbers it compared, so a pass is never a mystery.
 | Inside a turn, after a provider response | The response's reported usage is at or over the token threshold | One per response; the turn continues after at most three of them |
 | A request refused for its tokens (`context_length_exceeded`) | Always | One; the request is then sent once more ([Retries](failures-and-recovery.md#retries)) |
 | Before a model switch | The estimate is at or over the token threshold of the new model | Until it is under, at most eight, stopping when a pass compacts nothing |
-| A `compact` action | The estimate is at least 50% of the window in use, or the model has none | One |
+| A `compact` action | The estimate is at least 50% of the window in use, the model has none, or the unfinished turn failed with `request_too_large` | One |
 
 A response's usage is that of its last call to the model, the size of what
 the model read for it; a provider whose run makes several calls, as Claude
@@ -100,10 +102,14 @@ frame is refused with `(now 23%)`; at 50,000 it is taken. A user who limited
 a 1,000,000-token model to 300K compacts from 150,000 tokens. Below half there is
 too little to summarize for the summary to free much, and each pass loses
 detail. A model that reports no context window has no share to compare, and
-no token threshold relieves it, so its `compact` frame is always taken. The
+no token threshold relieves it, so its `compact` frame is always taken. A turn
+that failed with `request_too_large` also takes it at any share: its media,
+not its tokens, are what the vendor refused, and summarizing them away is the
+user's way to continue it ([Retries](failures-and-recovery.md#retries)). The
 page reads the same estimate and the same 50% from the session's usage
-([Context estimate](#context-estimate)), so its Compact control is disabled
-exactly when the frame would be refused.
+([Context estimate](#context-estimate)), and the failure from the transcript's
+last `error` block, so its Compact control is disabled exactly when the frame
+would be refused.
 
 While a pass runs, the phase is `compacting`. Steers and agent messages that
 arrive wait outside the summarized part and reach the model in the first
@@ -529,7 +535,7 @@ a real model.
 | Something runs at the pass | The `context` block after the marker names each running command and live subagent of the agent; with none, no block |
 | No request answered since the last boundary, then `resume` over the threshold | The window ends before the stopped message; the next request carries the summary, then the message, the stopped answer and the `resume` block as written |
 | Input too large for the model on its own | No summary request carries it; the request after the pass carries it after the summary, and the turn fails with `context_length_exceeded` when that request is refused |
-| Images bring requests near a byte or image limit that the scripted provider sets, within a turn and before a switch to a vendor that takes fewer, with the estimate under the token threshold | No pass runs, and no compaction is logged ([Media left out to fit](runtime.md#media-left-out-to-fit)) |
+| Images bring requests near a byte or image limit that the scripted provider sets, within a turn and before a switch to a vendor that takes fewer, with the estimate under the token threshold | No pass runs, and no compaction is logged |
 | A request refused for its tokens (`context_length_exceeded`) | One pass, then the request is sent again; a second refusal fails the turn |
 | A request refused for its size (`request_too_large`) | No pass runs |
 | The latest answer's reasoning is kept past a summary | The Anthropic provider leaves it out of every later request; the other providers replay it |

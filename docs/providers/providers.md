@@ -406,7 +406,6 @@ Only these change what a session has already sent:
 | Exception | What changes | Why |
 |---|---|---|
 | Compaction ([Compaction](../agent/compaction.md)) | The messages from the summary on | The history holds too many tokens for the next request |
-| Media left out to fit ([Media left out to fit](../agent/runtime.md#media-left-out-to-fit)) | The messages from the first medium left out on | The media bring the request near its vendor's byte or image limit |
 | A model switch ([Model switch](../agent/runtime.md#model-switch)) | Everything | A vendor keeps one cache per model, and the new model's provider sends the history in its own format |
 | An edit ([Message editing](../agent/message-editing.md)) | The messages from the edited message on | The user replaced that message |
 | A change of the thinking setting | What the vendor renders the setting into: the messages on the Anthropic API; everything on the OpenAI API, whose reasoning instructions come first | The user chose it, as with a model switch |
