@@ -26,8 +26,10 @@ const user = {
 }
 let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>
-/** Whether the backend is away: a proxy in front of it answers a bare 502, as Vite's does. */
+/** Whether the backend is away: a proxy in front of it answers for it. */
 let away: boolean
+/** What that proxy answers: a bare 502, as Vite's does, unless a test says otherwise. */
+let proxyAnswer: () => Response
 /** The requests a proxy answered for the backend that was away. */
 let refused: string[]
 /** The requests the backend answered: their method, path and body. */
@@ -37,6 +39,7 @@ beforeEach(() => {
   pinia = createPinia()
   setActivePinia(pinia)
   away = false
+  proxyAnswer = () => new Response('Bad Gateway', { status: 502 })
   refused = []
   answered = []
   globalThis.fetch = (async (input, init) => {
@@ -47,7 +50,7 @@ beforeEach(() => {
     }
     if (away) {
       refused.push(request)
-      return new Response('Bad Gateway', { status: 502 })
+      return proxyAnswer()
     }
     answered.push(`${request} ${init?.body ?? ''}`.trim())
     if (request === 'GET /api/auth/me') {
@@ -55,6 +58,13 @@ beforeEach(() => {
     }
     if (request === 'PATCH /api/conversations/c-1') {
       return new Response(null, { status: 204 })
+    }
+    if (request === 'POST /api/conversations/c-1/read') {
+      // The conversation's output is at revision 3.
+      const { revision } = JSON.parse(String(init?.body)) as { revision: number }
+      return revision <= 3
+        ? new Response(null, { status: 204 })
+        : Response.json({ requestId: 'req_test000000000002', code: 'invalid_revision', message: 'Cannot read beyond current output' }, { status: 409 })
     }
     if (request === 'POST /api/conversations/c-1/fork') {
       return Response.json({ requestId: 'req_test000000000001', code: 'fork_conflict', message: 'Another fork is on its way' }, { status: 409 })
@@ -98,6 +108,28 @@ test('a write the page sends while the backend restarts goes once, when it is ba
   await back()
   expect((await rename).status).toBe(204)
   expect(answered).toEqual(['PATCH /api/conversations/c-1 {"title":"Renamed"}'])
+})
+
+test("a read acknowledgement Cloudflare answers 520 for, as the origin gave it nothing, goes again once the backend is reached", async () => {
+  // req_h8fjy63f18930c5m: the origin's connection lost packets, Cloudflare
+  // answered its own 520 page, and the page showed "Could Not Update Read
+  // Status" for what was only a connection failure.
+  connected()
+  away = true
+  proxyAnswer = () => new Response('<!DOCTYPE html><title>Web server is returning an unknown error</title>', { status: 520, headers: { 'Content-Type': 'text/html' } })
+  const read = apiRequest('/conversations/c-1/read', { method: 'POST', ...jsonBody({ revision: 3 }) })
+  await waitFor(() => refused.length === 1, () => 'the read was not tried')
+  channels.last().end()
+  await back()
+  expect((await read).status).toBe(204)
+  expect(answered).toEqual(['POST /api/conversations/c-1/read {"revision":3}'])
+})
+
+test('the backend refusing a read acknowledgement rejects with its answer', async () => {
+  connected()
+  const read = apiRequest('/conversations/c-1/read', { method: 'POST', ...jsonBody({ revision: 4 }) })
+  await expect(read).rejects.toMatchObject({ status: 409, code: 'invalid_revision' })
+  expect(answered).toEqual(['POST /api/conversations/c-1/read {"revision":4}'])
 })
 
 test("the backend's own answer rejects at once, even while the banner shows", async () => {
