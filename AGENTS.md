@@ -47,24 +47,6 @@
 - Work in large steps: read what a step needs in one call, write the whole step, then compile once. Start long builds and tests in the background and keep working meanwhile.
 - zsh does not split an unquoted variable into words; pass argument lists as arrays, or run scripts with bash.
 
-# Delegation
-
-- The main agent is the one mind that holds the whole context: it does all design, planning and decision work itself, and writes every design document and every document change itself. A subagent never makes a significant decision and never writes documentation.
-- A subagent only executes: it writes code to a design the main agent settled, runs tests, or checks a result, and reports what it found. Research a subagent does is input to the main agent's decision, not the decision.
-
-# Parallel Development Mode
-
-Only when the user says to enter parallel development mode:
-
-- Hand each independent implementation, test or acceptance item to a background subagent and stay free to talk with the user. Items that change the same files run one after another.
-- Subagents work in four slots, `../demi-slots/1` to `../demi-slots/4`. A slot is a git worktree that stays between tasks, with its own warm `target/`, `node_modules/` and `.cache/`, so a task starts without copying anything. A slot is made once by cloning the checkout's warm `target/` into it with `cp -c` (APFS copy-on-write; skip `target/debug/incremental`). At most four items run at once; another waits for a free slot.
-- For each task, decide whether resuming an agent with SendMessage or starting a new one gets it done sooner and cheaper, weighing what the agent already knows against what its context costs. An agent that holds what the task needs, such as the code it just changed or the cause it just traced, saves the reading and the setup a new agent would repeat; but its context only grows, every message to it is paid for over the whole of it, and old context distracts it, so once its context is large and the task needs little of it, a new agent reading the few files the task needs is faster and cheaper. The warm build belongs to the slot, not the agent: a new agent started in a free slot keeps it.
-- A problem the user reports goes to one agent as the whole of what the user saw, down to its causes; a cause the agent finds on the way stays its work.
-- The lead names a free slot in each subagent's brief. The subagent starts its branch there from the lead's branch with `git switch --discard-changes -C <branch> feat/demi-next` and `git clean -fd`, which keeps the ignored build products. It commits on its branch and never pushes.
-- Slot *n* starts its servers on ports 33*n*0–33*n*9 and 189*n*0–189*n*9, so slots never collide with each other or with the user's own development servers.
-- The lead reviews each result, merges it into the branch of the user's own checkout, tests and pushes from there, and deletes the branch, which frees the slot. After each merge it rebuilds and restarts the development backend and web front end from the checkout (`bun run dev`, `bun run web:dev`), so the user sees the new code at once.
-- After each merge, and whenever the disk runs low, the lead runs `bun xtask sweep` in the checkout and in every free slot: it keeps the build products the current selections use and removes every other unit and incremental cache under `target/debug`; other target directories, such as `.cache/native-target`, it only lists with their sizes, and the lead removes those no longer needed by hand.
-
 # Writing and Communication
 
 - Make the first explanation understandable without requiring the reader to ask for a simpler version. Start with what happens in a concrete example, then explain the rule. Use familiar words; introduce a technical term only when needed and explain it on first use.
