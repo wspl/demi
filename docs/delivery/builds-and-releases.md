@@ -482,6 +482,20 @@ bun xtask server-release --output .cache/server/0.1.3 --files .cache/server/0.1.
   ([guest image build](../../cloud-guest-image/README.md)). A root without it
   serves a backend whose machine manager runs elsewhere.
 
+### Licenses in a release
+
+Every release carries `LICENSE` and `NOTICE` from the repository's root and
+`THIRD-PARTY-NOTICES`, which the release step generates from what the
+release really contains: for each Rust crate linked into a shipped program,
+the vendored ones included, and each npm package bundled into `web/`, its
+name, version, license text and copyright lines, MPL-2.0 packages also
+naming where their source is. The server release's root holds the three
+files, every GitHub release has them as assets, and the web front end shows
+the third-party notices at Settings › About › Acknowledgements. A
+dependency whose license the generator cannot read, or whose license is not
+one of those the project accepts, fails the release, so a new dependency
+never ships without its notice.
+
 ## Release workflow
 
 `.github/workflows/release.yml` builds a release and publishes it as a GitHub
