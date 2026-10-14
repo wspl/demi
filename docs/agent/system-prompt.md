@@ -124,7 +124,10 @@ order:
   `[runner.md](docs/execution/runner.md#L438)`, so the user opens it with a
   click ([Files named in messages](../product/file-previews.md#files-named-in-messages)).
   A subagent the reply names is a link to its number, `[File icons](agent:4)`
-  ([Linking an agent](subagents.md#linking-an-agent)).
+  ([Linking an agent](subagents.md#linking-an-agent)), and a commit of the
+  working directory's repository a link to its id, `[Fix the cart
+  total](commit:3f2a9c1)`, which opens its changes
+  ([Commits mode](../execution/edit-tracking.md#commits-mode)).
   Images and videos are embedded, other files linked.
 - **What the user sees.** The work panel beside the conversation shows the
   conversation's changes, files and browser tabs; the user watches and

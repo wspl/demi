@@ -592,6 +592,21 @@ and 0. `git_show` refuses a blob over 8 MiB with
 `too_large`, answers `ENOENT` for a path the last commit does not have, and
 `not_repository` outside a repository.
 
+Three more requests read the repository's history, in process with
+gitoxide too, for the Change view's Commits mode
+([Commits mode](edit-tracking.md#commits-mode)). Each names `root`, and
+answers `not_repository` outside a repository.
+
+| Request | Reply |
+| --- | --- |
+| `git_branches` | `branches`, the local branches by name, most recently committed first, and `current`, the branch checked out, or null with `head`, the commit, when HEAD is detached. Remote-tracking branches are not listed. |
+| `git_log` | Names `branch`, or none for HEAD, and `after`, a commit id to continue from, or none. `commits`: at most 50, newest first, following first parents only, each `{ id, summary, author, time }`, the summary the message's first line, the author's name, the commit's time; `more`, true when older ones follow. A branch that no longer exists answers `ENOENT`. |
+| `git_commit` | Names `commit`, an id or an abbreviation of at least 7 hex digits. `commit`, as one `git_log` entry with `parents`; `files`, as `git_changes` gives them, `kind`, `from` and the line counts comparing the commit with its first parent, or with nothing for a root commit; `branches`, the local branches it is on, `current` first. A merge compares with its first parent, as GitHub and VS Code show it. An id the repository does not have answers `ENOENT`; an abbreviation that names two answers `ambiguous`. |
+
+`git_show` takes `commit` too, to send a file as that commit has it instead
+of the last commit's. A commit's file list is cut at 5,000 files as the
+working tree's is.
+
 The first request for a directory walks its whole tree. It also starts a
 filesystem watch of the directory, and of the repository's `.git` when that
 lies outside it, which records only the paths changed since: reading a file

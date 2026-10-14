@@ -38,7 +38,7 @@ conversation's, a subagent's its own
 ([Working directory](../agent/subagents.md#working-directory)). For example,
 the agent works in `~/shop`, writes `/tmp/fix.py`, runs it, edits
 `~/shop/src/cart.ts` and `~/.zshrc`: the pills and the Change view show
-`src/cart.ts` alone. Uncommitted mode reads the same directory
+`src/cart.ts` alone. Commits mode reads the same directory
 ([Working tree](runner.md#working-tree)), so both modes show the same part
 of the Host.
 
@@ -364,13 +364,67 @@ it holds, as a pill does,
   calls from the transcript, and their changes leave the list with them,
   though their files stay as they were written.
 
+### Commits mode
+
+The Change view's other mode, **Commits**, shows the repository the working
+directory is in, as VS Code's Source Control and its commit list do
+together. For example, Alex opens it on `~/shop`, checked out on
+`feat/cart`:
+
+```text
+┌ Change ───────────────── [Commits | Conversation]  [⎇ feat/cart ▾] [⇤] [▤] ┐
+│                                    │ src/                                  │
+│   the selected file's diff         │   cart.ts                 +3 −1  M    │
+│                                    │ docs/guide.md             +12    M    │
+│                                    ├──────────────── ═ ────────────────────┤
+│                                    │ ● Uncommitted Changes          3 files│
+│                                    │   Fix the cart total     Alex · 2h    │
+│                                    │   Add the cart page      Sam · 1d     │
+└────────────────────────────────────┴───────────────────────────────────────┘
+```
+
+- **The sidebar** is two panes with a divider the user drags, its place kept
+  as the sidebar's width is: above, the selected item's files, as the tree
+  of [What the conversation shows](#what-the-conversation-shows); below, the
+  **commit list**.
+- **The commit list** shows one branch's history, newest first, following
+  first parents, each commit its summary, author and age, *2h*, its full
+  message, id and time in its tooltip; more load as the list scrolls to its
+  end. While the branch shown is the one checked out, the list starts with
+  **Uncommitted Changes** and its count of files, the working tree against
+  HEAD as before; another branch's list starts with its newest commit. A
+  repository without commits shows Uncommitted Changes alone; outside a
+  repository the mode says *Not a Git repository*.
+- **Selecting** an item shows its files above and opens the first; a commit
+  shows its changes against its first parent, a root commit everything
+  added. Back and Forward revisit selections, as for files.
+- **The branch menu** in the toolbar names the branch the list shows, the
+  checked-out one at first, *HEAD (3f2a9c1)* when HEAD is detached, and lists
+  the local branches, most recently committed first, the checked-out one
+  marked. Choosing one only changes what the list shows: nothing on the Host
+  is checked out. Remote branches and the branches' graph are not shown.
+- **It follows the repository.** A commit, a checkout or a new branch made
+  anywhere, in the agent's shell or the user's terminal, changes the list
+  and the menu at once, from the same watch that announces the working
+  tree's changes ([Working tree](runner.md#working-tree)). When the branch
+  shown is deleted, the list returns to the checked-out one.
+- **A commit link**, `commit:3f2a9c1` in a message
+  ([Links](../product/file-previews.md)), opens the Change view in Commits
+  mode on that commit, in the repository of the agent that wrote it, in its
+  working directory when it wrote it. The list shows the branch it is on:
+  the one shown when that has it, else the checked-out one, else the most
+  recently committed branch that has it. A commit on no local branch shows
+  alone, its files above and the list replaced by *This commit is on no
+  branch*; one the repository does not have says *No commit 3f2a9c1 in
+  ~/shop*. The agent's guide says how to link a commit
+  ([System prompt](../agent/system-prompt.md)).
+
 The Change tab keeps its mode and selection when the user leaves it and
 comes back, as any tab keeps what it shows. Its header counts always
 describe the uncommitted working tree, not the request. The two sides of an
 edit come from the blob route ([Edit copies](#edit-copies)); All Changes
 takes its original from the first edit and its result from the last. Only
-Uncommitted mode lists the working tree's files and has a refresh; it shows
-them as the same tree.
+Commits mode lists the working tree's files and has a refresh.
 
 ## Responsibilities
 
