@@ -11,7 +11,8 @@ use demi_conversation_socket_protocol::JobModel;
 use demi_agent_store::Placement;
 use demi_host_interface::{CommandSet, Host, HostError, HostErrorKind};
 use demi_shared_types::{
-    InstructionEntry, ModelSelection, NodeId, ProviderModel, THINKING_OFF, TurnId, WorkflowChoice,
+    ContextChoice, InstructionEntry, ModelSelection, NodeId, ProviderModel, THINKING_OFF, TurnId,
+    WorkflowChoice,
 };
 use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
@@ -65,6 +66,9 @@ pub struct Profile {
     pub description: String,
     /// The model settings a child infers with; none for its parent's model.
     pub model: Option<ProfileModel>,
+    /// The tokens of its own Context, which its children use in place of
+    /// the user's limit; none for the user's limit, and without a model.
+    pub context_limit: Option<u32>,
     /// The text added to a child's system prompt after the product's, which
     /// it never replaces; none for no added text.
     pub instructions: Option<String>,
@@ -156,9 +160,12 @@ pub struct WorkflowChild {
     pub instructions: Option<String>,
     pub can_spawn: bool,
     /// None for the parent's model; otherwise the selection its model id
-    /// makes in the first entry that offers it, or what is missing, which
-    /// makes the profile unavailable.
+    /// makes in the first entry that offers it, or what is missing or not
+    /// offered, its Context included, which makes the profile unavailable.
     pub model: Option<Result<ModelSelection, String>>,
+    /// The tokens of its own Context, which the model offers; none for the
+    /// user's limit.
+    pub context_limit: Option<u32>,
 }
 
 /// `demi agent workflows list`: the conversation's choice, and the
@@ -243,6 +250,8 @@ pub struct NewProfileDraft {
     pub description: String,
     /// None for the parent's model.
     pub model: Option<ModelChoice>,
+    /// `--context`; none for the user's limit.
+    pub context: Option<ContextChoice>,
     pub instructions: Option<String>,
     pub can_spawn: bool,
     pub enabled: bool,
@@ -263,6 +272,8 @@ pub struct ProfileEdit {
     pub name: Option<String>,
     pub description: Option<String>,
     pub model: Option<ModelEdit>,
+    /// `--context`.
+    pub context: Option<ContextChoice>,
     /// `Some(None)` removes the instructions.
     pub instructions: Option<Option<String>>,
     pub can_spawn: Option<bool>,

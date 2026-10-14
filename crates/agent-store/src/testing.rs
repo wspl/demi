@@ -690,6 +690,7 @@ pub mod store_contract {
             description: String::new(),
             profile: None,
             instructions: None,
+            context_limit: None,
             round: 1,
             started_at: Timestamp::UNIX_EPOCH,
             can_spawn_subagents: true,
@@ -821,6 +822,7 @@ pub mod store_contract {
         let spawned = NodeRecord {
             profile: Some("explore".into()),
             instructions: Some("explore prompt".into()),
+            context_limit: Some(200_000),
             can_spawn_subagents: false,
             ..record("child", Some("root"), 1)
         };
