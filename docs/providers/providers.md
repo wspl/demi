@@ -827,6 +827,20 @@ existing entry reserves the entry until the login completes or fails; another
 change to the entry meanwhile is refused as busy. A code the user pastes is
 never repeated in a response or a log.
 
+A login is followed, never asked about: the vault announces each change of
+its state on the starter's pages, its stage, its link or code, a refused code
+and its end, so a page shows what the login waits for at that moment and
+learns its end the moment it comes, a failure included. For example, the
+user adds a Claude account while their Cloud's runner is reconnecting: the
+dialog says it waits for the Cloud, and a minute later that the Cloud did not
+come back, with Try Again, instead of a spinner over *Contacting Claude
+Code…* that never moves. A page opened or reloaded meanwhile receives the
+running login with the product state and shows it again, Cancel included, so
+a reload never leaves a login nobody can reach; a second start on the
+reserved entry opens the running one. The vault logs a login's start, each
+stage it reaches with the time it took, and its end, under the request that
+started it, never a link's or a code's contents.
+
 Selecting an account is explicit. Removing the active account is allowed, as
 removing the signed-in account of a mail or browser app is: in the same
 transaction the entry's first remaining account in the list's order becomes

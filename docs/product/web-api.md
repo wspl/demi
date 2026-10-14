@@ -1188,9 +1188,16 @@ Codex, Grok Build and Claude Code use `POST /api/providers/subscription-login { 
 for the first account and
 `POST /api/providers/:id/accounts/login` for another account on an existing
 provider. A start returns 202 with `{ login: { id, status: "pending" } }`; a
-family without a device login answers 400 `no_login_flow`. Poll
-`GET /api/providers/subscription-login/:id`, which answers `{ login }` with
-`{ status: "pending", verificationUrl, userCode, expiresAt }`, the first two
+family without a device login answers 400 `no_login_flow`. The login's state
+reaches every page of its starter on the sync channel's `logins` message
+([Page synchronization](#page-synchronization)), and
+`GET /api/providers/subscription-login/:id` answers the same `{ login }`:
+`{ status: "pending", stage, verificationUrl, userCode, expiresAt }`, where
+`stage` says what the login waits for (`preparing`, then `waiting_for_user`
+once it has something to show; Claude Code adds `waiting_for_cloud`,
+`installing` and `starting` before it,
+[Accounts and sign-in](../providers/claude-code.md#accounts-and-sign-in)), the
+`verificationUrl` and `userCode`
 null until the vendor names them and `expiresAt` the moment the login ends
 unless the user finishes it, and for Claude Code `needsCode: true` and no
 `userCode`: `verificationUrl` is the link the CLI printed, the user signs in
@@ -1200,9 +1207,13 @@ login (204; 409 `login_not_waiting` when it waits for none). A code the CLI
 refuses leaves the login pending with `codeError`, the CLI's words, until the
 user pastes another. The login then continues as a device login does, `{ status: "completed", providerId,
 credentialId }` with the account the login added, or `{ status: "failed",
-message }`. Cancel with DELETE at the same path. A login is its starter's to
-read and cancel; another id answers 404 `login_not_found`. Terminal results are
-retained for ten minutes. Login lifetime, credential publication, and account
+message, requestId }`, where `requestId` is the id of the request that started
+the login, under which the server log holds its whole course. Cancel with
+DELETE at the same path. A login is its starter's to read and cancel; another
+id answers 404 `login_not_found`. Terminal results are retained for ten
+minutes. A start on an entry that a login of the same user reserves answers
+409 `provider_busy` with `loginId`, that login's id, so the page opens it
+rather than a second one; a reservation of another kind names none. Login lifetime, credential publication, and account
 selection follow [Providers](../providers/providers.md#credential-vault).
 
 Provider account mutations obey the same shared-master/isolated-owner rule as
@@ -1464,6 +1475,7 @@ later one is the current value of one part of it that changed:
 | `instructions` | `instructions`, the user's [personal instructions](#instructions) | The user saves them |
 | `passkeys` | `passkeys`, the user's passkeys as `GET /api/auth/passkeys` lists them | The user adds, renames or removes one, or one signs in |
 | `sessions` | `sessions`, as `GET /api/auth/sessions` lists them, `current` for the receiving session | A session starts, ends or is signed out, or its last activity is written |
+| `logins` | `logins`, the user's sign-ins that are running or ended within ten minutes, each as `GET /api/providers/subscription-login/:id` answers it, with its `providerId` or `providerType` | One starts, moves to another stage, shows its link or code, is refused a code, completes, fails, is cancelled or is dropped |
 | `plugin` | `plugin`, the plugin's id, and `state`, its user state | The plugin marks its user state changed ([The page](../architecture/plugins.md#the-page)) |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
 
@@ -1476,7 +1488,8 @@ alike, each with `installed`, the artifacts its runner's cache holds, as the run
 reported them and kept while it is away, each as `{ package, name, version }`
 ([Installed artifacts](../execution/native-runtime.md#installed-artifacts))),
 the summaries of the active and then the
-archived conversations, the Cloud's state, `subagents`, the user's
+archived conversations, the Cloud's state, `logins`, the user's sign-ins as
+the `logins` message carries them, `subagents`, the user's
 [Subagent switch and profiles](#subagents), `instructions`, the user's
 [personal instructions](#instructions), `plugins`, the plugin list, and
 `pluginStates`, the user state of each plugin the user has on that declares
