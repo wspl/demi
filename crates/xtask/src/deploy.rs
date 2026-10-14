@@ -104,6 +104,8 @@ pub enum Error {
     Native(#[from] native::Error),
     #[error(transparent)]
     Assembly(#[from] server_release::Error),
+    #[error(transparent)]
+    Notices(#[from] crate::notices::Error),
     #[error("copying {}: {source}", path.display())]
     Copy {
         path: PathBuf,
@@ -214,7 +216,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     let xtask = stages.time("Build xtask for the server", || {
         Ok(native::xtask(server.target, Some(&version.to_string()))?)
     })?;
-    stages.time("Build the web app", || web(&repository))?;
+    stages.time("Build the web app", || web(&repository, &version))?;
 
     let work = tempfile::Builder::new().prefix("demi-deploy-").tempdir()?;
     let stage = work.path().join("stage");
@@ -301,8 +303,9 @@ fn build(
     Ok(())
 }
 
-/// Builds the web app as the release workflow does.
-fn web(repository: &Path) -> Result<(), Error> {
+/// Builds the web app as the release workflow does, with the release's
+/// third-party notices; the page names `version`, the build's.
+fn web(repository: &Path, version: &Version) -> Result<(), Error> {
     local(
         "bun install",
         Command::new("bun")
@@ -311,8 +314,13 @@ fn web(repository: &Path) -> Result<(), Error> {
     )?;
     local(
         "bun run build",
-        Command::new("bun").args(["run", "build"]).current_dir(repository),
-    )
+        Command::new("bun")
+            .args(["run", "build"])
+            .env("DEMI_WORKSPACE_VERSION", version.to_string())
+            .current_dir(repository),
+    )?;
+    crate::notices::write(repository, &repository.join(WEB))?;
+    Ok(())
 }
 
 /// What a deploy assembles. The release's root, with its files in
@@ -716,6 +724,7 @@ mod tests {
         let web = directory.path().join("web");
         std::fs::create_dir_all(&web).unwrap();
         std::fs::write(web.join("build.json"), r#"{"build":"fixture"}"#).unwrap();
+        std::fs::write(web.join(crate::notices::WEB_NOTICES), "notices").unwrap();
         let xtask = directory.path().join("xtask");
         std::fs::write(&xtask, "xtask").unwrap();
         let version: Version = "0.1.22-dev.20261008T093059Z".parse().unwrap();

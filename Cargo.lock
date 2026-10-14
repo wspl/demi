@@ -9108,6 +9108,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "spdx"
+version = "0.13.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "646c5a367da914e3babcb9cd8e91c37ccaac42325b8f86f036513ad103f2a716"
+dependencies = [
+ "smallvec",
+]
+
+[[package]]
 name = "spin"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11388,6 +11397,7 @@ dependencies = [
  "serde",
  "serde_json",
  "similar",
+ "spdx",
  "tar",
  "tempfile",
  "thiserror 2.0.20",

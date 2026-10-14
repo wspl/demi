@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineConfig, type Plugin } from 'vite'
 import vue from '@vitejs/plugin-vue'
@@ -20,6 +21,25 @@ function webBuild(): Plugin {
       this.emitFile({ type: 'asset', fileName: 'build.json', source: JSON.stringify({ build }) })
     },
   }
+}
+
+/**
+ * The Demi version the page shows at Settings › About: the one the build
+ * names in `DEMI_WORKSPACE_VERSION`, as `xtask deploy` names a development
+ * build's, else the workspace version in `Cargo.toml`, which every program
+ * of the same checkout carries (`demi_shared_artifacts::WORKSPACE_VERSION`).
+ */
+function workspaceVersion(): string {
+  const named = process.env.DEMI_WORKSPACE_VERSION
+  if (named)
+    return named
+  const manifest = readFileSync(resolve(import.meta.dirname, '../../Cargo.toml'), 'utf8')
+  // The `version` line of the `[workspace.package]` table, as the release
+  // workflow reads it.
+  const version = /^\[workspace\.package\]$[^[]*?^version = "([^"]+)"$/m.exec(manifest)?.[1]
+  if (!version)
+    throw new Error('Cargo.toml names no workspace version')
+  return version
 }
 
 /**
@@ -84,6 +104,14 @@ export default defineConfig({
   // during development only.
   envDir: resolve(import.meta.dirname, '../..'),
   envPrefix: ['VITE_', 'DEMI_DEV_'],
+  define: { 'import.meta.env.DEMI_VERSION': JSON.stringify(workspaceVersion()) },
+  build: {
+    // The npm packages the bundle holds, each with its license and the
+    // text of its license file, from the bundle's own module graph:
+    // `xtask notices` reads it (`builds-and-releases.md` § Licenses in a
+    // release).
+    license: { fileName: '.vite/license.json' },
+  },
   resolve: {
     alias: {
       '@': resolve(import.meta.dirname, 'src'),

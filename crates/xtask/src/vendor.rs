@@ -59,19 +59,6 @@ pub enum Error {
     Unknown(String),
 }
 
-/// What the command reads of `cargo metadata`.
-#[derive(Deserialize)]
-struct Metadata {
-    packages: Vec<Package>,
-}
-
-#[derive(Deserialize)]
-struct Package {
-    name: String,
-    version: String,
-    manifest_path: PathBuf,
-}
-
 /// One line of a crate's file in the crates.io sparse index.
 #[derive(Deserialize)]
 struct IndexEntry {
@@ -131,21 +118,9 @@ pub fn run(command: Command) -> Result<(), Error> {
 
 /// The vendored crates, from the workspace's `cargo metadata`.
 fn vendored(repository: &Path) -> Result<Vec<Vendored>, Error> {
-    let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-    let output = std::process::Command::new(cargo)
-        .args(["metadata", "--format-version", "1", "--manifest-path"])
-        .arg(repository.join("Cargo.toml"))
-        .output()?;
-    if !output.status.success() {
-        return Err(Error::Metadata(
-            String::from_utf8_lossy(&output.stderr).into_owned(),
-        ));
-    }
-    let metadata: Metadata = serde_json::from_slice(&output.stdout)
-        .map_err(|error| Error::Metadata(error.to_string()))?;
     let vendor = repository.join("vendor");
-    let mut vendored: Vec<Vendored> = metadata
-        .packages
+    let mut vendored: Vec<Vendored> = crate::packages(repository)
+        .map_err(Error::Metadata)?
         .into_iter()
         .filter(|package| package.manifest_path.starts_with(&vendor))
         .map(|package| Vendored {
