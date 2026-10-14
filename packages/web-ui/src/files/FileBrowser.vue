@@ -49,6 +49,8 @@ import {
 } from './file-browser-state'
 import { baseName } from '@demicodes/utils'
 import { directoryParts, joinPath, normalizePath, parentPath } from './paths'
+import { readLinkAgain } from './link-activation'
+import { linkDescription } from './format'
 import { failureShown } from './file-cache'
 import { useShowing } from './showing'
 import {
@@ -237,10 +239,15 @@ function show(target: string) {
   folderCreation.value = 'idle'
 }
 
+/** Shows the folder at `target`; the one shown now is listed again, as its path entered again asks. */
 function goTo(target: string) {
   const next = normalizePath(target)
-  history.push(next)
-  syncHistory()
+  if (next === path.value) {
+    void listing.retry()
+  } else {
+    history.push(next)
+    syncHistory()
+  }
   show(next)
 }
 
@@ -266,22 +273,72 @@ function up() {
   }
 }
 
-/** Opens a folder; confirms a file (file mode only, the list enforces it). */
-function activate(entry: FileBrowserEntry) {
-  if (entry.isDirectory) {
-    goTo(joinPath(path.value, entry.name))
-  } else {
-    emit('select', joinPath(path.value, entry.name))
+// Ends a link's reading again when the browser goes away, or to another source or folder.
+let following = new AbortController()
+watch([() => props.source, path], () => {
+  following.abort()
+  following = new AbortController()
+})
+onBeforeUnmount(() => following.abort())
+
+/**
+ * The entry as it is now: a link's folder is listed again, which reads its
+ * target, since its row says what the target was when it was listed
+ * (`readLinkAgain`); undefined when the browser moved on meanwhile.
+ */
+async function current(entry: FileBrowserEntry): Promise<FileBrowserEntry | undefined> {
+  if (!entry.link)
+    return entry
+  const { signal } = following
+  try {
+    const now = await readLinkAgain(props.source, joinPath(path.value, entry.name), signal)
+    return signal.aborted ? undefined : now
+  } catch (failure) {
+    // Its folder could not be listed again: said where the browser says what
+    // went wrong, and nothing is opened or chosen.
+    if (!signal.aborted)
+      error.value = { message: toFailure(failure).message ?? 'Could not read the link again.', requestId: requestIdOf(failure) }
+    return undefined
   }
 }
 
-function confirm() {
+/**
+ * Answers a file chosen in file mode: a link whose target is missing or
+ * cannot be read, as it is now, gives nothing, and its sentence shows where
+ * the browser shows its errors (`file-previews.md` § Symbolic links).
+ */
+function choose(entry: FileBrowserEntry): void {
+  if (entry.link?.broken) {
+    error.value = { message: `${linkDescription(entry.link)}.`, requestId: null }
+    return
+  }
+  emit('select', joinPath(path.value, entry.name))
+}
+
+/** Opens a folder; confirms a file in file mode; a link as what it leads to now. */
+async function activate(entry: FileBrowserEntry) {
+  const now = await current(entry)
+  if (!now)
+    return
+  if (now.isDirectory) {
+    goTo(joinPath(path.value, now.name))
+  } else if (props.mode === 'file') {
+    choose(now)
+  }
+}
+
+async function confirm() {
   const entry = selectedEntry.value
   if (entry) {
-    if (props.mode === 'file' && entry.isDirectory) {
-      goTo(joinPath(path.value, entry.name))
-    } else {
-      emit('select', joinPath(path.value, entry.name))
+    const now = await current(entry)
+    if (!now)
+      return
+    if (props.mode === 'file' && now.isDirectory) {
+      goTo(joinPath(path.value, now.name))
+    } else if (props.mode === 'file') {
+      choose(now)
+    } else if (now.isDirectory) {
+      emit('select', joinPath(path.value, now.name))
     }
     return
   }

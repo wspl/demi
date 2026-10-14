@@ -28,8 +28,17 @@ fn no_link_below_the_directory_is_followed_and_a_file_reads_up_to_its_limit() {
     let demi_runner_protocol::wire::Looked::Directory { mut entries } = listed else { panic!("{listed:?}") };
     entries.sort_by(|a, b| a.name.cmp(&b.name));
     assert_eq!(
-        entries.iter().map(|entry| (entry.name.as_str(), entry.is_symbolic_link)).collect::<Vec<_>>(),
-        [("linked.yaml", true), ("review.yaml", false)]
+        entries.iter().map(|entry| (entry.name.as_str(), entry.link.clone())).collect::<Vec<_>>(),
+        [
+            (
+                "linked.yaml",
+                Some(demi_runner_protocol::wire::SymbolicLink {
+                    target: outside.join("workflows/review.yaml").to_string_lossy().into_owned(),
+                    leads_to: demi_runner_protocol::wire::LinkTarget::File,
+                })
+            ),
+            ("review.yaml", None)
+        ]
     );
 
     // `.demi` swapped for a link to a directory that holds the same

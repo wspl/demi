@@ -712,6 +712,8 @@ async fn a_paired_device_is_browsed_and_its_log_read_through_device_access() {
     let mut laptop = backend.pair(&master, "laptop").await;
     let home = laptop.runner.home().to_owned();
     std::fs::write(laptop.runner.home_dir().join("hello.txt"), "hi").unwrap();
+    std::os::unix::fs::symlink("hello.txt", laptop.runner.home_dir().join("greeting")).unwrap();
+    std::os::unix::fs::symlink("/nowhere/gone.log", laptop.runner.home_dir().join("old.log")).unwrap();
 
     let browsed = backend
         .get(&format!("/api/devices/{}/fs", laptop.id()), Some(&master))
@@ -731,9 +733,23 @@ async fn a_paired_device_is_browsed_and_its_log_read_through_device_access() {
         .find(|entry| entry.name == "hello.txt")
         .unwrap();
     assert_eq!(
-        (hello.is_directory, hello.is_symbolic_link, hello.size),
-        (false, false, 2)
+        (hello.is_directory, &hello.link, hello.size),
+        (false, &None, 2)
     );
+    // Each link names its target and what is there, in the page's terms
+    // (`file-previews.md` § Symbolic links).
+    let page = browsed.json::<serde_json::Value>();
+    let link_of = |name: &str| {
+        page["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|entry| entry["name"] == name)
+            .map(|entry| entry["link"].clone())
+            .unwrap()
+    };
+    assert_eq!(link_of("greeting"), json!({ "target": "hello.txt", "leadsTo": { "kind": "file" } }));
+    assert_eq!(link_of("old.log"), json!({ "target": "/nowhere/gone.log", "leadsTo": { "kind": "missing" } }));
     let made = format!("{home}/made/by/web");
     let created = backend
         .post(
