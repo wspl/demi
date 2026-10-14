@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { IDBFactory, IDBKeyRange } from 'fake-indexeddb'
-import { closeDraftStorage, draftSchema, readDraft, readLocalDrafts, type SavedDraft } from './drafts'
+import { forceCloseDatabase, IDBFactory, IDBKeyRange } from 'fake-indexeddb'
+import { closeDraftStorage, draftSchema, readDraft, readLocalDrafts, writeDraft, type SavedDraft } from './drafts'
 
 // Draft storage keeps a structured clone of what a write stores, and a read
 // validates it with `draftSchema`: a saved draft comes back whole or not at all.
@@ -101,4 +101,58 @@ test('a record that does not read is set aside, and every other draft is restore
   expect(unreadable).toHaveLength(1)
   expect(unreadable[0]?.message).toBe('A draft stored in this web browser could not be read.')
   await expect(readDraft('user', broken)).rejects.toThrow('could not be read')
+})
+
+// The web browser can close the page's connection to its database at any
+// time: site data cleared, the page frozen and restored, an idle connection
+// in a background tab. The next draft write opens a new one rather than
+// failing until a reload. An IndexedDB in memory; milliseconds.
+
+const draft = (text: string): SavedDraft => ({
+  pendingSends: [], notSaved: [], base: null, local: null, text, model: null, files: [], scroll: null,
+})
+
+/** The connections the page opens to the draft database, in order. */
+function watchConnections(): IDBDatabase[] {
+  const opened: IDBDatabase[] = []
+  const factory = globalThis.indexedDB
+  const open = factory.open.bind(factory)
+  factory.open = (name, version) => {
+    const request = open(name, version)
+    request.addEventListener('success', () => opened.push(request.result))
+    return request
+  }
+  return opened
+}
+
+test('a draft saves after the web browser closed the connection and said so', async () => {
+  const opened = watchConnections()
+  await writeDraft('user', 'conversation', draft('first'))
+  // fake-indexeddb declares the parameter as the class rather than an
+  // instance of it; the function takes the connection.
+  forceCloseDatabase(opened[0] as unknown as typeof IDBDatabase)
+  await writeDraft('user', 'conversation', draft('second'))
+  expect((await readDraft('user', 'conversation'))?.text).toBe('second')
+})
+
+test('a draft saves after the web browser closed the connection without saying so', async () => {
+  const opened = watchConnections()
+  await writeDraft('user', 'conversation', draft('first'))
+  // As Safari does with an idle connection: no close event, and the next
+  // transaction on it fails with InvalidStateError.
+  opened[0]!.close()
+  await writeDraft('user', 'conversation', draft('second'))
+  expect((await readDraft('user', 'conversation'))?.text).toBe('second')
+})
+
+test('another page deleting the draft database is not blocked, and a draft saves after it', async () => {
+  await writeDraft('user', 'conversation', draft('first'))
+  await new Promise((resolve, reject) => {
+    const request = indexedDB.deleteDatabase('demi-drafts')
+    request.onsuccess = resolve
+    request.onerror = () => reject(request.error)
+    request.onblocked = () => reject(new Error('This page kept the draft database open.'))
+  })
+  await writeDraft('user', 'conversation', draft('second'))
+  expect((await readDraft('user', 'conversation'))?.text).toBe('second')
 })
