@@ -194,8 +194,9 @@ since a refusal comes before any output, and the client sees no
 - Refused for its size (`request_too_large`), the failure is terminal: nothing
   is summarized and no medium is dropped, since either would change what
   earlier requests carried and lose the vendor's cache. The turn is
-  unfinished: the user's Compact summarizes the media away, and `resume` then
-  continues it. For example, an
+  unfinished: the user's Compact, which this failure allows below half the
+  window ([When compaction runs](compaction.md#when-compaction-runs)),
+  summarizes the media away, and `resume` then continues it. For example, an
   Anthropic-compatible endpoint that takes less than the Anthropic API refuses
   a request of 20 MB with HTTP 413, and the turn fails with
   `request_too_large`.
