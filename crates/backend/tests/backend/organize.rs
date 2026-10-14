@@ -62,11 +62,15 @@ pub(crate) fn target_of(harness: &Harness, id: &str) -> (String, Option<String>)
         .unwrap()
 }
 
-/// The devices attached to the conversation, by name, as storage holds them.
+/// The names of the devices attached to the conversation, as storage holds
+/// them.
 fn attached(harness: &Harness, id: &str) -> Vec<String> {
     harness
         .control_database()
-        .prepare("SELECT name FROM conversation_hosts WHERE conversation_id = ?1 ORDER BY name")
+        .prepare(
+            "SELECT device.name FROM conversation_hosts host JOIN devices device ON device.id = host.device_id
+             WHERE host.conversation_id = ?1 ORDER BY device.name",
+        )
         .unwrap()
         .query_map([id], |row| row.get(0))
         .unwrap()
@@ -188,7 +192,8 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_and_runs_commands_th
             shell("t1", "demi host install-command --system linux"),
             shell("t2", "demi host pair 0000-0000-0000-0000-0000-0000-00"),
             shell("t3", &format!("demi host pair {code} --name build")),
-            shell("t4", "demi host shell --host build 'echo reached'"),
+            shell("t4", &format!("demi host pair {code}")),
+            shell("t5", "demi host shell --host buildbox 'echo reached'"),
             say("done"),
         ],
     );
@@ -202,13 +207,16 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_and_runs_commands_th
         "{}",
         asked[2]
     );
-    // The live code pairs the computer and attaches it under the alias.
+    // No agent names the host: `--name` is no option of the pair.
+    assert!(asked[3].contains("unexpected argument '--name'"), "{}", asked[3]);
+    // The live code pairs the computer and attaches it under its device's
+    // name, the one the user sees.
     assert!(
-        asked[3].contains("Paired as buildbox; attached as build."),
+        asked[4].contains("Paired as buildbox; attached as buildbox."),
         "{}",
-        asked[3]
+        asked[4]
     );
-    assert!(asked[4].contains("reached"), "{}", asked[4]);
+    assert!(asked[5].contains("reached"), "{}", asked[5]);
     // It is the user's device, its runner holds its token, and the
     // conversation reaches it.
     let devices = backend.devices(&master).await;
@@ -217,7 +225,7 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_and_runs_commands_th
         "{devices:?}"
     );
     assert!(!stored_token(&computer).await.is_empty());
-    assert_eq!(attached(&harness, FIRST), ["build"]);
+    assert_eq!(attached(&harness, FIRST), ["buildbox"]);
     backend.close().await;
 }
 

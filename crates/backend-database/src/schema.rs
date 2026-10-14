@@ -66,8 +66,9 @@ impl ReadBlob for NoBlobs {
 /// signed-in browsers, the one with the signed-in browsers before the
 /// messages saved for later, and the one with them before administered
 /// accounts, the one with administered accounts before a conversation's
-/// workflow, and the one with the workflow before the edits and sends of
-/// saved messages were kept. The schemas with the subagent
+/// workflow, the one with the workflow before the edits and sends of
+/// saved messages were kept, and the one with them before an attached host
+/// went by its device's name. The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
 /// and the server's migrate through them.
@@ -154,8 +155,38 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.workflows.sql"),
             migration: Migration::Sql(CONTROL_FROM_WORKFLOWS),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.saved-edits.sql"),
+            migration: Migration::Sql(CONTROL_FROM_SAVED_EDITS),
+        },
     ],
 };
+
+/// From the control schema that kept the edits and sends of saved messages
+/// to the one where an attached host goes by its device's name
+/// (`sessions-and-targets.md` § Attached hosts): the hosts' table loses the
+/// names conversations gave them, rebuilt since SQLite drops no column a
+/// constraint names, with the rows in the order the names were listed in,
+/// which their row ids keep; a Fork's attached hosts lose theirs too.
+const CONTROL_FROM_SAVED_EDITS: &str = "
+CREATE TABLE conversation_hosts_next (
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id),
+  device_id       TEXT NOT NULL REFERENCES devices (id),
+  cwd             TEXT,
+  attached_at     INTEGER NOT NULL,
+  detaching       INTEGER NOT NULL DEFAULT 0 CHECK (detaching IN (0, 1)),
+  PRIMARY KEY (conversation_id, device_id)
+) STRICT;
+INSERT INTO conversation_hosts_next (conversation_id, device_id, cwd, attached_at, detaching)
+  SELECT conversation_id, device_id, cwd, attached_at, detaching FROM conversation_hosts
+  ORDER BY attached_at, name;
+DROP TABLE conversation_hosts;
+ALTER TABLE conversation_hosts_next RENAME TO conversation_hosts;
+CREATE INDEX conversation_hosts_device ON conversation_hosts (device_id);
+UPDATE conversation_fork_operations SET metadata = json_set(metadata, '$.attachedHosts', json((
+  SELECT json_group_array(json_remove(host.value, '$.name'))
+  FROM json_each(conversation_fork_operations.metadata, '$.attachedHosts') host)));
+";
 
 /// From the control schema with a conversation's workflow to the one that
 /// keeps the edits of messages saved for later and their sends for a day
@@ -1749,18 +1780,18 @@ CREATE TABLE running_jobs (
 ) STRICT;
 CREATE INDEX running_jobs_of_device ON running_jobs (device_id);
 
+-- A device attached to a conversation, which goes by its device's name; the
+-- row id keeps the order of hosts attached at one time.
 CREATE TABLE conversation_hosts (
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id),
   device_id       TEXT NOT NULL REFERENCES devices (id),
-  name            TEXT NOT NULL,
   -- The directory its commands start in, fixed when it was attached; null
   -- for a device attached by name, whose commands start in its home.
   cwd             TEXT,
   attached_at     INTEGER NOT NULL,
   -- An agent's detach, which waits for the tree to be idle.
   detaching       INTEGER NOT NULL DEFAULT 0 CHECK (detaching IN (0, 1)),
-  PRIMARY KEY (conversation_id, device_id),
-  UNIQUE (conversation_id, name)
+  PRIMARY KEY (conversation_id, device_id)
 ) STRICT;
 CREATE INDEX conversation_hosts_device ON conversation_hosts (device_id);
 
@@ -2430,6 +2461,65 @@ mod tests {
             record.catalog.models[0].accepted_extensions,
             Some(vec![demi_shared_types::FileExtension::Png])
         );
+    }
+
+    /// The attached hosts of a database that stored their names lose them
+    /// and keep the order those names gave them, and a Fork's attached hosts
+    /// read without theirs.
+    /// Planted defect this catches: a Fork reserved before the upgrade whose
+    /// metadata still names its hosts, which no longer decodes, so its
+    /// destination would never be published.
+    #[test]
+    fn attached_hosts_lose_the_names_conversations_gave_them() {
+        use crate::conversation_index::AttachedHostRecord;
+        use crate::forks::ForkMetadata;
+        use demi_web_api_protocol::conversations::ConversationTarget;
+        use demi_web_api_protocol::ids::DeviceId;
+
+        let shipped = include_str!("schema/control-0.1.22-dev.saved-edits.sql");
+        let (_directory, path, mut connection) = database(shipped);
+        connection.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+        // Attached at one time, the second written first: its name put it
+        // second.
+        connection
+            .execute_batch(
+                "INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at)
+                   VALUES ('c1', 'd2', 'laptop-2', '/work', 5), ('c1', 'd1', 'laptop', NULL, 5);",
+            )
+            .unwrap();
+        let metadata = ForkMetadata {
+            title: "Fork".into(),
+            target: ConversationTarget::Cloud { path: None },
+            model: None,
+            created_at: "2026-10-14T08:00:00Z".parse().unwrap(),
+            attached_hosts: vec![AttachedHostRecord {
+                device: DeviceId::try_from("d1".to_owned()).unwrap(),
+                cwd: None,
+            }],
+        };
+        let mut stored = serde_json::to_value(&metadata).unwrap();
+        stored["attachedHosts"][0]["name"] = "laptop".into();
+        connection
+            .execute(
+                "INSERT INTO conversation_fork_operations (id, user_id, source_id, block_id, metadata)
+                 VALUES ('f1', 'u1', 'c1', 'b1', ?1)",
+                [stored.to_string()],
+            )
+            .unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let order: Vec<String> = connection
+            .prepare("SELECT device_id FROM conversation_hosts ORDER BY attached_at, rowid")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(order, ["d1", "d2"]);
+        let text: String = connection
+            .query_row("SELECT metadata FROM conversation_fork_operations", [], |row| row.get(0))
+            .unwrap();
+        let migrated: ForkMetadata = json("conversation_fork_operations", "metadata", &text).unwrap();
+        assert_eq!(migrated, metadata);
     }
 
     #[test]

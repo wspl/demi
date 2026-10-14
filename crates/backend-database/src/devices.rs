@@ -27,6 +27,14 @@ pub struct DeviceRemoval {
     pub conversations: Vec<ConversationId>,
 }
 
+/// A device as a change left it, and the conversations whose execution
+/// context its new name changed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangedDevice {
+    pub device: DeviceRecord,
+    pub conversations: Vec<ConversationId>,
+}
+
 /// A workspace that went with its device.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RemovedWorkspace {
@@ -402,24 +410,65 @@ impl ControlService {
         .await
     }
 
-    /// Sets what `change` names of `device`, in one statement; none when
-    /// there is no such device.
+    /// Sets what `change` names of `device`; none when there is no such
+    /// device. A conversation that reaches the device, as an attached host
+    /// or as its primary one, calls it by its name, so a new name advances
+    /// the execution context of each, and the attached hosts' revision of
+    /// those it is attached to; the answer names those conversations.
     pub async fn change_device(
         &self,
         device: DeviceId,
         change: DeviceChange,
-    ) -> Result<Option<DeviceRecord>, StorageError> {
+    ) -> Result<Option<ChangedDevice>, StorageError> {
         self.call(move |connection, _| {
-            let mut statement = connection.prepare_cached(&format!(
-                "UPDATE devices SET name = coalesce(?1, name), route = coalesce(?2, route)
-                 WHERE id = ?3 RETURNING {DEVICE_COLUMNS}"
-            ))?;
-            statement
-                .query_row(params![change.name, change.route.map(|route| route.to_string()), device.as_str()], |row| {
-                    Ok(device_row(row))
-                })
-                .optional()?
-                .transpose()
+            let transaction = connection.transaction()?;
+            let Some(before) = one(&transaction, "id = ?1", device.as_str())? else {
+                return Ok(None);
+            };
+            let changed = transaction
+                .prepare_cached(&format!(
+                    "UPDATE devices SET name = coalesce(?1, name), route = coalesce(?2, route)
+                     WHERE id = ?3 RETURNING {DEVICE_COLUMNS}"
+                ))?
+                .query_row(
+                    params![change.name, change.route.map(|route| route.to_string()), device.as_str()],
+                    |row| Ok(device_row(row)),
+                )??;
+            let mut conversations = Vec::new();
+            if changed.name != before.name {
+                let mut renamed = |sql: &str| -> Result<(), StorageError> {
+                    let mut statement = transaction.prepare_cached(sql)?;
+                    let mut rows = statement.query([device.as_str()])?;
+                    while let Some(row) = rows.next()? {
+                        let id = decode(
+                            "conversations",
+                            "id",
+                            ConversationId::try_from(row.get::<_, String>(0)?.as_str()),
+                        )?;
+                        if !conversations.contains(&id) {
+                            conversations.push(id);
+                        }
+                    }
+                    Ok(())
+                };
+                renamed(
+                    "UPDATE conversations SET context_version = context_version + 1,
+                       hosts_revision = hosts_revision + 1
+                     WHERE id IN (SELECT conversation_id FROM conversation_hosts WHERE device_id = ?1)
+                     RETURNING id",
+                )?;
+                renamed(
+                    "UPDATE conversations SET context_version = context_version + 1
+                     WHERE target_device_id = ?1
+                       OR target_workspace_id IN (SELECT id FROM workspaces WHERE device_id = ?1)
+                     RETURNING id",
+                )?;
+            }
+            transaction.commit()?;
+            Ok(Some(ChangedDevice {
+                device: changed,
+                conversations,
+            }))
         })
         .await
     }

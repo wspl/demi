@@ -16,7 +16,7 @@
 
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{
-    AttachedHostRecord, ConversationRecord, ExecutionTarget, TargetSwitch,
+    AttachedHost, ConversationRecord, ExecutionTarget, TargetSwitch,
 };
 use demi_agent_session::left_by_offline_host;
 use demi_backend_database::devices::{CLOUD_NAME, DeviceRecord};
@@ -306,7 +306,7 @@ impl Shard {
 
     /// The attached hosts as one line: each one's name, connection and
     /// directory, and how to reach them.
-    fn attached_hosts_line(&self, attached: &[AttachedHostRecord]) -> String {
+    fn attached_hosts_line(&self, attached: &[AttachedHost]) -> String {
         const LIST: &str = "`demi host list` shows every host this conversation can reach.";
         if attached.is_empty() {
             return format!("{ATTACHED}none. {LIST}");
@@ -335,15 +335,15 @@ impl Shard {
 }
 
 /// How an attached host's entry in a block's line of attached hosts opens:
-/// its name, which stays while it is attached.
-fn entry(host: &AttachedHostRecord) -> String {
+/// its name.
+fn entry(host: &AttachedHost) -> String {
     format!("\"{}\" (", host.name)
 }
 
 /// Whether the hosts `attached` now are others than the ones the block
 /// `seen`, a node's latest, listed: a host joined or left. A host's
 /// connection or directory is no change of the attached hosts.
-fn attached_changed(seen: &str, attached: &[AttachedHostRecord]) -> bool {
+fn attached_changed(seen: &str, attached: &[AttachedHost]) -> bool {
     let Some(listed) = seen.lines().find(|line| line.starts_with(ATTACHED)) else {
         return true;
     };
@@ -356,7 +356,7 @@ fn attached_changed(seen: &str, attached: &[AttachedHostRecord]) -> bool {
 fn switch_lines(
     switch: &TargetSwitch,
     description: String,
-    attached: &[AttachedHostRecord],
+    attached: &[AttachedHost],
 ) -> Vec<String> {
     let mut lines = vec![
         SWITCHED.to_owned(),

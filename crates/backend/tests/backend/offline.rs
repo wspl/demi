@@ -100,7 +100,7 @@ async fn a_command_on_an_offline_attached_device_fails_at_once_with_its_offline_
     let alpha = backend.pair(&master, "alpha").await;
     let mut build = backend.pair(&master, "build-box").await;
     let mut work = on(&backend, &master, &vendor, &alpha).await;
-    harness.attach(FIRST, build.id(), "build-box");
+    harness.attach(FIRST, build.id());
     offline_for_40s(&harness, &backend, &master, &mut build).await;
 
     let tried = work
