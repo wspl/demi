@@ -17,7 +17,7 @@ decisions read, and diagnostics, which the user and support read:
 | `overloaded` | A transient failure: HTTP 5xx, a timeout, a network or socket failure | Yes |
 | An authentication code | A missing, invalid or expired credential, or one that could not be refreshed | No |
 | `context_length_exceeded` | The request holds more tokens than the model accepts | Once, after compaction ([Retries](#retries)) |
-| `request_too_large` | The request's body or its number of images is more than the vendor accepts | Once, after leaving older media out ([Retries](#retries)) |
+| `request_too_large` | The request's body or its number of images is more than the vendor accepts | No ([Retries](#retries)) |
 | A vendor's own code | Any other failure the vendor named | No |
 | None | A failure Demi found in the vendor's answer: a frame it cannot decode, or a stream that breaks the vendor's protocol | No |
 
@@ -191,13 +191,13 @@ since a refusal comes before any output, and the client sees no
   ([When compaction runs](compaction.md#when-compaction-runs)); the client sees
   the phase `compacting`. A pass that compacts nothing, or a second refusal of
   the turn's request, is terminal.
-- Refused for its size (`request_too_large`), its turn leaves its oldest media
-  out and sends the request again
-  ([Media left out to fit](runtime.md#media-left-out-to-fit)); nothing is
-  summarized. For example, an Anthropic-compatible endpoint that takes less
-  than the Anthropic API refuses a request of 20 MB with HTTP 413; the request
-  goes again with its oldest screenshots as text, at 10 MB. A refusal with no
-  medium left to leave out, or a second refusal, is terminal.
+- Refused for its size (`request_too_large`), the failure is terminal: nothing
+  is summarized and no medium is dropped, since either would change what
+  earlier requests carried and lose the vendor's cache. The turn is
+  unfinished, and `resume` sends it again. For example, an
+  Anthropic-compatible endpoint that takes less than the Anthropic API refuses
+  a request of 20 MB with HTTP 413, and the turn fails with
+  `request_too_large`.
 
 When the agent does not retry, the failure is written as an `error` block and
 the action fails with it. The turn is unfinished, and `resume` can continue
@@ -355,5 +355,5 @@ injected clock; no test calls a real model.
 | The user's Compact after a finished answer, stopped during its summary | The transcript is as it was, with no `abort` block; the dock offers no Continue |
 | A send whose model switch fails to compact, or is stopped while it compacts | The message's `user` block is in the transcript, followed by the `error` or `abort` block; the dock offers Resume or Continue |
 | A failed turn, then the user's Compact, then `resume` | The dock still offers Resume behind the divider; `resume` drops the `error` block, keeps the boundary and marker, and the turn goes on after the summary |
-| An HTTP 413, or a 400 that says a request has too many images or too large ones | The code is `request_too_large`; the turn leaves its oldest media out and sends the request again, with no compaction, and a second refusal is terminal |
+| An HTTP 413, or a 400 that says a request has too many images or too large ones | The code is `request_too_large`; the failure is terminal, with no compaction |
 | A 400 that says the prompt is too long | The code is `context_length_exceeded`; the turn compacts once and sends the request again, and a second refusal is terminal |

@@ -576,9 +576,10 @@ limit.
 A vendor refuses a request that is too large, however few tokens it holds:
 for example, 60 screenshots of 400 KB reach the Anthropic API's 32 MB before
 they fill a large context window. Each runtime states its vendor's limits for
-a model, and replay keeps every request under them by leaving its oldest media
-out ([Media left out to fit](../agent/runtime.md#media-left-out-to-fit)),
-never by compacting:
+a model. Compaction never runs on them
+([When compaction runs](../agent/compaction.md#when-compaction-runs)); images
+are kept light where they enter
+([Images in the transcript](../agent/runtime.md#images-in-the-transcript)):
 
 | Family | Body, as sent | Images per request |
 |---|---|---|
@@ -590,7 +591,7 @@ never by compacting:
 A megabyte here is 1,000,000 bytes. Claude Code's CLI sends its history to the
 Anthropic API, so its limits are that API's. A compatible vendor of a family
 may set lower limits, and a limit that is not documented is none: a request
-refused for its size still leaves its oldest media out
+refused for its size fails its turn with `request_too_large`
 ([Retries](../agent/failures-and-recovery.md#retries)). Every image has
 already been fitted to what each vendor accepts of one image
 ([Images in the transcript](../agent/runtime.md#images-in-the-transcript)),
