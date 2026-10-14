@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, inject } from 'vue'
 import { SquareTerminal, X } from '@lucide/vue'
 import type { ConversationStatus } from './conversation-status'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -6,6 +7,7 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import ConversationStatusDot from './ConversationStatusDot.vue'
 import IndeterminateSpinner from '@demicodes/web-ui/ui/IndeterminateSpinner.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { iconTabsKey } from './tab-strip'
 
 /**
  * One tab of a `TabStrip`. Content-sized up to 160px, or the strip's room when it has less; in a crowded strip it
@@ -27,6 +29,10 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
  * has the focus, with the menu at its lower left. A tab that is not
  * `closable` has no close control and no middle-click close: a click only
  * selects it, and closing is in its menu.
+ *
+ * In a window whose tabs narrow to their icons (`iconTabsKey`) a phone shows each tab other than the selected one
+ * as its mark with its status dot, 44px wide at least, its name left to assistive technology; the selected tab adds
+ * its name, cut short.
  */
 const props = withDefaults(defineProps<{
   title: string
@@ -43,6 +49,10 @@ const props = withDefaults(defineProps<{
 }>(), {
   closable: true,
 })
+
+// Whether this tab is an icon on a phone; CSS applies it only in the phone layout (the `phone:` variant).
+const iconsOnPhone = inject(iconTabsKey, false)
+const iconOnly = computed(() => iconsOnPhone && !props.isActive)
 
 const emit = defineEmits<{
   select: []
@@ -90,9 +100,9 @@ function onMenuKey(event: KeyboardEvent): void {
     :aria-selected="isActive"
     tabindex="0"
     class="group relative flex h-(--tab-h) w-max [--surface-current:var(--fill-color)] [--tab-h:--spacing(7)] phone:[--tab-h:--spacing(9)] phone:text-[15px] min-w-[min(--spacing(22),var(--tab-room,--spacing(22)))] max-w-[min(--spacing(40),var(--tab-room,--spacing(40)))] shrink phone:shrink-0 cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
-    :class="isActive
+    :class="[iconOnly ? 'phone:w-11 phone:min-w-11' : '', isActive
       ? 'bg-(--tab-active) text-fg-emphasis after:opacity-0 [--fill-color:var(--tab-active)]'
-      : 'text-fg-subtle hover:bg-(--tab-hover) hover:text-fg-body hover:[--fill-color:var(--tab-hover)]'"
+      : 'text-fg-subtle hover:bg-(--tab-hover) hover:text-fg-body hover:[--fill-color:var(--tab-hover)]']"
     @pointerdown="onPointerdown"
     @mousedown.middle.prevent
     @auxclick="onAuxclick"
@@ -107,12 +117,14 @@ function onMenuKey(event: KeyboardEvent): void {
       :content="title"
       placement="bottom"
       class="flex h-full min-w-0 flex-1 items-center"
+      :class="iconOnly ? 'phone:justify-center' : ''"
     >
     <!-- The strip finds the mark by its attribute, to cover one its edge cuts. -->
     <span
       v-if="$slots.mark || mark || icon"
       data-tab-mark
       class="relative ml-1.5 flex shrink-0 items-center justify-center"
+      :class="iconOnly ? 'phone:ml-0' : ''"
     >
       <IndeterminateSpinner v-if="busy" :size="ICON_PX.markIn28" class="text-fg-subtle" />
       <img v-else-if="icon" :src="icon" alt="" :width="ICON_PX.markIn28" :height="ICON_PX.markIn28" draggable="false">
@@ -126,7 +138,10 @@ function onMenuKey(event: KeyboardEvent): void {
     </span>
     <!-- While the close control hides, the title runs on over its slot, as a browser's tab's does;
          the slot stays, so the tab keeps its width when the control shows. -->
-    <span class="min-w-0 flex-1 pl-1.5" :class="closable ? 'pr-1' : 'pr-2'">
+    <span
+      class="min-w-0 flex-1 pl-1.5"
+      :class="[closable ? 'pr-1' : 'pr-2', iconOnly ? 'phone:sr-only' : '']"
+    >
       <span
         class="block w-max truncate whitespace-nowrap"
         :class="isActive || !closable ? 'max-w-full' : 'max-w-[calc(100%_+_var(--spacing-hit-xs))] group-hover:max-w-full phone:max-w-full'"
