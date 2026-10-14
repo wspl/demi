@@ -517,7 +517,10 @@ async fn each_entry_the_cli_mirrors_goes_to_its_block_and_one_of_no_block_to_the
         }
     );
     assert!(
-        matches!(events.last(), Some(ProviderEvent::ToolCall(_))),
+        matches!(
+            events.as_slice(),
+            [.., ProviderEvent::ToolCall(_), ProviderEvent::Response(_)]
+        ),
         "{events:?}"
     );
 

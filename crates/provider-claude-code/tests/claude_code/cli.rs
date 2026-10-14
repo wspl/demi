@@ -693,9 +693,9 @@ impl Cli {
         self.say(json!({ "type": "stream_event", "event": { "type": "message_stop" } }));
     }
 
-    /// The turn's end after a call of `input` and `output` tokens: the
-    /// call's `message_delta`, then the result.
-    pub fn result(&self, input: u64, output: u64) {
+    /// A call's `message_delta`, which states its `input` and `output`
+    /// tokens.
+    pub fn message_delta(&self, input: u64, output: u64) {
         self.say(json!({
             "type": "stream_event",
             "event": {
@@ -703,6 +703,12 @@ impl Cli {
                 "usage": { "input_tokens": input, "output_tokens": output },
             },
         }));
+    }
+
+    /// The turn's end after a call of `input` and `output` tokens: the
+    /// call's `message_delta`, then the result.
+    pub fn result(&self, input: u64, output: u64) {
+        self.message_delta(input, output);
         self.say(json!({
             "type": "result",
             "subtype": "success",

@@ -321,9 +321,9 @@ impl LastCall {
         }
     }
 
-    /// The latest call's usage, which the turn's end takes, so a later turn
-    /// never reports it again; none when no call of the turn ended with its
-    /// counts.
+    /// The latest call's usage, which the run's end takes, at the turn's
+    /// `result` or at a batch of tool calls, so a later run never reports it
+    /// again; none when no call since ended with its counts.
     pub(crate) fn take(&mut self) -> Option<TokenUsage> {
         std::mem::take(&mut self.0).usage()
     }
