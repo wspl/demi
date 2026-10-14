@@ -264,9 +264,13 @@ is as it was: when that turn had failed or been stopped, it still offers its
 Resume or Continue.
 
 A root whose last turn ended with an `error` block holds its waiting input,
-agent messages and command reports, as it does after a Stop: they are written
-and shown as they arrive, but none starts a turn until the user acts, with
-Resume or a message, which then answers them. Otherwise each wakeup would
+agent messages and command reports: they are written into the failed turn as
+they arrive, where a steer would be, and shown there, but none starts a turn
+until the user acts, with Resume or a message, which then answers them. The
+record that ended the turn is still the `error` block, read past the input
+written behind it, so the dock keeps offering Resume. A Stop holds nothing
+([Stop](runtime.md#stop)): the user stopped the work, not the agent's
+ability to answer. Otherwise each wakeup would
 start a turn that fails the same way: a Claude subscription at its usage
 limit failed the main agent once for each of its children that reported,
 four red rows in a row, each one a whole history sent for nothing. A child's
@@ -278,7 +282,13 @@ with it on, a root's turn whose failure names its `retryAt` is resumed at that
 moment, as the user's Resume would, so a usage limit that resets at 09:00
 continues then; with it off, the hold lasts until the user acts. The
 preference is read when the moment comes, so turning it off before then
-keeps the turn waiting.
+keeps the turn waiting. Only a moment still to come is waited for: a
+conversation opened after its failure's moment has passed never resumes by
+itself. The wait lives with the conversation's open tree, so after a
+backend restart it starts again when the conversation is next opened. A
+usage limit's moment is the latest reset among the account's windows that
+the quota shows used up; a limit with no such window, such as a spend cap,
+names no moment and is retried as any `rate_limit`.
 
 A message is never left outside a turn. A send writes its `user` block as
 soon as its action starts, before its model switch lands
@@ -377,7 +387,7 @@ injected clock; no test calls a real model.
 | Four transient failures in a row | Three `retry_scheduled` frames, then a terminal `error` block; each delay is within its cap |
 | A vendor wait longer than 30 seconds | The failure is terminal at once |
 | A Claude Code usage limit whose account's quota names the window's reset | `retryAt` is that reset; the failure is terminal on its first attempt |
-| A root's turn fails, then two children report and a command ends | Three receipts and a notice are written; no turn starts until Resume, which answers them |
+| A root's turn fails, then two children report and a command ends | Two receipts and a notice are written into the failed turn; no turn starts, Resume stays offered and answers them |
 | The same, with a `retryAt` | With `resumeAtRetry` off, nothing starts at that moment; with it on, the turn resumes then, once |
 | A failure after a completed tool call, then `resume` | The tool does not run again; the model continues after its result |
 | `resume` after a failure before any output | The turn reruns from its input, with no `resume` block |
