@@ -216,7 +216,8 @@ pub async fn call(
 }
 
 /// The directory's entries, each with its own metadata, as `lstat` reads
-/// it, so a listing answers in one reply (`runner.md` § Host operations).
+/// it, and a symbolic link's target with what is there, so a listing
+/// answers in one reply (`runner.md` § Host operations).
 pub(crate) async fn list(
     path: &Path,
     cancel: &CancellationToken,
@@ -231,17 +232,76 @@ pub(crate) async fn list(
             Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
             Err(error) => return Err(error),
         };
-        let kind = metadata.file_type();
-        entries.push(wire::DirEntry {
-            name: entry.file_name().to_string_lossy().into_owned(),
-            is_file: kind.is_file(),
-            is_directory: kind.is_dir(),
-            is_symbolic_link: kind.is_symlink(),
-            size: metadata.len(),
-            mtime: modified(&metadata)?,
-        });
+        // On Windows a junction is a link as well (`FileType::is_symlink`).
+        let link = if metadata.file_type().is_symlink() {
+            let at = entry.path();
+            match tokio::task::spawn_blocking(move || symbolic_link(&at))
+                .await
+                .map_err(io::Error::other)?
+            {
+                Ok(link) => Some(link),
+                // Removed since the directory named it: no longer listed.
+                Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                Err(error) => return Err(error),
+            }
+        } else {
+            None
+        };
+        entries.push(entry_of(entry.file_name().to_string_lossy().into_owned(), &metadata, link)?);
     }
     Ok(entries)
+}
+
+/// A listing's entry from its own metadata and, for a link, where it points.
+pub(crate) fn entry_of(
+    name: String,
+    metadata: &std::fs::Metadata,
+    link: Option<wire::SymbolicLink>,
+) -> io::Result<wire::DirEntry> {
+    let kind = metadata.file_type();
+    Ok(wire::DirEntry {
+        name,
+        is_file: kind.is_file(),
+        is_directory: kind.is_dir(),
+        size: metadata.len(),
+        mtime: modified(metadata)?,
+        link,
+    })
+}
+
+/// The link at `path`: its target as written, and what is there once every
+/// link on the way is followed.
+pub(crate) fn symbolic_link(path: &Path) -> io::Result<wire::SymbolicLink> {
+    let target = std::fs::read_link(path)?.to_string_lossy().into_owned();
+    let followed = std::fs::metadata(path).map(|metadata| {
+        let kind = metadata.file_type();
+        (kind.is_file(), kind.is_dir())
+    });
+    Ok(wire::SymbolicLink {
+        target,
+        leads_to: link_target(followed),
+    })
+}
+
+/// What a link leads to, from the metadata found by following it, as
+/// whether it is a file and whether a directory. A failure to follow it is
+/// never a failure of the listing it is part of (`runner.md` § Host
+/// operations): nothing there, a name on the way that does not exist or is
+/// no directory, is a missing target; any other failure, a directory on the
+/// way that may not be searched, a loop of links, a failing disk, is an
+/// unreadable one with the system's reason.
+pub(crate) fn link_target(followed: io::Result<(bool, bool)>) -> wire::LinkTarget {
+    match followed {
+        Ok((true, _)) => wire::LinkTarget::File,
+        Ok((_, true)) => wire::LinkTarget::Directory,
+        Ok(_) => wire::LinkTarget::Other,
+        Err(error) if matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::NotADirectory) => {
+            wire::LinkTarget::Missing
+        }
+        Err(error) => wire::LinkTarget::Unreadable {
+            reason: demi_command_sdk::errors::reason(&error),
+        },
+    }
 }
 
 /// Out of open files, reading a directory waits for one (`runner.md` § Load).

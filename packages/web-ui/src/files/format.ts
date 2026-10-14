@@ -1,3 +1,28 @@
+import type { SentenceText } from '../ui/ui-text'
+import type { FileBrowserLink } from './types'
+
+/**
+ * What a symbolic link's mark says (`file-previews.md` § Symbolic links):
+ * `Symbolic link to ../shared/vendor`; of a target that is not there
+ * `Symbolic link to /tmp/gone.log, which does not exist`; and of one that
+ * cannot be read, the system's reason as a clause of the sentence,
+ * `Symbolic link to /root/notes, which cannot be read: permission denied`.
+ */
+export function linkDescription(link: FileBrowserLink): SentenceText {
+  const named = `Symbolic link to ${link.target}`
+  switch (link.broken?.kind) {
+    case undefined:
+      return named
+    case 'missing':
+      return `${named}, which does not exist`
+    case 'unreadable': {
+      // The system words its reason as a sentence of its own: `Permission denied`, `Access is denied.`
+      const reason = link.broken.reason.replace(/\.$/, '')
+      return `${named}, which cannot be read: ${reason.charAt(0).toLowerCase()}${reason.slice(1)}`
+    }
+  }
+}
+
 /** `1.2 MB`, `840 KB`, `12 B`. */
 export function formatBytes(size: number): string {
   if (size < 1024)

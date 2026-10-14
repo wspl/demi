@@ -13,9 +13,15 @@ plugin({
   name: 'vue single-file components',
   setup(build) {
     build.onLoad({ filter: /\.vue$/ }, async ({ path }) => {
-      const { descriptor, errors } = parse(await Bun.file(path).text(), { filename: path })
-      if (errors.length > 0)
-        throw errors[0]
+      const parsed = parse(await Bun.file(path).text(), { filename: path })
+      if (parsed.errors.length > 0)
+        throw parsed.errors[0]
+      // A component of a template alone, such as a divider, has no script
+      // (the parser drops an empty one) to inline it into, which
+      // compileScript requires: it is given one that does nothing.
+      const { descriptor } = parsed.descriptor.script || parsed.descriptor.scriptSetup
+        ? parsed
+        : parse(`<script setup lang="ts">\nvoid 0\n</script>\n${parsed.descriptor.source}`, { filename: path })
       const id = Bun.hash(path).toString(16)
       const script = compileScript(descriptor, { id, inlineTemplate: true })
       return { contents: script.content, loader: script.lang === 'ts' ? 'ts' : 'js' }

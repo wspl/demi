@@ -1713,11 +1713,13 @@ it shows every other change.
 
 `GET /api/devices` includes the connected runner's `home` (null while unknown).
 `GET /api/devices/:id/fs` defaults to that home when path is omitted and returns
-`{ path, home, entries }`. Each entry has name, isDirectory, isSymbolicLink, byte
-size and modifiedAt. Metadata comes through the runner's filesystem
-operations; entries disappearing during the listing are omitted, other errors
-are returned. Metadata requests await each reply to avoid overrunning the
-runner transport. These device routes serve paired-device target selection
+`{ path, home, entries }`. Each entry has name, isDirectory, byte size and
+modifiedAt, its own as `lstat` reports them, and a symbolic link has `link`:
+its `target` as written and its `targetKind`, `file`, `directory`, `other` or
+`missing` ([Symbolic links](file-previews.md#symbolic-links)). The runner
+reads them beside each entry as it lists the directory, so a listing is one
+request ([Host operations](../execution/runner.md)); entries disappearing
+during the listing are omitted, other errors are returned. These device routes serve paired-device target selection
 only; the work panel and remote attachment picker use the conversation routes
 below. Managed devices are not accepted by the device directory routes. These
 routes reach the device through device access
