@@ -1715,8 +1715,10 @@ it shows every other change.
 `GET /api/devices/:id/fs` defaults to that home when path is omitted and returns
 `{ path, home, entries }`. Each entry has name, isDirectory, byte size and
 modifiedAt, its own as `lstat` reports them, and a symbolic link has `link`:
-its `target` as written and its `targetKind`, `file`, `directory`, `other` or
-`missing` ([Symbolic links](file-previews.md#symbolic-links)). The runner
+its `target` as written and `leadsTo`, `{ kind, reason }`, where `kind` is
+`file`, `directory`, `other`, `missing` or `unreadable`, and `reason` the
+system's words for an unreadable one
+([Symbolic links](file-previews.md#symbolic-links)). The runner
 reads them beside each entry as it lists the directory, so a listing is one
 request ([Host operations](../execution/runner.md)); entries disappearing
 during the listing are omitted, other errors are returned. These device routes serve paired-device target selection
