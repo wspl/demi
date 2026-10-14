@@ -1305,31 +1305,50 @@ export function generationErrorBlock(): Block {
 
 /**
  * The record of a turn a Claude subscription's session limit refused, which
- * resets at `resetsAt`: the CLI's words, which name the hour in UTC, and its
- * `result` line, which names the cause, as the record.
+ * resets at `resetsAt`: the CLI's words, which name the hour in UTC, and as
+ * the record the assistant line the CLI made up for the refusal, which
+ * carries the reset, then its `result` line, which names the cause.
  */
 export function usageLimitErrorBlock(id: string, resetsAt: string): Block {
   const hour = new Date(resetsAt).getUTCHours()
   const message = `You’ve hit your session limit · resets ${hour % 12 || 12}${hour < 12 ? 'am' : 'pm'} (UTC)`
+  const sessionId = 'b4d1c0de-5e55-4a1e-9d1a-0c3f2a6b7e81'
+  const notice = JSON.stringify({
+    type: 'assistant',
+    message: { model: '<synthetic>', role: 'assistant', content: [{ type: 'text', text: message }] },
+    session_id: sessionId,
+    error: 'rate_limit',
+    is_api_error_message: true,
+    api_error: 'usage_limit_reached',
+    api_error_params: {
+      rate_limit_info: {
+        status: 'rejected',
+        resetsAt: Math.floor(new Date(resetsAt).getTime() / 1000),
+        rateLimitType: 'five_hour',
+        isUsingOverage: false,
+      },
+    },
+  })
+  const result = JSON.stringify({
+    type: 'result',
+    subtype: 'success',
+    is_error: true,
+    api_error_status: 429,
+    api_error: 'usage_limit_reached',
+    result: message,
+    session_id: sessionId,
+  })
   return {
     type: 'error',
     id,
     createdAt: iso(30_000),
     model: demoModel,
     message,
-    code: 'rate_limit',
+    code: 'usage_limit',
     diagnostics: {
       source: 'stream',
       httpStatus: 429,
-      upstream: JSON.stringify({
-        type: 'result',
-        subtype: 'success',
-        is_error: true,
-        api_error_status: 429,
-        api_error: 'usage_limit_reached',
-        result: message,
-        session_id: 'b4d1c0de-5e55-4a1e-9d1a-0c3f2a6b7e81',
-      }),
+      upstream: `${notice}\n${result}`,
     },
   }
 }

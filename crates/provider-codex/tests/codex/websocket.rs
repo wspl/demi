@@ -258,6 +258,27 @@ async fn a_websocket_failure_after_its_first_event_is_the_runs_failure() {
     );
 }
 
+/// A usage limit in a WebSocket error frame, in the shape the Codex CLI
+/// reads, ends the run as a usage limit that names when it lifts.
+#[tokio::test]
+async fn a_usage_limit_in_a_websocket_error_frame_is_a_usage_limit() {
+    let vendor = MockVendor::start().await;
+    let frame = json!({ "type": "error", "status": 429, "error": { "type": "usage_limit_reached", "message": "The usage limit has been reached", "plan_type": "pro", "resets_at": 1_790_062_659 } });
+    let socket = FakeWebSocket::start(
+        vec![Script::Accept(vec![event(frame)])],
+        Some(address(&vendor)),
+    )
+    .await;
+    let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
+    let provider = provider(&socket, &vendor, &pool, TransportMode::Auto, None);
+    let events = run(runtime_of(&provider).as_mut(), inference_request()).await;
+    let [ProviderEvent::Error(failure)] = events.as_slice() else {
+        panic!("{events:?}");
+    };
+    assert_eq!(failure.code, Some(ErrorCode::UsageLimit));
+    assert!(failure.retry_after.is_some(), "{failure:?}");
+}
+
 #[tokio::test]
 async fn a_handshake_refused_with_401_refreshes_the_token_once() {
     let vendor = MockVendor::start().await;

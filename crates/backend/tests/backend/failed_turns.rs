@@ -20,7 +20,7 @@ use demi_backend_providers::llm::families::{
 };
 use demi_provider_common::testing::event;
 use demi_provider_common::{
-    Capabilities, CatalogError, InferenceItem, InferenceRequest, Provider, ProviderEvent,
+    Capabilities, CatalogError, ErrorCode, InferenceItem, InferenceRequest, Provider, ProviderEvent,
     ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits, RuntimeEnv, RuntimeError,
 };
 use demi_shared_types::{
@@ -63,7 +63,7 @@ impl Script {
 fn limited() -> Vec<ProviderEvent> {
     vec![ProviderEvent::Error(ProviderFailure {
         message: "You've hit your session limit".into(),
-        code: None,
+        code: Some(ErrorCode::UsageLimit),
         diagnostics: Some(Box::new(ProviderErrorDiagnostics {
             source: FailureSource::Stream,
             client_request_id: None,
