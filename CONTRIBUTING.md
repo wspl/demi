@@ -13,6 +13,11 @@ extend Demi.
   ([Toolchain](docs/delivery/builds-and-releases.md#toolchain)).
 - [Bun](https://bun.sh), for the browser packages.
 
+`AGENTS.md` holds the rules the coding agents working in this repository
+follow, and `.demi/workflows/` the maintainers' subagent workflow for Demi
+itself; neither is a requirement for a human contribution, which this guide
+covers.
+
 ## Setup and checks
 
 ```sh

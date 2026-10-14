@@ -1,5 +1,9 @@
 # Demi
 
+> **Status: early.** Demi is pre-1.0 and changes quickly. The one-command
+> server install has not yet been tried on a fresh machine by anyone outside
+> the project; expect rough edges, and please report them.
+
 Demi is a hosted coding-agent product that people use in a web browser. A user
 talks to an agent in a conversation. The agent runs in the backend and works on
 the user's files through a runner, either on a device the user paired or on the
@@ -23,6 +27,20 @@ The design is documented under [docs/](docs/README.md). Start with the
 [overview](docs/overview.md);
 [Crates and packages](docs/architecture/crates-and-packages.md) defines what
 every crate and package owns.
+
+## Self-hosting
+
+A Demi server runs on Linux (Ubuntu 22.04+ or Debian 12+, with root, cgroup v2
+and a kernel that runs gVisor) behind HTTPS. One command installs it and
+walks through its setup:
+
+```sh
+curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
+```
+
+[Installation](docs/delivery/installation.md) gives every requirement and
+parameter, and [Upgrades](docs/delivery/upgrades.md) how a server moves
+between releases.
 
 ## Development
 
