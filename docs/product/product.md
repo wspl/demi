@@ -1297,7 +1297,7 @@ the Anthropic Messages API, serves whatever models it chooses under whatever
 names, so its entry starts empty, *No models yet* with Add Model, and never
 borrows the protocol's vendor's catalog. For example, Alex adds a compatible
 Anthropic Messages entry at `https://proxy.example/v1`: its Models list is
-empty until he adds `claude-sonnet-4-6` with Add Model. An entry stays the
+empty until he adds `claude-sonnet-5-5` with Add Model. An entry stays the
 kind it was added as: a vendor entry's endpoint is never edited, and a
 compatible entry's endpoint and protocol always can be
 ([A provider is in the list from the start](../providers/models.md#a-provider-is-in-the-list-from-the-start)).

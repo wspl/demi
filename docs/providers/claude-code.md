@@ -610,7 +610,7 @@ its first word, against 1.4 s for a kept process, and a long conversation's
 new process took 5.3 s before its CLI was ready. So the runtime starts the
 process before the request whenever the request it will serve is already
 known but for its input. For example, the user opens a conversation that ran
-on Claude Opus yesterday; while they type, its process starts on their
+on Claude Opus 5.5 yesterday; while they type, its process starts on their
 Cloud, resumes the history and waits, and the message they send goes to it
 as to a kept process.
 

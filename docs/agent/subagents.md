@@ -575,7 +575,7 @@ instructions: |
 profiles:
   - id: explore
     description: Use for finding code and call sites; it reports and changes nothing.
-    model: claude-sonnet-4-6
+    model: claude-sonnet-5-5
     effort: low
     context: 300K
     instructions: |
@@ -749,7 +749,7 @@ tier. Spawning with an unavailable profile fails, with a message that names
 the profile and what is missing, for example:
 
 ```text
-profile "explore" is unavailable: model "claude-haiku-4-5" no longer offers the effort "minimal"; choose another effort for the profile in settings
+profile "explore" is unavailable: model "claude-haiku-5-5" no longer offers the effort "minimal"; choose another effort for the profile in settings
 ```
 
 Nothing falls back: not to the parent's model, and not to another effort or
