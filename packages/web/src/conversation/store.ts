@@ -2037,7 +2037,7 @@ export const useConversations = defineStore('conversations', () => {
     if (!settings.providerId || !settings.modelId) {
       return
     }
-    preferences.update({ lastModel: { ...settings } }, true)
+    preferences.update({ lastModel: { ...settings } })
   }
 
   /**

@@ -1162,9 +1162,10 @@ pub fn scripted_host_server_in(
 }
 
 /// Makes each node's environment and keeps each one made, in order, for the
-/// test to print through and end.
+/// test to print through and end; while the test sets a gate, each waits
+/// until it opens, as a Host that is slow to answer a take-up.
 #[derive(Default)]
-pub struct ScriptedShells(pub RefCell<Vec<Rc<ScriptedShell>>>);
+pub struct ScriptedShells(pub RefCell<Vec<Rc<ScriptedShell>>>, pub RefCell<Option<Gate>>);
 
 impl ScriptedShells {
     /// The environment made last.
@@ -1187,6 +1188,13 @@ impl ShellEnvironmentFactory<ScriptedHost> for ScriptedShells {
             detached: Cell::new(false),
         });
         self.0.borrow_mut().push(shell.clone());
-        Box::pin(async move { Ok(shell as Rc<dyn ShellEnvironment>) })
+        let gate = self.1.borrow().as_ref().map(|gate| gate.0.subscribe());
+        Box::pin(async move {
+            if let Some(mut opened) = gate {
+                // The gate lives in the test that holds the take-up.
+                let _ = opened.wait_for(|open| *open).await;
+            }
+            Ok(shell as Rc<dyn ShellEnvironment>)
+        })
     }
 }

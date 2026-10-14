@@ -235,6 +235,7 @@ const reportBrowser = () => void preferences.reportBrowser()
 window.addEventListener('languagechange', reportBrowser)
 const saveDrafts = () => {
   // The backend's saves go first: the web browser sends them after the page is gone.
+  void preferences.flush()
   conversations.flushDrafts(true)
   conversations.keepLastWords()
   conversations.saveDrafts()
@@ -257,7 +258,9 @@ const stopLeaving = watch(
 )
 const refreshVisible = () => {
   if (document.visibilityState === 'hidden') {
-    // A hidden page saves what its user typed, not waiting for a pause.
+    // A hidden page saves what its user typed and chose, not waiting for a
+    // pause.
+    void preferences.flush()
     conversations.flushDrafts()
     return
   }

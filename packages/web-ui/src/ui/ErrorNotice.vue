@@ -15,8 +15,9 @@ import type { SentenceText, TitleText } from './ui-text'
  * message that was not delivered, a session that lost its connection.
  *
  * One tinted bar, full width where it sits: a sentence, the upstream message
- * under it, the facts on one line, the source's payload behind a fold, and at
- * most one action beside a copy control for the support thread. It is a record in the transcript, not a
+ * under it, the facts on a line of their own, wrapping where it is narrow, a control of the record's own under them
+ * (the default slot), the source's payload behind a fold, and at most one
+ * action beside a copy control for the support thread. It is a record in the transcript, not a
  * fixture of the dock, so it scrolls with what it describes.
  */
 withDefaults(
@@ -66,12 +67,15 @@ const rawOpen = ref(false)
         >
           {{ detail }}
         </p>
+        <!-- Facts wrap on a narrow screen: a time cut off says nothing. -->
         <p
           v-if="facts.length > 0"
-          class="mt-1 truncate text-[12px] leading-[18px] text-on-danger-muted"
+          class="mt-1 break-words text-[12px] leading-[18px] text-on-danger-muted"
         >
           {{ facts.join(' · ') }}
         </p>
+        <!-- The one control that belongs to the record itself, such as a preference its facts name. -->
+        <slot />
         <RequestIdLine
           v-if="requestId"
           class="mt-0.5 text-on-danger-muted"

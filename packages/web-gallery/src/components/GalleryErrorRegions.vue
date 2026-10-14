@@ -70,7 +70,7 @@ const usageLimitPayload = JSON.stringify({
       <GallerySpecimen wide variant="A plain sentence is the whole record · when it lifts leads the facts · the vendor payload behind a disclosure">
         <ErrorNotice
           label="The usage limit has been reached"
-          :facts="errorFacts('2026-09-22T07:37:39.000Z')"
+          :facts="errorFacts('2026-09-22T07:37:39.000Z', new Date('2026-09-20T12:00:00.000Z'))"
           :raw="usageLimitPayload"
           copy-text="The usage limit has been reached"
         />

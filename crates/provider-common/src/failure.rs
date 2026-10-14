@@ -130,7 +130,11 @@ impl ProviderFailure {
     /// Sets the wait the provider's `reader` finds in this failure's record,
     /// received at `now`. A failure without a record, or one whose reader names
     /// no time, keeps no wait; a time already past is no wait at all.
-    pub fn with_retry_wait(mut self, reader: FailureReader, now: Timestamp) -> Self {
+    pub fn with_retry_wait(
+        mut self,
+        reader: impl FnOnce(&ProviderErrorDiagnostics, Timestamp) -> ProviderFailureFacts,
+        now: Timestamp,
+    ) -> Self {
         let Some(diagnostics) = &self.diagnostics else {
             return self;
         };
