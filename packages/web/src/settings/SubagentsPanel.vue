@@ -2,14 +2,12 @@
 import { storeToRefs } from 'pinia'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsSubagents from '@demicodes/web-ui/settings/SettingsSubagents.vue'
-import { usePreferences } from '../state/preferences'
 import { useProduct } from '../state/product'
 import { useResources } from '../state/resources'
 import { useSubagentSettings } from './subagents'
 
 const product = useProduct()
 const resources = useResources()
-const preferences = usePreferences()
 const subagents = useSubagentSettings()
 const { settings } = storeToRefs(subagents)
 const { switchSubagents, setLimit, switchProfile, saveProfile, deleteProfile } = subagents
@@ -32,6 +30,5 @@ const { switchSubagents, setLimit, switchProfile, saveProfile, deleteProfile } =
     @switch="switchSubagents"
     @set-limit="setLimit"
     @switch-profile="switchProfile"
-    @context-limit="preferences.setContextLimit"
   />
 </template>

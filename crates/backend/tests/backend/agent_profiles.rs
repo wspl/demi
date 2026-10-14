@@ -131,6 +131,9 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
                     "demi agent profiles create e2 --description x --model n --effort max </dev/null".to_owned(),
                     "demi agent profiles create e3 --description x --model zzz --provider Tree </dev/null".to_owned(),
                     "demi agent profiles create e4 --description x --model n --provider Spare </dev/null".to_owned(),
+                    "demi agent profiles create e5 --description x --context 500K </dev/null".to_owned(),
+                    "demi agent profiles create e6 --description x --model n --context full </dev/null".to_owned(),
+                    "demi agent profiles create e7 --description x --model n --context 400K </dev/null".to_owned(),
                 ]
                 .join("\n"),
             ),
@@ -149,6 +152,9 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
         "demi agent profiles create: The model does not offer the thinking effort \"max\"",
         "demi agent profiles create: The provider does not list that model",
         "demi agent profiles create: the provider entry \"Spare\" is turned off in Settings > Providers",
+        "demi agent profiles create: context: the profile inherits the parent's model, which follows the user's context limit; give the profile a model of its own first",
+        "demi agent profiles create: context: model \"n\" has a window of 100K and offers no choice of context; use default",
+        "\"400K\" is not a context: use full, 500K, 300K, 200K or default",
     ] {
         assert_shows(&asked, refusal);
     }
@@ -213,7 +219,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     let shown = &scripts.asked(|session| session == FIRST)[5];
     assert_shows(
         shown,
-        "name          explore\ndescription   Finds code; it changes nothing.\nmodel         n from Tree, effort high, tier default\nspawning      no\nenabled       yes\ninstructions\nYou only report.\n",
+        "name          explore\ndescription   Finds code; it changes nothing.\nmodel         n from Tree, effort high, tier default\ncontext       default\nspawning      no\nenabled       yes\ninstructions\nYou only report.\n",
     );
     let child = scripts
         .asked(|session| session != FIRST)
@@ -263,5 +269,50 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
         &asked,
         "Tree · API key · Ready\n* m  M  100K  -\n* the model this agent runs on; an effort with * is the model's default\nTree · API key · Ready\n* m  M  100K                 -\n  n  N  100K  low* high off  -  turned off\nSpare · API key · Ready · turned off\n  n  N  100K  low* high off  -\n* the model this agent runs on; an effort with * is the model's default\ndemi agent profiles create: the model \"n\" of \"Tree\" is turned off in Settings > Providers",
     );
+
+    // A model of 1M offers a Context: chosen, changed to the full window and
+    // back to default; default is accepted without a model of its own.
+    let wide = backend
+        .post(
+            "/api/providers",
+            Some(&master),
+            json!({
+                "source": "custom", "providerType": "tree", "label": "Wide", "apiKey": "k",
+                "models": [{
+                    "id": "wide", "displayName": "Wide", "contextWindow": 1000000, "outputLimit": null,
+                    "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
+                }]
+            }),
+        )
+        .await;
+    assert_eq!(wide.status, StatusCode::CREATED);
+    scripts.root(
+        FIRST,
+        vec![
+            shell(
+                "t-context",
+                &[
+                    "demi agent profiles create scout --description 'Looks wide.' --model wide --context 500K </dev/null",
+                    "demi agent profiles edit scout --context full </dev/null",
+                    "demi agent profiles edit scout --context default </dev/null",
+                    "demi agent profiles create plain --description x --context default </dev/null",
+                    "demi agent profiles delete scout && demi agent profiles delete plain",
+                ]
+                .join(" && "),
+            ),
+            say("chosen"),
+        ],
+    );
+    socket.chat("m-context", "Give it a Context").await;
+    let asked = last_root(&scripts);
+    for shown in [
+        "model         wide from Wide, tier default\ncontext       500K\n",
+        "model         wide from Wide, tier default\ncontext       full\n",
+        "model         wide from Wide, tier default\ncontext       default\n",
+        "name          plain\ndescription   x\nmodel         parent's\ncontext       default\n",
+        "deleted profile plain",
+    ] {
+        assert_shows(&asked, shown);
+    }
     backend.close().await;
 }

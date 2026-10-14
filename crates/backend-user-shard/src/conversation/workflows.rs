@@ -429,9 +429,18 @@ impl Shard {
         let scope = self.scope().await.map_err(|error| error.to_string())?;
         let mut profiles = Vec::with_capacity(workflow.profiles.len());
         for profile in &workflow.profiles {
-            let model = match &profile.model {
-                None => None,
-                Some(model) => Some(self.workflow_selection(&scope, profile, model, &file.path).await),
+            let (model, context_limit) = match &profile.model {
+                None => (None, None),
+                Some(model) => {
+                    let chosen = self.workflow_selection(&scope, profile, model, &file.path).await;
+                    match chosen.and_then(|selection| {
+                        let tokens = workflow_context(profile, &selection, &file.path)?;
+                        Ok((selection, tokens))
+                    }) {
+                        Ok((selection, tokens)) => (Some(Ok(selection)), tokens),
+                        Err(missing) => (Some(Err(missing)), None),
+                    }
+                }
             };
             profiles.push(WorkflowChild {
                 name: profile.id.clone(),
@@ -439,6 +448,7 @@ impl Shard {
                 instructions: profile.instructions.clone(),
                 can_spawn: profile.spawning,
                 model,
+                context_limit,
             });
         }
         Ok(ConversationProfiles::Workflow(ChosenWorkflow {
@@ -512,6 +522,21 @@ impl Shard {
             Some(answer) => workflow_text(answer).map_err(|reason| format!("{path}: {reason}")),
         }
     }
+}
+
+/// The tokens of the Context a workflow's profile names for its model's
+/// selection `selection`, none for the user's limit; or why the model does
+/// not offer it, which the file at `path` changes.
+fn workflow_context(
+    profile: &WorkflowProfile,
+    selection: &ModelSelection,
+    path: &str,
+) -> Result<Option<u32>, String> {
+    let window = selection.model.context_window;
+    let tokens = profile.context.and_then(|choice| choice.tokens(window));
+    demi_backend_accounts::subagents::check_context(Some((&selection.model.id, window)), tokens)
+        .map_err(|refusal| format!("{refusal}; change the profile's context in {path}"))?;
+    Ok(tokens)
 }
 
 #[cfg(test)]

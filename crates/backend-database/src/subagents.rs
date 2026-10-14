@@ -52,7 +52,8 @@ impl Default for Switches {
     }
 }
 
-const PROFILE_COLUMNS: &str = "id, name, description, model, instructions, can_spawn, enabled";
+const PROFILE_COLUMNS: &str =
+    "id, name, description, model, context_limit, instructions, can_spawn, enabled";
 
 /// Why a profile write was not made.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -139,20 +140,22 @@ impl ControlService {
                 name: profile.name,
                 description: profile.description,
                 model: profile.model,
+                context_limit: profile.context_limit,
                 instructions: profile.instructions,
                 can_spawn: profile.can_spawn,
                 enabled,
             };
             transaction.execute(
                 "INSERT INTO subagent_profiles
-                   (id, user_id, name, description, model, instructions, can_spawn, enabled)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                   (id, user_id, name, description, model, context_limit, instructions, can_spawn, enabled)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 params![
                     created.id.as_str(),
                     user.as_str(),
                     created.name,
                     created.description,
                     created.model.as_ref().map(to_json),
+                    created.context_limit,
                     created.instructions,
                     created.can_spawn,
                     created.enabled,
@@ -185,7 +188,7 @@ impl ControlService {
             transaction.execute(
                 "UPDATE subagent_profiles
                  SET name = ?3, description = ?4, model = ?5, instructions = ?6, can_spawn = ?7,
-                     enabled = ?8
+                     enabled = ?8, context_limit = ?9
                  WHERE user_id = ?1 AND id = ?2",
                 params![
                     user.as_str(),
@@ -196,6 +199,7 @@ impl ControlService {
                     changed.instructions,
                     changed.can_spawn,
                     changed.enabled,
+                    changed.context_limit,
                 ],
             )?;
             transaction.commit()?;
@@ -288,6 +292,10 @@ fn profile_row(row: &Row<'_>) -> Result<SubagentProfile, StorageError> {
         description: row.get("description")?,
         model: model
             .map(|text| json::<ModelSettings>(TABLE, "model", &text))
+            .transpose()?,
+        context_limit: row
+            .get::<_, Option<i64>>("context_limit")?
+            .map(|tokens| decode(TABLE, "context_limit", u32::try_from(tokens)))
             .transpose()?,
         instructions: row.get("instructions")?,
         can_spawn: row.get("can_spawn")?,

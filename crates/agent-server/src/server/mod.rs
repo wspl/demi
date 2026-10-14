@@ -67,10 +67,17 @@ pub trait ProviderResolver {
         model: &'a ModelSelection,
     ) -> LocalBoxFuture<'a, Result<Box<dyn ProviderRuntime>, ResolveError>>;
 
-    /// The window the token thresholds of a session that infers with
-    /// `model` use: the model's context window, or the limit the user set on
-    /// it (`models.md` § Context limit).
-    fn context_window<'a>(&'a self, model: &'a ModelSelection) -> LocalBoxFuture<'a, u32>;
+    /// The window the token thresholds and the usage of a session that
+    /// infers with `model` use: the model's context window, or the limit
+    /// the user set on it (`models.md` § Context limit); for a subagent
+    /// whose profile chose a Context `own`, that one in place of the user's
+    /// (`subagents.md` § Profiles). Either applies while the window offers
+    /// it, and the full window otherwise.
+    fn context_window<'a>(
+        &'a self,
+        model: &'a ModelSelection,
+        own: Option<u32>,
+    ) -> LocalBoxFuture<'a, u32>;
 
     /// The provider family of the entry that serves `model`, such as
     /// `anthropic`, which the system prompt's model identity names

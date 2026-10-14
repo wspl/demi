@@ -368,6 +368,12 @@ export interface SettingsSubagentProfile {
   description: string
   /** The model a child infers with; null for its parent's. */
   model: ModelSettings | null
+  /**
+   * The profile's own Context in tokens, its model's full window or a
+   * limit, in place of the user's limit; null for the user's, and always
+   * with the parent's model.
+   */
+  contextLimit: number | null
   /** The text added to a child's system prompt after Demi's own; null for none. */
   instructions: string | null
   /** Whether the profile's children may spawn children of their own. */

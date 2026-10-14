@@ -7,7 +7,7 @@
 //! `subagents` part, and the next spawn of every conversation reads it,
 //! since a spawn reads the settings each time.
 
-use demi_backend_accounts::subagents::{self, ProfileTextError};
+use demi_backend_accounts::subagents::{self, ContextRefusal, ProfileTextError};
 use demi_backend_database::StorageError;
 use demi_backend_database::subagents::ProfileRefusal as Stored;
 use demi_backend_host_access::transition::ChangeRefusal;
@@ -24,6 +24,10 @@ pub enum ProfileRefusal {
     /// A name or a text breaks its rule.
     #[error(transparent)]
     Text(#[from] ProfileTextError),
+    /// The Context needs a model of the profile's own, or one its model
+    /// offers.
+    #[error(transparent)]
+    Context(#[from] ContextRefusal),
     #[error(transparent)]
     Stored(#[from] Stored),
     /// The model is outside the user's scope, unlisted, or does not offer
@@ -52,9 +56,15 @@ impl Shard {
         enabled: bool,
     ) -> Result<SubagentProfile, ProfileRefusal> {
         subagents::check_new(&profile)?;
-        if let Some(model) = &profile.model {
-            profile.model = Some(self.profile_model(model).await?);
-        }
+        let checked = match &profile.model {
+            Some(model) => Some(self.profile_model(model).await?),
+            None => None,
+        };
+        subagents::check_context(
+            checked.as_ref().map(|(model, window)| (model.model_id.as_str(), *window)),
+            profile.context_limit,
+        )?;
+        profile.model = checked.map(|(model, _)| model);
         let created = self
             .services()
             .control
@@ -73,14 +83,34 @@ impl Shard {
         mut patch: ProfilePatch,
     ) -> Result<SubagentProfile, ProfileRefusal> {
         subagents::check_patch(&patch)?;
-        if let Some(Some(model)) = &patch.model {
-            patch.model = Some(Some(self.profile_model(model).await?));
+        // The model the profile has after the patch, with its window: the
+        // patch's, or the stored one's when the patch names a Context alone.
+        let model = match &patch.model {
+            Some(Some(model)) => Some(self.profile_model(model).await?),
+            Some(None) => None,
+            None => match patch.context_limit {
+                Some(Some(_)) => match self.stored_profile(&id).await?.model {
+                    Some(stored) => Some(self.profile_model(&stored).await?),
+                    None => None,
+                },
+                _ => None,
+            },
+        };
+        if let Some(chosen) = patch.context_limit {
+            subagents::check_context(
+                model.as_ref().map(|(model, window)| (model.model_id.as_str(), *window)),
+                chosen,
+            )?;
+        }
+        let window = model.as_ref().map(|(_, window)| *window);
+        if let Some(Some(_)) = patch.model {
+            patch.model = Some(model.map(|(model, _)| model));
         }
         let changed = self
             .services()
             .control
             .patch_profile(self.user().clone(), id, move |stored| {
-                subagents::merge(stored, patch)
+                subagents::merge(stored, patch, window)
             })
             .await??;
         self.mark_subagents();
@@ -102,18 +132,37 @@ impl Shard {
     }
 
     /// `model` as a profile stores it, checked against the entry's catalog,
-    /// with the model's first effort when it names none.
-    async fn profile_model(&self, model: &ModelSettings) -> Result<ModelSettings, ProfileRefusal> {
+    /// with the model's first effort when it names none, and the model's
+    /// context window, which a profile's Context is checked against.
+    pub(crate) async fn profile_model(
+        &self,
+        model: &ModelSettings,
+    ) -> Result<(ModelSettings, u32), ProfileRefusal> {
         let selection = self
             .chosen_selection(model)
             .await
             .map_err(ProfileRefusal::Model)?;
-        Ok(ModelSettings {
+        let settings = ModelSettings {
             provider_id: model.provider_id.clone(),
             model_id: selection.model.id.clone(),
             thinking_effort: selection.thinking_effort().map(str::to_owned),
             service_tier_id: selection.service_tier_id.clone(),
-        })
+        };
+        Ok((settings, selection.model.context_window))
+    }
+
+    /// The user's profile `id` as stored.
+    async fn stored_profile(&self, id: &ProfileId) -> Result<SubagentProfile, ProfileRefusal> {
+        let settings = self
+            .services()
+            .control
+            .subagent_settings(self.user().clone())
+            .await?;
+        settings
+            .profiles
+            .into_iter()
+            .find(|profile| profile.id == *id)
+            .ok_or(Stored::NotFound.into())
     }
 
     fn mark_subagents(&self) {
