@@ -338,23 +338,35 @@ impl ControlService {
             .await
     }
 
-    /// The conversation's latest target switch, which every node's next
-    /// context block describes; none before its first.
+    /// The conversation's latest target switch with the execution-context
+    /// revision it made, which a node that has not read a block of that
+    /// revision or a later one reads described; none before its first.
     pub async fn last_switch(
         &self,
         id: ConversationId,
-    ) -> Result<Option<TargetSwitch>, StorageError> {
+    ) -> Result<Option<(TargetSwitch, u64)>, StorageError> {
         self.call(move |connection, _| {
-            let text: Option<Option<String>> = connection
+            let row: Option<(Option<String>, Option<i64>)> = connection
                 .query_row(
-                    "SELECT last_switch FROM conversations WHERE id = ?1",
+                    "SELECT last_switch, last_switch_revision FROM conversations WHERE id = ?1",
                     [id.as_str()],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .optional()?;
-            text.flatten()
-                .map(|text| json("conversations", "last_switch", &text))
-                .transpose()
+            let (text, revision) = match row {
+                None | Some((None, None)) => return Ok(None),
+                Some((Some(text), Some(revision))) => (text, revision),
+                Some(_) => {
+                    return Err(StorageError::Corrupt {
+                        table: "conversations",
+                        column: "last_switch_revision",
+                        reason: "a switch and its revision are stored together".into(),
+                    });
+                }
+            };
+            let switch = json("conversations", "last_switch", &text)?;
+            let revision = decode("conversations", "last_switch_revision", u64::try_from(revision))?;
+            Ok(Some((switch, revision)))
         })
         .await
     }
@@ -921,7 +933,8 @@ impl ControlService {
             // `IS` compares NULL as equal to NULL, which `=` does not.
             let revision: Option<i64> = transaction.query_row(
                 "UPDATE conversations SET target_kind = ?2, target_device_id = ?3, target_path = ?4,
-                   target_workspace_id = ?5, last_switch = ?6, context_version = context_version + 1, updated_at = ?7
+                   target_workspace_id = ?5, last_switch = ?6, last_switch_revision = context_version + 1,
+                   context_version = context_version + 1, updated_at = ?7
                  WHERE id = ?1 AND target_kind = ?8 AND target_device_id IS ?9 AND target_path IS ?10
                    AND target_workspace_id IS ?11
                  RETURNING context_version",

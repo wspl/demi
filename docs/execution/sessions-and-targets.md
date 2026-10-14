@@ -216,8 +216,13 @@ files moved, and how to reach the device left behind with `demi host shell
 runner's report caused, as when the Cloud's home becomes known, carries no
 label of change, since nothing the user did changed: it states the Host as it
 now is, which the model reads in place of the block before. Every
-block ends with the attached hosts, each with its connection and the directory
-its shells start in.
+block ends with the attached hosts, each with its device's id, its connection
+and the directory its shells start in. A node saw a switch when it read a
+block of the revision the switch made or a later one, and saw the attached
+hosts as its latest block lists them, each name with the device it stood for:
+renaming a device announces no switch, and renaming an attached one
+announces a change of the attached hosts, also when two devices trade names
+and the list's names stay the same.
 
 ## Attached hosts
 
