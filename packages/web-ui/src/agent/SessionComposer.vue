@@ -100,6 +100,8 @@ const props = withDefaults(
     modelSettings?: ModelSettings | null
     /** How full the next request is, as the backend reports it. */
     usage?: ContextUsage | null
+    /** The unfinished turn failed for its size, so the context card offers Compact at any share. */
+    sizeRefused?: boolean
     /** What the newest instructions block holds, which the context card lists. */
     instructions?: readonly InstructionEntry[]
     /** The usage limits of the account the model runs on, which the context card shows; none on an API key. */
@@ -727,6 +729,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
           </div>
           <ContextUsageIndicator
             :usage="usage"
+            :size-refused="sizeRefused"
             :is-compacting="compacting"
             :unavailable-reason="compactUnavailable"
             :instructions="instructions"

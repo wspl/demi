@@ -1,17 +1,18 @@
 //! Images as they enter a transcript (`runtime.md` § Images in the
 //! transcript): each is fitted once to what every provider accepts of one
-//! image, at most 2,000 px on each side and 5,000,000 bytes as base64, and it
-//! never changes afterwards, so every request sends the same bytes. The
-//! original stays where it came from.
+//! image, at most 2,000 px on each side and 5,000,000 bytes as base64, and
+//! kept light, since every request replays it. It never changes afterwards,
+//! so every request sends the same bytes. The original stays where it came
+//! from.
 
 use std::io::Cursor;
 
 use demi_shared_types::{B64Bytes, PixelSize};
 use image::{
-    DynamicImage, ImageDecoder, ImageError, ImageFormat, ImageReader, Limits,
+    DynamicImage, ImageDecoder, ImageError, ImageFormat, ImageReader, Limits, Rgba, RgbaImage,
     metadata::Orientation,
     codecs::{jpeg::JpegEncoder, png::PngEncoder},
-    imageops::FilterType,
+    imageops::{self, FilterType},
 };
 
 /// The longest side of a fitted image, in pixels: the Anthropic API refuses
@@ -20,11 +21,14 @@ const MAX_SIDE: u32 = 2_000;
 /// The most bytes of a fitted image, 5,000,000 as base64: the strictest
 /// limit a vendor documents for one image.
 const MAX_BYTES: usize = 3_750_000;
+/// The most bytes an image enters with as it is: every request replays it,
+/// so one heavier enters as a JPEG when that is smaller.
+const LIGHT_BYTES: usize = 500_000;
 /// The most memory decoding one image may take.
 const MAX_DECODE_BYTES: u64 = 256 * 1024 * 1024;
 /// The quality a scaled JPEG keeps.
 const JPEG_QUALITY: u8 = 90;
-/// The quality of an image that is still over the byte limit.
+/// The quality of an image that is heavier than [`LIGHT_BYTES`].
 const SMALLER_JPEG_QUALITY: u8 = 85;
 
 /// An image as it enters a transcript.
@@ -72,18 +76,20 @@ pub async fn fit(data: B64Bytes, media_type: &str) -> Result<Fitted, Unfit> {
 }
 
 /// Fits `data` as the table of `runtime.md` § Images in the transcript
-/// says: a PNG, JPEG or WebP within both limits enters as it came, once it
-/// decodes. Any other image is turned upright; one over 2,000 px on a side
-/// is scaled to fit 2,000 × 2,000 px and, like a GIF, encoded again, a JPEG
-/// as JPEG and anything else as PNG. An image still over the byte limit
-/// enters as a JPEG of a lower quality, or not at all.
+/// says: a PNG, JPEG or WebP within 2,000 px on each side and 500,000 bytes
+/// enters as it came, once it decodes. Any other image is turned upright;
+/// one over 2,000 px on a side is scaled to fit 2,000 × 2,000 px and, like a
+/// GIF, encoded again, a JPEG as JPEG and anything else as PNG. One still
+/// over 500,000 bytes enters as a JPEG of a lower quality, its transparency
+/// flattened onto white, when that is smaller; one over 3,750,000 bytes
+/// after that does not enter.
 fn fit_now(data: &B64Bytes, media_type: &str) -> Result<Fitted, Unfit> {
     let (format, mut decoder) = decoder(data, media_type)?;
     let orientation = decoder.orientation()?;
     let came = decoder.dimensions();
     let mut image = DynamicImage::from_decoder(decoder)?;
     let as_it_came =
-        format != ImageFormat::Gif && came.0.max(came.1) <= MAX_SIDE && data.len() <= MAX_BYTES;
+        format != ImageFormat::Gif && came.0.max(came.1) <= MAX_SIDE && data.len() <= LIGHT_BYTES;
     if as_it_came {
         return Ok(Fitted {
             data: data.clone(),
@@ -93,35 +99,52 @@ fn fit_now(data: &B64Bytes, media_type: &str) -> Result<Fitted, Unfit> {
             reencoded: false,
         });
     }
-    // The encoded image carries no EXIF data, so its orientation is applied.
+    // An encoded image carries no EXIF data, so its orientation is applied.
     image.apply_orientation(orientation);
     let scaled = image.width().max(image.height()) > MAX_SIDE;
     if scaled {
         image = image.resize(MAX_SIDE, MAX_SIDE, FilterType::Lanczos3);
     }
-    let entered = (image.width(), image.height());
-    let fitted = |bytes: Vec<u8>, format: ImageFormat| Fitted {
-        data: B64Bytes::from(bytes),
-        media_type: format.to_mime_type(),
-        came,
-        entered,
-        reencoded: true,
-    };
-    if scaled || format == ImageFormat::Gif {
+    // The image before the byte rule: encoded again when it was scaled or
+    // is a GIF, otherwise as it came.
+    let mut fitted = if scaled || format == ImageFormat::Gif {
         let (bytes, format) = if format == ImageFormat::Jpeg {
             (jpeg(&image, JPEG_QUALITY)?, ImageFormat::Jpeg)
         } else {
             (png(&image)?, ImageFormat::Png)
         };
-        if bytes.len() <= MAX_BYTES {
-            return Ok(fitted(bytes, format));
+        Fitted {
+            data: B64Bytes::from(bytes),
+            media_type: format.to_mime_type(),
+            came,
+            entered: (image.width(), image.height()),
+            reencoded: true,
+        }
+    } else {
+        Fitted {
+            data: data.clone(),
+            media_type: format.to_mime_type(),
+            came,
+            entered: came,
+            reencoded: false,
+        }
+    };
+    if fitted.data.len() > LIGHT_BYTES {
+        let lighter = jpeg(&image, SMALLER_JPEG_QUALITY)?;
+        if lighter.len() < fitted.data.len() {
+            fitted = Fitted {
+                data: B64Bytes::from(lighter),
+                media_type: ImageFormat::Jpeg.to_mime_type(),
+                came,
+                entered: (image.width(), image.height()),
+                reencoded: true,
+            };
         }
     }
-    let bytes = jpeg(&image, SMALLER_JPEG_QUALITY)?;
-    if bytes.len() > MAX_BYTES {
+    if fitted.data.len() > MAX_BYTES {
         return Err(Unfit::TooLarge);
     }
-    Ok(fitted(bytes, ImageFormat::Jpeg))
+    Ok(fitted)
 }
 
 /// A decoder of `data`, an image of `media_type`, that has read its header
@@ -162,12 +185,20 @@ pub(crate) fn shown_size(data: &[u8], media_type: &str) -> Option<PixelSize> {
     })
 }
 
-/// `image` as a JPEG of `quality`, without an alpha channel, which JPEG has
-/// no place for.
+/// `image` as a JPEG of `quality`, its transparency flattened onto white,
+/// since JPEG has no alpha channel: a transparent pixel would otherwise
+/// show the color it hides, often black.
 fn jpeg(image: &DynamicImage, quality: u8) -> Result<Vec<u8>, Unfit> {
+    let opaque = if image.color().has_alpha() {
+        let mut white = RgbaImage::from_pixel(image.width(), image.height(), Rgba([255; 4]));
+        imageops::overlay(&mut white, &image.to_rgba8(), 0, 0);
+        DynamicImage::ImageRgba8(white).to_rgb8()
+    } else {
+        image.to_rgb8()
+    };
     let mut bytes = Vec::new();
     let encoder = JpegEncoder::new_with_quality(&mut bytes, quality);
-    DynamicImage::ImageRgb8(image.to_rgb8()).write_with_encoder(encoder)?;
+    DynamicImage::ImageRgb8(opaque).write_with_encoder(encoder)?;
     Ok(bytes)
 }
 

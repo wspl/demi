@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import type { ContextUsage } from '@demicodes/protocol'
 import { compactionRefusal, contextCardRows, contextFigure, contextPercent, contextTip, contextRatio, untilCompaction } from '../context-usage'
+import { refusedForSize } from '../session-status'
 
 const WINDOW = 100_000
 
@@ -13,6 +14,23 @@ test('Compact is refused below half the window, with the share it is at, as the 
   // Just under half reads 49%, never a refusal that says 50%.
   expect(compactionRefusal(usage(49_999))).toBe('Compaction is available from 50% context usage (now 49%)')
   expect(compactionRefusal(usage(50_000))).toBeNull()
+})
+
+test('after a turn refused for its size Compact is offered at any share, until a turn finishes', () => {
+  const low = usage(23_400)
+  const compactAt = (blocks: Array<{ type: string, code?: string | null, outsideTurn?: boolean }>) =>
+    compactionRefusal(low, refusedForSize(blocks))
+  const tooLarge = { type: 'error', code: 'request_too_large', outsideTurn: false }
+
+  expect(compactAt([{ type: 'user' }, tooLarge])).toBeNull()
+  // A Compact that ran, or whose summary request failed outside the turn,
+  // leaves the turn unfinished, refused for its size.
+  expect(compactAt([{ type: 'user' }, tooLarge, { type: 'compaction_boundary' }, { type: 'compaction_marker' }])).toBeNull()
+  expect(compactAt([{ type: 'user' }, tooLarge, { type: 'error', code: null, outsideTurn: true }])).toBeNull()
+  // Another failure, or a turn that finished since, keeps the half-window rule.
+  const refused = 'Compaction is available from 50% context usage (now 23%)'
+  expect(compactAt([{ type: 'user' }, { type: 'error', code: 'context_length_exceeded', outsideTurn: false }])).toBe(refused)
+  expect(compactAt([{ type: 'user' }, tooLarge, { type: 'user' }, { type: 'text' }])).toBe(refused)
 })
 
 test('a model without a window, or a usage not reported yet, leaves Compact to the backend', () => {

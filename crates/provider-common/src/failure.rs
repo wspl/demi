@@ -186,8 +186,11 @@ pub enum ErrorCode {
     RateLimited,
     /// A transient failure: HTTP 5xx, a timeout, a network or socket failure.
     Overloaded,
-    /// The request is larger than the model or the vendor accepts.
+    /// The request holds more tokens than the model accepts.
     ContextLengthExceeded,
+    /// The request's body or its number of images is more than the vendor
+    /// accepts, however few tokens it holds.
+    RequestTooLarge,
     /// The vendor ended the reply before it was complete: for its output
     /// limit, a filter or another reason it named.
     Incomplete,
@@ -212,6 +215,7 @@ impl ErrorCode {
             Self::RateLimited => "rate_limited",
             Self::Overloaded => "overloaded",
             Self::ContextLengthExceeded => "context_length_exceeded",
+            Self::RequestTooLarge => "request_too_large",
             Self::Incomplete => "incomplete",
             Self::AuthExpired => "auth_expired",
             Self::AuthMissing => "auth_missing",
@@ -223,16 +227,17 @@ impl ErrorCode {
     }
 
     /// The code of an HTTP failure status; `message` is the failure's text,
-    /// which tells an oversized request among the 400s. A body the vendor
-    /// refuses for its size (413) is a full context too: compaction makes
-    /// the next request smaller.
+    /// which tells a request refused for its size, and one refused for its
+    /// tokens, among the 400s. A body the vendor refuses for its size (413)
+    /// is too large, not too long: leaving media out makes it smaller.
     pub fn from_http(status: u16, message: &str) -> Option<Self> {
         match status {
             401 | 403 => Some(Self::AuthExpired),
             429 => Some(Self::RateLimit),
             408 | 409 | 425 | 500.. => Some(Self::Overloaded),
-            413 => Some(Self::ContextLengthExceeded),
-            400 if TOO_LARGE.is_match(message) => Some(Self::ContextLengthExceeded),
+            413 => Some(Self::RequestTooLarge),
+            400 if TOO_LARGE.is_match(message) => Some(Self::RequestTooLarge),
+            400 if TOO_LONG.is_match(message) => Some(Self::ContextLengthExceeded),
             _ => None,
         }
     }
@@ -272,6 +277,7 @@ impl FromStr for ErrorCode {
             "rate_limited" => Self::RateLimited,
             "overloaded" => Self::Overloaded,
             "context_length_exceeded" => Self::ContextLengthExceeded,
+            "request_too_large" => Self::RequestTooLarge,
             "incomplete" => Self::Incomplete,
             "auth_expired" => Self::AuthExpired,
             "auth_missing" => Self::AuthMissing,
@@ -283,23 +289,32 @@ impl FromStr for ErrorCode {
     }
 }
 
-/// A 400 whose text says the request is too large for the model or the
-/// vendor, such as the Anthropic API's refusals of a request with more
+/// A 400 whose text says the request's body or images are more than the
+/// vendor takes, such as the Anthropic API's refusals of a request with more
 /// images than it takes, or with more than 20 images when one exceeds its
-/// size for many-image requests.
-static TOO_LARGE: LazyLock<Regex> =
-    LazyLock::new(|| pattern(r"(?i)context|too long|token|too large|too many images|many-image"));
+/// size for many-image requests. It is tried before [`TOO_LONG`], which
+/// `too large` alone matches.
+static TOO_LARGE: LazyLock<Regex> = LazyLock::new(|| {
+    pattern(r"(?i)too many images|many-image|request too large|payload too large")
+});
+
+/// A 400 whose text says the request holds more tokens than the model takes.
+static TOO_LONG: LazyLock<Regex> =
+    LazyLock::new(|| pattern(r"(?i)context|too long|token|too large"));
 
 /// The categories a vendor's failure text is read into, in the order they
 /// are tried, over [`words`].
-static CATEGORIES: LazyLock<[(ErrorCode, Regex); 4]> = LazyLock::new(|| {
+static CATEGORIES: LazyLock<[(ErrorCode, Regex); 5]> = LazyLock::new(|| {
     [
         (
+            ErrorCode::RequestTooLarge,
+            pattern(
+                r"\btoo many images\b|\bmany image\b|\brequest too large\b|\bpayload too large\b",
+            ),
+        ),
+        (
             ErrorCode::ContextLengthExceeded,
-            pattern(concat!(
-                r"\bcontext\b|\btoo long\b|\btoo large\b|\btoo many images\b|\bmany image\b",
-                r"|\bmax\w*\b.*\btokens?\b",
-            )),
+            pattern(r"\bcontext\b|\btoo long\b|\btoo large\b|\bmax\w*\b.*\btokens?\b"),
         ),
         (
             ErrorCode::RateLimit,

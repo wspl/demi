@@ -7,6 +7,7 @@ import { baseName } from '@demicodes/utils'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { loadedInstructions } from '@demicodes/web-ui/agent/instructions'
 import { latestBlocks } from '@demicodes/web-ui/agent/history'
+import { refusedForSize } from '@demicodes/web-ui/agent/session-status'
 
 import { composerRemoteAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
 import { composerCapsule } from '@demicodes/web-ui/agent/message-editor/capsules'
@@ -113,6 +114,8 @@ function send(way: SendWay) {
 
 /** What the model holds of the user's and the project's instructions, which the context card lists. */
 const instructions = computed(() => loadedInstructions(latestBlocks(props.conversation.history), props.conversation.instructions))
+/** The unfinished turn failed for its size: Compact is offered at any share (`compaction.md` § When compaction runs). */
+const sizeRefused = computed(() => refusedForSize(latestBlocks(props.conversation.history)))
 
 const card = useContextCard(() => props.openFile)
 /** What the context card shows of the usage limits of the account the conversation's model runs on. */
@@ -245,6 +248,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :models="resources.models"
       :model-settings="conversation.model"
       :usage="conversation.contextUsage"
+      :size-refused="sizeRefused"
       :instructions="instructions"
       :limits="limits"
       @refresh-limits="card.refreshLimits(conversation.model.providerId, $event)"

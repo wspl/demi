@@ -165,8 +165,8 @@ pub enum Ahead {
 }
 
 /// What a vendor accepts in one request (`models.md` § Request limits). A
-/// limit the vendor does not document is none: a request it refuses as too
-/// large still leads to compaction.
+/// limit the vendor does not document is none: a request it refuses for its
+/// size fails with `request_too_large`, and is never compacted.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct RequestLimits {
     /// The most bytes of a request body, as the vendor receives it.

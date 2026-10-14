@@ -60,6 +60,55 @@ pub fn png(width: u32, height: u32, seed: u8) -> B64Bytes {
     B64Bytes::from(bytes)
 }
 
+/// A PNG of `width` × `height` px whose colors change smoothly with a little
+/// noise in them, as a drawn illustration's: it compresses poorly as PNG and
+/// well as JPEG. Each pixel's alpha is `alpha(x, y)`.
+pub fn illustration(width: u32, height: u32, alpha: impl Fn(u32, u32) -> u8) -> B64Bytes {
+    use image::{DynamicImage, Rgba, RgbaImage, codecs::png::PngEncoder};
+
+    let mut noise = noise(7);
+    let pixels = RgbaImage::from_fn(width, height, |x, y| {
+        let r = u8::try_from(x * 255 / width).expect("a share of 255 fits");
+        let g = u8::try_from(y * 255 / height).expect("a share of 255 fits");
+        let n = noise() >> 4;
+        Rgba([r.saturating_add(n), g.saturating_add(n), 128 + n, alpha(x, y)])
+    });
+    let mut bytes = Vec::new();
+    DynamicImage::ImageRgba8(pixels)
+        .write_with_encoder(PngEncoder::new(&mut bytes))
+        .expect("a PNG encodes into memory");
+    B64Bytes::from(bytes)
+}
+
+/// A PNG of `width` × `height` px speckled at random with the eight colors
+/// whose channels are all full or empty, about half a byte a pixel as PNG:
+/// as a JPEG, which keeps every speck's edges, it would be larger.
+pub fn speckled(width: u32, height: u32) -> B64Bytes {
+    use image::{
+        DynamicImage, Rgb, RgbImage,
+        codecs::png::{CompressionType, FilterType, PngEncoder},
+    };
+
+    let mut noise = noise(11);
+    let mut channel = move || if noise() < 128 { 0 } else { 255 };
+    let pixels = RgbImage::from_fn(width, height, |_, _| Rgb([channel(), channel(), channel()]));
+    let mut bytes = Vec::new();
+    let encoder = PngEncoder::new_with_quality(&mut bytes, CompressionType::Default, FilterType::NoFilter);
+    DynamicImage::ImageRgb8(pixels)
+        .write_with_encoder(encoder)
+        .expect("a PNG encodes into memory");
+    B64Bytes::from(bytes)
+}
+
+/// Bytes that look random and are the same each run, from `seed`.
+fn noise(seed: u32) -> impl FnMut() -> u8 {
+    let mut state = seed;
+    move || {
+        state = state.wrapping_mul(1_664_525).wrapping_add(1_013_904_223);
+        state.to_be_bytes()[0]
+    }
+}
+
 /// The selection of the model `test-model` of the provider `stub`.
 pub fn test_model() -> ModelSelection {
     model_of("stub", "test-model")
