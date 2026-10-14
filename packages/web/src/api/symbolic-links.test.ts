@@ -374,14 +374,34 @@ for (const mode of ['file', 'directory'] as const) {
       backend.folders['/w'] = [linked('data', '/mnt/data', { kind: 'missing' })]
       delete backend.folders['/w/data']
       option('data')!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }))
-      // The attachment picker takes the link as the file it shows as now; the folder dialog takes nothing, its row now a file's.
+      // Neither takes the link: the attachment picker says why, the folder dialog's row is now a file's.
       // The row turns a file's, with its size, as the listing read again lands; the picker answers as that read ends.
       await until(() => option('data')?.textContent!.includes('9 B') === true, 'the row says what the link is now')
       await drain()
-      expect(view.picked).toEqual(mode === 'file' ? ['/w/data'] : [])
+      if (mode === 'file')
+        await until(shows('Symbolic link to /mnt/data, which does not exist.'), 'the picker says why')
+      expect(view.picked).toEqual([])
       expect(backend.asked).not.toContain('/ /w/data')
     } finally {
       view.unmount()
     }
   })
 }
+
+test('the attachment picker attaches no link whose target cannot be read, and says why', async () => {
+  const backend = host({ '/w': [linked('secret', '/root/notes', { kind: 'file' })] }, { '/w/secret': 'hidden' })
+  const view = browse('file')
+  try {
+    await until(() => option('secret') !== undefined, 'the folder lists')
+    // The folder on the way to the target closes after the listing: the row still shows a file.
+    backend.folders['/w'] = [linked('secret', '/root/notes', { kind: 'unreadable', reason: 'Permission denied' })]
+    option('secret')!.click()
+    const open = () => [...document.querySelectorAll<HTMLElement>('[role=button]')].find((button) => button.textContent!.trim() === 'Open')!
+    await until(() => open().getAttribute('aria-disabled') !== 'true', 'Open is offered for the selected file')
+    open().click()
+    await until(shows('Symbolic link to /root/notes, which cannot be read: permission denied.'), 'the picker says why')
+    expect(view.picked).toEqual([])
+  } finally {
+    view.unmount()
+  }
+})
