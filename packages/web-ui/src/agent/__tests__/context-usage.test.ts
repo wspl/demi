@@ -10,9 +10,9 @@ function usage(tokens: number) {
 }
 
 test('Compact is refused below half the window, with the share it is at, as the backend refuses it', () => {
-  expect(compactionRefusal(usage(23_400))).toBe('Compaction is available from 50% context usage (now 23%)')
+  expect(compactionRefusal(usage(23_400))).toBe('Available from 50% context (now 23%)')
   // Just under half reads 49%, never a refusal that says 50%.
-  expect(compactionRefusal(usage(49_999))).toBe('Compaction is available from 50% context usage (now 49%)')
+  expect(compactionRefusal(usage(49_999))).toBe('Available from 50% context (now 49%)')
   expect(compactionRefusal(usage(50_000))).toBeNull()
 })
 
@@ -28,7 +28,7 @@ test('after a turn refused for its size Compact is offered at any share, until a
   expect(compactAt([{ type: 'user' }, tooLarge, { type: 'compaction_boundary' }, { type: 'compaction_marker' }])).toBeNull()
   expect(compactAt([{ type: 'user' }, tooLarge, { type: 'error', code: null, outsideTurn: true }])).toBeNull()
   // Another failure, or a turn that finished since, keeps the half-window rule.
-  const refused = 'Compaction is available from 50% context usage (now 23%)'
+  const refused = 'Available from 50% context (now 23%)'
   expect(compactAt([{ type: 'user' }, { type: 'error', code: 'context_length_exceeded', outsideTurn: false }])).toBe(refused)
   expect(compactAt([{ type: 'user' }, tooLarge, { type: 'user' }, { type: 'text' }])).toBe(refused)
 })

@@ -178,7 +178,7 @@ function save(): void {
           </SettingsRow>
           <SettingsRow
             label="Name"
-            :description="editable ? 'As the model menu shows it; its ID without one.' : undefined"
+            :description="editable ? 'Shown in the model menu. Defaults to the ID.' : undefined"
             :compact="!editable"
           >
             <TextInput
@@ -243,7 +243,7 @@ function save(): void {
           </SettingsRow>
           <SettingsRow
             label="Fast tier"
-            :description="editable ? 'Service tier ID. Optional' : undefined"
+            :description="editable ? 'Optional. Service tier ID.' : undefined"
             :compact="!editable"
           >
             <TextInput

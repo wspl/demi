@@ -44,7 +44,7 @@ function reset(): void {
 <template>
   <SettingsPage
     title="Keyboard"
-    description="Click Change, then press the new keys with ⌘ or ⌃. The browser keeps some keys for itself."
+    description="Click Change, then press the new keys."
   >
     <SettingsGroup title="Shortcuts">
       <SettingsRow

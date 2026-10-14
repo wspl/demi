@@ -750,7 +750,7 @@ async fn the_usage_and_the_compact_gate_count_against_the_limit_the_user_set() {
     );
     assert_eq!(
         compaction_refusal(&full, false).as_deref(),
-        Some("Compaction is available from 50% context usage (now 40%)")
+        Some("Available from 50% context (now 40%)")
     );
 
     // The user limits the model's window to 600 tokens.

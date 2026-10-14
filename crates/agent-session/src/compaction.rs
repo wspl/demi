@@ -413,7 +413,7 @@ pub fn compaction_refusal(usage: &ContextUsage, size_refused: bool) -> Option<St
     }
     let window = usage.window?;
     Some(format!(
-        "Compaction is available from {MANUAL_COMPACTION_PERCENT}% context usage (now {}%)",
+        "Available from {MANUAL_COMPACTION_PERCENT}% context (now {}%)",
         usage.tokens * 100 / window
     ))
 }

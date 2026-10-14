@@ -30,7 +30,7 @@ export type PairingPhase =
 
 export const pairingErrors = {
   invalid_code:
-    'This code is unavailable. Keep the runner open and paste its latest code.',
+    'This code is unavailable. Paste the runner’s latest code.',
   rate_limited: 'Too many attempts. Wait a minute before trying again.',
   unavailable: 'Could not reach Demi. Check your connection and try again.',
 }

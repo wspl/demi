@@ -42,8 +42,8 @@ const emit = defineEmits<{
     title="Couldn’t Hand Off"
     :message="
       phase.kind === 'expired'
-        ? 'This code has expired or was already used. Show a new code on your other device, or sign in here.'
-        : 'The code could not be used. Show a new code on your other device, or sign in here.'
+        ? 'This code expired or was already used. Show a new code, or sign in here.'
+        : 'The code didn’t work. Show a new code, or sign in here.'
     "
   >
     <div class="flex flex-col items-start gap-4">

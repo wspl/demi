@@ -19,7 +19,7 @@ import TreeFrame from './TreeFrame.vue'
 import { downloadUrl } from './download'
 import { fileBar, type ShownFile } from './file-bar'
 import { TREE_WIDTH } from './file-view'
-import { formatBytes, linkDescription } from './format'
+import { formatByteRatio, linkDescription } from './format'
 import { baseName } from '@demicodes/utils'
 import { normalizePath, parentPath } from './paths'
 import { hasSourceView, MISSING_FILE, previewKind, TOO_LARGE_NOTE } from './preview'
@@ -199,7 +199,7 @@ const start = useTextStart(
 )
 /** The line over a large file's start: how much of how much shows. */
 const startNote = computed(() => start.value?.phase === 'ready'
-  ? `Showing the first ${formatBytes(start.value.shown)} of ${formatBytes(start.value.size)}.`
+  ? `Showing ${formatByteRatio(start.value.shown, start.value.size)}`
   : null)
 
 /** The image or video shown, whose read Retry repeats. */

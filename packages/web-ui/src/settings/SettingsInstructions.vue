@@ -59,7 +59,7 @@ async function submit(): Promise<void> {
   >
     <SettingsGroup
       title="Personal instructions"
-      description="For example, the language to reply in or how to write commit messages. Empty to have none."
+      description="For example, the language to reply in."
     >
       <template #actions>
         <Button

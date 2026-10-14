@@ -133,10 +133,10 @@ const rules: readonly ElementRule[] = [
   },
   {
     kind: 'Empty state',
-    where: 'Menu and ChangeTree emptyText, an empty list; a search or filter that matches nothing says No Results',
-    style: 'headline',
-    right: ['No Hosts Found', 'This folder is empty.', 'No Results'],
-    wrong: ['No hosts found'],
+    where: 'Menu and ChangeTree emptyText, an empty list; a search or filter that matches nothing says No results',
+    style: 'sentence',
+    right: ['No hosts', 'No results', 'Empty folder'],
+    wrong: ['No Hosts Found', 'No hosts found.'],
     source: { label: `${SYSTEM_SETTINGS}: No Accounts, No external volumes are connected.` },
   },
   {
@@ -276,7 +276,7 @@ const punctuationRules: readonly TextRule[] = [
 const brevityRules: readonly TextRule[] = [
   {
     title: 'Every word earns its place',
-    rule: 'Check each word to be sure it needs to be there, and use fewer when fewer say the same. Give just enough for the reader to decide with confidence; the mechanism behind a state is not part of it.',
+    rule: 'Check each word to be sure it needs to be there, and use fewer when fewer say the same. Give just enough for the reader to decide with confidence. The mechanism behind a state is not part of it.',
     right: ['Your networks block P2P connections.'],
     wrong: ['Your network and the device’s don’t let a P2P connection through, as a strict NAT or a firewall does.'],
     source: 'Apple HIG: Writing, Be clear; Microsoft Style Guide: Be brief',
@@ -297,7 +297,7 @@ const brevityRules: readonly TextRule[] = [
   },
   {
     title: 'A row’s description only when needed',
-    rule: 'A settings row’s description says only what its label and its control cannot: a consequence the reader would not expect, a constraint, a unit or a range, or what an empty value means. It never says the label again in other words; a row whose label and control say it all has none.',
+    rule: 'A settings row’s description says only what its label and its control cannot: a consequence the reader would not expect, a constraint, a unit or a range, or what an empty value means. It never says the label again in other words. A row whose label and control say it all has none.',
     right: ['Message text size — no description', 'Sign out — Ends this browser’s session. Conversations stay on the server.'],
     wrong: ['Message text size — Sizes the conversation’s messages and steps.'],
     source: 'Apple HIG: Writing, Keep settings labels clear and simple; macOS 26 System Settings',
@@ -311,10 +311,70 @@ const brevityRules: readonly TextRule[] = [
   },
   {
     title: 'A screen says a thing once',
-    rule: 'A fact the header or a row shows is not said again in a sentence, a footnote or a list row; a list row names the item and its state, and the reason waits on the item’s page.',
+    rule: 'A fact the header or a row shows is not said again in a sentence, a footnote or a list row. A list row names the item and its state, and the reason waits on the item’s page.',
     right: ['macOS 26.5 · Connected via relay'],
     wrong: ['macOS 26.5 · Connected via relay, the networks don’t allow P2P'],
     source: 'Microsoft Style Guide: Be brief, prune every excess word',
+  },
+  {
+    title: 'No semicolons',
+    rule: 'A semicolon never joins two clauses in UI text. Two short sentences do, or the second clause goes.',
+    right: ['Turning off doesn’t stop running subagents.', 'Too large to render'],
+    wrong: ['Turned off, children already running go on.', 'Too large to render; showing its source'],
+    source: 'Short sentences in VS Code, Firefox and GNOME Files',
+  },
+  {
+    title: 'A label does not explain mechanics',
+    rule: 'Labels, rows, menu items, tooltips, toasts and empty states name a thing or say a state. How it works, and what happens behind it, is not there. A description under a setting is one short sentence at most.',
+    right: ['Plugins changed', 'Blocked in this browser’s site settings.'],
+    wrong: ['Plugins changed. Reload to update the agent’s commands.', 'Only while the conversation is not in front. A turn you stop notifies nothing.'],
+    source: 'macOS 26 System Settings, Firefox Settings',
+  },
+  {
+    title: 'An empty state is a few words',
+    rule: 'Say what is missing and stop: a fragment without a period, with no instruction and no reason beside it. What to do next is the button next to it.',
+    right: ['No commits', 'Not a Git repository', 'No profiles'],
+    wrong: ['No profiles. Every child inherits its parent’s model and prompt.', 'The working tree matches the last commit.'],
+    source: 'Thunderbird, VS Code Source Control, GNOME Files',
+  },
+  {
+    title: 'An error says what happened',
+    rule: 'A few words name what failed. The detail behind it (the system’s own words, the request ID) waits behind a disclosure. A long clause chain is two sentences or one.',
+    right: ['The upload stalled', 'Your Cloud didn’t start. Its runner didn’t connect in 60 seconds.'],
+    wrong: ['The upload stalled: nothing arrived for a minute', 'Your Cloud did not start: its runner did not connect within 60 seconds'],
+    source: 'Firefox and GNOME Files error dialogs',
+  },
+  {
+    title: 'A confirmation is short',
+    rule: 'The title asks the question. The body says what is lost, in one or two short sentences, with the thing’s own name once.',
+    right: ['Stops Cloud tasks and resets system packages and settings. Your home files and Cloud projects stay.'],
+    wrong: ['This stops all your Cloud tasks and replaces installed system packages and system settings. Files in your home directory, including every Cloud project, remain.'],
+    source: 'Finder’s Move to Trash and Empty Trash alerts',
+  },
+]
+
+/** How a figure is written, as software writes it: compact, with the unit once. */
+const quantityRules: readonly TextRule[] = [
+  {
+    title: 'A figure against its limit',
+    rule: 'Write the two figures with a slash and the unit once when both share it. No “of”, and no sentence around the numbers. Each side keeps its own unit only when they differ.',
+    right: ['System 1.0 / 16 GB · Home 1.9 / 32 GB', '463K / 500K', '463 MB / 2.0 GB', 'Edit 2 / 5'],
+    wrong: ['System: 1.0 GB of 16 GB · Home: 1.9 GB of 32 GB', 'Showing the first 1 MB of 20 MB.', 'Edit 2 of 5'],
+    source: 'htop’s memory bar (1.2G/15.6G), macOS Activity Monitor',
+  },
+  {
+    title: 'A share or a duration',
+    rule: 'A share is a number and a percent sign. A duration is its units in short form, largest first. Neither is spelled out in words.',
+    right: ['62%', '3h 41m', 'Resets in 2h 5m'],
+    wrong: ['62 percent used', '3 hours and 41 minutes'],
+    source: 'macOS Activity Monitor, Battery menu, VS Code status bar',
+  },
+  {
+    title: 'A label and its value',
+    rule: 'A name and its figure stand side by side. A colon follows the name only in a list of facts the reader scans, as in Details, never inside a one-line summary.',
+    right: ['System 1.0 / 16 GB', 'Request ID: 4f2a'],
+    wrong: ['System: 1.0 / 16 GB'],
+    source: 'Demi’s convention for figures',
   },
 ]
 
@@ -322,7 +382,7 @@ const brevityRules: readonly TextRule[] = [
 const exampleRules: readonly TextRule[] = [
   {
     title: 'Examples and placeholders are neutral',
-    rule: 'No name, machine, server, repository or language of the people who build Demi; a placeholder shows a value anyone might type. Example data uses the gallery’s neutral persona: Alex, alex@example.com, alex-mbp, /Users/alex/Projects/shop.',
+    rule: 'No name, machine, server, repository or language of the people who build Demi. A placeholder shows a value anyone might type. Example data uses the gallery’s neutral persona: Alex, alex@example.com, alex-mbp, /Users/alex/Projects/shop.',
     right: ['name@example.com', '/Users/alex/Projects/shop'],
     wrong: ['a maintainer’s email address', 'a maintainer’s home folder'],
     source: 'Apple HIG: Writing; example.com is reserved for examples (RFC 2606)',
@@ -340,7 +400,7 @@ const exampleRules: readonly TextRule[] = [
 const longTextRules: readonly TextRule[] = [
   {
     title: 'The name gives way last',
-    rule: 'The text that tells items apart (an account’s email, a file’s name, a model’s or a conversation’s name) keeps its width. What sits beside it gives way first: tags, counts, sizes, times. A second name beside it, such as the device a project is on, takes its own width up to half of the line and is cut at that half; the first name takes the rest and is cut only when the rest is too short.',
+    rule: 'The text that tells items apart (an account’s email, a file’s name, a model’s or a conversation’s name) keeps its width. What sits beside it gives way first: tags, counts, sizes, times. A second name beside it, such as the device a project is on, takes its own width up to half of the line and is cut at that half. The first name takes the rest and is cut only when the rest is too short.',
     right: ['alex@work.example  Pro  Limit reached', 'photo-album  Alexs-MacBo…'],
     wrong: ['alex@wor…  Pro  Limit reached', 'photo-album  Alexs-M…', 'photo-a…  Alexs-MacBook-Pro.local'],
     source: 'GitHub issue list, Linear, macOS Finder list view',
@@ -361,7 +421,7 @@ const longTextRules: readonly TextRule[] = [
   },
   {
     title: 'A path keeps its file',
-    rule: 'Nothing is cut in the middle. A file shows as its name, its folder in the tooltip; a path shown whole (the address bar) gives up its folders from the left and keeps the file’s name to the last. So the part a reader needs is never the part an end cut removes.',
+    rule: 'Nothing is cut in the middle. A file shows as its name, its folder in the tooltip. A path shown whole (the address bar) gives up its folders from the left and keeps the file’s name to the last. So the part a reader needs is never the part an end cut removes.',
     right: ['FileBrowserAddressBar.vue, its tooltip packages/web-ui/src/files/FileBrowserAddressBar.vue'],
     wrong: ['packages/web-ui/src/fi…'],
     source: 'VS Code tabs and breadcrumbs, GitHub file tree, macOS path bar',
@@ -487,6 +547,13 @@ const sources: readonly Required<Source>[] = [
       note="How much a screen says, after Apple’s and Microsoft’s writing guides. A written convention, like the rest of this page: nothing checks it."
     >
       <GalleryTextRules :rules="brevityRules" />
+    </GallerySection>
+
+    <GallerySection
+      title="Figures"
+      note="How a number is written. A written convention, like the rest of this page: nothing checks it."
+    >
+      <GalleryTextRules :rules="quantityRules" />
     </GallerySection>
 
     <GallerySection

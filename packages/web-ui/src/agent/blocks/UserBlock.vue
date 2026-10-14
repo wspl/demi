@@ -239,7 +239,7 @@ useResizeObserver(bodyRef, measure)
       class="mt-1 flex max-w-[80%] select-none flex-wrap items-center justify-end gap-x-1 text-[12px] leading-5 text-fg-subtle"
     >
       <!-- A queued message stands under the queue's divider, which already says so. -->
-      <span v-if="pending === 'steer'" class="mr-1">Will be sent to the agent at its next step</span>
+      <span v-if="pending === 'steer'" class="mr-1">Sends at the agent’s next step</span>
       <Button size="xs" variant="ghost" @click.stop="emit('sendNow')">Send Now</Button>
       <Button size="xs" variant="ghost" @click.stop="emit('recall')">Recall</Button>
     </div>

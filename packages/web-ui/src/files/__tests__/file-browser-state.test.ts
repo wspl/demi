@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import { compareFileNames, createFileBrowserHistory, DEFAULT_SORT, filterEntries, nextSort, sortEntries } from '../file-browser-state'
-import { entryKind, formatBytes } from '../format'
+import { entryKind, formatByteRatio, formatBytes } from '../format'
 import type { FileBrowserEntry } from '../types'
 
 const entries: FileBrowserEntry[] = [
@@ -129,6 +129,13 @@ test('bytes and times format for a column', () => {
   expect(formatBytes(12)).toBe('12 B')
   expect(formatBytes(1536)).toBe('1.5 KB')
   expect(formatBytes(20 * 1024 * 1024)).toBe('20 MB')
+})
+
+test('a size against its limit shows the unit once when both share it', () => {
+  const GB = 1024 ** 3
+  expect(formatByteRatio(GB, 16 * GB)).toBe('1.0 / 16 GB')
+  expect(formatByteRatio(1.9 * GB, 32 * GB)).toBe('1.9 / 32 GB')
+  expect(formatByteRatio(463 * 1024 ** 2, 2 * GB)).toBe('463 MB / 2.0 GB')
 })
 
 test('the Type column reads the extension', () => {

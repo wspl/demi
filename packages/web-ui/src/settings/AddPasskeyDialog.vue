@@ -96,8 +96,7 @@ async function submit(): Promise<void> {
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">Add Passkey</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          Enter your password. Your browser then saves a passkey in its password manager, and signs you in with it from
-          then on.
+          Enter your password. Your browser saves a passkey for signing in.
         </p>
       </header>
       <form

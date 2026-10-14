@@ -37,6 +37,18 @@ export function formatBytes(size: number): string {
   return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
 }
 
+/**
+ * A figure against its limit as software shows it, `1.0 / 16 GB`: the unit once
+ * when both sides share it, each side's own otherwise (`463 MB / 2.0 GB`).
+ */
+export function formatByteRatio(current: number, limit: number): string {
+  const [currentValue, currentUnit] = formatBytes(current).split(' ')
+  const [limitValue, limitUnit] = formatBytes(limit).split(' ')
+  return currentUnit === limitUnit
+    ? `${currentValue} / ${limitValue} ${limitUnit}`
+    : `${currentValue} ${currentUnit} / ${limitValue} ${limitUnit}`
+}
+
 /** A name's extension in capitals, `TS` for `index.ts`; null for a name without one, such as `Makefile` or `.zshrc`. */
 export function fileExtension(name: string): string | null {
   const dot = name.lastIndexOf('.')

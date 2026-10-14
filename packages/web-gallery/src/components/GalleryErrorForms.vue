@@ -59,7 +59,7 @@ const providerLogin: ProviderLoginPhase = {
 }
 const pairing: PairingPhase = {
   kind: 'code',
-  error: correction('This code is unavailable. Keep the runner open and paste its latest code.'),
+  error: correction('This code is unavailable. Paste the runner’s latest code.'),
 }
 /** Back and Next move the pairing specimen as the product's do; Open puts the failure back. */
 const pairingShown = ref<PairingPhase>(pairing)

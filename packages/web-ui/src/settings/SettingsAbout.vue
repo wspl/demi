@@ -30,7 +30,7 @@ const emit = defineEmits<{
   <SettingsPage
     v-if="acknowledgementsOpen"
     title="Acknowledgements"
-    :description="acknowledgements.status === 'missing' ? undefined : 'Demi includes the open-source software below, each part under its license.'"
+    :description="acknowledgements.status === 'missing' ? undefined : 'Open-source software in Demi, under its licenses.'"
     back="About"
     @back="acknowledgementsOpen = false"
   >
@@ -50,7 +50,7 @@ const emit = defineEmits<{
           v-else
           class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
         >
-          This build includes no acknowledgements; a release build does.
+          No acknowledgements in this build
         </div>
       </AsyncRegion>
     </SettingsGroup>

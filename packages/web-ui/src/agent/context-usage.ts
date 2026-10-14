@@ -25,7 +25,7 @@ export function contextPercent(usage: ContextUsage | null): string | null {
 }
 
 /** Why Compact waits while the agent's turn runs, which the session refuses as busy. */
-export const COMPACT_AFTER_TURN = 'Compaction is available once the turn ends.'
+export const COMPACT_AFTER_TURN = 'Available after the turn ends'
 
 /**
  * Why the user may not compact at `usage`, or null when they may: below the
@@ -40,7 +40,7 @@ export function compactionRefusal(usage: ContextUsage | null, sizeRefused = fals
     return null
   }
   const from = formatPercent(usage.compactFrom, usage.window)
-  return `Compaction is available from ${from} context usage (now ${formatPercent(usage.tokens, usage.window)})`
+  return `Available from ${from} context (now ${formatPercent(usage.tokens, usage.window)})`
 }
 
 /** What a row of the context card is called (`compaction.md` § What fills the context). */

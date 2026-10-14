@@ -24,7 +24,7 @@ const emit = defineEmits<{
 <template>
   <SettingsPage
     title="Plugins"
-    description="What the agent and this app can do. A change shows here at once; an open conversation offers to reload so its agent has the commands that are on."
+    description="What the agent and this app can do."
   >
     <SettingsGroup>
       <SettingsRow
@@ -45,7 +45,7 @@ const emit = defineEmits<{
         v-if="!plugins.length"
         class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
       >
-        No plugins.
+        No plugins
       </div>
     </SettingsGroup>
   </SettingsPage>

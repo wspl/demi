@@ -89,6 +89,6 @@ async function signOut(): Promise<void> {
     @close="confirmOpen = false"
     @confirm="signOut"
   >
-    <p>Its open pages go to the sign-in page at once. Conversations stay on the server.</p>
+    <p>Its open pages return to the sign-in page. Conversations stay on the server.</p>
   </ConfirmDialog>
 </template>

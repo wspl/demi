@@ -81,7 +81,7 @@ const emit = defineEmits<{
 /** Why the name in the field is not saved; it stays in the field until it is fixed. */
 const nameProblem = ref<string | null>(null)
 function checkName(value: string): string | null {
-  return value.trim() ? null : 'Enter a name. Your messages and the sidebar show it.'
+  return value.trim() ? null : 'Enter a name.'
 }
 </script>
 
@@ -90,7 +90,7 @@ function checkName(value: string): string | null {
     <SettingsGroup title="Profile">
       <SettingsRow
         label="Avatar"
-        description="Your initials, until pictures arrive."
+        description="Your initials."
       >
         <Avatar :account-id="accountId" :name="name" :email="email" :size="32" />
       </SettingsRow>

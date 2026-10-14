@@ -118,7 +118,7 @@ async function submit(): Promise<void> {
       v-if="step === 'choose'"
       title="Choose Your Password"
       :icon="Lock"
-      message="The password you were given is only a first one. Choose your own to go on."
+      message="Choose a password of your own to continue."
     >
       <form class="flex flex-col gap-4" @submit.prevent="chooseButton?.press()">
         <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">

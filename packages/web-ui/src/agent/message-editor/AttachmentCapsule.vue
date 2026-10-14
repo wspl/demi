@@ -68,7 +68,7 @@ const failed = computed(() => props.transfer?.phase === 'failed')
 const caption = computed(() => {
   const { host, path, name } = props.capsule
   if (failed.value) {
-    return `${name} did not upload. Retry, or delete it.`
+    return `${name} did not upload. Retry or delete it.`
   }
   if (uploading.value) {
     return `Uploading ${Math.round(uploading.value.progress * 100)}% · ${name}`

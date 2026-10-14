@@ -292,20 +292,20 @@ export const useConversations = defineStore('conversations', () => {
       case 'save':
         reportError('Could Not Save Drafts', error, {
           userVisible: true,
-          message: 'Your drafts stay on this page, but this web browser could not store them.',
+          message: 'This browser couldn’t store your drafts.',
         })
         break
       case 'restore':
         reportError('Could Not Restore Drafts', error, {
           userVisible: true,
-          message: 'This web browser could not read the drafts it stored.',
+          message: 'This browser couldn’t read the stored drafts.',
         })
         break
       case 'unreadable':
         reportError('Could Not Restore a Draft', error, {
           userVisible: true,
           detail,
-          message: 'A draft stored in this web browser could not be read and was set aside. Your other drafts are restored.',
+          message: 'A stored draft couldn’t be read and was set aside. Your other drafts are restored.',
         })
         break
     }
@@ -2251,7 +2251,7 @@ export const useConversations = defineStore('conversations', () => {
         return
       }
       if (files.length !== pending.fileIds.length || files.length !== markCount(pending.text)) {
-        throw new Error('A file of this message is no longer on this page. Copy its text, attach the file again and send it anew.')
+        throw new Error('A file of this message is no longer available. Attach it again.')
       }
       const [references] = await Promise.all([
         Promise.all(files.map(async (file): Promise<ClientContent> => {

@@ -72,7 +72,7 @@ export interface BrowserTabList {
 }
 
 /** Why the strip cannot make a browser tab: the Host lacks the browser, which only the agent installs. */
-export const NO_BROWSER: SentenceText = 'No browser on this Host. Ask the agent to run demi browser install.'
+export const NO_BROWSER: SentenceText = 'No browser on this Host. Ask the agent to install one.'
 
 /** Why the plugin could not open a browser tab for a panel tab, as its data keeps it. */
 export type TabFailure = NonNullable<BrowserTabData['failure']>
@@ -114,7 +114,7 @@ const REASONS: Readonly<Record<PanelReason, SentenceText>> = {
   browser_unavailable: 'The browser couldn’t start on the device.',
   browser_lost: 'The browser on the device stopped.',
   cancelled: 'The request was canceled.',
-  outcome_unknown: 'The connection to the browser broke before it could say whether that worked.',
+  outcome_unknown: 'The connection to the browser broke. The result is unknown.',
   capture_unavailable: 'This device can’t capture the browser’s pages.',
   capture_failed: 'The device couldn’t capture the page. It’s trying again.',
   capture_stopped: 'The device couldn’t capture the page.',
@@ -126,7 +126,7 @@ const REASONS: Readonly<Record<PanelReason, SentenceText>> = {
   device_not_found: 'The device was removed from your account.',
   cloud_unavailable: 'The Cloud is not available right now.',
   cloud_resetting: 'The Cloud is resetting.',
-  cloud_capacity: 'The Cloud cannot start now: the server has no room for it.',
+  cloud_capacity: 'The server has no room to start the Cloud.',
   cloud_crash_loop: 'The Cloud stopped starting after repeated failures.',
   host_operation_failed: 'The connection to the device broke.',
   unknown_plugin_method: 'This server can’t run a browser.',

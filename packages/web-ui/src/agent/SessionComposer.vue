@@ -393,7 +393,7 @@ const replacedPreview = computed(() =>
 /** Why Compact cannot run now apart from how full the context is: the session takes it only while idle. */
 const compactUnavailable = computed(() => {
   if (shownEdit.value) {
-    return 'Compaction is available after the edit.'
+    return 'Available after the edit'
   }
   if (props.running) {
     return COMPACT_AFTER_TURN
@@ -560,7 +560,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
         modelState.kind === 'none' && (!modelLoad || modelLoad === 'ready')
       "
       key="none"
-      label="No models available."
+      label="No models available"
       :action="
         canConfigure !== false ? 'Configure Models' : undefined
       "

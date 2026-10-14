@@ -157,11 +157,11 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
   }
   if (kind === 'none') {
     return {
-      label: 'No conversation open.',
+      label: 'No conversation open',
       action: 'create',
     }
   }
-  return { label: 'No messages yet.' }
+  return { label: 'No messages' }
 }
 
 /**
