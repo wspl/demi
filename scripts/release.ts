@@ -4,9 +4,11 @@
  * and ships `workspace:^` literals verbatim (npm does not understand the
  * workspace protocol — the 0.3.0 release shipped broken tarballs this way).
  *
- * Pipeline per package: strip development export conditions → `bun pm pack`
- * (rewrites workspace ranges from the lockfile) → validate the packed
- * manifest → `bun publish <tarball>`.
+ * Pipeline per package: strip development export conditions and put the
+ * root LICENSE beside the manifest → `bun pm pack` (rewrites workspace
+ * ranges from the lockfile) → validate the packed manifest →
+ * `bun publish <tarball>`. The root LICENSE is the one copy in the
+ * repository; a package carries it only in its tarball.
  *
  * Three failure modes are guarded against:
  *  - workspace protocol leaking into the tarball (the npm-publish bug);
@@ -24,7 +26,7 @@
  * configured .npmrc. Usage: bun run release [--dry-run]
  */
 import { $ } from 'bun'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { copyFileSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { mkdtemp, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -195,11 +197,14 @@ for (const { dir, manifest } of packages) {
     publishManifest.exports = stripDevelopmentConditions(publishManifest.exports)
 
   const dest = await mkdtemp(join(tmpdir(), 'demi-release-'))
+  const licensePath = join(dir, 'LICENSE')
   writeFileSync(manifestPath, `${JSON.stringify(publishManifest, null, 2)}\n`)
+  copyFileSync(join(ROOT, 'LICENSE'), licensePath)
   try {
     await $`bun pm pack --destination ${dest}`.cwd(dir).quiet()
   } finally {
     writeFileSync(manifestPath, originalManifestText)
+    rmSync(licensePath)
   }
   const tarball = join(
     dest,
@@ -214,7 +219,8 @@ for (const { dir, manifest } of packages) {
 
   const problems = [
     ...validatePackedManifest(packed),
-    ...validatePackedExports(packed.exports, entries)
+    ...validatePackedExports(packed.exports, entries),
+    ...(entries.includes('package/LICENSE') ? [] : ['the tarball lacks LICENSE'])
   ]
   if (problems.length > 0) {
     failures.push(

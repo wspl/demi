@@ -11,11 +11,11 @@ const home = '/Users/alex'
 
 describe('the spot the caret stands at', () => {
   test('the text before the caret splits at its last slash into the directory and the query', () => {
-    expect(completionSpot('/Users/alex/Pro', 14, { home })).toEqual({ directory: '/Users/alex', query: 'Pro', start: 11 })
+    expect(completionSpot('/Users/alex/Pro', 15, { home })).toEqual({ directory: '/Users/alex', query: 'Pro', start: 12 })
     // Right after a slash: that directory, unfiltered.
-    expect(completionSpot('/Users/alex/', 11, { home })).toEqual({ directory: '/Users/alex', query: '', start: 11 })
+    expect(completionSpot('/Users/alex/', 12, { home })).toEqual({ directory: '/Users/alex', query: '', start: 12 })
     // What follows the caret plays no part.
-    expect(completionSpot('/Users/alex/Projects/demi', 13, { home })).toEqual({ directory: '/Users/alex', query: 'Pr', start: 11 })
+    expect(completionSpot('/Users/alex/Projects/demi', 14, { home })).toEqual({ directory: '/Users/alex', query: 'Pr', start: 12 })
     expect(completionSpot('/', 1, { home })).toEqual({ directory: '/', query: '', start: 1 })
   })
 
@@ -115,14 +115,14 @@ describe('a path field\'s menu', () => {
     const { source, calls, answer } = fakeSource(tree)
     const completion = usePathCompletion({ source: () => source, base: () => undefined, kind: () => 'any' })
     const text = '/Users/alex/Pro/rest'
-    completion.follow(text, 14)
+    completion.follow(text, 15)
     await answer()
     expect(completion.rows.value.map((row) => row.entry.name)).toEqual(['Projects'])
     // The list opens with its first row selected, which Tab takes; what follows the caret stays.
-    const accepted = completion.keydown('Tab', text, 14)
+    const accepted = completion.keydown('Tab', text, 15)
     expect(accepted).toEqual({
       kind: 'accept',
-      edit: { text: '/Users/alex/Projects//rest', caret: 20 },
+      edit: { text: '/Users/alex/Projects//rest', caret: 21 },
       entry: entry('Projects', true),
     })
     if (accepted.kind !== 'accept')
@@ -138,52 +138,52 @@ describe('a path field\'s menu', () => {
     const { source, answer } = fakeSource(tree)
     const completion = usePathCompletion({ source: () => source, base: () => undefined, kind: () => 'any' })
     const text = '/Users/alex/'
-    completion.follow(text, 11)
+    completion.follow(text, 12)
     await answer()
     expect(completion.rows.value.map((row) => row.entry.name)).toEqual(['Documents', 'Projects', 'notes.md'])
     expect(completion.highlighted.value).toBe(0)
-    expect(completion.keydown('ArrowDown', text, 11)).toEqual({ kind: 'handled' })
-    expect(completion.keydown('Tab', text, 11)).toMatchObject({ kind: 'accept', edit: { text: '/Users/alex/Projects/' } })
+    expect(completion.keydown('ArrowDown', text, 12)).toEqual({ kind: 'handled' })
+    expect(completion.keydown('Tab', text, 12)).toMatchObject({ kind: 'accept', edit: { text: '/Users/alex/Projects/' } })
     // Return submits what the field holds, as the form's or the bar's own key.
-    expect(completion.keydown('Enter', text, 11)).toEqual({ kind: 'pass' })
-    expect(completion.keydown('ArrowUp', text, 11)).toEqual({ kind: 'handled' })
-    expect(completion.keydown('ArrowUp', text, 11)).toEqual({ kind: 'handled' })
-    expect(completion.keydown('Tab', text, 11)).toMatchObject({ kind: 'accept', edit: { text: '/Users/alex/notes.md' } })
+    expect(completion.keydown('Enter', text, 12)).toEqual({ kind: 'pass' })
+    expect(completion.keydown('ArrowUp', text, 12)).toEqual({ kind: 'handled' })
+    expect(completion.keydown('ArrowUp', text, 12)).toEqual({ kind: 'handled' })
+    expect(completion.keydown('Tab', text, 12)).toMatchObject({ kind: 'accept', edit: { text: '/Users/alex/notes.md' } })
     // The pointer moves the selection too.
     completion.highlight(1)
-    expect(completion.keydown('Tab', text, 11)).toMatchObject({ kind: 'accept', edit: { text: '/Users/alex/Projects/' } })
+    expect(completion.keydown('Tab', text, 12)).toMatchObject({ kind: 'accept', edit: { text: '/Users/alex/Projects/' } })
     // Typing changes the rows, and the first of them is selected again.
-    completion.follow('/Users/alex/no', 13)
+    completion.follow('/Users/alex/no', 14)
     expect(completion.rows.value.map((row) => row.entry.name)).toEqual(['notes.md'])
     expect(completion.highlighted.value).toBe(0)
-    expect(completion.keydown('Tab', '/Users/alex/no', 13)).toMatchObject({ kind: 'accept', edit: { text: '/Users/alex/notes.md' } })
+    expect(completion.keydown('Tab', '/Users/alex/no', 14)).toMatchObject({ kind: 'accept', edit: { text: '/Users/alex/notes.md' } })
   })
 
   test('with no list showing, Tab is the field\'s', async () => {
     const { source, answer } = fakeSource(tree)
     const completion = usePathCompletion({ source: () => source, base: () => undefined, kind: () => 'any' })
     // A query that matches nothing shows no list.
-    completion.follow('/Users/alex/xyz', 14)
+    completion.follow('/Users/alex/xyz', 15)
     await answer()
     expect(completion.isOpen.value).toBe(false)
-    expect(completion.keydown('Tab', '/Users/alex/xyz', 14)).toEqual({ kind: 'pass' })
+    expect(completion.keydown('Tab', '/Users/alex/xyz', 15)).toEqual({ kind: 'pass' })
     // A list the user put away with Escape leaves Tab to the field.
-    completion.follow('/Users/alex/', 11)
+    completion.follow('/Users/alex/', 12)
     await answer()
-    expect(completion.keydown('Escape', '/Users/alex/', 11)).toEqual({ kind: 'handled' })
-    expect(completion.keydown('Tab', '/Users/alex/', 11)).toEqual({ kind: 'pass' })
+    expect(completion.keydown('Escape', '/Users/alex/', 12)).toEqual({ kind: 'handled' })
+    expect(completion.keydown('Tab', '/Users/alex/', 12)).toEqual({ kind: 'pass' })
   })
 
   test('Escape puts the menu away, and the next Escape is the field\'s', async () => {
     const { source, answer } = fakeSource(tree)
     const completion = usePathCompletion({ source: () => source, base: () => undefined, kind: () => 'any' })
-    completion.follow('/Users/alex/', 11)
+    completion.follow('/Users/alex/', 12)
     await answer()
-    expect(completion.keydown('Escape', '/Users/alex/', 11)).toEqual({ kind: 'handled' })
+    expect(completion.keydown('Escape', '/Users/alex/', 12)).toEqual({ kind: 'handled' })
     expect(completion.isOpen.value).toBe(false)
-    expect(completion.keydown('Escape', '/Users/alex/', 11)).toEqual({ kind: 'pass' })
+    expect(completion.keydown('Escape', '/Users/alex/', 12)).toEqual({ kind: 'pass' })
     // Typing on brings it back.
-    completion.follow('/Users/alex/D', 12)
+    completion.follow('/Users/alex/D', 13)
     await answer()
     expect(completion.isOpen.value).toBe(true)
   })
@@ -191,15 +191,15 @@ describe('a path field\'s menu', () => {
   test('a directory listed while the Host confirms it asks nothing again, and a failed one shows nothing', async () => {
     const { source, calls, answer } = fakeSource(tree)
     const completion = usePathCompletion({ source: () => source, base: () => undefined, kind: () => 'any' })
-    completion.follow('/Users/alex/', 11)
+    completion.follow('/Users/alex/', 12)
     // The caret moves on before the listing lands.
-    completion.follow('/Users/alex/Projects/', 20)
+    completion.follow('/Users/alex/Projects/', 21)
     await answer()
     // Back and forth between listed directories asks for nothing again.
-    completion.follow('/Users/alex/', 11)
+    completion.follow('/Users/alex/', 12)
     await answer()
-    completion.follow('/Users/alex/Projects/d', 21)
-    completion.follow('/Users/alex/Pr', 13)
+    completion.follow('/Users/alex/Projects/d', 22)
+    completion.follow('/Users/alex/Pr', 14)
     await answer()
     expect(calls.map((call) => call.path)).toEqual(['/Users/alex/Projects', '/Users/alex'])
     expect(completion.rows.value.map((row) => row.entry.name)).toEqual(['Projects'])

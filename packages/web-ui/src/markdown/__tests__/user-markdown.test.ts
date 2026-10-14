@@ -38,7 +38,7 @@ test('text a conversation about code types stays as typed, both ways', () => {
     '    indented, and\ttabbed',
     'one\ntwo\n\n\nthree after two blank lines',
     'www.example.com and someone@example.com stay text',
-    'C:\\Users\\zan\\a.txt',
+    'C:\\Users\\alex\\a.txt',
     '',
   ]) {
     expectRoundTrip(markdown)

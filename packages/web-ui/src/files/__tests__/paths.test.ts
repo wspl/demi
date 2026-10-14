@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { directoryParts, homePath, isValidEntryName, joinPath, normalizePath, parentPath, pathSegments, relativePath, typedPath } from '../paths'
 
 test('normalizePath collapses slashes and resolves dot segments from the root', () => {
-  expect(normalizePath('/Users//zan/./Projects/')).toBe('/Users/alex/Projects')
+  expect(normalizePath('/Users//alex/./Projects/')).toBe('/Users/alex/Projects')
   expect(normalizePath('/Users/alex/../build')).toBe('/Users/build')
   expect(normalizePath('/../..')).toBe('/')
   expect(normalizePath('relative/dir')).toBe('/relative/dir')
@@ -21,7 +21,7 @@ test('pathSegments lists the root and every ancestor', () => {
   expect(pathSegments('/Users/alex')).toEqual([
     { name: '/', path: '/' },
     { name: 'Users', path: '/Users' },
-    { name: 'zan', path: '/Users/alex' },
+    { name: 'alex', path: '/Users/alex' },
   ])
   expect(pathSegments('/')).toEqual([{ name: '/', path: '/' }])
 })
@@ -43,7 +43,7 @@ test('relativePath reads a path from a root, and leaves one outside it whole', (
 })
 
 test('homePath reads a path under the home from ~, and leaves one outside it or without a home whole', () => {
-  expect(homePath('/Users/alex/code/shop-app', '/Users/alex')).toBe('~/code/shop-app')
+  expect(homePath('/Users/alex/code/sample-app', '/Users/alex')).toBe('~/code/sample-app')
   expect(homePath('/Users/alex', '/Users/alex/')).toBe('~')
   expect(homePath('/Users/alex2/notes', '/Users/alex')).toBe('/Users/alex2/notes')
   expect(homePath('/srv/app', null)).toBe('/srv/app')

@@ -42,9 +42,9 @@ test('a filter is a search field with autofill off, and a plain field is left as
 })
 
 test('a form that asks only for a password carries the account’s email as a user name no one sees or reaches', () => {
-  const field = hiddenUsername('zan@example.com')
+  const field = hiddenUsername('alex@example.com')
   expect(field.autocomplete).toBe('username')
-  expect(field.value).toBe('zan@example.com')
+  expect(field.value).toBe('alex@example.com')
   expect(field.tabindex).toBe(-1)
   expect(field.readonly).toBe(true)
   expect(field['aria-hidden']).toBe(true)

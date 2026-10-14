@@ -3,6 +3,7 @@ name = "demi-backend-permissions"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 
 [lib]
 # No tests of its own: the backend's permission scenarios cover the check,
