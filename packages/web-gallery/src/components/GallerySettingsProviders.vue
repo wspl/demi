@@ -8,7 +8,6 @@ import ProviderLoginDialog, {
 } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
 import SettingsProvidersPage from '@demicodes/web-ui/settings/SettingsProvidersPage.vue'
 import {
-  type SettingsCompatibleDraft,
   type SettingsModelDraft,
   type SettingsQuotaRefresh,
   type SettingsProviderEntry,
@@ -86,18 +85,27 @@ function addProvider(vendor: SettingsVendor) {
   }))
 }
 
-/** A compatible API comes with its endpoint, and lists no model until one is added. */
-function addCompatible(draft: SettingsCompatibleDraft) {
+/**
+ * As the backend creates a compatible API: at once, as Anthropic Messages, with
+ * no endpoint, key or model, named *Compatible API* or the first free *(2)*,
+ * *(3)*; its page sets the rest.
+ */
+function addCompatible() {
+  const taken = (name: string) => s.value.providers.some((entry) => entry.name === name)
+  let name = 'Compatible API'
+  for (let number = 2; taken(name); number += 1) {
+    name = `Compatible API (${number})`
+  }
   join(provider({
     id: `p-${Date.now()}`,
-    name: draft.label,
+    name,
     kind: 'api_key',
-    family: 'custom',
+    family: 'anthropic',
     vendorId: null,
     compatible: true,
-    wireApi: draft.wireApi,
-    baseUrl: draft.baseUrl,
-    keyConfigured: draft.apiKey !== '',
+    wireApi: 'anthropic-messages',
+    baseUrl: '',
+    keyConfigured: false,
     configured: true,
     modelSource: 'manual',
   }))
@@ -266,33 +274,27 @@ async function removeAccount(p: SettingsProviderEntry, id: string) {
   }
 }
 
+/**
+ * As the product's store saves a model of the list: the edited one in its
+ * place, a new one, whose id the page already freed, at the end. An entry that
+ * follows its vendor's list starts its own from it, the vendor's copy of the
+ * model giving way to the one added.
+ */
 async function saveModel(
   p: SettingsProviderEntry,
   draft: SettingsModelDraft,
   original: SettingsProviderModel | null,
 ) {
   const mock = p as MockProvider
-  if (original) {
-    Object.assign(original, {
-      name: draft.name,
-      contextWindow: draft.contextWindow,
-      outputLimit: draft.outputLimit,
-      efforts: draft.efforts,
-      extensions: draft.extensions,
-      fastTier: draft.fastTier,
-    })
+  if (original && mock.models.some((m) => m.id === original.id)) {
+    await slow()
+    mock.models = mock.models.map((m) => (m.id === original.id ? { ...m, ...draft, enabled: m.enabled } : m))
   } else {
-    if (mock.models.some((m) => m.id === draft.id && mock.modelSource === 'manual')) {
-      throw new Error(`The model ${draft.id} is already in the list.`)
+    if (mock.modelSource === 'catalog') {
+      mock.models = mock.models.filter((m) => m.id !== draft.id)
     }
-    // An entry that follows its vendor's list starts a list of its own from it.
     mock.modelSource = 'manual'
-    mock.models = mock.models.filter((m) => m.id !== draft.id)
-    mock.models.push({
-      ...draft,
-      tools: true,
-      enabled: true,
-    })
+    mock.models = [...mock.models, { ...draft, tools: true, enabled: original?.enabled ?? true }]
   }
   settle(p)
 }

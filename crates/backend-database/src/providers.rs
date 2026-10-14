@@ -168,12 +168,31 @@ impl ControlService {
         .await
     }
 
-    /// Replaces the entry's label or sealed configuration, and answers the
-    /// entry as it now is; `None` for an entry that no longer exists.
+    /// Every API-key entry of the instance, whoever owns it, for the vault's
+    /// migration of their sealed configurations.
+    pub async fn api_key_providers(&self) -> Result<Vec<ProviderRow>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare_cached(&format!(
+                "SELECT {PROVIDER_COLUMNS} FROM providers WHERE credential_kind = 'api_key' ORDER BY created_at, rowid"
+            ))?;
+            let mut rows = statement.query([])?;
+            let mut providers = Vec::new();
+            while let Some(row) = rows.next()? {
+                providers.push(provider_row(row)?);
+            }
+            Ok(providers)
+        })
+        .await
+    }
+
+    /// Replaces the entry's label, family or sealed configuration, and
+    /// answers the entry as it now is; `None` for an entry that no longer
+    /// exists.
     pub async fn update_provider(
         &self,
         id: ProviderId,
         label: Option<String>,
+        family: Option<String>,
         config: Option<Vec<u8>>,
     ) -> Result<Option<ProviderRow>, StorageError> {
         self.call(move |connection, _| {
@@ -182,6 +201,12 @@ impl ControlService {
                 transaction.execute(
                     "UPDATE providers SET label = ?1 WHERE id = ?2",
                     params![label, id.as_str()],
+                )?;
+            }
+            if let Some(family) = family {
+                transaction.execute(
+                    "UPDATE providers SET provider_type = ?1 WHERE id = ?2",
+                    params![family, id.as_str()],
                 )?;
             }
             if let Some(config) = config {

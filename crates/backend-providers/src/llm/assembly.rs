@@ -256,7 +256,7 @@ impl ProviderAssembly {
     }
 
     /// The entry as the web app sees it, with the endpoint its requests go
-    /// to: its own, else its family's default.
+    /// to: its own, else, for a vendor entry, its family's default.
     pub fn provider_dto(&self, entry: &ProviderEntry) -> ProviderDto {
         let default = self
             .families
@@ -292,9 +292,16 @@ impl ProviderAssembly {
     ) -> Result<FamilyArgs, AssemblyError> {
         let credential = match &entry.credential {
             EntryCredential::ApiKey(config) => {
-                let api_key = config.api_key.clone().ok_or(AssemblyError::Incomplete)?;
+                // A provider is built from a vendor entry's key and a
+                // compatible entry's endpoint; what the entry lacks is its
+                // availability's to say.
+                let lacks = config.is_compatible() && config.base_url.is_none()
+                    || !config.is_compatible() && config.api_key.is_none();
+                if lacks {
+                    return Err(AssemblyError::Incomplete);
+                }
                 FamilyCredential::ApiKey(ApiKeyArgs {
-                    api_key,
+                    api_key: config.api_key.clone(),
                     base_url: config
                         .base_url
                         .as_ref()

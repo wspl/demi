@@ -473,7 +473,7 @@ pub(crate) async fn anthropic_at(
     // A compatible entry lists only the models it is given: Opus 4.8, with
     // the facts Anthropic's own list states.
     let body = json!({
-        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "source": "compatible", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
         "baseUrl": vendor.url(&format!("{prefix}/v1")),
         "models": [{
             "id": "claude-opus-4-8", "displayName": "Claude Opus 4.8", "contextWindow": 1_000_000,
@@ -807,7 +807,7 @@ async fn a_conversation_starts_with_its_settings_from_one_request_and_a_refused_
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let body = json!({
-        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "source": "compatible", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
         "baseUrl": vendor.url("/v1"), "models": [leveled("m", Some("priority"))]
     });
     let provider = entry(&backend, &master, body).await;
@@ -1076,7 +1076,7 @@ async fn a_request_refused_for_its_size_fails_the_turn_and_compact_at_any_share_
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let body = json!({
-        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "source": "compatible", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
         "baseUrl": vendor.url("/v1"),
         "models": [{
             "id": "model-a", "displayName": "A", "contextWindow": 200000, "outputLimit": 8000,
@@ -1169,7 +1169,7 @@ async fn a_users_context_limit_on_a_model_applies_to_each_of_their_conversations
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let body = json!({
-        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "source": "compatible", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
         "baseUrl": vendor.url("/v1"),
         "models": [large_window("model-a"), large_window("model-b")]
     });
@@ -1416,7 +1416,7 @@ impl ProviderFamily for Keyed {
             return Err(FamilyError::WrongCredential);
         };
         Ok(Arc::new(KeyedProvider {
-            key: key.api_key.expose().to_owned(),
+            key: key.api_key.map(|key| key.expose().to_owned()).unwrap_or_default(),
             runs: self.0.clone(),
         }))
     }
@@ -1660,7 +1660,7 @@ async fn an_edit_of_the_entry_reaches_the_next_request_and_a_deleted_entry_refus
         .with_families(demi_backend::families::builtin().with("keyed", Keyed(runs.clone())));
     let (backend, master) = harness.start_set_up().await;
     let body = json!({
-        "source": "custom", "providerType": "keyed", "label": "Keyed", "apiKey": "old-key",
+        "source": "family", "providerType": "keyed", "label": "Keyed", "apiKey": "old-key",
         "models": [configured(4_000)]
     });
     let provider = entry(&backend, &master, body).await;
@@ -2440,7 +2440,7 @@ async fn a_change_of_the_model_settings_reaches_every_page_and_the_next_request(
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let body = json!({
-        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "source": "compatible", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
         "baseUrl": vendor.url("/v1"), "models": [leveled("m", Some("priority")), leveled("n", None)]
     });
     let provider = entry(&backend, &master, body).await;
@@ -2595,7 +2595,7 @@ async fn a_change_that_names_no_effort_takes_the_first_effort_the_model_lists() 
     let (backend, master) = harness.start_set_up().await;
     // Configured models can turn thinking off and list `low` first.
     let body = json!({
-        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "source": "compatible", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
         "baseUrl": vendor.url("/v1"), "models": [leveled("m", None), leveled("n", None)]
     });
     let provider = entry(&backend, &master, body).await;

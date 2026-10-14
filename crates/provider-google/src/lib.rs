@@ -2,21 +2,20 @@
 //! crates): a `google` entry authenticated by an API key, speaking Gemini's
 //! native `generateContent` API rather than its OpenAI-compatible one, so a
 //! video is a real inline part and thought summaries, thought signatures and
-//! thinking token counts arrive as fields of their own. It has a built-in
-//! model directory and reads its failure records by the standard reading.
+//! thinking token counts arrive as fields of their own. It reads its
+//! failure records by the standard reading.
 
-mod models;
 mod request;
 mod stream;
 
 use std::sync::Arc;
 
 use demi_provider_common::{
-    Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
+    Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, read_http_failure,
 };
 use demi_shared_types::{
-    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
+    AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts,
     RuntimeState, Timestamp,
 };
 use futures_util::{
@@ -33,7 +32,8 @@ const SIGNATURE_TAG: &str = "google:";
 /// The configuration of a `google` entry, as the backend decoded it.
 #[derive(Debug, Clone)]
 pub struct GoogleConfig {
-    pub api_key: Secret,
+    /// Sent when set, as every API-key family sends its key.
+    pub api_key: Option<Secret>,
     /// The API's base with its version, such as
     /// `https://generativelanguage.googleapis.com/v1beta`; `None` for that
     /// default.
@@ -52,7 +52,7 @@ pub struct GoogleProvider {
 
 /// What the provider and all its runtimes share.
 struct Shared {
-    api_key: HeaderValue,
+    api_key: Option<HeaderValue>,
     base_url: Url,
     clock: Arc<dyn Clock>,
 }
@@ -79,7 +79,7 @@ impl GoogleProvider {
         });
         Self {
             shared: Arc::new(Shared {
-                api_key: config.api_key.header_value(),
+                api_key: config.api_key.as_ref().map(Secret::header_value),
                 base_url,
                 clock,
             }),
@@ -92,8 +92,8 @@ impl Provider for GoogleProvider {
         Capabilities::default()
     }
 
-    /// An entry always holds a key; whether the vendor accepts it shows on
-    /// the first request.
+    /// Whether the vendor accepts the entry's key shows on the first
+    /// request.
     fn auth_status(&self) -> BoxFuture<'_, AuthState> {
         Box::pin(async {
             AuthState::Authenticated {
@@ -108,9 +108,6 @@ impl Provider for GoogleProvider {
         }
     }
 
-    fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>> {
-        Box::pin(async { Ok(models::directory()) })
-    }
 
     fn read_failure(
         &self,

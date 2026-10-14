@@ -81,33 +81,34 @@ fn within(context_window: u32) -> impl FnOnce(&Option<u32>, &()) -> garde::Resul
     }
 }
 
-/// An entry's complete manual model list: at most 1000 models with
-/// distinct ids. An empty list leaves the entry incomplete until a model is
+/// An entry's complete manual model list: at most 1000 models. Their ids
+/// are distinct in a list that is kept ([`ConfiguredModels::repeated_id`]):
+/// a request that repeats one is refused as `duplicate_model`, not as an
+/// invalid body. An empty list leaves the entry incomplete until a model is
 /// added (`models.md` § A provider is in the list from the start).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(transparent)]
 #[garde(transparent)]
-pub struct ConfiguredModels(
-    #[garde(length(max = 1000), dive, custom(distinct_ids))] pub Vec<ConfiguredModel>,
-);
+pub struct ConfiguredModels(#[garde(length(max = 1000), dive)] pub Vec<ConfiguredModel>);
 
-fn distinct_ids(models: &[ConfiguredModel], (): &()) -> garde::Result {
-    let mut seen = std::collections::HashSet::new();
-    match models.iter().find(|model| !seen.insert(model.id.as_str())) {
-        Some(repeated) => Err(garde::Error::new(format!(
-            "the model id {:?} appears twice",
-            repeated.id.as_str()
-        ))),
-        None => Ok(()),
+impl ConfiguredModels {
+    /// The first id that a model of the list shares with an earlier one.
+    pub fn repeated_id(&self) -> Option<&str> {
+        let mut seen = std::collections::HashSet::new();
+        self.0
+            .iter()
+            .map(|model| model.id.as_str())
+            .find(|id| !seen.insert(*id))
     }
 }
 
 /// `POST /providers`: a vendor entry from the vendor list, whose family,
-/// wire and endpoint the vendor supplies; or a custom entry that names its
-/// family itself, a compatible entry when it gives an endpoint and a vendor
-/// entry of the family's own vendor when it does not. Everything but the kind may come later: the entry is
-/// incomplete until it has what it needs, and its label is the vendor's or
-/// the family's name without one.
+/// wire and endpoint the vendor supplies; a vendor entry of a family's own
+/// vendor, such as Anthropic's; or a compatible entry, Anthropic Messages
+/// unless it names another protocol. Everything but the kind may come later:
+/// the entry is incomplete until it has what it needs, and its label is the
+/// vendor's or the family's name, or *Compatible API*, with the first free
+/// *(2)*, *(3)* when the scope has an entry of that name.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(
     tag = "source",
@@ -133,7 +134,7 @@ pub enum CreateProvider {
         #[garde(dive)]
         models: Option<ConfiguredModels>,
     },
-    Custom {
+    Family {
         #[garde(length(min = 1))]
         provider_type: String,
         /// For the `openai` family only; its default is Responses.
@@ -150,6 +151,31 @@ pub enum CreateProvider {
         #[garde(length(min = 1))]
         api_key: Option<String>,
         #[serde(default, with = "unwrap_or_skip")]
+        #[schemars(with = "ConfiguredModels")]
+        #[garde(dive)]
+        models: Option<ConfiguredModels>,
+    },
+    Compatible {
+        /// The protocol's family; `anthropic` without it.
+        #[serde(default, with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
+        #[garde(length(min = 1))]
+        provider_type: Option<String>,
+        /// For the `openai` family only; its default is Responses.
+        #[serde(default, with = "unwrap_or_skip")]
+        #[schemars(with = "WireApi")]
+        #[garde(skip)]
+        wire_api: Option<WireApi>,
+        #[serde(default, with = "unwrap_or_skip")]
+        #[schemars(with = "Trimmed")]
+        #[garde(length(chars, min = 1, max = LABEL_MAX))]
+        label: Option<Trimmed>,
+        /// Optional for good: a server of the user's own may take none.
+        #[serde(default, with = "unwrap_or_skip")]
+        #[schemars(with = "String")]
+        #[garde(length(min = 1))]
+        api_key: Option<String>,
+        #[serde(default, with = "unwrap_or_skip")]
         #[schemars(with = "EndpointUrl")]
         #[garde(skip)]
         base_url: Option<EndpointUrl>,
@@ -161,9 +187,11 @@ pub enum CreateProvider {
 }
 
 /// `PATCH /providers/:id`: a new label for any entry; for an API-key entry
-/// also a new key and model list, where `null` returns to the vendor's
-/// catalog; and, for a compatible entry only, a new endpoint, which is never
-/// removed.
+/// also a new key, where `null` removes it, and a new model list, where
+/// `null` returns to the vendor's catalog; and, for a compatible entry only,
+/// a new endpoint, where `null` removes it, and a new protocol: a
+/// `providerType` with the `wireApi` it speaks, or a `wireApi` alone for the
+/// entry's own family (`providers.md` § Endpoints).
 #[derive(Debug, Default, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ProviderPatch {
@@ -171,14 +199,24 @@ pub struct ProviderPatch {
     #[schemars(with = "Trimmed")]
     #[garde(length(chars, min = 1, max = LABEL_MAX))]
     pub label: Option<Trimmed>,
-    #[serde(default, with = "unwrap_or_skip")]
-    #[schemars(with = "String")]
-    #[garde(length(min = 1))]
-    pub api_key: Option<String>,
+    #[serde(default, with = "double_option")]
+    #[schemars(with = "Option<String>")]
+    #[garde(inner(inner(length(min = 1))))]
+    pub api_key: Option<Option<String>>,
     #[serde(default, with = "double_option")]
     #[schemars(with = "Option<EndpointUrl>")]
     #[garde(skip)]
     pub base_url: Option<Option<EndpointUrl>>,
+    /// The compatible entry's new family; its wire is then `wire_api`, or
+    /// the family's default without it.
+    #[serde(default, with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    #[garde(length(min = 1))]
+    pub provider_type: Option<String>,
+    #[serde(default, with = "unwrap_or_skip")]
+    #[schemars(with = "WireApi")]
+    #[garde(skip)]
+    pub wire_api: Option<WireApi>,
     #[serde(default, with = "double_option")]
     #[schemars(with = "Option<ConfiguredModels>")]
     #[garde(dive)]
@@ -199,8 +237,8 @@ pub struct ProviderDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<WireApi>")]
     pub wire_api: Option<WireApi>,
-    /// The vendor an entry was added from; null for a custom endpoint and a
-    /// subscription.
+    /// The vendor of a vendor entry, its family's own included; null for a
+    /// compatible entry and a subscription.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub vendor_id: Option<String>,
@@ -209,7 +247,8 @@ pub struct ProviderDto {
     /// entry is a vendor entry; false for a subscription.
     pub compatible: bool,
     /// The base URL an API-key entry's requests go to, whichever kind it
-    /// is: the configured one, else the family's default; null for a
+    /// is: the configured one, else, for a vendor entry, the family's
+    /// default; null for a compatible entry not given one yet and for a
     /// subscription.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<EndpointUrl>")]
@@ -574,7 +613,7 @@ pub struct CatalogProvider {
     pub cli_package: Option<String>,
     pub models: Vec<CatalogModel>,
     /// When the source was last downloaded; the Unix epoch for a configured
-    /// or built-in list, and for a catalog no refresh has filled.
+    /// list, and for a catalog no refresh has filled.
     pub source_fetched_at: Timestamp,
     /// Whether this is a copy kept after a failed refresh.
     pub stale: bool,
@@ -632,8 +671,10 @@ pub enum UnavailableReason {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub enum SetupPart {
-    /// An API-key entry's key.
+    /// A vendor entry's key.
     ApiKey,
+    /// A compatible entry's endpoint.
+    Endpoint,
     /// A model, on an entry whose configured list is empty.
     Models,
     /// A subscription entry's account.
@@ -805,19 +846,13 @@ mod tests {
     }
 
     #[test]
-    fn a_model_list_holds_up_to_a_thousand_models_with_distinct_ids() {
+    fn a_model_list_holds_up_to_a_thousand_models() {
         let list = |models: Vec<serde_json::Value>| {
-            serde_json::from_value::<ConfiguredModels>(json!(models))
-                .unwrap()
-                .validate()
+            serde_json::from_value::<ConfiguredModels>(json!(models)).unwrap()
         };
-        assert!(list(vec![configured()]).is_ok());
+        assert!(list(vec![configured()]).validate().is_ok());
         // An empty list is an entry waiting for its first model.
-        assert!(list(Vec::new()).is_ok());
-        let twice = list(vec![configured(), configured()])
-            .unwrap_err()
-            .to_string();
-        assert!(twice.contains("appears twice"), "{twice}");
+        assert!(list(Vec::new()).validate().is_ok());
     }
 
     #[test]
@@ -840,17 +875,30 @@ mod tests {
             json!({ "vendorId": "deepseek", "label": "x", "apiKey": "k" }),
             json!({ "source": "vendor", "vendorId": "deepseek", "apiKey": null }),
             json!({ "source": "vendor", "vendorId": "deepseek", "label": "x", "apiKey": "k", "wireApi": "responses" }),
-            json!({ "source": "custom", "providerType": "openai", "label": "x", "apiKey": "k", "baseUrl": null }),
-            json!({ "source": "custom", "providerType": "openai", "label": "x", "apiKey": "k", "baseUrl": "gw.example" }),
+            json!({ "source": "compatible", "label": "x", "apiKey": "k", "baseUrl": null }),
+            json!({ "source": "compatible", "label": "x", "apiKey": "k", "baseUrl": "gw.example" }),
+            json!({ "source": "family", "providerType": "openai", "baseUrl": "https://gw.example/v1" }),
         ] {
             assert!(
                 serde_json::from_value::<CreateProvider>(refused.clone()).is_err(),
                 "{refused}"
             );
         }
-        let patch: ProviderPatch =
-            serde_json::from_value(json!({ "baseUrl": null, "label": "Work" })).unwrap();
-        assert_eq!((patch.base_url, patch.models.is_none()), (Some(None), true));
+        // A compatible entry may be created with nothing but its kind.
+        let compatible: CreateProvider =
+            serde_json::from_value(json!({ "source": "compatible" })).unwrap();
+        assert!(matches!(
+            compatible,
+            CreateProvider::Compatible { provider_type: None, base_url: None, api_key: None, .. }
+        ));
+        let patch: ProviderPatch = serde_json::from_value(
+            json!({ "baseUrl": null, "apiKey": null, "label": "Work" }),
+        )
+        .unwrap();
+        assert_eq!(
+            (patch.base_url, patch.api_key, patch.models.is_none()),
+            (Some(None), Some(None), true)
+        );
         assert_eq!(patch.label.unwrap().as_str(), "Work");
     }
 }

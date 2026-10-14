@@ -34,7 +34,7 @@ pub(crate) fn provider_with(
     policy: VendorPolicy,
 ) -> AnthropicProvider {
     let config = AnthropicConfig {
-        api_key: Secret::try_from("sk-ant-test".to_owned()).unwrap(),
+        api_key: Some(Secret::try_from("sk-ant-test".to_owned()).unwrap()),
         base_url: Some(vendor.url(base).parse().unwrap()),
         policy,
     };

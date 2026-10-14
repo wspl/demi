@@ -89,7 +89,8 @@ pub enum FamilyCredential {
 
 /// An API-key entry's settings, read only from the entry.
 pub struct ApiKeyArgs {
-    pub api_key: Secret,
+    /// None for a compatible entry without one, whose requests carry none.
+    pub api_key: Option<Secret>,
     /// The vendor's API base; the family's default without it.
     pub base_url: Option<Url>,
     pub wire_api: Option<WireApi>,
@@ -122,7 +123,7 @@ pub enum FamilyError {
 }
 
 /// The name a family's entry takes when the user gives none, such as
-/// `OpenAI` for a custom endpoint of the `openai` family; a family without
+/// `OpenAI` for the `openai` family's own vendor entry; a family without
 /// one of its own is named by its id.
 pub fn family_name(family: &str) -> &str {
     match family {

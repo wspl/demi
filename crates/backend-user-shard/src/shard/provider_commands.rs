@@ -50,7 +50,7 @@ const LIST_SUMMARY: &str = "List each provider entry by its name in Settings, it
 
 const SHOW_SUMMARY: &str = "Show every setting of one entry: name, kind, vendor or family and wire, endpoint, whether a key is saved (never the key), accounts by label, state, and each model with every field. A read.";
 
-const ADD_SUMMARY: &str = "Add a provider entry: --vendor, a models.dev vendor, or --family with --wire and --base-url for a custom endpoint. Without --name it is named after its vendor or family. Without a key it joins the list incomplete until the user adds the key in Settings > Providers. Needs the user's permission.";
+const ADD_SUMMARY: &str = "Add a provider entry: --vendor, a models.dev vendor; --family alone, the family's own vendor; or --family with --wire and --base-url, a compatible API. Without --name it is named after its vendor or family, or Compatible API, with (2), (3) when that name is taken. A vendor's entry without a key joins the list incomplete until the user adds the key in Settings > Providers; a compatible API's key is optional. Needs the user's permission.";
 
 const EDIT_SUMMARY: &str = "Change an entry's name, its endpoint, or its key with --api-key-stdin. Needs the user's permission.";
 
@@ -68,7 +68,7 @@ const MODEL_REMOVE_SUMMARY: &str = "Remove a model from an entry's list. Needs t
 
 const ALL: &str = "Also list the entries and models the user turned off in Settings > Providers.";
 const VENDOR: &str = "A models.dev vendor's id, such as google, as Settings > Providers offers it.";
-const FAMILY: &str = "The family of a custom endpoint: openai, anthropic or google.";
+const FAMILY: &str = "The family whose protocol the entry speaks: openai, anthropic or google. With --base-url the entry is a compatible API; without, the family's own vendor's.";
 const WIRE: &str = "The wire of an openai endpoint, responses or chat-completions; responses without it.";
 const ENTRY_ARG: &str = "The entry's name or id, as `demi providers list` shows them.";
 const NAME: &str = "The entry's name, 1 to 80 characters, as Settings shows it.";
@@ -229,12 +229,13 @@ struct ShownEntry {
     id: String,
     name: String,
     kind: CredentialKind,
-    /// The models.dev vendor it was added from; null for a custom endpoint
-    /// and a subscription.
+    /// The vendor of a vendor entry; null for a compatible entry and a
+    /// subscription.
     vendor: Option<String>,
     family: String,
     wire: Option<WireApi>,
-    /// The configured endpoint; null for the family's default.
+    /// The configured endpoint; null for a vendor entry that uses its
+    /// vendor's, and for a compatible entry not given one yet.
     endpoint: Option<String>,
     /// Whether a key is saved; null for a subscription.
     key_saved: Option<bool>,
@@ -255,7 +256,7 @@ enum ModelSource {
     List,
     /// Its vendor's list on models.dev.
     Vendor,
-    /// The provider's own directory.
+    /// The provider's own directory: a subscription's.
     Provider,
 }
 
@@ -496,17 +497,26 @@ async fn add(shard: Rc<Shard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8,
                 models: None,
             }
         }
-        (None, Some(provider_type)) => CreateProvider::Custom {
-            provider_type,
+        // An endpoint of the user's makes a compatible entry; without one
+        // the entry is the family's own vendor's.
+        (None, Some(provider_type)) if base_url.is_some() => CreateProvider::Compatible {
+            provider_type: Some(provider_type),
             wire_api,
             label,
             api_key,
             base_url,
             models: None,
         },
+        (None, Some(provider_type)) => CreateProvider::Family {
+            provider_type,
+            wire_api,
+            label,
+            api_key,
+            models: None,
+        },
         _ => {
             return Err(failed(
-                "give --vendor, a models.dev vendor, or --family for a custom endpoint",
+                "give --vendor, a models.dev vendor, or --family, with --base-url for a compatible API",
             ));
         }
     };
@@ -528,9 +538,9 @@ async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u
     let user = user(&shard).await?;
     let patch = ProviderPatch {
         label: args.name.map(Trimmed::from),
-        api_key: key(args.api_key_stdin, args.api_key)?,
+        api_key: key(args.api_key_stdin, args.api_key)?.map(Some),
         base_url: args.base_url.map(endpoint).transpose()?.map(Some),
-        models: None,
+        ..ProviderPatch::default()
     };
     if patch.label.is_none() && patch.api_key.is_none() && patch.base_url.is_none() {
         return Err(failed(
@@ -620,10 +630,19 @@ async fn add_model(
         ),
         None => None,
     };
-    let model = new_model(found.as_ref(), args.fields)?;
+    let mut model = new_model(found.as_ref(), args.fields)?;
     if started {
         // The vendor's own copy of the model gives way to the one added.
         models.retain(|listed| listed.id != model.id);
+    }
+    // A taken id takes the first free suffix (`models.md` § Adding a model
+    // from models.dev).
+    if models.iter().any(|listed| listed.id == model.id) {
+        let id = (2..)
+            .map(|number| format!("{}-{number}", model.id.as_str()))
+            .find(|id| models.iter().all(|listed| listed.id.as_str() != id))
+            .expect("a list holds finitely many models");
+        model.id = Trimmed::from(id);
     }
     models.push(model.clone());
     let count = models.len();
@@ -969,14 +988,13 @@ async fn shown(
         _ => Vec::new(),
     };
     let (config, models_from) = match &entry.credential {
+        // A compatible entry lists only its own models, none at first.
         EntryCredential::ApiKey(config) => (
             Some(config),
-            if config.models.is_some() {
+            if config.models.is_some() || config.is_compatible() {
                 ModelSource::List
-            } else if config.vendor_id.is_some() {
-                ModelSource::Vendor
             } else {
-                ModelSource::Provider
+                ModelSource::Vendor
             },
         ),
         EntryCredential::Subscription { .. } => (None, ModelSource::Provider),
@@ -1098,6 +1116,7 @@ fn state(availability: &Availability) -> String {
                 .iter()
                 .map(|part| match part {
                     SetupPart::ApiKey => "an API key",
+                    SetupPart::Endpoint => "an endpoint",
                     SetupPart::Models => "a model",
                     SetupPart::Account => "a signed-in account",
                 })
@@ -1239,10 +1258,16 @@ impl ShownEntry {
         if let Some(wire) = self.wire {
             fields.push(("wire", wire.to_string()));
         }
+        // A compatible entry names no vendor, and has no endpoint until the
+        // user gives one.
         if self.kind == CredentialKind::ApiKey {
+            let none = match self.vendor {
+                Some(_) => "the vendor's",
+                None => "not set",
+            };
             fields.push((
                 "endpoint",
-                self.endpoint.clone().unwrap_or_else(|| "the family's default".to_owned()),
+                self.endpoint.clone().unwrap_or_else(|| none.to_owned()),
             ));
         }
         if let Some(saved) = self.key_saved {

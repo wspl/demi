@@ -327,6 +327,8 @@ impl Services {
             .map_err(ServicesError::Http)?;
         let sync = SyncRegistry::default();
         let vault = Vault::new(control.clone(), keys.vault, settings.mode, sync.clone());
+        // Before anything reads an entry's configuration.
+        vault.migrate_configs().await?;
         let models_dev = ModelsDevClient::new(
             http.clone(),
             providers.models_dev_url,

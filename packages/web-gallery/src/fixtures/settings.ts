@@ -677,9 +677,10 @@ export function mockProviders(): MockProvider[] {
 /**
  * Entries that are not complete yet (`models.md` § A provider is in the list
  * from the start), one lacking each part and one lacking two: a vendor entry
- * without its key, a compatible API with a key and no model, a compatible API
- * with neither, and a subscription nobody has signed in to. None of them
- * has failed, so none is red.
+ * without its key, a compatible API with an endpoint and a key and no model,
+ * a compatible API just added, with no endpoint, key or model, and a
+ * subscription nobody has signed in to. None of them has failed, so none is
+ * red.
  */
 export function incompleteProviders(): MockProvider[] {
   return [
@@ -700,17 +701,25 @@ export function incompleteProviders(): MockProvider[] {
       state: 'setup', modelSource: 'manual', configured: true, keyConfigured: true,
     }),
     provider({
-      id: 'endpoint', name: 'OpenAI Responses API', kind: 'api_key', family: 'openai', compatible: true,
-      baseUrl: 'https://proxy.example/v1', wireApi: 'openai-responses', state: 'setup', modelSource: 'manual',
+      id: 'endpoint', name: 'Compatible API', kind: 'api_key', family: 'anthropic', compatible: true,
+      baseUrl: '', wireApi: 'anthropic-messages', state: 'setup', modelSource: 'manual', configured: true,
     }),
   ]
 }
 
-/** Whether an entry still lacks a part, from what it holds: its key, its first model, its sign-in. */
+/**
+ * Whether the entry lacks a part it cannot infer without, as the backend
+ * says (`models.md` § A provider is in the list from the start): a vendor's
+ * key, a compatible API's endpoint, whose key is optional, a model it can
+ * save, or a subscription's account.
+ */
 export function isIncomplete(entry: SettingsProviderEntry): boolean {
-  return entry.kind === 'subscription'
-    ? !entry.accounts.length
-    : !entry.keyConfigured || !entry.models.length
+  if (entry.kind === 'subscription') {
+    return !entry.accounts.length
+  }
+  const reaches = entry.compatible ? entry.baseUrl !== '' : entry.keyConfigured === true
+  // A model without a context window stays on the page, not in the saved list.
+  return !reaches || !entry.models.some((model) => model.contextWindow !== null)
 }
 
 /** The models.dev models the Add Model specimens search, as the backend's search answers. */
