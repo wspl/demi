@@ -231,9 +231,12 @@ An attached host goes by its device's name, the one the user sees in the
 header's menu and in Settings, with a numeric suffix when two names collide;
 nobody names it otherwise, so the user never meets a host under a name the
 agent made up, such as `lark` for `dc03-pff-200`. The name is read from the
-device whenever the hosts are listed, never stored: of two attached devices
-named `laptop`, the one attached first is `laptop` and the other `laptop-2`,
-and when the user renames a device in Settings, every conversation it is
+device whenever the hosts are listed, never stored, and no name stands for
+two hosts: of two attached devices named `laptop`, the one attached first is
+`laptop` and the other `laptop-2`; an attached device named as the primary
+Host, by the name the header shows for it (`Cloud` for the Cloud), is
+`laptop-2` too, and becomes `laptop` again once the conversation moves
+elsewhere. When the user renames a device in Settings, every conversation it is
 attached to goes by the new name, which its header's menu shows at once and
 its agents' next context block announces as a change of the attached hosts.
 Choosing an attached device
