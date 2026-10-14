@@ -4,7 +4,9 @@
 //! (`conversation-fork.md`). Each is a pure reading of the blocks; the
 //! window compaction summarizes is [`crate::compaction`]'s.
 
-use demi_shared_types::{Block, BlockId, ErrorBlock, TextBlock, ToolCallStatus, TurnId, is_blank};
+use demi_shared_types::{
+    Block, BlockId, ErrorBlock, TextBlock, ToolCallStatus, TurnId, WakeupPlacement, is_blank,
+};
 
 use super::{is_compaction, opens_input_turn};
 
@@ -197,14 +199,32 @@ pub fn last_answer(blocks: &[Block], since: usize) -> Option<&TextBlock> {
 }
 
 /// The record that ended the last turn (`failures-and-recovery.md` § The
-/// unfinished turn): the last block but a compaction's boundary and marker
-/// and an error that ended no turn, such as a Compact whose summary request
-/// failed, which leave the turn before them as it was. An `error` block
-/// there is the failure that left the turn unfinished.
+/// unfinished turn): the last block but a compaction's boundary and marker,
+/// an error that ended no turn, such as a Compact whose summary request
+/// failed, and the agent messages and command reports a failed turn took
+/// after it ended, which leave the turn before them as it was. An `error`
+/// block there is the failure that left the turn unfinished.
 pub fn turn_record(blocks: &[Block]) -> Option<&Block> {
     blocks.iter().rev().find(|block| {
-        !is_compaction(block) && !matches!(block, Block::Error(error) if error.outside_turn)
+        !is_compaction(block)
+            && !matches!(block, Block::Error(error) if error.outside_turn)
+            && !is_late_input(block)
     })
+}
+
+/// Whether a block is input a turn takes without opening one: an agent
+/// message, or command reports placed as a steer.
+fn is_late_input(block: &Block) -> bool {
+    match block {
+        Block::AgentMessage(_) => true,
+        Block::Wakeup(wakeup) => wakeup.placement == WakeupPlacement::Steer,
+        _ => false,
+    }
+}
+
+/// The turn the last block of a turn's input belongs to: the last turn.
+pub fn last_turn(blocks: &[Block]) -> Option<&TurnId> {
+    blocks.iter().rev().find_map(turn_of)
 }
 
 /// The last `error` block, the record of the agent's last failure.

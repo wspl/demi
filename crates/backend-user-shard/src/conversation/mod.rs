@@ -2,9 +2,9 @@
 //! responsibilities): the agent server that hosts each conversation's tree
 //! over the conversation's database, the conversation socket, the provider
 //! runtimes the sessions infer with, the Claude Code CLI's work on the
-//! user's Cloud and the provider test, the conversations' summaries, and the
-//! failure facts of their history, their deletion, and the search index
-//! that follows them.
+//! user's Cloud and the provider test, the conversations' summaries, the
+//! failure facts of their history and the resume of a failed turn at its
+//! retry time, their deletion, and the search index that follows them.
 
 mod announcement;
 pub mod claude_cli;
@@ -19,6 +19,7 @@ pub(crate) mod organize;
 pub(crate) mod pending;
 pub(crate) mod product;
 mod providers;
+pub(crate) mod retry_resume;
 mod runs_on;
 pub mod search;
 pub mod settings;
@@ -149,6 +150,7 @@ pub(crate) fn conversation_parts(
                 let conversation = conversation_of(root);
                 if let Some(shard) = shard.upgrade() {
                     shard.poke_pending(&conversation);
+                    shard.follow_failed_turn(&conversation);
                 }
                 marks.mark(Part::Conversation(conversation));
             })

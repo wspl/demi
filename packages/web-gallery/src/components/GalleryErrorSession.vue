@@ -11,7 +11,8 @@ import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import type { ConnectionProblem } from '@demicodes/web-ui/transport/connection'
 import type { Block } from '@demicodes/protocol'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
-import { generationErrorBlock, hostOfflineErrorBlock, shortTranscriptBlocks } from '../fixtures/blocks'
+import { generationErrorBlock, hostOfflineErrorBlock, shortTranscriptBlocks, usageLimitErrorBlock } from '../fixtures/blocks'
+import { galleryMessages } from '../fixtures/send-while-running'
 import {
   compactedAfterFailedTurnTranscript,
   failedCompactionTranscript,
@@ -109,6 +110,12 @@ function state(
   })
 }
 
+/** When the session limit the usage-limit specimen hit resets: two hours on, on the hour. */
+const HOUR_MS = 3_600_000
+const limitResets = new Date((Math.floor(Date.now() / HOUR_MS) + 2) * HOUR_MS).toISOString()
+/** The same limit, hit yesterday: its time has passed. */
+const limitReset = new Date((Math.floor(Date.now() / HOUR_MS) - 20) * HOUR_MS).toISOString()
+
 /** The product would open a new conversation from the answer. */
 async function forkFromAnswer(): Promise<void> {
   productWould('Fork the conversation from this answer')
@@ -153,6 +160,24 @@ const cases: SessionCase[] = [
     session: state('generation', {
       lastError: { message: 'Anthropic API request failed with HTTP 529: Overloaded.', requestId: null },
       blocks: [...shortTranscriptBlocks(), generationErrorBlock()],
+    }),
+    composer: 'default',
+  },
+  {
+    variant: 'Usage limit · Resume at its time',
+    note: 'A Claude subscription’s session limit refused the turn. The record says when the limit resets and carries the one switch that belongs to it: Resume at that time, the user’s preference for every such turn, the same as Settings › General’s Resume after a usage limit resets, so ticking it here turns that on too. Resume in the dock goes on now.',
+    session: state('usage-limit', {
+      blocks: [...shortTranscriptBlocks(), usageLimitErrorBlock('usage-limit-error', limitResets)],
+      failures: { 'usage-limit-error': { retryAt: limitResets } },
+    }),
+    composer: 'default',
+  },
+  {
+    variant: 'Usage limit · its time has passed',
+    note: 'The same failure after the limit reset: the record still says when it reset, but the switch is gone, since there is no time left to resume at. Resume in the dock goes on.',
+    session: state('usage-limit-passed', {
+      blocks: [...shortTranscriptBlocks(), usageLimitErrorBlock('usage-limit-passed-error', limitReset)],
+      failures: { 'usage-limit-passed-error': { retryAt: limitReset } },
     }),
     composer: 'default',
   },
@@ -241,6 +266,7 @@ const cases: SessionCase[] = [
                 :backend-away="item.banner !== undefined"
                 :fork="forkFromAnswer"
                 :primary-host="item.primary"
+                v-model:resume-at-retry="galleryMessages.resumeAtRetry"
                 @retry="productWould('Resume the Turn')"
                 @retry-load="productWould('Load the Conversation Again')"
                 @rename="item.session.title = $event"

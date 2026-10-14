@@ -340,8 +340,9 @@ impl<H: HostResolver> Node<H> {
     /// policy (`subagents.md` § Persistence): a child resumes the turn the
     /// process interrupted, while the root records the interruption and
     /// leaves the turn to its client; the queued messages run again in
-    /// order; waiting input wakes the root only when its last turn was not
-    /// interrupted, and a child only once its supervisor has
+    /// order; waiting input wakes the root, or is written into its last turn
+    /// when that failed or was interrupted (`failures-and-recovery.md` § The
+    /// unfinished turn), and wakes a child only once its supervisor has
     /// looked at it, which closes it instead when it is quiescent. What this
     /// changed is saved at once.
     pub(crate) async fn continue_from(&self, continuation: Continuation) -> Result<(), StoreError> {
@@ -369,9 +370,7 @@ impl<H: HostResolver> Node<H> {
             // them; the actions report their course as events.
             drop(session.send(message.content, message.id));
         }
-        if !continuation.interrupted {
-            session.wake();
-        }
+        session.wake();
         session.flush().await
     }
 }
@@ -622,10 +621,10 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         Box::pin(self.admission.enter(Purpose::Demand))
     }
 
-    /// A root's turn only: a child's result says what it could not do, and
+    /// A root's turns only: a child's result says what it could not do, and
     /// its parent's turn decides (`failures-and-recovery.md` § The
     /// unfinished turn).
-    fn ends_offline_turns_unfinished(&self) -> bool {
+    fn user_recovers_turns(&self) -> bool {
         self.node == self.root
     }
 

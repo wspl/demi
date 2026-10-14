@@ -200,7 +200,7 @@ impl SessionRuntime for TestRuntime {
             .collect()
     }
 
-    fn ends_offline_turns_unfinished(&self) -> bool {
+    fn user_recovers_turns(&self) -> bool {
         !self.child
     }
 

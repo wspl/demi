@@ -65,6 +65,25 @@ export function formatMoment(timestamp: string, now: Date = new Date()): string 
 }
 
 /**
+ * The control that resumes a failed turn at `timestamp`, the moment its
+ * failure can succeed again, named by when that is from `now`: "Resume at
+ * 9:00 AM" on the same day, "Resume Sat at 9:00 AM" within the week, then
+ * "Resume Oct 24 at 9:00 AM", with the year when it is not this one. A
+ * moment is named by its nearest minute, as a reset is.
+ */
+export function formatResumeAt(timestamp: string, now: Date): string {
+  const moment = dayjs(timestamp).add(30, 'second').startOf('minute')
+  const clock = moment.format(CLOCK)
+  if (moment.isSame(now, 'day')) {
+    return `Resume at ${clock}`
+  }
+  if (moment.diff(now) < WEEK_MS - DAY_MS) {
+    return `Resume ${moment.format('ddd')} at ${clock}`
+  }
+  return `Resume ${moment.format(byYear(moment, now, MONTH_DAY, MONTH_DAY_YEAR))} at ${clock}`
+}
+
+/**
  * When a usage window resets, as specifically as the user would say it,
  * counted from `now` in the user's time zone (`usage-and-quota.md` § What a
  * snapshot says): "Resets now" once the clock has passed it, "Resets in <1m"

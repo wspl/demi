@@ -141,7 +141,7 @@ async fn run_turn(
 /// agent's last words offers Resume (`failures-and-recovery.md` § The
 /// unfinished turn).
 async fn end_offline_turn(s: &SessionShared) -> Result<(), TurnError> {
-    if !s.runtime.ends_offline_turns_unfinished() {
+    if !s.runtime.user_recovers_turns() {
         return Ok(());
     }
     let ended = s.update(|core| {

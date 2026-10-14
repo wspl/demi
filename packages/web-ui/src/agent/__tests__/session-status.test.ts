@@ -80,6 +80,16 @@ test('a failure that ended no turn offers no Resume and keeps the recovery of th
   expect(turnRecovery('idle', [{ type: 'user' }, { type: 'abort' }, failedCompact])).toBe('continue')
 })
 
+// A root's failed turn holds what arrives afterwards and writes it behind its
+// record: the turn still offers Resume, which answers it. A reports block that
+// opens a turn of its own is that turn's start, not late input.
+test('agent messages and reports written behind a failure keep its Resume', () => {
+  const late = [{ type: 'agent_message' }, { type: 'agent_message' }, { type: 'wakeup', placement: 'steer' }]
+  expect(turnRecovery('idle', [{ type: 'user' }, { type: 'error' }, ...late])).toBe('resume')
+  expect(turnRecovery('idle', [{ type: 'user' }, { type: 'text' }, ...late])).toBeNull()
+  expect(turnRecovery('idle', [{ type: 'user' }, { type: 'error' }, { type: 'wakeup', placement: 'new_turn' }])).toBeNull()
+})
+
 // The user compacted after a turn ended: the divider is the last block, and
 // the turn behind it is as it was.
 test('a compaction keeps the recovery of the turn before it and offers none of its own', () => {

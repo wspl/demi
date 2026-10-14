@@ -1195,3 +1195,89 @@ async fn a_stop_ends_the_watched_calls_command_and_leaves_an_earlier_calls_repor
         assert!(!session.status().commands);
     }
 }
+
+/// A root whose turn failed holds what arrives afterwards: two children's
+/// results and a command's end are written into the failed turn as they
+/// arrive, where they show at once, and no turn starts until the user's
+/// Resume, which answers them in one request (`failures-and-recovery.md`
+/// § The unfinished turn). The failed turn still offers Resume behind them.
+/// A child's failed turn is not held, since its parent decides for it: the
+/// same result opens a continuation at once.
+// Two sessions, six scripted requests, a minute of paused time: a few
+// milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_roots_failed_turn_holds_what_arrives_until_resume_and_a_childs_does_not() {
+    let failing = || {
+        ScriptedRuntime::new([
+            Turn::Events(background_call("17", None, "Build")),
+            Turn::Events(vec![event::error("You've hit your session limit", None)]),
+            answer("read both results and the build"),
+            // Answers a turn that should not start would take.
+            answer("unexpected"),
+            answer("unexpected"),
+            answer("unexpected"),
+        ])
+    };
+    let provider = failing();
+    let store = MemoryTreeStore::new();
+    let (session, commands) = reporting_session(&provider, &store).await;
+    let failed = session.send(text("build it"), turn("t1")).unwrap().await;
+    assert!(failed.is_err());
+    assert_eq!(provider.requests().len(), 2);
+
+    session.accept_agent_message(agent_message("one")).await.unwrap();
+    session.accept_agent_message(agent_message("two")).await.unwrap();
+    commands.end("17");
+    until(|| kinds(&session.transcript().blocks).ends_with(&["wakeup".to_owned()])).await;
+    tokio::time::sleep(Duration::from_secs(60)).await;
+    session.settled().await;
+    let blocks = session.transcript().blocks;
+    assert_eq!(
+        kinds(&blocks[blocks.len() - 4..]),
+        ["error", "agent_message", "agent_message", "wakeup"]
+    );
+    assert!(matches!(
+        blocks.last(),
+        Some(Block::Wakeup(wakeup)) if wakeup.placement == WakeupPlacement::Steer
+    ));
+    assert_eq!(provider.requests().len(), 2, "nothing starts a turn");
+    assert!(session.failed_turn().is_some(), "the failed turn still offers Resume");
+    // They are saved as written, not as waiting input.
+    let state = store.checkpoint(&root()).unwrap().state;
+    assert!(state.agent_inputs.is_empty() && state.reports.is_empty());
+
+    session.resume(None).unwrap().await.unwrap();
+    let requests = provider.requests();
+    assert_eq!(requests.len(), 3);
+    let asked = format!("{:?}", requests[2].items);
+    for read in ["Result one".to_owned(), "Result two".to_owned(), ended_report("17", "Build")] {
+        // The items' debug form escapes the text as a string literal does.
+        let escaped = format!("{read:?}");
+        assert!(asked.contains(&escaped[1..escaped.len() - 1]), "{read} in {asked}");
+    }
+    assert!(session.failed_turn().is_none());
+
+    // A child's failed turn: the same result wakes it.
+    let provider = failing();
+    let store = MemoryTreeStore::new();
+    let runtime = test_runtime(Vec::new());
+    let commands = runtime.commands.clone();
+    let runtime = TestRuntime {
+        tools: vec![background_tool(&commands)],
+        child: true,
+        ..runtime
+    };
+    let child = start_at(
+        &provider,
+        runtime,
+        &store,
+        SessionConfig::default(),
+        Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
+    )
+    .await;
+    assert!(child.send(text("build it"), turn("t1")).unwrap().await.is_err());
+    child.accept_agent_message(agent_message("one")).await.unwrap();
+    until(|| provider.requests().len() == 3).await;
+    child.settled().await;
+    assert!(child.failed_turn().is_none());
+}

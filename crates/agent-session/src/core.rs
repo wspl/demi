@@ -19,9 +19,9 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{
     DirtyRows, INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, REPLAY_CHARS, RequestView,
-    TranscriptLog, labelled_output,
+    TranscriptLog, labelled_output, last_turn,
     estimate::{anchor_tokens, blocks_tokens, context_anchor},
-    replay, replay_start,
+    replay, replay_start, turn_record,
 };
 use demi_conversation_socket_protocol::AbortTarget;
 use demi_provider_common::{
@@ -93,10 +93,11 @@ pub(crate) struct SessionCore {
     /// ends.
     pub(super) editing: Option<EditInFlight>,
     pub(super) activity: Activity,
-    /// Waiting input opens no continuation until the node's next action:
-    /// the session is a restored root whose last turn was interrupted, or a
-    /// closing child. A restore reads it from the checkpoint again, so it is
-    /// not saved.
+    /// Waiting input opens no continuation and stays waiting until the
+    /// node's next action: the session is a closing child, or a restored one
+    /// its supervisor has not looked at. Not saved: a restore holds a child
+    /// again, and a root's failed turn holds by itself
+    /// ([`failed_turn_holds`](Self::failed_turn_holds)).
     pub(super) held: bool,
     /// The session sends one request per turn and runs no tool, as a
     /// session copy does (`compaction.md` § The summary request).
@@ -361,7 +362,6 @@ pub(super) struct CoreParts {
     pub(super) inputs: InputQueue,
     pub(super) watched: Watched,
     pub(super) edits: Vec<EditReceipt>,
-    pub(super) held: bool,
     /// Whether the session sends one request per turn and runs no tool, as
     /// a session copy does (`compaction.md` § The summary request).
     pub(super) one_request: bool,
@@ -394,7 +394,7 @@ impl SessionCore {
             edits: parts.edits,
             editing: None,
             activity: Activity::Idle,
-            held: parts.held,
+            held: false,
             one_request: parts.one_request,
             disposing: false,
             ahead: None,
@@ -608,7 +608,9 @@ impl SessionCore {
     }
 
     /// Starts the first waiting action, or a continuation for input that
-    /// waits, or settles: idle, or closed once dispose began.
+    /// waits, or settles: idle, or closed once dispose began. A root whose
+    /// last turn failed writes the input that waits into that turn instead
+    /// (`failures-and-recovery.md` § The unfinished turn).
     pub(super) fn start_next(&mut self) {
         if self.disposing {
             self.activity = Activity::Closed { interrupted: false };
@@ -619,6 +621,7 @@ impl SessionCore {
             None if self.wants_continuation() => (ActionKind::Continue, self.new_turn(), None),
             None => {
                 self.activity = Activity::Idle;
+                self.write_into_failed_turn();
                 return;
             }
         };
@@ -657,9 +660,36 @@ impl SessionCore {
     }
 
     /// Whether waiting input would open a continuation of its own: command
-    /// reports or agent messages, unless the session is held.
+    /// reports or agent messages, unless the session is held or its last
+    /// turn failed.
     fn wants_continuation(&self) -> bool {
-        !self.held && (self.inputs.has_report() || self.inputs.has_agent_input())
+        !self.held
+            && !self.failed_turn_holds()
+            && (self.inputs.has_report() || self.inputs.has_agent_input())
+    }
+
+    /// Whether the last turn's failure holds the node's waiting input until
+    /// the user acts, with Resume or a message: a root's turn that ended
+    /// with an `error` block does, while a child's parent decides for it
+    /// (`failures-and-recovery.md` § The unfinished turn). The user's action
+    /// writes after the record, which ends the hold.
+    fn failed_turn_holds(&self) -> bool {
+        self.runtime.user_recovers_turns()
+            && matches!(turn_record(self.transcript.blocks()), Some(Block::Error(_)))
+    }
+
+    /// Writes the agent messages and command reports that wait into the
+    /// failed turn that holds them, where they show at once and the user's
+    /// next action answers them. Nothing is written while the session is
+    /// held for another reason, which keeps them waiting.
+    fn write_into_failed_turn(&mut self) {
+        if self.held || !self.failed_turn_holds() {
+            return;
+        }
+        let Some(turn) = last_turn(self.transcript.blocks()).cloned() else {
+            return;
+        };
+        self.write_inputs_into(turn, Take::Everything);
     }
 
     /// Keeps waiting input from opening a continuation until the node's
@@ -676,7 +706,7 @@ impl SessionCore {
     }
 
     /// Opens a continuation when waiting input wants one and nothing runs or
-    /// waits.
+    /// waits, or writes it into the failed turn that holds it.
     pub(super) fn wake(&mut self) {
         if matches!(self.activity, Activity::Idle) && self.pending.is_empty() {
             self.start_next();
@@ -1188,12 +1218,17 @@ impl SessionCore {
     /// one paragraph each, where the first of them arrived. Returns whether
     /// an agent message was written, which is saved at once.
     pub(super) fn write_inputs(&mut self, take: Take) -> bool {
+        let turn = self.turn();
+        self.write_inputs_into(turn, take)
+    }
+
+    /// [`write_inputs`](Self::write_inputs) into `turn`.
+    fn write_inputs_into(&mut self, turn: TurnId, take: Take) -> bool {
         self.drop_seen_ends();
         let inputs = self.inputs.take(take);
         if inputs.is_empty() {
             return false;
         }
-        let turn = self.turn();
         let mut reports: Vec<CommandReport> = inputs
             .iter()
             .filter_map(|input| match input {

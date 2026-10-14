@@ -108,11 +108,13 @@ pub trait SessionRuntime {
         Box::pin(async { RunningWork::default() })
     }
 
-    /// Whether a turn left undone because a call's Host was offline ends
-    /// unfinished, with an error block that offers Resume: a root's does;
-    /// a child's result says what it could not do, and its parent decides
-    /// (`failures-and-recovery.md` § The unfinished turn).
-    fn ends_offline_turns_unfinished(&self) -> bool {
+    /// Whether the user recovers the node's unfinished turns, a root's, or
+    /// its parent decides for it, a child's (`failures-and-recovery.md`
+    /// § The unfinished turn): a root's turn left undone because a call's
+    /// Host was offline ends unfinished, with an error block that offers
+    /// Resume, and a root's failed turn holds its waiting input until the
+    /// user acts; a child's result says what it could not do.
+    fn user_recovers_turns(&self) -> bool {
         false
     }
 

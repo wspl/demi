@@ -1304,6 +1304,37 @@ export function generationErrorBlock(): Block {
 }
 
 /**
+ * The record of a turn a Claude subscription's session limit refused, which
+ * resets at `resetsAt`: the CLI's words, which name the hour in UTC, and its
+ * `result` line, which names the cause, as the record.
+ */
+export function usageLimitErrorBlock(id: string, resetsAt: string): Block {
+  const hour = new Date(resetsAt).getUTCHours()
+  const message = `You’ve hit your session limit · resets ${hour % 12 || 12}${hour < 12 ? 'am' : 'pm'} (UTC)`
+  return {
+    type: 'error',
+    id,
+    createdAt: iso(30_000),
+    model: demoModel,
+    message,
+    code: 'rate_limit',
+    diagnostics: {
+      source: 'stream',
+      httpStatus: 429,
+      upstream: JSON.stringify({
+        type: 'result',
+        subtype: 'success',
+        is_error: true,
+        api_error_status: 429,
+        api_error: 'usage_limit_reached',
+        result: message,
+        session_id: 'b4d1c0de-5e55-4a1e-9d1a-0c3f2a6b7e81',
+      }),
+    },
+  }
+}
+
+/**
  * The record a turn ends with when its Host went offline and no later call
  * ran there: Demi's fact, which leaves the turn unfinished, and Resume waits
  * for the device.
