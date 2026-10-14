@@ -43,6 +43,7 @@ impl Shared {
         match reset {
             Some(reset) => ProviderFailureFacts {
                 retry_at: Some(reset),
+                continue_with: None,
             },
             None => read_http_failure(diagnostics, received_at),
         }

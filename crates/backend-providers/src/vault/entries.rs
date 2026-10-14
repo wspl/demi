@@ -19,7 +19,9 @@ use demi_provider_common::credentials::{
 use demi_shared_types::{Timestamp, WireApi};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
-use demi_web_api_protocol::providers::{ConfiguredModels, CredentialKind, ProviderDto, SetupPart};
+use demi_web_api_protocol::providers::{
+    ConfiguredModels, CredentialKind, ProviderDto, Rotation, SetupPart,
+};
 use demi_web_api_protocol::settings::InstanceMode;
 use demi_web_api_protocol::text::EndpointUrl;
 use garde::Validate;
@@ -69,9 +71,11 @@ pub struct ProviderEntry {
 pub enum EntryCredential {
     ApiKey(ApiKeyConfig),
     /// Accounts in the entry's credential records, of which `active` is the
-    /// one the entry infers with.
+    /// one the entry infers with unless `rotation` gives each agent one of
+    /// its own (`providers.md` § Account rotation).
     Subscription {
         active: Option<CredentialId>,
+        rotation: Rotation,
     },
 }
 
@@ -191,7 +195,7 @@ impl ProviderEntry {
             .into_iter()
             .filter_map(|(lacks, part)| lacks.then_some(part))
             .collect(),
-            EntryCredential::Subscription { active } => match active {
+            EntryCredential::Subscription { active, .. } => match active {
                 Some(_) => Vec::new(),
                 None => vec![SetupPart::Account],
             },
@@ -202,7 +206,15 @@ impl ProviderEntry {
     pub fn active(&self) -> Option<&CredentialId> {
         match &self.credential {
             EntryCredential::ApiKey(_) => None,
-            EntryCredential::Subscription { active } => active.as_ref(),
+            EntryCredential::Subscription { active, .. } => active.as_ref(),
+        }
+    }
+
+    /// Which account each agent uses; `manual` for an API-key entry.
+    pub fn rotation(&self) -> Rotation {
+        match &self.credential {
+            EntryCredential::ApiKey(_) => Rotation::Manual,
+            EntryCredential::Subscription { rotation, .. } => *rotation,
         }
     }
 
@@ -228,6 +240,7 @@ impl ProviderEntry {
             }),
             has_api_key: config.is_some_and(|config| config.api_key.is_some()),
             models: config.and_then(|config| config.models.clone()),
+            rotation: self.rotation(),
             created_at: self.created_at,
         }
     }
@@ -499,20 +512,21 @@ impl Vault {
         row.map(|row| self.decode(row)).transpose()
     }
 
-    /// Replaces the entry's label, family or configuration; `None` for an
-    /// entry that no longer exists.
+    /// Replaces the entry's label, family, configuration or rotation;
+    /// `None` for an entry that no longer exists.
     pub async fn update(
         &self,
         id: ProviderId,
         label: Option<String>,
         family: Option<String>,
         config: Option<ApiKeyConfig>,
+        rotation: Option<Rotation>,
     ) -> Result<Option<ProviderEntry>, StorageError> {
         let sealed = config.map(|config| self.seal_config(&id, &config));
         let row = self
             .0
             .control
-            .update_provider(id, label, family, sealed)
+            .update_provider(id, label, family, sealed, rotation)
             .await?;
         if let Some(row) = &row {
             self.mark_changed(&row.owner);
@@ -532,7 +546,8 @@ impl Vault {
         Arc::new(VaultCredentialPool::new(self.clone(), id))
     }
 
-    /// The entry's account records, ordered by id, their secrets unopened.
+    /// The entry's account records in the list's order, their secrets
+    /// unopened.
     pub async fn accounts(&self, id: ProviderId) -> Result<Vec<CredentialRow>, StorageError> {
         self.0.control.credentials(id).await
     }
@@ -566,7 +581,10 @@ impl Vault {
                 EntryCredential::ApiKey(self.open_config(&row.id, &sealed)?)
             }
             (CredentialKind::Subscription, None) => {
-                EntryCredential::Subscription { active: row.active }
+                EntryCredential::Subscription {
+                    active: row.active,
+                    rotation: row.rotation,
+                }
             }
             // The schema ties the configuration to the kind.
             _ => {

@@ -15,7 +15,7 @@ use demi_shared_types::WireApi;
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::ids::{ProviderId, UserId};
 use demi_web_api_protocol::providers::{
-    ConfiguredModels, CreateProvider, CredentialKind, ModelMatch, ProviderPatch,
+    ConfiguredModels, CreateProvider, CredentialKind, ModelMatch, ProviderPatch, Rotation,
 };
 use demi_web_api_protocol::text::EndpointUrl;
 use std::sync::Arc;
@@ -62,6 +62,10 @@ pub enum ProviderRefusal {
     /// the entry.
     #[error("{0} speaks its vendor’s protocol; it can’t be changed.")]
     VendorProtocol(String),
+    /// A rotation other than manual for an entry with fewer than two
+    /// accounts.
+    #[error("Rotation needs at least two accounts")]
+    RotationNeedsAccounts,
     /// A model list that names one id twice; it names the id.
     #[error("models: the model ID {0:?} appears twice")]
     DuplicateModel(String),
@@ -257,10 +261,23 @@ impl Services {
         } else {
             None
         };
+        if let Some(rotation) = patch.rotation
+            && rotation != Rotation::Manual
+        {
+            let accounts = match &entry.credential {
+                EntryCredential::Subscription { .. } => {
+                    self.vault.accounts(entry.id.clone()).await?.len()
+                }
+                EntryCredential::ApiKey(_) => 0,
+            };
+            if accounts < 2 {
+                return Err(ProviderRefusal::RotationNeedsAccounts);
+            }
+        }
         let label = patch.label.map(|label| label.into_string());
         let updated = self
             .vault
-            .update(entry.id.clone(), label, family, config)
+            .update(entry.id.clone(), label, family, config, patch.rotation)
             .await?
             .ok_or(ProviderRefusal::NotFound)?;
         if reconfigures {

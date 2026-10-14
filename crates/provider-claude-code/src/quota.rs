@@ -100,13 +100,17 @@ impl QuotaSource for ClaudeQuota {
     }
 }
 
-/// The windows Demi names, by the vendor's id.
-const NAMED_WINDOWS: [(&str, &str); 4] = [
-    ("five_hour", "5h session"),
-    ("seven_day", "7d all models"),
-    ("seven_day_sonnet", "7d Sonnet"),
-    ("seven_day_opus", "7d Opus"),
+/// The windows Demi names, by the vendor's id, with their length and the
+/// model a window on one model applies to.
+const NAMED_WINDOWS: [(&str, &str, u64, Option<&str>); 4] = [
+    ("five_hour", "5h session", FIVE_HOURS, None),
+    ("seven_day", "7d all models", SEVEN_DAYS, None),
+    ("seven_day_sonnet", "7d Sonnet", SEVEN_DAYS, Some("Sonnet")),
+    ("seven_day_opus", "7d Opus", SEVEN_DAYS, Some("Opus")),
 ];
+
+const FIVE_HOURS: u64 = 5 * 60 * 60;
+const SEVEN_DAYS: u64 = 7 * 24 * 60 * 60;
 
 /// A named window with the share used and its reset time.
 fn named_window(
@@ -114,7 +118,9 @@ fn named_window(
     used_percent: Option<f64>,
     resets_at: Option<Timestamp>,
 ) -> Option<QuotaWindow> {
-    let (id, label) = NAMED_WINDOWS.into_iter().find(|(named, _)| *named == id)?;
+    let (id, label, period, model) = NAMED_WINDOWS
+        .into_iter()
+        .find(|(named, ..)| *named == id)?;
     Some(QuotaWindow {
         id: id.into(),
         label: label.into(),
@@ -123,8 +129,12 @@ fn named_window(
         limit: None,
         unit: Some(QuotaUnit::Percent),
         resets_at,
+        period_seconds: Some(period),
         severity: severity(used_percent),
-        scope: None,
+        scope: model.map(|model| QuotaScope {
+            kind: "model".into(),
+            label: Some(model.into()),
+        }),
     })
 }
 
@@ -282,6 +292,7 @@ impl Usage {
                 .and_then(|model| model.display_name);
             let used_percent = limit.percent.and_then(clamp_used_percent);
             let label = limit_label(&kind, model.as_deref());
+            let period_seconds = limit_period(&kind).map(|(_, seconds)| seconds);
             let (id, scope) = match model {
                 Some(model) => (
                     format!("limit:{kind}:{model}"),
@@ -300,6 +311,7 @@ impl Usage {
                 limit: None,
                 unit: Some(QuotaUnit::Percent),
                 resets_at: reset_time(limit.resets_at),
+                period_seconds,
                 severity: limit
                     .severity
                     .into_inner()
@@ -317,18 +329,23 @@ impl Usage {
 /// name; a kind whose period Demi cannot tell is named by its model, or
 /// `Other limit` (`usage-and-quota.md` § Claude Code).
 fn limit_label(kind: &str, model: Option<&str>) -> String {
-    let period = if kind.starts_with("weekly") {
-        Some("7d")
-    } else if kind.starts_with("session") {
-        Some("5h")
-    } else {
-        None
-    };
+    let period = limit_period(kind).map(|(name, _)| name);
     match (period, model) {
         (Some(period), Some(model)) => format!("{period} {model}"),
         (Some(period), None) => period.to_owned(),
         (None, Some(model)) => model.to_owned(),
         (None, None) => "Other limit".to_owned(),
+    }
+}
+
+/// The period of a limit of the probe, by its kind: its name and its length.
+fn limit_period(kind: &str) -> Option<(&'static str, u64)> {
+    if kind.starts_with("weekly") {
+        Some(("7d", SEVEN_DAYS))
+    } else if kind.starts_with("session") {
+        Some(("5h", FIVE_HOURS))
+    } else {
+        None
     }
 }
 

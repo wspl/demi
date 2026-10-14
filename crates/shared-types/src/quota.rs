@@ -86,6 +86,13 @@ pub struct QuotaWindow {
     #[schemars(with = "Nullable<Timestamp>")]
     #[garde(skip)]
     pub resets_at: Option<Timestamp>,
+    /// How long one period of the window lasts, in seconds, as the vendor
+    /// states it; null when unknown. A snapshot stored before windows
+    /// stated it reads as unknown.
+    #[serde(default)]
+    #[schemars(with = "Nullable<u64>")]
+    #[garde(skip)]
+    pub period_seconds: Option<u64>,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<QuotaSeverity>")]
     #[garde(skip)]

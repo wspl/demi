@@ -29,7 +29,7 @@ use demi_provider_common::{
     ProviderRuntime, RequestBlock, RequestLimits, ToolDefinition,
 };
 use demi_shared_types::{
-    AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, CommandReport, ErrorDevice, FailureSource, ReportEvent,
+    AgentAccount, AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, CommandReport, ErrorDevice, FailureSource, ReportEvent,
     ModelSelection, NodeId, PendingCall, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
     ShellToolView, ShellViewStatus, Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
     WakeupPlacement,
@@ -89,6 +89,10 @@ pub(crate) struct SessionCore {
     /// (`failures-and-recovery.md` § The unfinished turn). Live only.
     pub(super) offline_host: Option<ErrorDevice>,
     pub(super) edits: Vec<EditReceipt>,
+    /// The account the agent took under its entry's rotation, which every
+    /// request names; none before it took one and after a compaction
+    /// (`providers.md` § Account rotation).
+    pub(super) account: Option<AgentAccount>,
     /// The edit being prepared or run, from its admission until its action
     /// ends.
     pub(super) editing: Option<EditInFlight>,
@@ -362,6 +366,7 @@ pub(super) struct CoreParts {
     pub(super) inputs: InputQueue,
     pub(super) watched: Watched,
     pub(super) edits: Vec<EditReceipt>,
+    pub(super) account: Option<AgentAccount>,
     /// Whether the session sends one request per turn and runs no tool, as
     /// a session copy does (`compaction.md` § The summary request).
     pub(super) one_request: bool,
@@ -392,6 +397,7 @@ impl SessionCore {
             calls: HashMap::new(),
             offline_host: None,
             edits: parts.edits,
+            account: parts.account,
             editing: None,
             activity: Activity::Idle,
             held: false,
@@ -1556,9 +1562,22 @@ impl SessionCore {
                 self.transcript.push_response(&self.model, usage)
             }
             ProviderEvent::Error(failure) => self.push_failure(&(&failure).into()),
+            ProviderEvent::Account(account) => self.take_account(account),
+            ProviderEvent::AccountSwitch(switch) => {
+                self.transcript.push_account_switch(&self.model, switch)
+            }
             ProviderEvent::Entries { .. } => {
                 unreachable!("apply_event keeps entries before it writes blocks")
             }
+        }
+    }
+
+    /// Keeps the account the agent uses from now on with the session's
+    /// state; the clients learn it with the next context usage.
+    pub(super) fn take_account(&mut self, account: Option<AgentAccount>) {
+        if self.account != account {
+            self.account = account;
+            self.mark_state_changed();
         }
     }
 
@@ -1691,6 +1710,7 @@ impl SessionCore {
                 answered_items: replayed.answered,
             },
             cancel,
+            account: self.account.clone(),
         }
     }
 
@@ -1769,6 +1789,7 @@ impl SessionCore {
                 answered_items: replayed.answered,
             },
             cancel: CancellationToken::new(),
+            account: self.account.clone(),
         }
     }
 
@@ -1992,6 +2013,7 @@ impl SessionCore {
             intervals: self.watched.intervals(),
             model: self.model.clone(),
             edits: self.edits.clone(),
+            account: self.account.clone(),
         }
     }
 

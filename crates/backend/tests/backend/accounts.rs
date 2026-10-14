@@ -47,6 +47,7 @@ pub(crate) fn scripts(cost: Option<ProbeCost>) -> Scripts {
         limit: None,
         unit: None,
         resets_at: None,
+        period_seconds: None,
         severity: None,
         scope: None,
     };

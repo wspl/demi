@@ -291,6 +291,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(accounts::list),
         )
         .route("/providers/{id}/accounts/active", put(accounts::activate))
+        .route("/providers/{id}/accounts/order", put(accounts::reorder))
         .route("/providers/{id}/accounts/login", post(accounts::login_into))
         .route(
             "/providers/{id}/accounts/{credential}",

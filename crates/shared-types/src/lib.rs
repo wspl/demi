@@ -13,6 +13,7 @@
 //! receives, from the web app or from its own storage, refuses unknown
 //! fields; a type only the web app receives accepts them.
 
+mod account;
 mod agent_message;
 mod block;
 mod bytes;
@@ -33,12 +34,13 @@ mod time;
 mod view;
 mod workflow;
 
+pub use account::{AgentAccount, Rotation};
 pub use agent_message::{
     AgentMessage, AgentMessageEvent, CompletionId, CompletionOutcome, NotCompletionId,
     PermissionOutcome, Sender,
 };
 pub use block::{
-    AbortBlock, AgentMessageBlock, Block, CommandEnd, CommandReport, CompactionBoundaryBlock, CompactionMarkerBlock,
+    AbortBlock, AccountSwitchBlock, AgentMessageBlock, Block, CommandEnd, CommandReport, CompactionBoundaryBlock, CompactionMarkerBlock,
     ContextBlock, ErrorBlock, ErrorDevice, EXECUTION_SOURCE, HOST_OFFLINE, SKILLS_SOURCE, INSTRUCTIONS_SOURCE, InstructionEntry, KeptMessage, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, SteerBlock, StoppedBy,
     WORKING_DIRECTORY_SOURCE,
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock, client_block,
@@ -51,7 +53,7 @@ pub use content::{
     ToolResultContentBlock, UserContentBlock, attachment_tag, char_offset, is_blank, push_escaped, trim,
     xml_escaped,
 };
-pub use failure::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts};
+pub use failure::{ContinueWith, FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts};
 pub use context_limit::{
     CONTEXT_LIMIT_STEPS, ContextChoice, ContextLimitStep, ContextWordError, applied_context_limit,
     context_limits, context_word, effective_context_window, is_context_limit, offered_contexts,

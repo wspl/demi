@@ -27,6 +27,7 @@ fn window(id: &str, used_percent: f64) -> QuotaWindow {
         limit: None,
         unit: Some(QuotaUnit::Percent),
         resets_at: None,
+        period_seconds: None,
         severity: severity(Some(used_percent)),
         scope: None,
     }

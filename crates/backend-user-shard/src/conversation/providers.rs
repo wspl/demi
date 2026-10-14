@@ -22,14 +22,18 @@ use demi_backend_providers::usage::meter::{Ledger, MeteredRuntime};
 use demi_backend_providers::usage::rate_limit::RequestRateLimit;
 use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
 use demi_provider_common::{
-    Ahead, ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
+    AccountSwitch, Ahead, ErrorCode, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, RuntimeEnv,
 };
-use demi_shared_types::{Model, ModelSelection, NodeId, UnavailableSetting, session_context_window};
+use demi_backend_providers::llm::rotation::{Candidate, Choice, Holding, USED_UP_FOR_MS, used_up_window};
+use demi_shared_types::{
+    AgentAccount, Model, ModelSelection, NodeId, Rotation, Timestamp, UnavailableSetting,
+    session_context_window,
+};
 use demi_web_api_protocol::conversations::ModelSettings;
-use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};
 use futures_util::future::LocalBoxFuture;
-use futures_util::{StreamExt as _, stream};
+use futures_util::StreamExt as _;
 
 use crate::conversation::claude_cli::{CloudPlacement, ProcessWork};
 use crate::services::Services;
@@ -118,9 +122,15 @@ impl ProviderResolver for ConversationProviders {
                 selection: model.clone(),
                 current: None,
                 prepares_ahead: false,
+                holding: None,
+                unannounced: false,
             };
+            // The active account's runtime until the session's first
+            // request names or takes its own.
+            let selection = configured_selection(&entry, model.clone())
+                .map_err(|error| ResolveError::Failed(error.to_string()))?;
             runtime
-                .serve(&entry, model.clone())
+                .serve(&entry, selection, None)
                 .await
                 .map_err(|failure| ResolveError::Failed(failure.message))?;
             Ok(Box::new(runtime) as Box<dyn ProviderRuntime>)
@@ -252,6 +262,12 @@ struct ConversationRuntime {
     /// Whether the entry's provider runs a process it prepares ahead; its
     /// family, and so this, never changes.
     prepares_ahead: bool,
+    /// The agent's hold on the account it took under the entry's rotation;
+    /// none under Manual (`providers.md` § Account rotation).
+    holding: Option<Holding>,
+    /// Whether the held account was taken ahead of a request, so the next
+    /// request that names none tells the session of it.
+    unannounced: bool,
 }
 
 /// The runtime that serves the session's requests, with what it was built
@@ -260,6 +276,16 @@ struct Current {
     provider: Arc<dyn Provider>,
     model: String,
     runtime: Box<dyn ProviderRuntime>,
+}
+
+/// What admitting a request found.
+struct Admitted {
+    output_limit: Option<NonZeroU32>,
+    /// Whether the entry gives each agent an account of its own.
+    rotates: bool,
+    /// The account to tell the session of before the run, when it is not
+    /// the one the request named.
+    announce: Option<Option<AgentAccount>>,
 }
 
 /// Why a request of a conversation whose provider entry left the user's
@@ -287,31 +313,15 @@ fn refused(message: impl Into<String>, code: Option<ErrorCode>) -> ProviderFailu
 impl ConversationRuntime {
     /// Resolves the entry for `request` (`providers.md` § Inference admission
     /// and runtime ownership): the entry must still be in the user's scope,
-    /// and a subscription entry must have an account. Answers the model's
-    /// output limit, which the entry's configured model decides when it has
-    /// a configured list; the request's own cap is not the model's, and
-    /// stays (`models.md` § Output limit).
-    async fn admit(
-        &mut self,
-        request: &InferenceRequest,
-    ) -> Result<Option<NonZeroU32>, ProviderFailure> {
-        let scope = self.scope.clone();
-        let read = scope
-            .services
-            .vault
-            .visible(&scope.user, &scope.provider)
-            .await;
-        let entry = match read {
-            Ok(Some(entry)) => entry,
-            Ok(None) => {
-                // The entry is gone: its runtime has nothing left to serve.
-                self.close_current().await;
-                return Err(refused(entry_gone(&scope.provider), None));
-            }
-            Err(error) => {
-                return Err(refused(entry_unreadable(&error), None));
-            }
-        };
+    /// and a subscription entry must have an account. The account is the
+    /// active one, or under the entry's rotation the agent's own: the one
+    /// the request names while it is still the entry's and taken under the
+    /// entry's rotation, else one taken now. Answers the model's output
+    /// limit, which the entry's configured model decides when it has a
+    /// configured list; the request's own cap is not the model's, and stays
+    /// (`models.md` § Output limit).
+    async fn admit(&mut self, request: &InferenceRequest) -> Result<Admitted, ProviderFailure> {
+        let entry = self.entry().await?;
         let requested = ModelSelection {
             provider_id: self.selection.provider_id.clone(),
             model: Model {
@@ -322,19 +332,177 @@ impl ConversationRuntime {
             thinking: request.thinking.clone(),
             service_tier_id: request.service_tier_id.clone(),
         };
-        self.serve(&entry, requested).await?;
-        Ok(self.selection.model.output_limit.and_then(NonZeroU32::new))
+        let selection = configured_selection(&entry, requested)
+            .map_err(|error| refused(error.to_string(), None))?;
+        let rotation = entry.rotation();
+        let (account, announce) = match rotation {
+            Rotation::Manual => {
+                self.holding = None;
+                let announce = request.account.is_some().then_some(None);
+                (entry.active().cloned(), announce)
+            }
+            Rotation::InOrder | Rotation::Balanced => {
+                let (account, announce) = self
+                    .agent_account(&entry, &selection.model, request.account.as_ref())
+                    .await?;
+                (Some(account), announce)
+            }
+        };
+        self.serve(&entry, selection, account.as_ref()).await?;
+        Ok(Admitted {
+            output_limit: self.selection.model.output_limit.and_then(NonZeroU32::new),
+            rotates: rotation != Rotation::Manual,
+            announce,
+        })
     }
 
-    /// Makes the current runtime one of `entry`'s provider for `requested`:
-    /// the one there is while the entry and the model are unchanged,
-    /// otherwise a new one, and the one it replaces is closed.
+    /// A fresh read of the entry in the user's scope; a runtime whose entry
+    /// is gone has nothing left to serve.
+    async fn entry(&mut self) -> Result<ProviderEntry, ProviderFailure> {
+        let scope = self.scope.clone();
+        let read = scope
+            .services
+            .vault
+            .visible(&scope.user, &scope.provider)
+            .await;
+        match read {
+            Ok(Some(entry)) => Ok(entry),
+            Ok(None) => {
+                self.close_current().await;
+                Err(refused(entry_gone(&scope.provider), None))
+            }
+            Err(error) => Err(refused(entry_unreadable(&error), None)),
+        }
+    }
+
+    /// The account the agent uses under `entry`'s rotation: `named`, the
+    /// one the session keeps, while the entry still holds it and its
+    /// rotation is the one it was taken under; else one taken now, which
+    /// the session is told of.
+    async fn agent_account(
+        &mut self,
+        entry: &ProviderEntry,
+        model: &Model,
+        named: Option<&AgentAccount>,
+    ) -> Result<(CredentialId, Option<Option<AgentAccount>>), ProviderFailure> {
+        let assembly = &self.scope.services.assembly;
+        let rotation = entry.rotation();
+        if let Some(named) = named.filter(|named| named.rotation == rotation) {
+            let accounts = assembly
+                .vault()
+                .accounts(entry.id.clone())
+                .await
+                .map_err(|error| refused(entry_unreadable(&error), None))?;
+            if let Some(kept) = accounts
+                .into_iter()
+                .find(|account| account.id.as_str() == named.credential_id)
+            {
+                let held = self
+                    .holding
+                    .as_ref()
+                    .is_some_and(|holding| *holding.account() == kept.id);
+                if !held {
+                    self.holding = Some(assembly.rotation().hold(&entry.id, &kept.id));
+                }
+                self.unannounced = false;
+                return Ok((kept.id, None));
+            }
+        }
+        if named.is_none()
+            && self.unannounced
+            && let Some(holding) = &self.holding
+        {
+            // Taken ahead of this request: the session learns of it now.
+            self.unannounced = false;
+            let account = holding.account().clone();
+            return Ok((account.clone(), Some(Some(agent_account(&account, rotation)))));
+        }
+        let (choice, candidates) = assembly
+            .take_account(entry, model)
+            .await
+            .map_err(|error| refused(error.to_string(), None))?;
+        match choice {
+            Some(Choice::Account(holding)) => {
+                let account = holding.account().clone();
+                self.holding = Some(holding);
+                self.unannounced = true;
+                Ok((account.clone(), Some(Some(agent_account(&account, rotation)))))
+            }
+            Some(Choice::AllUsedUp { .. }) => Err(all_used_up(entry, &candidates)),
+            None => unreachable!("a rotating entry takes an account or finds them used up"),
+        }
+    }
+
+    /// The agent's account failed with `failure`, a usage limit: it is
+    /// used up until the moment the failure or its quota names, or for 30
+    /// minutes, and the agent takes another account, whose runtime serves
+    /// the same request again. Answers the move, or the failure when every
+    /// account is used up (`providers.md` § Account rotation).
+    async fn switch_account(
+        &mut self,
+        failure: &ProviderFailure,
+    ) -> Result<(AccountSwitch, AgentAccount), ()> {
+        let Some(used_up) = self.holding.as_ref().map(|holding| holding.account().clone()) else {
+            return Err(());
+        };
+        let entry = self.entry().await.map_err(drop)?;
+        let assembly = self.scope.services.assembly.clone();
+        let now = self.scope.services.clock.now();
+        let model = self.selection.model.clone();
+        let candidates = assembly.candidates(&entry, false).await.map_err(drop)?;
+        let failed = candidates.iter().find(|candidate| candidate.id == used_up);
+        let named = match (&failure.diagnostics, &self.current) {
+            (Some(diagnostics), Some(current)) => {
+                current.provider.read_failure(diagnostics, now).retry_at
+            }
+            _ => None,
+        };
+        let quota = used_up_window(failed.and_then(|failed| failed.snapshot.as_ref()), &model, now);
+        let moment = named.or(quota.as_ref().and_then(|(_, reset)| *reset));
+        let until = moment.unwrap_or_else(|| {
+            Timestamp::from_millisecond(now.as_millisecond() + USED_UP_FOR_MS)
+                .expect("half an hour from now is a time")
+        });
+        assembly.rotation().mark_used_up(&entry.id, &used_up, until);
+        // The used-up account's hold goes before the choice, which then
+        // counts the agent nowhere.
+        self.holding = None;
+        let (choice, candidates) = assembly.take_account(&entry, &model).await.map_err(drop)?;
+        let Some(Choice::Account(holding)) = choice else {
+            return Err(());
+        };
+        let next = holding.account().clone();
+        self.holding = Some(holding);
+        self.unannounced = false;
+        let selection = self.selection.clone();
+        self.serve(&entry, selection, Some(&next)).await.map_err(drop)?;
+        let label = |id: &CredentialId| {
+            candidates
+                .iter()
+                .find(|candidate| candidate.id == *id)
+                .map_or_else(|| id.to_string(), |candidate| candidate.label.clone())
+        };
+        let switch = AccountSwitch {
+            from: label(&used_up),
+            to: label(&next),
+            window: quota.map(|(window, _)| window),
+            resets_at: moment,
+        };
+        Ok((switch, agent_account(&next, entry.rotation())))
+    }
+
+    /// Makes the current runtime one of `entry`'s provider for `selection`
+    /// and `account`: the one there is while the entry, the account and the
+    /// model are unchanged, otherwise a new one, and the one it replaces is
+    /// closed. A Claude Code agent that changes account so closes its CLI
+    /// process and starts one with the other account's token.
     async fn serve(
         &mut self,
         entry: &ProviderEntry,
-        requested: ModelSelection,
+        selection: ModelSelection,
+        account: Option<&CredentialId>,
     ) -> Result<(), ProviderFailure> {
-        if let EntryCredential::Subscription { active: None } = &entry.credential {
+        if let EntryCredential::Subscription { active: None, .. } = &entry.credential {
             // The runtime of an account removed meanwhile goes, as a switch
             // closes it.
             self.close_current().await;
@@ -343,15 +511,19 @@ impl ConversationRuntime {
                 Some(ErrorCode::AuthMissing),
             ));
         }
-        let selection = configured_selection(entry, requested)
-            .map_err(|error| refused(error.to_string(), None))?;
         let scope = self.scope.clone();
-        let provider = scope
-            .services
-            .assembly
-            .provider_for(entry)
-            .await
-            .map_err(|error| refused(error.to_string(), None))?;
+        let assembly = &scope.services.assembly;
+        let provider = match account {
+            Some(account) if entry.active() != Some(account) => assembly
+                .for_account(entry, account)
+                .await
+                .map_err(|error| refused(error.to_string(), None))?
+                .ok_or_else(|| refused("The account is no longer available", None))?,
+            _ => assembly
+                .provider_for(entry)
+                .await
+                .map_err(|error| refused(error.to_string(), None))?,
+        };
         self.prepares_ahead = provider.capabilities().process_host;
         let kept = self.current.as_ref().is_some_and(|current| {
             Arc::ptr_eq(&current.provider, &provider) && current.model == selection.model.id
@@ -366,10 +538,8 @@ impl ConversationRuntime {
                 let env = RuntimeEnv {
                     http: scope.http.clone(),
                 };
-                scope
-                    .services
-                    .assembly
-                    .process_runtime(entry, entry.active(), env, placement)
+                assembly
+                    .process_runtime(entry, account.or(entry.active()), env, placement)
                     .await
                     .map_err(|error| refused(error.to_string(), None))?
             } else {
@@ -404,36 +574,107 @@ impl ConversationRuntime {
     }
 }
 
+/// The account an agent took under `rotation`, as its session keeps it.
+fn agent_account(account: &CredentialId, rotation: Rotation) -> AgentAccount {
+    AgentAccount {
+        credential_id: account.to_string(),
+        rotation,
+    }
+}
+
+/// The failure of a request no account of `entry` can serve: every one is
+/// used up, and the turn ends as it would with Manual
+/// (`providers.md` § Account rotation).
+fn all_used_up(entry: &ProviderEntry, candidates: &[Candidate]) -> ProviderFailure {
+    let message = match candidates.len() {
+        0 | 1 => format!("{} has reached its usage limit", entry.label),
+        _ => format!("Every account of {} has reached its usage limit", entry.label),
+    };
+    let code = USAGE_LIMIT.parse::<ErrorCode>().unwrap_or_else(|never| match never {});
+    refused(message, Some(code))
+}
+
+/// A used-up account's failure code.
+const USAGE_LIMIT: &str = "usage_limit";
+
+/// Whether `failure` says the account is used up.
+fn uses_up(failure: &ProviderFailure) -> bool {
+    failure.code.as_ref().is_some_and(|code| code.as_str() == USAGE_LIMIT)
+}
+
 impl ProviderRuntime for ConversationRuntime {
     /// Resolves the entry, then runs the request on the runtime that serves
     /// it. A request whose token is cancelled while the entry is read ends
-    /// without an event, as every cancelled run does.
+    /// without an event, as every cancelled run does. Under rotation, a
+    /// usage limit before anything of the run reached the agent moves the
+    /// agent to another account and sends the same request again at once,
+    /// which is no retry of the agent's (`providers.md` § Account rotation).
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
-        stream::once(async move {
+        Box::pin(async_stream::stream! {
             let cancel = request.cancel.clone();
             let admitted = tokio::select! {
                 admitted = self.admit(&request) => admitted,
-                () = cancel.cancelled() => return stream::empty().boxed_local(),
+                () = cancel.cancelled() => return,
             };
-            match admitted {
-                Ok(output_limit) => {
-                    let request = InferenceRequest {
-                        output_limit,
-                        ..request
+            let admitted = match admitted {
+                Ok(admitted) => admitted,
+                Err(failure) => {
+                    yield ProviderEvent::Error(failure);
+                    return;
+                }
+            };
+            if let Some(account) = admitted.announce {
+                yield ProviderEvent::Account(account);
+            }
+            let request = InferenceRequest {
+                output_limit: admitted.output_limit,
+                ..request
+            };
+            loop {
+                let mut used_up = None;
+                {
+                    let Some(current) = self.current.as_mut() else {
+                        unreachable!("an admitted request has its runtime");
                     };
-                    match self.current.as_mut() {
-                        Some(current) => current.runtime.run(request),
-                        None => unreachable!("an admitted request has its runtime"),
+                    let mut events = current.runtime.run(request.clone());
+                    let mut shown = false;
+                    while let Some(event) = events.next().await {
+                        match event {
+                            ProviderEvent::Error(failure)
+                                if admitted.rotates && !shown && uses_up(&failure) =>
+                            {
+                                used_up = Some(failure);
+                            }
+                            event => {
+                                shown = true;
+                                yield event;
+                            }
+                        }
                     }
                 }
-                Err(failure) => stream::iter([ProviderEvent::Error(failure)]).boxed_local(),
+                let Some(failure) = used_up else {
+                    return;
+                };
+                let switched = tokio::select! {
+                    switched = self.switch_account(&failure) => switched,
+                    () = cancel.cancelled() => return,
+                };
+                match switched {
+                    Ok((switch, account)) => {
+                        yield ProviderEvent::AccountSwitch(switch);
+                        yield ProviderEvent::Account(Some(account));
+                    }
+                    Err(()) => {
+                        yield ProviderEvent::Error(failure);
+                        return;
+                    }
+                }
             }
         })
-        .flatten()
-        .boxed_local()
     }
 
     fn fresh(&self) -> Box<dyn ProviderRuntime> {
+        // A child takes an account of its own at its first request.
         Box::new(Self {
             scope: self.scope.clone(),
             selection: self.selection.clone(),
@@ -443,6 +684,8 @@ impl ProviderRuntime for ConversationRuntime {
                 runtime: current.runtime.fresh(),
             }),
             prepares_ahead: self.prepares_ahead,
+            holding: None,
+            unannounced: false,
         })
     }
 
@@ -451,7 +694,10 @@ impl ProviderRuntime for ConversationRuntime {
     }
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
-        Box::pin(self.close_current())
+        Box::pin(async move {
+            self.holding = None;
+            self.close_current().await;
+        })
     }
 
     /// Resolves the entry as the request will, so a model or an account
@@ -460,8 +706,8 @@ impl ProviderRuntime for ConversationRuntime {
     /// says why.
     fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {
         Box::pin(async move {
-            let output_limit = match self.admit(&request).await {
-                Ok(output_limit) => output_limit,
+            let admitted = match self.admit(&request).await {
+                Ok(admitted) => admitted,
                 Err(failure) => {
                     tracing::debug!(
                         conversation = %self.scope.conversation,
@@ -473,7 +719,7 @@ impl ProviderRuntime for ConversationRuntime {
             };
             if let Some(current) = &mut self.current {
                 let request = InferenceRequest {
-                    output_limit,
+                    output_limit: admitted.output_limit,
                     ..request
                 };
                 current.runtime.prepare(request, ahead).await;

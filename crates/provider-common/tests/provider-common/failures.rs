@@ -352,7 +352,7 @@ fn the_standard_reading_names_a_time_only_for_an_http_record_with_the_header() {
     assert_eq!(
         facts,
         ProviderFailureFacts {
-            retry_at: Some(time("2026-09-18T14:01:30.000Z"))
+            retry_at: Some(time("2026-09-18T14:01:30.000Z")), continue_with: None
         }
     );
 
@@ -381,13 +381,15 @@ fn the_wait_is_set_only_when_the_reader_names_a_time() {
     let later: fn(&ProviderErrorDiagnostics, Timestamp) -> ProviderFailureFacts =
         |_, _| ProviderFailureFacts {
             retry_at: Some("2026-09-18T14:00:30.000Z".parse().unwrap()),
+            continue_with: None,
         };
     let earlier: fn(&ProviderErrorDiagnostics, Timestamp) -> ProviderFailureFacts =
         |_, _| ProviderFailureFacts {
             retry_at: Some("2026-09-18T13:00:00.000Z".parse().unwrap()),
+            continue_with: None,
         };
     let none: fn(&ProviderErrorDiagnostics, Timestamp) -> ProviderFailureFacts =
-        |_, _| ProviderFailureFacts { retry_at: None };
+        |_, _| ProviderFailureFacts { retry_at: None, continue_with: None };
 
     assert_eq!(
         failed.clone().with_retry_wait(later, now).retry_after,

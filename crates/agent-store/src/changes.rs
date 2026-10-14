@@ -76,6 +76,7 @@ fn place(block: &Block) -> Place {
         | Block::Abort(_)
         | Block::Text(_)
         | Block::Error(_)
+        | Block::AccountSwitch(_)
         | Block::CompactionMarker(_) => Place::Ends,
     }
 }
