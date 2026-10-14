@@ -101,6 +101,15 @@ pub trait SessionRuntime {
     /// The tools the model may call.
     fn tools(&self) -> Arc<[ToolDefinition]>;
 
+    /// The node's working directory now, where its `shell` calls start: a
+    /// call's lists leave out the paths outside it (`edit-tracking.md`
+    /// § Within the working directory). None when it cannot be read, as by
+    /// default, and then a list leaves out only the paths stored as
+    /// outside.
+    fn directory(&self) -> LocalBoxFuture<'_, Option<String>> {
+        Box::pin(async { None })
+    }
+
     /// What the node has running now, which a compaction pass names after
     /// its marker (`compaction.md` § What the model receives afterward): its
     /// commands that run and its live subagents. Nothing by default.

@@ -37,15 +37,15 @@ const CHECK = 'import re, sys\n\npage = open(\'src/page.ts\').read()\nsys.exit(0
 
 /**
  * A file a call changed, one segment per step between `versions`: of the
- * gallery workspace, or anywhere when `path` is absolute, in which case a
- * path in /tmp is in a temporary directory.
+ * gallery workspace, or anywhere when `path` is absolute, in which case it
+ * is outside the agent's directory, as the backend marks it.
  */
 function file(path: string, kind: EditedFile['kind'], versions: readonly string[], counts: { added: number; removed: number }): EditedFile {
   return {
     path: path.startsWith('/') ? path : `${WORKSPACE_ROOT}/${path}`,
     kind,
     ...counts,
-    ...(path.startsWith('/tmp/') ? { temporary: true } : {}),
+    ...(path.startsWith('/') ? { outside: true } : {}),
     edits: versions.slice(1).map((modified, n) => ({ copies: editCopies(versions[n]!, modified) })),
   }
 }
@@ -157,8 +157,9 @@ export function uncopiedRequestBlocks(): Block[] {
  * A request whose files are listed as they stand after its last call: the
  * new page, written in /tmp and moved over src/page.ts, is src/page.ts with
  * both edits. What the agent wrote on its way shows nowhere, neither in the
- * list nor as a pill: the check script it left in /tmp, and the scratch
- * notes a later call removed (`edit-tracking.md` § Temporary files).
+ * list nor as a pill: the check script it left in /tmp, outside its
+ * directory, and the scratch notes a later call removed
+ * (`edit-tracking.md` § Within the working directory).
  */
 export function movedRequestBlocks(): Block[] {
   const write = shell('moved-write', 250_000, 'cat > /tmp/page.ts.new <<\'EOF\'\n…\nEOF', 'Write the new page', [
@@ -197,7 +198,7 @@ export function movedRequestBlocks(): Block[] {
  * run's pills keep the notes it made; the second's show them and the old
  * guide struck through and the setup page under its new name; the request
  * lists the readme, the old guide and the renamed page, not the notes
- * (`edit-tracking.md` § Temporary files).
+ * (`edit-tracking.md` § Within the working directory).
  */
 export function cleanupRequestBlocks(): Block[] {
   const draft = shell('cleanup-draft', 180_000, 'printf … > docs/draft.md && demi file edit README.md', 'Draft the notes and link them', [

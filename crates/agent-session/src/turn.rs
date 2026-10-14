@@ -603,16 +603,18 @@ async fn run_tools(
 
 /// `view` with the lists the conversation shows of the shell call that
 /// `at` finds in the transcript (`edit-tracking.md` § What the conversation
-/// shows): its own files, its run's and its request's, counted from the
-/// edit copies in the conversation's blob namespace. A call the transcript
-/// no longer holds, as after an edit cut it, keeps `view` as it is.
+/// shows): its own files, its run's and its request's, within the node's
+/// working directory, counted from the edit copies in the conversation's
+/// blob namespace. A call the transcript no longer holds, as after an edit
+/// cut it, keeps `view` as it is.
 async fn with_lists(
     s: &SessionShared,
     at: impl Fn(&SessionCore) -> Option<usize>,
     mut view: ShellToolView,
 ) -> ShellToolView {
+    let directory = s.runtime.directory().await;
     let planned = s.read(|core| {
-        at(core).map(|index| changes::plan(core.transcript.blocks(), index, &view))
+        at(core).map(|index| changes::plan(core.transcript.blocks(), index, &view, directory.as_deref()))
     });
     let Some(planned) = planned else {
         return view;

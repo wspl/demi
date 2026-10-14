@@ -122,8 +122,6 @@ struct Tracked {
     removed: bool,
     /// Where it was before the list's calls renamed it.
     from: Option<String>,
-    /// Its path is in a temporary directory, as it stands now.
-    temporary: bool,
     edits: Vec<FileEdit>,
 }
 
@@ -141,13 +139,34 @@ impl Tracked {
     }
 }
 
-/// Whether `path` is `parent` or within it.
+/// Whether `path` is `parent` or within it, a path of the Host with either
+/// separator, as a Windows Host names its paths with `\\`.
 fn is_within(path: &str, parent: &str) -> bool {
-    let parent = parent.strip_suffix('/').unwrap_or(parent);
+    let parent = parent.trim_end_matches(['/', '\\']);
     path == parent
         || path
             .strip_prefix(parent)
-            .is_some_and(|rest| rest.starts_with('/'))
+            .is_some_and(|rest| rest.starts_with(['/', '\\']))
+}
+
+/// Which paths a shown list leaves out: those outside the working
+/// directory of the agent whose call it is (`edit-tracking.md` § Within the
+/// working directory).
+enum Outside<'a> {
+    /// Outside `directory`.
+    Directory(&'a str),
+    /// The paths the calls' own lists marked `outside` as they were
+    /// stored, for a list made again where the directory is not known.
+    Marked(HashSet<&'a str>),
+}
+
+impl Outside<'_> {
+    fn holds(&self, path: &str) -> bool {
+        match self {
+            Self::Directory(directory) => !is_within(path, directory),
+            Self::Marked(paths) => paths.contains(path),
+        }
+    }
 }
 
 /// The files of a run of calls, as they stand after the latest.
@@ -171,12 +190,8 @@ impl Tracking {
         let mut arrived = HashSet::new();
         for change in changes {
             match change {
-                PathChange::Removed { path, temporary } => self.remove(path, *temporary),
-                PathChange::Renamed {
-                    from,
-                    to,
-                    temporary,
-                } => self.rename(from, to, *temporary, &mut arrived),
+                PathChange::Removed { path } => self.remove(path),
+                PathChange::Renamed { from, to } => self.rename(from, to, &mut arrived),
             }
         }
         for file in report {
@@ -188,7 +203,6 @@ impl Tracking {
                         existed: file.kind == EditKind::Modified,
                         removed: false,
                         from: None,
-                        temporary: file.temporary,
                         edits: Vec::new(),
                     });
                     self.files.len() - 1
@@ -202,7 +216,6 @@ impl Tracking {
             }
             // Written again after a removal, the file is there again.
             tracked.removed = false;
-            tracked.temporary = file.temporary;
             for (segment, edit) in file.edits.iter().enumerate() {
                 tracked.edits.push(FileEdit {
                     call: call.clone(),
@@ -217,9 +230,8 @@ impl Tracking {
 
     /// A removed path, or a folder with all in it: a file the list created
     /// leaves it, one that was there before is deleted where it was before
-    /// the list renamed it, and a path the list did not hold is deleted, in
-    /// a temporary directory or not as the job said.
-    fn remove(&mut self, path: &str, temporary: bool) {
+    /// the list renamed it, and a path the list did not hold is deleted.
+    fn remove(&mut self, path: &str) {
         let mut within = false;
         self.files.retain_mut(|tracked| {
             if !is_within(&tracked.path, path) {
@@ -241,7 +253,6 @@ impl Tracking {
                 existed: true,
                 removed: true,
                 from: None,
-                temporary,
                 edits: Vec::new(),
             });
         }
@@ -251,7 +262,7 @@ impl Tracking {
     /// name with its edits, merged into the file the new name already has,
     /// which keeps its place, or the earlier of the two; a path the list
     /// did not hold is listed renamed.
-    fn rename(&mut self, from: &str, to: &str, temporary: bool, arrived: &mut HashSet<String>) {
+    fn rename(&mut self, from: &str, to: &str, arrived: &mut HashSet<String>) {
         let moved: Vec<usize> = (0..self.files.len())
             .filter(|&at| !self.files[at].removed && is_within(&self.files[at].path, from))
             .collect();
@@ -266,7 +277,6 @@ impl Tracking {
                 existed: true,
                 removed: false,
                 from: Some(from.to_owned()),
-                temporary,
                 edits: Vec::new(),
             });
             arrived.insert(to.to_owned());
@@ -285,8 +295,6 @@ impl Tracking {
                         tracked.from = (original != path).then_some(original);
                     }
                     tracked.path = path.clone();
-                    // A folder's files are where the folder is.
-                    tracked.temporary = temporary;
                     arrived.insert(path);
                 }
                 Some(target) => {
@@ -299,7 +307,6 @@ impl Tracking {
                     // file's first.
                     kept.edits.sort_by_key(rank);
                     kept.removed = false;
-                    kept.temporary = temporary;
                     let merged = self.files[target].clone();
                     let first = at.min(target);
                     self.files.remove(at.max(target));
@@ -309,12 +316,13 @@ impl Tracking {
         }
     }
 
-    /// The list a page shows: the files not in a temporary directory, each
-    /// with the ends its lines are counted between.
-    fn listed(&self) -> Vec<(ChangedFile, Option<Ends>)> {
+    /// The list a page shows: the files whose path, after the list's
+    /// renames, `outside` does not leave out, each with the ends its lines
+    /// are counted between.
+    fn listed(&self, outside: &Outside<'_>) -> Vec<(ChangedFile, Option<Ends>)> {
         self.files
             .iter()
-            .filter(|tracked| !tracked.temporary)
+            .filter(|tracked| !outside.holds(&tracked.path))
             .map(|tracked| {
                 let file = ChangedFile {
                     path: tracked.path.clone(),
@@ -362,24 +370,21 @@ fn reported(view: &ShellToolView) -> Vec<&EditedFile> {
         .collect()
 }
 
-/// A call's own files, as its pills show what it did (`edit-tracking.md`
-/// § The report): the files its job wrote, then each path it removed as
-/// `deleted` and each it renamed, but to a path it wrote, as `renamed` with
-/// the old path.
-fn call_files(view: &ShellToolView) -> Vec<EditedFile> {
+/// A call's own files, its record of what it did that later lists are
+/// made from and its pills show (`edit-tracking.md` § The report): the
+/// files its job wrote, then each path it removed as `deleted` and each it
+/// renamed, but to a path it wrote, as `renamed` with the old path; each
+/// marked `outside` as `outside` says, which the pills leave out.
+fn call_files(view: &ShellToolView, outside: &Outside<'_>) -> Vec<EditedFile> {
     let mut files: Vec<EditedFile> = reported(view).into_iter().cloned().collect();
     let written = files.len();
     for change in &view.path_changes {
-        let (path, kind, from, temporary) = match change {
-            PathChange::Removed { path, temporary } => {
+        let (path, kind, from) = match change {
+            PathChange::Removed { path } => {
                 let path = path.strip_suffix('/').unwrap_or(path).to_owned();
-                (path, EditKind::Deleted, None, *temporary)
+                (path, EditKind::Deleted, None)
             }
-            PathChange::Renamed {
-                from,
-                to,
-                temporary,
-            } => (to.clone(), EditKind::Renamed, Some(from.clone()), *temporary),
+            PathChange::Renamed { from, to } => (to.clone(), EditKind::Renamed, Some(from.clone())),
         };
         if files[..written].iter().any(|file| file.path == path) {
             continue;
@@ -392,9 +397,12 @@ fn call_files(view: &ShellToolView) -> Vec<EditedFile> {
             from,
             added: 0,
             removed: 0,
-            temporary,
+            outside: false,
             edits: Vec::new(),
         });
+    }
+    for file in &mut files {
+        file.outside = outside.holds(&file.path);
     }
     files
 }
@@ -469,9 +477,13 @@ impl Planned {
 
 /// Plans the lists of the shell call at `index` of `blocks` whose view is
 /// `view`, from the blocks before it: the call's own files, its run's and
-/// its request's up to it. The call's block need not hold `view` yet; the
-/// calls after it play no part.
-pub fn plan(blocks: &[Block], index: usize, view: &ShellToolView) -> Planned {
+/// its request's up to it, without the paths outside `directory`, the
+/// working directory of the agent whose transcript it is
+/// (`edit-tracking.md` § Within the working directory). Where `directory`
+/// is not known, as for a list made again of a stored transcript, the
+/// paths the calls marked `outside` as they were stored are left out. The
+/// call's block need not hold `view` yet; the calls after it play no part.
+pub fn plan(blocks: &[Block], index: usize, view: &ShellToolView, directory: Option<&str>) -> Planned {
     let before = &blocks[..index];
     let run = blocks[index]
         .run()
@@ -504,10 +516,23 @@ pub fn plan(blocks: &[Block], index: usize, view: &ShellToolView) -> Planned {
     }
     request.add(&view.command_id, &reported(view), &view.path_changes);
     runs.add(&view.command_id, &reported(view), &view.path_changes);
+    let outside = match directory {
+        Some(directory) => Outside::Directory(directory),
+        None => Outside::Marked(
+            before
+                .iter()
+                .filter_map(shell_view)
+                .chain([view])
+                .flat_map(|view| view.files.iter().flatten())
+                .filter(|file| file.outside)
+                .map(|file| file.path.as_str())
+                .collect(),
+        ),
+    };
     Planned {
-        files: call_files(view),
-        run: runs.listed(),
-        request: start.map(|_| request.listed()),
+        files: call_files(view, &outside),
+        run: runs.listed(&outside),
+        request: start.map(|_| request.listed(&outside)),
         counted,
     }
 }
@@ -587,7 +612,7 @@ pub fn relist<E>(
         let Some(mut view) = shell_view(&blocks[index]).cloned() else {
             continue;
         };
-        let planned = plan(blocks, index, &view);
+        let planned = plan(blocks, index, &view, None);
         let mut counted = HashMap::new();
         for (original, modified) in planned.uncounted() {
             let mut failed = None;

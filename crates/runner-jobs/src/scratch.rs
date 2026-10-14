@@ -1,8 +1,7 @@
 //! Each conversation's scratch directory (`runner.md` § Scratch directory):
 //! `<DEMI_HOME>/scratch/<conversation id>/`, made at the conversation's
-//! first job on the Host, named by `DEMI_SCRATCH` in each of its jobs,
-//! marked temporary in their edit reports, and removed once its
-//! conversation no longer exists.
+//! first job on the Host, named by `DEMI_SCRATCH` in each of its jobs, and
+//! removed once its conversation no longer exists.
 
 use std::{
     collections::HashSet,
@@ -10,34 +9,27 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::edit_report::Directory;
-
 /// The variable that names a job's scratch directory.
 pub const SCRATCH_ENV: &str = "DEMI_SCRATCH";
 
 /// The directory that holds every conversation's scratch directory.
 #[derive(Clone, Debug)]
 pub struct Scratch {
-    root: Directory,
+    root: PathBuf,
 }
 
 impl Scratch {
     /// The scratch directories of the installation in `home`, `DEMI_HOME`.
     pub fn new(home: &Path) -> Self {
         Self {
-            root: Directory::within(home, "scratch"),
+            root: home.join("scratch"),
         }
-    }
-
-    /// The directory that holds them all, whose paths are temporary.
-    pub(crate) fn directory(&self) -> &Directory {
-        &self.root
     }
 
     /// The directory of `conversation`, a conversation name the wire checked
     /// (`native-runtime.md` § Command context), made when it is not there.
     pub async fn create(&self, conversation: &str) -> io::Result<PathBuf> {
-        let directory = self.root.path().join(conversation);
+        let directory = self.root.join(conversation);
         tokio::fs::create_dir_all(&directory).await?;
         Ok(directory)
     }
@@ -49,7 +41,7 @@ impl Scratch {
     /// be removed stays until the next connection tries again.
     pub async fn keep_only(&self, existing: &[String]) -> io::Result<()> {
         let existing: HashSet<&str> = existing.iter().map(String::as_str).collect();
-        let mut entries = match tokio::fs::read_dir(self.root.path()).await {
+        let mut entries = match tokio::fs::read_dir(&self.root).await {
             Ok(entries) => entries,
             Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(()),
             Err(error) => return Err(error),

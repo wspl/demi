@@ -80,10 +80,10 @@ export function listedFile(commandId: string, file: EditedFile): ChangedFile {
   }
 }
 
-/** The files `block`, a shell call, changed, but in a temporary directory, as entries of its lists. */
+/** The files `block`, a shell call, changed, but outside its agent's directory, as entries of its lists. */
 export function listedFiles(block: Block): ChangedFile[] {
   const view = block.type === 'tool_call' && block.view?.kind === 'shell' ? block.view : null
-  return (view?.files ?? []).filter((file) => !file.temporary).map((file) => listedFile(view!.commandId, file))
+  return (view?.files ?? []).filter((file) => !file.outside).map((file) => listedFile(view!.commandId, file))
 }
 
 /**

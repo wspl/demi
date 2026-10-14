@@ -1142,7 +1142,7 @@ pub fn edited_file(
         },
         added: u32::try_from(file.added).unwrap_or(u32::MAX),
         removed: u32::try_from(file.removed).unwrap_or(u32::MAX),
-        temporary: file.temporary,
+        outside: false,
         edits: (0..file.edits.len())
             .map(|segment| EditSegment {
                 copies: copies(segment),
@@ -1154,19 +1154,11 @@ pub fn edited_file(
 /// A rename or a removal as the view lists it.
 fn path_change(change: &wire::JobPathChange) -> PathChange {
     match change {
-        wire::JobPathChange::Renamed {
-            from,
-            to,
-            temporary,
-        } => PathChange::Renamed {
+        wire::JobPathChange::Renamed { from, to } => PathChange::Renamed {
             from: from.clone(),
             to: to.clone(),
-            temporary: *temporary,
         },
-        wire::JobPathChange::Removed { path, temporary } => PathChange::Removed {
-            path: path.clone(),
-            temporary: *temporary,
-        },
+        wire::JobPathChange::Removed { path } => PathChange::Removed { path: path.clone() },
     }
 }
 

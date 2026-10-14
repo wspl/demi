@@ -560,8 +560,10 @@ CREATE TABLE plugin_oauth_clients (
 /// keeps, but development databases do, and the server's migrate through
 /// them, as they do through the one before a node said which agent it was
 /// forked from, through the one of transcript block format 6 before a
-/// child's row kept its working directory, and through the one with child
-/// directories before a node kept its profile's Context.
+/// child's row kept its working directory, through the one with child
+/// directories before a node kept its profile's Context, and through the
+/// one of format 6 before a shell call marked the paths outside its
+/// agent's directory.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -609,8 +611,64 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.child-directories.sql"),
             migration: Migration::Sql(CONVERSATION_FROM_CHILD_DIRECTORIES),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.context-limits.sql"),
+            migration: Migration::Code(views_with_outside_paths),
+        },
     ],
 };
+
+/// From the conversation schema of transcript block format 6 to format 7,
+/// in which a shell call's own files mark the paths outside its agent's
+/// working directory `outside` in place of the paths in a temporary
+/// directory `temporary`, and its renames and removals mark none
+/// (`edit-tracking.md` § Within the working directory). This database does
+/// not know the root's directory, so a file marked temporary is marked
+/// outside, and the stored run and request lists, which already left those
+/// out, stay as they are.
+fn views_with_outside_paths(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    let rows = transaction
+        .prepare("SELECT node_id, idx, block FROM blocks WHERE json_extract(block, '$.view.commandId') IS NOT NULL")?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
+    for (node, index, text) in rows {
+        let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
+        if with_outside_paths(&mut block) {
+            let block: demi_shared_types::Block = demi_shared_types::decode_value(block).map_err(corrupt)?;
+            update.execute(rusqlite::params![node, index, super::columns::to_json(&block)])?;
+        }
+    }
+    Ok(())
+}
+
+/// A stored shell view of transcript block format 6 or before as format 7
+/// holds it: each own file's `temporary` becomes `outside`, and its renames
+/// and removals lose theirs; true when it changed. The migrations before
+/// that format's decode the blocks they relist as the current format, so
+/// they read a view through this too.
+fn with_outside_paths(block: &mut serde_json::Value) -> bool {
+    let Some(view) = block.get_mut("view").and_then(serde_json::Value::as_object_mut) else {
+        return false;
+    };
+    let mut changed = false;
+    if let Some(files) = view.get_mut("files").and_then(serde_json::Value::as_array_mut) {
+        for file in files.iter_mut().filter_map(serde_json::Value::as_object_mut) {
+            if let Some(temporary) = file.remove("temporary") {
+                changed = true;
+                if temporary == serde_json::Value::Bool(true) {
+                    file.insert("outside".to_owned(), temporary);
+                }
+            }
+        }
+    }
+    if let Some(changes) = view.get_mut("pathChanges").and_then(serde_json::Value::as_array_mut) {
+        for change in changes.iter_mut().filter_map(serde_json::Value::as_object_mut) {
+            changed |= change.remove("temporary").is_some();
+        }
+    }
+    changed
+}
 
 /// From the conversation schema in which a child's row keeps its working
 /// directory to the one in which it keeps the Context its profile chose
@@ -1202,6 +1260,7 @@ fn relist_blocks(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlit
             .map(|(_, text)| {
                 let mut value = serde_json::from_str::<serde_json::Value>(text).map_err(corrupt)?;
                 with_no_kept_messages(&mut value);
+                with_outside_paths(&mut value);
                 demi_shared_types::decode_value::<demi_shared_types::Block>(value).map_err(corrupt)
             })
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -2205,11 +2264,11 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 6.
+-- blocks.block: transcript block format 7.
 CREATE TABLE blocks (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx     INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 6
+  -- blocks.block: transcript block format 7
   block   TEXT NOT NULL,
   PRIMARY KEY (node_id, idx)
 ) STRICT;
@@ -3438,6 +3497,127 @@ mod tests {
             assert_eq!(boundary.summary, "The user asked for notes.");
             assert!(boundary.kept.is_empty());
         }
+    }
+
+    /// A shell call stored in transcript block format 6, whose own files
+    /// and renames marked the paths in a temporary directory `temporary`:
+    /// migrated to format 7, a file marked temporary is marked `outside`,
+    /// the others and the renames are marked nothing, and the stored
+    /// request list stays as it was.
+    // Cost: one database on disk, a few milliseconds.
+    #[test]
+    fn a_call_stored_with_temporary_paths_marks_them_outside() {
+        use demi_shared_types::{Block, ChangedFile, EditKind, PathChange, ToolView};
+
+        let model = serde_json::json!({
+            "providerId": "anthropic",
+            "model": {
+                "id": "claude-opus-4-8",
+                "name": "Claude Opus 4.8",
+                "contextWindow": 200000,
+                "outputLimit": 64000,
+                "thinking": [{"type": "disabled"}],
+                "acceptedExtensions": ["png"]
+            },
+            "thinking": {"type": "disabled"},
+            "serviceTierId": null
+        });
+        let listed = serde_json::json!([{"path": "/w/a.txt", "kind": "added", "edits": []}]);
+        let blocks = [
+            serde_json::json!({
+                "type": "user",
+                "id": "u1",
+                "turnId": "t1",
+                "createdAt": "2026-10-14T05:00:00.000Z",
+                "model": model,
+                "content": [{"type": "text", "text": "Write the notes"}],
+                "preamble": null
+            }),
+            serde_json::json!({
+                "type": "tool_call",
+                "id": "c1",
+                "run": "c1",
+                "createdAt": "2026-10-14T05:00:01.000Z",
+                "model": model,
+                "toolUseId": "toolu_c1",
+                "toolName": "shell",
+                "input": r#"{"script":"edit","description":"Write the notes"}"#,
+                "status": "completed",
+                "output": [{"type": "text", "text": "done"}],
+                "view": {
+                    "kind": "shell",
+                    "status": "exited",
+                    "commandId": "1",
+                    "exitCode": 0,
+                    "runningMs": 10,
+                    "idleMs": 0,
+                    "chunks": [],
+                    "viewTruncated": false,
+                    "files": [
+                        {"path": "/tmp/fix.py", "kind": "added", "added": 1, "removed": 0, "temporary": true, "edits": [{}]},
+                        {"path": "/w/a.txt", "kind": "added", "added": 1, "removed": 0, "edits": [{}]},
+                        {"path": "/w/b.txt", "kind": "renamed", "from": "/tmp/b", "added": 0, "removed": 0, "edits": []}
+                    ],
+                    "filesTruncated": false,
+                    "pathChanges": [
+                        {"kind": "renamed", "from": "/tmp/b", "to": "/w/b.txt"},
+                        {"kind": "removed", "path": "/tmp/old", "temporary": true}
+                    ],
+                    "runFiles": listed,
+                    "requestFiles": listed
+                }
+            }),
+        ];
+        let (_directory, path, mut connection) = database(include_str!("schema/conversation-0.1.22-dev.context-limits.sql"));
+        connection
+            .execute(
+                "INSERT INTO nodes
+                   (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                 VALUES ('root', 0, '', 1, 0, 1, 0, ?1, ?2, 0)",
+                rusqlite::params![state_of_development(), i64::try_from(blocks.len()).unwrap()],
+            )
+            .unwrap();
+        for (index, block) in blocks.iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
+                    rusqlite::params![i64::try_from(index).unwrap(), block.to_string()],
+                )
+                .unwrap();
+        }
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let stored: Vec<Block> = connection
+            .prepare("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx")
+            .unwrap()
+            .query_map([], |row| row.get::<_, String>(0))
+            .unwrap()
+            .map(|text| demi_shared_types::decode::<Block>(&text.unwrap()).unwrap())
+            .collect();
+        let Block::ToolCall(call) = &stored[1] else {
+            panic!("{stored:?}");
+        };
+        let Some(ToolView::Shell(view)) = &call.view else {
+            panic!("{call:?}");
+        };
+        let marked: Vec<_> = view.files.iter().flatten().map(|file| (file.path.as_str(), file.outside)).collect();
+        assert_eq!(marked, [("/tmp/fix.py", true), ("/w/a.txt", false), ("/w/b.txt", false)]);
+        assert_eq!(
+            view.path_changes,
+            [
+                PathChange::Renamed { from: "/tmp/b".into(), to: "/w/b.txt".into() },
+                PathChange::Removed { path: "/tmp/old".into() }
+            ]
+        );
+        let unchanged = vec![ChangedFile {
+            path: "/w/a.txt".into(),
+            kind: EditKind::Added,
+            from: None,
+            lines: None,
+            edits: Vec::new(),
+        }];
+        assert_eq!(view.run_files.as_ref(), Some(&unchanged));
+        assert_eq!(view.request_files.as_ref(), Some(&unchanged));
     }
 
     /// A conversation the server's build stored (transcript block format 5,
