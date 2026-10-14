@@ -157,18 +157,28 @@ pub(crate) const CONTROL: Schema = Schema {
         },
         Shipped {
             sql: include_str!("schema/control-0.1.22-dev.saved-edits.sql"),
-            migration: Migration::Sql(CONTROL_FROM_SAVED_EDITS),
+            migration: Migration::Code(control_from_saved_edits),
         },
     ],
 };
 
 /// From the control schema that kept the edits and sends of saved messages
 /// to the one where an attached host goes by its device's name
-/// (`sessions-and-targets.md` § Attached hosts): the hosts' table loses the
-/// names conversations gave them, rebuilt since SQLite drops no column a
-/// constraint names, with the rows in the order the names were listed in,
-/// which their row ids keep; a Fork's attached hosts lose theirs too.
-const CONTROL_FROM_SAVED_EDITS: &str = "
+/// (`sessions-and-targets.md` § Attached hosts) and a switch is known by the
+/// revision it made.
+///
+/// The hosts' table loses the names conversations gave them, rebuilt since
+/// SQLite drops no column a constraint names, with the rows in the order the
+/// names were listed in, which their row ids keep. A Fork's metadata goes
+/// from format 1, whose attached hosts carry names, to format 2: each record
+/// is decoded as format 1 and the result checked as format 2, so a record
+/// of neither stops the migration. A switch made before records the
+/// conversation's current revision as its own, the latest it can have made:
+/// a node that read a block of that revision saw it, and one that did not
+/// reads the switch with its next block, as it did before.
+fn control_from_saved_edits(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    transaction.execute_batch(
+        "
 CREATE TABLE conversation_hosts_next (
   conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id),
   device_id       TEXT NOT NULL REFERENCES devices (id),
@@ -183,10 +193,79 @@ INSERT INTO conversation_hosts_next (conversation_id, device_id, cwd, attached_a
 DROP TABLE conversation_hosts;
 ALTER TABLE conversation_hosts_next RENAME TO conversation_hosts;
 CREATE INDEX conversation_hosts_device ON conversation_hosts (device_id);
-UPDATE conversation_fork_operations SET metadata = json_set(metadata, '$.attachedHosts', json((
-  SELECT json_group_array(json_remove(host.value, '$.name'))
-  FROM json_each(conversation_fork_operations.metadata, '$.attachedHosts') host)));
-";
+ALTER TABLE conversations ADD COLUMN last_switch_revision INTEGER;
+UPDATE conversations SET last_switch_revision = context_version WHERE last_switch IS NOT NULL;
+",
+    )?;
+    let records = transaction
+        .prepare("SELECT id, metadata FROM conversation_fork_operations")?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update = transaction.prepare("UPDATE conversation_fork_operations SET metadata = ?2 WHERE id = ?1")?;
+    for (id, text) in records {
+        let named: fork_format_1::ForkMetadata =
+            json("conversation_fork_operations", "metadata", &text).map_err(corrupt)?;
+        let metadata = crate::forks::ForkMetadata {
+            title: named.title,
+            target: named.target,
+            model: named.model,
+            created_at: named.created_at,
+            attached_hosts: named
+                .attached_hosts
+                .into_iter()
+                .map(|host| crate::conversation_index::AttachedHostRecord {
+                    device: host.device,
+                    cwd: host.cwd,
+                })
+                .collect(),
+        };
+        let text = to_json(&metadata);
+        let _: crate::forks::ForkMetadata =
+            json("conversation_fork_operations", "metadata", &text).map_err(corrupt)?;
+        update.execute(rusqlite::params![id, text])?;
+    }
+    Ok(())
+}
+
+/// Fork metadata format 1, which named each attached host, as the control
+/// schema before [`control_from_saved_edits`] stored it.
+mod fork_format_1 {
+    use demi_shared_types::{ModelSelection, Timestamp};
+    use demi_web_api_protocol::conversations::ConversationTarget;
+    use demi_web_api_protocol::ids::DeviceId;
+    use serde::Deserialize;
+
+    #[derive(Deserialize, garde::Validate)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    pub(super) struct ForkMetadata {
+        #[garde(length(min = 1))]
+        pub title: String,
+        #[garde(dive)]
+        pub target: ConversationTarget,
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[garde(dive)]
+        pub model: Option<ModelSelection>,
+        #[garde(skip)]
+        pub created_at: Timestamp,
+        #[garde(dive)]
+        pub attached_hosts: Vec<AttachedHost>,
+    }
+
+    #[derive(Deserialize, garde::Validate)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    pub(super) struct AttachedHost {
+        #[garde(skip)]
+        pub device: DeviceId,
+        // Format 1's name, which format 2 drops: decoded and checked so a
+        // record without one is not taken for format 1.
+        #[garde(length(min = 1))]
+        #[allow(dead_code)]
+        pub name: String,
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[garde(skip)]
+        pub cwd: Option<String>,
+    }
+}
 
 /// From the control schema with a conversation's workflow to the one that
 /// keeps the edits of messages saved for later and their sends for a day
@@ -1725,6 +1804,10 @@ CREATE TABLE conversations (
   target_device_id    TEXT,
   target_path         TEXT,
   target_workspace_id TEXT,
+  -- last_switch: the latest target switch, TargetSwitch as JSON; with
+  -- last_switch_revision, the execution-context revision it made, both null
+  -- before the first. A CHECK would tie them, but SQLite tests one an added
+  -- column brings against the rows before the migration fills it.
   last_switch         TEXT,
   cloud_reset_id      TEXT,
   context_version     INTEGER NOT NULL,
@@ -1757,6 +1840,7 @@ CREATE TABLE conversations (
   -- .demi/workflows/<workflow_id>.yaml.
   workflow_kind TEXT NOT NULL DEFAULT 'default' CHECK (workflow_kind IN ('default', 'none', 'workflow')),
   workflow_id   TEXT CHECK ((workflow_kind = 'workflow') = (workflow_id IS NOT NULL)),
+  last_switch_revision INTEGER,
   CHECK (
     (target_kind = 'cloud'
       AND target_device_id IS NULL AND target_workspace_id IS NULL)
@@ -1923,6 +2007,9 @@ CREATE TABLE conversation_deletions (
 -- Records that make interrupted multi-step work discoverable. A Fork
 -- reserves its destination's conversation id, compared as the index
 -- compares it.
+-- conversation_fork_operations.metadata: Fork metadata format 2, ForkMetadata
+-- as JSON, whose attached hosts are their devices and directories without
+-- names (format 1 named them).
 CREATE TABLE conversation_fork_operations (
   id        TEXT PRIMARY KEY COLLATE NOCASE,
   user_id   TEXT NOT NULL REFERENCES users (id),
@@ -2484,7 +2571,10 @@ mod tests {
         connection
             .execute_batch(
                 "INSERT INTO conversation_hosts (conversation_id, device_id, name, cwd, attached_at)
-                   VALUES ('c1', 'd2', 'laptop-2', '/work', 5), ('c1', 'd1', 'laptop', NULL, 5);",
+                   VALUES ('c1', 'd2', 'laptop-2', '/work', 5), ('c1', 'd1', 'laptop', NULL, 5);
+                 INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
+                   read_revision, target_kind, last_switch, context_version, created_at, updated_at)
+                   VALUES ('c1', 'u1', 'T', 'user', 0, 0, 0, 0, 'cloud', '{}', 7, 0, 0);",
             )
             .unwrap();
         let metadata = ForkMetadata {
@@ -2520,6 +2610,41 @@ mod tests {
             .unwrap();
         let migrated: ForkMetadata = json("conversation_fork_operations", "metadata", &text).unwrap();
         assert_eq!(migrated, metadata);
+        // The switch a conversation made before is known by the revision
+        // it stood at.
+        let switch: (Option<i64>, i64) = connection
+            .query_row("SELECT last_switch_revision, context_version FROM conversations", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
+            .unwrap();
+        assert_eq!(switch, (Some(7), 7));
+    }
+
+    /// A Fork's metadata that is not of the format before, such as one
+    /// without its attached hosts, stops the migration and leaves the
+    /// database as it was, rather than being read as one without hosts.
+    #[test]
+    fn a_fork_record_of_no_format_stops_the_migration() {
+        let shipped = include_str!("schema/control-0.1.22-dev.saved-edits.sql");
+        let (_directory, path, mut connection) = database(shipped);
+        connection.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+        let target = demi_web_api_protocol::conversations::ConversationTarget::Cloud { path: None };
+        let stored = serde_json::json!({
+            "title": "Fork", "target": target, "model": null,
+            "createdAt": "2026-10-14T08:00:00.000Z"
+        });
+        connection
+            .execute(
+                "INSERT INTO conversation_fork_operations (id, user_id, source_id, block_id, metadata)
+                 VALUES ('f1', 'u1', 'c1', 'b1', ?1)",
+                [stored.to_string()],
+            )
+            .unwrap();
+        assert!(CONTROL.apply(&mut connection, &path, &NoBlobs).is_err());
+        let version: i64 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(version, i64::from(version_of(shipped)));
     }
 
     #[test]

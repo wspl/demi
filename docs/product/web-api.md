@@ -323,8 +323,8 @@ trimmed and has 1 to 64 characters, and the answer is `{ device }`, 200, as
 for a claim. The Cloud's device keeps its
 name and has no route: changing either answers 409 `device_managed`, and a device the caller does
 not have 404 `device_not_found`. A rename reaches every page of the user in
-the product state; the names a conversation gives its attached hosts are its
-own and do not change with it.
+the product state, and the conversations that reach the device go by its new
+name ([Attached hosts](../execution/sessions-and-targets.md#attached-hosts)).
 
 Attached-host responses contain device identity, name, the directory its
 commands start in (`cwd`), online state, and attachment time. A detach is a transition, like a target
