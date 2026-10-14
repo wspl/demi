@@ -638,10 +638,7 @@ test('a page loaded while a sign-in runs shows it again, follows it, and Cancel 
   await settings.closeLogin()
   expect(cancelled).toEqual(['running'])
   expect(settings.login).toBeNull()
-  state.logins = [{
-    ...runningLogin('running', 'waiting_for_user'),
-    login: { status: 'failed', message: 'The login was cancelled', requestId: 'req_started' },
-  }]
+  state.logins = [{ ...runningLogin('running', 'waiting_for_user'), login: { status: 'cancelled' } }]
   channels.last().send({ type: 'logins', logins: state.logins })
   await nextTick()
   expect(settings.login).toBeNull()
@@ -692,7 +689,7 @@ test('a start the entry’s running sign-in holds opens that sign-in, whose fail
   expect(cancelled).toEqual([])
 })
 
-test('a refusal shows only for the code it refused, never an earlier one’s over a later code', async () => {
+test('of two tabs that paste a code each, each shows only its own code’s refusal, and Signing in until its paste is answered', async () => {
   const listed = (codesTaken: number, codeError: string | null): ListedLogin => ({
     id: 'claude',
     providerId: null,
@@ -710,9 +707,8 @@ test('a refusal shows only for the code it refused, never an earlier one’s ove
     },
   })
   const settings = useProviderSettings()
-  // The first code was refused.
-  state.logins = [listed(1, 'Invalid code. Please make sure the full code was copied.')]
-  channels.last().send({ type: 'logins', logins: state.logins })
+  // The sign-in another tab started waits for a code; this tab shows it.
+  channels.last().send({ type: 'logins', logins: [listed(0, null)] })
   await waitFor(() => settings.login?.phase.kind === 'code')
   const phase = () => {
     const shown = settings.login?.phase
@@ -721,27 +717,87 @@ test('a refusal shows only for the code it refused, never an earlier one’s ove
     }
     return [shown.submitted, shown.error ?? null]
   }
-  expect(phase()).toEqual([false, 'Invalid code. Please make sure the full code was copied.'])
+  expect(phase()).toEqual([false, null])
   expect(settings.login?.phase).toMatchObject({ expiresAt: Date.parse('2026-09-10T00:15:00.000Z') })
 
-  // The user pastes a second one; the backend takes it before the channel says so.
+  // This tab pastes a code, whose answer is slow; meanwhile the other tab's
+  // code, taken first as code 1, is refused.
   let pasted = ''
-  pasteCode = async (code) => {
+  const answer = Promise.withResolvers<Response>()
+  pasteCode = (code) => {
     pasted = code
-    return new Response(null, { status: 204 })
+    return answer.promise
   }
-  await settings.submitCode('second#state')
-  expect(pasted).toBe('second#state')
+  const pasting = settings.submitCode('mine#state')
+  expect(pasted).toBe('mine#state')
   expect(phase()).toEqual([true, null])
-  // The first code's refusal arrives late, as the sign-in judged it: it is not the second's.
-  channels.last().send({ type: 'logins', logins: [listed(1, 'Invalid code. Please make sure the full code was copied.')] })
+  channels.last().send({ type: 'logins', logins: [listed(1, 'Invalid code 1')] })
   await nextTick()
+  expect(phase()).toEqual([true, null])
+
+  // The answer names this tab's code 2: code 1's refusal is still not its own.
+  answer.resolve(Response.json({ code: 2 }))
+  await pasting
   expect(phase()).toEqual([true, null])
   channels.last().send({ type: 'logins', logins: [listed(2, null)] })
   await nextTick()
   expect(phase()).toEqual([true, null])
-  // The second's refusal shows.
+  // Its own refusal shows, and it takes another.
   channels.last().send({ type: 'logins', logins: [listed(2, 'Invalid code 2')] })
   await waitFor(() => phase()[1] !== null)
   expect(phase()).toEqual([false, 'Invalid code 2'])
+})
+
+test('a completed sign-in says done only once its account is listed, whichever the channel brings first', async () => {
+  const account = (id: string) => ({ id, label: `${id}@example.com`, detail: null, updatedAt: null, quota: null })
+  const entry = (accounts: string[]) => ({
+    ...state.providers[0]!,
+    id: 'codex',
+    kind: 'subscription' as const,
+    providerType: 'codex',
+    label: 'Codex',
+    hasApiKey: false,
+    details: {
+      type: 'read' as const,
+      auth: { status: 'authenticated' as const },
+      runtime: { status: 'ready' as const },
+      accounts: accounts.map(account),
+      active: 'first',
+      quota: null,
+      quotaCapability: { type: 'none' as const },
+      cliPackage: null,
+    },
+  })
+  state.providers.push(entry(['first']))
+  channels.last().send({ type: 'providers', providers: state.providers })
+  const settings = useProviderSettings()
+  channels.last().send({ type: 'logins', logins: [runningLogin('adding', 'waiting_for_user', 'codex')] })
+  await waitFor(() => settings.login?.phase.kind === 'device')
+
+  // The end comes before the account.
+  channels.last().send({
+    type: 'logins',
+    logins: [{ ...runningLogin('adding', 'waiting_for_user', 'codex'), login: { status: 'completed', providerId: 'codex', credentialId: 'second' } }],
+  })
+  await nextTick()
+  expect(settings.login?.phase.kind).toBe('device')
+
+  state.providers[1] = entry(['first', 'second'])
+  channels.last().send({ type: 'providers', providers: state.providers })
+  await waitFor(() => settings.login?.phase.kind === 'done')
+  // Added beside the active one, which stays.
+  expect(settings.login?.phase).toEqual({ kind: 'done', account: 'second@example.com', active: false })
+  expect(useResources().selectedProviderId).toBe('codex')
+})
+
+test('a sign-in cancelled on another page closes the dialog here, with nothing sent', async () => {
+  const settings = useProviderSettings()
+  channels.last().send({ type: 'logins', logins: [runningLogin('running', 'waiting_for_user')] })
+  await waitFor(() => settings.login !== null)
+  channels.last().send({
+    type: 'logins',
+    logins: [{ ...runningLogin('running', 'waiting_for_user'), login: { status: 'cancelled' } }],
+  })
+  await waitFor(() => settings.login === null)
+  expect(cancelled).toEqual([])
 })

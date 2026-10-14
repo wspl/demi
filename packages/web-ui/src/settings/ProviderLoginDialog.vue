@@ -227,7 +227,10 @@ function submitCode(): void {
         >Done</Button
       >
       <template v-else>
-        <Button @click="emit('close')">Cancel</Button>
+        <!-- A failed sign-in has nothing left to cancel. -->
+        <Button @click="emit('close')">{{
+          phase.kind === 'failed' ? 'Close' : 'Cancel'
+        }}</Button>
         <Button v-if="phase.kind === 'failed'" @click="emit('retry')"
           >Try Again</Button
         >

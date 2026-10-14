@@ -418,16 +418,22 @@ function openUrl(url: string) {
 
 function closeLogin() {
   window.clearTimeout(loginTimer)
-  if (login.value?.phase.kind === 'done') {
+  const phase = login.value?.phase
+  if (login.value && phase?.kind === 'done') {
     const p = login.value.provider
-    for (const a of p.accounts) {
-      a.active = false
+    // As the product's: the account added is the active one only when the
+    // dialog said so, for the provider's first account.
+    if (phase.active) {
+      for (const a of p.accounts) {
+        a.active = false
+      }
     }
+    const [label = phase.account, plan = ''] = phase.account.split(' · ')
     p.accounts.push({
       id: `a-${Date.now()}`,
-      label: 'alex@example.com',
-      plan: 'Plus',
-      active: true,
+      label,
+      plan,
+      active: phase.active,
       quota: [
         {
           id: 'hour',

@@ -6,16 +6,21 @@ use std::sync::Arc;
 use demi_provider_claude_code::{
     AccountMachine, AccountWork, ClaudeCodeConfig, ClaudeCodeProvider, StartError,
 };
+use std::rc::Rc;
+
 use demi_provider_common::credentials::{
-    AccountsCapability, CredentialPool, LoginError, LoginKind, MemoryCredentialPool,
+    AccountsCapability, CredentialPool, LoginError, LoginIo, LoginKind, MemoryCredentialPool,
 };
+use tokio_util::sync::CancellationToken;
 use demi_provider_common::quota::{MemorySnapshots, QuotaError};
 use demi_provider_common::testing::{MockResponse, MockVendor, login_io};
 use demi_provider_common::{
     CatalogError, ErrorCode, Provider, ProviderEvent, RuntimeEnv, RuntimeError,
 };
 use futures_util::future::BoxFuture;
-use demi_shared_types::{AuthState, QuotaScope, QuotaSeverity, RuntimeState, SnapshotSource};
+use demi_shared_types::{
+    AuthState, LoginStage, QuotaScope, QuotaSeverity, RuntimeState, SnapshotSource,
+};
 use serde_json::json;
 
 use crate::cli::*;
@@ -81,6 +86,51 @@ async fn a_sign_in_is_an_account_named_by_its_email_that_signs_in_on_a_machine_a
             provider: "Claude".into()
         }
     );
+}
+
+/// A machine whose placement reports reaching it and then fails the start
+/// with `0` at once.
+struct FailingMachine(&'static str);
+
+impl AccountMachine for FailingMachine {
+    fn run(&self, _: String, work: AccountWork) -> BoxFuture<'static, Result<(), StartError>> {
+        let failure = self.0;
+        let (ended, end) = tokio::sync::oneshot::channel();
+        tokio::task::spawn_local(async move {
+            let (placement, _starts) = ScriptedPlacement::new();
+            placement.fail_next(failure);
+            work(Rc::new(placement), CancellationToken::new()).await;
+            // The test waits for the answer, not for this.
+            let _ = ended.send(());
+        });
+        Box::pin(async move {
+            end.await.expect("the work runs to its end");
+            Ok(())
+        })
+    }
+}
+
+// Instant: the start fails as soon as the machine is reached.
+#[tokio::test(flavor = "local")]
+async fn a_sign_in_that_fails_right_after_a_stage_reports_the_stage_before_its_failure() {
+    let staged = ClaudeCodeProvider::new(
+        ClaudeCodeConfig::new("entry-1", "Claude", None),
+        Arc::new(MemoryCredentialPool::new()),
+        Arc::new(MemorySnapshots::new()),
+        models_dev_client("http://127.0.0.1:9/api.json"),
+        reqwest::Client::new(),
+        clock(),
+    );
+    let accounts = staged.login_accounts(Arc::new(FailingMachine("Your Cloud did not reconnect")));
+    let reached = std::sync::Mutex::new(Vec::new());
+    let stage = |stage: LoginStage| reached.lock().unwrap().push(stage);
+    let io = LoginIo {
+        stage: &stage,
+        ..login_io(&|_| {})
+    };
+    let failed = accounts.login(io).await.unwrap_err();
+    assert_eq!(failed, LoginError::Failed("Your Cloud did not reconnect".into()));
+    assert_eq!(*reached.lock().unwrap(), [LoginStage::WaitingForCloud]);
 }
 
 /// A machine nothing signs in on.

@@ -273,7 +273,7 @@ async fn signed_in_accounts_are_sealed_selected_explicitly_and_hidden_from_who_o
 }
 
 #[tokio::test]
-async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing() {
+async fn simultaneous_first_logins_share_one_login_which_publishes_one_entry() {
     let scripts = scripts(Some(ProbeCost::Free));
     // The catalog this scenario reads lists the vendors of a models.dev
     // document that names none.
@@ -307,20 +307,27 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
             "{body}"
         );
     }
-    let first = start_login(
-        &backend,
-        &master,
-        login,
-        json!({ "providerType": "device", "label": "Work" }),
-    )
-    .await;
-    let second = start_login(
-        &backend,
-        &master,
-        login,
-        json!({ "providerType": "device", "label": "Competing" }),
-    )
-    .await;
+    // Two tabs press Add Account at the same moment: the login that makes
+    // the entry holds it, and the other start names that login.
+    let (one, other) = tokio::join!(
+        backend.post(login, Some(&master), json!({ "providerType": "device", "label": "Work" })),
+        backend.post(login, Some(&master), json!({ "providerType": "device", "label": "Competing" })),
+    );
+    let (started, refused) = if one.status == StatusCode::ACCEPTED {
+        (one, other)
+    } else {
+        (other, one)
+    };
+    assert_eq!(started.status, StatusCode::ACCEPTED, "{}", String::from_utf8_lossy(&started.body));
+    let first = started.json::<LoginStarted>().login.id.into_string();
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ProviderBusy)
+    );
+    assert_eq!(
+        refused.error().login_id.map(|id| id.into_string()),
+        Some(first.clone())
+    );
     let pending = awaited(&backend, &master, &first, |state| {
         matches!(
             state,
@@ -360,26 +367,23 @@ async fn concurrent_device_logins_publish_one_entry_and_the_other_stores_nothing
     );
 
     scripts.login.approve(true);
-    let outcomes = [
-        awaited(&backend, &master, &first, ended).await,
-        awaited(&backend, &master, &second, ended).await,
-    ];
-    let completed: Vec<&LoginState> = outcomes
-        .iter()
-        .filter(|state| matches!(state, LoginState::Completed { .. }))
-        .collect();
-    assert_eq!(completed.len(), 1, "{outcomes:?}");
+    let completed = awaited(&backend, &master, &first, ended).await;
     let LoginState::Completed {
         provider_id,
         credential_id,
-    } = completed[0]
+    } = &completed
     else {
-        unreachable!();
+        panic!("the login did not complete: {completed:?}");
     };
-    assert!(outcomes.iter().any(|state| matches!(
-        state,
-        LoginState::Failed { message, .. } if message == "This scope already has a device subscription"
-    )));
+    // The entry is no longer held once the login ended: a start now finds
+    // the entry there.
+    assert_eq!(
+        backend
+            .post(login, Some(&master), json!({ "providerType": "device" }))
+            .await
+            .refusal(),
+        (StatusCode::CONFLICT, ErrorCode::ProviderExists)
+    );
     let providers = backend
         .get("/api/providers", Some(&master))
         .await
@@ -541,7 +545,7 @@ async fn a_login_into_an_entry_holds_it_until_it_ends_and_cancelling_stops_it_at
     assert_eq!(scripts.login.cancelled.load(Ordering::SeqCst), 1);
     assert!(matches!(
         login_state(&backend, &master, &id).await,
-        LoginState::Failed { message, .. } if message == "The login was cancelled"
+        LoginState::Cancelled
     ));
     assert_eq!(
         backend

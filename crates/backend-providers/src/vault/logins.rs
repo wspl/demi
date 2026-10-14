@@ -37,7 +37,7 @@ use tokio_util::task::TaskTracker;
 use tracing::Instrument as _;
 
 use super::entries::ProviderEntry;
-use super::operations::{OperationGuard, ProviderOperations};
+use super::operations::{Held, HeldBy, OperationGuard, ProviderOperations};
 use crate::llm::assembly::{AssemblyError, LoginAccounts, ProviderAssembly};
 
 /// How long a login waits for its user, and how long its result is kept.
@@ -179,6 +179,14 @@ struct Ending {
     deadline: Instant,
     cancel: CancellationToken,
     codes: mpsc::UnboundedReceiver<Secret>,
+    /// The entry the login adds to or makes, held until it ends.
+    held: OperationGuard,
+}
+
+/// How a login ended without an account.
+enum Unfinished {
+    Cancelled,
+    Failed(String),
 }
 
 /// Where a login publishes its account.
@@ -189,11 +197,8 @@ enum Target {
         label: String,
         staged: MemoryCredentialPool,
     },
-    /// An existing entry, held until the login ends.
-    Existing {
-        entry: Box<ProviderEntry>,
-        _held: OperationGuard,
-    },
+    /// An existing entry.
+    Existing { entry: Box<ProviderEntry> },
 }
 
 impl LoginFlows {
@@ -249,15 +254,32 @@ impl LoginFlows {
         }
         let id = LoginId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         let provider_id = existing.as_ref().map(|entry| entry.id.clone());
+        // The entry the login adds to or makes is held from here, so a
+        // second start meanwhile is refused and names this login to its
+        // starter.
+        let held = match &existing {
+            Some(entry) => Held::Entry(entry.id.clone()),
+            None => Held::NewEntry {
+                owner: owner.clone(),
+                family: family.clone(),
+            },
+        };
+        let by = HeldBy {
+            login: id.clone(),
+            starter: starter.clone(),
+        };
+        let held = self.operations.hold(held, Some(by)).map_err(|holder| {
+            LoginRefusal::Busy(
+                holder
+                    .filter(|holder| holder.starter == starter)
+                    .map(|holder| holder.login),
+            )
+        })?;
         let (accounts, target) = match existing {
             Some(entry) => {
-                let held = self
-                    .operations
-                    .reserve(&entry.id)
-                    .ok_or_else(|| LoginRefusal::Busy(self.running_into(&starter, &entry.id)))?;
                 let accounts = self.assembly.login_accounts(&entry, machine).await?;
                 let entry = Box::new(entry);
-                (accounts, Target::Existing { entry, _held: held })
+                (accounts, Target::Existing { entry })
             }
             None => {
                 let entries = self
@@ -346,6 +368,7 @@ impl LoginFlows {
             deadline,
             cancel,
             codes: pasted,
+            held,
         };
         let flows = self.clone();
         let login = id.clone();
@@ -356,29 +379,17 @@ impl LoginFlows {
         Ok(id)
     }
 
-    /// The running login of `starter`'s into the entry `entry`, which holds
-    /// it.
-    fn running_into(&self, starter: &UserId, entry: &ProviderId) -> Option<LoginId> {
-        self.lock()
-            .iter()
-            .find(|(_, flow)| {
-                flow.owner == *starter
-                    && flow.provider_id.as_ref() == Some(entry)
-                    && matches!(flow.state, LoginState::Pending { .. })
-            })
-            .map(|(id, _)| id.clone())
-    }
-
     /// Hands `code`, which the owner pasted, to the owner's login, which
-    /// waits for one once it has shown its link, as the next code it took;
-    /// the refusal of an earlier code no longer stands. The code is never
-    /// kept.
+    /// waits for one once it has shown its link, and answers its number
+    /// among the codes the login took, counting from one, which a refusal of
+    /// it names; the refusal of an earlier code no longer stands. The code
+    /// is never kept.
     pub fn submit_code(
         &self,
         id: &LoginId,
         owner: &UserId,
         code: Secret,
-    ) -> Result<(), CodeRefusal> {
+    ) -> Result<u32, CodeRefusal> {
         let mut flows = self.lock();
         let flow = flows
             .get_mut(id)
@@ -405,7 +416,7 @@ impl LoginFlows {
         drop(flows);
         tracing::info!(login = %id, code = taken, "a code was handed to the login");
         self.announce(owner);
-        Ok(())
+        Ok(taken)
     }
 
     /// The login's state, for its owner.
@@ -481,7 +492,11 @@ impl LoginFlows {
                         credential_id,
                     }
                 }
-                Err(message) => {
+                Err(Unfinished::Cancelled) => {
+                    tracing::info!(took_ms, stage, "the login was cancelled");
+                    LoginState::Cancelled
+                }
+                Err(Unfinished::Failed(message)) => {
                     tracing::info!(took_ms, stage, reason = message, "the login failed");
                     LoginState::Failed {
                         message,
@@ -515,11 +530,12 @@ impl LoginFlows {
         accounts: LoginAccounts,
         target: Target,
         ending: Ending,
-    ) -> Result<(ProviderId, CredentialId), String> {
+    ) -> Result<(ProviderId, CredentialId), Unfinished> {
         let Ending {
             deadline,
             cancel,
             codes,
+            held: _held,
         } = ending;
         let pending = {
             let flows = self.clone();
@@ -556,10 +572,15 @@ impl LoginFlows {
             }
         };
         match outcome {
-            Ok(account) => self.publish(owner, target, account.id).await,
-            Err(LoginError::Stopped) if expired => Err("The login expired".to_owned()),
-            Err(LoginError::Stopped) => Err("The login was cancelled".to_owned()),
-            Err(error) => Err(error.to_string()),
+            Ok(account) => self
+                .publish(owner, target, account.id)
+                .await
+                .map_err(Unfinished::Failed),
+            Err(LoginError::Stopped) if expired => {
+                Err(Unfinished::Failed("The login expired".to_owned()))
+            }
+            Err(LoginError::Stopped) => Err(Unfinished::Cancelled),
+            Err(error) => Err(Unfinished::Failed(error.to_string())),
         }
     }
 

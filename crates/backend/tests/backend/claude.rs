@@ -36,18 +36,19 @@ use tokio_util::sync::CancellationToken;
 
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::{Block, LoginStage};
+use demi_web_api_protocol::diagnostics::ServerLogLine;
 use demi_web_api_protocol::state::SyncEvent;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{
-    Accounts, CliInstall, LoginStarted, LoginState, NewestVersion, ProviderCli, Providers,
+    Accounts, CliInstall, CodeTaken, LoginStarted, LoginState, NewestVersion, ProviderCli, Providers,
 };
 use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::accounts::{awaited, ended, followed, login_state, start_login};
-use crate::diagnostics::request_id;
+use crate::diagnostics::{lines_of, request_id};
 use crate::conversations::{Socket, choose, create, last_text, on_device, transcript};
-use crate::support::{Harness, Session, TestBackend};
+use crate::support::{Harness, ServerLogCapture, Session, TestBackend, eventually};
 
 const CONVERSATION: &str = "3c1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 /// The version the distribution names as its newest.
@@ -316,7 +317,7 @@ async fn pasted(backend: &TestBackend, master: &Session, id: &str, code: &str) -
         .await;
     assert_eq!(
         answer.status,
-        StatusCode::NO_CONTENT,
+        StatusCode::OK,
         "{}",
         String::from_utf8_lossy(&answer.body)
     );
@@ -324,8 +325,9 @@ async fn pasted(backend: &TestBackend, master: &Session, id: &str, code: &str) -
 }
 
 /// Pastes `code`, which the CLI refuses, into the master's login `id`, and
-/// answers the words the login then shows while it waits.
-async fn refused_code(backend: &TestBackend, master: &Session, id: &str, code: &str) -> String {
+/// answers the number the login gave it and the words the login then shows
+/// while it waits.
+async fn refused_code(backend: &TestBackend, master: &Session, id: &str, code: &str) -> (u32, String) {
     let answer = backend
         .post(
             &format!("{LOGIN}/{id}/code"),
@@ -333,7 +335,7 @@ async fn refused_code(backend: &TestBackend, master: &Session, id: &str, code: &
             json!({ "code": code }),
         )
         .await;
-    assert_eq!(answer.status, StatusCode::NO_CONTENT);
+    let taken = answer.json::<CodeTaken>().code;
     let refused = awaited(backend, master, id, |state| {
         !matches!(
             state,
@@ -347,12 +349,15 @@ async fn refused_code(backend: &TestBackend, master: &Session, id: &str, code: &
     let LoginState::Pending {
         code_error: Some(words),
         needs_code: true,
+        codes_taken,
         ..
     } = refused
     else {
         panic!("the login did not wait for another code: {refused:?}");
     };
-    words
+    // The refusal is of this code.
+    assert_eq!(codes_taken, taken);
+    (taken, words)
 }
 
 /// What the scripted CLI answers a message with, in a process of `token`'s
@@ -501,7 +506,7 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
     let id = waiting_login(&backend, &master, &format!("{accounts_path}/login"), json!({})).await;
     assert_eq!(
         refused_code(&backend, &master, &id, "invalid").await,
-        "Invalid code. Please make sure the full code was copied."
+        (1, "Invalid code. Please make sure the full code was copied.".to_owned())
     );
     let LoginState::Completed {
         credential_id: second,
@@ -870,7 +875,7 @@ async fn a_sign_in_that_fails_or_is_cancelled_stores_nothing_and_leaves_no_direc
     assert_eq!(cancelled.status, StatusCode::NO_CONTENT);
     assert!(matches!(
         login_state(&backend, &master, &id).await,
-        LoginState::Failed { message, .. } if message == "The login was cancelled"
+        LoginState::Cancelled
     ));
     let logins = login_directories(&home);
     assert_eq!(logins.len(), 2, "{logins:?}");
@@ -882,6 +887,32 @@ async fn a_sign_in_that_fails_or_is_cancelled_stores_nothing_and_leaves_no_direc
     let providers = backend.get("/api/providers", Some(&master)).await;
     assert!(providers.json::<Providers>().providers.is_empty());
     backend.close().await;
+}
+
+/// The course the server log holds of the login the request `request`
+/// started, once it holds the login's end: that it started, the stages it
+/// reached in order, each with the time the one before took, and how it
+/// ended; no line holds the link the CLI printed.
+async fn logged(backend: &TestBackend, admin: &Session, request: &str) -> (Vec<String>, String) {
+    let ended = |line: &ServerLogLine| line.message.starts_with("the login ") && line.message != "the login reached a stage";
+    eventually("the login's end is in the log", || async {
+        lines_of(backend, admin, request).await.lines.iter().any(ended)
+    })
+    .await;
+    let lines = lines_of(backend, admin, request).await.lines;
+    let text = serde_json::to_string(&lines).unwrap();
+    assert!(!text.contains("oauth/authorize"), "{text}");
+    assert!(lines.iter().any(|line| line.message == "a login started"), "{text}");
+    let stages = lines
+        .iter()
+        .filter(|line| line.message == "the login reached a stage")
+        .map(|line| {
+            assert!(line.fields["took_ms"].is_u64(), "{line:?}");
+            line.fields["stage"].as_str().unwrap().to_owned()
+        })
+        .collect();
+    let end = lines.iter().find(|line| ended(line)).unwrap().message.clone();
+    (stages, end)
 }
 
 /// Whether `stages` go in the order a sign-in reaches them, as a page
@@ -921,6 +952,7 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
     // The timeout of a Cloud whose runner never connects, short enough to
     // wait for.
     harness.cloud.runner_connection = Duration::from_secs(2);
+    let log = ServerLogCapture::open(&harness);
     let (backend, master) = harness.start_set_up().await;
     let mut page = backend.sync(&master).await;
     page.snapshot().await;
@@ -940,6 +972,10 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
             request_id: request.clone().try_into().unwrap(),
         }
     );
+    assert_eq!(
+        logged(&backend, &master, &request).await,
+        (vec!["waiting_for_cloud".to_owned()], "the login failed".to_owned())
+    );
 
     // A Cloud without the CLI installs it, and fails there.
     harness.manager.script(|script| script.silent_wake = false);
@@ -952,12 +988,19 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
     };
     assert!(message.starts_with(&format!("Claude Code {NEWEST} could not be installed")), "{message}");
     assert_eq!(request_id.as_str(), request);
+    assert_eq!(
+        logged(&backend, &master, &request).await,
+        (
+            vec!["waiting_for_cloud".to_owned(), "installing".to_owned()],
+            "the login failed".to_owned()
+        )
+    );
 
     // A Cloud with the CLI starts it, and waits for the user once the CLI
     // printed its link.
     let cloud = the_cloud(&harness);
     install_by_hand(&harness.manager.artifacts(&cloud), OLDER).await;
-    let (id, _) = started_sign_in(&backend, &master).await;
+    let (id, request) = started_sign_in(&backend, &master).await;
     let mut stages = Vec::new();
     loop {
         let SyncEvent::Logins { logins } = page.next().await else {
@@ -980,5 +1023,13 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
     assert!(!stages.contains(&LoginStage::Installing), "{stages:?}");
     let cancelled = backend.delete(&format!("{LOGIN}/{id}"), &master).await;
     assert_eq!(cancelled.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        logged(&backend, &master, &request).await,
+        (
+            vec!["waiting_for_cloud".to_owned(), "starting".to_owned(), "waiting_for_user".to_owned()],
+            "the login was cancelled".to_owned()
+        )
+    );
     backend.close().await;
+    log.close().await;
 }

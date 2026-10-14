@@ -24,6 +24,7 @@ import {
 } from '@demicodes/web-ui/settings/types'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
+  codeTakenSchema,
   loginStartedSchema,
   modelSearchResultsSchema,
   providerAnswerSchema,
@@ -34,6 +35,7 @@ import {
   type CreateProvider,
   type ProviderPatch,
   type ListedLogin,
+  type LoginState,
   type LoginCode,
   type QuotaRequest,
   type SubscriptionLogin,
@@ -658,21 +660,23 @@ export const useProviderSettings = defineStore('provider-settings', () => {
    * one a busy start named, or a running one the vault announced, as after
    * a reload. The vault announces each change of it on the channel, which
    * the dialog follows; `failure` is why this page could not start or
-   * answer it, `pasted` the number the code this page pasted last takes
-   * among the codes the sign-in took, and `seen` whether the channel has
-   * listed it.
+   * answer it, `pasted` the code this page pasted last, `sending` until
+   * the sign-in answers the number it gave it, `waited` what the sign-in
+   * last waited for, and `seen` whether the channel has listed it.
    */
   const opened = ref<{
     provider: ProductProvider
     id: string | null
     failure: ShownError | null
-    pasted: number | null
+    pasted: 'sending' | number | null
+    waited: PendingLogin | null
     seen: boolean
   } | null>(null)
   /** The sign-ins this page closed, which it never opens again on its own. */
   const dismissed = ref<string[]>([])
   /** The starts on their way: the sign-in one makes is this page's, and not opened as another's. */
   const starts = ref(0)
+  type PendingLogin = Extract<LoginState, { status: 'pending' }>
   const logins = computed(() => product.snapshot?.logins ?? [])
   /** The opened sign-in as the channel last listed it. */
   const followed = computed(() => {
@@ -699,18 +703,44 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   })
   watch([running, () => opened.value === null, starts], () => {
     if (opened.value === null && starts.value === 0 && running.value) {
-      opened.value = { ...running.value, failure: null, pasted: null, seen: true }
+      opened.value = { ...running.value, failure: null, pasted: null, waited: null, seen: true }
     }
   }, { immediate: true })
-  watch(followed, (login, before) => {
+  /**
+   * The account the opened sign-in added, once the page has it: the vault
+   * publishes the entry before it announces the sign-in's end, but the
+   * channel may bring the end first, so the dialog says done, and selects
+   * the entry, only once the account is listed.
+   */
+  const added = computed(() => {
+    const state = followed.value?.login
+    if (state?.status !== 'completed') {
+      return null
+    }
+    const account = resources.providers
+      .find((entry) => entry.id === state.providerId)
+      ?.accounts.find((candidate) => candidate.id === state.credentialId)
+    return account ? { providerId: state.providerId, account } : null
+  })
+  watch(followed, (login) => {
     const shown = opened.value
     if (!shown || !login) {
       return
     }
     shown.seen = true
     const state = login.login
-    if (state.status === 'completed' && before?.login.status !== 'completed') {
-      select(state.providerId)
+    if (state.status === 'pending') {
+      shown.waited = state
+    }
+    // A sign-in cancelled on any page closes its dialog on every page.
+    if (state.status === 'cancelled') {
+      dismissed.value.push(login.id)
+      opened.value = null
+    }
+  })
+  watch(() => added.value?.providerId, (providerId) => {
+    if (providerId !== undefined) {
+      select(providerId)
     }
   })
 
@@ -729,33 +759,44 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     const state = listed.login
     switch (state.status) {
       case 'completed': {
-        // The channel brings the entries before the sign-ins, so the account is listed by now.
-        const added = resources.providers
-          .find((entry) => entry.id === state.providerId)
-          ?.accounts.find((account) => account.id === state.credentialId)
-        return { kind: 'done', account: added?.label ?? 'Account connected', active: added?.active ?? false }
+        const done = added.value
+        if (done) {
+          return { kind: 'done', account: done.account.label, active: done.account.active }
+        }
+        // Until the account is listed, what the sign-in last waited for.
+        return shown.waited ? pendingPhase(shown, shown.waited, true) : { kind: 'starting', stage: 'waiting_for_user' }
       }
       case 'failed':
         return { kind: 'failed', message: state.message, requestId: state.requestId }
+      // The dialog closes; until it does, nothing new.
+      case 'cancelled':
+        return { kind: 'starting', stage: 'preparing' }
       case 'pending':
-        if (state.verificationUrl && state.needsCode) {
-          // The refusal is of the last code the sign-in took: none of this
-          // page's code while the sign-in has not taken it yet.
-          const taking = shown.pasted !== null && state.codesTaken < shown.pasted
-          const error = taking ? undefined : state.codeError ?? undefined
-          return {
-            kind: 'code',
-            url: state.verificationUrl,
-            expiresAt: Date.parse(state.expiresAt),
-            submitted: taking || (state.codesTaken > 0 && !error),
-            ...(error ? { error } : {}),
-          }
-        }
-        if (state.verificationUrl && state.userCode) {
-          return { kind: 'device', url: state.verificationUrl, code: state.userCode, expiresAt: Date.parse(state.expiresAt) }
-        }
-        return { kind: 'starting', stage: state.stage }
+        return pendingPhase(shown, state, false)
     }
+  }
+
+  /** What the dialog shows of a sign-in that waits as `state` says, `finishing` once it has ended. */
+  function pendingPhase(shown: NonNullable<typeof opened.value>, state: PendingLogin, finishing: boolean): ProviderLoginPhase {
+    if (state.verificationUrl && state.needsCode) {
+      // A refusal shows only of the code this page pasted, by the number
+      // the sign-in answered for it: the vault's refusal is always of code
+      // number `codesTaken`.
+      const mine = typeof shown.pasted === 'number' ? shown.pasted : null
+      const error = !finishing && mine !== null && state.codesTaken === mine ? state.codeError ?? undefined : undefined
+      const judging = shown.pasted === 'sending' || (mine !== null && state.codesTaken < mine) || (state.codesTaken > 0 && !state.codeError)
+      return {
+        kind: 'code',
+        url: state.verificationUrl,
+        expiresAt: Date.parse(state.expiresAt),
+        submitted: finishing || judging,
+        ...(error ? { error } : {}),
+      }
+    }
+    if (state.verificationUrl && state.userCode) {
+      return { kind: 'device', url: state.verificationUrl, code: state.userCode, expiresAt: Date.parse(state.expiresAt) }
+    }
+    return { kind: 'starting', stage: state.stage }
   }
 
   const login = computed(() => opened.value && {
@@ -799,7 +840,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     const provider = providers.value.find(
       (provider) => provider.id === entry.id,
     )!
-    opened.value = { provider, id: null, failure: null, pasted: null, seen: false }
+    opened.value = { provider, id: null, failure: null, pasted: null, waited: null, seen: false }
     const shown = opened.value
     starts.value++
     try {
@@ -839,19 +880,22 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   async function submitCode(code: string): Promise<void> {
     const shown = opened.value
     const id = shown?.id
-    const listed = followed.value?.login
-    if (!shown || !id || listed?.status !== 'pending' || login.value?.phase.kind !== 'code') {
+    if (!shown || !id || login.value?.phase.kind !== 'code') {
       return
     }
-    shown.pasted = listed.codesTaken + 1
+    shown.pasted = 'sending'
     try {
-      await apiRequest(
+      const response = await apiRequest(
         `/providers/subscription-login/${encodeURIComponent(id)}/code`,
         {
           method: 'POST',
           ...jsonBody({ code } satisfies LoginCode),
         },
       )
+      const taken = await readResponse(response, codeTakenSchema)
+      if (shown.pasted === 'sending') {
+        shown.pasted = taken.code
+      }
     } catch (error) {
       if (opened.value === shown) {
         shown.failure = shownError(error)

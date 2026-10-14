@@ -267,9 +267,10 @@ impl Placement for ScriptedPlacement {
     fn start<'a>(
         &'a self,
         start: &'a dyn Fn(&CliSite) -> CliStart,
-        _stages: &'a dyn Fn(StartStage),
+        stages: &'a dyn Fn(StartStage),
     ) -> LocalBoxFuture<'a, Result<Placed, StartError>> {
         Box::pin(async move {
+            stages(StartStage::Machine);
             if let Some(failure) = self.failure.borrow_mut().take() {
                 return Err(failure);
             }
