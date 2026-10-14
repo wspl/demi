@@ -125,6 +125,9 @@ struct Period {
     end: ReportedString,
 }
 
+/// The length of a weekly credits period.
+const WEEK_SECONDS: u64 = 7 * 24 * 60 * 60;
+
 /// An amount of credits: a number, or `{ "val": number }`.
 struct Amount(f64);
 
@@ -177,6 +180,8 @@ fn reading(user: &str, billing: &str, email: Option<String>) -> ProbeReading {
             limit,
             unit: Some(QuotaUnit::Credits),
             resets_at,
+            // A monthly billing period's length is not stated.
+            period_seconds: weekly.then_some(WEEK_SECONDS),
             severity: severity(used_percent),
             scope: None,
         });
@@ -190,6 +195,7 @@ fn reading(user: &str, billing: &str, email: Option<String>) -> ProbeReading {
             limit: Some(cap.0),
             unit: Some(QuotaUnit::Credits),
             resets_at,
+            period_seconds: weekly.then_some(WEEK_SECONDS),
             severity: None,
             scope: None,
         });
@@ -243,6 +249,7 @@ fn rate_limit_windows(headers: &HeaderMap) -> Option<Vec<QuotaWindow>> {
             limit: Some(limit),
             unit: Some(unit),
             resets_at: None,
+            period_seconds: None,
             severity: severity(used_percent),
             scope: None,
         })

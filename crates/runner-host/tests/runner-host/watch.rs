@@ -237,6 +237,60 @@ async fn the_working_tree_changes_for_edits_modes_and_staging_and_its_last_commi
     .unwrap();
 }
 
+/// In a linked worktree the refs live in the main repository's git
+/// directory: a branch made there changes the worktree's last commit
+/// subscription and its working tree's, as one made in a plain repository
+/// does (`runner.md` § Watching files). Under a second.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_branch_made_in_a_linked_worktrees_repository_is_announced() {
+    tokio::time::timeout(GUARD, async {
+        let (_dir, main) = repository();
+        let outside = tempfile::tempdir().unwrap();
+        let linked = std::fs::canonicalize(outside.path()).unwrap().join("linked");
+        git(&main, &["worktree", "add", "-q", "-b", "linked", linked.to_str().unwrap()]);
+        let (host, mut replies) = server(&linked, "http://127.0.0.1:1");
+        subscribe(&host, "tree", SubscriptionKind::Worktree, &linked);
+        subscribe(&host, "head", SubscriptionKind::Head, &linked);
+        live(&mut replies, &["tree", "head"]).await;
+
+        git(&main, &["branch", "feature"]);
+        changed(&mut replies, &["tree", "head"]).await;
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// A folder that becomes a repository, as `git init` and a first commit
+/// make it, changes its working tree's and its last commit's subscriptions,
+/// which follow the new repository from then on: its next commit changes
+/// the last commit's again (`runner.md` § Watching files). Under a second.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_folder_that_becomes_a_repository_is_followed_as_one() {
+    tokio::time::timeout(GUARD, async {
+        let dir = tempfile::tempdir().unwrap();
+        let root = std::fs::canonicalize(dir.path()).unwrap();
+        std::fs::write(root.join("a.txt"), "a\n").unwrap();
+        let (host, mut replies) = server(&root, "http://127.0.0.1:1");
+        subscribe(&host, "tree", SubscriptionKind::Worktree, &root);
+        subscribe(&host, "head", SubscriptionKind::Head, &root);
+        live(&mut replies, &["tree", "head"]).await;
+
+        git(&root, &["init", "-q", "-b", "main"]);
+        git(&root, &["config", "user.email", "test@example.com"]);
+        git(&root, &["config", "user.name", "Test"]);
+        changed(&mut replies, &["tree", "head"]).await;
+        git(&root, &["add", "a.txt"]);
+        git(&root, &["commit", "-q", "-m", "first"]);
+        changed(&mut replies, &["head"]).await;
+        git(&root, &["commit", "-q", "--allow-empty", "-m", "second"]);
+        changed(&mut replies, &["head"]).await;
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
 /// A build that writes 20,000 files under the ignored `target/` changes no
 /// working tree subscription and costs the working tree's changes no walk
 /// of the whole tree, while a subscription of a log under `target/`, as a

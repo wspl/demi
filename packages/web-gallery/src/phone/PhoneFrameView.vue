@@ -88,6 +88,8 @@ provideLiveCalls((toolUseId) => commandOf(undefined, toolUseId))
 /** A file a message names opens in the panel, full screen, as the product opens it. */
 const files = galleryConversationFiles(workspace.source, ({ path, line }) => {
   work.openIn({ intent: 'file', payload: line === null ? { path } : { path, line } })
+}, ({ commit }) => {
+  work.openIn({ intent: 'commit', payload: { commit } })
 })
 
 const devices: HostDeviceOption[] = [

@@ -645,13 +645,50 @@ pub enum Inbound {
         id: String,
         root: String,
     },
-    /// The file as the last commit has it, streamed whole into `output` after
-    /// the reply.
+    /// The file as the last commit has it, or as `commit` has it, streamed
+    /// whole into `output` after the reply.
     GitShow {
         id: String,
         root: String,
         path: String,
         output: PipeRef,
+        /// An id or an abbreviation of at least 7 hex digits; HEAD without one.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        commit: Option<String>,
+    },
+    /// The local branches of `root`'s repository and the one checked out.
+    GitBranches {
+        id: String,
+        root: String,
+    },
+    /// One page of a branch's first-parent history, HEAD's without
+    /// `branch`, continuing after the commit `after` names.
+    GitLog {
+        id: String,
+        root: String,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        branch: Option<String>,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        after: Option<String>,
+    },
+    /// One commit: its entry, its files against its first parent and the
+    /// local branches it is on.
+    GitCommit {
+        id: String,
+        root: String,
+        commit: String,
     },
     /// Subscribes `id` to what `kind` says of `path` (`runner.md` § Watching
     /// files): `fs_live` answers once the watch behind it runs, or
@@ -748,7 +785,11 @@ impl Inbound {
     /// The id of a working-tree call, which its reply carries.
     pub fn git_request_id(&self) -> Option<&str> {
         match self {
-            Self::GitChanges { id, .. } | Self::GitShow { id, .. } => Some(id),
+            Self::GitChanges { id, .. }
+            | Self::GitShow { id, .. }
+            | Self::GitBranches { id, .. }
+            | Self::GitLog { id, .. }
+            | Self::GitCommit { id, .. } => Some(id),
             _ => None,
         }
     }
@@ -1694,6 +1735,107 @@ pub struct GitChange {
     pub status: String,
     pub kind: ChangeKind,
     /// The path before a rename.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "String")]
+    pub from: Option<String>,
+    #[garde(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
+    pub added: u64,
+    #[garde(range(max = demi_shared_types::MAX_SAFE_INTEGER))]
+    pub removed: u64,
+}
+
+/// A repository's local branches (`runner.md` § Working tree): by name,
+/// most recently committed first; the one checked out, or null with `head`
+/// when HEAD is detached.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+pub struct GitBranches {
+    pub branches: Vec<String>,
+    /// Null while HEAD is detached.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "demi_shared_types::Nullable<String>")]
+    pub current: Option<String>,
+    /// The commit a detached HEAD names; null while a branch is checked out.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "demi_shared_types::Nullable<String>")]
+    pub head: Option<String>,
+}
+
+/// One commit as a history lists it: its full id, its whole message, its
+/// author's name and its commit time.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+pub struct GitLogEntry {
+    pub id: String,
+    pub message: String,
+    pub author: String,
+    pub time: demi_shared_types::Timestamp,
+}
+
+/// A commit's time from git's seconds since the Unix epoch; a time outside
+/// what a timestamp holds is no time anyone committed at, and reads as the
+/// epoch.
+pub fn commit_time(seconds: i64) -> demi_shared_types::Timestamp {
+    demi_shared_types::Timestamp::from_millisecond(seconds.saturating_mul(1000))
+        .unwrap_or(demi_shared_types::Timestamp::UNIX_EPOCH)
+}
+
+/// One page of a first-parent history, newest first; `more` when older
+/// commits follow.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+pub struct GitLog {
+    #[garde(dive)]
+    pub commits: Vec<GitLogEntry>,
+    pub more: bool,
+}
+
+/// A commit as `git_commit` answers it: its entry with its parents, its
+/// files against its first parent, cut at 5,000 (`truncated`), and the local
+/// branches it is on, the checked-out one first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+pub struct GitCommit {
+    #[garde(dive)]
+    pub commit: GitCommitEntry,
+    #[garde(dive)]
+    pub files: Vec<GitCommitFile>,
+    pub truncated: bool,
+    pub branches: Vec<String>,
+}
+
+/// A [`GitLogEntry`] with the commit's parents, the first first.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+pub struct GitCommitEntry {
+    pub id: String,
+    pub message: String,
+    pub author: String,
+    pub time: demi_shared_types::Timestamp,
+    pub parents: Vec<String>,
+}
+
+/// One file a commit changed, against its first parent, or added by a root
+/// commit: how, where a renamed file came from, and the lines added and
+/// removed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
+#[serde(deny_unknown_fields)]
+#[garde(allow_unvalidated)]
+pub struct GitCommitFile {
+    pub path: String,
+    /// The letter git's log gives the file: `A`, `M`, `D` or `R`.
+    #[garde(pattern(r"^[AMDR]$"))]
+    pub status: String,
+    pub kind: ChangeKind,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

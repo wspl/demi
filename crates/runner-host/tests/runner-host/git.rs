@@ -73,7 +73,7 @@ async fn a_directory_outside_any_repository_is_not_a_repository() {
     assert!(result.files.is_empty());
     assert!(!result.watched);
     let error = service
-        .show(dir.path(), "a.txt", &CancellationToken::new())
+        .show(dir.path(), "a.txt", None, &CancellationToken::new())
         .await
         .unwrap_err();
     assert_eq!(error.code(), "not_repository");
@@ -264,7 +264,7 @@ async fn a_root_inside_the_work_tree_lists_its_subtree_with_relative_paths() {
         ]
     );
     let shown = service
-        .show(&repo.join("dir"), "c.txt", &CancellationToken::new())
+        .show(&repo.join("dir"), "c.txt", None, &CancellationToken::new())
         .await
         .unwrap();
     assert_eq!(shown, b"c\n");
@@ -290,15 +290,15 @@ async fn show_reads_the_last_commit_and_refuses_what_it_lacks() {
     let service = GitService::default();
     let cancel = CancellationToken::new();
     assert_eq!(
-        service.show(&repo, "a.txt", &cancel).await.unwrap(),
+        service.show(&repo, "a.txt", None, &cancel).await.unwrap(),
         b"1\n2\n3\n"
     );
     let missing = service
-        .show(&repo, "untracked.txt", &cancel)
+        .show(&repo, "untracked.txt", None, &cancel)
         .await
         .unwrap_err();
     assert_eq!(missing.code(), "ENOENT");
-    let directory = service.show(&repo, "dir", &cancel).await.unwrap_err();
+    let directory = service.show(&repo, "dir", None, &cancel).await.unwrap_err();
     assert_eq!(directory.code(), "EISDIR");
 }
 
@@ -591,4 +591,259 @@ async fn the_wire_carries_changes_and_errors() {
     .await;
     assert_eq!(reply.kind, "git_error");
     assert_eq!(reply.code.as_deref(), Some("ENOENT"));
+}
+
+/// Runs git with both of a commit's times at `seconds`, so the order of
+/// branches by their last commit is the test's to decide.
+fn git_at(repo: &Path, seconds: i64, args: &[&str]) {
+    let date = format!("@{seconds} +0000");
+    let status = Command::new("git")
+        .args(args)
+        .current_dir(repo)
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .env("GIT_AUTHOR_DATE", &date)
+        .env("GIT_COMMITTER_DATE", &date)
+        .status()
+        .expect("git on PATH");
+    assert!(status.success(), "git {args:?} failed");
+}
+
+fn git_output(repo: &Path, args: &[&str]) -> String {
+    let output = Command::new("git").args(args).current_dir(repo).output().expect("git on PATH");
+    assert!(output.status.success(), "git {args:?} failed");
+    String::from_utf8(output.stdout).unwrap().trim().to_owned()
+}
+
+/// A history to read: on `main`, a root commit adding `a.txt` and `b.txt`,
+/// 52 commits each appending to `a.txt`, then a merge of `side`, which
+/// renamed `b.txt` and added `side.txt`; `old` stops at the root commit;
+/// `main` is checked out. Each commit is a second later than the one before.
+struct History {
+    _dir: tempfile::TempDir,
+    repo: PathBuf,
+    root_commit: String,
+    side_commit: String,
+    merge: String,
+}
+
+fn history() -> History {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = std::fs::canonicalize(dir.path()).unwrap();
+    let mut time = 1_700_000_000;
+    let mut tick = || {
+        time += 1;
+        time
+    };
+    git(&repo, &["init", "-q", "-b", "main"]);
+    std::fs::write(repo.join("a.txt"), "0\n").unwrap();
+    std::fs::write(repo.join("b.txt"), "b1\nb2\nb3\n").unwrap();
+    git(&repo, &["add", "."]);
+    git_at(&repo, tick(), &["commit", "-q", "-m", "Start\n\nThe first commit."]);
+    let root_commit = git_output(&repo, &["rev-parse", "HEAD"]);
+    git(&repo, &["branch", "old"]);
+    git_at(&repo, tick(), &["checkout", "-q", "-b", "side"]);
+    git(&repo, &["mv", "b.txt", "c.txt"]);
+    std::fs::write(repo.join("side.txt"), "s1\ns2\n").unwrap();
+    git(&repo, &["add", "."]);
+    git_at(&repo, tick(), &["commit", "-q", "-m", "Side work"]);
+    let side_commit = git_output(&repo, &["rev-parse", "HEAD"]);
+    git(&repo, &["checkout", "-q", "main"]);
+    let mut lines = String::from("0\n");
+    for number in 1..=52 {
+        lines.push_str(&format!("{number}\n"));
+        std::fs::write(repo.join("a.txt"), &lines).unwrap();
+        git_at(&repo, tick(), &["commit", "-q", "-am", &format!("Line {number}")]);
+    }
+    git_at(&repo, tick(), &["merge", "-q", "--no-ff", "-m", "Merge side", "side"]);
+    let merge = git_output(&repo, &["rev-parse", "HEAD"]);
+    History {
+        _dir: dir,
+        repo,
+        root_commit,
+        side_commit,
+        merge,
+    }
+}
+
+// About two seconds: the history takes some sixty git commands.
+#[tokio::test]
+async fn the_log_pages_a_branchs_first_parents_and_a_commit_shows_its_files_and_branches() {
+    let history = history();
+    let repo = &history.repo;
+    let service = GitService::default();
+    let cancel = CancellationToken::new();
+
+    // HEAD's history by first parents: the merge, 52 lines, the root; not
+    // the side branch's commit.
+    let first = service.log(repo, None, None, &cancel).await.unwrap();
+    assert_eq!(first.commits.len(), 50);
+    assert!(first.more);
+    assert_eq!(first.commits[0].id, history.merge);
+    assert_eq!(first.commits[0].message.trim(), "Merge side");
+    assert_eq!(first.commits[0].author, "Test");
+    assert_eq!(first.commits[1].message.trim(), "Line 52");
+    let rest = service
+        .log(repo, None, Some(&first.commits[49].id), &cancel)
+        .await
+        .unwrap();
+    assert!(!rest.more);
+    let messages: Vec<&str> = rest.commits.iter().map(|commit| commit.message.trim()).collect();
+    assert_eq!(messages, ["Line 3", "Line 2", "Line 1", "Start\n\nThe first commit."]);
+    assert_eq!(rest.commits[3].id, history.root_commit);
+    assert!(first.commits.iter().chain(&rest.commits).all(|commit| commit.id != history.side_commit));
+    // Times are the commits', newest first.
+    assert!(first.commits[0].time > first.commits[1].time);
+    // Another branch's history, by name.
+    let side = service.log(repo, Some("side"), None, &cancel).await.unwrap();
+    assert_eq!(
+        side.commits.iter().map(|commit| commit.id.as_str()).collect::<Vec<_>>(),
+        [history.side_commit.as_str(), history.root_commit.as_str()]
+    );
+    assert!(!side.more);
+
+    // The merge against its first parent: what the side branch brought.
+    let merge = service.commit(repo, &history.merge, &cancel).await.unwrap();
+    assert_eq!(merge.commit.parents.len(), 2);
+    assert_eq!(merge.commit.parents[1], history.side_commit);
+    let files: Vec<_> = merge
+        .files
+        .iter()
+        .map(|file| (file.path.as_str(), file.status.as_str(), file.kind, file.from.as_deref(), file.added, file.removed))
+        .collect();
+    assert_eq!(
+        files,
+        [
+            ("c.txt", "R", ChangeKind::Renamed, Some("b.txt"), 0, 0),
+            ("side.txt", "A", ChangeKind::Added, None, 2, 0),
+        ]
+    );
+    assert_eq!(merge.branches, ["main"]);
+    // A root commit adds everything; it is on every branch, the checked-out one first.
+    let root = service
+        .commit(repo, &history.root_commit[..7], &cancel)
+        .await
+        .unwrap();
+    assert_eq!(root.commit.id, history.root_commit);
+    assert!(root.commit.parents.is_empty());
+    let files: Vec<_> = root.files.iter().map(|file| (file.path.as_str(), file.status.as_str(), file.added)).collect();
+    assert_eq!(files, [("a.txt", "A", 1), ("b.txt", "A", 3)]);
+    assert_eq!(root.branches, ["main", "side", "old"]);
+    let line = &first.commits[1];
+    let modified = service.commit(repo, &line.id, &cancel).await.unwrap();
+    assert_eq!(
+        modified.files.iter().map(|file| (file.path.as_str(), file.status.as_str(), file.added, file.removed)).collect::<Vec<_>>(),
+        [("a.txt", "M", 1, 0)]
+    );
+    assert_eq!(service.commit(repo, &history.side_commit, &cancel).await.unwrap().branches, ["main", "side"]);
+
+    // A file as a commit has it.
+    let start = service
+        .show(repo, "a.txt", Some(&history.root_commit), &cancel)
+        .await
+        .unwrap();
+    assert_eq!(start, b"0\n");
+    let gone = service
+        .show(repo, "c.txt", Some(&history.root_commit), &cancel)
+        .await
+        .unwrap_err();
+    assert_eq!(gone.code(), "ENOENT");
+
+    // An id the repository lacks, and a branch that no longer exists.
+    let missing = service.commit(repo, "0000000", &cancel).await.unwrap_err();
+    assert_eq!(missing.code(), "ENOENT");
+    git(repo, &["branch", "-q", "-D", "old"]);
+    let deleted = service.log(repo, Some("old"), None, &cancel).await.unwrap_err();
+    assert_eq!(deleted.code(), "ENOENT");
+}
+
+// Under a second: a few git commands and some ten thousand hashes.
+#[tokio::test]
+async fn branches_order_by_their_last_commit_and_a_shared_abbreviation_is_ambiguous() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = std::fs::canonicalize(dir.path()).unwrap();
+    let service = GitService::default();
+    let cancel = CancellationToken::new();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    // No commit yet: the branch checked out is named, and none is listed.
+    let unborn = service.branches(&repo, &cancel).await.unwrap();
+    assert_eq!((unborn.branches.len(), unborn.current.as_deref(), unborn.head), (0, Some("main"), None));
+    assert!(service.log(&repo, None, None, &cancel).await.unwrap().commits.is_empty());
+
+    std::fs::write(repo.join("a.txt"), "a\n").unwrap();
+    git(&repo, &["add", "."]);
+    git_at(&repo, 1_700_000_000, &["commit", "-q", "-m", "first"]);
+    git(&repo, &["checkout", "-q", "-b", "newer"]);
+    git_at(&repo, 1_700_000_200, &["commit", "-q", "--allow-empty", "-m", "newer"]);
+    git(&repo, &["checkout", "-q", "-b", "middle", "main"]);
+    git_at(&repo, 1_700_000_100, &["commit", "-q", "--allow-empty", "-m", "middle"]);
+    let branches = service.branches(&repo, &cancel).await.unwrap();
+    assert_eq!(branches.branches, ["newer", "middle", "main"]);
+    assert_eq!((branches.current.as_deref(), branches.head), (Some("middle"), None));
+
+    // A detached HEAD names its commit instead of a branch.
+    let main = git_output(&repo, &["rev-parse", "main"]);
+    git(&repo, &["checkout", "-q", "--detach", "main"]);
+    let detached = service.branches(&repo, &cancel).await.unwrap();
+    assert_eq!((detached.current, detached.head), (None, Some(main.clone())));
+
+    // Two commits whose ids share their first seven hex digits.
+    let tree = git_output(&repo, &["rev-parse", "main^{tree}"]);
+    let mut seen = std::collections::HashMap::new();
+    let (one, two) = (0u64..)
+        .find_map(|number| {
+            let body = format!(
+                "tree {tree}\nauthor Test <test@example.com> 1700000000 +0000\ncommitter Test <test@example.com> 1700000000 +0000\n\n{number}\n"
+            );
+            let id = gix::objs::compute_hash(gix::hash::Kind::Sha1, gix::objs::Kind::Commit, body.as_bytes())
+                .unwrap()
+                .to_string();
+            match seen.insert(id[..7].to_owned(), body.clone()) {
+                Some(earlier) => Some((earlier, body)),
+                None => None,
+            }
+        })
+        .unwrap();
+    let mut ids = Vec::new();
+    for body in [one, two] {
+        let mut child = Command::new("git")
+            .args(["hash-object", "-w", "-t", "commit", "--stdin"])
+            .current_dir(&repo)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        use std::io::Write as _;
+        child.stdin.take().unwrap().write_all(body.as_bytes()).unwrap();
+        let output = child.wait_with_output().unwrap();
+        ids.push(String::from_utf8(output.stdout).unwrap().trim().to_owned());
+    }
+    let ambiguous = service.commit(&repo, &ids[0][..7], &cancel).await.unwrap_err();
+    assert_eq!(ambiguous.code(), "ambiguous");
+    // A longer abbreviation names one; a commit on no branch is on none.
+    let length = (8..=40).find(|length| ids[0][..*length] != ids[1][..*length]).unwrap();
+    let one = service.commit(&repo, &ids[0][..length], &cancel).await.unwrap();
+    assert_eq!((one.commit.id.as_str(), one.branches.len()), (ids[0].as_str(), 0));
+}
+
+// Under a second: a few git commands.
+#[tokio::test]
+async fn a_commit_is_on_a_branch_whose_later_commits_carry_earlier_dates() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = std::fs::canonicalize(dir.path()).unwrap();
+    let service = GitService::default();
+    let cancel = CancellationToken::new();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    git_at(&repo, 1_700_003_000, &["commit", "-q", "--allow-empty", "-m", "start"]);
+    git(&repo, &["checkout", "-q", "-b", "skewed"]);
+    git_at(&repo, 1_700_002_000, &["commit", "-q", "--allow-empty", "-m", "dated later"]);
+    let dated_later = git_output(&repo, &["rev-parse", "HEAD"]);
+    // Its child carries an earlier date, as a skewed clock or a rebase leaves one.
+    git_at(&repo, 1_700_001_000, &["commit", "-q", "--allow-empty", "-m", "dated earlier"]);
+    git(&repo, &["checkout", "-q", "main"]);
+
+    let commit = service.commit(&repo, &dated_later, &cancel).await.unwrap();
+    assert_eq!(commit.branches, ["skewed"]);
 }

@@ -97,7 +97,7 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
         client.next().await,
         Some(ServerFrame::Rejected {
             command: ClientFrameKind::Compact,
-            reason: "Compaction is available from 50% context usage (now 30%)".into(),
+            reason: "Available from 50% context (now 30%)".into(),
         })
     );
 

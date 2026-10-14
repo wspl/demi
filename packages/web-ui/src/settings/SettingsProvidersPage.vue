@@ -6,6 +6,7 @@ import { showToast } from '../infra/toast'
 import {
   Brain,
   Check,
+  GripVertical,
   Image,
   Info,
   Plug,
@@ -53,8 +54,12 @@ import SettingsListItem from './SettingsListItem.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import SettingsSplit from './SettingsSplit.vue'
+import { useListReorder } from '../ui/useListReorder'
 import {
   COMPATIBLE_WIRE_APIS,
+  ROTATIONS,
+  ROTATION_HINTS,
+  ROTATION_LABELS,
   WIRE_API_LABELS,
   type SettingsModelDraft,
   type SettingsModelSearch,
@@ -63,6 +68,7 @@ import {
   type SettingsProviderEntry,
   type SettingsProviderOperation,
   type SettingsProviderModel,
+  type SettingsRotation,
   type SettingsVendor,
 } from './types'
 import { formatTokens } from '../ui/token-count'
@@ -80,7 +86,10 @@ import type { TitleText } from '../ui/ui-text'
  * adds the model it is given at once and opens it in Edit Model, the dialog every
  * model of the list opens (`models.md` § Adding a model from models.dev). Removing
  * an entry, an account or a model asks first. Field edits land on the entry itself;
- * everything that needs the host is emitted.
+ * everything that needs the host is emitted. A subscription with several accounts
+ * offers its rotation and orders its accounts by dragging; adding its second account
+ * and choosing In Order or Balanced first warn, once, that several personal
+ * subscriptions may be against the vendor's terms (`providers.md` § Account rotation).
  */
 const props = defineProps<{
   /**
@@ -113,6 +122,8 @@ const props = defineProps<{
   onRemoveModel?: Action<[provider: SettingsProviderEntry, model: SettingsProviderModel]>
   /** Installs the CLI on the user's Cloud again; Install works until the backend took it. */
   onInstallCli?: Action<[provider: SettingsProviderEntry]>
+  /** Whether the user went on past the warning about several accounts, which then never shows again. */
+  multiAccountWarned?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -141,6 +152,10 @@ const emit = defineEmits<{
   /** Read the CLI's newest version and the machines again. */
   checkCli: [provider: SettingsProviderEntry]
   activateAccount: [provider: SettingsProviderEntry, accountId: string]
+  /** The accounts in the order the user dragged them to, every one once. */
+  reorderAccounts: [provider: SettingsProviderEntry, accountIds: string[]]
+  /** The user went on past the warning about several accounts. */
+  multiAccountWarned: []
 }>()
 
 const selectedId = defineModel<string | null>('selectedId', { default: null })
@@ -302,6 +317,58 @@ function askRemoveAccount(
     run: () => props.onRemoveAccount?.(provider, account.id),
   })
 }
+
+// The warning about several accounts (`providers.md` § Account rotation): what
+// Continue goes on with, which Cancel drops.
+const warning = ref<(() => void) | null>(null)
+const warningOpen = ref(false)
+
+function afterWarning(then: () => void): void {
+  if (props.multiAccountWarned) {
+    then()
+    return
+  }
+  warning.value = then
+  warningOpen.value = true
+}
+
+function continuePastWarning(): void {
+  const then = warning.value
+  warningOpen.value = false
+  warning.value = null
+  emit('multiAccountWarned')
+  then?.()
+}
+
+function addAccount(provider: SettingsProviderEntry): void {
+  if (provider.accounts.length === 0) {
+    emit('signIn', provider)
+    return
+  }
+  afterWarning(() => emit('signIn', provider))
+}
+
+function chooseRotation(provider: SettingsProviderEntry, rotation: SettingsRotation): void {
+  if (rotation === (provider.rotation ?? 'manual')) {
+    return
+  }
+  if (rotation === 'manual') {
+    emit('change', provider, { rotation })
+    return
+  }
+  afterWarning(() => emit('change', provider, { rotation }))
+}
+
+const accountList = ref<HTMLElement>()
+const accountOrder = useListReorder(
+  accountList,
+  () => selected.value?.accounts.map((account) => account.id) ?? [],
+  (ids) => {
+    if (selected.value) {
+      emit('reorderAccounts', selected.value, ids)
+    }
+  },
+)
 
 function askRemoveModel(provider: SettingsProviderEntry, model: SettingsProviderModel): void {
   ask({
@@ -679,7 +746,7 @@ function endpointCheck(value: string) {
                       <Button
                         v-if="selected.kind === 'subscription'"
                         size="sm"
-                        @click="emit('signIn', selected)"
+                        @click="addAccount(selected)"
                         ><Plus :size="ICON_PX.in24" /> Add Account</Button
                       >
                       <Switch
@@ -698,9 +765,44 @@ function endpointCheck(value: string) {
 
               <!-- Accounts (subscription) -->
               <template v-if="selected.kind === 'subscription'">
+                <!-- Rotation means something with two accounts or more. -->
+                <SettingsRow
+                  v-if="selected.accounts.length >= 2"
+                  label="Rotation"
+                  :description="ROTATION_HINTS[selected.rotation ?? 'manual']"
+                >
+                  <Dropdown
+                    size="sm"
+                    :overlay-store="overlayStore"
+                    variant="default"
+                    trigger-label="Rotation"
+                    :disabled="busy(selected.id)"
+                  >
+                    <template #trigger>{{ ROTATION_LABELS[selected.rotation ?? 'manual'] }}</template>
+                    <template #content="{ close }">
+                      <Menu>
+                        <MenuItem
+                          v-for="rotation in ROTATIONS"
+                          :key="rotation"
+                          :label="ROTATION_LABELS[rotation]"
+                          :hint="ROTATION_HINTS[rotation]"
+                          choice
+                          :is-selected="(selected.rotation ?? 'manual') === rotation"
+                          @select="
+                            close();
+                            chooseRotation(selected, rotation)
+                          "
+                        />
+                      </Menu>
+                    </template>
+                  </Dropdown>
+                </SettingsRow>
+                <div ref="accountList" class="contents">
                 <SettingsRow
                   v-for="account in selected.accounts"
                   :key="account.id"
+                  :data-reorder-id="account.id"
+                  :class="{ 'bg-surface-float shadow-md': accountOrder.dragging.value === account.id }"
                   :label="account.label"
                   compact
                 >
@@ -765,7 +867,20 @@ function endpointCheck(value: string) {
                       :operation="providerOperation(selected.id, { kind: 'account', accountId: account.id, action: 'remove' })"
                       @click="askRemoveAccount(selected, account)"
                   /></Tooltip>
+                  <!-- The list's order is the one In Order follows: drag a row by its handle,
+                       or move it with the arrow keys. -->
+                  <Tooltip v-if="selected.accounts.length >= 2" content="Drag to reorder"
+                    ><IconButton
+                      size="sm"
+                      variant="ghost"
+                      class="cursor-grab touch-none"
+                      :icon="GripVertical"
+                      :aria-label="`Move ${account.label}`"
+                      @pointerdown="accountOrder.start($event, account.id)"
+                      @keydown="accountOrder.keydown($event, account.id)"
+                  /></Tooltip>
                 </SettingsRow>
+                </div>
                 <div
                   v-if="!selected.accounts.length"
                   class="flex select-none flex-col items-center gap-1.5 px-4 py-6 text-center text-[13px] text-fg-subtle"
@@ -1148,11 +1263,11 @@ function endpointCheck(value: string) {
                   <!-- An empty list is a plain wait, never red: nothing has failed. -->
                   {{
                     modelFilter
-                      ? 'No model matches.'
+                      ? 'No matches'
                       : selected.kind === 'subscription' &&
                           !selected.accounts.length
                         ? 'Sign in to see models'
-                        : 'No models yet.'
+                        : 'No models'
                   }}
                 </div>
               </AsyncRegion>
@@ -1192,6 +1307,17 @@ function endpointCheck(value: string) {
       @confirm="confirm"
     >
       <p v-for="(line, index) in confirming?.body" :key="index">{{ line }}</p>
+    </ConfirmDialog>
+    <ConfirmDialog
+      :is-open="warningOpen"
+      :overlay-store="overlayStore"
+      title="Use several accounts?"
+      action="Continue"
+      :on-confirm="continuePastWarning"
+      @close="warningOpen = false; warning = null"
+    >
+      <p>Using several personal subscriptions to get past their usage limits may be against the vendor’s terms.</p>
+      <p>Demi won’t ask again.</p>
     </ConfirmDialog>
     <ModelDialog
       v-if="modelEditor"

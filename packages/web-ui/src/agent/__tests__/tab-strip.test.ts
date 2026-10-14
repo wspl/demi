@@ -1,6 +1,7 @@
 import { expect, test } from 'bun:test'
 import { applyPanelChange } from '../panel-changes'
-import { cutMarkCover, dragShift, dragTarget, fadeRoom, revealScroll, tabsChanged, type StripMutation } from '../tab-strip'
+import { cutMarkCover, fadeRoom, revealScroll, tabsChanged, type StripMutation } from '../tab-strip'
+import { dragShift, dragTarget } from '../../ui/drag-order'
 
 test('the selected tab is revealed whole and clear of the fades, and where they do not fit the fades give way', () => {
   const view = { scrollLeft: 0, clientWidth: 300, scrollWidth: 900 }

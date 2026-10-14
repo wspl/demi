@@ -29,7 +29,7 @@ const props = withDefaults(
     /** A block of a child's transcript to bring into view and mark for a moment, on that child's tab. */
     reveal?: TranscriptReveal | null
     /** The usage limits of the account a provider entry runs on, which a child's context card shows; absent, it shows none. */
-    usageLimits?: (providerId: string) => UsageLimits | null
+    usageLimits?: (providerId: string, account: string | null) => UsageLimits | null
   }>(),
   {
     terminals: () => [],
@@ -51,8 +51,8 @@ const emit = defineEmits<{
   revealed: []
   /** Compact in the shown child's context card: that child's context. */
   compactAgent: [id: string]
-  /** The child's context card asks for the usage limits of the account its entry `providerId` runs on again. */
-  refreshLimits: [providerId: string, automatic: boolean]
+  /** The child's context card asks for the usage limits of the account it runs on, `account` of its entry `providerId`, again. */
+  refreshLimits: [providerId: string, account: string | null, automatic: boolean]
   /** An instruction in the child's context card opens where it is written. */
   openInstruction: [entry: InstructionEntry]
 }>()
@@ -109,7 +109,7 @@ const context = computed(() => {
     ...agentCompaction(agent),
     sizeRefused: refusedForSize(latestBlocks(agent.history)),
     instructions: loadedInstructions(latestBlocks(agent.history)),
-    limits: props.usageLimits?.(agent.model.providerId) ?? null,
+    limits: props.usageLimits?.(agent.model.providerId, agent.contextUsage?.account ?? null) ?? null,
   }
 })
 
@@ -221,9 +221,9 @@ function closeTab(id: string): void {
         :limits="context?.limits ?? null"
         @compact="emit('compactAgent', active.id)"
         @open-instruction="emit('openInstruction', $event)"
-        @refresh-limits="emit('refreshLimits', active.model.providerId, $event)"
+        @refresh-limits="emit('refreshLimits', active.model.providerId, active.contextUsage?.account ?? null, $event)"
       />
     </div>
-    <RegionStatus v-else class="h-full" status="note" :icon="Bot" label="No agents are running." />
+    <RegionStatus v-else class="h-full" status="note" :icon="Bot" label="No agents running" />
   </SessionOverlay>
 </template>

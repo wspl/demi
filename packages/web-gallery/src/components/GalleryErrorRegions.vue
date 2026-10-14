@@ -121,7 +121,7 @@ const usageLimitPayload = JSON.stringify({
         </GallerySpecimen>
         <GallerySpecimen wide variant="Empty">
           <div class="rounded-xl border border-line bg-surface">
-            <RegionStatus status="note" label="No messages yet." />
+            <RegionStatus status="note" label="No messages" />
           </div>
         </GallerySpecimen>
       </div>

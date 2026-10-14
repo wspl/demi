@@ -39,6 +39,7 @@ fn every_block_kind_keeps_its_wire_shape() {
         "tool_call",
         "response",
         "error",
+        "account_switch",
         "compaction_boundary",
         "compaction_marker",
     ] {

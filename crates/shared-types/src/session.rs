@@ -47,6 +47,14 @@ pub struct ContextUsage {
     /// rows above Messages alone do.
     #[garde(dive)]
     pub rows: Vec<ContextRow>,
+    /// The account the node's requests use under account rotation
+    /// (`providers.md` § Account rotation), whose windows the context card
+    /// shows; null when the entry has none or the node has not chosen one
+    /// yet.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    #[garde(skip)]
+    pub account: Option<String>,
 }
 
 /// One row of what fills the context.

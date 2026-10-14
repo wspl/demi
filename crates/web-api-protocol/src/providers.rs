@@ -37,6 +37,8 @@ pub enum CredentialKind {
 serde_plain::derive_display_from_serialize!(CredentialKind);
 serde_plain::derive_fromstr_from_deserialize!(CredentialKind);
 
+pub use demi_shared_types::Rotation;
+
 /// One model of an entry's configured list, which states its facts directly
 /// (`models.md` § Catalog sources): its first thinking effort is its
 /// default, its Fast tier, when it names one, is its only service tier, and
@@ -225,6 +227,12 @@ pub struct ProviderPatch {
     #[schemars(with = "Option<ConfiguredModels>")]
     #[garde(dive)]
     pub models: Option<Option<ConfiguredModels>>,
+    /// A subscription entry's rotation; one with fewer than two accounts
+    /// keeps `manual`.
+    #[serde(default, with = "unwrap_or_skip")]
+    #[schemars(with = "Rotation")]
+    #[garde(skip)]
+    pub rotation: Option<Rotation>,
 }
 
 /// An entry as the web app sees it: its family, label, kind, endpoint, vendor
@@ -264,6 +272,8 @@ pub struct ProviderDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ConfiguredModels>")]
     pub models: Option<ConfiguredModels>,
+    /// Which account each agent uses; `manual` for an API-key entry.
+    pub rotation: Rotation,
     pub created_at: Timestamp,
 }
 
@@ -477,6 +487,15 @@ pub struct Accounts {
 pub struct ActivateAccount {
     #[garde(skip)]
     pub credential_id: CredentialId,
+}
+
+/// `PUT /providers/:id/accounts/order`: every account of the entry once, in
+/// the order In Order uses and the list shows.
+#[derive(Debug, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AccountOrder {
+    #[garde(skip)]
+    pub credential_ids: Vec<CredentialId>,
 }
 
 /// `{ active }`: the account the entry now infers with.

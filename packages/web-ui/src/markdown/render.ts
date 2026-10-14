@@ -4,7 +4,7 @@ import { baseName } from '@demicodes/utils'
 import type { MarkdownRenderOptions, MessageAttachment, MessageFileTarget, MessageFiles } from './types'
 import type { HostImage } from '../files/host-image'
 import { codeBlockHtml } from './highlight'
-import { attachmentId, isHttpUrl, messageFileTarget, messageImage } from './filePath'
+import { attachmentId, isHttpUrl, linkedCommit, messageFileTarget, messageImage } from './filePath'
 import { codeFileTarget } from './code-paths'
 import { linkedAgent } from '../agent/agent-links'
 import type { CopiedStoredFile } from '../agent/message-input/copied-message'
@@ -273,6 +273,10 @@ const messageRenderer: RendererObject = {
     const agent = linkedAgent(token.href)
     if (agent !== null)
       return agentLink(agent, body, tightLinks.has(token))
+    // A commit opens its changes; nobody to open it, its text alone.
+    const commit = linkedCommit(token.href)
+    if (commit !== null)
+      return activeOptions?.files?.openCommit ? `<a href="${escapeHtml(token.href)}" data-commit-link="${escapeHtml(commit)}">${body}</a>` : body
     // A file nobody opens is named as text.
     const files = activeOptions?.files
     const target = files?.open ? messageFileTarget(token.href, files) : null

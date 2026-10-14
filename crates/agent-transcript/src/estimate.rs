@@ -202,6 +202,8 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
         }
         Block::Error(error) => error.message.clone(),
         Block::Abort(_) => "aborted".to_owned(),
+        // The model receives nothing of it (`compaction.md` § Text bounds).
+        Block::AccountSwitch(_) => String::new(),
         // The note, the messages it kept and the summary, as the model
         // reads them.
         Block::CompactionBoundary(boundary) => {

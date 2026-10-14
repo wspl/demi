@@ -5,7 +5,7 @@
 use std::{num::NonZeroU32, sync::Arc};
 
 use demi_shared_types::{
-    AuthState, B64Bytes, MODEL_MEDIA_TYPES, Model, ModelMediaKind, ProviderErrorDiagnostics,
+    AgentAccount, AuthState, B64Bytes, MODEL_MEDIA_TYPES, Model, ModelMediaKind, ProviderErrorDiagnostics,
     ProviderFailureFacts, ProviderModelList, RuntimeState, ThinkingConfig, Timestamp, TokenUsage,
     model_accepts_media_type, model_media_type_for,
 };
@@ -137,6 +137,12 @@ pub trait ProviderRuntime {
     /// dropped without closing still has its process killed, without
     /// waiting.
     fn close(&mut self) -> LocalBoxFuture<'_, ()>;
+
+    /// The session's action ended, such as a turn: nothing of it runs
+    /// until its next request. A runtime that counts what runs, such as an
+    /// agent's account under rotation (`providers.md` § Account rotation),
+    /// stops counting it; most runtimes have nothing to do.
+    fn idle(&mut self) {}
 
     /// Whether [`prepare`](Self::prepare) readies anything, so the session
     /// builds the request it takes, reading the media its history replays,
@@ -319,6 +325,11 @@ pub struct InferenceRequest {
     /// Cancels the run: it stops its work at once and ends without a further
     /// event.
     pub cancel: CancellationToken,
+    /// The account the session's agent took under its entry's rotation,
+    /// as its state keeps it; none before it took one, after a compaction,
+    /// and for a request that is no session's (`providers.md` § Account
+    /// rotation).
+    pub account: Option<AgentAccount>,
 }
 
 /// How a request extends the session's earlier requests (`providers.md`
@@ -506,6 +517,14 @@ pub enum ProviderEvent {
     Response(Option<TokenUsage>),
     /// The run's failure; it is the run's last event.
     Error(ProviderFailure),
+    /// The account the agent uses from this run on, sent before anything
+    /// else of the run when it is not the one the request named; none when
+    /// the entry's rotation gives the agent no account of its own. The
+    /// session keeps it with its state (`providers.md` § Account rotation).
+    Account(Option<AgentAccount>),
+    /// The agent's account reached its limit and the request goes on with
+    /// another account, which an `Account` event names next.
+    AccountSwitch(AccountSwitch),
     /// Entries of the vendor's own record of the session that belong to one
     /// block, which the agent keeps on that block, after those it holds,
     /// and gives back in the request's [`RequestBlock`]s
@@ -532,6 +551,17 @@ impl ProviderEvent {
         }
         Self::Response(usage)
     }
+}
+
+/// An agent's move from a used-up account to another: the accounts by
+/// their labels, the window that was used up and when the account can be
+/// used again, when known.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountSwitch {
+    pub from: String,
+    pub to: String,
+    pub window: Option<String>,
+    pub resets_at: Option<Timestamp>,
 }
 
 /// The block entries belong to.

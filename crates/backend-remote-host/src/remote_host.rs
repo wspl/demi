@@ -18,7 +18,7 @@ use demi_host_interface::{
     SymbolicLink, WhenExists, WholeOutput, WriteOptions,
 };
 use demi_runner_protocol::wire::{
-    self, FsResult, GitChanges, GitResult, Inbound, LogLine, PipeRef, ReadAt, STDIN_CHUNK_BYTES,
+    self, FsResult, GitBranches, GitChanges, GitCommit, GitLog, GitResult, Inbound, LogLine, PipeRef, ReadAt, STDIN_CHUNK_BYTES,
     WireBytes,
 };
 use demi_shared_gates::GateLease;
@@ -612,9 +612,71 @@ impl RemoteHost {
         }
     }
 
-    /// `path`, relative to `root`, as the last commit has it, and the
-    /// Host's number before it read it.
-    pub async fn git_show(&self, root: &str, path: &str) -> Result<(Bytes, ReadAt), HostError> {
+    /// The local branches of `root`'s repository and the one checked out
+    /// (`runner.md` § Working tree), and the Host's number before it read
+    /// them.
+    pub async fn git_branches(&self, root: &str) -> Result<(GitBranches, ReadAt), HostError> {
+        let link = self.link()?;
+        let reply = link
+            .call(Expected::Git("branches"), |id| Inbound::GitBranches {
+                id,
+                root: root.into(),
+            })
+            .await?;
+        match reply {
+            Answer::Git(GitResult::Branches(branches), read_at) => Ok((branches, read_at)),
+            _ => Err(mismatch()),
+        }
+    }
+
+    /// One page of `branch`'s first-parent history, HEAD's without one,
+    /// after the commit `after` names.
+    pub async fn git_log(
+        &self,
+        root: &str,
+        branch: Option<&str>,
+        after: Option<&str>,
+    ) -> Result<(GitLog, ReadAt), HostError> {
+        let link = self.link()?;
+        let reply = link
+            .call(Expected::Git("log"), |id| Inbound::GitLog {
+                id,
+                root: root.into(),
+                branch: branch.map(str::to_owned),
+                after: after.map(str::to_owned),
+            })
+            .await?;
+        match reply {
+            Answer::Git(GitResult::Log(log), read_at) => Ok((log, read_at)),
+            _ => Err(mismatch()),
+        }
+    }
+
+    /// The commit `commit` names, with its files against its first parent
+    /// and the local branches it is on.
+    pub async fn git_commit(&self, root: &str, commit: &str) -> Result<(GitCommit, ReadAt), HostError> {
+        let link = self.link()?;
+        let reply = link
+            .call(Expected::Git("commit"), |id| Inbound::GitCommit {
+                id,
+                root: root.into(),
+                commit: commit.into(),
+            })
+            .await?;
+        match reply {
+            Answer::Git(GitResult::Commit(commit), read_at) => Ok((commit, read_at)),
+            _ => Err(mismatch()),
+        }
+    }
+
+    /// `path`, relative to `root`, as the last commit has it, or as
+    /// `commit` has it, and the Host's number before it read it.
+    pub async fn git_show(
+        &self,
+        root: &str,
+        path: &str,
+        commit: Option<&str>,
+    ) -> Result<(Bytes, ReadAt), HostError> {
         let link = self.link()?;
         let (answer, reader) = answered(&link, Expected::Git("show"), |id, output| {
             Inbound::GitShow {
@@ -622,6 +684,7 @@ impl RemoteHost {
                 root: root.into(),
                 path: path.into(),
                 output,
+                commit: commit.map(str::to_owned),
             }
         })
         .await?;

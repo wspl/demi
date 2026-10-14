@@ -47,6 +47,7 @@ pub(crate) fn scripts(cost: Option<ProbeCost>) -> Scripts {
         limit: None,
         unit: None,
         resets_at: None,
+        period_seconds: None,
         severity: None,
         scope: None,
     };
@@ -58,6 +59,7 @@ pub(crate) fn scripts(cost: Option<ProbeCost>) -> Scripts {
         quota: quota.clone(),
         directory: Arc::new(Directory::default()),
         runs: None,
+        process_host: false,
     };
     let families = demi_backend::families::builtin()
         .with("claude-code", family())
@@ -735,6 +737,7 @@ async fn removing_the_active_account_selects_the_next_and_the_last_leaves_none()
         quota: quota.clone(),
         directory,
         runs: Some(runs.clone()),
+        process_host: false,
     };
     let scripts = Scripts {
         login,

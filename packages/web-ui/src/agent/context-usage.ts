@@ -40,7 +40,7 @@ export function compactionRefusal(usage: ContextUsage | null, sizeRefused = fals
     return null
   }
   const from = formatPercent(usage.compactFrom, usage.window)
-  return `Compaction is available from ${from} context usage (now ${formatPercent(usage.tokens, usage.window)})`
+  return `Available from ${from} context (now ${formatPercent(usage.tokens, usage.window)})`
 }
 
 /** What a row of the context card is called (`compaction.md` § What fills the context). */

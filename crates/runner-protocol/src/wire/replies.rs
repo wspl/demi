@@ -14,7 +14,10 @@ use serde::ser::SerializeStruct;
 use demi_shared_types::ReadAt;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
-use super::{DirEntry, FileHash, FileRead, FileStat, GitChanges, Looked, OpenedFile};
+use super::{
+    DirEntry, FileHash, FileRead, FileStat, GitBranches, GitChanges, GitCommit, GitLog, Looked,
+    OpenedFile,
+};
 
 /// A successful fs call's reply.
 #[derive(Debug, Clone, PartialEq)]
@@ -99,6 +102,9 @@ pub enum GitResult {
     Changes(#[garde(dive)] GitChanges),
     /// The file streams into the call's output pipe after the reply.
     Show,
+    Branches(#[garde(dive)] GitBranches),
+    Log(#[garde(dive)] GitLog),
+    Commit(#[garde(dive)] GitCommit),
 }
 
 impl GitResult {
@@ -107,6 +113,9 @@ impl GitResult {
         match self {
             Self::Changes(_) => "changes",
             Self::Show => "show",
+            Self::Branches(_) => "branches",
+            Self::Log(_) => "log",
+            Self::Commit(_) => "commit",
         }
     }
 }
@@ -154,6 +163,9 @@ impl Serialize for GitOk {
         match &self.result {
             GitResult::Changes(changes) => reply.serialize_field("result", changes)?,
             GitResult::Show => reply.serialize_field("result", &())?,
+            GitResult::Branches(branches) => reply.serialize_field("result", branches)?,
+            GitResult::Log(log) => reply.serialize_field("result", log)?,
+            GitResult::Commit(commit) => reply.serialize_field("result", commit)?,
         }
         reply.end()
     }
@@ -227,6 +239,9 @@ impl ReplyResult for GitResult {
         Ok(match op {
             "changes" => Self::Changes(map.next_value()?),
             "show" => none(map, Self::Show)?,
+            "branches" => Self::Branches(map.next_value()?),
+            "log" => Self::Log(map.next_value()?),
+            "commit" => Self::Commit(map.next_value()?),
             other => {
                 return Err(de::Error::custom(format!(
                     "unknown working-tree operation {other}"

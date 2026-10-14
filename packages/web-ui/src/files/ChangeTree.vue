@@ -11,7 +11,7 @@ import Tree from './Tree.vue'
 import { changeTreeRows, type ChangeTreeFile, type ChangeTreeRow } from './changes'
 import { gitMark } from './git-status'
 import { baseName } from '@demicodes/utils'
-import type { HeadlineText } from '../ui/ui-text'
+import type { SentenceText } from '../ui/ui-text'
 
 /**
  * The changed files beside the diff as a tree, in both of the Change view's
@@ -38,8 +38,7 @@ const props = defineProps<{
   rootName?: string
   /** The selected file, by its key. */
   selected: string | null
-  /** What the tree says when there are no files. */
-  emptyText: HeadlineText
+  /** What the tree says when there are no files. */  emptyText: SentenceText
   /** Lists the changes again; no control without it. */
   refresh?: () => void
   /** A new list is on its way. */

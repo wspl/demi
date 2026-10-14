@@ -104,6 +104,9 @@ pub enum ErrorCode {
     DuplicateModel,
     /// The entry does not take accounts this way: an API-key entry has none.
     AccountsUnsupported,
+    /// A rotation other than `manual` for an entry with fewer than two
+    /// accounts.
+    RotationNeedsAccounts,
     /// The family has no login.
     NoLoginFlow,
     /// No login of the caller's has that id, or its result was dropped ten
@@ -244,6 +247,8 @@ pub enum ErrorCode {
     ChangesTimeout,
     /// The directory is not inside a git repository.
     NotRepository,
+    /// A commit's abbreviation names more than one commit.
+    Ambiguous,
     /// The working tree could not be read.
     ChangesFailed,
     /// The Host failed the operation in a way no other code names.

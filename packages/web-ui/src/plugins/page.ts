@@ -18,6 +18,7 @@ import { z } from 'zod'
 import type { PanelTabKind, TabCommand } from '../agent/panel-kinds/kind'
 import type { HostArtifact } from '../devices/installed'
 import type { ChangeSetSource, ReadCallChange } from '../files/changes'
+import type { CommitHistorySource } from '../files/history'
 import type { TranscriptRequest } from '../files/request-changes'
 import type { FileBrowserSource } from '../files/types'
 import { provideOnScreen } from '../files/on-screen'
@@ -95,6 +96,12 @@ export interface ConversationFileService {
    * (`file-previews.md` § The File view's bars).
    */
   changes(directory?: string): ChangeSetSource
+  /**
+   * The history of the repository the working tree under `directory` is
+   * in, the conversation's without one (`edit-tracking.md` § Commits mode);
+   * null while the conversation's Host is not known.
+   */
+  history(directory?: string): CommitHistorySource | null
   /** The two sides of one retained edit, by the blobs that hold them. */
   readonly edit: ReadCallChange
   /**
@@ -344,6 +351,7 @@ export interface PanelKind<Data, Session = undefined> {
   intents?: {
     file?(payload: IntentPayloads['file'], current: Data | null): Data
     edit?(payload: IntentPayloads['edit'], current: Data | null): Data
+    commit?(payload: IntentPayloads['commit'], current: Data | null): Data
   }
 }
 

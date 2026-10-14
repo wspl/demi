@@ -24,7 +24,7 @@ import { useAutofocus } from './autofocus'
 import { focusByPage } from './focus-by-page'
 import { ICON_PX } from './icon-metrics'
 import { NO_AUTOFILL } from './field-autofill'
-import { NO_RESULTS, type HeadlineText, type PlaceholderText } from './ui-text'
+import { NO_RESULTS, type PlaceholderText, type SentenceText } from './ui-text'
 
 /**
  * A menu: `items` it lays out itself, filterable and virtual when asked, or
@@ -43,8 +43,7 @@ const props = withDefaults(defineProps<{
   isItemDisabled?: (item: T) => boolean
   filterable?: boolean
   filterPlaceholder?: PlaceholderText
-  /** What the menu says when it has no item; a filter that matches none of its items says No Results. */
-  emptyText?: HeadlineText
+  /** What the menu says when it has no item; a filter that matches none of its items says No results. */  emptyText?: SentenceText
   itemHeight?: number
   filterFn?: (item: T, query: string) => boolean
   autofocus?: boolean
@@ -56,7 +55,7 @@ const props = withDefaults(defineProps<{
   iconless?: boolean
 }>(), {
   filterPlaceholder: 'Search…',
-  emptyText: 'No Items Found',
+  emptyText: 'No items',
   autofocus: true,
   iconless: undefined,
 })

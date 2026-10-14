@@ -281,7 +281,7 @@ async function confirmRemove(): Promise<void> {
         v-if="empty"
         class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
       >
-        No Sources Yet
+        No sources
       </div>
     </SettingsGroup>
     <AddSkillSourceDialog

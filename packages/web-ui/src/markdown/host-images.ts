@@ -30,5 +30,5 @@ export function useHostImagesAt(
   paths: () => string[],
 ): ComputedRef<ReadonlyMap<string, HostImage>> {
   const shown = useShowings(contents, paths, (kept, path) => kept.showDescription(path))
-  return computed(() => new Map([...shown.value].map(([path, entry]) => [path, hostImage(entry, contents(), path)])))
+  return computed(() => new Map([...shown.entries.value].map(([path, entry]) => [path, hostImage(entry, contents(), path)])))
 }

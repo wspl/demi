@@ -560,7 +560,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
         modelState.kind === 'none' && (!modelLoad || modelLoad === 'ready')
       "
       key="none"
-      label="No models available."
+      label="No models available"
       :action="
         canConfigure !== false ? 'Configure Models' : undefined
       "
