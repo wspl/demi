@@ -296,7 +296,7 @@ runner's are on the system image, in directories the image makes for the
   which in a Cloud is once per boot; the image makes only `/var/lib/demi`,
   since a Cloud pinned to an older base keeps that base's `/var` while
   `/opt/demi` brings the new runner, and a runner that needed `tmp` from the
-  image could not start on prod's Cloud pinned to 0.1.11's base.
+  image could not start on a production server's Cloud pinned to 0.1.11's base.
 - `/var/log/demi/`, the [Host log](../execution/runner.md#host-log), which
   outlives a stop.
 

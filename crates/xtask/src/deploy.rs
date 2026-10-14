@@ -669,18 +669,18 @@ mod tests {
     /// that installs them; sudo matters only to a user other than root.
     #[test]
     fn the_server_is_known_by_its_machine_and_stops_the_deploy_without_its_tools() {
-        let probe = probed("prod", "x86_64\nroot\nmissing sudo\n").unwrap();
+        let probe = probed("server.example", "x86_64\nroot\nmissing sudo\n").unwrap();
         assert_eq!(probe.server.target, "x86_64-unknown-linux-musl");
         assert!(probe.lacking.is_none());
         assert_eq!(probed("arm", "aarch64\n").unwrap().server.architecture, "arm64");
         assert!(matches!(probed("risc", "riscv64\n"), Err(Error::Architecture { .. })));
-        let lacking = |answer: &str| probed("prod", answer).unwrap().lacking.unwrap().to_string();
+        let lacking = |answer: &str| probed("server.example", answer).unwrap().lacking.unwrap().to_string();
         assert_eq!(
             lacking("x86_64\nroot\nmissing jq\nmissing chroot\nmissing sha256sum\nmissing tar\nmissing tar\n"),
-            "prod lacks jq, chroot, sha256sum, tar, which the deploy needs there; install with `ssh prod apt-get install -y jq coreutils tar` and deploy again"
+            "server.example lacks jq, chroot, sha256sum, tar, which the deploy needs there; install with `ssh server.example apt-get install -y jq coreutils tar` and deploy again"
         );
         let user = lacking("x86_64\nmissing sudo\n");
-        assert!(user.contains("`ssh prod sudo apt-get install -y sudo`"), "{user}");
+        assert!(user.contains("`ssh server.example sudo apt-get install -y sudo`"), "{user}");
         assert!(matches!(
             probed("box", "x86_64\nroot\nmissing demi-server\n"),
             Err(Error::NotAServer { .. })

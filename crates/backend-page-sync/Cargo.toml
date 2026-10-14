@@ -3,6 +3,7 @@ name = "demi-backend-page-sync"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 
 [lib]
 # No tests of its own: the synchronization scenarios of `demi-backend` cover

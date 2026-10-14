@@ -3,6 +3,7 @@ name = "demi-runner-jobs"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+publish.workspace = true
 
 [lib]
 # One test binary, the integration tests' (`crates-and-packages.md`

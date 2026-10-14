@@ -5,7 +5,7 @@ test('the path bar shows the whole path from the Host root, the root and the hom
   expect(pathCrumbs('/Users/alex/Projects/demi/docs/guide.md', { platform: 'macos', home: '/Users/alex' })).toEqual([
     { name: '/', path: '/', icon: 'folder-macos' },
     { name: 'Users', path: '/Users', icon: undefined },
-    { name: 'zan', path: '/Users/alex', icon: 'folder-home' },
+    { name: 'alex', path: '/Users/alex', icon: 'folder-home' },
     { name: 'Projects', path: '/Users/alex/Projects', icon: undefined },
     { name: 'demi', path: '/Users/alex/Projects/demi', icon: undefined },
     { name: 'docs', path: '/Users/alex/Projects/demi/docs', icon: undefined },

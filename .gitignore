@@ -27,8 +27,10 @@ coverage/
 .cache/
 docs/.vitepress/dist/
 
-# Packaging artifacts (`npm pack` / `bun pm pack`)
+# Packaging artifacts (`npm pack` / `bun pm pack`); the release puts the root
+# LICENSE in a package only while it packs it (scripts/release.ts)
 *.tgz
+packages/*/LICENSE
 
 # Logs
 *.log

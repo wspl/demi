@@ -44,7 +44,7 @@ test('the list shows a visible field’s value as the channel brings it, with no
           name: 'Linear sign-in',
           note: '',
           fields: [
-            { name: 'user', label: 'User name', kind: 'visible', value: 'zan@example.com' },
+            { name: 'user', label: 'User name', kind: 'visible', value: 'alex@example.com' },
             { name: 'password', label: 'Password', kind: 'secret' },
           ],
           keepUntil: null,
@@ -57,7 +57,7 @@ test('the list shows a visible field’s value as the channel brings it, with no
   )
 
   expect(useCredentialSettings().credentials[0]!.fields).toEqual([
-    { name: 'user', label: 'User name', kind: 'visible', value: 'zan@example.com' },
+    { name: 'user', label: 'User name', kind: 'visible', value: 'alex@example.com' },
     { name: 'password', label: 'Password', kind: 'secret', value: null },
   ])
   expect(requests).toEqual([])
