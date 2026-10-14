@@ -443,8 +443,8 @@ impl Backend {
         self.local_addr
     }
 
-    /// Holds every commit of a conversation's checkpoint from now on, until
-    /// the hold is released.
+    /// Holds every commit of a conversation's checkpoint or stored
+    /// attachment from now on, until the hold is released.
     #[cfg(feature = "testing")]
     pub fn hold_commits(&self) -> demi_backend_database::conversations::CommitHold {
         self.services.conversations.hold_commits()
