@@ -566,7 +566,7 @@ a real model.
 | An empty summary, or a failed summary request | No boundary or marker; a failed one leaves its `error` block |
 | The user's `compact` after a finished answer, and its summary request fails | The `error` block has `outsideTurn`; the dock offers no Resume |
 | A turn whose compaction fails, then a reload and `resume` | The reopened transcript ends with the `error` block, and `resume` finishes the turn |
-| `compact` below half the window in use, then at half | Refused with `Compaction is available from 50% context usage (now N%)`, then taken; `context_usage` frames carry the estimate after each response and when the action ends |
+| `compact` below half the window in use, then at half | Refused with `Available from 50% context (now N%)`, then taken; `context_usage` frames carry the estimate after each response and when the action ends |
 | The user limited the model's window, then pressed Compact | The gate and the `context_usage` window are the limit's: 150,000 of 300K is taken |
 | A restored session with an image before its latest `response`, then an open | The page receives the usage with no blob read; with an image after that `response`, it receives none |
 | A turn keeps hitting the threshold | The turn continues after at most three compactions; no pass summarizes only a previous summary |
