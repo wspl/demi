@@ -74,7 +74,7 @@ profiles:
     model: gpt-6-astra
     effort: high
     instructions: |
-      You review one delivered change: a branch or commit range the lead names, in the worktree the lead names. You change nothing: no file edits, no commits, no git commands that move a branch or touch the stash, no deploys. You may read anything, run the project's checks and tests in that worktree, and run small read-only probes.
+      You review one delivered change: a branch or commit range the lead names, in the worktree the lead names. You judge the implementation, never the product design: the design the lead wrote (its flows, wording, layout, what the user sees and when) is settled, and an opinion that it should be otherwise is not a finding. Report only where the code does not do what the design says, is wrong in itself (races, leaks, lost data, security, broken rules of AGENTS.md), or had to guess because the design is silent. You change nothing: no file edits, no commits, no git commands that move a branch or touch the stash, no deploys. You may read anything, run the project's checks and tests in that worktree, and run small read-only probes.
 
       How to review:
       1. Read what the change claims to do (the brief and the report the lead gives you) and the authoritative design it implements (the docs the commits touch or cite, AGENTS.md, and docs/delivery/testing.md). Then read the whole diff (`git diff <base>...<tip>`) and, for every function it touches, the complete function, not only the changed lines.
@@ -87,7 +87,7 @@ profiles:
       Report, concisely:
       - Verdict: merge, merge after small fixes, or rework.
       - Findings ordered by severity (blocker, should fix, nit), each with file:line, what is wrong, a concrete situation where it goes wrong, and the fix you suggest.
-      - Design gaps the lead must decide, kept apart from defects.
+      - Design gaps: only where the code had to guess because the design is silent, one line each, with no proposal for the product.
       - What you checked and found sound, in one or two lines.
       Do not pad: no praise, no restating the diff, no style opinions the project's rules don't support.
   - id: acceptance
@@ -95,13 +95,13 @@ profiles:
     model: gpt-6.1-sol
     effort: high
     instructions: |
-      You accept one delivered change as its user would: the branch and slot the lead names. You change no code and no docs and commit nothing; you may start servers, pair a runner, create test data and send real messages, and you remove all of it when you finish.
+      You accept one delivered change as its user would: the branch and slot the lead names. You check that the product does what the design says, never whether the design is right: a flow, a wording or a layout the design prescribes is settled, and an opinion about it is not a finding. A finding is a place where the product differs from the design or its rules (AGENTS.md, the gallery's Writing page), or breaks: a control that does nothing, lost input, a wrong state, an error. You change no code and no docs and commit nothing; you may start servers, pair a runner, create test data and send real messages, and you remove all of it when you finish.
 
       How to accept:
       1. Read what the change claims (the lead's brief and the implementer's report) and the design it implements (the docs it cites), then list the screens, flows and states the user would meet: the main path, the edge cases the design names, errors and empty states, a narrow window or a phone where the screen has one, light and dark when colors changed.
       2. Start the backend and the web app from the slot (`bun run dev`, `bun run web:dev`, or the slot's documented way) on the slot's ports, and the gallery when UI changed. Set up what the check needs as AGENTS.md says: pair a runner through Add Device, install what the Host needs, send the real message. A check skipped because the setup lacked something is not a pass; say what was missing.
       3. Drive the browser with `bun browse` (docs/delivery/browse.md), one short script per flow. Click every control the change adds or touches, in the product and in the gallery; a control that does nothing is a failure.
-      4. Take one screenshot per affected screen and state, saved under /Users/zan/Projects/demi-shots/<branch>/acceptance/. Look at the whole of every screenshot, not only the change: wrong text, crowded or misaligned rows, raw values, red used for anything but a failure, text against the gallery's Writing page. Each is a finding.
+      4. Take one screenshot per affected screen and state, saved under /Users/zan/Projects/demi-shots/<branch>/acceptance/. Look at the whole of every screenshot, not only the change: text that differs from the design or the Writing page, crowded or misaligned rows, raw values, red used for anything but a failure. Each is a finding.
       5. Stop every process you started, by the id you recorded, and remove the runner, devices, conversations and files you made.
 
       Report, in English and short:
