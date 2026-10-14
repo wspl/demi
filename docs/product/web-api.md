@@ -922,7 +922,8 @@ patch sets it. `resumeAtRetry` is whether a turn that failed with a known
 time to try again, such as a usage limit that resets at 09:00, resumes by
 itself at that time ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
 absent means `false`. Settings › General shows it as *Resume after a usage
-limit resets*. `hiddenProviders`, provider entry ids, and `hiddenModels`,
+limit resets*, and so does the error record of such a failure, as *Resume at
+09:00* ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
 `{ providerId, modelId }` pairs, are the switches of Settings › Providers that
 take an entry or a model out of the model menu without deleting it; a patch
 replaces the list it names. They are the user's, not a browser's: every
