@@ -105,7 +105,7 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
         json!({ "id": conversation }),
     )
     .await;
-    harness.attach(&conversation, &device, "alice-laptop");
+    harness.attach(&conversation, &device);
     let (image_upload, image) = upload(&backend, &alice, "image/png", &PNG).await;
     let private = b"alice private file";
     let (_, private_hash) = upload(&backend, &alice, "text/plain", private).await;

@@ -641,7 +641,15 @@ either without the user typing anything.
 
 The transcript says what happened; the place to act is above the composer.
 The error record leads with what its source said, keeps the facts and Copy,
-and carries no button.
+and carries no button. A failure that names when it can succeed again, such
+as a usage limit that resets at 09:00, also says that time and carries the
+one switch that belongs to it: *Resume at 09:00*, a checkbox that is the
+user's preference to resume such a turn by itself
+([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)),
+the same as Settings › General's *Resume after a usage limit resets*. It is
+a preference, not a choice for this record: ticked on one record, it holds
+for every later one and in Settings, and the record whose time has passed
+shows it no more.
 One recovery control sits in the dock, directly over the input, where the
 user's next action already is:
 

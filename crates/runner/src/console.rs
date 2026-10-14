@@ -35,6 +35,111 @@ pub fn to_log(directory: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// How a runner in the background left the terminal it was started from.
+#[cfg(unix)]
+pub enum Departure {
+    /// This process has no controlling terminal.
+    Left,
+    /// The runner goes on in another process, in a session of its own, and
+    /// this one ends.
+    Restarted,
+}
+
+/// Makes this process a runner in the background of its own, with no
+/// controlling terminal, so that neither an interrupt at the terminal it
+/// was started from, nor that terminal's closing, as when an SSH connection
+/// ends, reaches it or the jobs it starts (`runner.md` § Installation,
+/// pairing and removal). It makes a new session, which has none. A process
+/// group's leader cannot: one that `run start` started in a session of its
+/// own, one that replaced itself with its update, or one a shell with job
+/// control started, at a terminal's foreground or not. When such a process
+/// still has a terminal, it starts the runner again in a session of its own
+/// and ends.
+///
+/// Only once it has no terminal do the signals its starter ignored to keep
+/// the terminal from it, `HUP` under `nohup` and `INT` and `QUIT` for a
+/// background command of a shell without job control, take their default
+/// action again: its jobs would inherit the ignoring, and a job stopped
+/// with one of them would go on.
+#[cfg(unix)]
+pub fn leave_terminal() -> io::Result<Departure> {
+    match rustix::process::setsid() {
+        // A new session has no controlling terminal.
+        Ok(_) => {}
+        Err(rustix::io::Errno::PERM) => {
+            if has_terminal()? {
+                start_apart()?;
+                line(runner_line(
+                    "the runner goes on in a session of its own, apart from this terminal",
+                ));
+                return Ok(Departure::Restarted);
+            }
+        }
+        Err(error) => return Err(error.into()),
+    }
+    for signal in [libc::SIGHUP, libc::SIGINT, libc::SIGQUIT] {
+        // SAFETY: the default action runs no code in this process, and it
+        // replaces no handler: the runner installs its own, for `INT` and
+        // `TERM`, only later. rustix offers no safe call that sets a
+        // signal's action, nor does the standard library.
+        if unsafe { libc::signal(signal, libc::SIG_DFL) } == libc::SIG_ERR {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(Departure::Left)
+}
+
+/// Whether this process has a controlling terminal: `/dev/tty` names it,
+/// and opening it fails with `ENXIO` only when there is none.
+#[cfg(unix)]
+fn has_terminal() -> io::Result<bool> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let opened = std::fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(libc::O_NOCTTY)
+        .open("/dev/tty");
+    match opened {
+        Ok(_) => Ok(true),
+        Err(error) => match error.raw_os_error() {
+            Some(libc::ENXIO) => Ok(false),
+            // The terminal is there, only not this account's to open.
+            Some(libc::EACCES) => Ok(true),
+            _ => Err(io::Error::new(
+                error.kind(),
+                format!("cannot tell whether the runner left its terminal: /dev/tty: {error}"),
+            )),
+        },
+    }
+}
+
+/// Starts this program again with this process's arguments and
+/// environment, as the leader of a new session, which has no controlling
+/// terminal. Nothing of the installation is open yet, neither its lock nor
+/// its log, so the new runner takes them as this one would have.
+#[cfg(unix)]
+fn start_apart() -> io::Result<()> {
+    use std::os::unix::process::CommandExt as _;
+    let mut arguments = std::env::args_os();
+    let mut command = std::process::Command::new(std::env::current_exe()?);
+    if let Some(name) = arguments.next() {
+        command.arg0(name);
+    }
+    command.args(arguments).stdin(std::process::Stdio::null());
+    // SAFETY: the hook runs in the child between fork and exec and makes
+    // only a `setsid` call, which is async-signal-safe, and allocates
+    // nothing. The child is a new process, never its group's leader, so
+    // the call makes its session.
+    unsafe {
+        command.pre_exec(|| {
+            rustix::process::setsid()?;
+            Ok(())
+        });
+    }
+    // The new runner outlives this process, which never waits for it.
+    command.spawn()?;
+    Ok(())
+}
+
 /// The console line of a message of the runner's own, such as one its
 /// host log's console layer writes.
 pub fn runner_line(message: impl Display) -> String {

@@ -205,7 +205,11 @@ impl HostServer {
         let ended = self.subscriptions.lock().expect("the subscriptions are intact").take();
         drop(ended);
         self.filesystem.close();
-        tokio::join!(self.filesystem.wait(), self.files.close());
+        tokio::join!(
+            self.filesystem.wait(),
+            self.files.close(),
+            self.shared_watches.close(),
+        );
     }
 }
 

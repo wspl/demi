@@ -17,7 +17,7 @@ test('an end notice says what happened before the call it names; progress has no
   expect(row(report({ kind: 'stopped', by: { kind: 'user' } }, 'Start the dev server')))
     .toEqual(['Command stopped by you', 'Start the dev server'])
   expect(reportNotice(report({ kind: 'stopped', by: { kind: 'agent', number: 2 } }))).toBe('Command stopped by another agent')
-  expect(reportNotice(report({ kind: 'lost', reason: 'its Host’s connection ended' }))).toBe('Command lost')
+  expect(reportNotice(report({ kind: 'lost', reason: 'its Host’s connection ended' }))).toBe('Lost track of command')
   // A call whose title is not known: the command by its number.
   expect(reportTitle(report({ kind: 'ended', exitCode: 1 }, ''))).toBe('Command 17')
 })

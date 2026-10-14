@@ -537,7 +537,9 @@ or a subagent ends, the work it waits for wakes it.
   under it Requesting stands until the model's answer arrives, as under a
   message the user sent. The notice says what happened, in the user's
   words, and then names the call by its title: *Command finished*, *Command
-  stopped by you*, *Command stopped by another agent*, *Command lost*. A
+  stopped by you*, *Command stopped by another agent*, *Lost track of
+  command*, never *Command lost*, which read as a command that had just come
+  back. A
   title is an imperative, so it is the notice's object, never its subject:
   joined as the subject, it read wrongly in the product, *Restart the
   end-to-end suite is still running*. A failure, a stop and a loss carry the

@@ -48,6 +48,11 @@ pub struct ForkMetadata {
     pub created_at: Timestamp,
     #[garde(dive)]
     pub attached_hosts: Vec<AttachedHostRecord>,
+    /// The source's execution-context revision at the Fork, which the
+    /// destination starts at, so the context blocks it copies are older
+    /// than any it is announced.
+    #[garde(skip)]
+    pub context_version: u64,
 }
 
 impl ForkOperation {
@@ -157,6 +162,7 @@ impl ControlService {
                     model: metadata.model.as_ref(),
                     // A Fork is a new conversation, which starts with Default.
                     workflow: &WorkflowChoice::Default,
+                    context_version: metadata.context_version,
                     at: metadata.created_at,
                 },
             )?;
