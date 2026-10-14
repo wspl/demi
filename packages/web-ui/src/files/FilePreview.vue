@@ -108,6 +108,11 @@ const shownFile = computed<ShownFile>(() => {
   }
 })
 watch(shownFile, (shown) => emit('shown', shown), { immediate: true })
+
+defineExpose({
+  /** Reads the file's description again, as the preview's own Retry does. */
+  retry: () => shown.retry(),
+})
 </script>
 
 <template>

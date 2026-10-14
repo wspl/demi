@@ -14,10 +14,11 @@ import { demoInstallCommands } from '../fixtures/device-installation'
 import type { WorkspaceDraft, WorkspaceHostChoice, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import FileTree from '@demicodes/web-ui/files/FileTree.vue'
+import FileView from '@demicodes/web-ui/files/FileView.vue'
 import UploadConflictDialog from '@demicodes/web-ui/files/UploadConflictDialog.vue'
 import { uploadsOf, type FileUploads, type UploadClash, type UploadItem, type UploadPlacement } from '@demicodes/web-ui/files/file-uploads'
 import Button from '@demicodes/web-ui/ui/Button.vue'
-import { SHOTS_DIR, TREE_ROOT, TREE_SELECTED, failingSource, offlineSource, rowsSource, screenshotsSource, sizedFile, sizedFolder, stuckSource, uploadSource } from '../fixtures/file-trees'
+import { LINKS, SHOTS_DIR, TREE_ROOT, TREE_SELECTED, failingSource, linksSource, offlineSource, rowsSource, screenshotsSource, sizedFile, sizedFolder, stuckSource, uploadSource } from '../fixtures/file-trees'
 import { createMemoryFileSource, dir, file } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserMode, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
 import Segmented, { type SegmentedOption } from '@demicodes/web-ui/ui/Segmented.vue'
@@ -48,7 +49,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'List',
-    'Name, date and size, folders first, names in VS Code’s order: case ignored, numbers by value, punctuation first, so hidden entries lead and show faded; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked.'
+    'Name, date and size, folders first, names in VS Code’s order: case ignored, numbers by value, punctuation first, so hidden entries lead and show faded; a header click sorts, a second click flips. A click selects, a double click or Enter opens a folder or confirms a file. Files show dimmed in folder mode and cannot be picked. A symbolic link lists as what it points at, a small arrow ending its name whose tooltip names the target: a link to a folder opens as one, and one whose target is gone lists as a file, as current, notes.txt and build.log do in the laptop’s Projects.'
   ],
   [
     'Keys',
@@ -285,6 +286,21 @@ function selectHost(target: 'folder' | 'file', id: string) {
 // The Tree view: one source per specimen, and the pinned-path specimens set up scrolled.
 const treeRows = rowsSource()
 
+// Symbolic links: a tree unfolded through a link at depth, and a File view
+// of each kind of link, each going where its tree's clicks take it.
+const linksTree = linksSource()
+const linksTreeSelected = ref<string | null>(LINKS.deep)
+const linkFiles = linksSource()
+const linkFilePath = ref<string>(LINKS.file)
+const missingLinks = linksSource()
+const missingLinkPath = ref<string>(LINKS.missing)
+/** Puts the missing link's target back on the simulated Host, as another program would: the row and the sentence stay until the link is opened or Retry is used. */
+function restoreGoneTarget(): void {
+  missingLinks.change(LINKS.gone, 'Build finished.\n')
+}
+const unreadableLinks = linksSource()
+const unreadableLinkPath = ref<string>(LINKS.unreadable)
+
 const MiB = 1024 * 1024
 
 /** `count` files of about `size` bytes each, named `name-01.ext` on. */
@@ -478,6 +494,62 @@ onMounted(() => {
             <FileTree :source="treeRows" :root="TREE_ROOT" :selected="treeSelected" @open="treeSelected = $event" />
           </div>
         </GallerySpecimen>
+      </GallerySection>
+      <GallerySection
+        title="Symbolic Links"
+        note="A symbolic link shows as Visual Studio Code’s Explorer shows one: as what it points at, with a small arrow at the end of its row in the secondary text color, whose tooltip names the target as written. A link to a folder unfolds as a folder with the target’s entries, at any depth: vendor holds project, a link back to the workspace, which unfolds again, a level at a time. A link to a file opens the target’s contents under the link’s own path. A link whose target is gone shows as a file, its tooltip saying the target does not exist, and opening it says so where the file would be, from its folder’s listing, whatever the read of the file, asked for at the same time, answers; one whose target is there but cannot be reached, here a link to itself, says why, in the system’s words. What a row says of its target is as of its folder’s listing: Put gone.log Back creates the target as another program would, and the row and the sentence stay until the link is opened again, from the tree or by its path, or Retry is used, each of which lists its folder again and shows the file. The attachment picker and a device’s folder dialog read a link again the same way when it is opened. Click the rows to fold, unfold and open."
+      >
+        <div class="flex flex-wrap gap-6">
+          <GallerySpecimen variant="link to a folder · unfolds at any depth">
+            <div class="gallery-frame h-[24rem] w-[260px] overflow-hidden bg-surface-editor">
+              <FileTree :source="linksTree" :root="TREE_ROOT" :selected="linksTreeSelected" @open="linksTreeSelected = $event" />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="link to a file · the target under the link’s path" wide>
+            <div class="gallery-frame flex h-[24rem] overflow-hidden">
+              <FileView
+                class="w-full"
+                :source="linkFiles"
+                :root="TREE_ROOT"
+                :path="linkFilePath"
+                @open="linkFilePath = $event"
+                @back="productWould('Show the File Before')"
+                @forward="productWould('Show the File After')"
+              />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="missing target · said where the file would be" wide>
+            <div class="flex flex-col gap-2">
+              <div class="flex flex-wrap gap-1">
+                <Button size="sm" @click="restoreGoneTarget">Put gone.log Back</Button>
+              </div>
+              <div class="gallery-frame flex h-[24rem] overflow-hidden">
+                <FileView
+                  class="w-full"
+                  :source="missingLinks"
+                  :root="TREE_ROOT"
+                  :path="missingLinkPath"
+                  @open="missingLinkPath = $event"
+                  @back="productWould('Show the File Before')"
+                  @forward="productWould('Show the File After')"
+                />
+              </div>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="unreadable target · the system’s reason" wide>
+            <div class="gallery-frame flex h-[24rem] overflow-hidden">
+              <FileView
+                class="w-full"
+                :source="unreadableLinks"
+                :root="TREE_ROOT"
+                :path="unreadableLinkPath"
+                @open="unreadableLinkPath = $event"
+                @back="productWould('Show the File Before')"
+                @forward="productWould('Show the File After')"
+              />
+            </div>
+          </GallerySpecimen>
+        </div>
       </GallerySection>
       <GallerySection
         title="Loading and Failures"

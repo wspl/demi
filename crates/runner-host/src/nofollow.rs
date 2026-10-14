@@ -39,20 +39,6 @@ pub fn look_within(within: &Path, path: &Path, limit: u64, bytes: &mut Vec<u8>) 
     platform::look(within, &names, limit, bytes)
 }
 
-/// An entry of a listing, from its own metadata.
-#[cfg(not(unix))]
-fn entry(name: String, metadata: &std::fs::Metadata) -> io::Result<wire::DirEntry> {
-    let kind = metadata.file_type();
-    Ok(wire::DirEntry {
-        name,
-        is_file: kind.is_file(),
-        is_directory: kind.is_dir(),
-        is_symbolic_link: kind.is_symlink(),
-        size: metadata.len(),
-        mtime: crate::fs::modified(metadata)?,
-    })
-}
-
 /// A file's first `limit` bytes into `bytes`, and its size.
 fn read_file(mut file: std::fs::File, limit: u64, bytes: &mut Vec<u8>) -> io::Result<wire::Looked> {
     let size = file.metadata()?.len();
@@ -140,6 +126,16 @@ mod platform {
             match rustix::fs::statat(&directory, entry.file_name(), AtFlags::SYMLINK_NOFOLLOW) {
                 Ok(stat) => {
                     let kind = FileType::from_raw_mode(stat.st_mode);
+                    let link = if kind == FileType::Symlink {
+                        match link_at(&directory, entry.file_name()) {
+                            Ok(link) => Some(link),
+                            // Removed since the directory named it: no longer listed.
+                            Err(Errno::NOENT) => continue,
+                            Err(error) => return Err(error.into()),
+                        }
+                    } else {
+                        None
+                    };
                     // The nanoseconds field is signed on some targets and
                     // unsigned on others (Linux's raw stat); it is always
                     // below one second, so it fits either way.
@@ -149,9 +145,9 @@ mod platform {
                         name,
                         is_file: kind == FileType::RegularFile,
                         is_directory: kind == FileType::Directory,
-                        is_symbolic_link: kind == FileType::Symlink,
                         size: u64::try_from(stat.st_size).unwrap_or(0),
                         mtime: demi_runner_protocol::wire::Timestamp(milliseconds),
+                        link,
                     });
                 }
                 // Removed since the directory named it: no longer listed.
@@ -160,6 +156,23 @@ mod platform {
             }
         }
         Ok(wire::Looked::Directory { entries })
+    }
+
+    /// The link `name` in `directory`: its target as written, and what is
+    /// there once followed. Only its metadata is read, never what it leads
+    /// to, so the look still follows no link to read through it.
+    fn link_at(directory: &OwnedFd, name: &std::ffi::CStr) -> Result<wire::SymbolicLink, Errno> {
+        let target = rustix::fs::readlinkat(directory, name, Vec::new())?;
+        let followed = rustix::fs::statat(directory, name, AtFlags::empty())
+            .map(|stat| {
+                let kind = FileType::from_raw_mode(stat.st_mode);
+                (kind == FileType::RegularFile, kind == FileType::Directory)
+            })
+            .map_err(std::io::Error::from);
+        Ok(wire::SymbolicLink {
+            target: target.to_string_lossy().into_owned(),
+            leads_to: crate::fs::link_target(followed),
+        })
     }
 }
 
@@ -188,11 +201,24 @@ mod platform {
             let mut entries = Vec::new();
             for entry in std::fs::read_dir(&path)? {
                 let entry = entry?;
-                match std::fs::symlink_metadata(entry.path()) {
-                    Ok(metadata) => entries.push(super::entry(entry.file_name().to_string_lossy().into_owned(), &metadata)?),
-                    Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                let metadata = match std::fs::symlink_metadata(entry.path()) {
+                    Ok(metadata) => metadata,
+                    // Removed since the directory named it: no longer listed.
+                    Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
                     Err(error) => return Err(error),
-                }
+                };
+                // A junction is a link as well (`FileType::is_symlink`).
+                let link = if metadata.file_type().is_symlink() {
+                    match crate::fs::symbolic_link(&entry.path()) {
+                        Ok(link) => Some(link),
+                        Err(error) if error.kind() == io::ErrorKind::NotFound => continue,
+                        Err(error) => return Err(error),
+                    }
+                } else {
+                    None
+                };
+                let name = entry.file_name().to_string_lossy().into_owned();
+                entries.push(crate::fs::entry_of(name, &metadata, link)?);
             }
             return Ok(wire::Looked::Directory { entries });
         }

@@ -1204,7 +1204,8 @@ once it has something to show; Claude Code adds `waiting_for_cloud`,
 [Accounts and sign-in](../providers/claude-code.md#accounts-and-sign-in)), the
 `verificationUrl` and `userCode`
 null until the vendor names them and `expiresAt` the moment the login ends
-unless the user finishes it, and for Claude Code `needsCode: true` and no
+unless the user finishes it, null while it is `preparing` and set, with its
+own announcement, once the login knows its kind, and for Claude Code `needsCode: true` and no
 `userCode`: `verificationUrl` is the link the CLI printed, the user signs in
 there and pastes the code the page shows, which
 `POST /api/providers/subscription-login/:id/code { code }` hands to the CLI's
@@ -1220,10 +1221,16 @@ that paste a code each, neither shows the other's refusal as its own. The login 
 credentialId }` with the account the login added, `{ status: "cancelled" }`
 once the user cancelled it, or `{ status: "failed", message, requestId }`,
 where `requestId` is the id of the request that started the login, under
-which the server log holds its whole course. The vault publishes the entry
-before it announces the login's end, but a channel may send the end first,
-so a page shows a completed login once its product state lists the account.
-Cancel with DELETE at the same path. A login is its starter's to read and cancel; another
+which the server log holds its whole course. A page learns
+that a login completed no sooner than it learns the account: the vault
+publishes the entry before it ends the login, the channel reads the parts of
+one message in the order of the table below, providers before logins, and
+reads each part only after the change that marked it, and the snapshot reads
+the logins before the providers. A page therefore shows a completed login as
+done the moment it learns of it, and an account removed later does not undo
+that.
+Cancel with
+DELETE at the same path. A login is its starter's to read and cancel; another
 id answers 404 `login_not_found`. Terminal results are retained for ten
 minutes. A start on an entry that a login of the same user reserves answers
 409 `provider_busy` with `loginId`, that login's id, so the page opens it
@@ -1722,11 +1729,15 @@ it shows every other change.
 
 `GET /api/devices` includes the connected runner's `home` (null while unknown).
 `GET /api/devices/:id/fs` defaults to that home when path is omitted and returns
-`{ path, home, entries }`. Each entry has name, isDirectory, isSymbolicLink, byte
-size and modifiedAt. Metadata comes through the runner's filesystem
-operations; entries disappearing during the listing are omitted, other errors
-are returned. Metadata requests await each reply to avoid overrunning the
-runner transport. These device routes serve paired-device target selection
+`{ path, home, entries }`. Each entry has name, isDirectory, byte size and
+modifiedAt, its own as `lstat` reports them, and a symbolic link has `link`:
+its `target` as written and `leadsTo`, `{ kind, reason }`, where `kind` is
+`file`, `directory`, `other`, `missing` or `unreadable`, and `reason` the
+system's words for an unreadable one
+([Symbolic links](file-previews.md#symbolic-links)). The runner
+reads them beside each entry as it lists the directory, so a listing is one
+request ([Host operations](../execution/runner.md)); entries disappearing
+during the listing are omitted, other errors are returned. These device routes serve paired-device target selection
 only; the work panel and remote attachment picker use the conversation routes
 below. Managed devices are not accepted by the device directory routes. These
 routes reach the device through device access
