@@ -109,4 +109,7 @@ pub enum RetryStep {
     /// The time came, and the resume counts as opening the conversation's
     /// tree; it has read neither the preference nor the tree.
     Firing,
+    /// The resume found the shard open and goes on to read the preference
+    /// and open the tree: a close that begins now waits for it.
+    Started,
 }
