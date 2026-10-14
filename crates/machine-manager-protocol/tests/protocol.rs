@@ -215,7 +215,7 @@ fn a_boot_credential_never_appears_in_debugging_output() {
     let request = decode_request(text(&line)).expect("wake");
     let debug = format!("{request:?}");
     assert!(debug.contains("backend.example.com"), "{debug}");
-    assert!(!debug.contains("dt_6b1f0c2e9a7d4c3b"), "{debug}");
+    assert!(!debug.contains("dt_example_token"), "{debug}");
 }
 
 /// A small manifest in the shape the packaging writes, for an arm64 image

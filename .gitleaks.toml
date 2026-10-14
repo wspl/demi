@@ -1,0 +1,20 @@
+# What gitleaks' default rules take for secrets in this repository and are
+# none. Each entry names its values as narrowly as it can, so a real secret
+# beside them is still found.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Ids of messages, which grant nothing: the Claude Code CLI's recordings carry the vendor's"
+regexes = ['''^msg_01[0-9A-Za-z]{22}$''']
+
+[[allowlists]]
+description = "The sample Sec-WebSocket-Key of RFC 6455, and the 16 bytes it encodes"
+regexes = ['''^MDEyMzQ1Njc4OWFiY2RlZg==$''', '''^0123456789abcdef$''']
+
+[[allowlists]]
+description = "The test-only key of the Claude Code suite's local distribution, and the public key that fixes the capture extension's id"
+paths = [
+  '''(^|/)crates/backend/tests/backend/claude_code/distribution\.key$''',
+  '''(^|/)crates/command-package-browser-chrome/src/driver/capture/manifest\.json$''',
+]

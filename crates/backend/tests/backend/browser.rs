@@ -189,7 +189,7 @@ async fn the_tab_methods_run_the_browsers_operations_as_the_user_on_the_conversa
 /// plugin could not open a browser tab for, whose content says the browser
 /// couldn't start on the device. Before, the list answered `plugin_failed`
 /// and the tab kept a reason the page had no words for, so it said "The
-/// browser couldn't do that." On prod the first listing after an upgrade
+/// browser couldn't do that." On a production server the first listing after an upgrade
 /// waited for the new release's browser service, which did not start in
 /// time. A paired device's real runner, about a second.
 #[tokio::test]

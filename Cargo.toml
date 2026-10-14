@@ -72,6 +72,7 @@ members = [
 version = "0.1.21"
 edition = "2024"
 license = "LicenseRef-Demi-License"
+publish = false
 
 [workspace.dependencies]
 base64 = "0.22"

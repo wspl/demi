@@ -70,7 +70,7 @@ test('an image loads from the web, as a data URL, or from the Host; anything els
 
 test('a link or image path starting ~/ names the Host home, and stays text while the home is not known', () => {
   const markdown = '[todo](~/notes/todo.md) ![chart](~/out/chart.png)'
-  const html = renderMarkdown(markdown, { files: { ...files, home: '/Users/zan' }, hostImages: shownImages('/Users/alex/out/chart.png') })
+  const html = renderMarkdown(markdown, { files: { ...files, home: '/Users/alex' }, hostImages: shownImages('/Users/alex/out/chart.png') })
   expect(html).toContain(fileLink('/Users/alex/notes/todo.md', 'todo'))
   expect(html).toContain(`<img src="/raw?path=${encodeURIComponent('/Users/alex/out/chart.png')}" alt="chart" data-host-file="/Users/alex/out/chart.png" />`)
   expect(renderMarkdown(markdown, { files })).toBe('<p>todo chart</p>\n')

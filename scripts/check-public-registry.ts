@@ -1,12 +1,11 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 
 const publicRegistry = 'https://registry.npmjs.org/'
-const bannedHosts = [
-  ['bnpm', 'byted', 'org'].join('.'),
-  ['registry', 'npm', 'taobao', 'org'].join('.'),
-  ['npmmirror', 'com'].join('.'),
-]
+// bun.lock writes a package's tarball URL only when it came from a registry
+// other than the default one, so any URL in it names a package another
+// registry (a mirror, a private registry) resolved.
+const lockfile = 'bun.lock'
 
 const failures: string[] = []
 
@@ -19,7 +18,7 @@ assertFileContains(
   /registry\s*=\s*"https:\/\/registry\.npmjs\.org\/?"/
 )
 assertNpmConfig()
-scanRepository()
+scanLockfile()
 
 if (failures.length > 0) {
   for (const failure of failures) console.error(failure)
@@ -55,34 +54,15 @@ function assertNpmConfig(): void {
   }
 }
 
-function scanRepository(): void {
-  const result = spawnSync(
-    'git',
-    ['ls-files', '--cached', '--others', '--exclude-standard'],
-    { encoding: 'utf8' }
-  )
-  if (result.status !== 0) {
-    failures.push(`git ls-files failed: ${result.stderr.trim()}`)
+function scanLockfile(): void {
+  if (!existsSync(lockfile)) {
+    failures.push(`${lockfile} is missing`)
     return
   }
-
-  for (const file of result.stdout.split('\n')) {
-    if (!file || file.includes('/node_modules/'))
-      continue
-    let stats: ReturnType<typeof statSync>
-    try {
-      stats = statSync(file)
-    } catch {
-      continue
-    }
-    if (!stats.isFile())
-      continue
-
-    const content = readFileSync(file, 'utf8')
-    for (const host of bannedHosts) {
-      if (content.includes(host))
-        failures.push(`${file} contains forbidden registry host ${host}`)
-    }
+  const urls = readFileSync(lockfile, 'utf8').match(/https?:\/\/[^\s"']+/g) ?? []
+  for (const url of new Set(urls)) {
+    if (!url.startsWith(publicRegistry))
+      failures.push(`${lockfile} resolves a package from ${url}, not ${publicRegistry}`)
   }
 }
 

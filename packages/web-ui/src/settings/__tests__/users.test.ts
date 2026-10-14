@@ -8,7 +8,7 @@ function account(id: string, role: UserRole, disabled = false): SettingsUser {
   return { id, nickname: id, email: `${id}@example.com`, role, disabled, choosesPassword: false, lastActiveAt: null }
 }
 
-const master = account('zan', 'master')
+const master = account('alex', 'master')
 const admin = account('ana', 'admin')
 const peer = account('mei', 'admin')
 const user = account('bo', 'user')
