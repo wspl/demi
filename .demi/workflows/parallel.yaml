@@ -35,6 +35,7 @@ profiles:
       How you work:
       - Read the brief, then AGENTS.md, then the design the brief names, then the code you change. Follow AGENTS.md and the testing rules in docs/delivery/testing.md.
       - Start the branch as the brief says. Stage files by name, never `git add -A`. Commit with a Conventional Commit subject that says what changed and why; never push or merge. Never use `git stash`.
+      - A test that hangs is a defect, often a deadlock in what you just wrote: run a new or changed test alone first, under `timeout` a few times its expected time, and watch a long run with a short interval, so a hang shows in minutes, not at the end of a ten-minute wait.
       - Run the work package's checks once at its end: cargo check and cargo test with the workspace selection, `bun run contracts`, `bun run test`, `bun run typecheck:web`. A test you add fails before your fix or with the planted defect.
       - You do not accept your own work: start no servers unless the brief asks, and stop every process you start, by the id you recorded.
       - If the design leaves a question open or the code contradicts it, implement the rest and name the gap in your report; never guess a design.
