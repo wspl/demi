@@ -584,8 +584,9 @@ or a subagent ends, the work it waits for wakes it.
   one the backend took up again after a restart
   ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)),
   restores the tree, as an `open` does, to tell its node. A root whose last
-  turn was interrupted holds its reports as it holds its agent input, until
-  the user resumes it.
+  turn was interrupted ended it with an `error` block, so it holds its
+  reports and its agent input as any failed root does
+  ([The unfinished turn](failures-and-recovery.md#the-unfinished-turn)).
 - **Children.** A subagent whose background commands still run stays live,
   as one with live children does, and closes once they have ended and it
   has answered ([Result](subagents.md#result)).
@@ -1046,8 +1047,10 @@ Where the output is kept:
   16 MiB ([Pipes and output](../execution/runner.md#pipes-and-output)).
 - When the command ends, the backend stores its output before any result
   reports the end. When each stream stayed within its first 8 KiB, which is
-  most commands, the backend already holds the whole output, in the order the
-  runner read it, and stores that; otherwise it reads the Host's kept output
+  most commands, and every byte of them reached the backend, the backend
+  already holds the whole output, in the order the runner read it, and stores
+  that; otherwise, as when bytes printed while the Host's connection was
+  lost were not read again before the end, it reads the Host's kept output
   once, as it reads the command's edit copies
   ([Edit tracking](../execution/edit-tracking.md)). The output becomes a blob
   in the conversation owner's namespace, and the conversation records it by
@@ -1055,7 +1058,8 @@ Where the output is kept:
   Host then removes the job's directory. The result that reports the end is
   made from the stored output, so the lines it names are the pages' lines.
 - A command that ended because its Host's connection was lost keeps what the
-  backend received, followed by the line
+  backend received of each stream from its start, up to the first byte it
+  missed, followed by the line
   `[... 1048576 bytes lost with the Host's connection ...]` when there was
   more. So does a command whose kept output the backend could not read from
   its Host, with the line
