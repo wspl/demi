@@ -1,4 +1,4 @@
-import { createMemoryFileSource, dir, file, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
+import { createMemoryFileSource, dir, file, link, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserHost, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
 
 /**
@@ -89,6 +89,8 @@ export function laptopTree(): MemoryDirectory {
                 'pipeline.ts': 9_210,
                 'thumbs.ts': 3_004
               }, day(2)),
+              // The Open File specimen opens here, and Recent names it.
+              shop: project({ 'checkout.ts': 2_048, 'cart.ts': 1_536 }, day(1)),
               sketchbook: project({ 'main.ts': 5_555 }, old(12, 30)),
               chromium: project({ 'BUILD.gn': 8_120 }, day(5)),
               clients: dir({
@@ -97,10 +99,17 @@ export function laptopTree(): MemoryDirectory {
                 }, { modifiedAt: day(3) }),
               }, { modifiedAt: day(3) }),
               'a project with a very long directory name that will not fit in the address bar': project({ 'index.ts': 12 }, old(9, 9)),
+              // A link of each kind (`file-previews.md` § Symbolic links).
+              current: link('demi', day(7, 9)),
+              'notes.txt': link('../Desktop/notes.txt', day(6)),
+              'build.log': link('/tmp/build.log', old(9, 9)),
             },
             { modifiedAt: day(7, 9) },
           ),
-          Work: dir({ demi: project({ 'index.ts': 640 }, day(6)) }, { modifiedAt: day(6) }),
+          Work: dir({
+            demi: project({ 'index.ts': 640 }, day(6)),
+            shop: project({ 'index.ts': 410 }, day(6)),
+          }, { modifiedAt: day(6) }),
           Library: dir(
             {
               Caches: caches(),

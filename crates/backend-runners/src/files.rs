@@ -9,8 +9,8 @@ use bytes::BytesMut;
 use demi_command_protocol::EDIT_FILE_BYTES;
 pub use demi_command_protocol::{TextRefusal, text_of};
 use demi_backend_remote_host::RemoteHost;
-use demi_host_interface::{ByteRange, ByteStream, FileKind, HostError, HostFs};
-use demi_runner_protocol::wire::ReadAt;
+use demi_host_interface::{ByteRange, ByteStream, FileKind, HostError, HostFs, LinkTargetKind};
+use demi_runner_protocol::wire::{self, ReadAt};
 use futures_util::StreamExt as _;
 use demi_web_api_protocol::files::DirectoryEntry;
 
@@ -61,9 +61,17 @@ pub async fn browse_directory(
         .map(|entry| DirectoryEntry {
             name: entry.name,
             is_directory: entry.kind == FileKind::Directory,
-            is_symbolic_link: entry.kind == FileKind::Symlink,
             size: entry.size,
             modified_at: entry.modified,
+            link: entry.link.map(|link| wire::SymbolicLink {
+                target: link.target,
+                target_kind: match link.target_kind {
+                    LinkTargetKind::File => wire::LinkTargetKind::File,
+                    LinkTargetKind::Directory => wire::LinkTargetKind::Directory,
+                    LinkTargetKind::Other => wire::LinkTargetKind::Other,
+                    LinkTargetKind::Missing => wire::LinkTargetKind::Missing,
+                },
+            }),
         })
         .collect();
     Ok((entries, read_at))
@@ -125,23 +133,29 @@ mod tests {
                 (
                     entry.name.as_str(),
                     entry.is_directory,
-                    entry.is_symbolic_link,
+                    entry.link.as_ref().map(|link| (link.target.as_str(), link.target_kind)),
                     entry.size,
                     entry.modified_at.as_millisecond(),
                 )
             })
             .collect();
-        listed.sort_unstable();
+        listed.sort_unstable_by_key(|entry| entry.0);
         let photos = directory.join("photos");
         assert_eq!(
             listed,
             [
-                ("link", false, true, 9, modified(&directory.join("link"))),
-                ("notes.txt", false, false, 4, 1_600_000_000_123),
+                (
+                    "link",
+                    false,
+                    Some(("notes.txt", wire::LinkTargetKind::File)),
+                    9,
+                    modified(&directory.join("link"))
+                ),
+                ("notes.txt", false, None, 4, 1_600_000_000_123),
                 (
                     "photos",
                     true,
-                    false,
+                    None,
                     std::fs::symlink_metadata(&photos).unwrap().len(),
                     modified(&photos),
                 ),

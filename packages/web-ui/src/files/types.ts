@@ -14,14 +14,28 @@ import type { HostKind } from '../hosts/types'
 
 export type { Showing, ShownEntry } from './file-cache'
 
-/** One row of a directory listing. Size and time are shown when the source knows them. */
+/**
+ * One row of a directory listing. Size and time are shown when the source
+ * knows them. A symbolic link is what its target is (`file-previews.md`
+ * § Symbolic links): a link to a directory opens as a folder, its entries
+ * the target's, and any other link as a file.
+ */
 export interface FileBrowserEntry {
   name: string
+  /** Whether it opens as a folder: a directory, or a link to one. */
   isDirectory: boolean
-  /** Bytes; files only. */
+  /** Bytes; files only. A link's are its own, as `lstat` reports them. */
   size?: number
   /** ISO timestamp of the last modification. */
   modifiedAt?: string
+  /** Where a symbolic link points; absent for any other entry. */
+  link?: FileBrowserLink
+}
+
+/** A symbolic link's target as written, and whether nothing can be reached there. */
+export interface FileBrowserLink {
+  target: string
+  missing: boolean
 }
 
 /**

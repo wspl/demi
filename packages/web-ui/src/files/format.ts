@@ -1,3 +1,15 @@
+import type { SentenceText } from '../ui/ui-text'
+import type { FileBrowserLink } from './types'
+
+/**
+ * What a symbolic link's mark says (`file-previews.md` § Symbolic links):
+ * `Symbolic link to ../shared/vendor`, and of a target that is not there
+ * `Symbolic link to /tmp/gone.log, which does not exist`.
+ */
+export function linkDescription(link: FileBrowserLink): SentenceText {
+  return link.missing ? `Symbolic link to ${link.target}, which does not exist` : `Symbolic link to ${link.target}`
+}
+
 /** `1.2 MB`, `840 KB`, `12 B`. */
 export function formatBytes(size: number): string {
   if (size < 1024)

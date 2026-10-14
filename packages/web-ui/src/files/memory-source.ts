@@ -26,7 +26,7 @@ import {
   type FileBrowserPlatform,
   type FileContents,
 } from './types'
-import { joinPath, normalizePath, parentPath } from './paths'
+import { joinPath, normalizePath, parentPath, resolveHostPath } from './paths'
 import { WatchChannel, type OpenWatchLink, type ReadAt, type Subject, type WatchLinkHandlers } from './watch-channel'
 
 export interface MemoryFile {
@@ -47,7 +47,17 @@ export interface MemoryDirectory {
   children: Record<string, MemoryNode>
 }
 
-export type MemoryNode = MemoryFile | MemoryDirectory
+/** A symbolic link: its target as written, absolute or from the link's folder. */
+export interface MemoryLink {
+  kind: 'link'
+  target: string
+  modifiedAt: string
+}
+
+export type MemoryNode = MemoryFile | MemoryDirectory | MemoryLink
+
+/** How many links a path may pass before it counts as a loop, as Linux counts them. */
+const MAX_LINK_HOPS = 40
 
 export interface MemoryFileSourceOptions {
   platform: FileBrowserPlatform
@@ -208,6 +218,11 @@ export function file(size: number, modifiedAt: string, content?: string): Memory
     : { kind: 'file', size, modifiedAt, content }
 }
 
+/** A symbolic link to `target`, written as a link's is, absolute or from its folder. */
+export function link(target: string, modifiedAt: string): MemoryLink {
+  return { kind: 'link', target, modifiedAt }
+}
+
 /** A file whose size is its text's length. */
 export function textFile(content: string, modifiedAt: string): MemoryFile {
   return { kind: 'file', size: content.length, modifiedAt, content }
@@ -240,15 +255,35 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
   const { root, latencyMs = 0, uploadRate } = options
   const failing = new Map<string, FileBrowserFailure>()
 
-  function lookup(path: string): MemoryNode | null {
-    let node: MemoryNode = root
-    for (const segment of normalizePath(path).split('/').filter(Boolean)) {
+  /**
+   * What is at `path`, every link on the way followed, as a Host's path
+   * lookup does; null for nothing there, or a loop of links.
+   */
+  function lookup(path: string): MemoryFile | MemoryDirectory | null {
+    let segments = normalizePath(path).split('/').filter(Boolean)
+    let node: MemoryFile | MemoryDirectory = root
+    let at = '/'
+    let hops = 0
+    while (segments.length > 0) {
+      const [segment, ...rest] = segments as [string, ...string[]]
       if (node.kind !== 'directory')
         return null
       const child: MemoryNode | undefined = node.children[segment]
       if (!child)
         return null
+      if (child.kind === 'link') {
+        hops += 1
+        if (hops > MAX_LINK_HOPS)
+          return null
+        // The rest of the path goes on from the target, looked up from the root.
+        segments = [...normalizePath(resolveHostPath(at, child.target)).split('/').filter(Boolean), ...rest]
+        node = root
+        at = '/'
+        continue
+      }
       node = child
+      at = joinPath(at, segment)
+      segments = rest
     }
     return node
   }
@@ -284,6 +319,14 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
     for (const segment of normalizePath(path).split('/').filter(Boolean)) {
       at = joinPath(at, segment)
       const child: MemoryNode | undefined = node.children[segment]
+      if (child?.kind === 'link') {
+        // A link to a folder is the folder, as a Host's path is.
+        const target = lookup(at)
+        if (target?.kind !== 'directory')
+          throw new FileBrowserError('other', `${at} is not a folder.`)
+        node = target
+        continue
+      }
       if (child?.kind === 'file')
         throw new FileBrowserError('other', `${at} is a file.`)
       if (child) {
@@ -340,19 +383,25 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
         throw new FileBrowserError('not-found', `No such directory: ${normalizePath(path)}`, { readAt: at })
       if (node.failure)
         throw new FileBrowserError(node.failure.kind, node.failure.message)
-      const entries: FileBrowserEntry[] = Object.entries(node.children).map(([
-        name,
-        child
-      ]) =>
-        child.kind === 'directory'
-          ? { name, isDirectory: true, modifiedAt: child.modifiedAt }
-          : {
-            name,
-            isDirectory: false,
-            size: child.size,
-            modifiedAt: child.modifiedAt
-          },
-      )
+      const entries = Object.entries(node.children).map(([name, child]): FileBrowserEntry => {
+        switch (child.kind) {
+          case 'directory':
+            return { name, isDirectory: true, modifiedAt: child.modifiedAt }
+          case 'file':
+            return { name, isDirectory: false, size: child.size, modifiedAt: child.modifiedAt }
+          case 'link': {
+            // A link is what its target is; its own size is its target's length, as `lstat` says.
+            const target = lookup(joinPath(path, name))
+            return {
+              name,
+              isDirectory: target?.kind === 'directory',
+              size: child.target.length,
+              modifiedAt: child.modifiedAt,
+              link: { target: child.target, missing: target === null },
+            }
+          }
+        }
+      })
       return { value: entries, readAt: at }
     },
     async readText(path, held) {

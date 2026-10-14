@@ -1504,16 +1504,45 @@ pub fn file_version(size: u64, modified_ms: i64) -> String {
 
 /// One entry of a directory listing, with its type, size and modification
 /// time as the entry's own metadata reports them, as `lstat` does: a
-/// symbolic link's are the link's.
+/// symbolic link's are the link's, and it is neither a file nor a
+/// directory. A symbolic link, and on Windows a junction, carries `link`;
+/// no other entry does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DirEntry {
     pub name: String,
     pub is_file: bool,
     pub is_directory: bool,
-    pub is_symbolic_link: bool,
     pub size: u64,
     pub mtime: Timestamp,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    pub link: Option<SymbolicLink>,
+}
+
+/// Where a symbolic link of a listing points (`runner.md` § Host
+/// operations): its target as written, and what is there once every link
+/// on the way is followed.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SymbolicLink {
+    pub target: String,
+    pub target_kind: LinkTargetKind,
+}
+
+/// What a symbolic link leads to. `Missing` is a target that cannot be
+/// reached: nothing there, a loop of links, or a directory on the way the
+/// Host may not search.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum LinkTargetKind {
+    File,
+    Directory,
+    Other,
+    Missing,
 }
 
 /// One file of a directory an `fs_writeDirectory` writes: its path inside

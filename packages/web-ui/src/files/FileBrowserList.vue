@@ -20,6 +20,7 @@ import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import TypeSelectHint from '../ui/TypeSelectHint.vue'
 import FileIcon from './FileIcon.vue'
+import LinkMark from './LinkMark.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import type { FileBrowserSort, FileBrowserSortKey } from './file-browser-state'
 import { formatModified } from '../ui/dates'
@@ -357,6 +358,7 @@ defineExpose({
             <TruncatedText :class="isHiddenName(entry.name) ? 'faded' : ''" :text="entry.name">
               <HighlightText :text="entry.name" :indexes="highlightOf(entry)" />
             </TruncatedText>
+            <LinkMark v-if="entry.link" class="ml-auto" :class="!pickable(entry) ? 'opacity-40' : ''" :link="entry.link" />
           </span>
           <span
             class="hidden truncate px-1 text-[12px] text-fg-subtle @md:block"

@@ -43,9 +43,9 @@ pub use environment::{
 };
 pub use host::{
     ByteRange, ByteStream, CpOptions, Descriptor, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
-    HostErrorKind, HostFs, HostIdentity, HostKey, HostProcess, MkdirOptions, Process,
+    HostErrorKind, HostFs, HostIdentity, HostKey, HostProcess, LinkTargetKind, MkdirOptions, Process,
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnError,
-    SpawnErrorKind, SpawnRequest, WhenExists, WriteOptions,
+    SpawnErrorKind, SpawnRequest, SymbolicLink, WhenExists, WriteOptions,
 };
 pub use media::CommandMedium;
 pub use paths::{HostPaths, relative_to};

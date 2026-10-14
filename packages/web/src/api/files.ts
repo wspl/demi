@@ -3,13 +3,14 @@ import { keptSource, type ContentReads, type FileReads } from '@demicodes/web-ui
 import type { ReadAt, WatchChannel } from '@demicodes/web-ui/files/watch-channel'
 import {
   FileBrowserError,
+  type FileBrowserEntry,
   type FileBrowserFailure,
   type FileBrowserSource,
   type FileUploadOptions,
 } from '@demicodes/web-ui/files/types'
 import { z } from 'zod'
 import { ApiError, apiRequest, apiUrl, invalidResponse, jsonBody, readResponse } from './client'
-import { directorySchema, fileTextSchema, type CreateDirectory } from './generated/web-api'
+import { directorySchema, fileTextSchema, type CreateDirectory, type DirectoryEntry } from './generated/web-api'
 import { uploadBytes } from './uploads'
 import type { Device } from '../state/types'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
@@ -215,6 +216,23 @@ export function hostFiles(deviceId: string): HostFiles {
   return files
 }
 
+/**
+ * A listing's entry as the file browser lists it, over the relay or the
+ * direct channel alike: a symbolic link is what its target is, a folder
+ * when it leads to a directory, and keeps where it points
+ * (`file-previews.md` § Symbolic links).
+ */
+export function fileBrowserEntry(entry: DirectoryEntry): FileBrowserEntry {
+  const { link } = entry
+  return {
+    name: entry.name,
+    isDirectory: entry.isDirectory || link?.targetKind === 'directory',
+    size: entry.size,
+    modifiedAt: entry.modifiedAt,
+    ...(link ? { link: { target: link.target, missing: link.targetKind === 'missing' } } : {}),
+  }
+}
+
 /** The reads and writes a file source makes through `endpoints`, each a request. */
 export function fileReads(
   endpoints: FileRoutes,
@@ -237,13 +255,7 @@ export function fileReads(
       try {
         const response = await apiRequest(`${endpoint}?${new URLSearchParams({ path })}`)
         const directory = await readResponse(response, directorySchema)
-        const entries = directory.entries.map((entry) => ({
-          name: entry.name,
-          isDirectory: entry.isDirectory,
-          size: entry.size,
-          modifiedAt: entry.modifiedAt,
-        }))
-        return { value: entries, readAt: readAtOf(response.headers) }
+        return { value: directory.entries.map(fileBrowserEntry), readAt: readAtOf(response.headers) }
       } catch (error) {
         browserError(error)
       }
