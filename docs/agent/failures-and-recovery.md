@@ -27,9 +27,10 @@ provider contract ([Providers](../providers/providers.md)).
 
 A vendor's own sign of a used-up account comes first, read by that vendor's
 provider, as its own client reads it: Codex's 429 whose `error.type` is
-`usage_limit_reached`, or whose `error.type` or `error.code` is
+`usage_limit_reached`, and any Codex failure, with a status or without one
+as in a `response.failed` frame, whose `error.type` or `error.code` is
 `insufficient_quota`, `credit_balance_exhausted` or a `…_spend_limit_exceeded`
-or `…_usage_limit_exceeded`, over HTTP or in a WebSocket error frame; Grok
+or `…_usage_limit_exceeded`, over HTTP or in a WebSocket frame; Grok
 Build's 402, and its 403 whose text says `run out of credits`; the Claude
 Code CLI's `result` line whose `api_error` is `usage_limit_reached`, which
 the CLI sets for a 429 whose unified rate-limit headers name a used-up
@@ -53,8 +54,8 @@ match the vendor's own code stands:
 | --- | --- |
 | `too many images`, `many image`, `request too large`, `payload too large` | `request_too_large` |
 | `context`, `too long`, `too large`, or a word starting with `max` followed later by `token` or `tokens` | `context_length_exceeded` |
-| `quota`, `billing`, `balance`, `out of credits` | `usage_limit` |
-| `rate`, a word starting with `ratelimit` | `rate_limit` |
+| `billing`, `balance`, `out of credits` | `usage_limit` |
+| `quota`, `rate`, a word starting with `ratelimit` | `rate_limit` |
 | `auth`, `authentication`, `authorization`, or `invalid` or `expired` before or after an API, access or auth key or token | `auth_expired` |
 | a word starting with `overload`, `unavailable`, `server error`, `internal error`, `api error`, `timeout`, `timed out`, `fetch failed`, `network`, `socket`, a word starting with `econn` | `overloaded` |
 
@@ -139,8 +140,8 @@ response's `response.error`, or in an HTTP failure's body; a value that is not
 a number reads as absent. Without them, it uses the standard reading. The
 Claude Code CLI's usage limit carries the limited window and its reset in
 the failing assistant line's `api_error_params.rate_limit_info`, the
-request's own, which its reader takes as the moment; it never reads the
-account's latest quota for it, which may be older than the failure.
+request's own, which its reader takes as the moment before the account's
+latest quota, which may be older than the failure.
 
 The same reader serves both uses, so there is one implementation:
 
