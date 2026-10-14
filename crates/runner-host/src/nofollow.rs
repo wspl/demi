@@ -140,7 +140,11 @@ mod platform {
             match rustix::fs::statat(&directory, entry.file_name(), AtFlags::SYMLINK_NOFOLLOW) {
                 Ok(stat) => {
                     let kind = FileType::from_raw_mode(stat.st_mode);
-                    let milliseconds = i64::from(stat.st_mtime) * 1000 + i64::from(stat.st_mtime_nsec) / 1_000_000;
+                    // The nanoseconds field is signed on some targets and
+                    // unsigned on others (Linux's raw stat); it is always
+                    // below one second, so it fits either way.
+                    let nanoseconds = i64::try_from(stat.st_mtime_nsec).unwrap_or(0);
+                    let milliseconds = i64::from(stat.st_mtime) * 1000 + nanoseconds / 1_000_000;
                     entries.push(wire::DirEntry {
                         name,
                         is_file: kind == FileType::RegularFile,
