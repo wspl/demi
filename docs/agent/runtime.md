@@ -566,8 +566,14 @@ or a subagent ends, the work it waits for wakes it.
   what it waits for, since the user reads only what the model wrote. The
   tool rules say so, and say not to poll. To come back after a while for
   something no command stands for, such as a deployment that becomes
-  visible minutes later, the model starts `sleep 600` with an interval and
-  ends its turn; a command that must end by a deadline runs under `timeout`
+  visible minutes later, the model starts `sleep 600` with `intervalMs:
+  null`, so the call returns at once, and ends its turn; the sleep's end
+  wakes it. Started with a number instead, the call would watch the sleep
+  for that long and hold the turn, and the user would watch the agent wait.
+  A script never sleeps a fixed time before it looks for something: it waits
+  on the thing itself, such as the line it expects in a log
+  (`tail -f app.log | grep -m1 ready`) or the command whose end it needs. A
+  command that must end by a deadline runs under `timeout`
   ([Background tasks and timeouts](../execution/runner.md#background-tasks-and-timeouts)).
 - **Restarts.** A report that has arrived but is not yet in the transcript
   is saved in the checkpoint, as agent messages are, and so is each running
