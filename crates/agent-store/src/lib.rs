@@ -237,6 +237,12 @@ pub struct NodeRecord {
     /// prompt. Restore and resume read them
     /// here, never from the user's profiles (`subagents.md` § Persistence).
     pub instructions: Option<String>,
+    /// The Context its profile chose, in tokens, which its sessions use in
+    /// place of the user's limit while its model's window offers it
+    /// (`subagents.md` § Profiles); none for the user's limit. Kept here as
+    /// the instructions are, so restore and resume use what it was spawned
+    /// with.
+    pub context_limit: Option<u32>,
     /// The node's current round: 1 for its first run, one more at each
     /// resume.
     pub round: u64,
@@ -339,6 +345,7 @@ impl NodeRecord {
             description: String::new(),
             profile: None,
             instructions: None,
+            context_limit: None,
             round: 1,
             started_at: now,
             can_spawn_subagents: true,

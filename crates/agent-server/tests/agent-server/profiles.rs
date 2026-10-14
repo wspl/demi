@@ -27,6 +27,7 @@ use crate::support::{
 /// instructions.
 fn profile(name: &str, description: &str) -> Profile {
     Profile {
+        context_limit: None,
         name: name.into(),
         description: description.into(),
         model: None,

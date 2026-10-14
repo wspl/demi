@@ -222,6 +222,7 @@ fn profile_of(profile: SubagentProfile, entries: &[ProviderEntry]) -> Profile {
             thinking_effort: model.thinking_effort,
             service_tier_id: model.service_tier_id,
         }),
+        context_limit: profile.context_limit,
         instructions: profile.instructions,
         can_spawn: profile.can_spawn,
         enabled: profile.enabled,

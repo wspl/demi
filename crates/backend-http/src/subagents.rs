@@ -90,7 +90,7 @@ fn profile_id(id: String) -> Result<ProfileId, ApiError> {
 fn refused(refusal: ProfileRefusal) -> ApiError {
     let message = refusal.to_string();
     match refusal {
-        ProfileRefusal::Text(_) => ApiError::invalid_body(message),
+        ProfileRefusal::Text(_) | ProfileRefusal::Context(_) => ApiError::invalid_body(message),
         ProfileRefusal::Stored(Stored::NotFound) => {
             ApiError::new(StatusCode::NOT_FOUND, ErrorCode::ProfileNotFound, message)
         }
