@@ -20,6 +20,7 @@ import { linkedCommitBranch, listsUncommitted, shortCommit } from './history'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import { useElementSize } from '@vueuse/core'
 import { useRequestSides } from './request-sides'
+import { useCommitSides, useWorkingSides } from './change-sides'
 import { useShowing } from './showing'
 import FilePreview from './FilePreview.vue'
 import FileIcon from './FileIcon.vue'
@@ -204,7 +205,8 @@ const shownKey = computed(() => {
     return null
   if (mode.value === 'conversation')
     return `conversation:${change.path}:${editAt.value ?? 'all'}`
-  return showsCommit.value ? `commit:${commit.value}:${change.path}` : `uncommitted:${change.path}`
+  const file = `${change.path}:${renamedFrom.value ?? ''}`
+  return showsCommit.value ? `commit:${commit.value}:${file}` : `uncommitted:${file}`
 })
 /** The step the edit control goes to, each way: All Changes, where offered, comes before the first edit. */
 const previousEdit = computed(() => {
@@ -383,20 +385,23 @@ type State =
 
 // A working-tree file's sides, as the change set keeps them: a file shown a
 // moment ago shows at once, and sides read again replace the diff in place.
-const workingSides = useShowing(
+/** The file whose sides show: its path and a renamed file's earlier path. */
+const shownSides = computed(() => {
+  const change = selectedChange.value
+  if (!change)
+    return null
+  return renamedFrom.value === undefined ? { path: change.path } : { path: change.path, from: renamedFrom.value }
+})
+const workingSides = useWorkingSides(
   () => mode.value === 'commits' && !showsCommit.value && !mediaPair.value ? workingTree.value : null,
-  () => selectedChange.value?.path,
-  (source, path) => source.showSides(path, renamedFrom.value),
+  () => shownSides.value,
 )
-// A commit's file's sides, kept by the history.
-const commitSides = useShowing(
+// A commit's file's sides, kept by the history, by its full id once read,
+// which a link's abbreviation names too.
+const commitSides = useCommitSides(
   () => showsCommit.value && !mediaPair.value ? history.value : null,
-  // By its full id once read, which a link's abbreviation names too.
-  () => commitDetails.value && selectedChange.value ? `${commitDetails.value.commit.id}\u0000${selectedChange.value.path}` : null,
-  (source, key) => {
-    const [id, path] = key.split('\u0000') as [string, string]
-    return source.showSides(id, path, renamedFrom.value)
-  },
+  () => commitDetails.value?.commit.id ?? null,
+  () => shownSides.value,
 )
 /** The sides shown in Commits mode: the commit's or the working tree's. */
 const keptSides = computed(() => showsCommit.value ? commitSides : workingSides)

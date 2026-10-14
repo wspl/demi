@@ -653,7 +653,8 @@ pub(super) async fn committed(
         host.host
             .git_show(&tree_root(host, directory), &tree_path, commit.as_ref().map(CommitName::as_str))
             .await
-            .map_err(ApiError::working_tree)
+            // A commit the repository lacks is not found, as the history says it.
+            .map_err(if commit.is_some() { ApiError::history } else { ApiError::working_tree })
     })
     .await?;
     let size = u64::try_from(bytes.len()).expect("a file held in memory fits u64");

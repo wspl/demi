@@ -827,3 +827,23 @@ async fn branches_order_by_their_last_commit_and_a_shared_abbreviation_is_ambigu
     let one = service.commit(&repo, &ids[0][..length], &cancel).await.unwrap();
     assert_eq!((one.commit.id.as_str(), one.branches.len()), (ids[0].as_str(), 0));
 }
+
+// Under a second: a few git commands.
+#[tokio::test]
+async fn a_commit_is_on_a_branch_whose_later_commits_carry_earlier_dates() {
+    let dir = tempfile::tempdir().unwrap();
+    let repo = std::fs::canonicalize(dir.path()).unwrap();
+    let service = GitService::default();
+    let cancel = CancellationToken::new();
+    git(&repo, &["init", "-q", "-b", "main"]);
+    git_at(&repo, 1_700_003_000, &["commit", "-q", "--allow-empty", "-m", "start"]);
+    git(&repo, &["checkout", "-q", "-b", "skewed"]);
+    git_at(&repo, 1_700_002_000, &["commit", "-q", "--allow-empty", "-m", "dated later"]);
+    let dated_later = git_output(&repo, &["rev-parse", "HEAD"]);
+    // Its child carries an earlier date, as a skewed clock or a rebase leaves one.
+    git_at(&repo, 1_700_001_000, &["commit", "-q", "--allow-empty", "-m", "dated earlier"]);
+    git(&repo, &["checkout", "-q", "main"]);
+
+    let commit = service.commit(&repo, &dated_later, &cancel).await.unwrap();
+    assert_eq!(commit.branches, ["skewed"]);
+}

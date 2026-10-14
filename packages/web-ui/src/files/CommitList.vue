@@ -5,14 +5,16 @@ import { formatAge, formatMoment } from '../ui/dates'
 import ScrollArea from '../ui/ScrollArea.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import Button from '../ui/Button.vue'
 import { commitSummary, shortCommit, type LoggedCommit } from './history'
 
 /**
  * One branch's commits under the Change view's files, newest first, as VS
  * Code's commit list shows them beside Source Control
  * (`edit-tracking.md` § Commits mode): each one row as high as the file
- * tree's, its summary cut short, then its author and how long ago dimmed at
- * the row's end, its whole message, id and time in its tooltip. While the
+ * tree's, its summary, then its author and how long ago dimmed at the
+ * row's end: a short row drops the author first, then cuts the summary,
+ * the age whole; its whole message, id and time in its tooltip. While the
  * list shows the branch checked out it starts with Uncommitted Changes and
  * its count of files (`uncommitted`). Older commits load as the list
  * scrolls to its end, while `more`. A click selects a row, as the arrows do
@@ -34,7 +36,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   select: [commit: string | null]
-  /** The list scrolled to its end while older commits follow. */
+  /** The list scrolled to its end while older commits follow, or Retry was pressed on a page that could not be read. */
   more: []
 }>()
 
@@ -51,8 +53,10 @@ useIntersectionObserver(end, ([entry]) => {
   atEnd.value = entry?.isIntersecting ?? false
 })
 // The end in view asks for more; a page that left it in view asks again.
-watch([atEnd, () => props.more, () => props.loading], ([seen, more, loading]) => {
-  if (seen && more && !loading)
+// A page that could not be read waits for Retry, so a Host that keeps
+// failing is not asked again and again.
+watch([atEnd, () => props.more, () => props.loading, () => props.failure], ([seen, more, loading, failure]) => {
+  if (seen && more && !loading && !failure)
     emit('more')
 })
 
@@ -94,7 +98,7 @@ function files(count: number): string {
       >
         <span class="size-1.5 shrink-0 rounded-full bg-on-warning" aria-hidden="true" />
         <span class="min-w-0 flex-1 truncate">Uncommitted Changes</span>
-        <span class="shrink-0 text-fg-subtle">{{ files(uncommitted) }}</span>
+        <span class="shrink-0 text-fg-subtle" :aria-label="files(uncommitted)">{{ uncommitted }}</span>
       </div>
       <Tooltip
         v-for="commit in commits"
@@ -105,16 +109,18 @@ function files(count: number): string {
         <div
           role="option"
           :aria-selected="selected === commit.id"
-          class="flex h-7 shrink-0 cursor-default select-none items-center gap-2 rounded-md px-2 text-chrome transition-colors duration-200 ease-out phone:h-11 phone:text-[16px]"
+          class="flex h-7 shrink-0 cursor-default select-none items-center gap-1 rounded-md px-2 text-chrome transition-colors duration-200 ease-out phone:h-11 phone:text-[16px]"
           :class="selected === commit.id ? 'bg-active text-fg-emphasis' : 'text-fg-body hover:bg-hover'"
           @click="emit('select', commit.id)"
         >
-          <span class="min-w-0 flex-1 truncate">{{ commitSummary(commit.message) }}</span>
-          <!-- The author gives way before the age, which is never cut. -->
-          <span class="flex max-w-[40%] shrink-0 items-center gap-1 text-fg-subtle">
-            <span class="min-w-0 truncate">{{ commit.author }}</span>
-            <span class="shrink-0">· {{ formatAge(commit.time, now) }}</span>
+          <!-- A short row drops the author first, which wraps out of sight onto
+               a second line the row clips; then the summary is cut. The age is
+               never cut. -->
+          <span class="flex h-full min-w-0 flex-1 flex-wrap content-start overflow-hidden">
+            <span class="flex h-full min-w-0 shrink items-center"><span class="truncate">{{ commitSummary(commit.message) }}</span></span>
+            <span class="ml-auto flex h-full flex-none items-center pl-2 text-fg-subtle">{{ commit.author }}&nbsp;·</span>
           </span>
+          <span class="shrink-0 text-fg-subtle">{{ formatAge(commit.time, now) }}</span>
         </div>
         <template #overlay>
           <div class="flex max-w-96 flex-col gap-1.5">
@@ -123,7 +129,10 @@ function files(count: number): string {
           </div>
         </template>
       </Tooltip>
-      <div v-if="failure" class="select-none px-2 py-2 text-[12px] text-fg-subtle">{{ failure }}</div>
+      <div v-if="failure" class="flex select-none items-center gap-2 px-2 py-1.5 text-[12px] text-fg-subtle">
+        <span class="min-w-0 flex-1">{{ failure }}</span>
+        <Button size="xs" variant="ghost" @click="emit('more')">Retry</Button>
+      </div>
       <div ref="end" class="flex h-6 shrink-0 items-center justify-center" aria-hidden="true">
         <IndeterminateSpinner v-if="loading" :size="14" class="text-fg-muted" />
       </div>

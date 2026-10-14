@@ -279,24 +279,30 @@ export interface HistoryReads {
   contents?(commit: string): ContentReads
 }
 
+/** A commit's full id, SHA-1's or SHA-256's, as against an abbreviation, which a new commit can make ambiguous. */
+const FULL_ID = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
+
 /**
  * The history of the repository the working tree under `root` is in, kept
  * like its files: each part follows the repository's `head`, which a
  * commit, a checkout or a new branch changes, so a view shows it again at
- * once (`edit-tracking.md` § Commits mode).
+ * once (`edit-tracking.md` § Commits mode); a file's sides at a commit's
+ * full id never change, and are read once. Outside a repository the `head`
+ * it follows changes when one is made there.
  */
 export function keptHistory(reads: HistoryReads, root: string, options: KeptSourceOptions): CommitHistorySource {
   const { files } = options
   const watch = options.watch ?? null
   const head = () => [{ kind: 'head' as const, path: root }]
-  const answer = <T>(key: string, read: () => Promise<Answered<T>>, size: (value: T) => number): KeptSpec<T> => ({
+  const answer = <T>(key: string, read: () => Promise<Answered<T>>, size: (value: T) => number, immutable = false): KeptSpec<T> => ({
     kind: 'answer',
     path: root,
     key,
     watch,
     read,
     size,
-    subjects: head,
+    // What a commit's full id names never changes: nothing moves it.
+    ...(immutable ? { immutable, subjects: () => [] } : { subjects: head }),
   })
   const messages = (commits: readonly { message: string }[]) => commits.reduce((sum, commit) => sum + commit.message.length, 0)
   const absolute = (path: string) => `${root.replace(/\/$/, '')}/${path}`
@@ -317,6 +323,7 @@ export function keptHistory(reads: HistoryReads, root: string, options: KeptSour
       `sides\u0000${commit}\u0000${path}\u0000${from ?? ''}`,
       () => reads.sides(commit, path, from),
       (sides) => sides.original.length + sides.modified.length,
+      FULL_ID.test(commit),
     )),
     ...(reads.contents
       ? {
