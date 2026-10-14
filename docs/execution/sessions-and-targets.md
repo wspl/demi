@@ -222,7 +222,10 @@ block of the revision the switch made or a later one, and saw the attached
 hosts as its latest block lists them, each name with the device it stood for:
 renaming a device announces no switch, and renaming an attached one
 announces a change of the attached hosts, also when two devices trade names
-and the list's names stay the same.
+and the list's names stay the same. A switch made before an upgrade that
+began recording its revision counts as seen by every node, so a switch none
+of its idle nodes had read yet then loses its announcement, while the
+transcript still shows the user the move.
 
 ## Attached hosts
 

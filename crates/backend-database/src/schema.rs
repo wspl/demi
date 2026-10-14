@@ -170,12 +170,23 @@ pub(crate) const CONTROL: Schema = Schema {
 /// The hosts' table loses the names conversations gave them, rebuilt since
 /// SQLite drops no column a constraint names, with the rows in the order the
 /// names were listed in, which their row ids keep. A Fork's metadata goes
-/// from format 1, whose attached hosts carry names, to format 2: each record
-/// is decoded as format 1 and the result checked as format 2, so a record
-/// of neither stops the migration. A switch made before records the
-/// conversation's current revision as its own, the latest it can have made:
-/// a node that read a block of that revision saw it, and one that did not
-/// reads the switch with its next block, as it did before.
+/// from format 1, whose attached hosts carry names, to format 2, which
+/// holds the source's execution-context revision at the Fork instead: each
+/// record is decoded as format 1 and the result checked as format 2, so a
+/// record of neither stops the migration. A reservation stays once its
+/// destination is published, which never reads it again, and keeps the
+/// destination's revision; one that waits
+/// takes its source's revision now, at least the one at the Fork and so as
+/// good. One whose source is gone too, deleted while the Fork waited, takes
+/// 0: none is known, and the cost, a first switch of the destination that
+/// its copied blocks hide, is the one a switch made before the upgrade
+/// takes, below. A switch made before records revision
+/// 0, which every node read or passed, since the revision it made is not
+/// known: the conversation's current one may have moved past it while its
+/// nodes were idle, and would announce a switch they saw once more. So a
+/// switch made while its nodes were idle that none of them had read yet
+/// loses its one announcement, which is accepted: the conversation's
+/// transcript shows the user the move.
 fn control_from_saved_edits(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     transaction.execute_batch(
         "
@@ -194,15 +205,24 @@ DROP TABLE conversation_hosts;
 ALTER TABLE conversation_hosts_next RENAME TO conversation_hosts;
 CREATE INDEX conversation_hosts_device ON conversation_hosts (device_id);
 ALTER TABLE conversations ADD COLUMN last_switch_revision INTEGER;
-UPDATE conversations SET last_switch_revision = context_version WHERE last_switch IS NOT NULL;
+UPDATE conversations SET last_switch_revision = 0 WHERE last_switch IS NOT NULL;
 ",
     )?;
     let records = transaction
-        .prepare("SELECT id, metadata FROM conversation_fork_operations")?
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+        .prepare(
+            "SELECT fork.id, fork.metadata,
+               coalesce(destination.context_version, source.context_version, 0)
+             FROM conversation_fork_operations fork
+               LEFT JOIN conversations destination ON destination.id = fork.id
+               LEFT JOIN conversations source ON source.id = fork.source_id",
+        )?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, i64>(2)?))
+        })?
         .collect::<rusqlite::Result<Vec<_>>>()?;
     let mut update = transaction.prepare("UPDATE conversation_fork_operations SET metadata = ?2 WHERE id = ?1")?;
-    for (id, text) in records {
+    for (id, text, revision) in records {
+        let context_version = decode("conversations", "context_version", u64::try_from(revision)).map_err(corrupt)?;
         let named: fork_format_1::ForkMetadata =
             json("conversation_fork_operations", "metadata", &text).map_err(corrupt)?;
         let metadata = crate::forks::ForkMetadata {
@@ -218,6 +238,7 @@ UPDATE conversations SET last_switch_revision = context_version WHERE last_switc
                     cwd: host.cwd,
                 })
                 .collect(),
+            context_version,
         };
         let text = to_json(&metadata);
         let _: crate::forks::ForkMetadata =
@@ -2009,7 +2030,8 @@ CREATE TABLE conversation_deletions (
 -- compares it.
 -- conversation_fork_operations.metadata: Fork metadata format 2, ForkMetadata
 -- as JSON, whose attached hosts are their devices and directories without
--- names (format 1 named them).
+-- names and which holds the source's execution-context revision at the Fork
+-- (format 1 named the hosts and held no revision).
 CREATE TABLE conversation_fork_operations (
   id        TEXT PRIMARY KEY COLLATE NOCASE,
   user_id   TEXT NOT NULL REFERENCES users (id),
@@ -2574,7 +2596,7 @@ mod tests {
                    VALUES ('c1', 'd2', 'laptop-2', '/work', 5), ('c1', 'd1', 'laptop', NULL, 5);
                  INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
                    read_revision, target_kind, last_switch, context_version, created_at, updated_at)
-                   VALUES ('c1', 'u1', 'T', 'user', 0, 0, 0, 0, 'cloud', '{}', 7, 0, 0);",
+                   VALUES ('c1', 'u1', 'T', 'user', 0, 0, 0, 0, 'cloud', NULL, 7, 0, 0);",
             )
             .unwrap();
         let metadata = ForkMetadata {
@@ -2586,9 +2608,12 @@ mod tests {
                 device: DeviceId::try_from("d1".to_owned()).unwrap(),
                 cwd: None,
             }],
+            // Its source's, which waits for it.
+            context_version: 7,
         };
         let mut stored = serde_json::to_value(&metadata).unwrap();
         stored["attachedHosts"][0]["name"] = "laptop".into();
+        stored.as_object_mut().unwrap().remove("contextVersion");
         connection
             .execute(
                 "INSERT INTO conversation_fork_operations (id, user_id, source_id, block_id, metadata)
@@ -2610,14 +2635,63 @@ mod tests {
             .unwrap();
         let migrated: ForkMetadata = json("conversation_fork_operations", "metadata", &text).unwrap();
         assert_eq!(migrated, metadata);
-        // The switch a conversation made before is known by the revision
-        // it stood at.
-        let switch: (Option<i64>, i64) = connection
-            .query_row("SELECT last_switch_revision, context_version FROM conversations", [], |row| {
-                Ok((row.get(0)?, row.get(1)?))
-            })
+    }
+
+    /// A switch announced before the upgrade is not announced again: a node
+    /// that read it at revision 3, then idled while runner reports moved the
+    /// conversation to 7, counts it as seen after the upgrade, since the
+    /// switch's revision is one its latest block reached.
+    /// Planted defect this catches: the switch recorded at the revision the
+    /// conversation stood at, 7, which the node's block of 3 does not reach,
+    /// so its next context announced the old switch again.
+    #[tokio::test]
+    async fn a_switch_announced_before_the_upgrade_is_not_announced_again() {
+        use crate::conversation_index::{ExecutionTarget, TargetSwitch};
+        use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+
+        const ID: &str = "0b7a1c2d-3e4f-4a5b-8c6d-7e8f9a0b1c2d";
+        let shipped = include_str!("schema/control-0.1.22-dev.saved-edits.sql");
+        let (directory, path, mut connection) = database(shipped);
+        connection.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+        let device = |id: &str| DeviceId::try_from(id.to_owned()).unwrap();
+        let switch = TargetSwitch {
+            from: ExecutionTarget::Device {
+                device_id: device("d1"),
+                path: "/a".into(),
+            },
+            to: ExecutionTarget::Device {
+                device_id: device("d2"),
+                path: "/b".into(),
+            },
+        };
+        connection
+            .execute(
+                "INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
+                   read_revision, target_kind, target_device_id, target_path, last_switch, context_version,
+                   created_at, updated_at)
+                 VALUES (?1, 'u1', 'T', 'user', 0, 0, 0, 0, 'device', 'd2', '/b', ?2, 7, 0, 0)",
+                [ID, &to_json(&switch)],
+            )
             .unwrap();
-        assert_eq!(switch, (Some(7), 7));
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        drop(connection);
+
+        let control = crate::control::ControlService::open(
+            &path,
+            std::sync::Arc::new(demi_shared_types::SystemClock),
+        )
+        .await
+        .unwrap();
+        let (kept, revision) = control
+            .last_switch(ConversationId::try_from(ID).unwrap())
+            .await
+            .unwrap()
+            .expect("the switch is kept");
+        assert_eq!(kept, switch);
+        let announced_at = 3;
+        assert!(revision <= announced_at, "{revision}");
+        control.close().await.unwrap();
+        drop(directory);
     }
 
     /// A Fork's metadata that is not of the format before, such as one
