@@ -23,8 +23,7 @@ Run by a person in a terminal, the first command asks for the domain, the
 mode and the listening address instead, and sets the server up with the
 answers.
 
-`https://demi.sh/install.sh` is a redirect that the `demi.sh` zone at
-Cloudflare answers, with 302, to
+`https://demi.sh/install.sh` redirects to
 `https://github.com/wspl/demi/releases/latest/download/install.sh`, the
 latest release's `install.sh`; either address installs the same release.
 
@@ -118,6 +117,20 @@ the backend listens. The two usual arrangements differ only in that address:
 
 `--help` gives both, and what the proxy must do: pass `Origin` and `Host`
 unchanged and allow WebSocket upgrades.
+
+The simplest is Cloudflare's proxy, which needs no certificate and no proxy
+on the machine:
+
+1. Manage the domain's DNS at Cloudflare and add an `A` record (and `AAAA`,
+   for IPv6) that points the domain at the machine, with the proxy on, the
+   orange cloud.
+2. Under **SSL/TLS › Overview**, set the encryption mode to **Flexible**.
+3. Install with `--listen 0.0.0.0:80`.
+
+Cloudflare then serves the domain over HTTPS and reaches the machine over
+plain HTTP on port 80, across the internet. For that leg to be encrypted too,
+use Cloudflare Tunnel or a reverse proxy with its own certificate, such as
+Caddy, which obtains one by itself, and `--listen 127.0.0.1:3271`.
 
 ## The steps
 

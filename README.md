@@ -46,11 +46,8 @@ You need:
   - Ubuntu 22.04 or later, Debian 12 or later
   - Fedora, RHEL 10, Rocky Linux, AlmaLinux
   - Arch Linux
-- A domain name. The easiest way to get HTTPS is to manage its DNS on
-  [Cloudflare](https://www.cloudflare.com/): add an `A` record for the server
-  with the proxy on (the orange cloud), and set **SSL/TLS** to **Flexible**.
-  Cloudflare then serves HTTPS, and the server needs no certificate and no
-  proxy of its own.
+- A domain name, served over HTTPS in front of the server
+  ([how](docs/delivery/installation.md#https)).
 
 Then run the installer on the server:
 
@@ -60,21 +57,18 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 
 It asks for your domain; whether every user uses the admin's model providers
 (`shared`) or each user sets up their own (`isolated`); and the address to
-listen on: `0.0.0.0:80` for Cloudflare's proxy.
+listen on, which depends on [how HTTPS reaches it](docs/delivery/installation.md#https).
 
 To install without questions, for example from a script or by an AI agent,
 pass every answer as a parameter:
 
 ```sh
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- \
-  --domain demi.example.com --mode isolated --listen 0.0.0.0:80
+  --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
 ```
 
-With Flexible, Cloudflare reaches the server over plain HTTP. To encrypt that
-leg too, or to use another proxy such as Caddy or nginx, see the
-[installation guide](docs/delivery/installation.md#https). The installer
-checks the machine, starts Demi and checks your domain from outside. From
-there:
+The installer checks the machine, starts Demi and checks your domain from
+outside. From there:
 
 1. Open your domain right away and create the admin account.
 2. Go to **Settings › Providers** and sign in with a subscription or add an

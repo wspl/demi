@@ -41,7 +41,7 @@ Demi 是一个自托管的 AI Agent，在任何浏览器中都能使用。随口
   - Ubuntu 22.04 及以上、Debian 12 及以上
   - Fedora、RHEL 10、Rocky Linux、AlmaLinux
   - Arch Linux
-- 一个域名。最省事的 HTTPS 方案是把域名的 DNS 托管到 [Cloudflare](https://www.cloudflare.com/)：为服务器添加一条开启代理（橙色云朵）的 `A` 记录，并把 **SSL/TLS** 设为 **Flexible**。这样 HTTPS 由 Cloudflare 提供，服务器上不需要证书，也不需要自己的反向代理。
+- 一个域名，并在服务器前提供 HTTPS（[配置方法](docs/delivery/installation.md#https)）。
 
 然后在服务器上运行安装程序：
 
@@ -49,16 +49,16 @@ Demi 是一个自托管的 AI Agent，在任何浏览器中都能使用。随口
 curl -fsSL https://demi.sh/install.sh | sudo bash
 ```
 
-它会依次询问：你的域名；所有用户都使用管理员配置的模型提供方（`shared`），还是每个用户各自配置（`isolated`）；以及监听地址，使用 Cloudflare 代理时填 `0.0.0.0:80`。
+它会依次询问：你的域名；所有用户都使用管理员配置的模型提供方（`shared`），还是每个用户各自配置（`isolated`）；以及监听地址，取决于 [HTTPS 的接入方式](docs/delivery/installation.md#https)。
 
 如果要免交互安装，比如在脚本里或交给 AI Agent 安装，可以把所有答案作为参数传入：
 
 ```sh
 curl -fsSL https://demi.sh/install.sh | sudo bash -s -- \
-  --domain demi.example.com --mode isolated --listen 0.0.0.0:80
+  --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
 ```
 
-使用 Flexible 时，Cloudflare 到服务器这一段是明文 HTTP。如果这一段也要加密，或者想用 Caddy、nginx 等其他代理，请参阅[安装指南](docs/delivery/installation.md#https)。安装程序会检查机器、启动 Demi，并从外部检查你的域名。接下来：
+安装程序会检查机器、启动 Demi，并从外部检查你的域名。接下来：
 
 1. 立即打开你的域名，创建管理员账号。
 2. 进入 **Settings › Providers**，用订阅账号登录或添加 API 密钥。
