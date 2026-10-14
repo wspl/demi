@@ -165,5 +165,6 @@ check-cfg = [
 maintainer = "demi-runner"
 patches = [
     "Standard input and output are the invocation's instead of raw descriptors 0 and 1",
+    "The splice path runs only where uucore::pipes::zero_copy allows, so tee under an owner's control no longer grows its standard output, the shell's pipe, to 1 MiB before splice turns out to be off",
     "Files, streams, the environment, printing and exit go through uucore::context, so a run embedded in a shell job uses the job's working directory, environment, standard streams and cancellation, and exit ends only the utility",
 ]

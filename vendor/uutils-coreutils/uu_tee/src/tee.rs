@@ -157,7 +157,8 @@ impl MultiWriter {
         }
         // needs 2 pipes to duplicate input multiple times
         #[cfg(any(target_os = "linux", target_os = "android"))]
-        if let Ok((pipe_read, pipe_write)) = io::pipe()
+        if uucore::pipes::zero_copy()
+            && let Ok((pipe_read, pipe_write)) = io::pipe()
             && let Ok((pipe2_read, pipe2_write)) = io::pipe()
         {
             use rustix::pipe::fcntl_setpipe_size;
