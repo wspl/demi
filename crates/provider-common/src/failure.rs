@@ -182,7 +182,12 @@ pub(crate) fn diagnostics(
 /// it is stored or sent. The agent retries `rate_limit` and `overloaded`.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ErrorCode {
-    /// A quota or throttling failure.
+    /// The account cannot be used until a reset or a change of its plan: a
+    /// used-up subscription window, credits or a spend cap, or use its
+    /// administrator turned off. Waiting a few seconds cannot fix it, so the
+    /// agent does not retry it.
+    UsageLimit,
+    /// Throttling: too many requests or tokens for a short while.
     RateLimit,
     /// The backend's own request rate limit refused the attempt before it
     /// reached the vendor (`usage-and-quota.md` § Rate limit); unlike
@@ -215,6 +220,7 @@ pub enum ErrorCode {
 impl ErrorCode {
     pub fn as_str(&self) -> &str {
         match self {
+            Self::UsageLimit => "usage_limit",
             Self::RateLimit => "rate_limit",
             Self::RateLimited => "rate_limited",
             Self::Overloaded => "overloaded",
@@ -253,10 +259,9 @@ impl ErrorCode {
     /// rule.
     ///
     /// Words count only as whole words, with `_` and `-` separating them, so
-    /// that `generate` is not `rate` and `unlimited` is not `limit`. `usage`
-    /// decides only in the phrase `usage limit`, as in Codex's
-    /// `usage_limit_reached`: an `invalid usage` of a parameter is not a
-    /// quota failure.
+    /// that `generate` is not `rate`. `limit` and `usage` decide nothing: a
+    /// throttled request's text may say *not your usage limit*, and a
+    /// vendor's own sign of a used-up account is read by its provider.
     pub fn classify(code: Option<&str>, message: &str) -> Option<Self> {
         let code = code.filter(|code| !code.is_empty());
         let text = words(&format!("{} {message}", code.unwrap_or_default()));
@@ -277,6 +282,7 @@ impl FromStr for ErrorCode {
     /// Reads a stored code: one of Demi's codes, or a vendor's own.
     fn from_str(code: &str) -> Result<Self, Infallible> {
         Ok(match code {
+            "usage_limit" => Self::UsageLimit,
             "rate_limit" => Self::RateLimit,
             "rate_limited" => Self::RateLimited,
             "overloaded" => Self::Overloaded,
@@ -308,7 +314,7 @@ static TOO_LONG: LazyLock<Regex> =
 
 /// The categories a vendor's failure text is read into, in the order they
 /// are tried, over [`words`].
-static CATEGORIES: LazyLock<[(ErrorCode, Regex); 5]> = LazyLock::new(|| {
+static CATEGORIES: LazyLock<[(ErrorCode, Regex); 6]> = LazyLock::new(|| {
     [
         (
             ErrorCode::RequestTooLarge,
@@ -321,9 +327,10 @@ static CATEGORIES: LazyLock<[(ErrorCode, Regex); 5]> = LazyLock::new(|| {
             pattern(r"\bcontext\b|\btoo long\b|\btoo large\b|\bmax\w*\b.*\btokens?\b"),
         ),
         (
-            ErrorCode::RateLimit,
-            pattern(r"\brate\b|\bratelimit\w*|\bquota\b|\busage limit\b|\bbilling\b|\bbalance\b"),
+            ErrorCode::UsageLimit,
+            pattern(r"\bquota\b|\bbilling\b|\bbalance\b|\bout of credits\b"),
         ),
+        (ErrorCode::RateLimit, pattern(r"\brate\b|\bratelimit\w*")),
         (
             ErrorCode::AuthExpired,
             pattern(concat!(

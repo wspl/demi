@@ -233,7 +233,7 @@ async fn a_vendor_error_ends_the_run_with_the_chunk_as_its_record() {
     );
     assert_eq!(
         (failure.message.as_str(), failure.code),
-        ("quota exceeded", Some(ErrorCode::RateLimit))
+        ("quota exceeded", Some(ErrorCode::UsageLimit))
     );
     let diagnostics = failure.diagnostics.unwrap();
     assert_eq!(
