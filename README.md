@@ -49,26 +49,13 @@ You need:
 - A domain name, served over HTTPS in front of the server
   ([how](docs/delivery/installation.md#https)).
 
-Then run the installer on the server:
+Then run on the server:
 
 ```sh
 curl -fsSL https://demi.sh/install.sh | sudo bash
 ```
 
-It asks for your domain; whether every user uses the admin's model providers
-(`shared`) or each user sets up their own (`isolated`); and the address to
-listen on, which depends on [how HTTPS reaches it](docs/delivery/installation.md#https).
-
-To install without questions, for example from a script or by an AI agent,
-pass every answer as a parameter:
-
-```sh
-curl -fsSL https://demi.sh/install.sh | sudo bash -s -- \
-  --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
-```
-
-The installer checks the machine, starts Demi and checks your domain from
-outside. From there:
+The installer asks a few questions and sets Demi up. Then:
 
 1. Open your domain right away and create the admin account.
 2. Go to **Settings › Providers** and sign in with a subscription or add an
@@ -77,8 +64,9 @@ outside. From there:
 4. To work on your own computer, choose **Add Device** from the conversation's
    host menu and run the command it shows on that computer.
 
-See the [installation guide](docs/delivery/installation.md) for all options and
-[upgrades](docs/delivery/upgrades.md) for moving to a new release.
+See the [installation guide](docs/delivery/installation.md) for every option,
+including installing without questions, and [upgrades](docs/delivery/upgrades.md)
+for moving to a new release.
 
 ## Key features
 

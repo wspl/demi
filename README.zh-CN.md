@@ -43,29 +43,20 @@ Demi 是一个自托管的 AI Agent，在任何浏览器中都能使用。随口
   - Arch Linux
 - 一个域名，并在服务器前提供 HTTPS（[配置方法](docs/delivery/installation.md#https)）。
 
-然后在服务器上运行安装程序：
+然后在服务器上运行：
 
 ```sh
 curl -fsSL https://demi.sh/install.sh | sudo bash
 ```
 
-它会依次询问：你的域名；所有用户都使用管理员配置的模型提供方（`shared`），还是每个用户各自配置（`isolated`）；以及监听地址，取决于 [HTTPS 的接入方式](docs/delivery/installation.md#https)。
-
-如果要免交互安装，比如在脚本里或交给 AI Agent 安装，可以把所有答案作为参数传入：
-
-```sh
-curl -fsSL https://demi.sh/install.sh | sudo bash -s -- \
-  --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
-```
-
-安装程序会检查机器、启动 Demi，并从外部检查你的域名。接下来：
+安装程序会问几个问题，然后完成安装。接下来：
 
 1. 立即打开你的域名，创建管理员账号。
 2. 进入 **Settings › Providers**，用订阅账号登录或添加 API 密钥。
 3. 开始一个对话，它会在你的云端沙箱中运行。
 4. 如需在自己的电脑上工作，在对话的 Host 菜单中选择 **Add Device**，然后在那台电脑上运行显示的命令。
 
-更多选项请参阅[安装指南](docs/delivery/installation.md)，升级方法请参阅[升级说明](docs/delivery/upgrades.md)。
+全部选项（包括免交互安装）请参阅[安装指南](docs/delivery/installation.md)，升级方法请参阅[升级说明](docs/delivery/upgrades.md)。
 
 ## 核心特性
 
