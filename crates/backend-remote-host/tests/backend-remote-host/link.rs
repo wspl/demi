@@ -2185,7 +2185,8 @@ fn read_at() -> demi_runner_protocol::wire::ReadAt {
 /// A job that goes on over a new connection gets the output its runner
 /// printed while no connection served: the backend reads the kept output
 /// again and delivers what its consumer did not receive, before what the
-/// job prints from then on (`runner.md` § Command lifetime). A few
+/// job prints from then on and before its end, which may both come while
+/// the read is under way (`runner.md` § Command lifetime). A few
 /// milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhile() {
@@ -2214,11 +2215,11 @@ async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhi
         outliving: Vec::new(),
     };
     let mut link = device.connect_with(None, 1, vec![kept]);
-    // Output that arrives during the read waits for it.
+    // Output and the end that arrive during the read wait for it.
     link.send(output(3, b"d")).await;
+    link.send(job_exit(job.id(), Some(0), None)).await;
     let record = KeptRecord::Output(OutputStream::Stdout, WireBytes(b"abc".to_vec()));
     answer_read(&device, &mut link, job.id(), encode_record(&record).unwrap()).await;
-    link.send(job_exit(job.id(), Some(0), None)).await;
 
     let mut received = Vec::new();
     while let Some(chunk) = job.next_output().await {
@@ -2227,6 +2228,87 @@ async fn a_job_kept_through_a_lost_connection_gets_the_output_it_printed_meanwhi
     assert_eq!(
         received,
         [(0, b"a".to_vec()), (1, b"bc".to_vec()), (3, b"d".to_vec())]
+    );
+    assert_eq!(job.end().await.status, ProcessEnd::Exited(0));
+}
+
+/// Output its runner printed while no connection served, which the read
+/// after the new connection did not deliver, is not counted as received
+/// although later output was: the command's end reads the kept output, and
+/// its whole output holds it (`runner.md` § Pipes and output). A few
+/// milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_command_whose_output_the_backend_missed_ends_with_it_read_from_its_host() {
+    let device = device();
+    let mut link = device.connect(None);
+    let shell = environment(device.host("/work", Admission::Free));
+    let started = shell
+        .exec(exec("print"), CancellationToken::new())
+        .await
+        .unwrap();
+    let Inbound::JobStart { job_id, .. } = link.next().await else {
+        panic!("expected a job")
+    };
+    let output = |offset: u64, bytes: &[u8]| Outbound::JobOutput {
+        job_id: job_id.clone(),
+        stream: OutputStream::Stdout,
+        offset,
+        bytes: WireBytes(bytes.to_vec()),
+    };
+    link.send(output(0, b"a")).await;
+    drain(&mut link).await;
+    link.close().await;
+
+    let kept = demi_runner_protocol::wire::KeptJob {
+        job_id: job_id.clone(),
+        ended: None,
+        output: OutputLengths {
+            stdout_bytes: 3,
+            stderr_bytes: 0,
+        },
+        media: 0,
+        outliving: Vec::new(),
+    };
+    let mut link = device.connect_with(None, 1, vec![kept]);
+    let id = loop {
+        let message = tokio::time::timeout(Duration::from_secs(10), link.next())
+            .await
+            .expect("a read within the hang guard");
+        if let Inbound::JobRead { id, .. } = message {
+            break id;
+        }
+    };
+    link.send(Outbound::JobRead {
+        id,
+        error: Some("the read failed".into()),
+    })
+    .await;
+    link.send(output(3, b"d")).await;
+    link.send(Outbound::JobExit {
+        job_id: job_id.clone(),
+        exit_code: Some(0),
+        signal: None,
+        spawn_error: None,
+        output: Some(OutputLengths {
+            stdout_bytes: 4,
+            stderr_bytes: 0,
+        }),
+        files: Vec::new(),
+        path_changes: Vec::new(),
+        files_truncated: false,
+    })
+    .await;
+    let record = KeptRecord::Output(OutputStream::Stdout, WireBytes(b"abcd".to_vec()));
+    answer_read(&device, &mut link, &job_id, encode_record(&record).unwrap()).await;
+    let whole = loop {
+        drain(&mut link).await;
+        if let Some(whole) = shell.status(&started.command_id).unwrap().whole {
+            break whole;
+        }
+    };
+    assert_eq!(
+        whole.output.records(),
+        [OutputRecord::Output(StreamKind::Stdout, b"abcd".to_vec().into())]
     );
 }
 

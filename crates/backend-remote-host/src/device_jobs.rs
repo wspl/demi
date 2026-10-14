@@ -78,9 +78,9 @@ pub(crate) struct JobEntry {
     head: [u64; 2],
     /// Where the last output of each stream that reached its consumer ends.
     seen: [u64; 2],
-    /// While its kept output is read after a new connection, the output
-    /// that arrives meanwhile, which follows what the read delivers.
-    resyncing: Option<Vec<JobOutput>>,
+    /// While its kept output is read after a new connection, what arrives
+    /// meanwhile, which follows what the read delivers.
+    resyncing: Option<Resync>,
     /// The runner stopped it once its connection stayed away: its end is a
     /// loss, with its output kept.
     unreached: bool,
@@ -90,6 +90,14 @@ pub(crate) struct JobEntry {
     /// Whether an agent took it up and said whose it is; true for a job
     /// started here.
     claimed: watch::Sender<bool>,
+}
+
+/// What arrives of a job while its kept output is read again after a new
+/// connection: its output, and its end, which comes last.
+#[derive(Default)]
+struct Resync {
+    waiting: Vec<JobOutput>,
+    end: Option<JobEnd>,
 }
 
 /// What a job's consumer holds of it.
@@ -248,50 +256,54 @@ impl DeviceJobs {
     /// unknown; while its kept output is read again, it waits for the read.
     pub(crate) fn output(&self, id: &str, chunk: JobOutput) {
         self.with(id, |job| match &mut job.resyncing {
-            Some(waiting) => waiting.push(chunk),
+            Some(resync) => resync.waiting.push(chunk),
             None => job.deliver(chunk),
         });
     }
 
-    /// The job `id` ended with `end`: its consumer learns the end, and it
-    /// leaves the table, unless it is parked, when it waits there for the
-    /// agent that takes it up. False when the device does not know it.
+    /// The job `id` ended with `end`: its consumer learns the end, after
+    /// the output a read of its kept output in progress delivers, and it
+    /// leaves the table then, unless it is parked, when it waits there for
+    /// the agent that takes it up. False when the device does not know it.
     pub(crate) fn exited(&self, id: &str, mut end: JobEnd) -> bool {
         let mut table = self.0.borrow_mut();
         let Some(job) = table.jobs.get_mut(id) else {
             return false;
         };
-        if let Some(waiting) = job.resyncing.take() {
-            for chunk in waiting {
-                job.deliver(chunk);
-            }
-        }
         if job.unreached {
             end.lost = Some(UNREACHED.to_owned());
         }
-        job.cancel.cancel();
-        job.shared.finish(end);
-        // A parked job's end waits for the agent that takes it up.
-        if !job.parked {
-            table.jobs.remove(id);
+        match &mut job.resyncing {
+            Some(resync) => resync.end = Some(end),
+            None => settle(&mut table, id, end),
         }
         true
     }
 
     /// `link` ended: the jobs on it wait for the next connection.
     pub(crate) fn detach(&self, link: &Link) {
-        for job in self.0.borrow_mut().jobs.values_mut() {
+        let mut table = self.0.borrow_mut();
+        let mut ended = Vec::new();
+        for (id, job) in &mut table.jobs {
             if job.attached.as_ref().is_some_and(|attached| attached.is(link)) {
                 job.attached = None;
                 job.away_since = Some(Instant::now());
                 // A read again the ended connection cannot finish delivers
-                // what waited for it; the next connection reads again.
-                if let Some(waiting) = job.resyncing.take() {
-                    for chunk in waiting {
+                // what waited for it, and the end that came meanwhile; the
+                // consumer counts what the read would have given as not
+                // received, so the job's end reads it.
+                if let Some(resync) = job.resyncing.take() {
+                    for chunk in resync.waiting {
                         job.deliver(chunk);
+                    }
+                    if let Some(end) = resync.end {
+                        ended.push((id.clone(), end));
                     }
                 }
             }
+        }
+        for (id, end) in ended {
+            settle(&mut table, &id, end);
         }
     }
 
@@ -363,7 +375,7 @@ impl DeviceJobs {
             let missed = kept.output.stdout_bytes > job.seen[0]
                 || kept.output.stderr_bytes > job.seen[1];
             if kept.ended.is_none() && missed {
-                job.resyncing.get_or_insert_with(Vec::new);
+                job.resyncing.get_or_insert_with(Resync::default);
                 adoption.resync.push((kept.job_id.clone(), kept.output));
             }
         }
@@ -397,23 +409,48 @@ impl DeviceJobs {
 
     /// Delivers what a read of the job's kept output gave after a new
     /// connection, `output` with each stream's length `lengths`, then the
-    /// output that arrived meanwhile; with none, only the latter.
+    /// output that arrived meanwhile, then the end when it came meanwhile;
+    /// with no `output`, only the latter two.
     pub(crate) fn resynced(
         &self,
         id: &str,
         output: Option<&demi_host_interface::WholeOutput>,
         lengths: wire::OutputLengths,
     ) {
-        self.with(id, |job| {
-            if let Some(output) = output {
-                for chunk in kept_chunks(output, lengths) {
-                    job.deliver(chunk);
-                }
-            }
-            for chunk in job.resyncing.take().unwrap_or_default() {
+        let mut table = self.0.borrow_mut();
+        let Some(job) = table.jobs.get_mut(id) else {
+            return;
+        };
+        // A connection that ended before the read did delivered what
+        // waited for it.
+        let Some(resync) = job.resyncing.take() else {
+            return;
+        };
+        if let Some(output) = output {
+            for chunk in kept_chunks(output, lengths) {
                 job.deliver(chunk);
             }
-        });
+        }
+        for chunk in resync.waiting {
+            job.deliver(chunk);
+        }
+        if let Some(end) = resync.end {
+            settle(&mut table, id, end);
+        }
+    }
+}
+
+/// The job `id` of `table` ended with `end`: its consumer learns the end,
+/// and it leaves the table, unless it is parked, when it waits there for
+/// the agent that takes it up.
+fn settle(table: &mut Table, id: &str, end: JobEnd) {
+    let Some(job) = table.jobs.get_mut(id) else {
+        return;
+    };
+    job.cancel.cancel();
+    job.shared.finish(end);
+    if !job.parked {
+        table.jobs.remove(id);
     }
 }
 

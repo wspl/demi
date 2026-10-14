@@ -1195,7 +1195,10 @@ fn push_reason(output: &mut Vec<OutputRecord>, reason: &str) -> String {
 #[derive(Default)]
 struct Received {
     /// How many of the stream's first `JOB_VIEW_BYTES` it received: the
-    /// stream's part of the output it holds.
+    /// stream's part of the output it holds. Bytes the runner printed while
+    /// no connection served and nothing delivered again are not among them,
+    /// though bytes after them were received, so the end reads the kept
+    /// output.
     head: u64,
     /// The stream's length on the Host, as its messages told it.
     host: u64,
@@ -1222,7 +1225,9 @@ impl Received {
         let end = chunk.offset + chunk.bytes.len() as u64;
         self.host = self.host.max(end);
         if chunk.offset < wire::JOB_VIEW_BYTES as u64 {
-            self.head = end;
+            // The device's jobs deliver a stream's first bytes without
+            // overlap (`JobEntry::deliver`).
+            self.head += chunk.bytes.len() as u64;
             self.next = end;
             let text = self.text.decode(&chunk.bytes);
             if !chunk.bytes.is_empty() {

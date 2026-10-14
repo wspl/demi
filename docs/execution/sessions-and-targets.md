@@ -642,7 +642,7 @@ those records:
 
 | The runner lists the job as | The command |
 | --- | --- |
-| Running | Goes on: the backend follows it again where a page shows it, reads the output it missed from the kept output, and the command's handle works again for `demi shell status` and `demi shell stop` |
+| Running | Goes on: the backend follows it again where a page shows it, reads the output it missed from the kept output, which comes before what the job prints from then on and before its end, and the command's handle works again for `demi shell status` and `demi shell stop` |
 | Ended | Ends with the status the runner kept, and its whole output is read as for any end; a job the runner stopped after 10 minutes without a connection is lost with that reason, its output kept |
 | Not listed | Is lost, with the reason the backend can tell from what it knows of the device: Demi was upgraded and the runner replaced itself, the Cloud restarted, the runner started anew after it ended, or the runner, still the same, never received the job |
 
