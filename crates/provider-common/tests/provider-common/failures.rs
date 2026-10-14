@@ -135,16 +135,30 @@ fn a_vendor_failure_classifies_by_whole_words_and_falls_back_to_the_vendor_code(
             "Number of requests exceeded",
             Some(ErrorCode::RateLimit),
         ),
-        (None, "insufficient balance", Some(ErrorCode::RateLimit)),
+        // Used-up credits are a usage limit, which no wait fixes; a quota
+        // throttles, as Gemini's per-minute one does.
+        (None, "insufficient balance", Some(ErrorCode::UsageLimit)),
         (
-            Some("insufficient_quota"),
-            "You exceeded your plan",
+            Some("RESOURCE_EXHAUSTED"),
+            "Quota exceeded for metric generate_content_requests per minute",
             Some(ErrorCode::RateLimit),
         ),
         (
+            Some("billing_error"),
+            "Your credit balance is too low",
+            Some(ErrorCode::UsageLimit),
+        ),
+        (
+            None,
+            "You ran out of credits",
+            Some(ErrorCode::UsageLimit),
+        ),
+        // A vendor's own usage-limit code is its provider's to read; its
+        // words alone decide nothing.
+        (
             Some("usage_limit_reached"),
             "The usage limit has been reached",
-            Some(ErrorCode::RateLimit),
+            Some(ErrorCode::Vendor("usage_limit_reached".into())),
         ),
         (None, "invalid api key", Some(ErrorCode::AuthExpired)),
         (
@@ -204,16 +218,18 @@ fn a_vendor_failure_classifies_by_whole_words_and_falls_back_to_the_vendor_code(
             Some(ErrorCode::Vendor("invalid_request_error".into())),
         ),
         (None, "iterate over the unlimited list", None),
-        // `usage` decides only as part of a usage limit.
+        // `usage` and `usage limit` decide nothing: the Claude Code CLI's
+        // throttled request says it is not one.
         (
             Some("invalid_request_error"),
             "Invalid usage of the tools parameter",
             Some(ErrorCode::Vendor("invalid_request_error".into())),
         ),
+        (None, "usage limit exceeded for this month", None),
         (
             None,
-            "usage limit exceeded for this month",
-            Some(ErrorCode::RateLimit),
+            "Server is temporarily limiting requests (not your usage limit)",
+            None,
         ),
         (Some(""), "nothing to see", None),
     ];

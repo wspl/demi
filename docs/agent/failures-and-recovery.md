@@ -140,8 +140,11 @@ response's `response.error`, or in an HTTP failure's body; a value that is not
 a number reads as absent. Without them, it uses the standard reading. The
 Claude Code CLI's usage limit carries the limited window and its reset in
 the failing assistant line's `api_error_params.rate_limit_info`, the
-request's own, which its reader takes as the moment before the account's
-latest quota, which may be older than the failure.
+request's own: its `resetsAt`, the window's reset, and its
+`overageResetsAt`, the reset of the usage credits that run past the
+subscription. Either one lifts the limit, so its reader takes the earlier
+of those present as the moment, before the account's latest quota, which
+may be older than the failure.
 
 The same reader serves both uses, so there is one implementation:
 

@@ -353,3 +353,56 @@ async fn without_rotation_a_usage_limit_offers_to_continue_with_the_other_accoun
     assert_eq!(accounts_run(&setup.runs), [first.as_str(), second.as_str()]);
     setup.backend.close().await;
 }
+
+// A backend, a probe, one turn: about a quarter of a second.
+#[tokio::test]
+async fn a_limit_reached_mid_answer_ends_the_turn_with_the_moment_of_the_agents_own_account() {
+    let setup = two_accounts(false).await;
+    let (first, second) = (setup.first.clone(), setup.second.clone());
+    let now = setup.harness.clock.now();
+    let path = format!("/api/providers/{}", setup.entry);
+    // The agent takes the first account while the second is active, so
+    // the active account's quota cannot stand in for the agent's.
+    setup.rotate("in_order").await;
+    let activated = setup
+        .backend
+        .put(&format!("{path}/accounts/active"), &setup.master, json!({ "credentialId": second }))
+        .await;
+    assert_eq!(activated.status, StatusCode::OK);
+    create(&setup.backend, &setup.master, FIRST).await;
+    choose(&setup.backend, &setup.master, FIRST, &setup.entry, "m").await;
+    let mut socket = Socket::connect(&setup.backend, &setup.master, FIRST).await;
+    socket.open().await;
+    socket.chat("m1", "one").await;
+    // Its account's window is used up by the time of the next turn.
+    let used_up_window = QuotaWindow {
+        used_percent: Some(100.0),
+        ..window(now, 0.0, 2, 5)
+    };
+    setup
+        .scripts
+        .quota
+        .windows_of
+        .lock()
+        .unwrap()
+        .insert(first.to_string(), vec![used_up_window]);
+    let probed = setup
+        .backend
+        .post(&format!("{path}/quota"), Some(&setup.master), json!({ "credentialId": first }))
+        .await;
+    assert_eq!(probed.status, StatusCode::OK);
+
+    setup.runs.fails_late.store(true, std::sync::atomic::Ordering::SeqCst);
+    used_up(&setup.runs, &[&first]);
+    socket.chat("m2", "two").await;
+    // Something of the answer had shown: nothing is sent again.
+    assert_eq!(accounts_run(&setup.runs), [first.as_str(), first.as_str()]);
+    let cold = transcript(&setup.backend, &setup.master, FIRST).await;
+    let Some(Block::Error(error)) = cold.blocks.last() else {
+        panic!("{:?}", kinds(&cold.blocks));
+    };
+    assert_eq!(error.account.as_deref(), Some(first.as_str()));
+    let moment = cold.failures.as_ref().and_then(|facts| facts.get(&error.id)?.retry_at);
+    assert_eq!(moment, Some(Timestamp::from_millisecond(now.as_millisecond() + 2 * 3_600_000).unwrap()));
+    setup.backend.close().await;
+}

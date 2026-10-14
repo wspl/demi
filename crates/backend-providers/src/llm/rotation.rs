@@ -334,22 +334,19 @@ fn earliest(rooms: &[Room]) -> Option<Timestamp> {
         .min()
 }
 
-/// The window of `snapshot` used up for `model` with its reset still to
-/// come, the one that resets last when several are, since the account can
-/// be used again only once every one has reset; with its name.
-pub fn used_up_window(
-    snapshot: Option<&QuotaSnapshot>,
-    model: &Model,
-    now: Timestamp,
-) -> Option<(String, Option<Timestamp>)> {
-    snapshot?
+/// The name of the window `snapshot` shows used up, the one that resets at
+/// `moment` when several are; the line that says an agent moved names it.
+pub fn window_used_up(snapshot: &QuotaSnapshot, moment: Option<Timestamp>) -> Option<String> {
+    let used_up: Vec<&QuotaWindow> = snapshot
         .windows
         .iter()
-        .filter(|window| applies(window, model))
         .filter(|window| window.used_percent.is_some_and(|percent| percent >= 100.0))
-        .filter(|window| window.resets_at.is_none_or(|reset| reset > now))
-        .max_by_key(|window| window.resets_at)
-        .map(|window| (window.label.clone(), window.resets_at))
+        .collect();
+    used_up
+        .iter()
+        .find(|window| moment.is_some() && window.resets_at == moment)
+        .or(used_up.first())
+        .map(|window| window.label.clone())
 }
 
 #[cfg(test)]

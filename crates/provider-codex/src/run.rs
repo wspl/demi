@@ -15,7 +15,7 @@ use serde::Deserialize;
 
 use crate::{
     LABEL, SIGNATURE_TAG, Shared, TransportMode,
-    failure::read_codex_failure,
+    failure::{read_codex_failure, with_usage_limit},
     request,
     transport::{self, OpenError, Refusal},
 };
@@ -96,7 +96,10 @@ pub(crate) fn run(
         };
         let mut events = std::pin::pin!(responses::map_events(events, vendor, SIGNATURE_TAG, cancel));
         while let Some(event) = events.next().await {
-            yield event;
+            yield match event {
+                ProviderEvent::Error(failure) => ProviderEvent::Error(with_usage_limit(failure)),
+                event => event,
+            };
         }
     }
 }
@@ -125,7 +128,7 @@ fn refused(refusal: Refusal, shared: &Shared) -> ProviderFailure {
         diagnostics.provider_code = provider_code;
         diagnostics.provider_request_id = provider_request_id;
     }
-    failure
+    with_usage_limit(failure)
 }
 
 /// The body of a refused request, as far as Demi reports it; a body it
