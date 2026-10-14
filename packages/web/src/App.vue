@@ -38,6 +38,7 @@ import { blobUrl } from './api/uploads'
 import { providePageHost } from '@demicodes/web-ui/plugins/page'
 import { productPageHost } from './plugins/host'
 import { useProduct } from './state/product'
+import { newerStorage } from './state/indexed-db'
 import { usePasskeySignals } from './auth/passkeys'
 import { useSessions } from './auth/handoff'
 import { usePasskeyOffer } from './auth/passkey-offer'
@@ -49,14 +50,14 @@ const product = useProduct()
 // The password manager follows the account's email and passkeys.
 usePasskeySignals()
 providePageHost(productPageHost())
-// A page of another build than the backend serves loads that build, once
-// per build; one that still gets another says so (`web-application.md`
-// § A page of another build).
+// A page of another build than the backend serves, or whose storage a
+// newer build upgraded, loads itself again, once per build; one that still
+// gets another says so (`web-application.md` § A page of another build).
 const updateFailed = ref(false)
 watch(
-  () => product.newBuild,
-  (served) => {
-    if (served !== null && !reloadFor(served, reload)) {
+  () => product.newBuild ?? newerStorage.value,
+  (newer) => {
+    if (newer !== null && !reloadFor(newer, reload)) {
       updateFailed.value = true
     }
   },
