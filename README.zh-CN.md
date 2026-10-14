@@ -35,7 +35,15 @@ Demi 是一个自托管的 AI Agent，在任何浏览器中都能使用。随口
 
 ## 快速开始
 
-**环境要求**：一台有 root 权限的 Linux 服务器（Ubuntu 22.04+、Debian 12+、Fedora、RHEL 10、Rocky Linux、AlmaLinux 或 Arch Linux；Linux 5.14+，需要 systemd 和 cgroup v2）、一个域名，以及前置的 HTTPS。
+你需要：
+
+- 一台有 root 权限的 Linux 服务器，系统为以下之一（[详细说明](docs/delivery/installation.md#distributions)）：
+  - Ubuntu 22.04 及以上、Debian 12 及以上
+  - Fedora、RHEL 10、Rocky Linux、AlmaLinux
+  - Arch Linux
+- 一个域名，并在服务器前配置好 HTTPS。
+
+然后运行：
 
 ```sh
 curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
