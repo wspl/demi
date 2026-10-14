@@ -44,9 +44,33 @@ jobs:
     steps:
       # The whole history, from which gitleaks reads the commits the push or
       # the pull request adds; .gitleaks.toml at the root is its settings.
+      # The commits before the open-source rewrite hold old example values
+      # the allowlist does not cover, so a scan never reaches back past the
+      # range the event brings. gitleaks/gitleaks-action is not used: it
+      # fails on a pull request whose commits a rewrite replaced.
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
+      - name: Install gitleaks
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GITLEAKS_VERSION: 8.30.1
+        run: |
+          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C "$RUNNER_TEMP" gitleaks
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: Scan the new commits
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            range="$BASE_SHA..HEAD"
+          elif git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            range="$BEFORE..HEAD"
+          else
+            # A new branch or a forced push: the tree as it is now.
+            gitleaks dir . --redact --no-banner
+            exit
+          fi
+          gitleaks git . --log-opts="$range" --redact --no-banner
