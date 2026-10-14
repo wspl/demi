@@ -642,9 +642,10 @@ fn record_failure(s: &SessionShared, report: Box<ErrorReport>) -> TurnError {
 /// message (`compaction.md` § The summary request): as a message of its own,
 /// the Claude Code CLI would join the two by adding a line break to the
 /// input's last text, which changes a block the vendor may have cached. The
-/// block that gave the input keeps no vendor entries, which stand for it
-/// without the instruction. After a tool's results the instruction stays an
-/// item of its own, which the providers put in the results' message.
+/// block keeps its vendor entries; a provider whose entry recorded the input
+/// extends it with the blocks the item gained. After a tool's results the
+/// instruction stays an item of its own, which the providers put in the
+/// results' message.
 pub(super) fn join_instruction(replayed: &mut Replay) {
     let [.., previous, InferenceItem::UserMessage { content }] = replayed.items.as_slice() else {
         return;
@@ -670,9 +671,6 @@ pub(super) fn join_instruction(replayed: &mut Replay) {
     }
     // The instruction's block gives no item now.
     replayed.blocks.pop();
-    if let Some(input) = replayed.blocks.last_mut() {
-        input.entries.clear();
-    }
 }
 
 /// What a summary request came back with.
