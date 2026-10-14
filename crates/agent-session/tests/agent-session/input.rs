@@ -1072,7 +1072,6 @@ async fn a_session_restored_after_an_interrupted_turn_holds_its_reports_and_mess
         clock.clone(),
     );
     assert!(continuation.interrupted);
-    restored.record_interruption();
     tokio::time::sleep(Duration::from_secs(5)).await;
     assert!(later.requests().is_empty());
     // A second restart before the user acts: the checkpoint is idle now,

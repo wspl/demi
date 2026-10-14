@@ -201,6 +201,19 @@ async fn resume_at_retry(shard: Weak<Shard>, conversation: ConversationId, error
     let Some(live) = shard.upgrade() else {
         return;
     };
+    // Counted among the tree's openers before the timer lets go of its
+    // handle, which the shard's close no longer aborts: the close waits for
+    // it before the agent shuts down, and it opens nothing once the close
+    // began.
+    let _opening = live.tree_openers().token();
     live.retry_resumes().take(&conversation, &id);
+    #[cfg(feature = "testing")]
+    live.services()
+        .retries
+        .pass(crate::holds::RetryStep::Firing)
+        .await;
+    if live.is_closing() {
+        return;
+    }
     live.resume_failed_turn(&conversation, &id).await;
 }

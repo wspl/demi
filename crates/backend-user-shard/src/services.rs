@@ -126,6 +126,10 @@ pub struct Services {
     /// (`Backend::hold_sync`).
     #[cfg(feature = "testing")]
     pub syncs: crate::holds::StepHolds<crate::sync::SyncStep>,
+    /// The step a test holds a failed turn's resume at
+    /// (`Backend::hold_retries`).
+    #[cfg(feature = "testing")]
+    pub retries: crate::holds::StepHolds<crate::holds::RetryStep>,
     /// The authorities the plugins' outbound requests trust besides the
     /// system's, for a test's HTTPS servers.
     #[cfg(feature = "testing")]
@@ -399,6 +403,8 @@ impl Services {
             hellos: crate::holds::StepHolds::default(),
             #[cfg(feature = "testing")]
             syncs: crate::holds::StepHolds::default(),
+            #[cfg(feature = "testing")]
+            retries: crate::holds::StepHolds::default(),
             #[cfg(feature = "testing")]
             web_roots: settings.web_roots,
         })

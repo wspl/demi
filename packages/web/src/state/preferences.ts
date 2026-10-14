@@ -195,8 +195,16 @@ export const usePreferences = defineStore('preferences', () => {
     }, 200)
   }
 
-  /** Sends the changes waiting for their write, as one, after the earlier writes. */
+  /**
+   * Sends the changes waiting for their write, as one, after the earlier
+   * writes, without waiting for the user's pause: also as the page is hidden
+   * or goes, whose write the web browser sends after it is gone.
+   */
   async function flush(): Promise<void> {
+    if (timer !== null) {
+      clearTimeout(timer)
+      timer = null
+    }
     const current = controller
     await writes.run('preferences', async () => {
       if (current.signal.aborted || !queued.changes.length) {

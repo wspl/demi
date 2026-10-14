@@ -13,8 +13,10 @@ function at(...parts: [number, number, number, number, number, number?]): string
 
 test('a failure of the conversation’s own agent offers to resume at its time, named as the user would say it', () => {
   expect(resumeAtLabel(at(2026, 9, 11, 9, 0), true, true, now)).toBe('Resume at 9:00 AM')
-  // A vendor's reset a moment before the minute is that minute.
-  expect(resumeAtLabel(at(2026, 9, 11, 13, 59, 59), true, true, now)).toBe('Resume at 2:00 PM')
+  // Rounded up to the minute, as the record's reset is: never a time before
+  // the reset.
+  expect(resumeAtLabel(at(2026, 9, 11, 19, 3, 55), true, true, now)).toBe('Resume at 7:04 PM')
+  expect(resumeAtLabel(at(2026, 9, 11, 19, 3, 0), true, true, now)).toBe('Resume at 7:03 PM')
   expect(resumeAtLabel(at(2026, 9, 12, 9, 0), true, true, now)).toBe('Resume Mon at 9:00 AM')
   expect(resumeAtLabel(at(2026, 9, 24, 9, 0), true, true, now)).toBe('Resume Oct 24 at 9:00 AM')
 })

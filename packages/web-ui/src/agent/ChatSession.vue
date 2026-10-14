@@ -53,7 +53,7 @@ import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
-import { resumeWaitsFor, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
+import { endsWithErrorRecord, resumeWaitsFor, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import { latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
@@ -298,14 +298,14 @@ const canRecover = computed(
 )
 // A session-level failure is told once, in the transcript flow: never beside
 // the status pane that already replaced the transcript, never under an error
-// record that already says it.
+// record that already says it, also when receipts arrived behind it.
 const failureNotice = computed(() => {
   const visible = getVisibleBlocks(latest.value)
   return sessionFailureNotice(
     props.conversation.load,
     props.conversation.lastError,
     visible.length > 0,
-    visible.at(-1)?.type === 'error',
+    endsWithErrorRecord(visible),
   )
 })
 // One control in the dock: Resume after an error, Continue after the user's Stop.

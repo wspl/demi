@@ -1078,6 +1078,90 @@ async fn restore_takes_up_the_commands_closed_children_left_stopping() {
     );
 }
 
+// The backend restarted in a root's turn, whose call left command 7 running,
+// and a call before it command 4. While 4 is taken up again, slowly, 7's end
+// arrives: the restore recorded the interruption before any watch started,
+// so the report is written into the interrupted turn, which holds it, and no
+// turn starts (`failures-and-recovery.md` § The unfinished turn). A few
+// milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_report_during_the_take_up_of_an_interrupted_root_starts_no_turn() {
+    use demi_agent_store::{CommandInterval, StoredCommand, StoredOutput};
+    use demi_host_interface::WholeOutput;
+    use demi_shared_types::{CommandEnd, WakeupPlacement};
+
+    let store = MemoryTreeStore::new();
+    let mut interrupted = checkpoint(Vec::new(), vec![user("u1", "build and serve")]);
+    interrupted.state.phase = SessionPhase::Running;
+    interrupted.state.intervals = vec![CommandInterval {
+        command_id: CommandId::try_from("7").unwrap(),
+        interval_ms: None,
+    }];
+    store
+        .create_node(NodeRecord::root(root(), Timestamp::UNIX_EPOCH), interrupted)
+        .await
+        .unwrap();
+    store.keep_output(
+        CommandId::try_from("7").unwrap(),
+        StoredCommand {
+            title: "Build".into(),
+            end: CommandEnd::Exited { exit_code: 0 },
+            output: StoredOutput::Stored {
+                output: WholeOutput::default(),
+            },
+        },
+    );
+    store.record_running(
+        root(),
+        RunningCommand {
+            command: CommandId::try_from("4").unwrap(),
+            job: "job-4".into(),
+            tool_use_id: "call-4".into(),
+            title: "Serve".into(),
+            started: Timestamp::UNIX_EPOCH,
+            place: Seen::default(),
+        },
+    );
+    let model = Model::default();
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide_runtime("stub", model.clone());
+    let shells = Rc::new(ScriptedShells::default());
+    let take_up = Gate::new();
+    shells.1.replace(Some(take_up.clone()));
+    let server = scripted_host_server(providers, shells.clone(), store.clone());
+    let page = TestClient::connect(&server, &conversation());
+    let written = || {
+        server.tree(&conversation()).is_some_and(|tree| {
+            tree.root()
+                .session()
+                .transcript()
+                .blocks
+                .iter()
+                .any(|block| matches!(block, Block::Wakeup(_)))
+        })
+    };
+    tokio::join!(page.send(open()), async {
+        until(written).await;
+        assert!(model.requests().is_empty(), "a turn started during the take-up");
+        take_up.open();
+    });
+
+    let tree = server.tree(&conversation()).unwrap();
+    tree.root().session().settled().await;
+    let blocks = tree.root().session().transcript().blocks;
+    let kinds: Vec<&str> = blocks
+        .iter()
+        .map(|block| match block {
+            Block::User(_) => "user",
+            Block::Error(_) => "error",
+            Block::Wakeup(wakeup) if wakeup.placement == WakeupPlacement::Steer => "wakeup:steer",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["user", "error", "wakeup:steer"]);
+    assert!(model.requests().is_empty());
+}
+
 pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> CheckpointUpdate {
     CheckpointUpdate {
         state: CheckpointState {

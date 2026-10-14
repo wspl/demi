@@ -271,8 +271,8 @@ async fn a_call_the_vendor_refused_fails_the_run_once_with_the_code_of_its_http_
 /// A subscription's usage limit names no wait in the CLI's words, so its
 /// failure waits until the account's used-up window resets, as the quota the
 /// CLI's `rate_limit_event` lines report says (`failures-and-recovery.md` §
-/// Reading a failure): far beyond the retry ceiling, so the agent does not
-/// retry it. The stored record reads the same `retryAt`, and a refusal of the
+/// Reading a failure), the latest of them when several are used up: far
+/// beyond the retry ceiling, so the agent does not retry it. The stored record reads the same `retryAt`, and a refusal of the
 /// same status that is not the usage limit names none.
 #[tokio::test(flavor = "local")]
 async fn a_usage_limit_waits_until_the_used_up_window_of_the_accounts_quota_resets() {
@@ -326,6 +326,15 @@ async fn a_usage_limit_waits_until_the_used_up_window_of_the_accounts_quota_rese
     let diagnostics = failed.diagnostics.as_deref().unwrap();
     let facts = provider.read_failure(diagnostics, NOW.parse().unwrap());
     assert_eq!(facts.retry_at, Some("2026-09-24T10:00:00Z".parse().unwrap()));
+
+    // With the weekly Opus window used up too, until 12:00, the request
+    // succeeds only once both have reset: the latest reset counts.
+    let mut both = limited(Some("usage_limit_reached"));
+    both[0]["rate_limit_info"]["unifiedWindows"]["seven_day_opus"] =
+        json!({ "utilization": 1.0, "resetsAt": 1790251200 });
+    let events = run(both).await;
+    let failed = failure(&events);
+    assert_eq!(failed.retry_after, Some(std::time::Duration::from_secs(4 * 3600)));
 
     // The same refusal without the CLI's usage-limit cause is a rate limit
     // like any other, retried after the standard waits.

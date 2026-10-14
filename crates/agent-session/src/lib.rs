@@ -547,7 +547,12 @@ impl AgentSession {
     /// then reports to the node as one a call left running does; the
     /// session is idle, watches the commands its calls left running again,
     /// and hands back its queue and whether a turn was interrupted. Waiting
-    /// input of an interrupted turn waits for the node's next action.
+    /// input arrives only once the restored hold is in place: before any watch
+    /// starts, a root's interrupted turn ends with its interruption record,
+    /// which holds what arrives as any failed root's turn does, and a child is
+    /// held until its supervisor looks at it or its next action starts
+    /// (`failures-and-recovery.md` § The unfinished turn, `subagents.md`
+    /// § Persistence).
     pub fn restore(
         checkpoint: Checkpoint,
         id: NodeId,
@@ -616,10 +621,18 @@ impl AgentSession {
             interrupted,
             queued: state.queue,
         };
+        let user_recovers = deps.runtime.user_recovers_turns();
         let session = Self::start(SessionCore::new(parts), deps);
         // The rows the store holds are current; the completed calls mark
-        // theirs for the next save.
-        session.shared.update(SessionCore::commit);
+        // theirs, and an interruption record its own, for the next save.
+        session.shared.update(|core| {
+            if !user_recovers {
+                core.hold();
+            } else if interrupted {
+                core.record_interruption();
+            }
+            core.commit();
+        });
         let commands = session.shared.read(|core| core.watched.commands());
         for command in &commands {
             reports::start_watch(&session.shared, command);
@@ -1077,12 +1090,6 @@ impl AgentSession {
             }
             returned.await;
         }
-    }
-
-    /// Appends the interruption record of a turn the process died in, unless
-    /// the transcript ends with one; [`flush`](Self::flush) saves it.
-    pub fn record_interruption(&self) {
-        self.shared.update(SessionCore::record_interruption);
     }
 
     /// Saves now, after the saves ahead in the session's order.
