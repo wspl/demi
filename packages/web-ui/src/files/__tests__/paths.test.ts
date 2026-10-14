@@ -40,6 +40,12 @@ test('relativePath reads a path from a root, and leaves one outside it whole', (
   expect(relativePath('/work/demi/', '/work/demi')).toBe('')
   expect(relativePath('/work/demi', '/work/demi-other/a.ts')).toBe('/work/demi-other/a.ts')
   expect(relativePath('/', '/etc/hosts')).toBe('etc/hosts')
+  // A Windows root reads either separator and either case as Windows does.
+  expect(relativePath('C:\\Users\\u\\shop', 'C:\\Users\\u\\shop\\src\\cart.ts')).toBe('src/cart.ts')
+  expect(relativePath('C:\\Users\\u\\shop', 'c:/users/U/SHOP/src')).toBe('src')
+  expect(relativePath('C:/Users/u/shop', 'C:\\Users\\u\\shop')).toBe('')
+  // A Posix name may hold a backslash, and its case tells names apart.
+  expect(relativePath('/work/demi', '/work/Demi/a.ts')).toBe('/work/Demi/a.ts')
 })
 
 test('homePath reads a path under the home from ~, and leaves one outside it or without a home whole', () => {

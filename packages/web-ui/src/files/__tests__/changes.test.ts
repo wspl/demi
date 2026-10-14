@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'bun:test'
-import { changeTreeRows, type ChangeTreeFile } from '../changes'
+import { changeTreeRows, requestTreeFiles, type ChangeTreeFile } from '../changes'
 
 // Cost: pure, under a millisecond.
 
@@ -58,5 +58,16 @@ describe('the change tree', () => {
       'f1:main.ts',
       'f0:README.md',
     ])
+  })
+})
+
+describe('a request\u2019s files in the change tree', () => {
+  test('on a Windows Host sit in their folders under the workspace', () => {
+    const files = requestTreeFiles('C:\\Users\\u\\shop', [
+      { path: 'C:\\Users\\u\\shop\\src\\cart.ts', kind: 'modified', edits: [] },
+      { path: 'C:\\Users\\u\\shop\\README.md', kind: 'added', edits: [] },
+    ])
+    expect(shown(changeTreeRows(files, new Set()))).toEqual(['d0:src', 'f1:cart.ts', 'f0:README.md'])
+    expect(files[0]!.key).toBe('C:\\Users\\u\\shop\\src\\cart.ts')
   })
 })

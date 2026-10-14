@@ -101,11 +101,12 @@ pub trait SessionRuntime {
     /// The tools the model may call.
     fn tools(&self) -> Arc<[ToolDefinition]>;
 
-    /// The node's working directory now, where its `shell` calls start: a
-    /// call's lists leave out the paths outside it (`edit-tracking.md`
-    /// § Within the working directory). None when it cannot be read, as by
-    /// default, and then a list leaves out only the paths stored as
-    /// outside.
+    /// The node's working directory now, where its `shell` calls start,
+    /// read as a step starts without reaching its Host: the files a call of
+    /// the step changed outside it are left out of what the conversation
+    /// shows (`edit-tracking.md` § Within the working directory). None when
+    /// it cannot be read, as by default, and then the step's files all
+    /// show.
     fn directory(&self) -> LocalBoxFuture<'_, Option<String>> {
         Box::pin(async { None })
     }

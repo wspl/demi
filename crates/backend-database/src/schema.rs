@@ -634,7 +634,7 @@ fn views_with_outside_paths(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> 
     let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
     for (node, index, text) in rows {
         let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
-        if with_outside_paths(&mut block) {
+        if with_outside_paths(&mut block).map_err(corrupt)? {
             let block: demi_shared_types::Block = demi_shared_types::decode_value(block).map_err(corrupt)?;
             update.execute(rusqlite::params![node, index, super::columns::to_json(&block)])?;
         }
@@ -644,30 +644,34 @@ fn views_with_outside_paths(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> 
 
 /// A stored shell view of transcript block format 6 or before as format 7
 /// holds it: each own file's `temporary` becomes `outside`, and its renames
-/// and removals lose theirs; true when it changed. The migrations before
-/// that format's decode the blocks they relist as the current format, so
-/// they read a view through this too.
-fn with_outside_paths(block: &mut serde_json::Value) -> bool {
+/// and removals lose theirs; true when it changed. A flag that is not a
+/// boolean is corrupt data, which fails the migration. The migrations
+/// before that format's decode the blocks they relist as the current
+/// format, so they read a view through this too.
+fn with_outside_paths(block: &mut serde_json::Value) -> Result<bool, serde_json::Error> {
     let Some(view) = block.get_mut("view").and_then(serde_json::Value::as_object_mut) else {
-        return false;
+        return Ok(false);
     };
     let mut changed = false;
     if let Some(files) = view.get_mut("files").and_then(serde_json::Value::as_array_mut) {
         for file in files.iter_mut().filter_map(serde_json::Value::as_object_mut) {
             if let Some(temporary) = file.remove("temporary") {
                 changed = true;
-                if temporary == serde_json::Value::Bool(true) {
-                    file.insert("outside".to_owned(), temporary);
+                if serde_json::from_value::<bool>(temporary)? {
+                    file.insert("outside".to_owned(), serde_json::Value::Bool(true));
                 }
             }
         }
     }
     if let Some(changes) = view.get_mut("pathChanges").and_then(serde_json::Value::as_array_mut) {
         for change in changes.iter_mut().filter_map(serde_json::Value::as_object_mut) {
-            changed |= change.remove("temporary").is_some();
+            if let Some(temporary) = change.remove("temporary") {
+                changed = true;
+                serde_json::from_value::<bool>(temporary)?;
+            }
         }
     }
-    changed
+    Ok(changed)
 }
 
 /// From the conversation schema in which a child's row keeps its working
@@ -1260,7 +1264,7 @@ fn relist_blocks(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlit
             .map(|(_, text)| {
                 let mut value = serde_json::from_str::<serde_json::Value>(text).map_err(corrupt)?;
                 with_no_kept_messages(&mut value);
-                with_outside_paths(&mut value);
+                with_outside_paths(&mut value).map_err(corrupt)?;
                 demi_shared_types::decode_value::<demi_shared_types::Block>(value).map_err(corrupt)
             })
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -3503,8 +3507,9 @@ mod tests {
     /// and renames marked the paths in a temporary directory `temporary`:
     /// migrated to format 7, a file marked temporary is marked `outside`,
     /// the others and the renames are marked nothing, and the stored
-    /// request list stays as it was.
-    // Cost: one database on disk, a few milliseconds.
+    /// request list stays as it was. A flag that is not a boolean fails the
+    /// migration.
+    // Cost: three databases on disk, a few milliseconds.
     #[test]
     fn a_call_stored_with_temporary_paths_marks_them_outside() {
         use demi_shared_types::{Block, ChangedFile, EditKind, PathChange, ToolView};
@@ -3618,6 +3623,37 @@ mod tests {
         }];
         assert_eq!(view.run_files.as_ref(), Some(&unchanged));
         assert_eq!(view.request_files.as_ref(), Some(&unchanged));
+
+        // A flag that is not a boolean, in a file or a rename, fails the
+        // migration, which leaves the database as it was.
+        for (list, at) in [("files", 0), ("pathChanges", 1)] {
+            let mut malformed = blocks[1].clone();
+            malformed["view"][list][at]["temporary"] = serde_json::json!("yes");
+            let (_directory, path, mut connection) =
+                database(include_str!("schema/conversation-0.1.22-dev.context-limits.sql"));
+            connection
+                .execute(
+                    "INSERT INTO nodes
+                       (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                     VALUES ('root', 0, '', 1, 0, 1, 0, ?1, 2, 0)",
+                    rusqlite::params![state_of_development()],
+                )
+                .unwrap();
+            for (index, block) in [&blocks[0], &malformed].into_iter().enumerate() {
+                connection
+                    .execute(
+                        "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
+                        rusqlite::params![i64::try_from(index).unwrap(), block.to_string()],
+                    )
+                    .unwrap();
+            }
+            let refused = CONVERSATION.apply(&mut connection, &path, &NoBlobs);
+            assert!(matches!(refused, Err(StorageError::Migration { .. })), "{list}: {refused:?}");
+            let stored: String = connection
+                .query_row("SELECT block FROM blocks WHERE idx = 1", [], |row| row.get(0))
+                .unwrap();
+            assert!(stored.contains(r#""temporary":"yes""#), "{list}: {stored}");
+        }
     }
 
     /// A conversation the server's build stored (transcript block format 5,

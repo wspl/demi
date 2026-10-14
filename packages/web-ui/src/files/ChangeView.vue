@@ -23,7 +23,7 @@ import ImagePreview from './ImagePreview.vue'
 import MarkdownDocument from './MarkdownDocument.vue'
 import PreviewPair from './PreviewPair.vue'
 import TreeFrame from './TreeFrame.vue'
-import { emptyChangeSetText, type ChangeMode, type ChangeSides, type ChangeSources, type ChangeTreeFile, type ReadCallChange } from './changes'
+import { emptyChangeSetText, requestTreeFiles, type ChangeMode, type ChangeSides, type ChangeSources, type ChangeTreeFile, type ReadCallChange } from './changes'
 import {
   allChangesStart,
   editIndex,
@@ -191,13 +191,7 @@ const treeFiles = computed<ChangeTreeFile[]>(() => {
       status: file.status,
     }))
   }
-  return (request.value?.files ?? []).map((file) => ({
-    key: file.path,
-    path: relativePath(props.root, resolveHostPath(props.root, file.path)),
-    kind: file.kind,
-    ...(file.from ? { from: file.from } : {}),
-    ...(file.lines ? { lines: file.lines } : {}),
-  }))
+  return requestTreeFiles(props.root, request.value?.files ?? [])
 })
 const idleText = computed(() => {
   if (mode.value === 'conversation') {

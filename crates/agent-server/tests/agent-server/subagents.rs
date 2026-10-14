@@ -2046,11 +2046,13 @@ async fn a_child_works_in_the_conversations_directory_once_the_conversation_move
     assert_eq!(job.child.cwd, "/elsewhere");
 }
 
-/// A shell call's lists hold only what its agent changed in its own working
-/// directory (`edit-tracking.md` § Within the working directory): a child
-/// that works in `/workspace/sub` writes there and in the conversation's
-/// `/workspace`, and its pills and lists name its own directory's file
-/// alone, while its call keeps the other in its record.
+/// A shell call's lists hold only what its agent changed in the working
+/// directory its call started in (`edit-tracking.md` § Within the working
+/// directory): a child that works in `/workspace/sub` writes there and in
+/// the conversation's `/workspace`, and its pills and lists name its own
+/// directory's file alone, while its call keeps the other in its record,
+/// though the conversation moved, and the child's directory with it, while
+/// the call ran.
 // One restored child on a paused clock: a few milliseconds.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_childs_lists_hold_only_what_it_changed_in_its_own_directory() {
@@ -2085,11 +2087,13 @@ async fn a_childs_lists_hold_only_what_it_changed_in_its_own_directory() {
     let providers = Rc::new(ScriptedProviders::default());
     providers.provide_runtime("stub", model.clone());
     let shells = Rc::new(ScriptedShells::default());
-    let server = scripted_host_server(providers, shells.clone(), store.clone());
+    let hosts = Rc::new(LiveHosts::default());
+    let server = scripted_host_server_in(providers, shells.clone(), store.clone(), hosts.clone());
     let page = TestClient::connect(&server, &root());
     page.send(open()).await;
     until(|| shells.0.borrow().iter().any(|shell| !shell.started_in.borrow().is_empty())).await;
     assert_eq!(*shells.last().started_in.borrow(), [Some("/workspace/sub".to_owned())]);
+    hosts.move_to("/elsewhere");
 
     let written = |path: &str| EditedFile {
         path: path.into(),
