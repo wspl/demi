@@ -12,6 +12,7 @@ use demi_agent_tools::testing::{field, shown_output};
 use demi_provider_common::testing::MockVendor;
 use demi_web_api_protocol::attachments::{ATTACHMENT_MAX_BYTES, ConversationAttachment};
 use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::state::SyncEvent;
 use reqwest::StatusCode;
 
 use crate::conversations::{anthropic_at, create, on_device, working_on};
@@ -136,6 +137,42 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
         .get(&format!("/api/blobs/{}", first.blob), Some(&master))
         .await;
     assert_eq!(kept.body, *PNG);
+    backend.close().await;
+}
+
+// Under a second: a real device runs one shell job.
+//
+// Planted defect it catches: the upload stores the attachment and tells no
+// page, so a page that showed a reply naming `a1` before it existed keeps
+// showing it missing. The job waits on a pipe after the upload until the
+// test has seen the summary, so no other change of the conversation, such as
+// the turn's end, can carry the number first.
+#[tokio::test]
+async fn the_pages_learn_of_a_new_attachment_from_the_summary_as_it_is_stored() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/work").await;
+    create(&backend, &master, CONVERSATION).await;
+    let (_device, root) = on_device(&harness, &backend, &master, CONVERSATION).await;
+    std::fs::write(format!("{root}/shot.png"), &*PNG).unwrap();
+    let gate = format!("{root}/gate");
+    let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
+    let mut page = backend.sync(&master).await;
+
+    let script = "mkfifo gate && demi attachment upload shot.png > /dev/null && read -r go < gate";
+    let turn = work.turn(vec![shell("t1", script, 30_000), say("uploaded")]);
+    let announced = async {
+        page.until(|event| {
+            matches!(event, SyncEvent::Conversation { conversation }
+                if conversation.id.as_str() == CONVERSATION && conversation.last_attachment == 1)
+        })
+        .await;
+        // Opening the pipe to write waits for the job to read it.
+        tokio::fs::write(&gate, b"go\n").await.unwrap();
+    };
+    let (uploaded, ()) = tokio::join!(turn, announced);
+    assert_eq!(field(&uploaded.received[0], "exitCode"), "0", "{}", uploaded.received[0]);
     backend.close().await;
 }
 

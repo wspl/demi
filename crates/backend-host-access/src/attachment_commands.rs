@@ -19,7 +19,7 @@ use bytes::Bytes;
 use demi_agent_store::{attachments::upload_media_type, pixels::pixel_size};
 use demi_backend_blobs::blobs::OPENING_BYTES;
 use demi_backend_database::conversation_attachments::{self, AttachmentNumber, AttachmentRow};
-use demi_backend_database::sequences;
+use demi_backend_database::{StorageError, sequences};
 use demi_backend_remote_host::collect_pipe;
 use demi_runner_protocol::wire::FileHash;
 use demi_host_interface::text::table;
@@ -206,29 +206,34 @@ async fn store(
     let sent = preview_media_type(path).unwrap_or(UNKNOWN_MEDIA_TYPE);
     let media_type = upload_media_type(sent, &opening);
     let pixels = pixel_size(opening, &media_type);
-    let db = shard.conversation_db(conversation);
-    let number = db
-        .call(|connection| sequences::next(connection, Sequence::Attachment))
-        .await
-        .map_err(|error| error.to_string())?;
     let name = path
         .rsplit(['/', '\\'])
         .next()
         .filter(|name| !name.is_empty())
         .unwrap_or(path)
         .to_owned();
-    let row = AttachmentRow {
-        number: AttachmentNumber(number),
-        name,
-        media_type,
-        size,
-        pixels,
-        blob,
-    };
-    let record = row.clone();
-    db.call(move |connection| conversation_attachments::insert(connection, &[record]))
+    // The number and its row commit together, so a summary that names the
+    // number names a row the page can read (`conversation_attachments::last`).
+    let row = shard
+        .conversation_db(conversation)
+        .call(move |connection| {
+            let transaction = connection.transaction()?;
+            let row = AttachmentRow {
+                number: AttachmentNumber(sequences::next(&transaction, Sequence::Attachment)?),
+                name,
+                media_type,
+                size,
+                pixels,
+                blob,
+            };
+            conversation_attachments::insert(&transaction, std::slice::from_ref(&row))?;
+            transaction.commit()?;
+            Ok(row)
+        })
         .await
-        .map_err(|error| error.to_string())?;
+        .map_err(|error: StorageError| error.to_string())?;
+    // The pages learn of it from the summary, whose latest attachment it is.
+    shard.summary_changed(conversation);
     Ok(row)
 }
 

@@ -257,7 +257,12 @@ a target change. A file the agent gives the user is therefore an attachment,
 a copy that stays; a Host path suits a file of the workspace the user should
 see as it is, such as a chart the repository keeps. An attachment number the
 conversation does not have shows its alt text with *No attachment a9 in this
-conversation*. The product's instructions tell the model that its messages
+conversation*. A number above the conversation's latest names one still to
+come: for example, a reply names `a9` before the agent uploads it, and shows
+it missing; the upload stores `a9`, the conversation's summary carries 9 as
+its latest attachment ([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)),
+and that reply and every later one that names `a9` show the image. A
+number up to the latest that has no attachment never gets one. The product's instructions tell the model that its messages
 render as Markdown, which of the two to use, and that a file it names is a
 link ([System prompt](../agent/system-prompt.md)).
 

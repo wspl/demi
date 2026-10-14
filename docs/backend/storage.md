@@ -353,9 +353,10 @@ Changed output advances `output_revision` in the checkpoint transaction; input
 alone does not. Input is the user's messages and steers, and the context,
 command-report (`wakeup`), agent-message and resume blocks the session writes before a request;
 everything else a save changes, and rows a rewrite removes, is output. A
-summary read takes the phase, the output revision and the latest terminal
-block without loading the transcript; a conversation that has no database file
-yet reads as idle with revision 0. The user's shard
+summary read takes the phase, the output revision, the latest terminal
+block and the highest attachment number without loading the transcript; a
+conversation that has no database file yet reads as idle with revision 0 and
+no attachment. The user's shard
 combines these persisted facts with live activity to produce the
 summaries the web app receives.
 
