@@ -350,7 +350,7 @@ The kinds:
 
 | Kind | Plugin | Shows | Created by |
 | --- | --- | --- | --- |
-| `change` | `changes` | Pinned: the conversation's changes, in Uncommitted and Conversation mode ([Changes](file-previews.md#changes)) | The `edit` intent |
+| `change` | `changes` | Pinned: the conversation's changes, in Commits and Conversation mode ([Changes](file-previews.md#changes)) | The `edit` intent |
 | `file` | `file-browser` | Pinned: one file of the conversation's Host, with its tree ([File previews](file-previews.md)) | The `file` intent |
 | `browser` | `browser` | One tab of the [conversation browser](../browser/browser.md), live; [Live browser view](../browser/live-view.md) owns its content | The strip's new-tab control; the plugin, for a tab the agent or a page opened |
 

@@ -1867,6 +1867,13 @@ that Host's starting directory. These routes use the same Host access as the
 work panel, including waking an attached Cloud. They do not read file contents;
 the selected path becomes a remote reference when the message is sent.
 
+`GET /api/conversations/:id/changes/branches`, `changes/log?branch=&after=`
+and `changes/commit?commit=` answer the runner's `git_branches`, `git_log`
+and `git_commit` ([Runner](../execution/runner.md#working-tree)) for the
+same directory and with the same `directory` query as `changes`;
+`changes/file` and `changes/raw` take `commit` to read a file as that commit
+has it. `ENOENT` answers 404 `not_found`, and `ambiguous` 409 `ambiguous`.
+
 `GET /api/conversations/:id/changes` lists the uncommitted changes of the
 conversation's execution directory, or of the directory `?directory=` names
 on its primary Host, absolute, as a child's Change view asks for its own
