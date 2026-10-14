@@ -20,7 +20,7 @@ use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ProviderId;
 use demi_web_api_protocol::providers::{
-    Availability, CredentialKind, ModelCatalog, ProviderAnswer, ProviderDto, Providers, TestResult,
+    Availability, CatalogProvider, CredentialKind, ModelCatalog, ProviderAnswer, ProviderDto, Providers, TestResult,
     VendorCatalog,
 };
 use demi_web_api_protocol::settings::InstanceMode;
@@ -29,7 +29,7 @@ use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::conversations::{self, FIRST, Socket};
-use crate::families::{Directory, ScriptedKey, catalog};
+use crate::families::{Directory, LoginScript, QuotaScript, ScriptedKey, ScriptedSubscription, catalog};
 use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend};
 
 fn configured(id: &str) -> Value {
@@ -99,7 +99,7 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
         &backend,
         &master,
         json!({
-            "source": "custom", "providerType": "anthropic", "label": " Work ", "apiKey": "sk-ant-secret-1",
+            "source": "compatible", "providerType": "anthropic", "label": " Work ", "apiKey": "sk-ant-secret-1",
             "baseUrl": "https://proxy.example/v1", "models": [configured("claude-work")]
         }),
     )
@@ -144,23 +144,23 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
 
     for (body, refusal) in [
         (
-            json!({ "source": "custom", "providerType": "nope", "label": "x", "apiKey": "k" }),
+            json!({ "source": "family", "providerType": "nope", "label": "x", "apiKey": "k" }),
             ErrorCode::UnknownProviderType,
         ),
         (
-            json!({ "source": "custom", "providerType": "anthropic", "wireApi": "responses", "label": "x", "apiKey": "k" }),
+            json!({ "source": "family", "providerType": "anthropic", "wireApi": "responses", "label": "x", "apiKey": "k" }),
             ErrorCode::InvalidBody,
         ),
         (
-            json!({ "source": "custom", "providerType": "anthropic", "label": "x", "apiKey": "k", "models": [configured("m"), configured("m")] }),
+            json!({ "source": "family", "providerType": "anthropic", "label": "x", "apiKey": "k", "models": [configured("m"), configured("m")] }),
+            ErrorCode::DuplicateModel,
+        ),
+        (
+            json!({ "source": "family", "providerType": "anthropic", "label": "x", "apiKey": "two\nlines" }),
             ErrorCode::InvalidBody,
         ),
         (
-            json!({ "source": "custom", "providerType": "anthropic", "label": "x", "apiKey": "two\nlines" }),
-            ErrorCode::InvalidBody,
-        ),
-        (
-            json!({ "source": "custom", "providerType": "anthropic", "label": "  ", "apiKey": "k" }),
+            json!({ "source": "family", "providerType": "anthropic", "label": "  ", "apiKey": "k" }),
             ErrorCode::InvalidBody,
         ),
         (
@@ -202,7 +202,7 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
     assert_eq!(catalog_of(&backend, &master, "").await.providers[0].models, []);
 
     // API-key entries of one family repeat.
-    let body = json!({ "source": "custom", "providerType": "anthropic", "label": "Second", "apiKey": "k" });
+    let body = json!({ "source": "family", "providerType": "anthropic", "label": "Second", "apiKey": "k" });
     let (second, third) = (
         create(&backend, &master, body.clone()).await,
         create(&backend, &master, body).await,
@@ -278,7 +278,7 @@ async fn on_a_shared_instance_only_the_master_configures_and_everyone_infers_wit
     harness.add_user("bob@example.test", "bob-pass-1", Role::User);
     let admin = backend.login("admin@example.test", "admin-pass-1").await;
     let bob = backend.login("bob@example.test", "bob-pass-1").await;
-    let body = json!({ "source": "custom", "providerType": "scripted", "label": "Instance", "apiKey": "k", "models": [configured("m")] });
+    let body = json!({ "source": "family", "providerType": "scripted", "label": "Instance", "apiKey": "k", "models": [configured("m")] });
     for user in [&admin, &bob] {
         let refused = backend
             .post("/api/providers", Some(user), body.clone())
@@ -543,38 +543,61 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
     backend.close().await;
 }
 
+/// A subscription entry's catalog is its provider's directory, cached and
+/// refreshed; an API-key entry's configured list is never fetched.
 #[tokio::test]
 async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_failed_refresh() {
     let directory = Arc::new(Directory::default());
-    let harness = Harness::new().with_families(scripted(&directory));
+    let login = Arc::new(LoginScript::default());
+    let quota = Arc::new(QuotaScript::free(Vec::new()));
+    let scripts = crate::accounts::Scripts {
+        login: login.clone(),
+        quota: quota.clone(),
+        families: scripted(&directory).with(
+            "device",
+            ScriptedSubscription {
+                login,
+                quota,
+                directory: directory.clone(),
+                runs: None,
+            },
+        ),
+    };
+    let harness = Harness::new().with_families(scripts.families.clone());
     let (backend, master) = harness.start_set_up().await;
-    let entry = create(
-        &backend,
-        &master,
-        json!({ "source": "custom", "providerType": "scripted", "label": "Scripted", "apiKey": "k" }),
-    )
-    .await;
+    directory.answer(Ok(catalog(&["a", "b"])));
+    scripts.login.signs_in("first");
+    let entry = crate::accounts::device_entry(&backend, &master, &scripts).await;
+    let reads = directory.reads();
+    let of = |catalog: &ModelCatalog, id: &ProviderId| -> CatalogProvider {
+        catalog
+            .providers
+            .iter()
+            .find(|provider| provider.provider_id == *id)
+            .expect("the entry has a catalog")
+            .clone()
+    };
     let ids = |catalog: &ModelCatalog| -> Vec<String> {
-        catalog.providers[0]
+        of(catalog, &entry.id)
             .models
             .iter()
             .map(|model| model.model.id.clone())
             .collect()
     };
-    directory.answer(Ok(catalog(&["a", "b"])));
     let first = catalog_of(&backend, &master, "").await;
     assert_eq!(
-        (ids(&first), first.providers[0].stale, directory.reads()),
-        (vec!["a".to_owned(), "b".to_owned()], false, 1)
+        (ids(&first), of(&first, &entry.id).stale, directory.reads()),
+        (vec!["a".to_owned(), "b".to_owned()], false, reads.max(1))
     );
     assert_eq!(
-        first.providers[0].source_fetched_at,
+        of(&first, &entry.id).source_fetched_at,
         "2026-09-24T07:00:00.000Z".parse().unwrap()
     );
+    let reads = directory.reads();
     catalog_of(&backend, &master, "").await;
     assert_eq!(
         directory.reads(),
-        1,
+        reads,
         "a fresh record answers without the source"
     );
 
@@ -597,20 +620,21 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
         "the directory is down".into(),
     )));
     let failed = catalog_of(&backend, &master, "?refresh=true").await;
-    assert_eq!((ids(&failed).len(), failed.providers[0].stale), (3, true));
-    assert_eq!(failed.providers[0].warnings, ["the directory is down"]);
+    assert_eq!((ids(&failed).len(), of(&failed, &entry.id).stale), (3, true));
+    assert_eq!(of(&failed, &entry.id).warnings, ["the directory is down"]);
 
     // A restart serves the stored record before it asks the source.
+    let reads = directory.reads();
     backend.close().await;
     let backend = harness.start().await;
     let restored = catalog_of(&backend, &master, "").await;
-    assert_eq!((ids(&restored).len(), directory.reads()), (3, 3));
+    assert_eq!((ids(&restored).len(), directory.reads()), (3, reads));
 
     // Expired: the record at once, marked stale, while one refresh runs.
     harness.clock.advance(SignedDuration::from_mins(16));
     directory.answer(Ok(catalog(&["d"])));
     let expired = catalog_of(&backend, &master, "").await;
-    assert_eq!((ids(&expired).len(), expired.providers[0].stale), (3, true));
+    assert_eq!((ids(&expired).len(), of(&expired, &entry.id).stale), (3, true));
     let mut refreshed = expired;
     for _ in 0..100 {
         if ids(&refreshed) == ["d"] {
@@ -622,27 +646,32 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
     assert_eq!(
         (
             ids(&refreshed),
-            refreshed.providers[0].stale,
+            of(&refreshed, &entry.id).stale,
             directory.reads()
         ),
-        (vec!["d".to_owned()], false, 4)
+        (vec!["d".to_owned()], false, reads + 1)
     );
 
     // A configured list is read from the entry and never fetched.
-    let path = format!("/api/providers/{}", entry.id);
-    backend
-        .patch(&path, &master, json!({ "models": [configured("typed")] }))
-        .await;
-    let typed = catalog_of(&backend, &master, "?refresh=true").await;
+    let reads = directory.reads();
+    let typed = create(
+        &backend,
+        &master,
+        json!({ "source": "family", "providerType": "scripted", "apiKey": "k", "models": [configured("typed")] }),
+    )
+    .await;
+    let answer = catalog_of(&backend, &master, "?refresh=true").await;
+    let listed = of(&answer, &typed.id);
     assert_eq!(
-        (ids(&typed), typed.providers[0].stale, directory.reads()),
-        (vec!["typed".to_owned()], false, 4)
+        (
+            listed.models.iter().map(|model| model.model.id.as_str()).collect::<Vec<_>>(),
+            listed.stale,
+            listed.source_fetched_at,
+        ),
+        (vec!["typed"], false, demi_shared_types::Timestamp::UNIX_EPOCH)
     );
-    assert_eq!(
-        typed.providers[0].source_fetched_at,
-        demi_shared_types::Timestamp::UNIX_EPOCH
-    );
-    let model = &typed.providers[0].models[0];
+    assert_eq!(directory.reads(), reads + 1, "only the subscription's directory is read");
+    let model = &listed.models[0];
     assert_eq!(
         (
             model.selection.model.output_limit,
@@ -670,7 +699,7 @@ async fn tested(
     stream: String,
 ) -> RecordedRequest {
     let mut body = json!({
-        "source": "custom", "providerType": family, "label": family, "apiKey": "sk-2",
+        "source": "compatible", "providerType": family, "label": family, "apiKey": "sk-2",
         "baseUrl": vendor.url("/v1"), "models": [configured("m")]
     });
     if let Some(wire) = wire {
@@ -721,7 +750,7 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
         &backend,
         &master,
         json!({
-            "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+            "source": "compatible", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
             "baseUrl": vendor.url("/v1"),
             "models": [{ "id": "claude-opus-4-8", "displayName": "Claude Opus 4.8", "contextWindow": 1_000_000,
                 "outputLimit": null, "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null }]
@@ -863,7 +892,7 @@ async fn an_entry_whose_provider_cannot_be_built_answers_its_status_with_the_rea
         &backend,
         &master,
         json!({
-            "source": "custom", "providerType": "refusing", "label": "Broken", "apiKey": "key",
+            "source": "family", "providerType": "refusing", "label": "Broken", "apiKey": "key",
             "models": [configured("m")]
         }),
     )
@@ -914,7 +943,7 @@ async fn an_anthropic_compatible_vendor_receives_an_effort_as_a_token_budget() {
         &backend,
         &master,
         json!({
-            "source": "custom", "providerType": "anthropic", "label": "Anthropic", "apiKey": "key",
+            "source": "compatible", "providerType": "anthropic", "label": "Anthropic", "apiKey": "key",
             "baseUrl": vendor.url("/v1"), "models": [leveled]
         }),
     )
@@ -1135,12 +1164,12 @@ async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_
         .await;
     assert_eq!(status.status, StatusCode::OK);
 
-    // A custom endpoint with an empty list lacks both, in order; without
-    // an address it uses its family's default, which is never missing.
+    // The family's own vendor's entry with an empty list lacks both, in
+    // order; it uses its vendor's endpoint, which is never missing.
     let custom = create(
         &backend,
         &master,
-        json!({ "source": "custom", "providerType": "openai", "models": [] }),
+        json!({ "source": "family", "providerType": "openai", "models": [] }),
     )
     .await;
     assert_eq!(custom.label, "OpenAI");
@@ -1188,98 +1217,192 @@ async fn an_entry_added_with_only_its_kind_is_incomplete_until_what_it_lacks_is_
     backend.close().await;
 }
 
+/// A compatible entry is created with nothing but its kind and edited
+/// after: its protocol changes any time and keeps its endpoint, key and
+/// models, its key is optional and sent only when set, and its endpoint is
+/// what it cannot work without. One backend and a scripted vendor, three
+/// test requests; well under a second.
 #[tokio::test]
-async fn a_compatible_entry_lists_only_the_models_added_to_it_and_every_entry_stays_the_kind_it_was_added_as() {
+async fn a_compatible_entry_starts_empty_and_takes_its_protocol_endpoint_and_key_at_any_time() {
+    let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
 
-    // Anthropic's own vendor entry lists the family's built-in models; the
-    // same family at an endpoint the user gave lists none until one is added.
-    let vendor = create(
-        &backend,
-        &master,
-        json!({ "source": "custom", "providerType": "anthropic", "apiKey": "sk-ant-1" }),
-    )
-    .await;
-    let compatible = create(
-        &backend,
-        &master,
-        json!({
-            "source": "custom", "providerType": "anthropic", "apiKey": "sk-proxy",
-            "baseUrl": "https://proxy.example/v1"
-        }),
-    )
-    .await;
-    // Whichever kind it is, an entry's read model says where its requests go.
+    // Created at once as Anthropic Messages with no endpoint, key or
+    // models; the second takes the first free name.
+    let compatible = create(&backend, &master, json!({ "source": "compatible" })).await;
     assert_eq!(
-        (vendor.compatible, vendor.endpoint.as_ref().map(|url| url.as_str())),
-        (false, Some("https://api.anthropic.com/v1"))
+        (
+            compatible.label.as_str(),
+            compatible.provider_type.as_str(),
+            compatible.wire_api,
+            compatible.compatible,
+            compatible.endpoint.clone(),
+            compatible.has_api_key,
+            compatible.models.clone(),
+        ),
+        ("Compatible API", "anthropic", None, true, None, false, None)
     );
-    assert_eq!(
-        (compatible.compatible, compatible.endpoint.as_ref().map(|url| url.as_str())),
-        (true, Some("https://proxy.example/v1"))
-    );
-    let catalog = catalog_of(&backend, &master, "").await;
-    let models_of = |id: &ProviderId| {
-        catalog
-            .providers
-            .iter()
-            .find(|provider| &provider.provider_id == id)
-            .map(|provider| provider.models.len())
-    };
-    assert!(models_of(&vendor.id).unwrap() > 0, "{catalog:?}");
-    assert_eq!(models_of(&compatible.id), Some(0), "{catalog:?}");
-    // With nothing to infer with, the entry is incomplete rather than failed.
+    let second = create(&backend, &master, json!({ "source": "compatible" })).await;
+    assert_eq!(second.label, "Compatible API (2)");
+    // Its endpoint and a model are what it lacks; a key it may never need.
     assert_eq!(
         availability_of(&backend, &master, &compatible.id).await,
-        setup(&["models"])
+        setup(&["endpoint", "models"])
     );
 
-    // A model added to it is the whole of its catalog.
+    // An endpoint and a model make it available, without a key, and its
+    // requests then carry none.
     let path = format!("/api/providers/{}", compatible.id);
-    let added = backend
-        .patch(&path, &master, json!({ "models": [configured("claude-sonnet-4-6")] }))
-        .await;
-    assert_eq!(added.status, StatusCode::OK);
-    let catalog = catalog_of(&backend, &master, "").await;
-    let ids: Vec<_> = catalog
-        .providers
-        .iter()
-        .find(|provider| provider.provider_id == compatible.id)
-        .unwrap()
-        .models
-        .iter()
-        .map(|model| model.model.id.clone())
-        .collect();
-    assert_eq!(ids, ["claude-sonnet-4-6"]);
-
-    // A compatible endpoint is changed, never removed; a vendor entry's is
-    // never set; a vendor from the list brings its own.
-    let moved = backend
-        .patch(&path, &master, json!({ "baseUrl": "https://other.example/v1" }))
-        .await;
-    assert_eq!(
-        moved.json::<ProviderAnswer>().provider.endpoint.map(|url| url.as_str().to_owned()),
-        Some("https://other.example/v1".to_owned())
-    );
-    let removed = backend
-        .patch(&path, &master, json!({ "baseUrl": null }))
-        .await;
-    assert_eq!(
-        removed.refusal(),
-        (StatusCode::BAD_REQUEST, ErrorCode::EndpointKind)
-    );
     let set = backend
         .patch(
-            &format!("/api/providers/{}", vendor.id),
+            &path,
             &master,
-            json!({ "baseUrl": "https://proxy.example/v1" }),
+            json!({ "baseUrl": vendor.url("/v1"), "models": [configured("m")] }),
+        )
+        .await;
+    assert_eq!(set.status, StatusCode::OK);
+    assert_eq!(
+        availability_of(&backend, &master, &compatible.id).await,
+        json!({ "type": "available" })
+    );
+    let test = format!("{path}/test");
+    vendor.respond(answered());
+    let passed = backend
+        .post(&test, Some(&master), json!({ "modelId": "m" }))
+        .await
+        .json::<TestResult>();
+    assert!(matches!(passed, TestResult::Passed { .. }), "{passed:?}");
+    let sent = vendor.requests().pop().unwrap();
+    assert_eq!((sent.uri.path(), sent.header("x-api-key")), ("/v1/messages", None));
+
+    // A key saved later is sent; the protocol changes and keeps the
+    // endpoint, the key and the models, and the next request speaks it.
+    let keyed = backend
+        .patch(&path, &master, json!({ "apiKey": "sk-proxy" }))
+        .await;
+    assert!(keyed.json::<ProviderAnswer>().provider.has_api_key);
+    let switched = backend
+        .patch(
+            &path,
+            &master,
+            json!({ "providerType": "openai", "wireApi": "chat-completions" }),
+        )
+        .await
+        .json::<ProviderAnswer>()
+        .provider;
+    assert_eq!(
+        (
+            switched.provider_type.as_str(),
+            switched.wire_api,
+            switched.endpoint.as_ref().map(|url| url.as_str().to_owned()),
+            switched.has_api_key,
+            switched.models.as_ref().map(|models| models.0.len()),
+        ),
+        (
+            "openai",
+            Some(WireApi::ChatCompletions),
+            Some(vendor.url("/v1")),
+            true,
+            Some(1)
+        )
+    );
+    vendor.respond(MockResponse::event_stream(format!(
+        "{}data: [DONE]\n\n",
+        sse_body(&[json!({ "choices": [{ "delta": { "content": "ok" }, "finish_reason": "stop" }] })])
+    )));
+    let passed = backend
+        .post(&test, Some(&master), json!({ "modelId": "m" }))
+        .await
+        .json::<TestResult>();
+    assert!(matches!(passed, TestResult::Passed { .. }), "{passed:?}");
+    let sent = vendor.requests().pop().unwrap();
+    assert_eq!(
+        (sent.uri.path(), sent.header("authorization")),
+        ("/v1/chat/completions", Some("Bearer sk-proxy"))
+    );
+    // Back to Anthropic Messages: the wire goes with the family.
+    let back = backend
+        .patch(&path, &master, json!({ "providerType": "anthropic" }))
+        .await
+        .json::<ProviderAnswer>()
+        .provider;
+    assert_eq!((back.provider_type.as_str(), back.wire_api), ("anthropic", None));
+
+    // The key and the endpoint can be removed again; without an endpoint
+    // the entry is incomplete once more.
+    let removed = backend
+        .patch(&path, &master, json!({ "apiKey": null, "baseUrl": null }))
+        .await
+        .json::<ProviderAnswer>()
+        .provider;
+    assert_eq!((removed.has_api_key, removed.endpoint), (false, None));
+    assert_eq!(
+        availability_of(&backend, &master, &compatible.id).await,
+        setup(&["endpoint"])
+    );
+
+    // A model list whose ids repeat is refused as such.
+    let repeated = backend
+        .patch(
+            &path,
+            &master,
+            json!({ "models": [configured("m"), configured("m")] }),
         )
         .await;
     assert_eq!(
-        set.refusal(),
-        (StatusCode::BAD_REQUEST, ErrorCode::EndpointKind)
+        repeated.refusal(),
+        (StatusCode::BAD_REQUEST, ErrorCode::DuplicateModel)
     );
+
+    // A model added by Custom has no window yet: it is kept, and listed
+    // with its window unknown.
+    let mut custom = configured("custom");
+    custom["contextWindow"] = Value::Null;
+    let kept = backend
+        .patch(&path, &master, json!({ "models": [configured("m"), custom] }))
+        .await;
+    assert_eq!(kept.status, StatusCode::OK, "{}", String::from_utf8_lossy(&kept.body));
+    let listed = catalog_of(&backend, &master, "").await;
+    let windows: Vec<_> = listed
+        .providers
+        .iter()
+        .find(|provider| provider.provider_id == compatible.id)
+        .expect("the entry is listed")
+        .models
+        .iter()
+        .map(|model| (model.model.id.as_str(), model.model.context_window))
+        .collect();
+    assert_eq!(windows, [("m", Some(64_000)), ("custom", None)]);
+
+    // A vendor entry, the family's own included, keeps its vendor's
+    // endpoint and protocol.
+    let anthropic = create(
+        &backend,
+        &master,
+        json!({ "source": "family", "providerType": "anthropic", "apiKey": "sk-ant-1" }),
+    )
+    .await;
+    assert_eq!(
+        (
+            anthropic.compatible,
+            anthropic.vendor_id.as_deref(),
+            anthropic.endpoint.as_ref().map(|url| url.as_str())
+        ),
+        (false, Some("anthropic"), Some("https://api.anthropic.com/v1"))
+    );
+    let own = format!("/api/providers/{}", anthropic.id);
+    for change in [
+        json!({ "baseUrl": "https://proxy.example/v1" }),
+        json!({ "providerType": "openai" }),
+    ] {
+        let refused = backend.patch(&own, &master, change.clone()).await;
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::BAD_REQUEST, ErrorCode::EndpointKind),
+            "{change}"
+        );
+    }
     let by_vendor = backend
         .post(
             "/api/providers",

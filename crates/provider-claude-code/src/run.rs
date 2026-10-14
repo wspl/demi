@@ -24,6 +24,7 @@ use futures_util::future::LocalBoxFuture;
 use futures_util::stream::{self, Stream};
 
 use crate::Shared;
+use crate::failure::read_failure;
 use crate::live::{LiveCli, Next};
 use crate::output::{ContentBlock, Line, Printed, StreamEvent, TurnEnd};
 use crate::placement::Placement;
@@ -281,6 +282,10 @@ fn run(
             // Whether the run has yielded anything of this attempt, which a
             // second attempt would then repeat.
             let mut yielded = false;
+            // The line the CLI made up for a call the vendor refused, as
+            // received, which the failure's record keeps beside the result:
+            // only it carries the refusal's reset.
+            let mut refusal: Option<String> = None;
             loop {
                 let (text, line) = match live.next(&cancel).await {
                     Next::Cancelled => {
@@ -331,6 +336,7 @@ fn run(
                     // A notice of a refused call repeats the failure the result
                     // reports, so the failure shows once; it writes no block.
                     Some(Line::Assistant(message)) if message.is_refusal_notice() => {
+                        refusal = Some(text);
                         let id = message.message_id();
                         for printed in message.content() {
                             live.mirror.printed(id.clone(), printed.raw, false);
@@ -463,19 +469,22 @@ fn run(
                             // which no request measured.
                             TurnEnd::Answered => yield ProviderEvent::response(usage, crate::FAMILY, &request.model_id),
                             TurnEnd::Failed { message, code, status } => {
+                                let record = match refusal {
+                                    Some(refusal) => format!("{refusal}\n{text}"),
+                                    None => text,
+                                };
                                 let mut failure = ProviderFailure {
                                     code,
-                                    ..ProviderFailure::protocol(message, text)
+                                    ..ProviderFailure::protocol(message, record)
                                 };
                                 if let Some(diagnostics) = &mut failure.diagnostics {
                                     diagnostics.http_status = status;
                                 }
                                 // A usage limit waits until its window
                                 // resets, longer than any retry waits.
-                                let shared = runtime.shared.clone();
                                 let failure = failure.with_retry_wait(
-                                    |diagnostics, received_at| shared.read_failure(diagnostics, received_at),
-                                    shared.clock.now(),
+                                    read_failure,
+                                    runtime.shared.clock.now(),
                                 );
                                 yield ProviderEvent::Error(failure);
                             }

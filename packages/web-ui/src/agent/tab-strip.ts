@@ -1,7 +1,14 @@
 /** Chrome-like tab strip motion: lock the current width, then collapse or grow in flow. */
 
+import type { InjectionKey } from 'vue'
 import { clamp } from '@demicodes/utils'
 import { prefersReducedMotion } from '../ui/stream-reveal'
+
+/**
+ * Provided by a window whose tabs narrow to their icons on a phone (`SessionOverlay`: the Agents and Running
+ * windows): there only the selected `TabItem` shows its name, as Chrome's narrowed tabs show the active one's title.
+ */
+export const iconTabsKey: InjectionKey<true> = Symbol('icon-tabs')
 
 export const TAB_TRANSITION = 'tabs'
 export const TAB_WIDTH_MS = 200

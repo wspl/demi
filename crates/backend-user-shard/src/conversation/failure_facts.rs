@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use demi_conversation_socket_protocol::Failures;
-use demi_provider_common::Provider;
+use demi_provider_common::{ErrorCode, Provider};
 use demi_shared_types::Block;
 use demi_web_api_protocol::ids::ProviderId;
 
@@ -37,10 +37,18 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
             readers.insert(provider.clone(), reader);
         }
         if let Some(Some(reader)) = readers.get(provider) {
-            failures.insert(
-                error.id.clone(),
-                reader.read_failure(diagnostics, error.created_at),
-            );
+            let mut facts = reader.read_failure(diagnostics, error.created_at);
+            // A usage limit whose failure names no moment can be used again
+            // when the account's used-up windows reset, as its quota shows
+            // (`failures-and-recovery.md` § The unfinished turn).
+            if facts.retry_at.is_none()
+                && error.code.as_deref() == Some(ErrorCode::UsageLimit.as_str())
+            {
+                facts.retry_at = reader
+                    .quota()
+                    .and_then(|quota| quota.used_up_until(error.created_at));
+            }
+            failures.insert(error.id.clone(), facts);
         }
     }
     (!failures.is_empty()).then_some(failures)

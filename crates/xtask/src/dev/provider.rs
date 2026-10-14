@@ -101,7 +101,7 @@ impl DevProvider {
     /// Development that speaks Chat Completions, with the one model.
     pub fn entry(&self) -> serde_json::Value {
         json!({
-            "source": "custom",
+            "source": "compatible",
             "providerType": "openai",
             "wireApi": "chat-completions",
             "label": "Development",

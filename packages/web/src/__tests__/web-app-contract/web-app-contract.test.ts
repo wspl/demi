@@ -96,7 +96,7 @@ let scripted: Promise<ModelSelection> | undefined
 function scriptedModel(): Promise<ModelSelection> {
   return scripted ??= (async () => {
     const entry: CreateProvider = {
-      source: 'custom',
+      source: 'compatible',
       providerType: 'anthropic',
       label: 'Scripted',
       apiKey: 'sk-ant-contract',

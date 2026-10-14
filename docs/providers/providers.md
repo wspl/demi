@@ -772,7 +772,7 @@ Providers once it has two accounts:
 
 | Rotation | Which account an agent uses |
 |---|---|
-| Manual, the default | The active account, as without rotation. A usage limit stops the turn ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)); the dock then also offers *Continue with sam@example.com*, the account with the most room, which makes it active and resumes. |
+| Manual, the default | The active account, as without rotation. A usage limit stops the turn ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)); the dock then also offers *Continue with sam@example.com*, the account with the most room as the page reads the failure ([Failure facts](../backend/backend.md#failure-facts)), which makes it active and resumes. |
 | In Order | The first account in the list's order that is not used up; the user orders the list by dragging. One account is used until it runs out, then the next. |
 | Balanced | The account with the most room, by the rule below. |
 
@@ -795,7 +795,7 @@ there. It takes an account again only:
   is used up until the moment the failure or the account's quota names, or
   for 30 minutes when neither names one; the agent takes another account
   and the same request is sent again at once, which counts as no retry, and
-  the transcript says so in a neutral line, *alex@example.com reached its
+  the transcript says so in a neutral line (an `account_switch` block), *alex@example.com reached its
   5h session limit, resetting at 9:00 PM; continuing with
   sam@example.com*. When every account is used up, the failure ends the turn
   as it would with Manual, its moment the earliest one among the accounts;
@@ -811,7 +811,8 @@ directory of its own as every process has
 accounts' processes run side by side on one Cloud without sharing a token,
 a session file or an account record (CLI 2.1.296, three runs of two
 concurrent processes on one session id). The context indicator's card shows
-the windows of the account the agent uses
+the windows of the account the agent uses, which the `context_usage` frame
+names
 ([Vendor quota](usage-and-quota.md#vendor-quota)). The active account stays
 what model discovery and a connection test use. An agent's account is kept
 with its session's state, so a restart keeps it.
@@ -825,7 +826,8 @@ used with 3 hours to go has 0.2 / 0.6 = 0.33; a weekly window 30% used with
 2 days to go has 0.7 / 0.29 = 2.4. An account's room is its smallest
 window's, so the tightest window decides, and a window that resets soon
 counts as roomy, since what is left of it is lost at the reset. A window
-not yet started, or reported without a reset time, has full room; a window
+not yet started, or reported without a reset time or a period length, has a room of 1, all
+of it left over all of its period; a window
 used up before its reset leaves the account out, and so does a window over
 90% used while another account has room. Among the accounts within a tenth
 of the best room, an agent takes the one fewest running agents use, then

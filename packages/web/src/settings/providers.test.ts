@@ -99,14 +99,14 @@ beforeEach(async () => {
       const entry = {
         id: nextId,
         kind: 'api_key' as const,
-        providerType: body.source === 'custom' ? String(body.providerType) : 'google',
-        label: body.source === 'vendor' ? 'Google' : 'OpenAI',
+        providerType: body.source === 'compatible' ? 'anthropic' : 'google',
+        label: body.source === 'vendor' ? 'Google' : 'Compatible API',
         wireApi: null,
         vendorId: body.source === 'vendor' ? String(body.vendorId) : null,
-        compatible: false,
+        compatible: body.source === 'compatible',
         endpoint: null,
         hasApiKey: false,
-        models: body.source === 'custom' ? [] : null,
+        models: null,
         createdAt: '2026-09-11T00:00:00.000Z',
       }
       // The entry joins the product state as the channel brings it.
@@ -193,19 +193,92 @@ test('adding a vendor asks only its kind: the entry joins the list at once, sele
   expect(listed()).toEqual(['codex', 'configured', 'created'])
 })
 
-test('adding a compatible API sends its family, its wire, its endpoint and the label, and the key only when given', async () => {
+test('adding a compatible API sends only its kind, and its protocol changes by family and wire', async () => {
   const settings = useProviderSettings()
-  settings.addCompatible({ wireApi: 'openai-chat', label: 'Lab', baseUrl: 'http://lab.example/v1', apiKey: '' })
+  settings.addCompatible()
   await waitFor(() => created.length === 1)
-  expect(created).toEqual([
-    { source: 'custom', providerType: 'openai', wireApi: 'chat-completions', label: 'Lab', baseUrl: 'http://lab.example/v1' },
-  ])
-  nextId = 'second'
-  settings.addCompatible({ wireApi: 'anthropic-messages', label: 'Proxy', baseUrl: 'https://proxy.example/v1', apiKey: 'sk-1' })
-  await waitFor(() => created.length === 2)
-  expect(created[1]).toEqual({
-    source: 'custom', providerType: 'anthropic', label: 'Proxy', baseUrl: 'https://proxy.example/v1', apiKey: 'sk-1',
-  })
+  expect(created).toEqual([{ source: 'compatible' }])
+
+  const sent: Record<string, unknown>[] = []
+  write = async (body) => {
+    sent.push(body)
+    return Response.json({})
+  }
+  const entry = () => settings.providers.find((provider) => provider.id === 'configured')!
+  settings.change(entry(), { wireApi: 'openai-chat' })
+  await idle()
+  settings.change(entry(), { wireApi: 'anthropic-messages' })
+  await idle()
+  expect(sent).toEqual([{ providerType: 'openai', wireApi: 'chat-completions' }, { providerType: 'anthropic' }])
+})
+
+test('a model Custom adds is saved at once without a context window, and a reload keeps it', async () => {
+  const sent: Record<string, unknown>[] = []
+  write = async (body) => {
+    sent.push(body)
+    // The backend keeps the list, and its catalog lists it as configured.
+    const models = body.models as { id: string; displayName: string; contextWindow: number | null }[]
+    state.providers[0]!.models = models as never
+    catalogProviders = [{
+      providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
+      warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
+      availability: { type: 'available' },
+      models: models.map((model) => ({
+        id: model.id, displayName: model.displayName, description: null, contextWindow: model.contextWindow,
+        outputLimit: null, supportsTools: true, acceptedExtensions: null, supportsReasoning: false,
+        supportedThinkingEfforts: [], canDisableThinking: null, serviceTiers: [], defaultServiceTierId: null, cost: null,
+        selection: {
+          providerId: 'configured', thinking: null, serviceTierId: null,
+          model: { id: model.id, name: model.displayName, contextWindow: 0, outputLimit: null, thinking: [], acceptedExtensions: null },
+        },
+      })),
+    }]
+    return Response.json({})
+  }
+  const settings = useProviderSettings()
+  const entry = () => settings.providers.find((provider) => provider.id === 'configured')!
+  await settings.saveModel(entry(), {
+    id: 'my-model', name: 'my-model', contextWindow: null, outputLimit: null, efforts: [], extensions: null, fastTier: null,
+  }, null)
+  await idle()
+  expect(sent).toEqual([{
+    models: [{
+      id: 'my-model', displayName: 'my-model', contextWindow: null, outputLimit: null,
+      thinkingEfforts: [], acceptedExtensions: null, fastTier: null,
+    }],
+  }])
+
+  // A new page reads it back from the backend, its window still unknown.
+  useProduct().stop()
+  disposePinia(pinia)
+  channels.restore()
+  pinia = createPinia()
+  setActivePinia(pinia)
+  channels = playChannels()
+  useProduct().start()
+  channels.last().connect(state)
+  const reloaded = useProviderSettings()
+  await waitFor(
+    () => reloaded.providers.find((provider) => provider.id === 'configured')?.models.length === 1,
+    () => 'the saved model was not listed after the reload',
+  )
+  expect(reloaded.providers.find((provider) => provider.id === 'configured')!.models.map((model) => [model.id, model.contextWindow]))
+    .toEqual([['my-model', null]])
+})
+
+test('emptying a saved key or endpoint and leaving it removes them', async () => {
+  const settings = useProviderSettings()
+  const sent: Record<string, unknown>[] = []
+  write = async (body) => {
+    sent.push(body)
+    return Response.json({})
+  }
+  const entry = () => settings.providers.find((provider) => provider.id === 'configured')!
+  settings.change(entry(), { apiKey: '' })
+  await idle()
+  settings.change(entry(), { baseUrl: '' })
+  await idle()
+  expect(sent).toEqual([{ apiKey: null }, { baseUrl: null }])
 })
 
 test('the page shows an entry’s kind and effective endpoint as the read model says them, and a compatible API’s list is its own', async () => {

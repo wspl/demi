@@ -676,8 +676,8 @@ affects no other. The kinds, and when each changes:
 | `file(path)` | The file is created, written, removed or renamed, or its metadata changes; or a folder above it is removed or renamed |
 | `folder(path, names)` | An entry of it comes, goes or is renamed, by the entry's identity, its device and inode, so a file written in place is no new entry; or the folder or one above it is removed or renamed |
 | `folder(path, details)` | As `names`, or an entry's content or metadata changes, which moves its size or its time |
-| `worktree(root)` | A path under `root` that git does not ignore changes, metadata included, since a changed executable bit changes `git status`; in the repository's git directory the index, `HEAD`, a ref under `refs/`, `packed-refs`, `config` or `info/exclude` changes; or a `.gitignore` or `.gitattributes` changes. Outside a repository it changes only when a `.git` appears under `root` |
-| `head(root)` | `HEAD`, a ref under `refs/` or `packed-refs` of `root`'s repository changes |
+| `worktree(root)` | A path under `root` that git does not ignore changes, metadata included, since a changed executable bit changes `git status`; in the repository's git directory the index, `HEAD`, a ref under `refs/`, `packed-refs` (in a linked worktree, the refs of the common git directory), `config` or `info/exclude` changes; or a `.gitignore` or `.gitattributes` changes. Outside a repository it changes only when a `.git` appears under `root` |
+| `head(root)` | `HEAD`, a ref under `refs/` or `packed-refs` of `root`'s repository changes; in a linked worktree `HEAD` is the worktree's own and the refs are in the common git directory, both watched |
 
 A git directory concerns only its own repository: in a checkout with nested
 repositories, such as Chromium's, a commit in `src/v8` changes `src/v8`'s

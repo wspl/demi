@@ -18,12 +18,12 @@ import type { DeviceReport } from '@demicodes/web-ui/auth/device-unlock'
 import GalleryDeviceReport from '../components/GalleryDeviceReport.vue'
 import { galleryPasswordChoice, type PasswordChoiceScript } from '../fixtures/password-choice'
 import ProviderLoginDialog, { type ProviderLoginPhase } from '@demicodes/web-ui/settings/ProviderLoginDialog.vue'
-import AddCompatibleDialog from '@demicodes/web-ui/settings/AddCompatibleDialog.vue'
+import AddModelDialog from '@demicodes/web-ui/settings/AddModelDialog.vue'
 import AddProviderDialog from '@demicodes/web-ui/settings/AddProviderDialog.vue'
 import ModelDialog from '@demicodes/web-ui/settings/ModelDialog.vue'
 import AddSkillSourceDialog from '@demicodes/plugin-skills/AddSkillSourceDialog.vue'
 import type { AddSourceAnswer } from '@demicodes/plugin-skills/types'
-import { COMPATIBLE_WIRE_APIS, WIRE_API_LABELS, type SettingsModelDraft, type SettingsVendor } from '@demicodes/web-ui/settings/types'
+import type { SettingsModelDraft, SettingsVendor } from '@demicodes/web-ui/settings/types'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import DeviceRenameDialog from '@demicodes/web-ui/devices/DeviceRenameDialog.vue'
 import DeviceRevokeDialog from '@demicodes/web-ui/devices/DeviceRevokeDialog.vue'
@@ -242,15 +242,6 @@ const model: SettingsModelDraft = {
   extensions: ['.png', '.jpg', '.pdf'],
   fastTier: null,
 }
-const emptyModel: SettingsModelDraft = {
-  id: '',
-  name: '',
-  contextWindow: null,
-  outputLimit: null,
-  efforts: [],
-  extensions: null,
-  fastTier: null,
-}
 const providerCatalogs: { variant: string; vendors: SettingsVendor[]; load: 'loading' | 'ready' }[] = [
   { variant: 'catalog loaded', vendors: mockVendors, load: 'ready' },
   { variant: 'catalog loading', vendors: [], load: 'loading' },
@@ -260,28 +251,36 @@ const loginPhases = [
   ...codexPhases.map((item) => ({ ...item, vendor: 'Codex' })),
   ...grokPhases.map((item) => ({ ...item, vendor: 'Grok Build' })),
 ]
-/** A match models.dev lists, which choosing in Add Model fills the whole model from. */
+/** A match models.dev lists, as choosing it in Add Model adds it and Edit Model opens it. */
 const matchedModel = mockModelMatches[0]!.model
+/** The ids of the other models of the specimen's provider, which Edit Model's id may not take. */
+const otherIds = ['claude-opus-5-5', 'claude-haiku-5']
 const modelEditors: {
   variant: string
-  mode: 'create' | 'edit' | 'view'
+  mode: 'edit' | 'view'
   model: SettingsModelDraft
-  /** Whether the dialog searches models.dev as the product's does. */
-  search?: boolean
   error?: ShownError
 }[] = [
   { variant: 'view', mode: 'view', model },
-  { variant: 'add · empty', mode: 'create', model: emptyModel, search: true },
-  { variant: 'add · name typed, matches listed', mode: 'create', model: { ...emptyModel, name: 'gemini fl' }, search: true },
-  { variant: 'add · filled from a match', mode: 'create', model: matchedModel, search: true },
-  {
-    variant: 'add · refused',
-    mode: 'create',
-    model: matchedModel,
-    search: true,
-    error: correction('The model gemini-3.8-flash is already in Google’s list.'),
-  },
   { variant: 'edit · Save works a moment', mode: 'edit', model },
+  { variant: 'edit · just added from a match', mode: 'edit', model: matchedModel },
+  {
+    variant: 'edit · just added as Custom, no context window yet',
+    mode: 'edit',
+    model: { id: 'my-model', name: 'my-model', contextWindow: null, outputLimit: null, efforts: [], extensions: [], fastTier: null },
+  },
+  { variant: 'edit · an ID another model has', mode: 'edit', model: { ...model, id: 'claude-opus-5-5' } },
+  {
+    variant: 'edit · refused',
+    mode: 'edit',
+    model,
+    error: correction('Another model of this provider has this ID'),
+  },
+]
+const modelSearches: { variant: string; adding?: boolean; error?: ShownError }[] = [
+  { variant: 'search' },
+  { variant: 'adding the model chosen', adding: true },
+  { variant: 'refused', error: requestFailure('The provider is busy. Try again in a moment.') },
 ]
 const pairingPhases: { variant: string; phase: PairingPhase; installCommands?: DeviceInstallCommands }[] = [
   { variant: 'start the runner', phase: { kind: 'setup' } },
@@ -518,7 +517,7 @@ const resetPhases: {
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="Add Provider" note="A vendor from the catalog, whose endpoint and models are its own, or a compatible API: a proxy or a server speaking one of the protocols Demi implements, which lists the models you add. A protocol goes on to its endpoint and key.">
+      <GallerySection title="Add Provider" note="A vendor from the catalog, whose endpoint and models are its own, or a compatible API: a proxy or a server speaking one of the protocols Demi implements, which lists the models you add. Choosing either creates the entry at once, with nothing asked first; its page sets the rest.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen
             v-for="catalog in providerCatalogs"
@@ -533,24 +532,9 @@ const resetPhases: {
                 :vendors="catalog.vendors"
                 :load="catalog.load"
                 @close="close"
-                @add="(vendor) => finish(close, `Add ${vendor.name}`)"
-                @add-compatible="(wireApi) => finish(close, `Ask the Endpoint of a Compatible API (${WIRE_API_LABELS[wireApi]})`)"
+                @add="(vendor) => finish(close, `Add ${vendor.name} and Show Its Page`)"
+                @add-compatible="finish(close, 'Add a Compatible API and Show Its Page')"
                 @retry="productWould('Load the Provider Catalog Again')"
-              />
-            </GalleryDialogFrame>
-          </GallerySpecimen>
-        </div>
-      </GallerySection>
-      <GallerySection title="Add Compatible API" note="After the protocol: the name, which is the protocol's own until given, the endpoint, which an http or https address must fill before Add, and the key, which may come later. The new entry lists no model until one is added.">
-        <div class="grid items-start gap-6 lg:grid-cols-2">
-          <GallerySpecimen v-for="wireApi in COMPATIBLE_WIRE_APIS" :key="wireApi" wide :variant="WIRE_API_LABELS[wireApi]">
-            <GalleryDialogFrame v-slot="{ open, close }">
-              <AddCompatibleDialog
-                :is-open="open"
-                :overlay-store="appOverlayStore"
-                :wire-api="wireApi"
-                @close="close"
-                @add="(draft) => finish(close, `Add ${draft.label}`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>
@@ -574,7 +558,24 @@ const resetPhases: {
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="Model" note="A model of a provider: read-only from a catalog, edited, or added. Add Model asks for the name first: typing searches models.dev, the list under the field offers Custom first and then the matches with their vendor and context window, the arrows and Return choose, Escape puts the list away. Choosing a match fills every field, still editable; Custom shows them empty but for the typed name. Add saves the model, and a refusal shows under the fields in the backend’s words.">
+      <GallerySection title="Add Model" note="Add Model is a search and nothing else: typing searches models.dev, and the list under the field offers Custom first, with the typed text, and then the matches with their vendor and context window; the arrows and Return choose, Escape puts the list away. Choosing a row adds the model at once and opens it in Edit Model; a refusal shows under the field.">
+        <div class="grid items-start gap-6 xl:grid-cols-2">
+          <GallerySpecimen v-for="search in modelSearches" :key="search.variant" wide :variant="search.variant">
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <AddModelDialog
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                :search="searchMockModels"
+                :adding="search.adding"
+                :error="search.error"
+                @close="close"
+                @add="(added) => finish(close, `Add ${added.name || added.id} and Open It in Edit Model`)"
+              />
+            </GalleryDialogFrame>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+      <GallerySection title="Edit Model" note="The one dialog of every model of a provider’s own list, the one just added included: its ID, name, context window, output limit, efforts, Fast tier and files, in that order, every field editable. An ID another model of the provider has is refused under the field and Save waits; a model without a context window, as Custom adds one, saves with its window unknown. Save keeps the change, Cancel drops it, Delete Model asks before the model goes. A catalog’s model shows its facts to read.">
         <div class="grid items-start gap-6 xl:grid-cols-2">
           <GallerySpecimen v-for="editor in modelEditors" :key="editor.variant" wide :variant="editor.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -584,9 +585,10 @@ const resetPhases: {
                 :mode="editor.mode"
                 :model="editor.model"
                 :error="editor.error"
-                :search="editor.search ? searchMockModels : undefined"
+                :taken-ids="otherIds"
                 @close="close"
                 @save="(saved) => finishSlowly(close, `Save ${saved.name || saved.id}`)"
+                @delete="finish(close, `Ask Before Deleting ${editor.model.name || editor.model.id}`)"
               />
             </GalleryDialogFrame>
           </GallerySpecimen>

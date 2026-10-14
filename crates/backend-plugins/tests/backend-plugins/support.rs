@@ -261,7 +261,7 @@ async fn demi_commands() -> (CommandSet, TempDir) {
 /// reaches no Host.
 pub async fn user_plugins(registry: Registry) -> (UserPlugins, TempDir) {
     let data = tempfile::tempdir().unwrap();
-    let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(SystemClock))
+    let control = ControlService::open(&data.path().join("control.sqlite"), Arc::new(SystemClock), std::sync::Arc::new(demi_backend_database::providers::NoSealedConfigs))
         .await
         .unwrap();
     let user = UserId::try_from("u1").unwrap();
@@ -292,7 +292,7 @@ impl Backend {
     pub async fn start(registry: Registry, roots: Vec<reqwest::Certificate>) -> Self {
         let data = tempfile::tempdir().unwrap();
         let control =
-            ControlService::open(&data.path().join("control.sqlite"), Arc::new(SystemClock))
+            ControlService::open(&data.path().join("control.sqlite"), Arc::new(SystemClock), std::sync::Arc::new(demi_backend_database::providers::NoSealedConfigs))
                 .await
                 .unwrap();
         Self {

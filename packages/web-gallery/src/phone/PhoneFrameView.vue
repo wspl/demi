@@ -160,6 +160,18 @@ function pressChip(label: RegExp): void {
   chip?.click()
 }
 
+/** Taps the tab whose name matches once the window shows it, as a finger would: a tab selects as the press goes down. */
+async function selectTab(name: RegExp, tries = 120): Promise<void> {
+  const tab = [...document.querySelectorAll<HTMLElement>('[role=tab]')].find((element) => name.test(element.textContent ?? ''))
+  if (tab) {
+    tab.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerType: 'touch' }))
+    await nextTick()
+  } else if (tries > 0) {
+    await new Promise((resolve) => requestAnimationFrame(resolve))
+    await selectTab(name, tries - 1)
+  }
+}
+
 // Each scene opens what it shows, as a tap would.
 onMounted(async () => {
   await nextTick()
@@ -203,6 +215,12 @@ onMounted(async () => {
       break
     case 'running':
       pressChip(/Running/)
+      break
+    case 'agents-failed':
+      // The second child's tab is selected, then the child fails: a finished child's tab stays while it is selected.
+      pressChip(/Agents?$/)
+      await selectTab(/Check the logout path/)
+      session.subagents.find((agent) => agent.id === 'ag-logout')!.phase = 'error'
       break
     case 'settings':
       settingsOpen.value = true

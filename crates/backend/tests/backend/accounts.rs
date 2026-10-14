@@ -685,7 +685,7 @@ async fn a_probe_that_would_spend_inference_is_refused_and_an_api_key_entry_has_
         .post(
             "/api/providers",
             Some(&master),
-            json!({ "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "k" }),
+            json!({ "source": "family", "providerType": "anthropic", "label": "Work", "apiKey": "k" }),
         )
         .await
         .json::<ProviderAnswer>()
@@ -871,7 +871,7 @@ async fn a_page_learns_a_login_completed_no_sooner_than_its_account() {
         .post(
             "/api/providers",
             Some(&master),
-            json!({ "source": "custom", "providerType": "openai", "wireApi": "chat-completions", "label": "Lab", "baseUrl": "http://lab.example/v1" }),
+            json!({ "source": "compatible", "providerType": "openai", "wireApi": "chat-completions", "label": "Lab", "baseUrl": "http://lab.example/v1" }),
         )
         .await;
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));

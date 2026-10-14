@@ -167,7 +167,7 @@ async fn thinking_before_a_transient_failure_is_unwound_while_text_makes_it_term
 }
 
 #[tokio::test(flavor = "local", start_paused = true)]
-async fn four_transient_failures_end_the_turn_with_the_last_and_a_long_vendor_wait_is_not_retried()
+async fn four_transient_failures_end_the_turn_with_the_last_and_a_long_wait_or_a_usage_limit_is_not_retried()
 {
     let overloaded = || Turn::Events(vec![failure(Some(ErrorCode::Overloaded), None)]);
     let provider = ScriptedRuntime::new([
@@ -179,6 +179,8 @@ async fn four_transient_failures_end_the_turn_with_the_last_and_a_long_vendor_wa
             Some(ErrorCode::RateLimit),
             Some(Duration::from_secs(31)),
         )]),
+        // A used-up account names no wait, and no wait would fix it.
+        Turn::Events(vec![failure(Some(ErrorCode::UsageLimit), None)]),
     ]);
     let store = MemoryTreeStore::new();
     let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
@@ -196,6 +198,7 @@ async fn four_transient_failures_end_the_turn_with_the_last_and_a_long_vendor_wa
         })
         .collect();
     let limited = session.send(text("again"), turn("t2")).unwrap().await;
+    let used_up = session.send(text("once more"), turn("t3")).unwrap().await;
 
     assert!(exhausted.is_err());
     assert_eq!(
@@ -213,11 +216,12 @@ async fn four_transient_failures_end_the_turn_with_the_last_and_a_long_vendor_wa
     }
     // The vendor's wait outlasts the ceiling: terminal at once.
     assert_eq!(limited.unwrap_err().code.as_deref(), Some("rate_limit"));
+    assert_eq!(used_up.unwrap_err().code.as_deref(), Some("usage_limit"));
     assert_eq!(reports.borrow().len(), 3);
-    assert_eq!(provider.requests().len(), 5);
+    assert_eq!(provider.requests().len(), 6);
     assert_eq!(
         kinds(&session.transcript().blocks),
-        ["user", "error", "user", "error"]
+        ["user", "error", "user", "error", "user", "error"]
     );
 }
 

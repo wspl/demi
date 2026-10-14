@@ -11,7 +11,6 @@ import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { providerOperation, providerTarget } from '@demicodes/web-ui/settings/provider-operations'
 import { operations } from '@demicodes/web-ui/ui/operations'
 import {
-  type SettingsCompatibleDraft,
   type SettingsModelDraft,
   type SettingsModelMatch,
   type SettingsQuotaRefresh,
@@ -21,6 +20,7 @@ import {
   type SettingsProviderOperation,
   type SettingsProviderModel,
   type SettingsVendor,
+  type SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
@@ -52,7 +52,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   const product = useProduct()
   const modelEditor = ref<SettingsModelEditor | null>(null)
   const edits = ref<Record<string, Partial<SettingsProviderEntry>>>({})
-  const manualDrafts = ref<Record<string, SettingsProviderModel[]>>({})
   const refreshingUsage = ref<Record<string, Record<string, SettingsQuotaRefresh>>>({})
   /** The vendor's words for the last manual usage refresh that failed, per provider and account, until that account's next answer; the surfaces show them, no toast does. */
   const usageFailures = ref<Record<string, Record<string, ShownError>>>({})
@@ -82,12 +81,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       ...testResults.value[provider.id],
       ...(provider.cliPackage === null ? {} : { cli: clis.value[provider.id] ?? null }),
       ...edits.value[provider.id],
-      ...(manualDrafts.value[provider.id]
-        ? {
-            modelSource: 'manual' as const,
-            models: manualDrafts.value[provider.id],
-          }
-        : {}),
     }))
     const subscriptions = (product.vendors?.subscriptions ?? []).map(
       (subscription) =>
@@ -255,23 +248,26 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     create({ source: 'vendor', vendorId: vendor.id })
   }
 
-  /** A compatible API: its endpoint is what makes the entry one, so it is sent with the family. */
-  function addCompatible(draft: SettingsCompatibleDraft): void {
-    const { wireApi, label, baseUrl, apiKey } = draft
-    const entry = { source: 'custom' as const, label, baseUrl, ...(apiKey ? { apiKey } : {}) }
-    create(
-      wireApi === 'anthropic-messages'
-        ? { ...entry, providerType: 'anthropic' }
-        : wireApi === 'google-generative'
-          ? { ...entry, providerType: 'google' }
-          : { ...entry, providerType: 'openai', wireApi: wireApi === 'openai-chat' ? 'chat-completions' : 'responses' },
-    )
+  /** A compatible API: its kind alone, and the backend's defaults for the rest. */
+  function addCompatible(): void {
+    create({ source: 'compatible' })
+  }
+
+  /** A protocol as the backend names it: the family that speaks it, and its wire. */
+  function protocol(wireApi: SettingsWireApi): Pick<ProviderPatch, 'providerType' | 'wireApi'> {
+    switch (wireApi) {
+      case 'anthropic-messages':
+        return { providerType: 'anthropic' }
+      case 'google-generative':
+        return { providerType: 'google' }
+      case 'openai-chat':
+        return { providerType: 'openai', wireApi: 'chat-completions' }
+      case 'openai-responses':
+        return { providerType: 'openai', wireApi: 'responses' }
+    }
   }
 
   function modelConfig(model: SettingsModelDraft): ConfiguredModel {
-    if (model.contextWindow === null) {
-      throw new Error(`Enter a context window for ${model.name || model.id}.`)
-    }
     return {
       id: model.id,
       displayName: model.name || model.id,
@@ -324,26 +320,14 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       void untilIdle(provider.id).then(() => change(provider, {}))
       return
     }
-    perform(provider.id, { kind: 'saving' }, async (signal) => {
-      if (changes.modelSource === 'manual') {
-        manualDrafts.value[provider.id] = provider.models.map((model) => ({
-          ...model,
-        }))
-        if (
-          !provider.models.length ||
-          provider.models.some((model) => model.contextWindow === null)
-        ) {
-          return
-        }
-      }
-      if (changes.modelSource === 'catalog') {
-        delete manualDrafts.value[provider.id]
-      }
+    perform(provider.id, { kind: 'saving' }, async () => {
       await patch(provider, {
         ...(changes.name !== undefined ? { label: changes.name } : {}),
-        // Only a compatible API's endpoint is edited, and the page never empties it.
-        ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl } : {}),
-        ...(changes.apiKey ? { apiKey: changes.apiKey } : {}),
+        // Only a compatible API's protocol and endpoint are edited; an
+        // emptied endpoint or key is removed, as the API's null does.
+        ...(changes.wireApi !== undefined ? protocol(changes.wireApi) : {}),
+        ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl || null } : {}),
+        ...(changes.apiKey !== undefined ? { apiKey: changes.apiKey || null } : {}),
         ...(changes.modelSource
           ? {
               models:
@@ -353,9 +337,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
             }
           : {}),
       })
-      if (changes.modelSource) {
-        delete manualDrafts.value[provider.id]
-      }
       delete edits.value[provider.id]
     })
   }
@@ -379,7 +360,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     const save = async (signal: AbortSignal) => {
       signal.throwIfAborted()
       await patch(provider, { models: models.map(modelConfig) })
-      delete manualDrafts.value[provider.id]
       delete edits.value[provider.id]
     }
     do {
@@ -394,15 +374,18 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   ): Promise<void> {
     // An entry that follows its vendor's list starts a list of its own from it
     // (the vendor's copy of a model gives way to the one added), so adding removes none.
+    // A model just added that the channel has not brought yet is the list's last.
     const models = original
-      ? provider.models.map((entry) =>
-          entry.id === original.id
-            ? {
-                ...model,
-                enabled: entry.enabled,
-              }
-            : entry,
-        )
+      ? provider.models.some((entry) => entry.id === original.id)
+        ? provider.models.map((entry) =>
+            entry.id === original.id
+              ? {
+                  ...model,
+                  enabled: entry.enabled,
+                }
+              : entry,
+          )
+        : [...provider.models, { ...model, enabled: original.enabled }]
       : [
           ...provider.models.filter((entry) => provider.modelSource !== 'catalog' || entry.id !== model.id),
           {
@@ -903,7 +886,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       dismissed.value = []
       edits.value = {}
       modelEditor.value = null
-      manualDrafts.value = {}
       testResults.value = {}
       refreshingUsage.value = {}
       usageFailures.value = {}

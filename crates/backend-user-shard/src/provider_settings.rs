@@ -14,7 +14,9 @@ use demi_provider_common::{Secret, SecretError};
 use demi_shared_types::WireApi;
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::ids::{ProviderId, UserId};
-use demi_web_api_protocol::providers::{CreateProvider, CredentialKind, ModelMatch, ProviderPatch};
+use demi_web_api_protocol::providers::{
+    ConfiguredModels, CreateProvider, CredentialKind, ModelMatch, ProviderPatch,
+};
 use demi_web_api_protocol::text::EndpointUrl;
 use std::sync::Arc;
 
@@ -56,10 +58,13 @@ pub enum ProviderRefusal {
     /// entry.
     #[error("{0} uses its vendor’s endpoint; it can’t be changed.")]
     VendorEndpoint(String),
-    /// The removal of a compatible entry's endpoint, which is what makes it
-    /// compatible; it names the entry.
-    #[error("{0} is a compatible API; its endpoint can’t be removed.")]
-    CompatibleEndpoint(String),
+    /// A protocol for a vendor entry, which speaks its vendor's; it names
+    /// the entry.
+    #[error("{0} speaks its vendor’s protocol; it can’t be changed.")]
+    VendorProtocol(String),
+    /// A model list that names one id twice; it names the id.
+    #[error("models: the model ID {0:?} appears twice")]
+    DuplicateModel(String),
     #[error(transparent)]
     Storage(#[from] StorageError),
 }
@@ -96,9 +101,10 @@ impl Services {
     }
 
     /// Creates an API-key entry: a vendor entry from the vendor list, or from
-    /// a family alone for its own vendor; or a compatible entry, a family with
-    /// an endpoint of the user's. Its label is the vendor's or the family's name unless the
-    /// body gives one, and what the body leaves out leaves it incomplete.
+    /// a family alone for its own vendor; or a compatible entry, Anthropic
+    /// Messages unless the body names another protocol. Its label is the
+    /// vendor's or the family's name, or *Compatible API*, unless the body
+    /// gives one, and what the body leaves out leaves it incomplete.
     pub async fn create_provider(
         &self,
         user: &UserDto,
@@ -130,7 +136,7 @@ impl Services {
                             vendor.id
                         ))
                     })?;
-                let label = label.map_or(vendor.name, |label| label.into_string());
+                let label = label.ok_or(vendor.name);
                 let config = ApiKeyConfig {
                     api_key: api_key.map(key).transpose()?,
                     base_url,
@@ -140,7 +146,26 @@ impl Services {
                 };
                 (vendor.provider_type, label, config)
             }
-            CreateProvider::Custom {
+            CreateProvider::Family {
+                provider_type,
+                wire_api,
+                label,
+                api_key,
+                models,
+            } => {
+                self.api_key_family(&provider_type, wire_api)?;
+                let label = label.ok_or_else(|| family_name(&provider_type).to_owned());
+                // An API-key family is named after its own vendor's models.dev id.
+                let config = ApiKeyConfig {
+                    api_key: api_key.map(key).transpose()?,
+                    base_url: None,
+                    wire_api,
+                    vendor_id: Some(provider_type.clone()),
+                    models,
+                };
+                (provider_type, label, config)
+            }
+            CreateProvider::Compatible {
                 provider_type,
                 wire_api,
                 label,
@@ -148,11 +173,9 @@ impl Services {
                 base_url,
                 models,
             } => {
+                let provider_type = provider_type.unwrap_or_else(|| COMPATIBLE_FAMILY.to_owned());
                 self.api_key_family(&provider_type, wire_api)?;
-                let label = label.map_or_else(
-                    || family_name(&provider_type).to_owned(),
-                    |label| label.into_string(),
-                );
+                let label = label.ok_or_else(|| COMPATIBLE_LABEL.to_owned());
                 let config = ApiKeyConfig {
                     api_key: api_key.map(key).transpose()?,
                     base_url,
@@ -163,16 +186,25 @@ impl Services {
                 (provider_type, label, config)
             }
         };
+        distinct_models(config.models.as_ref())?;
         let owner = self.vault.owner_for(&user.id).await?;
+        let label = match label {
+            Ok(given) => given.into_string(),
+            Err(default) => {
+                let entries = self.vault.entries(owner.clone()).await?;
+                free_label(default, |taken| entries.iter().any(|entry| entry.label == taken))
+            }
+        };
         Ok(self
             .vault
             .create_api_key(owner, family, label, config)
             .await?)
     }
 
-    /// Edits the entry `id`: the label of any, and the key, endpoint and
-    /// model list of an API-key entry. A configuration edit starts the
-    /// entry's provider and catalog afresh.
+    /// Edits the entry `id`: the label of any; the key and model list of an
+    /// API-key entry; and a compatible entry's endpoint and protocol, whose
+    /// change of family keeps its key, endpoint and models. A configuration
+    /// edit starts the entry's provider and catalog afresh.
     pub async fn update_provider(
         &self,
         user: &UserDto,
@@ -182,8 +214,12 @@ impl Services {
         self.may_configure(user)?;
         let entry = self.scoped_entry(&user.id, id).await?;
         let _held = self.hold_entry(&entry)?;
-        let reconfigures =
-            patch.api_key.is_some() || patch.base_url.is_some() || patch.models.is_some();
+        let protocol = patch.provider_type.is_some() || patch.wire_api.is_some();
+        let reconfigures = patch.api_key.is_some()
+            || patch.base_url.is_some()
+            || patch.models.is_some()
+            || protocol;
+        let mut family = None;
         let config = if reconfigures {
             let EntryCredential::ApiKey(config) = &entry.credential else {
                 return Err(if patch.models.is_some() {
@@ -194,19 +230,27 @@ impl Services {
             };
             let mut config = config.clone();
             if let Some(text) = patch.api_key {
-                config.api_key = Some(key(text)?);
+                config.api_key = text.map(key).transpose()?;
             }
+            // An entry stays the kind it was added as: a vendor's endpoint
+            // and protocol are its vendor's.
             if let Some(base_url) = patch.base_url {
-                // An entry stays the kind it was added as.
-                match (config.is_compatible(), base_url) {
-                    (false, _) => return Err(ProviderRefusal::VendorEndpoint(entry.label.clone())),
-                    (true, None) => {
-                        return Err(ProviderRefusal::CompatibleEndpoint(entry.label.clone()));
-                    }
-                    (true, endpoint) => config.base_url = endpoint,
+                if !config.is_compatible() {
+                    return Err(ProviderRefusal::VendorEndpoint(entry.label.clone()));
                 }
+                config.base_url = base_url;
+            }
+            if protocol {
+                if !config.is_compatible() {
+                    return Err(ProviderRefusal::VendorProtocol(entry.label.clone()));
+                }
+                let name = patch.provider_type.unwrap_or_else(|| entry.family.clone());
+                self.api_key_family(&name, patch.wire_api)?;
+                config.wire_api = patch.wire_api;
+                family = Some(name).filter(|name| *name != entry.family);
             }
             if let Some(models) = patch.models {
+                distinct_models(models.as_ref())?;
                 config.models = models;
             }
             Some(config)
@@ -216,7 +260,7 @@ impl Services {
         let label = patch.label.map(|label| label.into_string());
         let updated = self
             .vault
-            .update(entry.id.clone(), label, config)
+            .update(entry.id.clone(), label, family, config)
             .await?
             .ok_or(ProviderRefusal::NotFound)?;
         if reconfigures {
@@ -304,4 +348,31 @@ impl Services {
 /// A key as the vault keeps it: one line of text.
 fn key(text: String) -> Result<Secret, ProviderRefusal> {
     Ok(Secret::try_from(text)?)
+}
+
+/// The family a compatible entry speaks when it names none: Anthropic
+/// Messages.
+const COMPATIBLE_FAMILY: &str = "anthropic";
+
+/// The name a compatible entry takes when it is given none.
+const COMPATIBLE_LABEL: &str = "Compatible API";
+
+/// Refuses a model list that names one id twice.
+fn distinct_models(models: Option<&ConfiguredModels>) -> Result<(), ProviderRefusal> {
+    match models.and_then(ConfiguredModels::repeated_id) {
+        Some(id) => Err(ProviderRefusal::DuplicateModel(id.to_owned())),
+        None => Ok(()),
+    }
+}
+
+/// `name`, or the first of `name (2)`, `name (3)`, … that `taken` does not
+/// hold (`models.md` § A provider is in the list from the start).
+fn free_label(name: String, taken: impl Fn(&str) -> bool) -> String {
+    if !taken(&name) {
+        return name;
+    }
+    (2..)
+        .map(|number| format!("{name} ({number})"))
+        .find(|label| !taken(label))
+        .expect("a scope holds finitely many entries")
 }

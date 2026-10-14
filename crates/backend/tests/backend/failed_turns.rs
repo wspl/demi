@@ -10,7 +10,7 @@
 //! real model.
 
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -20,12 +20,19 @@ use demi_backend_providers::llm::families::{
 };
 use demi_provider_common::testing::event;
 use demi_provider_common::{
-    Capabilities, CatalogError, InferenceItem, InferenceRequest, Provider, ProviderEvent,
-    ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits, RuntimeEnv, RuntimeError,
+    Capabilities, CatalogError, ErrorCode, InferenceItem, InferenceRequest, Provider, ProviderEvent,
+    HttpFailureRecord, ProviderFailure, ProviderRun, ProviderRuntime, RequestLimits, RuntimeEnv,
+    RuntimeError, read_http_failure,
+    quota::{
+        MemorySnapshots, Observation, ProbeCost, ProbeReading, ProviderQuota, QuotaError,
+        QuotaSnapshotStore as _, QuotaSource,
+    },
 };
+use demi_conversation_socket_protocol::ServerFrame;
 use demi_shared_types::{
     AuthState, FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList,
-    RuntimeState, Timestamp,
+    QuotaSnapshot, QuotaWindow, SnapshotSource,
+    RuntimeState, SessionPhase, Timestamp,
 };
 use demi_web_api_protocol::providers::CredentialKind;
 use futures_util::future::{BoxFuture, LocalBoxFuture};
@@ -47,6 +54,10 @@ struct Script {
     /// closes it as it goes.
     built: AtomicUsize,
     closed: AtomicUsize,
+    /// The account's quota, which the provider reads its failures by when
+    /// `by_record` is set, as Grok Build's names no moment of its own.
+    snapshots: Arc<MemorySnapshots>,
+    by_record: AtomicBool,
 }
 
 impl Script {
@@ -63,7 +74,7 @@ impl Script {
 fn limited() -> Vec<ProviderEvent> {
     vec![ProviderEvent::Error(ProviderFailure {
         message: "You've hit your session limit".into(),
-        code: None,
+        code: Some(ErrorCode::UsageLimit),
         diagnostics: Some(Box::new(ProviderErrorDiagnostics {
             source: FailureSource::Stream,
             client_request_id: None,
@@ -90,11 +101,29 @@ impl ProviderFamily for Limited {
         let FamilyCredential::ApiKey(_) = args.credential else {
             return Err(FamilyError::WrongCredential);
         };
-        Ok(Arc::new(LimitedProvider(self.0.clone())))
+        let quota = ProviderQuota::new(Box::new(NoProbe), self.0.snapshots.clone(), args.clock);
+        Ok(Arc::new(LimitedProvider(self.0.clone(), quota)))
     }
 }
 
-struct LimitedProvider(Arc<Script>);
+/// A quota no probe reads, whose snapshot the test writes.
+struct NoProbe;
+
+impl QuotaSource for NoProbe {
+    fn probe_cost(&self) -> Option<ProbeCost> {
+        None
+    }
+
+    fn probe(&self) -> BoxFuture<'_, Result<ProbeReading, QuotaError>> {
+        Box::pin(async { Err(QuotaError::Unsupported) })
+    }
+
+    fn observe(&self, _: Observation<'_>) -> Option<Vec<QuotaWindow>> {
+        None
+    }
+}
+
+struct LimitedProvider(Arc<Script>, ProviderQuota);
 
 impl Provider for LimitedProvider {
     fn capabilities(&self) -> Capabilities {
@@ -117,10 +146,17 @@ impl Provider for LimitedProvider {
         Box::pin(async { Err(CatalogError::Unavailable("no directory".into())) })
     }
 
-    fn read_failure(&self, _: &ProviderErrorDiagnostics, received_at: Timestamp) -> ProviderFailureFacts {
+    fn read_failure(&self, diagnostics: &ProviderErrorDiagnostics, received_at: Timestamp) -> ProviderFailureFacts {
+        if self.0.by_record.load(Ordering::SeqCst) {
+            return read_http_failure(diagnostics, received_at);
+        }
         ProviderFailureFacts {
             retry_at: Some(Timestamp::truncate(received_at.to_jiff() + SignedDuration::from_hours(1))),
         }
+    }
+
+    fn quota(&self) -> Option<&ProviderQuota> {
+        Some(&self.1)
     }
 
     fn runtime(&self, _: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {
@@ -185,7 +221,7 @@ impl World {
         harness.shards = Some(ShardPlacement::Inline);
         let (backend, master) = harness.start_set_up().await;
         let body = json!({
-            "source": "custom", "providerType": "limited", "label": "Limited", "apiKey": "k",
+            "source": "family", "providerType": "limited", "label": "Limited", "apiKey": "k",
             "models": [configured(4_000)]
         });
         let provider = entry(&backend, &master, body).await;
@@ -214,6 +250,23 @@ impl World {
     async fn socket(&self) -> Socket {
         let mut socket = Socket::connect(&self.backend, &self.master, FIRST).await;
         socket.open().await;
+        socket
+    }
+
+    /// A page's socket once the root's turn under way, such as a resume
+    /// that has asked the model, has ended. A message sent while it runs
+    /// waits in the queue and runs right after it, with no phase frame
+    /// between: the handshake said `running`, so its `chat` would never see
+    /// its turn start.
+    async fn idle_socket(&self) -> Socket {
+        let idle = ServerFrame::Phase {
+            subagent_id: None,
+            phase: SessionPhase::Idle,
+        };
+        let mut socket = Socket::connect(&self.backend, &self.master, FIRST).await;
+        if !socket.open().await.contains(&idle) {
+            socket.until(|frame| *frame == idle).await;
+        }
         socket
     }
 
@@ -329,7 +382,7 @@ async fn the_wait_outlives_the_trees_eviction_a_newer_failure_replaces_it_and_of
 
     // At 09:00 a failure that can succeed at 10:00; at 09:30 another, at
     // 10:30: only the newer waits, and it is turned off before its moment.
-    let mut socket = world.socket().await;
+    let mut socket = world.idle_socket().await;
     world.fail(&mut socket, "m2", "second", 2).await;
     world.pass(30).await;
     world.fail(&mut socket, "m3", "third", 3).await;
@@ -341,6 +394,70 @@ async fn the_wait_outlives_the_trees_eviction_a_newer_failure_replaces_it_and_of
     // started.
     assert_eq!(world.said(DECLINED) + world.said(RESUMED), 2);
     assert_eq!(world.asked(), 4);
+    world.backend.close().await;
+}
+
+/// A usage limit whose failure names no moment, such as Grok Build's 402,
+/// resumes when the account's used-up window resets, as its quota shows;
+/// a window not used up does not count.
+// One conversation, two scripted requests and two hours of paused time:
+// well under a second.
+#[tokio::test(flavor = "local")]
+async fn a_usage_limit_naming_no_moment_resumes_when_the_quotas_used_up_window_resets() {
+    let world = World::start().await;
+    world.script.by_record.store(true, Ordering::SeqCst);
+    let window = |id: &str, used: f64, resets: &str| QuotaWindow {
+        id: id.into(),
+        label: id.into(),
+        used_percent: Some(used),
+        used: None,
+        limit: None,
+        unit: None,
+        resets_at: Some(resets.parse().unwrap()),
+        severity: None,
+        scope: None,
+    };
+    world.script.snapshots.update(&mut |_| QuotaSnapshot {
+        observed_at: "2026-09-24T07:00:00Z".parse().unwrap(),
+        source: SnapshotSource::Observation,
+        plan: None,
+        account_label: None,
+        windows: vec![
+            window("monthly", 100.0, "2026-09-24T10:00:00Z"),
+            window("weekly", 40.0, "2026-09-24T12:00:00Z"),
+        ],
+    });
+    world.prefer(true).await;
+    let mut socket = world.socket().await;
+    let record = HttpFailureRecord {
+        status: 402,
+        headers: Vec::new(),
+        body: "Grok Build usage balance exhausted".into(),
+    };
+    world.script.push(vec![ProviderEvent::Error(ProviderFailure {
+        message: "Grok Build API request failed with HTTP 402: Grok Build usage balance exhausted".into(),
+        code: Some(ErrorCode::UsageLimit),
+        diagnostics: Some(Box::new(ProviderErrorDiagnostics {
+            source: FailureSource::Http,
+            client_request_id: None,
+            provider_request_id: None,
+            provider_response_id: None,
+            provider_code: None,
+            http_status: Some(402),
+            upstream: Some(record.to_json()),
+        })),
+        retry_after: None,
+    })]);
+    socket.chat("m1", "first").await;
+    eventually("the timer is armed", || async { world.said(WAITS) == 1 }).await;
+
+    // At 09:00 nothing starts; at 10:00 the used-up window resets.
+    world.pass(60).await;
+    assert_eq!(world.asked(), 1);
+    world.script.push(answered());
+    world.pass(60).await;
+    eventually("the turn resumed", || async { world.asked() == 2 }).await;
+    assert_eq!(world.said(RESUMED), 1);
     world.backend.close().await;
 }
 
@@ -369,7 +486,7 @@ async fn after_a_restart_opening_the_conversation_waits_again_only_for_a_moment_
     eventually("the turn resumed", || async { world.asked() == 2 }).await;
 
     // A failure at 09:00, then a restart at 11:00, after its moment.
-    let mut socket = world.socket().await;
+    let mut socket = world.idle_socket().await;
     world.fail(&mut socket, "m2", "second", 3).await;
     drop((socket, _socket));
     world.backend.close().await;
