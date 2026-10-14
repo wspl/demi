@@ -5,7 +5,10 @@
 //! `release.json`, which says where the release's files are, and, when
 //! asked, a Linux target's backend, machine manager and `demi-server` in
 //! `bin/` with the
-//! services' units in `systemd/`, and the built web app in `web/`. The release's files hold each target's runner
+//! services' units in `systemd/`, and the built web app in `web/`. Its
+//! `LICENSE` and `NOTICE` are the repository's, and with a web app its
+//! `THIRD-PARTY-NOTICES` are the ones `xtask notices` wrote into it
+//! (`builds-and-releases.md` § Licenses in a release). The release's files hold each target's runner
 //! executable and each command program's compressed copy. Packaging makes
 //! each release whole first, so its records and its files are the ones
 //! packaging checked. The root is assembled in a stage beside it and renamed
@@ -20,10 +23,21 @@ use demi_runner_protocol::release::ServerRelease;
 use tokio_util::sync::CancellationToken;
 
 use crate::native::{self, Caches, Executable, Spec, Versioning};
+use crate::notices::WEB_NOTICES;
 
 /// The file a built web app holds, which the backend reads its build from
 /// (`web-api.md` § Serving the web app build).
 const WEB_BUILD: &str = "build.json";
+
+/// The project's license and notice, which every release carries at its
+/// root.
+const LEGAL: [(&str, &str); 2] = [
+    ("LICENSE", include_str!("../../../LICENSE")),
+    ("NOTICE", include_str!("../../../NOTICE")),
+];
+
+/// The third-party notices at a release's root.
+const NOTICES: &str = "THIRD-PARTY-NOTICES";
 
 /// The services' units, which each program's crate keeps and a server
 /// release carries (`upgrades.md` § One release on a server).
@@ -87,6 +101,8 @@ pub enum Error {
     NotLinux(&'static str),
     #[error("{} holds no {WEB_BUILD}: it is not a built web app", .0.display())]
     NotWeb(PathBuf),
+    #[error("{} holds no {WEB_NOTICES}: `xtask notices --web` writes them", .0.display())]
+    NoNotices(PathBuf),
     #[error("{} has no parent directory to assemble it beside", .0.display())]
     NoParent(PathBuf),
     #[error("the release's record is invalid: {0}")]
@@ -122,6 +138,9 @@ pub(crate) async fn assemble(options: &Options, cancel: &CancellationToken) -> R
             let web = std::path::absolute(web)?;
             if !tokio::fs::try_exists(web.join(WEB_BUILD)).await? {
                 return Err(Error::NotWeb(web));
+            }
+            if !tokio::fs::try_exists(web.join(WEB_NOTICES)).await? {
+                return Err(Error::NoNotices(web));
             }
             Some(web)
         }
@@ -175,6 +194,9 @@ pub(crate) async fn assemble(options: &Options, cancel: &CancellationToken) -> R
         native::split(&release, executable, stage.path(), &files, cancel).await?;
     }
     native::write_server_release(stage.path(), &record).await?;
+    for (name, text) in LEGAL {
+        tokio::fs::write(stage.path().join(name), text).await?;
+    }
     if let Some(server) = options.server {
         let bin = stage.path().join("bin");
         tokio::fs::create_dir_all(&bin).await?;
@@ -198,6 +220,7 @@ pub(crate) async fn assemble(options: &Options, cancel: &CancellationToken) -> R
         }
     }
     if let Some(web) = web {
+        tokio::fs::copy(web.join(WEB_NOTICES), stage.path().join(NOTICES)).await?;
         copy_directory(web, stage.path().join("web")).await?;
     }
     if cancel.is_cancelled() {
@@ -281,6 +304,7 @@ mod tests {
         std::fs::create_dir_all(web.join("assets")).unwrap();
         std::fs::write(web.join(WEB_BUILD), r#"{"build":"fixture"}"#).unwrap();
         std::fs::write(web.join("assets/index.js"), "page").unwrap();
+        std::fs::write(web.join(WEB_NOTICES), "Third-party notices for Demi").unwrap();
         let output = root.path().join("release");
         let files = root.path().join("files");
         let options = |output: &Path, downloads: Option<&str>| Options {
@@ -312,10 +336,27 @@ mod tests {
             &[linux],
         );
         assemble(&options(&output, None), &cancel).await.unwrap();
+        // The release's license, its notice and the notices of what it
+        // ships lie at its root.
         assert_eq!(
             names(&output),
-            ["bin", "commands", "release.json", "runners", "systemd", "web"]
+            [
+                "LICENSE",
+                "NOTICE",
+                NOTICES,
+                "bin",
+                "commands",
+                "release.json",
+                "runners",
+                "systemd",
+                "web"
+            ]
         );
+        assert_eq!(
+            std::fs::read_to_string(output.join(NOTICES)).unwrap(),
+            "Third-party notices for Demi"
+        );
+        assert!(std::fs::read_to_string(output.join("LICENSE")).unwrap().starts_with("Demi License"));
         assert_eq!(
             names(&output.join("systemd")),
             ["demi-backend.service", "demi-machine-manager.service"]
@@ -363,7 +404,7 @@ mod tests {
             ServerRelease::decode(&std::fs::read(output.join(SERVER_RELEASE)).unwrap()).unwrap()
         };
         assert_eq!(record(&output).files, files.to_str().unwrap());
-        assert_eq!(names(&output.join("web")), ["assets", WEB_BUILD]);
+        assert_eq!(names(&output.join("web")), ["assets", WEB_BUILD, WEB_NOTICES]);
         // A root is assembled once.
         let again = assemble(&options(&output, None), &cancel).await;
         assert!(matches!(again, Err(Error::Exists(_))), "{again:?}");
