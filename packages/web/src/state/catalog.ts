@@ -208,6 +208,7 @@ export function providerView(
           ]
         }) ?? [],
       })) ?? [],
+    rotation: entry.kind === 'subscription' ? entry.rotation : undefined,
     autoRefreshUsage: details?.quotaCapability.type === 'supported'
       && details.quotaCapability.probe === 'free',
     logo: providerLogo(entry),

@@ -1555,7 +1555,17 @@ pub mod testing {
     /// that schema, with the rows of this one in the columns both have, and
     /// that schema's version. Its values stay as this build wrote them.
     pub fn store_as_shipped(path: &Path, kind: DatabaseKind) {
-        let shipped = kind.schema().history.last().expect("a schema has a history");
+        store_as_shipped_before(path, kind, 0);
+    }
+
+    /// The same, as the schema shipped `newer` schemas before the last one
+    /// in the history, for a test of a migration that the schemas shipped
+    /// since have moved away from the end of the history.
+    pub fn store_as_shipped_before(path: &Path, kind: DatabaseKind, newer: usize) {
+        let history = kind.schema().history;
+        let shipped = history
+            .get(history.len().checked_sub(newer + 1).expect("the history goes back that far"))
+            .expect("a schema has a history");
         let earlier = path.with_extension("shipped");
         let connection = Connection::open(&earlier).expect("a database opens beside it");
         connection

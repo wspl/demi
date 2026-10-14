@@ -71,9 +71,10 @@ export function formatMoment(timestamp: string, now: Date = new Date()): string 
  * 9:00 AM" on `now`'s day, "Resume Sat at 9:00 AM" within a week either way,
  * then "Resets Oct 24 at 9:00 AM", with the year when it is not this one. The
  * moment is rounded up to the minute, so neither ever names a time before
- * the reset: 7:03:55 PM is 7:04 PM.
+ * the reset: 7:03:55 PM is 7:04 PM. `resetting` says it inside a sentence,
+ * as the line that says an agent moved to another account does.
  */
-export function formatRetryAt(verb: 'Resets' | 'Resume', timestamp: string, now: Date): string {
+export function formatRetryAt(verb: 'Resets' | 'Resume' | 'resetting', timestamp: string, now: Date): string {
   const exact = dayjs(timestamp)
   const minute = exact.startOf('minute')
   const moment = minute.isSame(exact) ? minute : minute.add(1, 'minute')

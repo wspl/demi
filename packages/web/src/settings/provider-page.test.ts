@@ -215,3 +215,84 @@ test('a saved key or endpoint emptied and left is removed, and a key field left 
     app.unmount()
   }
 })
+
+/** A subscription of `accounts`, selected. */
+const subscription = (accounts: string[]): SettingsProviderEntry => ({
+  id: 'claude', name: 'Claude Code', kind: 'subscription', vendorId: null, compatible: false,
+  baseUrl: '', wireApi: 'anthropic-messages', apiKey: '', configured: true,
+  modelSource: 'catalog', catalogFetched: null, state: 'ready', enabled: true, models: [],
+  accounts: accounts.map((label, index) => ({ id: `a${index}`, label, plan: '', active: index === 0, quota: [] })),
+  rotation: 'manual', logo: null,
+})
+
+// Adding a second account and choosing In Order or Balanced first warn
+// that several personal subscriptions may be against the vendor's terms;
+// Continue goes on and is told to the host, Cancel drops the step, and a
+// user who went on is never asked again (`providers.md` § Account
+// rotation). Tens of milliseconds.
+test('the warning about several accounts asks before the second account and a rotation, and once told never again', async () => {
+  const events: string[] = []
+  const warned = shallowRef(false)
+  const providers = shallowRef([subscription([])])
+  const element = document.createElement('div')
+  document.body.append(element)
+  const overlayStore = createOverlayStore()
+  const app = createApp({
+    render: () =>
+      h(SettingsProvidersPage, {
+        providers: providers.value,
+        vendors: [],
+        overlayStore,
+        selectedId: 'claude',
+        detailOpen: true,
+        multiAccountWarned: warned.value,
+        saveModel: async () => {},
+        onSignIn: () => events.push('signIn'),
+        onChange: (_provider: SettingsProviderEntry, changes: Partial<SettingsProviderEntry>) =>
+          events.push(`rotation:${changes.rotation}`),
+        onMultiAccountWarned: () => {
+          events.push('warned')
+          warned.value = true
+        },
+      }),
+  })
+  app.mount(element)
+  const warning = () => document.body.textContent?.includes('may be against the vendor’s terms') ?? false
+  try {
+    // The first account asks nothing.
+    await until(() => button('Add Account') !== undefined, 'the page shows Add Account')
+    button('Add Account')!.click()
+    expect(events).toEqual(['signIn'])
+
+    // The second does; Cancel adds nothing.
+    providers.value = [subscription(['alex@example.com'])]
+    await until(() => document.body.textContent!.includes('alex@example.com'), 'the first account shows')
+    button('Add Account')!.click()
+    await until(warning, 'the warning shows')
+    button('Cancel')!.click()
+    await until(() => !warning(), 'Cancel closes the warning')
+    expect(events).toEqual(['signIn'])
+
+    // With two accounts the rotation is offered; choosing Balanced asks too.
+    providers.value = [subscription(['alex@example.com', 'sam@example.com'])]
+    await until(() => button('Rotation') !== undefined, 'the rotation shows')
+
+    button('Rotation')!.click()
+    const choice = () =>
+      [...document.querySelectorAll<HTMLElement>('[role^="menuitem"]')].find((row) => row.textContent?.includes('Balanced'))
+    await until(() => choice() !== undefined, 'the rotation menu opens')
+    choice()!.click()
+    await until(warning, 'the warning shows for a rotation')
+    button('Continue')!.click()
+    await until(() => events.length === 3, 'Continue goes on')
+    expect(events).toEqual(['signIn', 'warned', 'rotation:balanced'])
+
+    // Told once: another account goes on without asking.
+    await until(() => !warning(), 'the warning closes')
+    button('Add Account')!.click()
+    expect(warning()).toBe(false)
+    expect(events).toEqual(['signIn', 'warned', 'rotation:balanced', 'signIn'])
+  } finally {
+    app.unmount()
+  }
+})

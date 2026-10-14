@@ -755,7 +755,9 @@ mod tests {
                 control.insert_provider(entry, Vec::new()).await.unwrap();
             }
             control.close().await.unwrap();
-            schema_testing::store_as_shipped(&path, DatabaseKind::Control);
+            // The schema before format 2, which the one before account
+            // rotation follows in the history.
+            schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 1);
             (data, path, own.id, proxy.id)
         };
         let clock = Arc::new(demi_shared_types::SystemClock);
