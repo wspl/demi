@@ -388,10 +388,11 @@ together. For example, Alex opens it on `~/shop`, checked out on
   of [What the conversation shows](#what-the-conversation-shows); below, the
   **commit list**.
 - **The commit list** shows one branch's history, newest first, following
-  first parents, each commit its summary, author and age, *2h*, its full
-  message, id and time in its tooltip; more load as the list scrolls to its
-  end. While the branch shown is the one checked out, the list starts with
-  **Uncommitted Changes** and its count of files, the working tree against
+  first parents, each commit one row as compact as VS Code's: its summary,
+  cut short, then its author and age, *2h*, dimmed at the row's end; its
+  full message, id and time in its tooltip; more load as the list scrolls
+  to its end. While the branch shown is the one checked out, the list starts
+  with **Uncommitted Changes** and its count of files on one row too, the working tree against
   HEAD as before; another branch's list starts with its newest commit. A
   repository without commits shows Uncommitted Changes alone; outside a
   repository the mode says *Not a Git repository*.
