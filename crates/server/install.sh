@@ -2,7 +2,7 @@
 # Installs demi-server of Demi @VERSION@ and goes on into its setup
 # (docs/delivery/installation.md § The bootstrap):
 #
-#   curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
+#   curl -fsSL https://demi.sh/install.sh | sudo bash
 #
 # Parameters after `bash -s --` go to `demi-server setup`. At a terminal,
 # setup asks for what is missing; without one, as an agent runs it, it prints

@@ -46,7 +46,7 @@ Demi 是一个自托管的 AI Agent，在任何浏览器中都能使用。随口
 然后在服务器上运行安装程序：
 
 ```sh
-curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://demi.sh/install.sh | sudo bash
 ```
 
 它会依次询问：你的域名；所有用户都使用管理员配置的模型提供方（`shared`），还是每个用户各自配置（`isolated`）；以及监听地址，使用 Cloudflare 代理时填 `0.0.0.0:80`。
@@ -54,8 +54,8 @@ curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | su
 如果要免交互安装，比如在脚本里或交给 AI Agent 安装，可以把所有答案作为参数传入：
 
 ```sh
-curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh \
-  | sudo bash -s -- --domain demi.example.com --mode isolated --listen 0.0.0.0:80
+curl -fsSL https://demi.sh/install.sh | sudo bash -s -- \
+  --domain demi.example.com --mode isolated --listen 0.0.0.0:80
 ```
 
 使用 Flexible 时，Cloudflare 到服务器这一段是明文 HTTP。如果这一段也要加密，或者想用 Caddy、nginx 等其他代理，请参阅[安装指南](docs/delivery/installation.md#https)。安装程序会检查机器、启动 Demi，并从外部检查你的域名。接下来：

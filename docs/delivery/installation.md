@@ -14,7 +14,7 @@ reverse proxy on the same machine that serves `demi.example.com` over HTTPS
 and forwards to port 3271:
 
 ```sh
-curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://demi.sh/install.sh | sudo bash
 # no terminal: prints the guide; the agent reads it and runs
 sudo demi-server setup --domain demi.example.com --mode isolated --listen 127.0.0.1:3271
 ```
@@ -22,6 +22,11 @@ sudo demi-server setup --domain demi.example.com --mode isolated --listen 127.0.
 Run by a person in a terminal, the first command asks for the domain, the
 mode and the listening address instead, and sets the server up with the
 answers.
+
+`https://demi.sh/install.sh` is a redirect that the `demi.sh` zone at
+Cloudflare answers, with 302, to
+`https://github.com/wspl/demi/releases/latest/download/install.sh`, the
+latest release's `install.sh`; either address installs the same release.
 
 `setup` checks the machine, installs the few system packages the
 machine manager needs, fetches the newest release, writes the configuration,

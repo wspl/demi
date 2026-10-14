@@ -55,7 +55,7 @@ You need:
 Then run the installer on the server:
 
 ```sh
-curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
+curl -fsSL https://demi.sh/install.sh | sudo bash
 ```
 
 It asks for your domain; whether every user uses the admin's model providers
@@ -66,8 +66,8 @@ To install without questions, for example from a script or by an AI agent,
 pass every answer as a parameter:
 
 ```sh
-curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh \
-  | sudo bash -s -- --domain demi.example.com --mode isolated --listen 0.0.0.0:80
+curl -fsSL https://demi.sh/install.sh | sudo bash -s -- \
+  --domain demi.example.com --mode isolated --listen 0.0.0.0:80
 ```
 
 With Flexible, Cloudflare reaches the server over plain HTTP. To encrypt that
