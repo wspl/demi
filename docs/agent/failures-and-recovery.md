@@ -269,10 +269,16 @@ and shown as they arrive, but none starts a turn until the user acts, with
 Resume or a message, which then answers them. Otherwise each wakeup would
 start a turn that fails the same way: a Claude subscription at its usage
 limit failed the main agent once for each of its children that reported,
-four red rows in a row, each one a whole history sent for nothing. A failure
-that names its `retryAt` releases the hold at that moment, as Resume would,
-so a usage limit that resets at 09:00 continues by itself then; a child's
+four red rows in a row, each one a whole history sent for nothing. A child's
 turn is not held, since its parent decides for it.
+
+Continuing by itself is the user's choice, off unless they turn it on
+(`resumeAtRetry`, [User preferences](../product/web-api.md#user-preferences)):
+with it on, a root's turn whose failure names its `retryAt` is resumed at that
+moment, as the user's Resume would, so a usage limit that resets at 09:00
+continues then; with it off, the hold lasts until the user acts. The
+preference is read when the moment comes, so turning it off before then
+keeps the turn waiting.
 
 A message is never left outside a turn. A send writes its `user` block as
 soon as its action starts, before its model switch lands
@@ -371,7 +377,8 @@ injected clock; no test calls a real model.
 | Four transient failures in a row | Three `retry_scheduled` frames, then a terminal `error` block; each delay is within its cap |
 | A vendor wait longer than 30 seconds | The failure is terminal at once |
 | A Claude Code usage limit whose account's quota names the window's reset | `retryAt` is that reset; the failure is terminal on its first attempt |
-| A root's turn fails, then two children report and a command ends | Three receipts and a notice are written; no turn starts until Resume, which answers them; with a `retryAt`, the turn continues at that moment by itself |
+| A root's turn fails, then two children report and a command ends | Three receipts and a notice are written; no turn starts until Resume, which answers them |
+| The same, with a `retryAt` | With `resumeAtRetry` off, nothing starts at that moment; with it on, the turn resumes then, once |
 | A failure after a completed tool call, then `resume` | The tool does not run again; the model continues after its result |
 | `resume` after a failure before any output | The turn reruns from its input, with no `resume` block |
 | The user's Compact after a finished answer, stopped during its summary | The transcript is as it was, with no `abort` block; the dock offers no Continue |
