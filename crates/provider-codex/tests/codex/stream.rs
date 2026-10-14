@@ -90,7 +90,7 @@ async fn a_usage_limit_in_the_stream_names_when_it_lifts() {
         (failure.message.as_str(), failure.code.clone()),
         (
             "The usage limit has been reached",
-            Some(ErrorCode::RateLimit)
+            Some(ErrorCode::UsageLimit)
         )
     );
     let lifts = "2026-09-22T07:37:39.000Z"
@@ -108,6 +108,53 @@ async fn a_usage_limit_in_the_stream_names_when_it_lifts() {
         (FailureSource::Stream, Some("usage_limit_reached"))
     );
     assert_eq!(diagnostics.upstream, Some(frame.to_string()));
+}
+
+/// Codex's own sign of a used-up account, as the Codex CLI reads it, is a
+/// usage limit, which waiting a few seconds does not fix; any other 429
+/// only throttles. One mock vendor per case, about 10 ms each.
+#[tokio::test]
+async fn a_used_up_account_is_a_usage_limit_and_any_other_429_throttles() {
+    let cases = [
+        (
+            r#"{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","plan_type":"plus","resets_at":1790062659}}"#,
+            ErrorCode::UsageLimit,
+        ),
+        (
+            r#"{"error":{"type":"insufficient_quota","message":"You exceeded your current quota"}}"#,
+            ErrorCode::UsageLimit,
+        ),
+        (
+            r#"{"error":{"code":"credit_balance_exhausted","message":"Your credit balance is exhausted"}}"#,
+            ErrorCode::UsageLimit,
+        ),
+        (
+            r#"{"error":{"code":"project_spend_limit_exceeded","message":"Spend limit reached"}}"#,
+            ErrorCode::UsageLimit,
+        ),
+        (
+            r#"{"error":{"code":"organization_usage_limit_exceeded","message":"Usage limit reached"}}"#,
+            ErrorCode::UsageLimit,
+        ),
+        (
+            r#"{"error":{"type":"rate_limit_exceeded","message":"Rate limit reached for requests"}}"#,
+            ErrorCode::RateLimit,
+        ),
+        ("", ErrorCode::RateLimit),
+    ];
+    for (body, code) in cases {
+        let (events, _vendor) = events_of(MockResponse::status(429).chunk(body)).await;
+        assert_eq!(failure_of(events).code, Some(code), "{body}");
+    }
+}
+
+/// Codex's quota and credit codes are a usage limit with no status at all,
+/// as in a `response.failed` frame, which the Codex CLI reads the same way.
+#[tokio::test]
+async fn a_failed_response_whose_quota_is_used_up_is_a_usage_limit() {
+    let frame = json!({ "type": "response.failed", "response": { "error": { "code": "insufficient_quota", "message": "You exceeded your current quota." } } });
+    let (events, _vendor) = events_of(stream(std::slice::from_ref(&frame))).await;
+    assert_eq!(failure_of(events).code, Some(ErrorCode::UsageLimit));
 }
 
 #[tokio::test]

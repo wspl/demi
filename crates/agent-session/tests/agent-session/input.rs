@@ -1209,7 +1209,10 @@ async fn a_roots_failed_turn_holds_what_arrives_until_resume_and_a_childs_does_n
     let failing = || {
         ScriptedRuntime::new([
             Turn::Events(background_call("17", None, "Build")),
-            Turn::Events(vec![event::error("You've hit your session limit", None)]),
+            Turn::Events(vec![event::error(
+                "You've hit your session limit",
+                Some(ErrorCode::UsageLimit),
+            )]),
             answer("read both results and the build"),
             // Answers a turn that should not start would take.
             answer("unexpected"),

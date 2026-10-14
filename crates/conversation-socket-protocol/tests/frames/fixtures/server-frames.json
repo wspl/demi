@@ -65,7 +65,7 @@
           "serviceTierId": null
         },
         "message": "Usage limit reached",
-        "code": "rate_limit",
+        "code": "usage_limit",
         "diagnostics": {
           "source": "stream",
           "upstream": "{\"type\":\"error\",\"resets_in_seconds\":60}"
@@ -177,7 +177,7 @@
             "serviceTierId": null
           },
           "message": "Usage limit reached",
-          "code": "rate_limit",
+          "code": "usage_limit",
           "diagnostics": {
             "source": "stream",
             "upstream": "{\"type\":\"error\",\"resets_in_seconds\":60}"
