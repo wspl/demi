@@ -22,6 +22,6 @@ const go = computed(() => {
 </script>
 
 <template>
-  <NoticeLabel :notice="row.notice" :title="row.title" :subject="row.subject" :go="go" />
+  <NoticeLabel :notice="row.notice" :title="row.title" :inline="row.inline" :go="go" />
   <ReceiptTag v-if="row.tag" :tag="row.tag" />
 </template>
