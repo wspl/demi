@@ -1070,14 +1070,18 @@ every node of the user's conversations.
 ## Model configuration and provider inspection
 
 `POST /api/providers` takes
-`{ source: "vendor", vendorId, label?, apiKey?, models? }` or
-`{ source: "custom", providerType, wireApi?, label?, apiKey?, baseUrl?, models? }`:
-the first a vendor entry of a models.dev vendor, the second the family's own
-vendor's entry without `baseUrl`, such as Anthropic's, and a compatible entry
-with it ([Endpoints](../providers/providers.md#endpoints)):
-everything but the kind may come later, and the entry is
+`{ source: "vendor", vendorId, label?, apiKey?, models? }`,
+`{ source: "family", providerType, wireApi?, label?, apiKey?, models? }` or
+`{ source: "compatible", providerType?, wireApi?, label?, apiKey?, baseUrl?, models? }`:
+a vendor entry of a models.dev vendor, a family's own vendor's entry, such as
+Anthropic's, and a compatible entry, Anthropic Messages unless
+`providerType` and `wireApi` say otherwise
+([Endpoints](../providers/providers.md#endpoints)). Everything but the kind
+may come later, and the entry is
 [incomplete](../providers/models.md#a-provider-is-in-the-list-from-the-start)
-until it has what it needs; `label` defaults to the vendor's or family's name.
+until it has what it needs; `label` defaults to the vendor's or family's
+name, or *Compatible API*, with the first free *(2)*, *(3)* when the user
+has an entry of that name.
 The first derives the family, its wire and its endpoint from the vendor
 catalog, `GET /api/providers/catalog`, which lists the
 [vendors from models.dev](../providers/providers.md#vendors-from-modelsdev);
@@ -1085,10 +1089,12 @@ the second names the family explicitly. `wireApi` is
 `responses` or `chat-completions`, and only a family that speaks both takes
 it. A label has 1 to 80 characters after trimming, a key is one line of text,
 and `baseUrl` is an `http` or `https` URL. PATCH accepts label and, for
-API-key entries, key and model list, and a compatible entry's endpoint; a
-subscription entry takes only a new label (400 `subscription_only`), and an
-endpoint set on a vendor entry or removed from a compatible one answers 400
-`endpoint_kind`, since an entry stays the kind it was added as. An entry's
+API-key entries, key (null removes it) and model list, and a compatible
+entry's endpoint (null removes it, which leaves the entry incomplete),
+`providerType` and `wireApi`; a subscription entry takes only a new label
+(400 `subscription_only`), and an endpoint or a protocol set on a vendor
+entry answers 400 `endpoint_kind`, since an entry stays the kind it was
+added as. A model list whose ids repeat answers 400 `duplicate_model`. An entry's
 read model carries `endpoint`, the base URL its requests go to, whichever
 kind it is. The Test endpoint deliberately makes a real inference
 request. A change of an entry, its accounts included, holds the entry while it

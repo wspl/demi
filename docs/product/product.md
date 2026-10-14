@@ -1287,8 +1287,8 @@ window that every conversation of the user with that model then uses
 | Path | User input and result |
 |---|---|
 | Subscription | Claude sign-in, or Codex/Grok device login; additional accounts go into the existing family entry |
-| Vendor | Select a vendor, Anthropic, OpenAI, Google or one models.dev lists, then label and key; its endpoint is the vendor's own and is shown but not edited, and its models come from the vendor's catalog |
-| Compatible API | Select the protocol, Anthropic Messages, OpenAI Chat Completions or OpenAI Responses, then label, endpoint and key; its models are the ones the user adds, none until then |
+| Vendor | Select a vendor, Anthropic, OpenAI, Google or one models.dev lists: the entry is created at once, named after the vendor, and its page asks for the key; its endpoint is the vendor's own and is shown but not edited, and its models come from the vendor's catalog |
+| Compatible API | Select Compatible API: the entry is created at once as *Compatible API*, and on its page the user sets the protocol, Anthropic Messages, OpenAI Chat Completions or OpenAI Responses, the endpoint and, when the server takes one, the key, and changes any of them later; its models are the ones the user adds, none until then |
 
 A vendor entry and a compatible one differ in who decides the models. A
 vendor's own API serves the vendor's catalog, so its entry lists them at
@@ -1299,7 +1299,8 @@ borrows the protocol's vendor's catalog. For example, Alex adds a compatible
 Anthropic Messages entry at `https://proxy.example/v1`: its Models list is
 empty until he adds `claude-sonnet-4-6` with Add Model. An entry stays the
 kind it was added as: a vendor entry's endpoint is never edited, and a
-compatible entry's endpoint always can be; its protocol stays.
+compatible entry's endpoint and protocol always can be
+([A provider is in the list from the start](../providers/models.md#a-provider-is-in-the-list-from-the-start)).
 
 Red marks a failure only: a key the vendor refused, an endpoint that did
 not answer, a catalog that could not be read. An entry just added has failed
@@ -1308,7 +1309,7 @@ at nothing, so it shows no error; a compatible entry with no models yet says
 shows no status until it is tested or used.
 
 Entries can be renamed, edited, or removed. A vendor entry's models can be
-replaced by a manual list; clearing it returns to the vendor's catalog. Labels need not be unique.
+replaced by a manual list; clearing it returns to the vendor's catalog. A new entry's default name takes *(2)* when taken; a name the user gives need not be unique.
 Provider configuration stores explicit endpoint and model overrides. Fetched
 model directories are cached; they are not a fresh network lookup on every
 conversation opening.
