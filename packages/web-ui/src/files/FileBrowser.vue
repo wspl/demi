@@ -50,6 +50,7 @@ import {
 import { baseName } from '@demicodes/utils'
 import { directoryParts, joinPath, normalizePath, parentPath } from './paths'
 import { readLinkAgain } from './link-activation'
+import { linkDescription } from './format'
 import { failureShown } from './file-cache'
 import { useShowing } from './showing'
 import {
@@ -288,6 +289,19 @@ async function current(entry: FileBrowserEntry): Promise<FileBrowserEntry | unde
   return signal.aborted ? undefined : now
 }
 
+/**
+ * Answers a file chosen in file mode: a link whose target is missing or
+ * cannot be read, as it is now, gives nothing, and its sentence shows where
+ * the browser shows its errors (`file-previews.md` § Symbolic links).
+ */
+function choose(entry: FileBrowserEntry): void {
+  if (entry.link?.broken) {
+    error.value = { message: `${linkDescription(entry.link)}.`, requestId: null }
+    return
+  }
+  emit('select', joinPath(path.value, entry.name))
+}
+
 /** Opens a folder; confirms a file in file mode; a link as what it leads to now. */
 async function activate(entry: FileBrowserEntry) {
   const now = await current(entry)
@@ -296,7 +310,7 @@ async function activate(entry: FileBrowserEntry) {
   if (now.isDirectory) {
     goTo(joinPath(path.value, now.name))
   } else if (props.mode === 'file') {
-    emit('select', joinPath(path.value, now.name))
+    choose(now)
   }
 }
 
@@ -308,7 +322,9 @@ async function confirm() {
       return
     if (props.mode === 'file' && now.isDirectory) {
       goTo(joinPath(path.value, now.name))
-    } else if (props.mode === 'file' || now.isDirectory) {
+    } else if (props.mode === 'file') {
+      choose(now)
+    } else if (now.isDirectory) {
       emit('select', joinPath(path.value, now.name))
     }
     return
