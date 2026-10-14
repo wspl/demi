@@ -4,8 +4,9 @@ import { KEEPS_WINDOWS } from '../../ui/window-stack'
 /**
  * What a notice row says (`runtime.md` § Command reports, `subagents.md`
  * § Product rendering): what happened, then what it happened to by its
- * title, the notice's object, underlined with dots; or, for a title that
- * can be the subject, such as *Main agent*, the title first. A click on the
+ * title, the notice's object, underlined with dots, after a colon; or,
+ * for a title that ends the sentence, such as *main agent* in *Message from
+ * main agent*, after the words alone. A click on the
  * title brings into view where it came from, as a control of its own; a
  * title nothing can show is plain text. Where it came from may lie in a
  * child's transcript, which the Agents window opens on or switches to, so
@@ -19,8 +20,8 @@ defineProps<{
   notice: string
   /** What the notice names; none for a notice that names nothing. */
   title?: string | null
-  /** The title is the notice's subject and leads it. */
-  subject?: boolean
+  /** The title ends the notice's sentence, with no colon between. */
+  inline?: boolean
   /** Brings where the title came from into view; none when nothing can. */
   go?: (() => void) | undefined
 }>()
@@ -31,9 +32,9 @@ defineProps<{
   <span
     v-else
     class="notice-label flex min-w-0 items-center"
-    :class="subject ? 'notice-label-subject' : ''"
+    :class="inline ? 'notice-label-inline' : ''"
   >
-    <span v-if="!subject" class="notice-words">{{ notice }}:</span>
+    <span class="notice-words">{{ notice }}{{ inline ? '' : ':' }}</span>
     <span class="notice-title">
       <!-- The title's click is its own, never the row's. -->
       <button
@@ -45,7 +46,6 @@ defineProps<{
       >{{ title }}</button>
       <span v-else class="notice-title-text text-fg-muted">{{ title }}</span>
     </span>
-    <span v-if="subject" class="notice-words">{{ notice }}</span>
   </span>
 </template>
 
@@ -61,8 +61,8 @@ defineProps<{
   gap: var(--notice-gap);
 }
 
-/* A subject and its predicate are one sentence, a space apart. */
-.notice-label-subject {
+/* The words and the name that ends their sentence are a space apart. */
+.notice-label-inline {
   --notice-gap: 0.25em;
 }
 

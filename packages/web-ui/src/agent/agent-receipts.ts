@@ -6,15 +6,15 @@ import { homePath } from '../files/paths'
  * A receipt's row (`subagents.md` § Product rendering): what happened, in
  * the user's words, and the agent it names by its description, which is
  * an imperative title and so the notice's object, never its subject. The
- * main agent, which has no description of its own, is named as such, and
- * leads the row as its subject: *Main agent sent a message*.
+ * main agent, which has no description of its own, is named as such and
+ * ends the sentence without a colon: *Message from main agent*.
  */
 export interface ReceiptRow {
   notice: string
   /** The agent the row names; none for a row the user's own decision or Demi makes. */
   title: string | null
-  /** The title is the notice's subject and leads it. */
-  subject: boolean
+  /** The title ends the notice's sentence, with no colon between. */
+  inline: boolean
   /** The tag after the title: only what went wrong. */
   tag: 'failed' | 'stopped' | null
 }
@@ -22,9 +22,9 @@ export interface ReceiptRow {
 /** The row an agent message shows as in the transcript. */
 export function receiptRow(message: AgentMessage): ReceiptRow {
   const event = message.event
-  const plain = (notice: string): ReceiptRow => ({ notice, title: null, subject: false, tag: null })
+  const plain = (notice: string): ReceiptRow => ({ notice, title: null, inline: false, tag: null })
   const named = (notice: string, tag: ReceiptRow['tag'] = null): ReceiptRow =>
-    ({ notice, title: senderName(message), subject: false, tag })
+    ({ notice, title: senderName(message), inline: false, tag })
   switch (event.type) {
     // The user's decision on a permission request, which reached the agent as this message.
     case 'permission':
@@ -40,8 +40,8 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
     // A message from the main agent reaches one of its children.
     case 'message':
       return message.sender?.number === 0
-        ? { notice: 'sent a message', title: 'Main agent', subject: true, tag: null }
-        : named('Agent sent an update')
+        ? { notice: 'Message from', title: 'main agent', inline: true, tag: null }
+        : named('Message from agent')
     case 'completion':
       switch (event.outcome) {
         case 'completed':
