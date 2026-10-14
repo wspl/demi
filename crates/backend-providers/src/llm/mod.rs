@@ -10,4 +10,5 @@ pub mod catalog_cache;
 pub mod claude_releases;
 pub mod details;
 pub mod families;
+pub mod rotation;
 pub mod vendors;

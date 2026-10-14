@@ -6,7 +6,7 @@
 
 use demi_shared_types::{ProviderModelList, QuotaSnapshot, Timestamp};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
-use demi_web_api_protocol::providers::CredentialKind;
+use demi_web_api_protocol::providers::{CredentialKind, Rotation};
 use garde::Validate;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -66,9 +66,11 @@ pub struct ProviderRow {
     /// A subscription entry's active account.
     pub active: Option<CredentialId>,
     pub created_at: Timestamp,
+    /// Which account each agent uses; `manual` for an API-key entry.
+    pub rotation: Rotation,
 }
 
-/// An entry as it is first stored.
+/// An entry as it is first stored, with manual rotation.
 #[derive(Debug, Clone)]
 pub struct NewProvider {
     pub id: ProviderId,
@@ -107,7 +109,9 @@ pub struct CredentialWrite {
     pub secret: Vec<u8>,
 }
 
-const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at";
+const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation";
+/// The columns a new entry stores; its rotation is the default, manual.
+const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at";
 const CREDENTIAL_COLUMNS: &str =
     "id, identity_key, label, detail, source, secret, version, quota, updated_at";
 
@@ -139,7 +143,7 @@ impl ControlService {
             let inserted = transaction
                 .query_row(
                     &format!(
-                        "INSERT INTO providers ({PROVIDER_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                        "INSERT INTO providers ({NEW_PROVIDER_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
                          ON CONFLICT (owner_user_id, provider_type) WHERE credential_kind = 'subscription' DO NOTHING
                          RETURNING {PROVIDER_COLUMNS}"
                     ),
@@ -190,15 +194,16 @@ impl ControlService {
         .await
     }
 
-    /// Replaces the entry's label, family or sealed configuration, and
-    /// answers the entry as it now is; `None` for an entry that no longer
-    /// exists.
+    /// Replaces the entry's label, family, sealed configuration or
+    /// rotation, and answers the entry as it now is; `None` for an entry
+    /// that no longer exists.
     pub async fn update_provider(
         &self,
         id: ProviderId,
         label: Option<String>,
         family: Option<String>,
         config: Option<Vec<u8>>,
+        rotation: Option<Rotation>,
     ) -> Result<Option<ProviderRow>, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
@@ -220,6 +225,12 @@ impl ControlService {
                     params![config, id.as_str()],
                 )?;
             }
+            if let Some(rotation) = rotation {
+                transaction.execute(
+                    "UPDATE providers SET rotation = ?1 WHERE id = ?2",
+                    params![rotation.to_string(), id.as_str()],
+                )?;
+            }
             let updated = provider_by_id(&transaction, &id)?;
             transaction.commit()?;
             Ok(updated)
@@ -236,14 +247,14 @@ impl ControlService {
         .await
     }
 
-    /// The entry's accounts, ordered by id.
+    /// The entry's accounts in the list's order.
     pub async fn credentials(
         &self,
         provider: ProviderId,
     ) -> Result<Vec<CredentialRow>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(&format!(
-                "SELECT {CREDENTIAL_COLUMNS} FROM provider_credentials WHERE provider_id = ?1 ORDER BY id"
+                "SELECT {CREDENTIAL_COLUMNS} FROM provider_credentials WHERE provider_id = ?1 ORDER BY position, id"
             ))?;
             let mut rows = statement.query([provider.as_str()])?;
             let mut credentials = Vec::new();
@@ -356,7 +367,7 @@ impl ControlService {
             )?;
             transaction.execute(
                 "UPDATE providers SET active_credential_id =
-                   (SELECT id FROM provider_credentials WHERE provider_id = ?1 ORDER BY id LIMIT 1)
+                   (SELECT id FROM provider_credentials WHERE provider_id = ?1 ORDER BY position, id LIMIT 1)
                  WHERE id = ?1 AND active_credential_id = ?2",
                 params![provider.as_str(), id.as_str()],
             )?;
@@ -375,6 +386,38 @@ impl ControlService {
                     )
                 })
                 .transpose()
+        })
+        .await
+    }
+
+    /// Puts the entry's accounts in the order `ids` names them; `false`,
+    /// and nothing changed, unless `ids` names every account of the entry
+    /// once.
+    pub async fn set_credential_order(
+        &self,
+        provider: ProviderId,
+        ids: Vec<CredentialId>,
+    ) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let mut stored: Vec<String> = transaction
+                .prepare_cached("SELECT id FROM provider_credentials WHERE provider_id = ?1")?
+                .query_map([provider.as_str()], |row| row.get(0))?
+                .collect::<rusqlite::Result<_>>()?;
+            let mut named: Vec<&str> = ids.iter().map(CredentialId::as_str).collect();
+            stored.sort();
+            named.sort_unstable();
+            if stored != named {
+                return Ok(false);
+            }
+            for (position, id) in ids.iter().enumerate() {
+                transaction.execute(
+                    "UPDATE provider_credentials SET position = ?3 WHERE provider_id = ?1 AND id = ?2",
+                    params![provider.as_str(), id.as_str(), i64::try_from(position).expect("an entry holds few accounts")],
+                )?;
+            }
+            transaction.commit()?;
+            Ok(true)
         })
         .await
     }
@@ -459,7 +502,8 @@ fn provider_by_id(
 }
 
 /// Inserts or replaces an account, advancing its version, and selects it
-/// when the entry has no active account.
+/// when the entry has no active account. A new account goes to the end of
+/// the list; a replaced one keeps its place.
 fn write_credential(
     connection: &Connection,
     provider: &ProviderId,
@@ -468,8 +512,9 @@ fn write_credential(
 ) -> Result<CredentialWritten, StorageError> {
     connection.execute(
         "INSERT INTO provider_credentials
-           (provider_id, id, identity_key, label, detail, source, secret, version, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8)
+           (provider_id, id, identity_key, label, detail, source, secret, version, updated_at, position)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 1, ?8,
+           (SELECT coalesce(max(position) + 1, 0) FROM provider_credentials WHERE provider_id = ?1))
          ON CONFLICT (provider_id, id) DO UPDATE SET
            identity_key = excluded.identity_key, label = excluded.label, detail = excluded.detail,
            source = excluded.source, secret = excluded.secret, version = version + 1,
@@ -533,6 +578,11 @@ fn provider_row(row: &Row<'_>) -> Result<ProviderRow, StorageError> {
             })
             .transpose()?,
         created_at: instant(row, "providers", "created_at")?,
+        rotation: decode(
+            "providers",
+            "rotation",
+            row.get::<_, String>("rotation")?.parse::<Rotation>(),
+        )?,
     })
 }
 

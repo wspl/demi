@@ -4,9 +4,9 @@
 use std::{rc::Rc, sync::Arc};
 
 use demi_conversation_socket_protocol::{TranscriptPatch, TranscriptVersion};
-use demi_provider_common::ToolCall;
+use demi_provider_common::{AccountSwitch, ToolCall};
 use demi_shared_types::{
-    AbortBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
+    AbortBlock, AccountSwitchBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
     CompactionMarkerBlock, ContextBlock, ErrorBlock, ErrorDevice, HOST_OFFLINE, InstructionEntry, KeptMessage, ModelSelection, ProviderErrorDiagnostics,
     RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
     Timestamp, TokenUsage, ToolCallBlock, ToolCallStatus, ToolResultContentBlock, ToolView, TurnId,
@@ -474,6 +474,21 @@ impl TranscriptLog {
             output: Vec::new(),
             view: None,
             entries: Vec::new(),
+        }));
+    }
+
+    /// Records that the agent's account reached its limit and the request
+    /// went on with another (`providers.md` § Account rotation).
+    pub fn push_account_switch(&mut self, model: &ModelSelection, switch: AccountSwitch) {
+        let (id, created_at) = self.stamp();
+        self.append(Block::AccountSwitch(AccountSwitchBlock {
+            id,
+            created_at,
+            model: model.clone(),
+            from: switch.from,
+            to: switch.to,
+            window: switch.window,
+            resets_at: switch.resets_at,
         }));
     }
 

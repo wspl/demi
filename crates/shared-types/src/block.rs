@@ -39,6 +39,9 @@ pub enum Block {
     Response(ResponseBlock),
     /// A failed request or an interrupted turn.
     Error(ErrorBlock),
+    /// The agent's account reached its limit and the agent went on with
+    /// another (`providers.md` § Account rotation); the model never sees it.
+    AccountSwitch(AccountSwitchBlock),
     /// Compaction's summary, where the kept history begins.
     CompactionBoundary(CompactionBoundaryBlock),
     /// Compaction's estimate of what it summarized, at the end.
@@ -63,6 +66,7 @@ macro_rules! on_block {
             Block::ToolCall($inner) => $body,
             Block::Response($inner) => $body,
             Block::Error($inner) => $body,
+            Block::AccountSwitch($inner) => $body,
             Block::CompactionBoundary($inner) => $body,
             Block::CompactionMarker($inner) => $body,
         }
@@ -94,7 +98,11 @@ impl Block {
             Block::Text(block) => &block.entries,
             Block::ToolCall(block) => &block.entries,
             Block::CompactionBoundary(block) => &block.entries,
-            Block::Abort(_) | Block::Response(_) | Block::Error(_) | Block::CompactionMarker(_) => {
+            Block::Abort(_)
+            | Block::Response(_)
+            | Block::Error(_)
+            | Block::AccountSwitch(_)
+            | Block::CompactionMarker(_) => {
                 &[]
             }
         }
@@ -114,7 +122,11 @@ impl Block {
             Block::Text(block) => Some(&mut block.entries),
             Block::ToolCall(block) => Some(&mut block.entries),
             Block::CompactionBoundary(block) => Some(&mut block.entries),
-            Block::Abort(_) | Block::Response(_) | Block::Error(_) | Block::CompactionMarker(_) => {
+            Block::Abort(_)
+            | Block::Response(_)
+            | Block::Error(_)
+            | Block::AccountSwitch(_)
+            | Block::CompactionMarker(_) => {
                 None
             }
         }
@@ -639,6 +651,38 @@ pub struct ResumeBlock {
     #[schemars(skip)]
     #[garde(skip)]
     pub entries: Vec<serde_json::Value>,
+}
+
+/// The agent's account reached its limit and the same request went on with
+/// another account: *alex@example.com reached its 5h session limit,
+/// resetting at 9:00 PM; continuing with sam@example.com*. The page words
+/// it, with the reset in the viewer's time zone.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AccountSwitchBlock {
+    #[garde(skip)]
+    pub id: BlockId,
+    #[garde(skip)]
+    pub created_at: Timestamp,
+    #[garde(dive)]
+    pub model: ModelSelection,
+    /// The label of the account that reached its limit.
+    #[garde(skip)]
+    pub from: String,
+    /// The label of the account the agent continues with.
+    #[garde(skip)]
+    pub to: String,
+    /// The name of the window that was used up, such as `5h session`; null
+    /// when the failure and the account's quota name none.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    #[garde(skip)]
+    pub window: Option<String>,
+    /// When the used-up account can be used again; null when unknown.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    #[garde(skip)]
+    pub resets_at: Option<Timestamp>,
 }
 
 /// The stopped marker. The user sees it until the turn is continued.

@@ -120,6 +120,7 @@ impl Provider for LimitedProvider {
     fn read_failure(&self, _: &ProviderErrorDiagnostics, received_at: Timestamp) -> ProviderFailureFacts {
         ProviderFailureFacts {
             retry_at: Some(Timestamp::truncate(received_at.to_jiff() + SignedDuration::from_hours(1))),
+            continue_with: None,
         }
     }
 

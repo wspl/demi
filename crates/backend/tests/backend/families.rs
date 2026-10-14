@@ -328,7 +328,7 @@ impl Provider for Scripted {
     }
 
     fn read_failure(&self, _: &ProviderErrorDiagnostics, _: Timestamp) -> ProviderFailureFacts {
-        ProviderFailureFacts { retry_at: None }
+        ProviderFailureFacts { retry_at: None, continue_with: None }
     }
 
     fn quota(&self) -> Option<&ProviderQuota> {

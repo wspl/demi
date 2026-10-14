@@ -162,6 +162,7 @@ fn light_block(block: &Block) -> Block {
         | Block::Text(_)
         | Block::Response(_)
         | Block::Error(_)
+        | Block::AccountSwitch(_)
         | Block::CompactionMarker(_) => {}
     }
     light

@@ -26,7 +26,7 @@ use std::rc::Rc;
 use demi_conversation_socket_protocol::{JobModel, JobPhase, SubagentChild, SubagentJob};
 use demi_host_interface::{Seen, WholeOutput};
 use demi_shared_types::{
-    AgentMessage, AgentMessageEvent, Block, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
+    AgentAccount, AgentMessage, AgentMessageEvent, Block, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
     OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId,
 };
 use futures_util::future::LocalBoxFuture;
@@ -418,6 +418,12 @@ pub struct CheckpointState {
     /// The receipts of the accepted edits.
     #[garde(dive)]
     pub edits: Vec<EditReceipt>,
+    /// The account the agent took under its entry's rotation; absent before
+    /// it took one and after a compaction (`providers.md` § Account
+    /// rotation).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub account: Option<AgentAccount>,
 }
 
 /// A command a `shell` call left running, and how often it reports while

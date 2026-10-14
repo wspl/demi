@@ -144,6 +144,7 @@ pub fn inference_request() -> InferenceRequest {
         service_tier_id: None,
         prompt_cache: PromptCache::Off,
         cancel: CancellationToken::new(),
+        account: None,
     }
 }
 

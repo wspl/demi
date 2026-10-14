@@ -1,0 +1,353 @@
+//! Account rotation (`providers.md` § Account rotation): which of an
+//! entry's accounts an agent takes under In Order and Balanced, the accounts
+//! used up until their moment, and how many agents hold each account, so
+//! that agents started together spread over the accounts before their
+//! snapshots change.
+//!
+//! For example, Balanced compares a Max account whose 5-hour window is 80%
+//! used with 3 hours to go (room 0.2 / 0.6 = 0.33) and a Pro account at 10%
+//! of the same window with 4 hours to go (room 0.9 / 0.8 = 1.1): the agent
+//! takes the Pro account.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
+use demi_shared_types::{Model, QuotaSnapshot, QuotaWindow, Rotation, Timestamp};
+use demi_web_api_protocol::ids::{CredentialId, ProviderId};
+
+/// How long an account whose failure and quota name no moment stays used up.
+pub const USED_UP_FOR_MS: i64 = 30 * 60 * 1000;
+
+/// A window used beyond this share leaves its account out while another
+/// account has room.
+const NEARLY_USED_UP: f64 = 0.9;
+
+/// Accounts whose room is within this share of the best are equal, and the
+/// one fewer agents hold is taken.
+const EQUAL_ROOM: f64 = 0.1;
+
+type Account = (ProviderId, CredentialId);
+
+/// One account of an entry as a choice reads it, in the list's order.
+#[derive(Debug, Clone)]
+pub struct Candidate {
+    pub id: CredentialId,
+    pub label: String,
+    pub snapshot: Option<QuotaSnapshot>,
+}
+
+/// What a choice found.
+#[derive(Debug)]
+pub enum Choice {
+    /// The account the agent takes, held for it until the hold drops.
+    Account(Holding),
+    /// Every account is used up; the earliest moment one can be used again,
+    /// when known.
+    AllUsedUp { earliest: Option<Timestamp> },
+}
+
+/// The rotation state of every entry this process serves.
+#[derive(Debug, Default)]
+pub struct AccountRotation {
+    /// A `std` mutex: no section awaits.
+    state: Mutex<State>,
+}
+
+#[derive(Debug, Default)]
+struct State {
+    /// The accounts used up, each until the moment it can be used again.
+    used_up: HashMap<Account, Timestamp>,
+    /// How many agents hold each account.
+    holders: HashMap<Account, usize>,
+}
+
+/// An agent's hold on its account; dropping it lets the account go.
+#[derive(Debug)]
+pub struct Holding {
+    rotation: Arc<AccountRotation>,
+    account: Account,
+}
+
+impl Holding {
+    pub fn account(&self) -> &CredentialId {
+        &self.account.1
+    }
+}
+
+impl Drop for Holding {
+    fn drop(&mut self) {
+        let mut state = self.rotation.lock();
+        if let Some(count) = state.holders.get_mut(&self.account) {
+            *count -= 1;
+            if *count == 0 {
+                state.holders.remove(&self.account);
+            }
+        }
+    }
+}
+
+impl AccountRotation {
+    pub fn new() -> Arc<Self> {
+        Arc::default()
+    }
+
+    fn lock(&self) -> MutexGuard<'_, State> {
+        // A section changes one count or one mark, so a poisoned map is
+        // whole.
+        self.state.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// Takes an account of `entry` among `candidates` for an agent of
+    /// `model` under `rotation` and holds it for the agent. Manual takes
+    /// none: its agents use the active account.
+    pub fn take(
+        self: &Arc<Self>,
+        entry: &ProviderId,
+        rotation: Rotation,
+        candidates: &[Candidate],
+        model: &Model,
+        now: Timestamp,
+    ) -> Option<Choice> {
+        let mut state = self.lock();
+        let rooms = rooms(&state, entry, candidates, model, now);
+        let index = match rotation {
+            Rotation::Manual => return None,
+            Rotation::InOrder => rooms.iter().position(|room| room.usable()),
+            Rotation::Balanced => {
+                let holders = |index: usize| {
+                    let key = (entry.clone(), candidates[index].id.clone());
+                    state.holders.get(&key).copied().unwrap_or(0)
+                };
+                most_room(&rooms, holders)
+            }
+        };
+        let Some(index) = index else {
+            return Some(Choice::AllUsedUp {
+                earliest: earliest(&rooms),
+            });
+        };
+        let account = (entry.clone(), candidates[index].id.clone());
+        *state.holders.entry(account.clone()).or_default() += 1;
+        Some(Choice::Account(Holding {
+            rotation: self.clone(),
+            account,
+        }))
+    }
+
+    /// Holds `account` of `entry` for an agent that keeps the one it took,
+    /// such as one restored after a restart.
+    pub fn hold(self: &Arc<Self>, entry: &ProviderId, account: &CredentialId) -> Holding {
+        let account = (entry.clone(), account.clone());
+        *self.lock().holders.entry(account.clone()).or_default() += 1;
+        Holding {
+            rotation: self.clone(),
+            account,
+        }
+    }
+
+    /// The account with the most room among `candidates` for `model`, by
+    /// Balanced's rule, whoever holds it; none when every one is used up.
+    /// It holds nothing: *Continue with* offers it to a Manual entry.
+    pub fn most_room(
+        &self,
+        entry: &ProviderId,
+        candidates: &[Candidate],
+        model: &Model,
+        now: Timestamp,
+    ) -> Option<CredentialId> {
+        let state = self.lock();
+        let rooms = rooms(&state, entry, candidates, model, now);
+        let holders = |index: usize| {
+            let key = (entry.clone(), candidates[index].id.clone());
+            state.holders.get(&key).copied().unwrap_or(0)
+        };
+        most_room(&rooms, holders).map(|index| candidates[index].id.clone())
+    }
+
+    /// When every account among `candidates` is used up for `model`, the
+    /// earliest moment one can be used again, when known; none while one
+    /// can be used.
+    pub fn all_used_up(
+        &self,
+        entry: &ProviderId,
+        candidates: &[Candidate],
+        model: &Model,
+        now: Timestamp,
+    ) -> Option<Option<Timestamp>> {
+        let rooms = rooms(&self.lock(), entry, candidates, model, now);
+        (!rooms.iter().any(Room::usable)).then(|| earliest(&rooms))
+    }
+
+    /// Marks `account` of `entry` used up until `until`.
+    pub fn mark_used_up(&self, entry: &ProviderId, account: &CredentialId, until: Timestamp) {
+        self.lock()
+            .used_up
+            .insert((entry.clone(), account.clone()), until);
+    }
+
+    /// Forgets the marks of a deleted entry's accounts; their holds go with
+    /// the agents that hold them.
+    pub fn forget_entry(&self, entry: &ProviderId) {
+        self.lock().used_up.retain(|(held, _), _| held != entry);
+    }
+}
+
+/// An account's room for one model.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Room {
+    /// Used up until the moment, when known.
+    UsedUp(Option<Timestamp>),
+    /// Its tightest window's room, and the largest share any of its windows
+    /// has used.
+    Left { room: f64, most_used: f64 },
+}
+
+impl Room {
+    fn usable(&self) -> bool {
+        matches!(self, Self::Left { .. })
+    }
+}
+
+fn rooms(
+    state: &State,
+    entry: &ProviderId,
+    candidates: &[Candidate],
+    model: &Model,
+    now: Timestamp,
+) -> Vec<Room> {
+    candidates
+        .iter()
+        .map(|candidate| {
+            let marked = state
+                .used_up
+                .get(&(entry.clone(), candidate.id.clone()))
+                .filter(|until| **until > now);
+            match marked {
+                Some(until) => Room::UsedUp(Some(*until)),
+                None => account_room(candidate.snapshot.as_ref(), model, now),
+            }
+        })
+        .collect()
+}
+
+/// The room of an account whose snapshot is `snapshot`, for `model`, now:
+/// its smallest window's, each window's being the share left divided by the
+/// share of its period left. A window not yet started, past its reset, or
+/// without a reset time or a period has a room of 1; a window whose share is
+/// unknown says nothing. A window used up before its reset uses the account
+/// up until the latest such reset.
+fn account_room(snapshot: Option<&QuotaSnapshot>, model: &Model, now: Timestamp) -> Room {
+    let windows = snapshot
+        .into_iter()
+        .flat_map(|snapshot| &snapshot.windows)
+        .filter(|window| applies(window, model));
+    let mut room = f64::INFINITY;
+    let mut most_used: f64 = 0.0;
+    let mut used_up: Option<Option<Timestamp>> = None;
+    for window in windows {
+        let Some(percent) = window.used_percent else {
+            continue;
+        };
+        let used = (percent / 100.0).clamp(0.0, 1.0);
+        let reset = window.resets_at.filter(|reset| *reset > now);
+        if window.resets_at.is_some() && reset.is_none() {
+            // Its period ended: what it showed was used is free again.
+            room = room.min(1.0);
+            continue;
+        }
+        if used >= 1.0 {
+            used_up = Some(match used_up {
+                Some(Some(latest)) => reset.map(|reset| reset.max(latest)),
+                Some(None) | None => reset,
+            });
+            continue;
+        }
+        most_used = most_used.max(used);
+        let window_room = match (reset, window.period_seconds) {
+            (Some(reset), Some(period)) if period > 0 => {
+                let left_ms = (reset.as_millisecond() - now.as_millisecond()) as f64;
+                let period_left = (left_ms / (period as f64 * 1000.0)).min(1.0);
+                (1.0 - used) / period_left
+            }
+            _ => 1.0,
+        };
+        room = room.min(window_room);
+    }
+    match used_up {
+        Some(until) => Room::UsedUp(until),
+        None => Room::Left {
+            room: if room.is_finite() { room } else { 1.0 },
+            most_used,
+        },
+    }
+}
+
+/// Whether `window` applies to `model`: every window but one scoped to
+/// another model, which the scope names by the model's family name, such
+/// as `Sonnet`.
+fn applies(window: &QuotaWindow, model: &Model) -> bool {
+    let Some(scope) = &window.scope else {
+        return true;
+    };
+    let Some(name) = scope.label.as_deref().filter(|_| scope.kind == "model") else {
+        return true;
+    };
+    let name = name.to_lowercase();
+    model.name.to_lowercase().contains(&name) || model.id.to_lowercase().contains(&name)
+}
+
+/// The index of the account with the most room: a window over 90% used
+/// leaves its account out while another account has room; among those
+/// within a tenth of the best room, the one `holders` says fewest agents
+/// hold, then the first in the list.
+fn most_room(rooms: &[Room], holders: impl Fn(usize) -> usize) -> Option<usize> {
+    let left: Vec<(usize, f64, f64)> = rooms
+        .iter()
+        .enumerate()
+        .filter_map(|(index, room)| match room {
+            Room::Left { room, most_used } => Some((index, *room, *most_used)),
+            Room::UsedUp(_) => None,
+        })
+        .collect();
+    let roomy = left.iter().any(|(_, _, most_used)| *most_used <= NEARLY_USED_UP);
+    let eligible: Vec<&(usize, f64, f64)> = left
+        .iter()
+        .filter(|(_, _, most_used)| !roomy || *most_used <= NEARLY_USED_UP)
+        .collect();
+    let best = eligible.iter().map(|(_, room, _)| *room).fold(f64::NAN, f64::max);
+    eligible
+        .into_iter()
+        .filter(|(_, room, _)| *room >= best * (1.0 - EQUAL_ROOM))
+        .min_by_key(|(index, _, _)| (holders(*index), *index))
+        .map(|(index, _, _)| *index)
+}
+
+/// The earliest moment an account of `rooms`, all used up, can be used
+/// again; none when no account names one.
+fn earliest(rooms: &[Room]) -> Option<Timestamp> {
+    rooms
+        .iter()
+        .filter_map(|room| match room {
+            Room::UsedUp(until) => *until,
+            Room::Left { .. } => None,
+        })
+        .min()
+}
+
+/// The window of `snapshot` used up for `model` with its reset still to
+/// come, the one that resets last when several are, since the account can
+/// be used again only once every one has reset; with its name.
+pub fn used_up_window(
+    snapshot: Option<&QuotaSnapshot>,
+    model: &Model,
+    now: Timestamp,
+) -> Option<(String, Option<Timestamp>)> {
+    snapshot?
+        .windows
+        .iter()
+        .filter(|window| applies(window, model))
+        .filter(|window| window.used_percent.is_some_and(|percent| percent >= 100.0))
+        .filter(|window| window.resets_at.is_none_or(|reset| reset > now))
+        .max_by_key(|window| window.resets_at)
+        .map(|window| (window.label.clone(), window.resets_at))
+}
