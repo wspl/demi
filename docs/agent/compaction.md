@@ -349,6 +349,7 @@ them.
 | `response` | Its usage as JSON |
 | `error` | Its message |
 | `abort` | `aborted` |
+| `account_switch` | Nothing |
 | `compaction_boundary` | The note, the messages it keeps and the summary |
 | `compaction_marker` | The summarized token count, in decimal |
 
