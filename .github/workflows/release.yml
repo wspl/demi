@@ -323,10 +323,10 @@ jobs:
       - name: Publish the release
         run: |
           cp "$RUNNER_TEMP"/files/files-amd64/* dist/
-          # The release's license, notice and third-party notices, as
+          # The release's licenses, notice and third-party notices, as
           # assets, from the root of a server release.
           tar --zstd -xf "dist/demi-$VERSION-server-linux-amd64.tar.zst" -C dist \
-            ./LICENSE ./NOTICE ./THIRD-PARTY-NOTICES
+            ./LICENSE ./LICENSE-DEMI ./NOTICE ./THIRD-PARTY-NOTICES
           sed "s/@VERSION@/$VERSION/" crates/server/install.sh > dist/install.sh
           cd dist
           sha256sum demi-* > SHA256SUMS

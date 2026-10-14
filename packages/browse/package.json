@@ -3,6 +3,7 @@
   "description": "bun browse: the product-check tool over Playwright (docs/delivery/browse.md).",
   "version": "0.0.0",
   "private": true,
+  "license": "Apache-2.0",
   "type": "module",
   "dependencies": {
     "@demicodes/web": "workspace:^",
