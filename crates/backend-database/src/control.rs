@@ -19,6 +19,7 @@ use super::accounts::{
     Account, ChallengeIssue, ChallengeOutcome, ChallengePolicy, CodeHash, PasswordHash, TokenHash,
 };
 use super::columns::{decode, instant, json, to_json};
+use super::providers::ResealConfigs;
 use super::{StorageError, schema, sqlite};
 
 #[derive(Clone)]
@@ -32,15 +33,20 @@ pub(crate) const USER_COLUMNS: &str = "users.id, users.email, users.nickname, us
      users.disabled, users.chooses_password";
 
 impl ControlService {
-    /// Opens the database, and gives a new one its schema.
-    pub async fn open(path: &Path, clock: Arc<dyn Clock>) -> Result<Self, StorageError> {
+    /// Opens the database: gives a new one its schema, and migrates one of
+    /// an earlier schema, re-encoding its sealed values with `seals`.
+    pub async fn open(
+        path: &Path,
+        clock: Arc<dyn Clock>,
+        seals: Arc<dyn ResealConfigs>,
+    ) -> Result<Self, StorageError> {
         let db = tokio_rusqlite::Connection::open(path).await?;
         let control = Self { db, clock };
         let path = path.to_owned();
         control
             .call(move |connection, _| {
                 sqlite::configure(connection)?;
-                schema::CONTROL.apply(connection, &path, &schema::NoBlobs)
+                schema::CONTROL.apply_sealed(connection, &path, seals.as_ref())
             })
             .await?;
         Ok(control)
@@ -672,17 +678,17 @@ mod tests {
                 .unwrap()
                 .execute_batch(made)
                 .unwrap();
-            let refused = ControlService::open(&path, clock.clone()).await.err();
+            let refused = ControlService::open(&path, clock.clone(), std::sync::Arc::new(crate::providers::NoSealedConfigs)).await.err();
             assert!(
                 matches!(refused, Some(StorageError::OtherSchema { .. })),
                 "{name}: {refused:?}"
             );
         }
         let path = data.path().join("control.sqlite");
-        let control = ControlService::open(&path, clock.clone()).await.unwrap();
+        let control = ControlService::open(&path, clock.clone(), std::sync::Arc::new(crate::providers::NoSealedConfigs)).await.unwrap();
         master(&control).await;
         control.close().await.unwrap();
-        let reopened = ControlService::open(&path, clock).await.unwrap();
+        let reopened = ControlService::open(&path, clock, std::sync::Arc::new(crate::providers::NoSealedConfigs)).await.unwrap();
         assert_eq!(reopened.users().await.unwrap().len(), 1);
     }
 
@@ -692,7 +698,7 @@ mod tests {
         let clock = Arc::new(ManualClock::new(
             Timestamp::from_millisecond(1_790_000_000_000).unwrap(),
         ));
-        let control = ControlService::open(&data.path().join("control.sqlite"), clock.clone())
+        let control = ControlService::open(&data.path().join("control.sqlite"), clock.clone(), std::sync::Arc::new(crate::providers::NoSealedConfigs))
             .await
             .unwrap();
         let user = master(&control).await;
@@ -732,6 +738,7 @@ mod tests {
         let control = ControlService::open(
             &data.path().join("control.sqlite"),
             Arc::new(demi_shared_types::SystemClock),
+            std::sync::Arc::new(crate::providers::NoSealedConfigs),
         )
         .await
         .unwrap();

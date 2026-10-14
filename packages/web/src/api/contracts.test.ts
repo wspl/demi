@@ -15,7 +15,7 @@ test('text the backend trims is trimmed before its length is checked', () => {
 
 test('an endpoint is an http or https URL', () => {
   const accepts = (baseUrl: string) =>
-    createProviderSchema.safeParse({ source: 'custom', providerType: 'openai', label: 'Local', apiKey: 'key', baseUrl })
+    createProviderSchema.safeParse({ source: 'compatible', providerType: 'openai', label: 'Local', apiKey: 'key', baseUrl })
       .success
   expect(accepts('https://api.kimi.com/coding/v1')).toBe(true)
   expect(accepts('http://127.0.0.1:8080')).toBe(true)

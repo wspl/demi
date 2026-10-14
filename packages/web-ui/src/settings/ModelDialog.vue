@@ -3,7 +3,6 @@ import type { ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
 import { upperFirst } from '@demicodes/utils'
 import type { OverlayStore } from '../overlay/overlayStore'
-import Autocomplete from '@demicodes/web-ui/ui/Autocomplete.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
@@ -14,42 +13,43 @@ import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
 import SettingsRow from './SettingsRow.vue'
-import { useModelSearch } from './model-search'
 import {
   EXTENSION_PRESETS,
   THINKING_EFFORTS,
   type SettingsModelDraft,
-  type SettingsModelMatch,
-  type SettingsModelSearch,
 } from './types'
 import { formatTokens } from '../ui/token-count'
 
 /**
- * One model, in its own dialog: added, edited, or viewed as the catalog
- * describes it. Adding asks only for the model's name at first: typing
- * searches models.dev (`search`), the list under the field offers *Custom*
- * first and then the matches, and choosing one shows every field of the model,
- * filled from the match or empty but for the typed name, each still editable
- * (`models.md` § Adding a model from models.dev). Tool calling is not a
+ * One model, in its own dialog: Edit Model, which every model of an entry's
+ * own list opens, the one just added from Add Model included, or the facts
+ * of a catalog's model to read. Its fields come in one order, the id, the
+ * name, the context window, the output limit, the thinking efforts, the Fast
+ * tier and the files it reads, and every one is editable, the id too
+ * (`models.md` § Adding a model from models.dev). An id another model of the
+ * list has is refused here, before anything is sent. Save keeps the change,
+ * Cancel drops it, Delete Model removes the model. Tool calling is not a
  * setting: a model without it cannot drive the agent, so it is never offered.
  */
 const props = defineProps<{
-  /** Saves the model; Add or Save works until it settles. */
+  /** Saves the model; Save works until it settles. */
   onSave?: Action<[model: SettingsModelDraft]>
-  /** What Add or Save does, to which model (`operations.ts`). */
+  /** What Save does, to which model (`operations.ts`). */
   operation?: Operation
   /** Why the last save failed, with the request it came from. */
   error?: ShownError | null
   isOpen: boolean
   overlayStore: OverlayStore
-  mode: 'create' | 'edit' | 'view'
+  mode: 'edit' | 'view'
   model: SettingsModelDraft
-  /** Asks models.dev for the matches of the typed name; without it only *Custom* is offered. */
-  search?: SettingsModelSearch
+  /** The ids of the entry's other models, which this one's id may not take. */
+  takenIds?: readonly string[]
 }>()
 
 const emit = defineEmits<{
   close: []
+  /** Delete Model: the host asks first, then removes it. */
+  delete: []
 }>()
 
 const draft = ref<SettingsModelDraft>(clone(props.model))
@@ -57,6 +57,15 @@ watch(
   () => props.model,
   (next) => {
     draft.value = clone(next)
+  },
+)
+// Each opening starts from the model as it is: Cancel dropped the edit.
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (open) {
+      draft.value = clone(props.model)
+    }
   },
 )
 
@@ -68,58 +77,15 @@ function clone(m: SettingsModelDraft): SettingsModelDraft {
   }
 }
 
-const editable = computed(() => props.mode !== 'view')
-/**
- * Adding shows the fields once a match or *Custom* was chosen, or when the
- * dialog opens on a model already filled in (a save that failed); the other
- * modes show them at once.
- */
-const startsChosen = () => props.mode !== 'create' || props.model.id.trim() !== ''
-const chosen = ref(startsChosen())
-watch(
-  () => props.isOpen,
-  (open) => {
-    if (open) {
-      chosen.value = startsChosen()
-    }
-  },
-)
-const { results: matches, failed: searchFailed } = useModelSearch(
-  computed(() => draft.value.name),
-  () => props.search,
-)
-
-/** A row of the name field's list: *Custom* first, then the matches. */
-type Choice = { kind: 'custom' } | { kind: 'match'; match: SettingsModelMatch }
-const choices = computed<Choice[]>(() => [
-  { kind: 'custom' },
-  ...matches.value.map((match): Choice => ({ kind: 'match', match })),
-])
-
-function choiceKey(choice: Choice): string {
-  return choice.kind === 'custom' ? 'custom' : choice.match.ref
-}
-
-function choose(choice: Choice): void {
-  if (choice.kind === 'match') {
-    draft.value = clone(choice.match.model)
-  } else {
-    draft.value = clone({
-      ...props.model,
-      name: draft.value.name,
-    })
-  }
-  chosen.value = true
-}
-
+const editable = computed(() => props.mode === 'edit')
 const title = computed(() =>
-  props.mode === 'create'
-    ? 'Add Model'
-    : props.mode === 'edit'
-      ? 'Edit Model'
-      : draft.value.name || draft.value.id,
+  props.mode === 'edit' ? 'Edit Model' : draft.value.name || draft.value.id,
 )
 
+/** Why the id cannot be saved, said as the user reads it; null when it can. */
+const idProblem = computed(() =>
+  props.takenIds?.includes(draft.value.id.trim()) ? 'Another model of this provider has this ID' : null,
+)
 
 function toggleEffort(effort: string) {
   const list = draft.value.efforts
@@ -152,17 +118,23 @@ function setPreset(extensions: string[], on: boolean) {
 const canSave = computed(() => {
   const model = draft.value
   return (
-    chosen.value &&
     model.id.trim().length > 0 &&
-    model.contextWindow !== null &&
-    Number.isInteger(model.contextWindow) &&
-    model.contextWindow > 0 &&
+    idProblem.value === null &&
+    // An unknown window, as a model added by Custom has, is no fault.
+    (model.contextWindow === null ||
+      (Number.isInteger(model.contextWindow) && model.contextWindow > 0)) &&
     (model.outputLimit === null ||
       (Number.isInteger(model.outputLimit) &&
         model.outputLimit > 0 &&
-        model.outputLimit <= model.contextWindow))
+        (model.contextWindow === null || model.outputLimit <= model.contextWindow)))
   )
 })
+
+function save(): void {
+  const model = clone(draft.value)
+  model.id = model.id.trim()
+  void props.onSave?.(model)
+}
 </script>
 
 <template>
@@ -193,48 +165,26 @@ const canSave = computed(() => {
         <div
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
-          <SettingsRow v-if="mode === 'create'" label="Name">
-            <template v-if="searchFailed" #detail>
-              <InlineError message="Could not search models.dev." />
+          <SettingsRow v-if="editable" label="Model ID">
+            <template v-if="idProblem" #detail>
+              <InlineError :message="idProblem" />
             </template>
-            <Autocomplete
-              v-model="draft.name"
-              :items="choices"
-              :item-key="choiceKey"
-              list-label="Models"
-              :focused="!chosen"
-              class="w-80 max-w-full"
-              @choose="choose"
-            >
-              <template #item="{ item }">
-                <span v-if="item.kind === 'custom'" class="min-w-0 flex-1 truncate">Custom</span>
-                <template v-else>
-                  <span class="min-w-0 flex-1 truncate">{{ item.match.model.name }}</span>
-                  <span class="shrink-0 text-fg-subtle">{{ item.match.vendor }}</span>
-                  <span class="w-12 shrink-0 text-right tabular-nums text-fg-subtle">{{
-                    formatTokens(item.match.model.contextWindow)
-                  }}</span>
-                </template>
-              </template>
-            </Autocomplete>
-          </SettingsRow>
-          <SettingsRow v-if="editable && chosen" label="Model ID">
             <TextInput
               v-model="draft.id"
+              aria-label="Model ID"
               literal
               class="w-64 max-w-full font-mono"
-              :readonly="mode === 'edit'"
             />
           </SettingsRow>
           <SettingsRow
-            v-if="mode !== 'create'"
-            label="Display name"
-            :description="editable ? 'Optional' : undefined"
+            label="Name"
+            :description="editable ? 'As the model menu shows it; its ID without one.' : undefined"
             :compact="!editable"
           >
             <TextInput
               v-if="editable"
               v-model="draft.name"
+              aria-label="Name"
               :placeholder="draft.id"
               class="w-64 max-w-full"
             />
@@ -242,7 +192,7 @@ const canSave = computed(() => {
               draft.name || '—'
             }}</span>
           </SettingsRow>
-          <SettingsRow v-if="chosen" label="Context window" :compact="!editable">
+          <SettingsRow label="Context window" :compact="!editable">
             <TokenInput
               v-if="editable"
               v-model="draft.contextWindow"
@@ -253,7 +203,6 @@ const canSave = computed(() => {
             }}</span>
           </SettingsRow>
           <SettingsRow
-            v-if="chosen"
             label="Max output"
             :description="editable ? 'Optional' : undefined"
             :compact="!editable"
@@ -268,7 +217,6 @@ const canSave = computed(() => {
             }}</span>
           </SettingsRow>
           <SettingsRow
-            v-if="chosen"
             label="Reasoning"
             :description="editable ? 'First is the default.' : undefined"
             :compact="!editable"
@@ -294,7 +242,6 @@ const canSave = computed(() => {
             }}</span>
           </SettingsRow>
           <SettingsRow
-            v-if="chosen"
             label="Fast tier"
             :description="editable ? 'Service tier ID. Optional' : undefined"
             :compact="!editable"
@@ -313,7 +260,6 @@ const canSave = computed(() => {
         </div>
 
         <div
-          v-if="chosen"
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
           <SettingsRow
@@ -374,14 +320,17 @@ const canSave = computed(() => {
       </ScrollArea>
       <InlineError v-if="error" class="px-5 pt-3" :message="error.message" :request-id="error.requestId" />
     </div>
+    <template v-if="editable" #footer-leading>
+      <Button variant="danger" @click="emit('delete')">Delete Model</Button>
+    </template>
     <template v-if="editable" #footer>
       <Button @click="emit('close')">Cancel</Button>
       <Button
         variant="primary"
         :disabled="!canSave"
         :operation="operation"
-        @click="onSave?.(clone(draft))"
-        >{{ mode === 'create' ? 'Add' : 'Save' }}</Button
+        @click="save"
+        >Save</Button
       >
     </template>
   </Dialog>

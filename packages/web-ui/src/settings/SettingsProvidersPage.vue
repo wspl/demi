@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { formError, type ShownError } from '../infra/errors'
-import { computed, ref, watch } from 'vue'
+import { computed, reactive, ref, watch } from 'vue'
 import { countUnlessOne, upperFirst } from '@demicodes/utils'
 import { showToast } from '../infra/toast'
 import {
@@ -36,9 +36,13 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import AddCompatibleDialog from './AddCompatibleDialog.vue'
+import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
+import Menu from '@demicodes/web-ui/ui/Menu.vue'
+import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
+import AddModelDialog from './AddModelDialog.vue'
 import AddProviderDialog from './AddProviderDialog.vue'
 import ModelDialog from './ModelDialog.vue'
+import { freeModelId } from './model-ids'
 import { endpointProblem } from './provider-defaults'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import { operations, type Action, type Operation } from '../ui/operations'
@@ -50,8 +54,8 @@ import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import SettingsSplit from './SettingsSplit.vue'
 import {
+  COMPATIBLE_WIRE_APIS,
   WIRE_API_LABELS,
-  type SettingsCompatibleDraft,
   type SettingsModelDraft,
   type SettingsModelSearch,
   type SettingsQuotaRefresh,
@@ -60,7 +64,6 @@ import {
   type SettingsProviderOperation,
   type SettingsProviderModel,
   type SettingsVendor,
-  type SettingsWireApi,
 } from './types'
 import { formatTokens } from '../ui/token-count'
 import type { TitleText } from '../ui/ui-text'
@@ -69,14 +72,21 @@ import type { TitleText } from '../ui/ui-text'
  * Providers: a rail of providers beside the selected one. Every supported
  * subscription is always listed and manages its accounts; an API key is added from
  * the rail. A vendor entry shows its vendor's endpoint as plain text and lists the
- * vendor's catalog; a compatible API edits its endpoint and lists only the models
- * the user adds (`product.md` § Models & providers). An entry joins the list at once,
- * selected, and what it still lacks is a plain wait, the rail's yellow dot and the
- * words *No models yet*; red marks a failure only (`product.md` § Models &
- * providers). Removing an entry, an account or a model asks first. Field
- * edits land on the entry itself; everything that needs the host is emitted.
+ * vendor's catalog; a compatible API sets its protocol, its endpoint and, when its
+ * server takes one, its key, and lists only the models the user adds (`product.md`
+ * § Models & providers). Adding creates the entry at once, selected, on the page
+ * every entry has, and what it still lacks is a plain wait, the rail's yellow dot,
+ * an empty field and the words *No models yet*; red marks a failure only. Add Model
+ * adds the model it is given at once and opens it in Edit Model, the dialog every
+ * model of the list opens (`models.md` § Adding a model from models.dev). Removing
+ * an entry, an account or a model asks first. Field edits land on the entry itself;
+ * everything that needs the host is emitted.
  */
 const props = defineProps<{
+  /**
+   * Saves a model of the entry's own list: the one `original` was, or a new
+   * one, which joins the list as it is given, its id already free.
+   */
   saveModel: (
     provider: SettingsProviderEntry,
     draft: SettingsModelDraft,
@@ -120,7 +130,8 @@ const emit = defineEmits<{
     enabled: boolean,
   ]
   add: [vendor: SettingsVendor]
-  addCompatible: [draft: SettingsCompatibleDraft]
+  /** A compatible API, created at once with its defaults. */
+  addCompatible: []
   signIn: [provider: SettingsProviderEntry]
   /** Test the provider; a subscription names the account to test with. */
   test: [provider: SettingsProviderEntry, accountId?: string]
@@ -299,7 +310,14 @@ function askRemoveModel(provider: SettingsProviderEntry, model: SettingsProvider
     body: [`It leaves ${provider.name}’s model list and the model menus. You can add it again with its ID.`],
     // Of its own group: the list's save waits for what the provider does, rather than being refused.
     operation: { action: `removeModel:${model.id}`, target: providerTarget(provider.id) },
-    run: () => props.onRemoveModel?.(provider, model),
+    run: async () => {
+      await props.onRemoveModel?.(provider, model)
+      // Delete Model asked from Edit Model: the model is gone, and its dialog with it.
+      const editor = modelEditor.value
+      if (editor?.providerId === provider.id && editor.original?.id === model.id) {
+        editor.open = false
+      }
+    },
   })
 }
 
@@ -373,15 +391,84 @@ function visibleModels(p: SettingsProviderEntry): SettingsProviderModel[] {
     : p.models
 }
 
-/** The model dialog: create or edit a manual model, or view a catalog one. */
+/**
+ * The model dialog: Edit Model for a model of the entry's own list, or a
+ * catalog model's facts. A host that does not keep it leaves it to the
+ * model's local value, which holds what it is given as it is, so each editor
+ * is made reactive: closing it is a change of the object.
+ */
 const modelEditor = defineModel<SettingsModelEditor | null>('modelEditor', {
   default: null,
 })
-const dialogSearch = computed<SettingsModelSearch | undefined>(() => {
-  const search = props.searchModels
+
+/** The ids Edit Model's model may not take: those of the other models of its entry's list. */
+const takenIds = computed(() => {
   const editor = modelEditor.value
-  return search && editor ? (query, signal) => search(editor.providerId, query, signal) : undefined
+  const provider = props.providers.find((entry) => entry.id === editor?.providerId)
+  return provider?.models.map((m) => m.id).filter((id) => id !== editor?.original?.id) ?? []
 })
+
+/** Add Model, a search over models.dev, for the entry `providerId`. */
+const modelSearch = ref<{
+  providerId: string
+  open: boolean
+  /** Whether the model chosen is being added. */
+  adding: boolean
+  error: ShownError | null
+} | null>(null)
+const searchModelsOf = computed<SettingsModelSearch | undefined>(() => {
+  const search = props.searchModels
+  const shown = modelSearch.value
+  return search && shown ? (query, signal) => search(shown.providerId, query, signal) : undefined
+})
+
+function openAddModel(): void {
+  if (selected.value) {
+    modelSearch.value = { providerId: selected.value.id, open: true, adding: false, error: null }
+  }
+}
+
+/**
+ * Adds the model chosen in Add Model at once and opens it in Edit Model. A
+ * taken id takes the first free suffix; on an entry that still follows its
+ * vendor's list, the vendor's copy of the model gives way to it instead.
+ */
+async function addModel(draft: SettingsModelDraft): Promise<void> {
+  const search = modelSearch.value
+  const provider = props.providers.find((entry) => entry.id === search?.providerId)
+  if (!search || !provider || search.adding) {
+    return
+  }
+  const model: SettingsModelDraft = {
+    ...draft,
+    id: provider.modelSource === 'manual' ? freeModelId(provider.models.map((m) => m.id), draft.id) : draft.id,
+  }
+  search.adding = true
+  let added = false
+  try {
+    await answerInDialog(
+      () => (modelSearch.value === search && search.open ? search : null),
+      'Could Not Add the Model',
+      (error) => formError(error, { invalid_body: null, duplicate_model: 'Another model of this provider has this ID' }),
+      async () => {
+        await props.saveModel(provider, model, null)
+        added = true
+      },
+    )
+  } finally {
+    search.adding = false
+  }
+  if (added) {
+    modelEditor.value = reactive<SettingsModelEditor>({
+      providerId: provider.id,
+      open: true,
+      error: null,
+      mode: 'edit',
+      original: { ...model, enabled: true },
+      model,
+    })
+  }
+}
 
 function toDraft(m: SettingsProviderModel): SettingsModelDraft {
   return {
@@ -395,36 +482,24 @@ function toDraft(m: SettingsProviderModel): SettingsModelDraft {
   }
 }
 
-function openModel(
-  mode: 'create' | 'edit' | 'view',
-  m: SettingsProviderModel | null,
-) {
+function openModel(mode: 'edit' | 'view', m: SettingsProviderModel) {
   if (!selected.value) {
     return
   }
   // A refused model opens again as the user left it, to correct.
-  if (modelEditor.value?.error && modelEditor.value.providerId === selected.value.id) {
-    modelEditor.value.open = true
+  const refused = modelEditor.value
+  if (refused?.error && refused.providerId === selected.value.id && refused.original?.id === m.id) {
+    refused.open = true
     return
   }
-  modelEditor.value = {
+  modelEditor.value = reactive<SettingsModelEditor>({
     providerId: selected.value.id,
     open: true,
     error: null,
     mode,
     original: m,
-    model: m
-      ? toDraft(m)
-      : {
-          id: '',
-          name: '',
-          contextWindow: null,
-          outputLimit: null,
-          efforts: [],
-          extensions: [],
-          fastTier: null,
-        },
-  }
+    model: toDraft(m),
+  })
 }
 
 /** Saving a model, of its own group: it waits for what the provider does, rather than being refused. */
@@ -438,38 +513,58 @@ function shownModelEditor(providerId: string, modelId: string | null): SettingsM
   return shown?.open && shown.providerId === providerId && (shown.original?.id ?? null) === modelId ? shown : null
 }
 
-function saveModel(draft: SettingsModelDraft): Promise<void> {
+async function saveModel(draft: SettingsModelDraft): Promise<void> {
   const editor = modelEditor.value
   const provider = props.providers.find(
     (entry) => entry.id === editor?.providerId,
   )
   if (!editor || !provider) {
-    return Promise.resolve()
+    return
   }
   editor.model = draft
   const original = editor.original
+  let saved = false
   // A refused field of the model is the user's to correct in the dialog.
-  return answerInDialog(
+  await answerInDialog(
     () => shownModelEditor(provider.id, original?.id ?? null),
     'Could Not Save the Model',
-    (error) => formError(error, { invalid_body: null }),
-    () => props.saveModel(provider, draft, original),
+    (error) => formError(error, { invalid_body: null, duplicate_model: 'Another model of this provider has this ID' }),
+    async () => {
+      await props.saveModel(provider, draft, original)
+      saved = true
+    },
   )
+  // The model is now what was saved, its id included, for the next edit.
+  if (saved && original) {
+    editor.original = { ...draft, enabled: original.enabled }
+  }
+}
+
+/** Delete Model in Edit Model: asked first, as removing a model always is. */
+function deleteEditedModel(): void {
+  const editor = modelEditor.value
+  const provider = props.providers.find((entry) => entry.id === editor?.providerId)
+  if (editor?.original && provider) {
+    askRemoveModel(provider, editor.original)
+  }
 }
 
 function accountPending(providerId: string, accountId: string, action: 'remove' | 'test'): boolean {
   return runs(providerId, { kind: 'account', accountId, action })
 }
 
-// A compatible API's endpoint is changed, never emptied: the entry would stop being one.
+/**
+ * A compatible API's endpoint, which it cannot work without: one typed in is
+ * an http or https address. An empty field is no fault: left empty, it
+ * removes a saved endpoint, and the entry waits for one.
+ */
 const endpointFault = ref<string | null>(null)
 watch(selectedId, () => {
   endpointFault.value = null
 })
-
-// Add Provider › Compatible API asks the endpoint and the key in a dialog of its own.
-const compatibleWire = ref<SettingsWireApi | null>(null)
-const compatibleOpen = ref(false)
+function endpointCheck(value: string) {
+  return value.trim() === '' ? null : endpointProblem(value)
+}
 </script>
 
 <template>
@@ -681,13 +776,41 @@ const compatibleOpen = ref(false)
 
               <!-- Connection (API key) -->
               <template v-else>
-                <!-- A vendor's endpoint is its vendor's: shown, never edited. A compatible API's is the user's. -->
+                <!-- A vendor's endpoint is its vendor's: shown, never edited. A compatible API's
+                     protocol and endpoint are the user's, changed any time; what it still lacks is
+                     an empty field, never red. -->
                 <SettingsRow v-if="!selected.compatible" label="Endpoint">
                   <span class="min-w-0 select-text break-all text-[13px] text-fg-muted">{{
                     selected.baseUrl
                   }}</span>
                 </SettingsRow>
                 <template v-else>
+                  <SettingsRow label="Protocol">
+                    <Dropdown
+                      size="sm"
+                      :overlay-store="overlayStore"
+                      variant="default"
+                      trigger-label="Protocol"
+                      :disabled="fieldsLocked(selected)"
+                    >
+                      <template #trigger>{{ WIRE_API_LABELS[selected.wireApi] }}</template>
+                      <template #content="{ close }">
+                        <Menu>
+                          <MenuItem
+                            v-for="wire in COMPATIBLE_WIRE_APIS"
+                            :key="wire"
+                            :label="WIRE_API_LABELS[wire]"
+                            choice
+                            :is-selected="selected.wireApi === wire"
+                            @select="
+                              close();
+                              wire !== selected.wireApi && emit('change', selected, { wireApi: wire })
+                            "
+                          />
+                        </Menu>
+                      </template>
+                    </Dropdown>
+                  </SettingsRow>
                   <SettingsRow label="Endpoint">
                     <template v-if="endpointFault" #detail>
                       <InlineError :message="endpointFault" />
@@ -696,21 +819,23 @@ const compatibleOpen = ref(false)
                       :disabled="fieldsLocked(selected)"
                       :model-value="selected.baseUrl"
                       aria-label="Endpoint"
+                      placeholder="https://api.example.com/v1"
                       literal
                       trim
-                      :validate="endpointProblem"
+                      :validate="endpointCheck"
                       class="w-72 max-w-full"
                       @problem="endpointFault = $event"
                       @commit="emit('change', selected, { baseUrl: $event })"
                     />
                   </SettingsRow>
-                  <SettingsRow label="Protocol">
-                    <span class="text-[13px] text-fg-muted">{{ WIRE_API_LABELS[selected.wireApi] }}</span>
-                  </SettingsRow>
                 </template>
                 <SettingsRow
                   label="API key"
-                  description="Stored encrypted on the server."
+                  :description="
+                    selected.compatible
+                      ? 'Optional. Stored encrypted on the server.'
+                      : 'Stored encrypted on the server.'
+                  "
                 >
                   <CommitTextInput
                     :disabled="fieldsLocked(selected)"
@@ -918,7 +1043,7 @@ const compatibleOpen = ref(false)
                     :icon="Plus"
                     aria-label="Add Model"
                     :disabled="fieldsLocked(selected)"
-                    @click="openModel('create', null)"
+                    @click="openAddModel"
                 /></Tooltip>
                 <!-- A compatible API has no catalog to read again: its models are the ones added. -->
                 <Tooltip v-if="!selected.compatible && selected.modelSource === 'catalog'" content="Refresh"
@@ -1051,23 +1176,9 @@ const compatibleOpen = ref(false)
         }
       "
       @add-compatible="
-        (w) => {
+        () => {
           addOpen = false
-          compatibleWire = w
-          compatibleOpen = true
-        }
-      "
-    />
-    <AddCompatibleDialog
-      v-if="compatibleWire"
-      :is-open="compatibleOpen"
-      :overlay-store="overlayStore"
-      :wire-api="compatibleWire"
-      @close="compatibleOpen = false"
-      @add="
-        (draft) => {
-          compatibleOpen = false
-          emit('addCompatible', draft)
+          emit('addCompatible')
         }
       "
     />
@@ -1090,9 +1201,20 @@ const compatibleOpen = ref(false)
       :error="modelEditor.error"
       :operation="modelSaving(modelEditor)"
       :model="modelEditor.model"
-      :search="dialogSearch"
+      :taken-ids="takenIds"
       @close="modelEditor.open = false"
       @save="saveModel"
+      @delete="deleteEditedModel"
+    />
+    <AddModelDialog
+      v-if="modelSearch"
+      :is-open="modelSearch.open"
+      :overlay-store="overlayStore"
+      :search="searchModelsOf"
+      :adding="modelSearch.adding"
+      :error="modelSearch.error"
+      @close="modelSearch.open = false"
+      @add="addModel"
     />
   </SettingsPage>
 </template>

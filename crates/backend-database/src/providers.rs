@@ -30,6 +30,28 @@ pub struct CatalogRecord {
     pub catalog: ProviderModelList,
 }
 
+/// What the control migration that re-encodes the API-key entries' sealed
+/// configurations (`storage.md` § Schemas and migrations) works with: the
+/// vault, which alone holds the key they are sealed under and knows their
+/// format.
+pub trait ResealConfigs: Send + Sync {
+    /// Entry `id` of `family`'s configuration `sealed`, opened, decoded and
+    /// checked in the format the schema before names, and sealed again in
+    /// the format of the schema after it; an error, which never quotes the
+    /// configuration, says why it cannot be read.
+    fn provider_config(&self, id: &ProviderId, family: &str, sealed: &[u8]) -> Result<Vec<u8>, String>;
+}
+
+/// A database that holds no sealed configuration a migration re-encodes,
+/// such as a conversation's.
+pub struct NoSealedConfigs;
+
+impl ResealConfigs for NoSealedConfigs {
+    fn provider_config(&self, id: &ProviderId, _: &str, _: &[u8]) -> Result<Vec<u8>, String> {
+        Err(format!("no key opens the configuration of entry {id} here"))
+    }
+}
+
 /// A `providers` row: an entry with its configuration still sealed.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProviderRow {
@@ -168,12 +190,14 @@ impl ControlService {
         .await
     }
 
-    /// Replaces the entry's label or sealed configuration, and answers the
-    /// entry as it now is; `None` for an entry that no longer exists.
+    /// Replaces the entry's label, family or sealed configuration, and
+    /// answers the entry as it now is; `None` for an entry that no longer
+    /// exists.
     pub async fn update_provider(
         &self,
         id: ProviderId,
         label: Option<String>,
+        family: Option<String>,
         config: Option<Vec<u8>>,
     ) -> Result<Option<ProviderRow>, StorageError> {
         self.call(move |connection, _| {
@@ -182,6 +206,12 @@ impl ControlService {
                 transaction.execute(
                     "UPDATE providers SET label = ?1 WHERE id = ?2",
                     params![label, id.as_str()],
+                )?;
+            }
+            if let Some(family) = family {
+                transaction.execute(
+                    "UPDATE providers SET provider_type = ?1 WHERE id = ?2",
+                    params![family, id.as_str()],
                 )?;
             }
             if let Some(config) = config {

@@ -563,7 +563,7 @@ async fn an_entry_reaches_the_page_of_every_user_who_infers_with_it_and_only_a_c
     // The master adds entries of a shared instance, which every user infers
     // with: every user's page receives them.
     let device = device_entry(&backend, &master, &scripts).await;
-    let keyed = json!({ "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-state" });
+    let keyed = json!({ "source": "family", "providerType": "anthropic", "label": "Work", "apiKey": "sk-state" });
     let keyed = backend.post("/api/providers", Some(&master), keyed).await;
     assert_eq!(keyed.status, StatusCode::CREATED);
     let seen = until_providers(&mut masters, 2).await;

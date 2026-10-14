@@ -231,7 +231,7 @@ async fn a_users_subagent_profiles_are_checked_written_and_reach_every_page_of_t
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let body = json!({
-        "source": "custom", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
+        "source": "compatible", "providerType": "anthropic", "label": "Work", "apiKey": "sk-ant-test",
         "baseUrl": vendor.url("/v1"), "models": [leveled("m", Some("priority"))]
     });
     let provider = entry(&backend, &master, body).await;

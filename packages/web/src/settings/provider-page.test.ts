@@ -1,0 +1,217 @@
+import { GlobalRegistrator } from '@happy-dom/global-registrator'
+import { afterEach, expect, test } from 'bun:test'
+
+// Add Model is a search: choosing a match adds the model at once, its id
+// made free with a suffix when the list has it, and opens it in Edit Model,
+// where an id another model of the list has is refused before anything is
+// sent and a free one is saved (`models.md` § Adding a model from
+// models.dev). The Settings page of
+// web-ui on a page of happy-dom, its host's save and search stubbed. Cost:
+// the search's 150 ms pause, and tens of milliseconds besides.
+
+GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/settings' })
+// After the page, since the components ask for its elements.
+await import('../__tests__/vue-components')
+const { createApp, h, shallowRef } = await import('vue')
+const { default: SettingsProvidersPage } = await import('@demicodes/web-ui/settings/SettingsProvidersPage.vue')
+const { createOverlayStore } = await import('@demicodes/web-ui/overlay/overlayStore')
+type SettingsProviderEntry = import('@demicodes/web-ui/settings/types').SettingsProviderEntry
+type SettingsModelDraft = import('@demicodes/web-ui/settings/types').SettingsModelDraft
+
+afterEach(() => {
+  document.body.innerHTML = ''
+})
+
+const model = (id: string) => ({
+  id, name: id, contextWindow: 128_000, outputLimit: null, efforts: [], extensions: [], fastTier: null, enabled: true,
+})
+
+/** A compatible API whose list has the match's id already. */
+const proxy: SettingsProviderEntry = {
+  id: 'proxy', name: 'Proxy', kind: 'api_key', vendorId: null, compatible: true,
+  baseUrl: 'https://proxy.example/v1', wireApi: 'openai-chat', apiKey: '', keyConfigured: false, configured: true,
+  modelSource: 'manual', catalogFetched: null, state: 'ready', enabled: true,
+  models: [model('gemini-3.8-flash'), model('other')], accounts: [], logo: null,
+}
+
+const flash: SettingsModelDraft = {
+  id: 'gemini-3.8-flash', name: 'Gemini 3.8 Flash', contextWindow: 1_000_000, outputLimit: 65_536,
+  efforts: ['low', 'high'], extensions: ['.png'], fastTier: null,
+}
+
+/** Waits for `ready` to hold, turning the event loop and the timers; fails after two seconds. */
+async function until(ready: () => boolean, what: string): Promise<void> {
+  const deadline = Date.now() + 2000
+  while (!ready()) {
+    if (Date.now() > deadline) {
+      throw new Error(`${what} did not happen`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+}
+
+function type(input: HTMLInputElement, text: string): void {
+  input.focus()
+  input.value = text
+  input.dispatchEvent(new Event('input', { bubbles: true }))
+}
+
+const input = (label: string) => document.querySelector<HTMLInputElement>(`input[aria-label="${label}"]`)
+/** A control the page shows as a button, by its text or its name. */
+const button = (name: string) =>
+  [...document.querySelectorAll<HTMLElement>('button, [role="button"]')].find(
+    (candidate) => candidate.textContent?.trim() === name || candidate.getAttribute('aria-label') === name,
+  )
+/** Whether the button is disabled, as a native one or as one that says so. */
+const disabled = (control: HTMLElement) =>
+  control.getAttribute('aria-disabled') === 'true' || (control as HTMLButtonElement).disabled === true
+
+test('a match chosen in Add Model is added with a free id and opens in Edit Model, which refuses a taken id and saves a free one', async () => {
+  const saved: { draft: SettingsModelDraft; original: string | null }[] = []
+  const providers = shallowRef([proxy])
+  const element = document.createElement('div')
+  document.body.append(element)
+  const app = createApp({
+    render: () =>
+      h(SettingsProvidersPage, {
+        providers: providers.value,
+        vendors: [],
+        overlayStore: createOverlayStore(),
+        selectedId: 'proxy',
+        detailOpen: true,
+        saveModel: async (provider: SettingsProviderEntry, draft: SettingsModelDraft, original: { id: string } | null) => {
+          saved.push({ draft, original: original?.id ?? null })
+          providers.value = [{ ...provider, models: [...provider.models, { ...draft, enabled: true }] }]
+        },
+        searchModels: async (_provider: string, query: string) =>
+          query.includes('gemini') ? [{ ref: 'google/gemini-3.8-flash', vendor: 'google', model: flash }] : [],
+      }),
+  })
+  app.mount(element)
+  try {
+    await until(() => button('Add Model') !== undefined, 'the page shows Add Model')
+    button('Add Model')!.click()
+    await until(() => document.querySelector('[role="dialog"] input') !== null, 'Add Model opens')
+    const search = document.querySelector<HTMLInputElement>('[role="dialog"] input')!
+    type(search, 'gemini')
+    const row = () =>
+      [...document.querySelectorAll<HTMLElement>('[role^="menuitem"], [role="option"]')].find((option) =>
+        option.textContent?.includes('Gemini 3.8 Flash'),
+      )
+    await until(() => row() !== undefined, 'the match is offered')
+    row()!.click()
+
+    await until(() => input('Model ID') !== null, 'Edit Model opens')
+    expect(saved).toEqual([{ draft: { ...flash, id: 'gemini-3.8-flash-2' }, original: null }])
+    expect(input('Model ID')!.value).toBe('gemini-3.8-flash-2')
+    expect(disabled(button('Save')!)).toBe(false)
+
+    type(input('Model ID')!, 'other')
+    await until(() => document.body.textContent!.includes('Another model of this provider has this ID'), 'the id is refused')
+    expect(disabled(button('Save')!)).toBe(true)
+    expect(saved).toHaveLength(1)
+
+    // A free id saves the model under it, and the dialog goes.
+    type(input('Model ID')!, 'mine')
+    await until(() => !disabled(button('Save')!), 'Save takes the free id')
+    button('Save')!.click()
+    await until(() => input('Model ID') === null, 'Edit Model closes')
+    expect(saved[1]).toEqual({ draft: { ...flash, id: 'mine' }, original: 'gemini-3.8-flash-2' })
+  } finally {
+    app.unmount()
+  }
+})
+
+/** The page over `providers`, `proxy` selected, its host's saves and changes recorded. */
+function mountPage(providers: { value: SettingsProviderEntry[] }, hooks: {
+  saved?: { draft: SettingsModelDraft; original: string | null }[]
+  changed?: Partial<SettingsProviderEntry>[]
+}) {
+  const element = document.createElement('div')
+  document.body.append(element)
+  const app = createApp({
+    render: () =>
+      h(SettingsProvidersPage, {
+        providers: providers.value,
+        vendors: [],
+        overlayStore: createOverlayStore(),
+        selectedId: 'proxy',
+        detailOpen: true,
+        saveModel: async (provider: SettingsProviderEntry, draft: SettingsModelDraft, original: { id: string } | null) => {
+          hooks.saved?.push({ draft, original: original?.id ?? null })
+          const models = original
+            ? provider.models.map((entry) => (entry.id === original.id ? { ...draft, enabled: entry.enabled } : entry))
+            : [...provider.models, { ...draft, enabled: true }]
+          providers.value = [{ ...provider, models }]
+        },
+        searchModels: async () => [],
+        onChange: (_provider: SettingsProviderEntry, changes: Partial<SettingsProviderEntry>) => {
+          hooks.changed?.push(changes)
+        },
+      }),
+  })
+  app.mount(element)
+  return app
+}
+
+// Custom adds a model whose id and name are the text typed, its window
+// unknown, and Edit Model saves it so (`models.md` § Model fields). Cost:
+// the search's 150 ms pause, and tens of milliseconds besides.
+test('Custom adds the typed model at once without a context window, and Edit Model saves it as it is', async () => {
+  const saved: { draft: SettingsModelDraft; original: string | null }[] = []
+  const providers = shallowRef([{ ...proxy, models: [] }])
+  const app = mountPage(providers, { saved })
+  try {
+    await until(() => button('Add Model') !== undefined, 'the page shows Add Model')
+    button('Add Model')!.click()
+    await until(() => document.querySelector('[role="dialog"] input') !== null, 'Add Model opens')
+    type(document.querySelector<HTMLInputElement>('[role="dialog"] input')!, 'my-model')
+    const custom = () =>
+      [...document.querySelectorAll<HTMLElement>('[role^="menuitem"], [role="option"]')].find((option) =>
+        option.textContent?.includes('Custom'),
+      )
+    await until(() => custom() !== undefined, 'Custom is offered')
+    custom()!.click()
+
+    await until(() => input('Model ID') !== null, 'Edit Model opens')
+    const added: SettingsModelDraft = {
+      id: 'my-model', name: 'my-model', contextWindow: null, outputLimit: null, efforts: [], extensions: [], fastTier: null,
+    }
+    expect(saved).toEqual([{ draft: added, original: null }])
+    type(input('Name')!, 'My Model')
+    await until(() => !disabled(button('Save')!), 'Save takes a model without a window')
+    button('Save')!.click()
+    await until(() => input('Model ID') === null, 'Edit Model closes')
+    expect(saved[1]).toEqual({ draft: { ...added, name: 'My Model' }, original: 'my-model' })
+  } finally {
+    app.unmount()
+  }
+})
+
+// Emptying the saved key or endpoint and leaving the field removes it, as
+// the API's null does; leaving the key's field as it was keeps the key
+// (`models.md` § Adding a model from models.dev). Tens of milliseconds.
+test('a saved key or endpoint emptied and left is removed, and a key field left as it was keeps the key', async () => {
+  const changed: Partial<SettingsProviderEntry>[] = []
+  const providers = shallowRef([{ ...proxy, keyConfigured: true }])
+  const app = mountPage(providers, { changed })
+  try {
+    await until(() => input('API key') !== null, 'the page shows the key')
+    const key = input('API key')!
+    key.focus()
+    key.dispatchEvent(new FocusEvent('focus'))
+    key.blur()
+    key.dispatchEvent(new FocusEvent('blur'))
+    expect(changed).toEqual([])
+
+    type(key, '')
+    key.dispatchEvent(new FocusEvent('blur'))
+    const endpoint = input('Endpoint')!
+    type(endpoint, '')
+    endpoint.dispatchEvent(new FocusEvent('blur'))
+    await until(() => changed.length === 2, 'both removals are sent')
+    expect(changed).toEqual([{ apiKey: '' }, { baseUrl: '' }])
+  } finally {
+    app.unmount()
+  }
+})
