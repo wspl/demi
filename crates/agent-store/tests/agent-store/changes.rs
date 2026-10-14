@@ -49,6 +49,12 @@ impl Copies {
     /// Lists each shell call of `blocks` in order as the session does when
     /// it stores the call, its agent working in `directory`.
     fn list_in(&self, blocks: &mut [Block], directory: &str) {
+        self.list_started_in(blocks, |_| directory.to_owned());
+    }
+
+    /// [`list_in`](Self::list_in), each call started in the directory
+    /// `started_in` gives for its command.
+    fn list_started_in(&self, blocks: &mut [Block], started_in: impl Fn(&str) -> String) {
         set_runs(blocks);
         for index in 0..blocks.len() {
             let Block::ToolCall(ToolCallBlock {
@@ -59,7 +65,8 @@ impl Copies {
                 continue;
             };
             let mut view = view.clone();
-            let planned = plan(blocks, index, &view, Some(directory));
+            let directory = started_in(view.command_id.as_str());
+            let planned = plan(blocks, index, &view, Some(&directory));
             let counted = planned
                 .uncounted()
                 .into_iter()
@@ -411,4 +418,85 @@ fn only_files_within_the_agents_directory_show_and_a_move_into_it_brings_its_edi
     assert_eq!(pills(&blocks[2]), ["/home/u/shop/src/page.ts"]);
     assert_eq!(run_files(&blocks[2]), [page.clone(), cart.clone()]);
     assert_eq!(request_files(&blocks[2]), [page, cart]);
+}
+
+#[test]
+fn a_path_out_through_dot_dot_or_in_windows_spelling_is_judged_by_its_parts() {
+    // `shop/../.zshrc` is `~/.zshrc`, outside; on Windows a path in either
+    // separator and case is inside, one out through `..` is not.
+    let mut copies = Copies::default();
+    let mut edit = |text: &str| copies.edit("", text);
+    let (zshrc, cart) = (edit("x\n"), edit("y\n"));
+    let (windows, gitconfig) = (edit("w\n"), edit("g\n"));
+    let unmarked = |path: &str, edits| EditedFile {
+        outside: false,
+        ..written(path, EditKind::Added, edits)
+    };
+    let mut posix = vec![
+        user("u"),
+        shell(
+            "1",
+            vec![
+                unmarked("/home/u/shop/../.zshrc", vec![zshrc]),
+                unmarked("/home/u/shop/./src/cart.ts", vec![cart]),
+            ],
+            vec![],
+        ),
+        text("done"),
+    ];
+    copies.list_in(&mut posix, "/home/u/shop");
+    assert_eq!(pills(&posix[1]), ["/home/u/shop/./src/cart.ts"]);
+    assert_eq!(
+        request_files(&posix[1]).into_iter().map(|file| file.0).collect::<Vec<_>>(),
+        ["/home/u/shop/./src/cart.ts"],
+        "the record keeps the path as the job wrote it"
+    );
+
+    let mut windows = vec![
+        user("u"),
+        shell(
+            "1",
+            vec![
+                unmarked("c:/users/U/SHOP/src/cart.ts", vec![windows]),
+                unmarked(r"C:\Users\u\shop\..\.gitconfig", vec![gitconfig]),
+            ],
+            vec![],
+        ),
+        text("done"),
+    ];
+    copies.list_in(&mut windows, r"C:\Users\u\shop");
+    assert_eq!(pills(&windows[1]), ["c:/users/U/SHOP/src/cart.ts"]);
+}
+
+#[test]
+fn a_calls_files_are_judged_against_the_directory_it_started_in_and_never_again() {
+    // The first call starts in `shop` and writes `src/a.ts` there; then the
+    // agent's directory becomes `shop/docs`, where the second call writes
+    // `guide.md`. The second call's lists keep `src/a.ts`, judged as the
+    // first call was stored, beside `guide.md`; its own `src/b.ts`, outside
+    // `shop/docs`, is left out.
+    let mut copies = Copies::default();
+    let (a, guide, b) = (copies.edit("", "a\n"), copies.edit("", "g\n"), copies.edit("", "b\n"));
+    let mut blocks = vec![
+        user("u"),
+        shell("1", vec![written("/home/u/shop/src/a.ts", EditKind::Added, vec![a])], vec![]),
+        shell(
+            "2",
+            vec![
+                written("/home/u/shop/docs/guide.md", EditKind::Added, vec![guide]),
+                written("/home/u/shop/src/b.ts", EditKind::Added, vec![b]),
+            ],
+            vec![],
+        ),
+        text("done"),
+    ];
+    copies.list_started_in(&mut blocks, |command| {
+        if command == "1" { "/home/u/shop" } else { "/home/u/shop/docs" }.to_owned()
+    });
+
+    assert_eq!(pills(&blocks[1]), ["/home/u/shop/src/a.ts"]);
+    assert_eq!(pills(&blocks[2]), ["/home/u/shop/docs/guide.md"]);
+    let paths = |files: Vec<Shown>| files.into_iter().map(|file| file.0).collect::<Vec<_>>();
+    assert_eq!(paths(request_files(&blocks[2])), ["/home/u/shop/src/a.ts", "/home/u/shop/docs/guide.md"]);
+    assert_eq!(paths(run_files(&blocks[2])), ["/home/u/shop/src/a.ts", "/home/u/shop/docs/guide.md"]);
 }

@@ -3,7 +3,8 @@ import { compareFileNames } from './file-browser-state'
 import { baseName } from '@demicodes/utils'
 import type { Showing } from './file-cache'
 import type { TreeRow } from './tree'
-import type { RequestChangeSource } from './request-changes'
+import type { RequestChangeSource, RequestFile } from './request-changes'
+import { relativePath, resolveHostPath } from './paths'
 import type { FileContents } from './types'
 
 /**
@@ -121,6 +122,21 @@ export interface ChangeTreeFile {
   lines?: { added: number; removed: number }
   /** Git's two status letters, in Uncommitted mode (`gitMark`). */
   status?: string
+}
+
+/**
+ * A request's files as the change tree shows them: each by its path from
+ * `root`, the workspace, in the spelling of the root's Host, so a Windows
+ * file `C:\Users\u\shop\src\cart.ts` under `C:\Users\u\shop` is in `src`.
+ */
+export function requestTreeFiles(root: string, files: readonly RequestFile[]): ChangeTreeFile[] {
+  return files.map((file) => ({
+    key: file.path,
+    path: relativePath(root, resolveHostPath(root, file.path)),
+    kind: file.kind,
+    ...(file.from ? { from: file.from } : {}),
+    ...(file.lines ? { lines: file.lines } : {}),
+  }))
 }
 
 /**
