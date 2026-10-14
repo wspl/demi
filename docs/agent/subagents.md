@@ -10,7 +10,7 @@ Sessions form a tree of any depth, rooted at the conversation's root session.
 Every node of the tree, the root included, is the same kind of session: built by
 the same assembly, stored under the same contract ([Runtime](#runtime),
 [Persistence](#persistence)), carrying the same `demi agent` command group, and
-supervising its own children. The model-facing tool surface stays the five
+supervising its own children. The model-facing tool surface stays the one
 `shell` tool ([Tools](runtime.md#tools)). The web app receives the whole
 tree on the conversation's socket, beside the root's own frames
 ([Protocol](#protocol)).
