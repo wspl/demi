@@ -33,6 +33,23 @@ Demi 是一个自托管的 AI Agent，在任何浏览器中都能使用。随口
 > [!NOTE]
 > Demi 目前处于早期开发阶段，版本之间可能存在不兼容的变更。
 
+## 快速开始
+
+**环境要求**：一台有 root 权限的 Linux 服务器（Ubuntu 22.04+ 或 Debian 12+）、一个域名，以及前置的 HTTPS。
+
+```sh
+curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
+```
+
+安装程序会询问域名和 HTTPS 配置，完成后输出服务器地址。接下来：
+
+1. 打开该地址，创建管理员账号。
+2. 进入 **Settings › Providers**，用订阅账号登录或添加 API 密钥。
+3. 开始一个对话，它会在你的云端沙箱中运行。
+4. 如需在自己的电脑上工作，在对话的 Host 菜单中选择 **Add Device**，然后在那台电脑上运行显示的命令。
+
+更多选项请参阅[安装指南](docs/delivery/installation.md)，升级方法请参阅[升级说明](docs/delivery/upgrades.md)。
+
 ## 核心特性
 
 ### 聊天、办事、写代码
@@ -89,23 +106,6 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 - **处处一致**：每台机器都运行同一套用 Rust 编写的 bash 兼容 Shell 和 GNU 工具（[brush](https://github.com/reubeno/brush)、[uutils](https://github.com/uutils/coreutils)、ripgrep、[jaq](https://github.com/01mf02/jaq)）。在云端能跑的脚本，在 macOS 和 Windows 上同样能跑。
 - **模型无关**：所有模型面对的都是同一个工具，换模型不会改变 Agent 的能力。
 - **适合长任务**：命令在后台持续运行，结束后自动汇报，开发服务器和测试套件不会阻塞对话。
-
-## 快速开始
-
-**环境要求**：一台有 root 权限的 Linux 服务器（Ubuntu 22.04+ 或 Debian 12+）、一个域名，以及前置的 HTTPS。
-
-```sh
-curl -fsSL https://github.com/wspl/demi/releases/latest/download/install.sh | sudo bash
-```
-
-安装程序会询问域名和 HTTPS 配置，完成后输出服务器地址。接下来：
-
-1. 打开该地址，创建管理员账号。
-2. 进入 **Settings › Providers**，用订阅账号登录或添加 API 密钥。
-3. 开始一个对话，它会在你的云端沙箱中运行。
-4. 如需在自己的电脑上工作，在对话的 Host 菜单中选择 **Add Device**，然后在那台电脑上运行显示的命令。
-
-更多选项请参阅[安装指南](docs/delivery/installation.md)，升级方法请参阅[升级说明](docs/delivery/upgrades.md)。
 
 ## 架构
 
