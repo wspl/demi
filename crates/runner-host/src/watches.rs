@@ -18,6 +18,7 @@ use std::{
 };
 
 use tokio::sync::watch;
+use tokio_util::task::TaskTracker;
 
 use crate::ignore::IgnoreFilter;
 use crate::tree_watch::{Change, Event, Reach, TreeWatch};
@@ -44,7 +45,16 @@ pub(crate) type Listener = Box<dyn FnMut(&Event) + Send>;
 
 /// The watches of one connection.
 #[derive(Clone, Default)]
-pub struct Watches(Arc<Mutex<HashMap<Key, Slot>>>);
+pub struct Watches(Arc<Lifecycle>);
+
+#[derive(Default)]
+struct Lifecycle {
+    /// Watch callbacks run on platform threads; no section awaits or joins.
+    slots: Mutex<HashMap<Key, Slot>>,
+    /// Starts and stops belong to the connection, including a start whose
+    /// last follower left while it was being set up.
+    tasks: TaskTracker,
+}
 
 /// Which watch: its canonical path, as the platform reports paths, and how
 /// far it reaches.
@@ -62,8 +72,8 @@ struct Slot {
 }
 
 /// What a watch's thread and its followers share. It does not own the
-/// watch, so the last follower stops the watch on its own thread, never on
-/// the watch's thread, which stopping joins.
+/// watch, so the last follower hands its stop to the blocking pool, never
+/// to the watch's thread, which stopping joins.
 struct Shared {
     listeners: Mutex<HashMap<u64, Listener>>,
     next: AtomicU64,
@@ -73,6 +83,15 @@ struct Shared {
 }
 
 impl Shared {
+    fn new(status: Status) -> Self {
+        Self {
+            listeners: Mutex::new(HashMap::new()),
+            next: AtomicU64::new(0),
+            status: watch::Sender::new(status),
+            left_out: Mutex::new(Vec::new()),
+        }
+    }
+
     fn dispatch(&self, event: &Event) {
         if let Change::Failed(reason) = &event.change {
             self.status.send_replace(Status::Failed(reason.clone()));
@@ -96,14 +115,17 @@ impl Watches {
     /// Follows the watch of `key`, starting it unless it runs: `listener`
     /// hears every event from now on.
     pub(crate) fn follow(&self, key: Key, listener: Listener) -> Follower {
-        let mut slots = lock(&self.0);
+        let mut slots = lock(&self.0.slots);
+        if self.0.tasks.is_closed() {
+            return Follower {
+                watches: self.clone(),
+                key,
+                shared: Arc::new(Shared::new(Status::Failed("The host connection closed".into()))),
+                id: 0,
+            };
+        }
         let slot = slots.entry(key.clone()).or_insert_with(|| {
-            let shared = Arc::new(Shared {
-                listeners: Mutex::new(HashMap::new()),
-                next: AtomicU64::new(0),
-                status: watch::Sender::new(Status::Starting),
-                left_out: Mutex::new(Vec::new()),
-            });
+            let shared = Arc::new(Shared::new(Status::Starting));
             self.start(key.clone(), shared.clone());
             Slot {
                 shared,
@@ -127,7 +149,7 @@ impl Watches {
     /// The root of a tree's watch, starting or running, that `path` lies in
     /// and does not leave out, the deepest such root first.
     pub(crate) fn tree_holding(&self, path: &Path) -> Option<PathBuf> {
-        let slots = lock(&self.0);
+        let slots = lock(&self.0.slots);
         slots
             .iter()
             .filter(|(key, slot)| {
@@ -142,14 +164,14 @@ impl Watches {
 
     /// How many watches of single files and folders run or start.
     pub(crate) fn singles(&self) -> usize {
-        lock(&self.0).keys().filter(|key| key.reach != Reach::Tree).count()
+        lock(&self.0.slots).keys().filter(|key| key.reach != Reach::Tree).count()
     }
 
     /// Sets the watch up on a blocking thread, which no follower waits for.
     /// A watch nobody follows any more by then is stopped at once.
     fn start(&self, key: Key, shared: Arc<Shared>) {
         let watches = self.clone();
-        tokio::task::spawn_blocking(move || {
+        self.0.tasks.spawn_blocking(move || {
             let trees = trees_of(&key);
             let filter = match key.reach {
                 Reach::Tree => IgnoreFilter::of(&key.path),
@@ -160,7 +182,7 @@ impl Watches {
                 Box::new(move |event: &Event| shared.dispatch(event))
             };
             let started = TreeWatch::start(&trees, key.reach, filter, report);
-            let mut slots = lock(&watches.0);
+            let mut slots = lock(&watches.0.slots);
             let slot = slots
                 .get_mut(&key)
                 .filter(|slot| Arc::ptr_eq(&slot.shared, &shared));
@@ -190,13 +212,28 @@ impl Watches {
         });
     }
 
+    /// Ends the connection's watches and waits for their platform threads
+    /// off the control thread. Starts and retirements register under the
+    /// slots lock, so no cleanup can be queued after this wait completes.
+    pub async fn close(&self) {
+        {
+            let mut slots = lock(&self.0.slots);
+            if !self.0.tasks.is_closed() {
+                let ended = std::mem::take(&mut *slots);
+                self.0.tasks.spawn_blocking(move || drop(ended));
+                self.0.tasks.close();
+            }
+        }
+        self.0.tasks.wait().await;
+    }
+
     /// What FSEvents would say of `path` on the stream watching `watched`,
     /// with `flags`, such as that it dropped events, which nothing else can
     /// make it say; false while no stream of that path runs.
     #[cfg(all(feature = "testing", target_os = "macos"))]
     pub fn said(&self, watched: &Path, path: &Path, flags: u32) -> bool {
         let watched = std::fs::canonicalize(watched).unwrap_or_else(|_| watched.to_path_buf());
-        let slots = lock(&self.0);
+        let slots = lock(&self.0.slots);
         slots
             .iter()
             .filter(|(key, _)| key.path == watched)
@@ -217,7 +254,7 @@ impl Follower {
 
     /// Whether anything else follows the same watch.
     pub(crate) fn shared(&self) -> bool {
-        lock(&self.watches.0)
+        lock(&self.watches.0.slots)
             .get(&self.key)
             .is_some_and(|slot| Arc::ptr_eq(&slot.shared, &self.shared) && slot.users > 1)
     }
@@ -231,7 +268,7 @@ impl Follower {
 impl Drop for Follower {
     fn drop(&mut self) {
         lock(&self.shared.listeners).remove(&self.id);
-        let mut slots = lock(&self.watches.0);
+        let mut slots = lock(&self.watches.0.slots);
         let Some(slot) = slots
             .get_mut(&self.key)
             .filter(|slot| Arc::ptr_eq(&slot.shared, &self.shared))
@@ -243,10 +280,9 @@ impl Drop for Follower {
             return;
         }
         let slot = slots.remove(&self.key);
-        drop(slots);
-        // Stopping joins the watch's thread, which takes only the listeners'
-        // lock, released above.
-        drop(slot);
+        // Register before releasing the slots lock, so close also waits for
+        // this retirement. The worker joins with neither watch lock held.
+        self.watches.0.tasks.spawn_blocking(move || drop(slot));
     }
 }
 
