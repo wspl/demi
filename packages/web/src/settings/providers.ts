@@ -11,7 +11,6 @@ import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { providerOperation, providerTarget } from '@demicodes/web-ui/settings/provider-operations'
 import { operations } from '@demicodes/web-ui/ui/operations'
 import {
-  type SettingsCompatibleDraft,
   type SettingsModelDraft,
   type SettingsModelMatch,
   type SettingsQuotaRefresh,
@@ -21,6 +20,7 @@ import {
   type SettingsProviderOperation,
   type SettingsProviderModel,
   type SettingsVendor,
+  type SettingsWireApi,
 } from '@demicodes/web-ui/settings/types'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
@@ -253,17 +253,23 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     create({ source: 'vendor', vendorId: vendor.id })
   }
 
-  /** A compatible API: its endpoint is what makes the entry one, so it is sent with the family. */
-  function addCompatible(draft: SettingsCompatibleDraft): void {
-    const { wireApi, label, baseUrl, apiKey } = draft
-    const entry = { source: 'custom' as const, label, baseUrl, ...(apiKey ? { apiKey } : {}) }
-    create(
-      wireApi === 'anthropic-messages'
-        ? { ...entry, providerType: 'anthropic' }
-        : wireApi === 'google-generative'
-          ? { ...entry, providerType: 'google' }
-          : { ...entry, providerType: 'openai', wireApi: wireApi === 'openai-chat' ? 'chat-completions' : 'responses' },
-    )
+  /** A compatible API: its kind alone, and the backend's defaults for the rest. */
+  function addCompatible(): void {
+    create({ source: 'compatible' })
+  }
+
+  /** A protocol as the backend names it: the family that speaks it, and its wire. */
+  function protocol(wireApi: SettingsWireApi): Pick<ProviderPatch, 'providerType' | 'wireApi'> {
+    switch (wireApi) {
+      case 'anthropic-messages':
+        return { providerType: 'anthropic' }
+      case 'google-generative':
+        return { providerType: 'google' }
+      case 'openai-chat':
+        return { providerType: 'openai', wireApi: 'chat-completions' }
+      case 'openai-responses':
+        return { providerType: 'openai', wireApi: 'responses' }
+    }
   }
 
   function modelConfig(model: SettingsModelDraft): ConfiguredModel {
@@ -339,7 +345,9 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       }
       await patch(provider, {
         ...(changes.name !== undefined ? { label: changes.name } : {}),
-        // Only a compatible API's endpoint is edited, and the page never empties it.
+        // Only a compatible API's protocol and endpoint are edited, and the
+        // page never empties its endpoint.
+        ...(changes.wireApi !== undefined ? protocol(changes.wireApi) : {}),
         ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl } : {}),
         ...(changes.apiKey ? { apiKey: changes.apiKey } : {}),
         ...(changes.modelSource
@@ -372,6 +380,13 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     provider: SettingsProviderEntry,
     models: SettingsProviderModel[],
   ): Promise<void> {
+    // A model added before its context window is known, as Custom adds one,
+    // stays in the page's list, marked unknown, until Edit Model gives it
+    // one: the backend keeps only models it can infer with.
+    if (models.some((model) => model.contextWindow === null)) {
+      manualDrafts.value[provider.id] = models
+      return
+    }
     // A model saved during a test, a refresh or another save waits for it to
     // end, and for an edit queued behind it, rather than being refused.
     const save = async (signal: AbortSignal) => {
@@ -392,15 +407,18 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   ): Promise<void> {
     // An entry that follows its vendor's list starts a list of its own from it
     // (the vendor's copy of a model gives way to the one added), so adding removes none.
+    // A model just added that the channel has not brought yet is the list's last.
     const models = original
-      ? provider.models.map((entry) =>
-          entry.id === original.id
-            ? {
-                ...model,
-                enabled: entry.enabled,
-              }
-            : entry,
-        )
+      ? provider.models.some((entry) => entry.id === original.id)
+        ? provider.models.map((entry) =>
+            entry.id === original.id
+              ? {
+                  ...model,
+                  enabled: entry.enabled,
+                }
+              : entry,
+          )
+        : [...provider.models, { ...model, enabled: original.enabled }]
       : [
           ...provider.models.filter((entry) => provider.modelSource !== 'catalog' || entry.id !== model.id),
           {

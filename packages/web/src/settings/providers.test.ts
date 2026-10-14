@@ -85,14 +85,14 @@ beforeEach(async () => {
       const entry = {
         id: nextId,
         kind: 'api_key' as const,
-        providerType: body.source === 'custom' ? String(body.providerType) : 'google',
-        label: body.source === 'vendor' ? 'Google' : 'OpenAI',
+        providerType: body.source === 'compatible' ? 'anthropic' : 'google',
+        label: body.source === 'vendor' ? 'Google' : 'Compatible API',
         wireApi: null,
         vendorId: body.source === 'vendor' ? String(body.vendorId) : null,
-        compatible: false,
+        compatible: body.source === 'compatible',
         endpoint: null,
         hasApiKey: false,
-        models: body.source === 'custom' ? [] : null,
+        models: null,
         createdAt: '2026-09-11T00:00:00.000Z',
       }
       // The entry joins the product state as the channel brings it.
@@ -169,19 +169,50 @@ test('adding a vendor asks only its kind: the entry joins the list at once, sele
   expect(listed()).toEqual(['codex', 'configured', 'created'])
 })
 
-test('adding a compatible API sends its family, its wire, its endpoint and the label, and the key only when given', async () => {
+test('adding a compatible API sends only its kind, and its protocol changes by family and wire', async () => {
   const settings = useProviderSettings()
-  settings.addCompatible({ wireApi: 'openai-chat', label: 'Lab', baseUrl: 'http://lab.example/v1', apiKey: '' })
+  settings.addCompatible()
   await waitFor(() => created.length === 1)
-  expect(created).toEqual([
-    { source: 'custom', providerType: 'openai', wireApi: 'chat-completions', label: 'Lab', baseUrl: 'http://lab.example/v1' },
-  ])
-  nextId = 'second'
-  settings.addCompatible({ wireApi: 'anthropic-messages', label: 'Proxy', baseUrl: 'https://proxy.example/v1', apiKey: 'sk-1' })
-  await waitFor(() => created.length === 2)
-  expect(created[1]).toEqual({
-    source: 'custom', providerType: 'anthropic', label: 'Proxy', baseUrl: 'https://proxy.example/v1', apiKey: 'sk-1',
-  })
+  expect(created).toEqual([{ source: 'compatible' }])
+
+  const sent: Record<string, unknown>[] = []
+  write = async (body) => {
+    sent.push(body)
+    return Response.json({})
+  }
+  const entry = () => settings.providers.find((provider) => provider.id === 'configured')!
+  settings.change(entry(), { wireApi: 'openai-chat' })
+  await idle()
+  settings.change(entry(), { wireApi: 'anthropic-messages' })
+  await idle()
+  expect(sent).toEqual([{ providerType: 'openai', wireApi: 'chat-completions' }, { providerType: 'anthropic' }])
+})
+
+test('a model added before its context window is known stays on the page until Edit Model gives it one', async () => {
+  const settings = useProviderSettings()
+  const sent: Record<string, unknown>[] = []
+  write = async (body) => {
+    sent.push(body)
+    return Response.json({})
+  }
+  const entry = () => settings.providers.find((provider) => provider.id === 'configured')!
+  const custom = {
+    id: 'my-model', name: 'my-model', contextWindow: null, outputLimit: null, efforts: [], extensions: [], fastTier: null,
+  }
+  // Custom adds the model at once: it is in the list, unknown, and nothing is sent yet.
+  await settings.saveModel(entry(), custom, null)
+  expect(entry().models.map((model) => [model.id, model.contextWindow])).toEqual([['my-model', null]])
+  expect(sent).toEqual([])
+
+  // Edit Model's Save with a context window and a new id saves the list.
+  await settings.saveModel(entry(), { ...custom, id: 'mine', contextWindow: 128_000 }, entry().models[0]!)
+  await idle()
+  expect(sent).toEqual([{
+    models: [{
+      id: 'mine', displayName: 'my-model', contextWindow: 128_000, outputLimit: null,
+      thinkingEfforts: [], acceptedExtensions: [], fastTier: null,
+    }],
+  }])
 })
 
 test('the page shows an entry’s kind and effective endpoint as the read model says them, and a compatible API’s list is its own', async () => {

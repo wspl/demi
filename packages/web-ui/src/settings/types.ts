@@ -119,7 +119,7 @@ export interface SettingsKeyBinding {
   keys: string
 }
 
-/** A model as the settings edit it: what a custom endpoint needs to be usable. */
+/** A model as the settings edit it: what an entry's own list needs to use it. */
 export interface SettingsModelDraft {
   id: string
   name: string
@@ -146,21 +146,12 @@ export const WIRE_API_LABELS: Record<SettingsWireApi, string> = {
   'openai-chat': 'OpenAI Chat Completions',
 }
 
-/** The protocols a compatible API can speak, the ones Add Provider offers (`product.md` § Models & providers). */
+/** The protocols a compatible API can speak, which its page offers (`product.md` § Models & providers). */
 export const COMPATIBLE_WIRE_APIS: readonly SettingsWireApi[] = [
   'anthropic-messages',
   'openai-chat',
   'openai-responses',
 ]
-
-/** What Add Provider asks for a compatible API once its protocol is chosen: the endpoint is required, the rest may come later. */
-export interface SettingsCompatibleDraft {
-  wireApi: SettingsWireApi
-  label: string
-  baseUrl: string
-  /** Empty to add the key later. */
-  apiKey: string
-}
 
 /** A models.dev vendor an API key can be added for. */
 export interface SettingsVendor {
@@ -240,15 +231,16 @@ export interface SettingsProviderEntry {
   id: string
   name: string
   kind: 'api_key' | 'subscription'
-  /** models.dev vendor; null for a compatible API and for a family's own vendor. */
+  /** The entry's vendor; null for a compatible API. */
   vendorId: string | null
   /**
-   * A compatible API (`product.md` § Models & providers): its endpoint and
-   * protocol are the user's to edit and its models are the ones the user
-   * adds. Any other API-key entry is a vendor's: its endpoint is shown, never
-   * edited. Fixed with the entry, so editing the endpoint never changes it.
+   * A compatible API (`product.md` § Models & providers): its protocol,
+   * endpoint and optional key are the user's to set at any time, and its
+   * models are the ones the user adds. Any other API-key entry is a vendor's:
+   * its endpoint is shown, never edited. Fixed with the entry.
    */
   compatible: boolean
+  /** Where its requests go; empty for a compatible API not given an endpoint yet. */
   baseUrl: string
   wireApi: SettingsWireApi
   apiKey: string
@@ -317,7 +309,8 @@ export const EXTENSION_PRESETS: {
 /** Retained by the host so a submitted model edit survives closing settings. */
 export interface SettingsModelEditor {
   providerId: string
-  mode: 'create' | 'edit' | 'view'
+  /** Edit Model for a model of the entry's own list; the facts of a catalog's model. */
+  mode: 'edit' | 'view'
   model: SettingsModelDraft
   original: SettingsProviderModel | null
   open: boolean

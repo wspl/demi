@@ -58,7 +58,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
             "/api/providers",
             Some(&master),
             json!({
-                "source": "custom", "providerType": "tree", "label": "Spare", "apiKey": "k",
+                "source": "family", "providerType": "tree", "label": "Spare", "apiKey": "k",
                 "models": [{
                     "id": "n", "displayName": "N", "contextWindow": 100000, "outputLimit": null,
                     "thinkingEfforts": ["low", "high"], "acceptedExtensions": null, "fastTier": null
@@ -277,7 +277,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
             "/api/providers",
             Some(&master),
             json!({
-                "source": "custom", "providerType": "tree", "label": "Wide", "apiKey": "k",
+                "source": "family", "providerType": "tree", "label": "Wide", "apiKey": "k",
                 "models": [{
                     "id": "wide", "displayName": "Wide", "contextWindow": 1000000, "outputLimit": null,
                     "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null

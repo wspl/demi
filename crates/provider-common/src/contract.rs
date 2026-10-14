@@ -32,8 +32,20 @@ pub trait Provider: Send + Sync + 'static {
 
     /// A fresh read of the provider's model directory. The provider keeps no
     /// catalog of its own: the backend's catalog cache is the only one
-    /// (`models.md` § Catalog cache).
-    fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>>;
+    /// (`models.md` § Catalog cache). A provider without a directory, whose
+    /// entry lists its vendor's models from models.dev or the ones the user
+    /// configured (`models.md` § Directories), lists none.
+    fn list_models(&self) -> BoxFuture<'_, Result<ProviderModelList, CatalogError>> {
+        Box::pin(async {
+            Ok(ProviderModelList {
+                models: Vec::new(),
+                default_model_id: None,
+                warnings: Vec::new(),
+                source_fetched_at: Timestamp::UNIX_EPOCH,
+                stale: false,
+            })
+        })
+    }
 
     /// What the directory [`list_models`](Self::list_models) would read
     /// depends on besides the entry, such as the client version the Codex

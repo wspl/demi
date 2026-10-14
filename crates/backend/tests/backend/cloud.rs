@@ -133,7 +133,7 @@ async fn process_entry(backend: &TestBackend, master: &Session) -> String {
             "/api/providers",
             Some(master),
             json!({
-                "source": "custom", "providerType": "process", "label": "Process", "apiKey": "k",
+                "source": "family", "providerType": "process", "label": "Process", "apiKey": "k",
                 "models": [{
                     "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": null,
                     "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null

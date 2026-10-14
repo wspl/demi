@@ -47,9 +47,11 @@ pub(crate) fn run(
                 return;
             }
         };
-        let send = http
-            .post(url)
-            .header("x-goog-api-key", shared.api_key.clone())
+        let mut send = http.post(url);
+        if let Some(key) = &shared.api_key {
+            send = send.header("x-goog-api-key", key.clone());
+        }
+        let send = send
             .header(CONTENT_TYPE, "application/json")
             .header(ACCEPT, "text/event-stream")
             .body(body)
