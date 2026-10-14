@@ -119,7 +119,9 @@ struct Flow {
     /// The user who started it, the only one who reads, answers and
     /// cancels it.
     owner: UserId,
-    kind: LoginKind,
+    /// How the user finishes it, once the family's login is made; none
+    /// while the login prepares it.
+    kind: Option<LoginKind>,
     /// The entry the login adds an account to; none for a login that makes
     /// a new entry.
     provider_id: Option<ProviderId>,
@@ -275,58 +277,20 @@ impl LoginFlows {
                     .map(|holder| holder.login),
             )
         })?;
-        let (accounts, target) = match existing {
-            Some(entry) => {
-                let accounts = self.assembly.login_accounts(&entry, machine).await?;
-                let entry = Box::new(entry);
-                (accounts, Target::Existing { entry })
-            }
-            None => {
-                let entries = self
-                    .assembly
-                    .vault()
-                    .entries(owner.clone())
-                    .await
-                    .map_err(AssemblyError::from)?;
-                if entries.iter().any(|entry| entry.family == family) {
-                    return Err(LoginRefusal::Exists(family));
-                }
-                let staged = MemoryCredentialPool::new();
-                let accounts = self.assembly.detached_login_accounts(
-                    &family,
-                    id.as_str(),
-                    &label,
-                    Arc::new(staged.clone()),
-                    machine,
-                )?;
-                (
-                    accounts,
-                    Target::New {
-                        family: family.clone(),
-                        label,
-                        staged,
-                    },
-                )
-            }
-        };
-        let Some(kind) = accounts
-            .accounts()
-            .and_then(|accounts| accounts.capability().login)
-        else {
-            return Err(LoginRefusal::NoLoginFlow(family));
-        };
-        // The login's end, read on both clocks at its start: the task stops
-        // the flow at `deadline`, and the user is shown `expires_at`.
-        let lifetime = self.timing.lifetime(kind);
+        // The login is listed and announced from here, so a page that a
+        // second start sent to it finds it, and learns its end, a failure
+        // of its start included.
         let started = Instant::now();
-        let deadline = started + lifetime;
-        let expires_at = self
-            .clock
-            .now()
-            .to_jiff()
-            .saturating_add(lifetime)
-            .map(Timestamp::truncate)
-            .expect("adding a duration, unlike a calendar span, never fails");
+        let started_at = self.clock.now();
+        let expiry = |kind: LoginKind| {
+            let lifetime = self.timing.lifetime(kind);
+            let expires_at = started_at
+                .to_jiff()
+                .saturating_add(lifetime)
+                .map(Timestamp::truncate)
+                .expect("adding a duration, unlike a calendar span, never fails");
+            (started + lifetime, expires_at)
+        };
         let cancel = self.closing.child_token();
         let (ended, ending) = watch::channel(false);
         let (codes, pasted) = mpsc::unbounded_channel();
@@ -342,9 +306,9 @@ impl LoginFlows {
         );
         let flow = Flow {
             owner: starter.clone(),
-            kind,
+            kind: None,
             provider_id,
-            family,
+            family: family.clone(),
             request,
             started,
             stage_since: started,
@@ -355,7 +319,9 @@ impl LoginFlows {
                 needs_code: false,
                 codes_taken: 0,
                 code_error: None,
-                expires_at,
+                // Until the family's login says how the user finishes it,
+                // which no page shows before the login waits for the user.
+                expires_at: expiry(LoginKind::Device).1,
             },
             codes,
             cancel: cancel.clone(),
@@ -364,6 +330,70 @@ impl LoginFlows {
         span.in_scope(|| tracing::info!("a login started"));
         self.lock().insert(id.clone(), flow);
         self.announce(&starter);
+        let prepared = async {
+            let (accounts, target) = match existing {
+                Some(entry) => {
+                    let accounts = self.assembly.login_accounts(&entry, machine).await?;
+                    let entry = Box::new(entry);
+                    (accounts, Target::Existing { entry })
+                }
+                None => {
+                    let entries = self
+                        .assembly
+                        .vault()
+                        .entries(owner.clone())
+                        .await
+                        .map_err(AssemblyError::from)?;
+                    if entries.iter().any(|entry| entry.family == family) {
+                        return Err(LoginRefusal::Exists(family.clone()));
+                    }
+                    let staged = MemoryCredentialPool::new();
+                    let accounts = self.assembly.detached_login_accounts(
+                        &family,
+                        id.as_str(),
+                        &label,
+                        Arc::new(staged.clone()),
+                        machine,
+                    )?;
+                    (
+                        accounts,
+                        Target::New {
+                            family: family.clone(),
+                            label,
+                            staged,
+                        },
+                    )
+                }
+            };
+            let kind = accounts
+                .accounts()
+                .and_then(|accounts| accounts.capability().login)
+                .ok_or_else(|| LoginRefusal::NoLoginFlow(family.clone()))?;
+            Ok((accounts, target, kind))
+        }
+        .instrument(span.clone())
+        .await;
+        let (accounts, target, kind) = match prepared {
+            Ok(prepared) => prepared,
+            Err(refusal) => {
+                // The start answers the refusal; the login ends with it,
+                // as every page that shows it learns.
+                span.in_scope(|| self.end(&id, Err(Unfinished::Failed(refusal.to_string()))));
+                ended.send_replace(true);
+                self.tasks
+                    .spawn(self.clone().retire(id, starter).instrument(span));
+                return Err(refusal);
+            }
+        };
+        // The login's end, read on both clocks at its start: the task stops
+        // the flow at `deadline`, and the user is shown `expires_at`.
+        let (deadline, expires_at) = expiry(kind);
+        if let Some(flow) = self.lock().get_mut(&id) {
+            flow.kind = Some(kind);
+            if let LoginState::Pending { expires_at: shown, .. } = &mut flow.state {
+                *shown = expires_at;
+            }
+        }
         let ending = Ending {
             deadline,
             cancel,
@@ -474,14 +504,21 @@ impl LoginFlows {
         ended: watch::Sender<bool>,
     ) {
         let ended_as = self.attempt(&id, owner, accounts, target, ending).await;
+        let starter = self.end(&id, ended_as);
+        ended.send_replace(true);
+        self.retire(id, starter).await;
+    }
+
+    /// Records how the login ended, announces it, and answers its starter.
+    fn end(&self, id: &LoginId, ended_as: Result<(ProviderId, CredentialId), Unfinished>) -> UserId {
         let starter = {
             let mut flows = self.lock();
             let flow = flows
-                .get_mut(&id)
-                .expect("a login's flow stays until its task drops it");
+                .get_mut(id)
+                .expect("a login's flow stays until it is retired");
             let took_ms = millis(flow.started.elapsed());
             let LoginState::Pending { stage, .. } = &flow.state else {
-                unreachable!("only the login's task ends it");
+                unreachable!("a login ends once");
             };
             let stage = stage.as_str();
             flow.state = match ended_as {
@@ -507,7 +544,12 @@ impl LoginFlows {
             flow.owner.clone()
         };
         self.announce(&starter);
-        ended.send_replace(true);
+        starter
+    }
+
+    /// Drops the ended login's result once the retention has passed, and
+    /// announces it.
+    async fn retire(self: Arc<Self>, id: LoginId, starter: UserId) {
         // Shutdown drops what is kept at once; nobody reads it any more.
         tokio::select! {
             () = tokio::time::sleep(self.timing.retention) => {}
@@ -645,7 +687,7 @@ impl LoginFlows {
             stage: LoginStage::WaitingForUser,
             verification_url: Some(pending.verification_url),
             user_code: pending.user_code,
-            needs_code: flow.kind == LoginKind::PastedCode,
+            needs_code: flow.kind == Some(LoginKind::PastedCode),
             codes_taken,
             code_error,
             expires_at,
@@ -946,6 +988,117 @@ mod tests {
         // The second's refusal is.
         refused(2).await;
         assert_eq!(shown(), (2, Some("Invalid code 2".to_owned())));
+        flows.close().await;
+    }
+
+    /// A subscription family whose accounts offer no login, which a start
+    /// finds only once it has read the owner's entries.
+    struct NoLogin;
+
+    impl ProviderFamily for NoLogin {
+        fn credential(&self) -> CredentialKind {
+            CredentialKind::Subscription
+        }
+
+        fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
+            let FamilyCredential::Subscription(subscription) = args.credential else {
+                return Err(FamilyError::WrongCredential);
+            };
+            Ok(Arc::new(Waiting(Accounts::new(
+                subscription.pool,
+                NoLoginKit,
+                args.clock,
+            ))))
+        }
+    }
+
+    struct NoLoginKit;
+
+    impl AccountKit for NoLoginKit {
+        fn capability(&self) -> AccountsCapability {
+            AccountsCapability { login: None }
+        }
+
+        fn login<'a>(
+            &'a self,
+            _io: LoginIo<'a>,
+        ) -> Option<BoxFuture<'a, Result<NewAccount, LoginError>>> {
+            None
+        }
+    }
+
+    // Instant: the first start is polled up to its first wait.
+    #[tokio::test]
+    async fn a_start_refused_by_a_login_that_then_fails_finds_it_listed_and_learns_its_failure() {
+        let families = FamilyRegistry::default().with("none", NoLogin);
+        let clock = Arc::new(TokioClock::new("2026-09-24T08:00:00.000Z".parse().unwrap()));
+        let Backend {
+            _data,
+            sync,
+            flows,
+            master,
+            ..
+        } = backend(families, clock, LoginTiming::default()).await;
+        // Two tabs of the user's.
+        let (one, other) = (sync.watch(&master), sync.watch(&master));
+        let request = RequestId::try_from("req_first".to_owned()).unwrap();
+        let start = || {
+            flows.start(
+                master.clone(),
+                master.clone(),
+                "none".into(),
+                "None".into(),
+                None,
+                Arc::new(NoMachine),
+                request.clone(),
+            )
+        };
+
+        // The first start holds the new entry and waits for the entries.
+        let mut first = Box::pin(start());
+        assert!(futures_util::poll!(&mut first).is_pending());
+        let Err(LoginRefusal::Busy(Some(id))) = start().await else {
+            panic!("the second start was not refused with the first's login");
+        };
+        // The login it names is listed, preparing, and announced to both
+        // tabs.
+        assert_eq!(
+            flows.listed(&master).iter().map(|listed| &listed.id).collect::<Vec<_>>(),
+            [&id]
+        );
+        for tab in [&one, &other] {
+            let [listed] = &announced(tab, &flows, &master).await[..] else {
+                panic!("the tab lists other logins");
+            };
+            assert_eq!(listed.id, id);
+            assert!(matches!(
+                listed.login,
+                LoginState::Pending { stage: LoginStage::Preparing, .. }
+            ));
+        }
+
+        // Its start fails, and both tabs learn it, with the starting request.
+        let refused = first.await.unwrap_err();
+        assert!(matches!(refused, LoginRefusal::NoLoginFlow(_)), "{refused:?}");
+        for tab in [&one, &other] {
+            let [listed] = &announced(tab, &flows, &master).await[..] else {
+                panic!("the tab lists other logins");
+            };
+            assert_eq!(
+                (&listed.id, &listed.login),
+                (
+                    &id,
+                    &LoginState::Failed {
+                        message: "none has no login".into(),
+                        request_id: request.clone(),
+                    }
+                )
+            );
+        }
+        // The new entry is no longer held.
+        let Err(LoginRefusal::NoLoginFlow(_)) = start().await else {
+            panic!("the entry is still held");
+        };
         flows.close().await;
     }
 
