@@ -244,8 +244,11 @@ function firstListing(entry: Listing | undefined): boolean {
   return shown?.reading === true && shown.answer === null
 }
 
+// Links whose target is read again before they expand or open.
+const following = shallowReactive(new Set<string>())
+
 function isLoading(row: TreeRow): boolean {
-  return row.isDirectory && firstListing(listings.get(row.path))
+  return following.has(row.path) || (row.isDirectory && firstListing(listings.get(row.path)))
 }
 
 /** Why the directory could not be listed, for the whole row's tooltip and its dot. */
@@ -260,8 +263,39 @@ function failureText(row: TreeRow): string {
 }
 
 function activate(row: TreeRow): void {
-  if (row.isDirectory) {
+  if (laidOut.value.links.has(row.path) && !(row.isDirectory && row.open)) {
+    void followLink(row)
+  } else if (row.isDirectory) {
     toggle(row.path)
+  } else {
+    emit('open', row.path)
+  }
+}
+
+/**
+ * Expands or opens a link as what its target is now (`file-previews.md`
+ * § Symbolic links): what the row says is as of its folder's listing, which
+ * the folder's watch does not change when the target alone does, so the
+ * folder is listed again, which reads each link's target, and the row
+ * takes what it found: a link to a folder expands, any other opens, a
+ * target that is gone or cannot be read saying so in the file's place.
+ */
+async function followLink(row: TreeRow): Promise<void> {
+  const folder = listings.get(row.parent ?? normalizePath(props.root))
+  if (!folder?.showing || following.has(row.path))
+    return
+  following.add(row.path)
+  try {
+    await folder.showing.retry()
+  } finally {
+    following.delete(row.path)
+  }
+  // Folded, or the link went, while its folder was read.
+  const now = folder.open ? entriesOf(folder).find((entry) => entry.name === row.name) : undefined
+  if (!now)
+    return
+  if (now.isDirectory) {
+    open(row.path)
   } else {
     emit('open', row.path)
   }

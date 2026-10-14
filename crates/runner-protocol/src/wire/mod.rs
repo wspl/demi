@@ -14,7 +14,7 @@ pub use kept::{
 };
 pub use messages::{
     ArtifactOwner, ChangeKind, Descriptor, DirEntry, DirectoryFile, FileHash, FileRead, FileStat, OpenedFile, file_version, GitChange, GitChanges,
-    HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTargetKind, LogLine,
+    HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget, LogLine,
     LookPath, Looked, MAX_INSTALLED, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef,
     RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
     StreamArtifactOwner, VolumeName, WriteExists,

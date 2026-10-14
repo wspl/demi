@@ -748,8 +748,8 @@ async fn a_paired_device_is_browsed_and_its_log_read_through_device_access() {
             .map(|entry| entry["link"].clone())
             .unwrap()
     };
-    assert_eq!(link_of("greeting"), json!({ "target": "hello.txt", "targetKind": "file" }));
-    assert_eq!(link_of("old.log"), json!({ "target": "/nowhere/gone.log", "targetKind": "missing" }));
+    assert_eq!(link_of("greeting"), json!({ "target": "hello.txt", "leadsTo": { "kind": "file" } }));
+    assert_eq!(link_of("old.log"), json!({ "target": "/nowhere/gone.log", "leadsTo": { "kind": "missing" } }));
     let made = format!("{home}/made/by/web");
     let created = backend
         .post(

@@ -22,6 +22,7 @@ import {
   FileBrowserError,
   type FileBrowserEntry,
   type FileBrowserFailure,
+  type FileBrowserLinkBreak,
   type FileBrowserSource,
   type FileBrowserPlatform,
   type FileContents,
@@ -255,11 +256,14 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
   const { root, latencyMs = 0, uploadRate } = options
   const failing = new Map<string, FileBrowserFailure>()
 
-  /**
-   * What is at `path`, every link on the way followed, as a Host's path
-   * lookup does; null for nothing there, or a loop of links.
-   */
+  /** What is at `path`, every link on the way followed, as a Host's path lookup does; null for nothing there, or a loop of links. */
   function lookup(path: string): MemoryFile | MemoryDirectory | null {
+    const found = follow(path)
+    return found === 'missing' || found === 'loop' ? null : found
+  }
+
+  /** What is at `path`, every link on the way followed: nothing there, or links that go round in a loop. */
+  function follow(path: string): MemoryFile | MemoryDirectory | 'missing' | 'loop' {
     let segments = normalizePath(path).split('/').filter(Boolean)
     let node: MemoryFile | MemoryDirectory = root
     let at = '/'
@@ -267,14 +271,14 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
     while (segments.length > 0) {
       const [segment, ...rest] = segments as [string, ...string[]]
       if (node.kind !== 'directory')
-        return null
+        return 'missing'
       const child: MemoryNode | undefined = node.children[segment]
       if (!child)
-        return null
+        return 'missing'
       if (child.kind === 'link') {
         hops += 1
         if (hops > MAX_LINK_HOPS)
-          return null
+          return 'loop'
         // The rest of the path goes on from the target, looked up from the root.
         segments = [...normalizePath(resolveHostPath(at, child.target)).split('/').filter(Boolean), ...rest]
         node = root
@@ -391,13 +395,16 @@ function memoryHost(options: MemoryFileSourceOptions, watch?: SimulatedWatch): M
             return { name, isDirectory: false, size: child.size, modifiedAt: child.modifiedAt }
           case 'link': {
             // A link is what its target is; its own size is its target's length, as `lstat` says.
-            const target = lookup(joinPath(path, name))
+            const target = follow(joinPath(path, name))
+            const broken: FileBrowserLinkBreak | null = target === 'missing'
+              ? { kind: 'missing' }
+              : target === 'loop' ? { kind: 'unreadable', reason: 'Too many levels of symbolic links' } : null
             return {
               name,
-              isDirectory: target?.kind === 'directory',
+              isDirectory: typeof target === 'object' && target.kind === 'directory',
               size: child.target.length,
               modifiedAt: child.modifiedAt,
-              link: { target: child.target, missing: target === null },
+              link: { target: child.target, ...(broken ? { broken } : {}) },
             }
           }
         }

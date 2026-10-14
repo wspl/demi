@@ -32,11 +32,19 @@ export interface FileBrowserEntry {
   link?: FileBrowserLink
 }
 
-/** A symbolic link's target as written, and whether nothing can be reached there. */
+/** A symbolic link's target as written, and why it cannot be reached, as of its listing. */
 export interface FileBrowserLink {
   target: string
-  missing: boolean
+  /** Absent while the target can be reached. */
+  broken?: FileBrowserLinkBreak
 }
+
+/**
+ * Why a link's target cannot be reached (`file-previews.md` § Symbolic
+ * links): nothing is there, or something may be but cannot be read, for the
+ * system's `reason`, such as a folder on the way closed to the user.
+ */
+export type FileBrowserLinkBreak = { kind: 'missing' } | { kind: 'unreadable'; reason: string }
 
 /**
  * Why a directory could not be listed, a file read or written. `kind` picks

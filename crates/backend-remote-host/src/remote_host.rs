@@ -13,7 +13,7 @@ use demi_command_protocol::{
 };
 use demi_host_interface::{
     ByteRange, ByteStream, CpOptions, DirEntry, FileContents, FileKind, FileStat, Host, HostError,
-    HostErrorKind, HostFs, HostIdentity, HostKey, HostPaths, HostProcess, JobCaller, LinkTargetKind, MkdirOptions, Process,
+    HostErrorKind, HostFs, HostIdentity, HostKey, HostPaths, HostProcess, JobCaller, LinkTarget, MkdirOptions, Process,
     ProcessControl, ProcessEnd, ProcessOutput, RmOptions, Signal, SpawnEnv, SpawnRequest,
     SymbolicLink, WhenExists, WholeOutput, WriteOptions,
 };
@@ -1843,11 +1843,12 @@ fn dir_entry(entry: wire::DirEntry) -> Result<DirEntry, HostError> {
         name: entry.name,
         link: entry.link.map(|link| SymbolicLink {
             target: link.target,
-            target_kind: match link.target_kind {
-                wire::LinkTargetKind::File => LinkTargetKind::File,
-                wire::LinkTargetKind::Directory => LinkTargetKind::Directory,
-                wire::LinkTargetKind::Other => LinkTargetKind::Other,
-                wire::LinkTargetKind::Missing => LinkTargetKind::Missing,
+            leads_to: match link.leads_to {
+                wire::LinkTarget::File => LinkTarget::File,
+                wire::LinkTarget::Directory => LinkTarget::Directory,
+                wire::LinkTarget::Other => LinkTarget::Other,
+                wire::LinkTarget::Missing => LinkTarget::Missing,
+                wire::LinkTarget::Unreadable { reason } => LinkTarget::Unreadable { reason },
             },
         }),
     })

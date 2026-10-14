@@ -1530,19 +1530,24 @@ pub struct DirEntry {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SymbolicLink {
     pub target: String,
-    pub target_kind: LinkTargetKind,
+    pub leads_to: LinkTarget,
 }
 
-/// What a symbolic link leads to. `Missing` is a target that cannot be
-/// reached: nothing there, a loop of links, or a directory on the way the
-/// Host may not search.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "snake_case")]
-pub enum LinkTargetKind {
+/// What a symbolic link leads to (`file-previews.md` § Symbolic links).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum LinkTarget {
     File,
     Directory,
+    /// Neither a file nor a directory, such as a device or a pipe.
     Other,
+    /// Nothing is there: a name on the way does not exist, or is no
+    /// directory.
     Missing,
+    /// Something may be there but cannot be reached: a directory on the way
+    /// may not be searched, the links go round in a loop, the disk fails.
+    /// `reason` is the system's, as `strerror` words it.
+    Unreadable { reason: String },
 }
 
 /// One file of a directory an `fs_writeDirectory` writes: its path inside
