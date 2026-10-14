@@ -1,0 +1,129 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue'
+import { useIntersectionObserver, useNow } from '@vueuse/core'
+import { formatAge, formatMoment } from '../ui/dates'
+import ScrollArea from '../ui/ScrollArea.vue'
+import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
+import Tooltip from '../ui/Tooltip.vue'
+import { commitSummary, shortCommit, type LoggedCommit } from './history'
+
+/**
+ * One branch's commits under the Change view's files, newest first, as VS
+ * Code's commit list shows them beside Source Control
+ * (`edit-tracking.md` § Commits mode): each its summary, then its author
+ * and how long ago, its whole message, id and time in its tooltip. While the
+ * list shows the branch checked out it starts with Uncommitted Changes and
+ * its count of files (`uncommitted`). Older commits load as the list
+ * scrolls to its end, while `more`. A click selects a row, as the arrows do
+ * on the row after or before; null is Uncommitted Changes.
+ */
+const props = defineProps<{
+  commits: readonly LoggedCommit[]
+  /** The files Uncommitted Changes holds, whose row leads the list; absent, no such row. */
+  uncommitted?: number
+  /** The row selected: a commit's id, null for Uncommitted Changes. */
+  selected: string | null
+  /** Older commits follow the ones listed. */
+  more: boolean
+  /** A page is on its way. */
+  loading: boolean
+  /** Why the list could not be read, which stands in its place. */
+  failure?: string | null
+}>()
+
+const emit = defineEmits<{
+  select: [commit: string | null]
+  /** The list scrolled to its end while older commits follow. */
+  more: []
+}>()
+
+const now = useNow({ interval: 60_000 })
+/** The rows in order: Uncommitted Changes, then each commit. */
+const rows = computed<readonly (string | null)[]>(() => [
+  ...(props.uncommitted === undefined ? [] : [null]),
+  ...props.commits.map((commit) => commit.id),
+])
+
+const end = ref<HTMLElement | null>(null)
+const atEnd = ref(false)
+useIntersectionObserver(end, ([entry]) => {
+  atEnd.value = entry?.isIntersecting ?? false
+})
+// The end in view asks for more; a page that left it in view asks again.
+watch([atEnd, () => props.more, () => props.loading], ([seen, more, loading]) => {
+  if (seen && more && !loading)
+    emit('more')
+})
+
+function step(by: 1 | -1): void {
+  const at = rows.value.indexOf(props.selected)
+  const next = rows.value[Math.min(rows.value.length - 1, Math.max(0, at + by))]
+  if (next !== undefined && next !== props.selected)
+    emit('select', next)
+}
+
+function onKeydown(event: KeyboardEvent): void {
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault()
+    step(event.key === 'ArrowDown' ? 1 : -1)
+  }
+}
+
+function files(count: number): string {
+  return count === 1 ? '1 file' : `${count} files`
+}
+</script>
+
+<template>
+  <ScrollArea class="h-full min-h-0 bg-surface-editor" viewport-class="p-1">
+    <div
+      role="listbox"
+      aria-label="Commits"
+      tabindex="0"
+      class="flex min-h-full flex-col gap-px outline-none"
+      @keydown="onKeydown"
+    >
+      <div
+        v-if="uncommitted !== undefined"
+        role="option"
+        :aria-selected="selected === null"
+        class="flex h-11 shrink-0 cursor-default select-none flex-col justify-center rounded-md px-2 transition-colors duration-200 ease-out phone:h-14"
+        :class="selected === null ? 'bg-active text-fg-emphasis' : 'text-fg-body hover:bg-hover'"
+        @click="emit('select', null)"
+      >
+        <span class="flex min-w-0 items-center gap-1.5 text-chrome phone:text-[16px]">
+          <span class="size-1.5 shrink-0 rounded-full bg-on-warning" aria-hidden="true" />
+          <span class="truncate">Uncommitted Changes</span>
+        </span>
+        <span class="truncate text-[11px] text-fg-subtle phone:text-[13px]">{{ files(uncommitted) }}</span>
+      </div>
+      <Tooltip
+        v-for="commit in commits"
+        :key="commit.id"
+        placement="left"
+        class="block"
+      >
+        <div
+          role="option"
+          :aria-selected="selected === commit.id"
+          class="flex h-11 shrink-0 cursor-default select-none flex-col justify-center rounded-md px-2 transition-colors duration-200 ease-out phone:h-14"
+          :class="selected === commit.id ? 'bg-active text-fg-emphasis' : 'text-fg-body hover:bg-hover'"
+          @click="emit('select', commit.id)"
+        >
+          <span class="truncate text-chrome phone:text-[16px]">{{ commitSummary(commit.message) }}</span>
+          <span class="truncate text-[11px] text-fg-subtle phone:text-[13px]">{{ commit.author }} · {{ formatAge(commit.time, now) }}</span>
+        </div>
+        <template #overlay>
+          <div class="flex max-w-96 flex-col gap-1.5">
+            <div class="whitespace-pre-wrap break-words">{{ commit.message.trim() }}</div>
+            <div class="text-fg-subtle">{{ commit.author }} · {{ formatMoment(commit.time) }} · <span class="font-mono">{{ shortCommit(commit.id) }}</span></div>
+          </div>
+        </template>
+      </Tooltip>
+      <div v-if="failure" class="select-none px-2 py-2 text-[12px] text-fg-subtle">{{ failure }}</div>
+      <div ref="end" class="flex h-6 shrink-0 items-center justify-center" aria-hidden="true">
+        <IndeterminateSpinner v-if="loading" :size="14" class="text-fg-muted" />
+      </div>
+    </div>
+  </ScrollArea>
+</template>

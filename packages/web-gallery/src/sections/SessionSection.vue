@@ -52,7 +52,24 @@ import { provideEditSelection } from '@demicodes/web-ui/agent/edit-selection'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { galleryFiles, useGalleryWork, type GalleryWork } from '../fixtures/work-panel'
-import { changePath, firstChangeData, goBack as changeBack, goForward as changeForward, holdShownChange, showChange, showEdit, showRequestEdit } from '@demicodes/plugin-changes/data'
+import {
+  changePath,
+  firstChangeData,
+  goBack as changeBack,
+  goForward as changeForward,
+  holdShownChange,
+  placeBranch,
+  showBranch,
+  showChange,
+  showCommit,
+  showEdit,
+  showItem,
+  showRequestEdit,
+  type ChangeData,
+} from '@demicodes/plugin-changes/data'
+import { sharedHistory } from '../fixtures/history'
+import { COMMITS_HEIGHT } from '@demicodes/web-ui/files/file-view'
+import type { CommitHistorySource } from '@demicodes/web-ui/files/history'
 import { selectedTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
 import { BrowserTabsError, NEW_TAB_URL, STARTING_LABELS, browserTabDataSchema, serverRefused, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
@@ -554,6 +571,7 @@ async function failCookieRefresh(): Promise<void> {
 }
 const fileViewTree = ref(true)
 const changeViewTree = ref(true)
+const changeViewCommitsHeight = ref(COMMITS_HEIGHT.default)
 const fileViewMode = ref<'preview' | 'source'>('preview')
 const changeViewPresentation = ref<'diff' | 'preview'>('diff')
 /** One of each kind the File view previews, by workspace path. */
@@ -569,10 +587,12 @@ const previewFiles = [
 function useChangeTab(
   mode: ChangeMode,
   path: string | null,
-  changes: { uncommitted: ChangeSetSource; conversation: RequestChangeSource | null },
+  changes: { uncommitted: ChangeSetSource; conversation: RequestChangeSource | null; history?: CommitHistorySource | null },
   request: RequestEditSelection | null = null,
+  /** What the tab shows next in Commits, such as a commit picked or a link followed. */
+  then: (data: ChangeData) => ChangeData = (data) => data,
 ) {
-  const tab = ref(request ? showRequestEdit(firstChangeData(), request) : showChange(firstChangeData(), mode, path))
+  const tab = ref(then(request ? showRequestEdit(firstChangeData(), request) : showChange(firstChangeData(), mode, path)))
   /** The file the view holds in its mode, else the first there is, which it then holds. */
   const selected = computed(() => changePath(tab.value, tab.value.mode, changes.uncommitted.files))
   watch(selected, () => {
@@ -586,6 +606,7 @@ function useChangeTab(
     selected,
     changes: computed<ChangeSources>(() => ({
       uncommitted: changes.uncommitted,
+      history: changes.history ?? null,
       conversation: tab.value.request ? changes.conversation : null,
     })),
     edit: computed(() => tab.value.request?.edit ?? null),
@@ -594,6 +615,9 @@ function useChangeTab(
     setEdit: (edit: RequestEditRef | null) => (tab.value = showEdit(tab.value, edit)),
     back: () => (tab.value = changeBack(tab.value)),
     forward: () => (tab.value = changeForward(tab.value)),
+    setCommit: (commit: string | null) => (tab.value = showItem(tab.value, commit)),
+    setBranch: (branch: string | null) => (tab.value = showBranch(tab.value, branch)),
+    placed: (branch: string | null) => (tab.value = placeBranch(tab.value, branch)),
   }
 }
 const fileViewPath = ref(`${workspace.root}/src/auth/cookie.ts`)
@@ -652,6 +676,9 @@ const sessionFiles = galleryConversationFiles(workspace.source, ({ path, line })
   // From the session page, which shows no panel, a click opens the frame's.
   panelWork.openIn({ intent: 'file', payload: line === null ? { path } : { path, line } })
   view.value = 'panel'
+}, ({ commit }) => {
+  panelWork.openIn({ intent: 'commit', payload: { commit } })
+  view.value = 'panel'
 })
 // The tabs specimen starts on an empty strip, with the globe-plus add control.
 const exhibitWork = useWorkTabs('file', { browser: galleryBrowser([]) })
@@ -659,7 +686,21 @@ const editWork = useWorkTabs('change')
 // The gallery's own conversation browser stands behind every specimen's `browser`
 // kind, which lists its tabs as it is made.
 provideEditSelection(() => editWork.selectEdit)
-const changeUncommitted = useChangeTab('uncommitted', 'src/auth/cookie.ts', { uncommitted: workspace.changes, conversation: null })
+const gitHistory = sharedHistory.source
+const changeUncommitted = useChangeTab('commits', 'src/auth/cookie.ts', { uncommitted: workspace.changes, conversation: null, history: gitHistory })
+/** Commits on another branch than the one checked out, its newest commit picked. */
+const changeOtherBranch = useChangeTab('commits', null, { uncommitted: workspace.changes, conversation: null, history: gitHistory }, null, (data) => showItem(showBranch(data, 'feat/cart'), sharedHistory.ids.cart))
+/** A commit of the branch checked out picked in the list. */
+const changeCommit = useChangeTab('commits', null, { uncommitted: workspace.changes, conversation: null, history: gitHistory }, null, (data) => showItem(data, sharedHistory.ids.latest()))
+/** A link to a commit that no branch holds, as a rebase leaves one. */
+const changeNoBranch = useChangeTab('commits', null, { uncommitted: workspace.changes, conversation: null, history: gitHistory }, null, (data) => showCommit(data, { commit: sharedHistory.ids.orphan.slice(0, 7) }))
+/** A link to a commit the repository does not have. */
+const changeMissingCommit = useChangeTab('commits', null, { uncommitted: workspace.changes, conversation: null, history: gitHistory }, null, (data) => showCommit(data, { commit: 'deadbee' }))
+/** Makes a commit on the branch checked out, as a terminal would; every Commits specimen's list follows. */
+function commitInTerminal(): void {
+  sharedHistory.commit('Tidy the cart styles')
+  productWould('A Commit Made in a Terminal Shows in the List')
+}
 /** The sign-in request, its login.ts edited three times, as the Change view's specimens read it. */
 const signInChanges = storedRequests(signInRequestBlocks('change-view')).requests[0]!
 const signInLogin = signInChanges.files[0]!
@@ -705,11 +746,11 @@ const changeRemoved = useChangeTab('conversation', null, {
   },
 }, { node: null, request: 'gallery-tidy', file: 'docs/old-guide.md', edit: null })
 const changeEmpty = useChangeTab('conversation', null, { conversation: null, uncommitted: workspace.changes })
-const changeNoRepository = useChangeTab('uncommitted', null, {
+const changeNoRepository = useChangeTab('commits', null, {
   conversation: null,
   uncommitted: createGalleryChangeSet(200, { unavailable: 'no-repository' }),
 })
-const changeStale = useChangeTab('uncommitted', 'src/auth/cookie.ts', {
+const changeStale = useChangeTab('commits', 'src/auth/cookie.ts', {
   conversation: null,
   uncommitted: createGalleryChangeSet(200, { truncated: true, failure: 'The device is offline.' }),
 })
@@ -3760,14 +3801,21 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Change View"
-        note="Diffs from one of two sources, the switch in the header picks. A click in a diff puts a blinking caret there, in the theme’s caret color: the arrows move it, Shift extends the selection from it, and Mod-f opens the find bar, which finds from it. A changed image, video, audio file or PDF shows its committed version beside the working tree’s instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled “Committed” and “Working tree”, or “Before” and “After” in Conversation. Either mode shows its files as one tree, as VS Code’s Source Control shows changes as a tree: only the folders that hold a changed file, folders first and names in order, a folder whose only content is one folder joined with it into one row (packages/web-ui/src/files), every folder open until a click folds it. Uncommitted is the working tree against the last commit: the diff of the selected file beside the tree of the files git status lists, each ending its row with its line counts and the letter VS Code’s Git marks it with, by VS Code’s own rules from git’s two status letters: “U” untracked, “A” added, “M” modified, “D” deleted (its name struck through), “R” renamed, “T” type changed, and an exclamation mark in conflict, in VS Code’s colors and with VS Code’s words as the tooltip; where git has a letter for both the index and the working tree, the working tree’s shows, so a staged new file edited again is M. The fixtures hold every mark. The files and lines are summed up in the tree’s caption. Conversation shows one request: the files it changed within its agent’s working directory, each ending its row with All Changes’ line counts when they were kept; a removed file is struck through and a renamed one’s tooltip names where it came from. A file shows All Changes, from before the request’s first edit to after its last, when both were kept, and otherwise opens at its first edit with contents; a file edited more than once steps through its edits, Edit 2 of 3, each named by its call’s title. A file without contents has no diff, and a request an edit removed says it is no longer in the conversation. Back and Forward walk what the view has shown. The header also opens the selected file itself. Either sidebar has a toggle, and in a narrow view it hides and shows over the diff the way the File view’s tree does; its tree’s caption lists the changes again, its control turning while the list is on its way. A header over the diff names the file shown, in either mode, as GitHub’s diff header does: its icon, its folder from the workspace, its name, where a renamed file came from, and the line counts of the diff under it; a request’s files list no counts of their own. A request’s button opens Conversation on its first file’s All Changes, a file pill on its file at that call’s first edit; the Change tab picked again shows the view as it was left; with nothing picked, Conversation says how to fill it. Under Uncommitted, a workspace outside a Git repository shows no file tree or toggle, only “Not a git repository.” It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory’s name, as the product does for the Cloud’s own session directory. The tree takes the keyboard as the File View’s does: typing a name moves to the first row shown that starts with it, and Enter selects a file."
+        note="Diffs from one of two sources, the switch in the header picks. A click in a diff puts a blinking caret there, in the theme’s caret color: the arrows move it, Shift extends the selection from it, and Mod-f opens the find bar, which finds from it. A changed image, video, audio file or PDF shows its two versions side by side instead, each with its sizes, a new file only the second; a binary file with no preview shows a card per side with Download, and a committed version over 8 MiB says it is too large, with no Download. Markdown and SVG switch between the text diff and Preview, which renders both sides, labeled “Committed” and “Working tree” for the uncommitted changes, or “Before” and “After” for a commit and in Conversation. Commits shows the repository as VS Code’s Source Control and its commit list do together: the sidebar is two panes with a divider the user drags, kept as the sidebar’s width is; above, the selected item’s files as one tree, below, the commit list. The list shows one branch’s history, newest first, following first parents, each commit its summary, author and age, its whole message, author, time and id in its tooltip; more load as it scrolls to its end (main holds 64). While the list shows the branch checked out it starts with Uncommitted Changes and its count of files; another branch’s list starts with its newest commit. The branch menu left of the toolbar’s buttons names the branch the list shows and lists the local branches, most recently committed first, the checked-out one marked Checked Out; choosing one only changes the list. Selecting an item shows its files above and opens the first; a commit shows its changes against its first parent, each file marked A, M, D or R. Commit in a Terminal makes a commit on main, and every list showing main shows it at once, as the product’s watch of the repository does. A link to a commit, commit:3f2a9c1 in a message, opens Commits on it, its list on the branch shown when that has it, else the one checked out, else the most recent one that has it; a commit no branch holds shows alone, the list saying “This commit is on no branch.”; one the repository lacks says “No commit deadbee in ~/shop.” Uncommitted Changes is the working tree against the last commit: each file ending its row with its line counts and the letter VS Code’s Git marks it with, by VS Code’s own rules from git’s two status letters: “U” untracked, “A” added, “M” modified, “D” deleted (its name struck through), “R” renamed, “T” type changed, and an exclamation mark in conflict, in VS Code’s colors and with VS Code’s words as the tooltip; where git has a letter for both the index and the working tree, the working tree’s shows, so a staged new file edited again is M. The fixtures hold every mark. Conversation shows one request: the files it changed within its agent’s working directory, each ending its row with All Changes’ line counts when they were kept; a removed file is struck through and a renamed one’s tooltip names where it came from. A file shows All Changes, from before the request’s first edit to after its last, when both were kept, and otherwise opens at its first edit with contents; a file edited more than once steps through its edits, Edit 2 of 3, each named by its call’s title. A file without contents has no diff, and a request an edit removed says it is no longer in the conversation. Back and Forward walk what the view has shown, items and files alike. The header also opens the selected file itself. Either sidebar has a toggle, and in a narrow view it hides and shows over the diff the way the File view’s tree does; the files’ caption lists the uncommitted changes again, its control turning while the list is on its way. A header over the diff names the file shown, in either mode, as GitHub’s diff header does: its icon, its folder from the workspace, its name, where a renamed file came from, and the line counts of the diff under it; a request’s files list no counts of their own. A request’s button opens Conversation on its first file’s All Changes, a file pill on its file at that call’s first edit; the Change tab picked again shows the view as it was left; with nothing picked, Conversation says how to fill it. A workspace outside a Git repository shows no sidebar or toggle in Commits, only “Not a Git repository.” It keeps the last list when a listing failed, and says under the rows when the list was cut short. A host can name the workspace in place of its directory’s name, as the product does for the Cloud’s own session directory. The tree takes the keyboard as the File View’s does: typing a name moves to the first row shown that starts with it, and Enter selects a file; the commit list moves its selection with the arrows."
       >
+        <div class="flex flex-wrap gap-1">
+          <Button size="sm" variant="ghost" @click="commitInTerminal">Commit in a Terminal</Button>
+        </div>
         <GallerySpecimen
           v-for="specimen in [
-            { variant: 'uncommitted · live', work: changeUncommitted, rootName: undefined, narrow: false },
-            { variant: 'uncommitted · narrow, the tree hides, its control shows it over the diff', work: changeUncommitted, rootName: undefined, narrow: true },
-            { variant: 'uncommitted · not a repository, named Workspace', work: changeNoRepository, rootName: 'Workspace', narrow: false },
-            { variant: 'uncommitted · listing failed, cut short', work: changeStale, rootName: undefined, narrow: false },
+            { variant: 'commits · the branch checked out, Uncommitted Changes first', work: changeUncommitted, rootName: undefined, narrow: false },
+            { variant: 'commits · another branch, its newest commit picked', work: changeOtherBranch, rootName: undefined, narrow: false },
+            { variant: 'commits · a commit picked', work: changeCommit, rootName: undefined, narrow: false },
+            { variant: 'commits · a link to a commit on no branch', work: changeNoBranch, rootName: undefined, narrow: false },
+            { variant: 'commits · a link to a commit the repository lacks', work: changeMissingCommit, rootName: '~/shop', narrow: false },
+            { variant: 'commits · narrow, the tree hides, its control shows it over the diff', work: changeUncommitted, rootName: undefined, narrow: true },
+            { variant: 'commits · not a repository, named Workspace', work: changeNoRepository, rootName: 'Workspace', narrow: false },
+            { variant: 'commits · listing failed, cut short', work: changeStale, rootName: undefined, narrow: false },
             { variant: 'conversation · a request, All Changes of its first file', work: changeRequest, rootName: undefined, narrow: false },
             { variant: 'conversation · a pill’s edit, the third of three', work: changeRequestEdit, rootName: undefined, narrow: false },
             { variant: 'conversation · a Markdown file picked', work: changeDocument, rootName: undefined, narrow: false },
@@ -3790,6 +3838,10 @@ onBeforeUnmount(() => {
               :contents="workspace.source.contents"
               :mode="specimen.work.tab.value.mode"
               :selected="specimen.work.selected.value"
+              :commit="specimen.work.tab.value.commit"
+              :branch="specimen.work.tab.value.branch"
+              :place="specimen.work.tab.value.place"
+              v-model:commits-height="changeViewCommitsHeight"
               :edit="specimen.work.edit.value"
               :changes="specimen.work.changes.value"
               :root="workspace.root"
@@ -3798,6 +3850,9 @@ onBeforeUnmount(() => {
               :can-forward="specimen.work.tab.value.forward.length > 0"
               @update:mode="specimen.work.setMode"
               @update:selected="specimen.work.select"
+              @update:commit="specimen.work.setCommit"
+              @update:branch="specimen.work.setBranch"
+              @placed="specimen.work.placed"
               @update:edit="specimen.work.setEdit"
               @back="specimen.work.back"
               @forward="specimen.work.forward"

@@ -40,6 +40,7 @@ export function useRenderedFiles(files: () => MessageFiles | undefined): Compute
       && !previous.open === !next.open
       && !previous.codeFiles === !next.codeFiles
       && !previous.attachment === !next.attachment
+      && !previous.openCommit === !next.openCommit
     return same ? previous : next
   })
 }
@@ -50,7 +51,8 @@ export function useRenderedFiles(files: () => MessageFiles | undefined): Compute
  * or video or its link, shows it large in `viewer`, where a video plays, and
  * `among` gives the media of the transcript it stands in; an image inside a
  * link follows the link; one on an agent's link opens the agent in the
- * Agents window; any other click is the page's.
+ * Agents window; one on a commit's link opens the commit in the Change
+ * view; any other click is the page's.
  */
 export function openMessageLink(
   event: MouseEvent,
@@ -85,6 +87,12 @@ export function openMessageLink(
     const shown = { kind, name: caption || 'image', size, row: transcriptRowOf(target) }
     // A Host image shows its file, at the version the page keeps, as the message does.
     viewer.show(path !== null && files?.contents ? { ...shown, file: { path, contents: files.contents } } : { ...shown, src }, among)
+    return
+  }
+  const commit = target?.closest('a[data-commit-link]')
+  if (commit) {
+    event.preventDefault()
+    files?.openCommit?.({ commit: commit.getAttribute('data-commit-link') ?? '' })
     return
   }
   const link = target?.closest('a[data-file-link]')

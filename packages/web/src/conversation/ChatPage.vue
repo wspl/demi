@@ -185,9 +185,9 @@ const attachments = useMessageAttachments(() => props.id)
  * The Host files the conversation's messages name: images from the files
  * the conversation's service keeps, at the version its file watch keeps
  * current, files opened through the `file` intent while a plugin opens it,
- * at their lines, and which paths of a reply's inline code are files, from
- * the Host, whose home a `~/` path starts from; and the attachments they
- * name.
+ * at their lines, commits opened through the `commit` intent, and which
+ * paths of a reply's inline code are files, from the Host, whose home a
+ * `~/` path starts from; and the attachments they name.
  */
 const files = computed<ConversationFiles | undefined>(() => {
   const current = conversation.value
@@ -200,6 +200,9 @@ const files = computed<ConversationFiles | undefined>(() => {
     ...(contents ? { contents } : {}),
     open: work.canOpen('file')
       ? ({ path, line, root }) => work.openIn(current.id, { intent: 'file', payload: { path, ...(line === null ? {} : { line }), ...(root === undefined ? {} : { root }) } })
+      : undefined,
+    openCommit: work.canOpen('commit')
+      ? ({ commit, root }) => work.openIn(current.id, { intent: 'commit', payload: { commit, ...(root === undefined ? {} : { root }) } })
       : undefined,
     codeFiles: (paths) => lookupCodeFiles(current.id, paths, primaryHost.value?.state ?? 'offline'),
     ...(attachments.value ? { attachment: attachments.value } : {}),

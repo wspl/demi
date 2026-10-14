@@ -5,7 +5,8 @@ import { viewDirectory, type ChangeData } from './data'
 const NO_FILES: readonly RequestFile[] = []
 
 /**
- * What the Change view shows: the working tree's changes, and in
+ * What the Change view shows: the working tree's changes and the
+ * repository's history, and in
  * Conversation the request the tab names, as its agent's transcript holds it
  * now. Each frame of a turn reads the request anew: the sources stay
  * the same value while a frame changes nothing of them, so the view does not
@@ -21,6 +22,7 @@ export function useChangeSources(files: ConversationFileService, data: () => Cha
   })
   return computed(() => ({
     uncommitted: files.changes(viewDirectory(data())),
+    history: files.history(viewDirectory(data())),
     conversation: requestFiles.value ? { files: requestFiles.value, read: files.edit } : null,
   }))
 }

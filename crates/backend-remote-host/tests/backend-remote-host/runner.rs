@@ -2145,9 +2145,9 @@ async fn the_working_tree_facet_lists_changes_and_shows_the_last_commit() {
             ("b.txt", "??", wire::ChangeKind::Added, 1, 0),
         ]
     );
-    assert_eq!(host.git_show(&home, "a.txt").await.unwrap().0, "1\n2\n");
+    assert_eq!(host.git_show(&home, "a.txt", None).await.unwrap().0, "1\n2\n");
     assert_eq!(
-        host.git_show(&home, "b.txt").await.unwrap_err().code(),
+        host.git_show(&home, "b.txt", None).await.unwrap_err().code(),
         Some("ENOENT")
     );
     fixture.stop().await;

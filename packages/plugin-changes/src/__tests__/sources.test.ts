@@ -22,6 +22,7 @@ test('a frame of the turn that changes nothing of the request gives the Change v
     workspace: null,
     root: null,
     changes: () => uncommitted,
+    history: () => null,
     edit: async () => null,
     request: () => ({ id: 'user-1', files: frame.value, hidden: [] }),
     showChanges: () => {},

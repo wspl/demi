@@ -14,6 +14,7 @@ import type { Answered, HostFiles, KeptSpec, Read, Showing } from './file-cache'
 import { baseName } from '@demicodes/utils'
 import { parentPath } from './paths'
 import type { ChangeSetSource, ChangeSides, WorkingTreeChange } from './changes'
+import type { BranchList, CommitDetails, CommitHistorySource, CommitLogPage } from './history'
 import type { WatchChannel } from './watch-channel'
 import type {
   FileBrowserEntry,
@@ -85,11 +86,13 @@ export function keptContents(
   kind: 'description' | 'committed' = 'description',
   absolute: (path: string) => string = (path) => path,
   root?: string,
+  /** Tells apart the committed contents of one commit from another's and the last commit's. */
+  commit?: string,
 ): FileContents {
   const spec = (path: string): KeptSpec<FileDescription> => ({
     kind,
     path: absolute(path),
-    key: path,
+    key: commit === undefined ? path : `${commit}\u0000${path}`,
     ...(root === undefined ? {} : { root }),
     watch: watch ?? null,
     read: () => reads.describe(path),
@@ -259,4 +262,72 @@ export function keptChangeSet(
     show: () => files.show(listSpec),
   })
   return source
+}
+
+/**
+ * A repository's history as a host reads it, each a request with the Host's
+ * number before it read: an answer that nothing is there, a branch deleted
+ * or a commit the repository lacks, rejects as not found.
+ */
+export interface HistoryReads {
+  branches(): Promise<Answered<BranchList>>
+  log(branch: string | null, after: string): Promise<Answered<CommitLogPage>>
+  commit(commit: string): Promise<Answered<CommitDetails>>
+  sides(commit: string, path: string): Promise<Answered<ChangeSides>>
+  /** A commit's files' bytes, by path relative to the working tree's root. */
+  contents?(commit: string): ContentReads
+}
+
+/**
+ * The history of the repository the working tree under `root` is in, kept
+ * like its files: each part follows the repository's `head`, which a
+ * commit, a checkout or a new branch changes, so a view shows it again at
+ * once (`edit-tracking.md` § Commits mode).
+ */
+export function keptHistory(reads: HistoryReads, root: string, options: KeptSourceOptions): CommitHistorySource {
+  const { files } = options
+  const watch = options.watch ?? null
+  const head = () => [{ kind: 'head' as const, path: root }]
+  const answer = <T>(key: string, read: () => Promise<Answered<T>>, size: (value: T) => number): KeptSpec<T> => ({
+    kind: 'answer',
+    path: root,
+    key,
+    watch,
+    read,
+    size,
+    subjects: head,
+  })
+  const messages = (commits: readonly { message: string }[]) => commits.reduce((sum, commit) => sum + commit.message.length, 0)
+  const absolute = (path: string) => `${root.replace(/\/$/, '')}/${path}`
+  const contents = new Map<string, FileContents>()
+  return {
+    showBranches: () => files.show(answer('branches', () => reads.branches(), (list) => list.branches.length)),
+    showLog: (branch, after) => files.show(answer(
+      `log\u0000${branch ?? ''}\u0000${after}`,
+      () => reads.log(branch, after),
+      (page) => messages(page.commits),
+    )),
+    showCommit: (commit) => files.show(answer(
+      `commit\u0000${commit}`,
+      () => reads.commit(commit),
+      (details) => details.commit.message.length + details.files.reduce((sum, file) => sum + file.path.length, 0),
+    )),
+    showSides: (commit, path) => files.show(answer(
+      `sides\u0000${commit}\u0000${path}`,
+      () => reads.sides(commit, path),
+      (sides) => sides.original.length + sides.modified.length,
+    )),
+    ...(reads.contents
+      ? {
+          contents: (commit: string) => {
+            let kept = contents.get(commit)
+            if (!kept) {
+              kept = keptContents(reads.contents!(commit), options, 'committed', absolute, root, commit)
+              contents.set(commit, kept)
+            }
+            return kept
+          },
+        }
+      : {}),
+  }
 }

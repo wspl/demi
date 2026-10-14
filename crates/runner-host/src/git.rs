@@ -85,6 +85,8 @@ pub enum GitError {
     Timeout,
     #[error("the file is too large")]
     TooLarge,
+    #[error("the abbreviation names more than one commit")]
+    Ambiguous,
     #[error("the working-tree request was cancelled")]
     Cancelled,
     #[error("{0}")]
@@ -99,6 +101,7 @@ impl GitError {
             GitError::NotRepository => "not_repository",
             GitError::Timeout => "timeout",
             GitError::TooLarge => "too_large",
+            GitError::Ambiguous => "ambiguous",
             GitError::Cancelled => "cancelled",
             GitError::Internal(_) => "internal",
             GitError::Io(error) => crate::fs::error_code(error).unwrap_or("EIO"),
@@ -119,6 +122,7 @@ impl Clone for GitError {
             GitError::NotRepository => GitError::NotRepository,
             GitError::Timeout => GitError::Timeout,
             GitError::TooLarge => GitError::TooLarge,
+            GitError::Ambiguous => GitError::Ambiguous,
             GitError::Cancelled => GitError::Cancelled,
             GitError::Internal(message) => GitError::Internal(message.clone()),
             // Out of open files stays so, whatever the error wraps: the
@@ -134,7 +138,7 @@ impl Clone for GitError {
     }
 }
 
-fn internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> GitError {
+pub(crate) fn internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> GitError {
     // Running out of open files stays an IO error, so the request waits for
     // one (`runner.md` § Load).
     if demi_command_sdk::descriptors::exhausted(&error) {
@@ -151,6 +155,8 @@ fn internal<E: std::error::Error + Send + Sync + 'static>(error: E) -> GitError 
 #[derive(Clone)]
 pub struct GitService {
     requests: mpsc::Sender<ChangesRequest>,
+    /// A commit's file list stops here, as the working tree's does.
+    max_files: usize,
     /// How many whole walks the service made.
     walks: Arc<AtomicU64>,
     /// The owner ends with the last handle.
@@ -262,11 +268,11 @@ struct Touched {
 
 /// Where a directory sits in its repository.
 #[derive(Clone)]
-struct Located {
+pub(crate) struct Located {
     workdir: PathBuf,
     git_dir: PathBuf,
     /// The directory relative to the work tree, with `/` separators; empty at the work tree itself.
-    prefix: String,
+    pub(crate) prefix: String,
 }
 
 enum Scope {
@@ -311,6 +317,7 @@ impl GitService {
         };
         GitService {
             requests,
+            max_files,
             walks,
             _owner: Arc::new(AbortOnDropHandle::new(tokio::spawn(owner.run(received)))),
         }
@@ -350,11 +357,13 @@ impl GitService {
         }
     }
 
-    /// The file at `path` under `root` as the last commit has it.
+    /// The file at `path` under `root` as the last commit has it, or as
+    /// `commit` has it when one is named.
     pub async fn show(
         &self,
         root: &Path,
         path: &str,
+        commit: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<Vec<u8>, GitError> {
         if cancel.is_cancelled() {
@@ -362,10 +371,14 @@ impl GitService {
         }
         let root = tokio::fs::canonicalize(root).await?;
         let path = path.to_owned();
+        let commit = commit.map(str::to_owned);
         blocking(cancel, move || {
             let located = locate(&root)?.ok_or(GitError::NotRepository)?;
             let repo = discover(&root)?.ok_or(GitError::NotRepository)?;
-            let tree = head_tree(&repo)?;
+            let tree = match &commit {
+                Some(commit) => crate::history::tree_at(&repo, commit)?,
+                None => head_tree(&repo)?,
+            };
             let rela = join_prefix(&located.prefix, &path);
             let entry = tree
                 .lookup_entry_by_path(gix::path::from_bstr(rela.as_bstr()))
@@ -386,6 +399,69 @@ impl GitService {
         })
         .await
     }
+
+    /// The local branches of `root`'s repository and the one checked out.
+    pub async fn branches(
+        &self,
+        root: &Path,
+        cancel: &CancellationToken,
+    ) -> Result<wire::GitBranches, GitError> {
+        let root = canonical(root, cancel).await?;
+        history(cancel, move |_| crate::history::branches(&root)).await
+    }
+
+    /// One page of `branch`'s first-parent history, HEAD's without one,
+    /// after the commit `after` names.
+    pub async fn log(
+        &self,
+        root: &Path,
+        branch: Option<&str>,
+        after: Option<&str>,
+        cancel: &CancellationToken,
+    ) -> Result<wire::GitLog, GitError> {
+        let root = canonical(root, cancel).await?;
+        let branch = branch.map(str::to_owned);
+        let after = after.map(str::to_owned);
+        history(cancel, move |interrupt| {
+            crate::history::log(&root, branch.as_deref(), after.as_deref(), &interrupt)
+        })
+        .await
+    }
+
+    /// The commit `commit` names, its files under `root` against its first
+    /// parent and the local branches it is on.
+    pub async fn commit(
+        &self,
+        root: &Path,
+        commit: &str,
+        cancel: &CancellationToken,
+    ) -> Result<wire::GitCommit, GitError> {
+        let root = canonical(root, cancel).await?;
+        let commit = commit.to_owned();
+        let max_files = self.max_files;
+        history(cancel, move |interrupt| {
+            crate::history::commit(&root, &commit, max_files, &interrupt)
+        })
+        .await
+    }
+}
+
+/// `root` as the history requests read it, unless the request was
+/// cancelled first.
+async fn canonical(root: &Path, cancel: &CancellationToken) -> Result<PathBuf, GitError> {
+    if cancel.is_cancelled() {
+        return Err(GitError::Cancelled);
+    }
+    Ok(tokio::fs::canonicalize(root).await?)
+}
+
+/// A history request's work, stopped as a computation is when the
+/// connection closes or after thirty seconds (`runner.md` § Working tree).
+async fn history<T: Send + 'static>(
+    cancel: &CancellationToken,
+    work: impl FnOnce(Arc<AtomicBool>) -> Result<T, GitError> + Send + 'static,
+) -> Result<T, GitError> {
+    interruptible(cancel, Arc::new(AtomicBool::new(false)), work).await
 }
 
 impl Owner {
@@ -753,7 +829,7 @@ async fn interruptible<T: Send + 'static>(
 /// "no repository" when it could not open a candidate's files as well (on
 /// Linux, without the cause), so that answer stands only once the runner can
 /// open the directory itself.
-fn discover(root: &Path) -> Result<Option<gix::Repository>, GitError> {
+pub(crate) fn discover(root: &Path) -> Result<Option<gix::Repository>, GitError> {
     match gix::discover(root) {
         Ok(repo) => Ok(Some(repo)),
         Err(error) if demi_command_sdk::descriptors::exhausted(&error) => Err(internal(error)),
@@ -767,7 +843,7 @@ fn discover(root: &Path) -> Result<Option<gix::Repository>, GitError> {
     }
 }
 
-fn locate(root: &Path) -> Result<Option<Located>, GitError> {
+pub(crate) fn locate(root: &Path) -> Result<Option<Located>, GitError> {
     let Some(repo) = discover(root)? else {
         return Ok(None);
     };
@@ -852,7 +928,7 @@ fn within(path: &str, paths: &[String]) -> bool {
 }
 
 /// `rela` (relative to the work tree) relative to the root, or `None` outside it.
-fn root_relative_path<'a>(rela: &'a str, prefix: &str) -> Option<&'a str> {
+pub(crate) fn root_relative_path<'a>(rela: &'a str, prefix: &str) -> Option<&'a str> {
     if prefix.is_empty() {
         return Some(rela);
     }
@@ -1431,15 +1507,41 @@ async fn call(
         Inbound::GitChanges { id, root } => {
             let root = resolve(default_cwd, root).map_err(GitError::Io)?;
             let changes = service.changes(&root, cancel).await?;
-            wire::encode(&wire::Outbound::GitOk(wire::GitOk {
-                id: id.clone(),
-                read_at: read_at.clone(),
-                result: wire::GitResult::Changes(to_wire(changes)),
-            }))
-            .map_err(internal)
+            reply(id, read_at, wire::GitResult::Changes(to_wire(changes)))
+        }
+        Inbound::GitBranches { id, root } => {
+            let root = resolve(default_cwd, root).map_err(GitError::Io)?;
+            let branches = service.branches(&root, cancel).await?;
+            reply(id, read_at, wire::GitResult::Branches(branches))
+        }
+        Inbound::GitLog {
+            id,
+            root,
+            branch,
+            after,
+        } => {
+            let root = resolve(default_cwd, root).map_err(GitError::Io)?;
+            let log = service
+                .log(&root, branch.as_deref(), after.as_deref(), cancel)
+                .await?;
+            reply(id, read_at, wire::GitResult::Log(log))
+        }
+        Inbound::GitCommit { id, root, commit } => {
+            let root = resolve(default_cwd, root).map_err(GitError::Io)?;
+            let commit = service.commit(&root, commit, cancel).await?;
+            reply(id, read_at, wire::GitResult::Commit(commit))
         }
         _ => Err(GitError::Internal("not a working-tree request".into())),
     }
+}
+
+fn reply(id: &str, read_at: &wire::ReadAt, result: wire::GitResult) -> Result<Frame, GitError> {
+    wire::encode(&wire::Outbound::GitOk(wire::GitOk {
+        id: id.to_owned(),
+        read_at: read_at.clone(),
+        result,
+    }))
+    .map_err(internal)
 }
 
 fn to_wire(changes: Changes) -> wire::GitChanges {
