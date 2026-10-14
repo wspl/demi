@@ -349,6 +349,12 @@ export type ProviderLoginPhase =
       expiresAt?: number
       /** The pasted code is with the sign-in, which is finishing. */
       submitted: boolean
+      /**
+       * The number the sign-in gave the code this page pasted last, once it
+       * answered; a new one empties the field, which nothing else does while
+       * the sign-in waits for a code, another page's paste included.
+       */
+      taken?: number
       /** Why the sign-in refused the last code, in the vendor's words; it waits for another. */
       error?: SentenceText
     }

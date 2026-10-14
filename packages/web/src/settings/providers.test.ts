@@ -748,7 +748,7 @@ test('of two tabs that paste a code each, each shows only its own code’s refus
   expect(phase()).toEqual([false, 'Invalid code 2'])
 })
 
-test('a completed sign-in says done only once its account is listed, whichever the channel brings first', async () => {
+test('a completed sign-in says done the moment the page learns it, and an account removed later leaves it done', async () => {
   const account = (id: string) => ({ id, label: `${id}@example.com`, detail: null, updatedAt: null, quota: null })
   const entry = (accounts: string[]) => ({
     ...state.providers[0]!,
@@ -774,20 +774,23 @@ test('a completed sign-in says done only once its account is listed, whichever t
   channels.last().send({ type: 'logins', logins: [runningLogin('adding', 'waiting_for_user', 'codex')] })
   await waitFor(() => settings.login?.phase.kind === 'device')
 
-  // The end comes before the account.
+  // The channel brings the account, then the end.
+  state.providers[1] = entry(['first', 'second'])
+  channels.last().send({ type: 'providers', providers: state.providers })
   channels.last().send({
     type: 'logins',
     logins: [{ ...runningLogin('adding', 'waiting_for_user', 'codex'), login: { status: 'completed', providerId: 'codex', credentialId: 'second' } }],
   })
-  await nextTick()
-  expect(settings.login?.phase.kind).toBe('device')
-
-  state.providers[1] = entry(['first', 'second'])
-  channels.last().send({ type: 'providers', providers: state.providers })
   await waitFor(() => settings.login?.phase.kind === 'done')
   // Added beside the active one, which stays.
   expect(settings.login?.phase).toEqual({ kind: 'done', account: 'second@example.com', active: false })
   expect(useResources().selectedProviderId).toBe('codex')
+
+  // Another page removes the account; this one still says it signed in.
+  state.providers[1] = entry(['first'])
+  channels.last().send({ type: 'providers', providers: state.providers })
+  await waitFor(() => useResources().providers.find((provider) => provider.id === 'codex')?.accounts.length === 1)
+  expect(settings.login?.phase).toEqual({ kind: 'done', account: 'second@example.com', active: false })
 })
 
 test('a sign-in cancelled on another page closes the dialog here, with nothing sent', async () => {

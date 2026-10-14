@@ -661,16 +661,17 @@ export const useProviderSettings = defineStore('provider-settings', () => {
    * a reload. The vault announces each change of it on the channel, which
    * the dialog follows; `failure` is why this page could not start or
    * answer it, `pasted` the code this page pasted last, `sending` until
-   * the sign-in answers the number it gave it, `waited` what the sign-in
-   * last waited for, and `seen` whether the channel has listed it.
+   * the sign-in answers the number it gave it, `seen` whether the channel
+   * has listed it, and `done` the account it added, as listed when the
+   * page learned it completed.
    */
   const opened = ref<{
     provider: ProductProvider
     id: string | null
     failure: ShownError | null
     pasted: 'sending' | number | null
-    waited: PendingLogin | null
     seen: boolean
+    done: { account: string; active: boolean } | null
   } | null>(null)
   /** The sign-ins this page closed, which it never opens again on its own. */
   const dismissed = ref<string[]>([])
@@ -703,25 +704,20 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   })
   watch([running, () => opened.value === null, starts], () => {
     if (opened.value === null && starts.value === 0 && running.value) {
-      opened.value = { ...running.value, failure: null, pasted: null, waited: null, seen: true }
+      opened.value = { ...running.value, failure: null, pasted: null, seen: true, done: null }
     }
   }, { immediate: true })
   /**
-   * The account the opened sign-in added, once the page has it: the vault
-   * publishes the entry before it announces the sign-in's end, but the
-   * channel may bring the end first, so the dialog says done, and selects
-   * the entry, only once the account is listed.
+   * The account a completed sign-in added. The page has it by the time it
+   * learns the sign-in completed (`web-api.md` § Subscription accounts);
+   * its id stands for it only when it was removed before then.
    */
-  const added = computed(() => {
-    const state = followed.value?.login
-    if (state?.status !== 'completed') {
-      return null
-    }
+  function addedBy(state: Extract<LoginState, { status: 'completed' }>): { account: string; active: boolean } {
     const account = resources.providers
       .find((entry) => entry.id === state.providerId)
       ?.accounts.find((candidate) => candidate.id === state.credentialId)
-    return account ? { providerId: state.providerId, account } : null
-  })
+    return { account: account?.label ?? state.credentialId, active: account?.active ?? false }
+  }
   watch(followed, (login) => {
     const shown = opened.value
     if (!shown || !login) {
@@ -729,18 +725,16 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
     shown.seen = true
     const state = login.login
-    if (state.status === 'pending') {
-      shown.waited = state
+    // Done from the moment the page learns it, which an account removed
+    // later does not undo; the dialog selects the entry once.
+    if (state.status === 'completed' && shown.done === null) {
+      shown.done = addedBy(state)
+      select(state.providerId)
     }
     // A sign-in cancelled on any page closes its dialog on every page.
     if (state.status === 'cancelled') {
       dismissed.value.push(login.id)
       opened.value = null
-    }
-  })
-  watch(() => added.value?.providerId, (providerId) => {
-    if (providerId !== undefined) {
-      select(providerId)
     }
   })
 
@@ -758,43 +752,40 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
     const state = listed.login
     switch (state.status) {
-      case 'completed': {
-        const done = added.value
-        if (done) {
-          return { kind: 'done', account: done.account.label, active: done.account.active }
-        }
-        // Until the account is listed, what the sign-in last waited for.
-        return shown.waited ? pendingPhase(shown, shown.waited, true) : { kind: 'starting', stage: 'waiting_for_user' }
-      }
+      case 'completed':
+        return { kind: 'done', ...(shown.done ?? addedBy(state)) }
       case 'failed':
         return { kind: 'failed', message: state.message, requestId: state.requestId }
       // The dialog closes; until it does, nothing new.
       case 'cancelled':
         return { kind: 'starting', stage: 'preparing' }
       case 'pending':
-        return pendingPhase(shown, state, false)
+        return pendingPhase(shown, state)
     }
   }
 
-  /** What the dialog shows of a sign-in that waits as `state` says, `finishing` once it has ended. */
-  function pendingPhase(shown: NonNullable<typeof opened.value>, state: PendingLogin, finishing: boolean): ProviderLoginPhase {
+  /** What the dialog shows of a sign-in that waits as `state` says. */
+  function pendingPhase(shown: NonNullable<typeof opened.value>, state: PendingLogin): ProviderLoginPhase {
+    // No expiry while the sign-in prepares: it does not know its lifetime yet.
+    const expiry = state.expiresAt === null ? {} : { expiresAt: Date.parse(state.expiresAt) }
     if (state.verificationUrl && state.needsCode) {
       // A refusal shows only of the code this page pasted, by the number
       // the sign-in answered for it: the vault's refusal is always of code
       // number `codesTaken`.
       const mine = typeof shown.pasted === 'number' ? shown.pasted : null
-      const error = !finishing && mine !== null && state.codesTaken === mine ? state.codeError ?? undefined : undefined
+      const error = mine !== null && state.codesTaken === mine ? state.codeError ?? undefined : undefined
       const judging = shown.pasted === 'sending' || (mine !== null && state.codesTaken < mine) || (state.codesTaken > 0 && !state.codeError)
       return {
         kind: 'code',
         url: state.verificationUrl,
-        expiresAt: Date.parse(state.expiresAt),
-        submitted: finishing || judging,
+        ...expiry,
+        submitted: judging,
+        ...(mine !== null ? { taken: mine } : {}),
         ...(error ? { error } : {}),
       }
     }
     if (state.verificationUrl && state.userCode) {
-      return { kind: 'device', url: state.verificationUrl, code: state.userCode, expiresAt: Date.parse(state.expiresAt) }
+      return { kind: 'device', url: state.verificationUrl, code: state.userCode, ...expiry }
     }
     return { kind: 'starting', stage: state.stage }
   }
@@ -840,7 +831,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     const provider = providers.value.find(
       (provider) => provider.id === entry.id,
     )!
-    opened.value = { provider, id: null, failure: null, pasted: null, waited: null, seen: false }
+    opened.value = { provider, id: null, failure: null, pasted: null, seen: false, done: null }
     const shown = opened.value
     starts.value++
     try {

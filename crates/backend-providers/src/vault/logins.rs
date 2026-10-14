@@ -282,15 +282,6 @@ impl LoginFlows {
         // of its start included.
         let started = Instant::now();
         let started_at = self.clock.now();
-        let expiry = |kind: LoginKind| {
-            let lifetime = self.timing.lifetime(kind);
-            let expires_at = started_at
-                .to_jiff()
-                .saturating_add(lifetime)
-                .map(Timestamp::truncate)
-                .expect("adding a duration, unlike a calendar span, never fails");
-            (started + lifetime, expires_at)
-        };
         let cancel = self.closing.child_token();
         let (ended, ending) = watch::channel(false);
         let (codes, pasted) = mpsc::unbounded_channel();
@@ -319,9 +310,9 @@ impl LoginFlows {
                 needs_code: false,
                 codes_taken: 0,
                 code_error: None,
-                // Until the family's login says how the user finishes it,
-                // which no page shows before the login waits for the user.
-                expires_at: expiry(LoginKind::Device).1,
+                // Until the login knows its kind, and so its lifetime
+                // (`providers.md` § Login and publication).
+                expires_at: None,
             },
             codes,
             cancel: cancel.clone(),
@@ -386,14 +377,22 @@ impl LoginFlows {
             }
         };
         // The login's end, read on both clocks at its start: the task stops
-        // the flow at `deadline`, and the user is shown `expires_at`.
-        let (deadline, expires_at) = expiry(kind);
+        // the flow at `deadline`, and the user is shown `expires_at`, which
+        // is announced.
+        let lifetime = self.timing.lifetime(kind);
+        let deadline = started + lifetime;
+        let expires_at = started_at
+            .to_jiff()
+            .saturating_add(lifetime)
+            .map(Timestamp::truncate)
+            .expect("adding a duration, unlike a calendar span, never fails");
         if let Some(flow) = self.lock().get_mut(&id) {
             flow.kind = Some(kind);
             if let LoginState::Pending { expires_at: shown, .. } = &mut flow.state {
-                *shown = expires_at;
+                *shown = Some(expires_at);
             }
         }
+        self.announce(&starter);
         let ending = Ending {
             deadline,
             cancel,
@@ -1251,7 +1250,8 @@ mod tests {
         let page = sync.watch(&master);
         let request = RequestId::try_from("req_starting".to_owned()).unwrap();
 
-        // The start is announced, preparing.
+        // The start is announced, preparing, and so is its expiry once the
+        // login knows its kind, before the start answers.
         let id = flows
             .start(
                 master.clone(),
@@ -1281,7 +1281,7 @@ mod tests {
         let LoginState::Pending {
             stage: LoginStage::Preparing,
             verification_url: None,
-            expires_at,
+            expires_at: Some(expires_at),
             ..
         } = started_login.login
         else {
@@ -1307,7 +1307,7 @@ mod tests {
                 needs_code: false,
                 codes_taken: 0,
                 code_error: None,
-                expires_at,
+                expires_at: Some(expires_at),
             }
         );
         assert_eq!(flows.state(&id, &master), Some(shown.login.clone()));

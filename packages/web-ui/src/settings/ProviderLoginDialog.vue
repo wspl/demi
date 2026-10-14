@@ -34,11 +34,21 @@ const emit = defineEmits<{
   retry: []
 }>()
 
+/**
+ * The code this page has typed and not yet had taken: it empties when the
+ * dialog opens or closes, the phase changes kind, or the sign-in takes this
+ * page's code, never on what another page pastes or the refusal of its code.
+ */
 const code = ref('')
+watch([() => props.isOpen, () => props.phase.kind], () => {
+  code.value = ''
+})
 watch(
-  () => [props.isOpen, props.phase.kind],
-  () => {
-    code.value = ''
+  () => (props.phase.kind === 'code' ? props.phase.taken : undefined),
+  (taken) => {
+    if (taken !== undefined) {
+      code.value = ''
+    }
   },
 )
 

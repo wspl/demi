@@ -12,12 +12,13 @@ use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_provider_common::quota::{ProbeCost, QuotaError};
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::{LoginStage, QuotaWindow, SnapshotSource};
+use demi_backend_user_shard::sync::SyncStep;
 use demi_web_api_protocol::state::SyncEvent;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{
     Accounts, ActiveAccount, CredentialKind, LoginAnswer, LoginStarted, LoginState,
-    RemovedAccount,
+    ProviderReading, RemovedAccount,
     ProbeCost as ProbeCostDto, ProviderAnswer, ProviderDetails, ProviderDto, Providers,
     QuotaAnswer, QuotaCapability, VendorCatalog,
 };
@@ -349,7 +350,7 @@ async fn simultaneous_first_logins_share_one_login_which_publishes_one_entry() {
             code_error: None,
             // The vault's end, ten minutes from the start on the harness's
             // clock.
-            expires_at: "2026-09-24T08:10:00.000Z".parse().unwrap(),
+            expires_at: Some("2026-09-24T08:10:00.000Z".parse().unwrap()),
         }
     );
 
@@ -796,5 +797,92 @@ async fn removing_the_active_account_selects_the_next_and_the_last_leaves_none()
     });
     assert!(refused, "{turn:?}");
     assert_eq!(runs.calls().len(), 2);
+    backend.close().await;
+}
+
+/// Follows `page` until it learns that login `login` ended, and answers how,
+/// asserting that no message tells it a completion before it has the
+/// account: in the same snapshot, or in a message it received earlier.
+async fn learned_end(page: &mut SyncChannel, login: &str) -> LoginState {
+    let mut providers = Vec::new();
+    loop {
+        let logins = match page.next().await {
+            SyncEvent::Snapshot { state } => {
+                providers = state.providers;
+                state.logins
+            }
+            SyncEvent::Providers { providers: now } => {
+                providers = now;
+                continue;
+            }
+            SyncEvent::Logins { logins } => logins,
+            _ => continue,
+        };
+        let Some(state) = logins.into_iter().find(|listed| listed.id.as_str() == login).map(|listed| listed.login) else {
+            continue;
+        };
+        if let LoginState::Completed {
+            provider_id,
+            credential_id,
+        } = &state
+        {
+            let listed = providers.iter().any(|provider| {
+                provider.provider.id == *provider_id
+                    && matches!(&provider.details, ProviderReading::Read(details)
+                        if details.accounts.iter().any(|account| account.account.id == credential_id.as_str()))
+            });
+            assert!(listed, "the page learned the completion before its account: {providers:?}");
+        }
+        if ended(&state) {
+            return state;
+        }
+    }
+}
+
+// A fraction of a second: two logins complete just after a page's channel
+// read the providers, once in the snapshot and once as a part.
+#[tokio::test]
+async fn a_page_learns_a_login_completed_no_sooner_than_its_account() {
+    let scripts = scripts(Some(ProbeCost::Free));
+    let harness = Harness::new().with_families(scripts.families.clone());
+    let (backend, master) = harness.start_set_up().await;
+    let entry = device_entry(&backend, &master, &scripts).await;
+    let login = format!("/api/providers/{}/accounts/login", entry.id);
+
+    // A page opens, and the login completes once the snapshot has read the
+    // providers.
+    scripts.login.approve(false);
+    scripts.login.signs_in("second");
+    let id = start_login(&backend, &master, &login, json!({})).await;
+    let providers = backend.hold_sync(SyncStep::Providers);
+    let mut page = backend.sync(&master).await;
+    providers.until_arrived(1).await;
+    scripts.login.approve(true);
+    backend.until_login_ended(&master, &id).await;
+    providers.release();
+    assert!(matches!(learned_end(&mut page, &id).await, LoginState::Completed { .. }));
+
+    // A change of the providers and the next login's progress wake the page
+    // together, and the login completes once the page has read the providers.
+    scripts.login.approve(false);
+    scripts.login.signs_in("third");
+    let changes = backend.hold_sync(SyncStep::Changes);
+    let created = backend
+        .post(
+            "/api/providers",
+            Some(&master),
+            json!({ "source": "custom", "providerType": "openai", "wireApi": "chat-completions", "label": "Lab", "baseUrl": "http://lab.example/v1" }),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    changes.until_arrived(1).await;
+    let id = start_login(&backend, &master, &login, json!({})).await;
+    let providers = backend.hold_sync(SyncStep::Providers);
+    changes.release();
+    providers.until_arrived(1).await;
+    scripts.login.approve(true);
+    backend.until_login_ended(&master, &id).await;
+    providers.release();
+    assert!(matches!(learned_end(&mut page, &id).await, LoginState::Completed { .. }));
     backend.close().await;
 }
