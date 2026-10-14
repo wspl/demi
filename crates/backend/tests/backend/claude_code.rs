@@ -598,7 +598,7 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
     let blocks = world.blocks().await;
     assert_eq!(
         kinds(&blocks[5..]),
-        ["user", "tool_call", "tool_call", "text", "response"],
+        ["user", "tool_call", "tool_call", "response", "text", "response"],
         "{:?}",
         kinds(&blocks)
     );
@@ -625,14 +625,34 @@ async fn the_clouds_verified_cli_streams_reasoning_and_text_and_runs_a_tool_batc
         assert!(output.contains(printed), "{output}");
     }
     assert_eq!(last_text(&blocks), "Both ran.");
-    // The CLI's result adds up the turn's two calls; the response carries
-    // the last call's own usage, the context that call read
-    // (`claude-code.md` § Reading).
-    let Block::Response(response) = &blocks[9] else {
-        unreachable!()
+    // Each call to the vendor ends with a response carrying its own usage,
+    // the context that call read: the batch's call when the batch comes
+    // out, the answer's at the result, never the sum the CLI's result adds
+    // up (`claude-code.md` § Reading, `compaction.md` § When compaction
+    // runs).
+    let call_usage = |index: usize| {
+        let Block::Response(response) = &blocks[index] else {
+            panic!("no response at {index}: {:?}", kinds(&blocks))
+        };
+        let usage = response.usage.expect("the call reported its usage");
+        (usage.input_tokens, usage.output_tokens)
     };
-    let usage = response.usage.expect("the last call reported its usage");
-    assert_eq!((usage.input_tokens, usage.output_tokens), (30, 4));
+    assert_eq!(call_usage(8), (20, 9));
+    assert_eq!(call_usage(10), (30, 4));
+    // The ledger has a row's worth for each of the three calls.
+    let totals = usage(&world.backend, &world.master).await.totals;
+    assert_eq!(totals.len(), 1, "{totals:?}");
+    let row = &totals[0];
+    assert_eq!(
+        (
+            row.requests,
+            row.input_tokens,
+            row.output_tokens,
+            row.cache_read_tokens,
+            row.cache_write_tokens
+        ),
+        (3, 11 + 20 + 30, 7 + 9 + 4, 5, 3)
+    );
     let inferences = world.inferences();
     let [first, called, answered] = inferences.as_slice() else {
         panic!("three requests: {inferences:?}");
@@ -1097,7 +1117,7 @@ async fn a_call_of_a_tool_the_request_does_not_offer_is_answered_by_the_cli_and_
     let blocks = world.blocks().await;
     assert_eq!(
         kinds(&blocks[4..]),
-        ["user", "tool_call", "text", "response"],
+        ["user", "tool_call", "response", "text", "response"],
         "{:?}",
         kinds(&blocks)
     );

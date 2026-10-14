@@ -230,10 +230,11 @@ async fn write_inputs_since(s: &SessionShared, arrivals: u64) -> Result<(), Turn
 /// its tokens compacts once and goes again (`compaction.md` § When
 /// compaction runs); one refused for its size does not. `continues` says it
 /// continues a running turn, so a pass is followed by a `resume` block.
-/// Returns the trigger of a pass when a response's usage reached the
-/// compaction threshold. The stage stays streaming across the waits, so
-/// steers keep being accepted. A message the user sent now cuts the stream,
-/// or the wait before a retry, short: what streamed stays.
+/// Returns the trigger of a pass when the usage of a response that
+/// requested a tool reached the compaction threshold. The stage stays
+/// streaming across the waits, so steers keep being accepted. A message the
+/// user sent now cuts the stream, or the wait before a retry, short: what
+/// streamed stays.
 async fn stream(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,
@@ -404,11 +405,11 @@ pub(super) async fn system_prompt(
 /// something follows it, so that an empty lifecycle leaves nothing behind;
 /// open answer text completes when anything but more text follows it. The
 /// run's failure is handed back unrecorded, for the retry to decide on; the
-/// inner result is the trigger of a pass when a response's usage reached the
-/// compaction threshold of the run's `model`, whose window in use is
-/// `window`. A message the user sent now ends it where it is, cancelling the
-/// request through `request_cancel`, as a Stop would, and what streamed
-/// stays.
+/// inner result is the trigger of a pass when the usage of a response that
+/// requested a tool reached the compaction threshold of the run's `model`,
+/// whose window in use is `window`. A message the user sent now ends it
+/// where it is, cancelling the request through `request_cancel`, as a Stop
+/// would, and what streamed stays.
 async fn read(
     s: &SessionShared,
     cancel: &TurnCancel,
@@ -450,17 +451,23 @@ async fn read(
                 // events wait for that end, or for the turn to go on
                 // (`run_turn`), so a page never sees the finished text of a
                 // running turn that has nothing more to run.
-                if matches!(event, ProviderEvent::Response(_))
-                    && s.read(|core| core.transcript.pending_tool_calls().is_empty())
-                {
+                let answered = matches!(event, ProviderEvent::Response(_))
+                    && s.read(|core| core.transcript.pending_tool_calls().is_empty());
+                if answered {
                     s.hold_events();
                 }
                 let completes_text = !matches!(
                     event,
                     ProviderEvent::TextDelta(_) | ProviderEvent::ThinkingSignature(_)
                 );
+                // Every response's usage is checked, so a misreport is
+                // logged; only a call that requested a tool starts a pass:
+                // one that ended the turn as answered is not continued, and
+                // the pass before the next turn compacts (`compaction.md` §
+                // When compaction runs).
                 if let ProviderEvent::Response(Some(usage)) = &event
                     && let Some(trigger) = s.config.compaction.reached(window, model, usage)
+                    && !answered
                 {
                     reached = Some(trigger);
                 }
