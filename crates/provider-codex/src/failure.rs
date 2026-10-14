@@ -27,17 +27,10 @@ pub(crate) fn with_usage_limit(mut failure: ProviderFailure) -> ProviderFailure 
 }
 
 fn is_usage_limit(diagnostics: &ProviderErrorDiagnostics) -> bool {
-    let Some((status, failure)) = record(diagnostics) else {
+    let Some(failure) = failure(diagnostics) else {
         return false;
     };
-    // A WebSocket error frame names its status as `status`, or as
-    // `status_code` as the Codex CLI also reads it.
-    let status = status.map(u64::from).or_else(|| {
-        ["status", "status_code"]
-            .iter()
-            .find_map(|key| failure.get(key)?.as_u64())
-    });
-    let Some(error) = error_object(&failure) else {
+    let Some(error) = failure.error else {
         return false;
     };
     let field = |name| error.get(name).and_then(serde_json::Value::as_str);
@@ -46,35 +39,57 @@ fn is_usage_limit(diagnostics: &ProviderErrorDiagnostics) -> bool {
             || value.ends_with("_spend_limit_exceeded")
             || value.ends_with("_usage_limit_exceeded")
     };
-    (status == Some(429) && field("type") == Some(USAGE_LIMIT_REACHED))
+    (failure.status == Some(429) && field("type") == Some(USAGE_LIMIT_REACHED))
         || field("type").is_some_and(used_up)
         || field("code").is_some_and(used_up)
 }
 
-/// The HTTP status of a failure record, for an HTTP failure, and the JSON
-/// its body or frame holds; `None` for a record that is not JSON.
-fn record(diagnostics: &ProviderErrorDiagnostics) -> Option<(Option<u16>, serde_json::Value)> {
+/// A Codex failure as its record holds it, out of every envelope the
+/// transport accepts: the HTTP status, or the status a WebSocket frame
+/// names, and the error object.
+struct Failure {
+    status: Option<u64>,
+    error: Option<serde_json::Map<String, serde_json::Value>>,
+}
+
+/// The failure a record holds: an HTTP failure's status and body, or a
+/// stream frame. A frame may come in a WebSocket envelope, `{"event": …}`;
+/// its error is the frame's `error`, or a failed response's
+/// `response.error`; a WebSocket error frame names its status as `status`,
+/// or as `status_code` as the Codex CLI also reads it. `None` for a record
+/// that is not JSON.
+fn failure(diagnostics: &ProviderErrorDiagnostics) -> Option<Failure> {
     let (status, text) = match diagnostics.source {
         FailureSource::Http => {
             let record = HttpFailureRecord::read(diagnostics)?;
-            (Some(record.status), record.body)
+            (Some(u64::from(record.status)), record.body)
         }
         _ => (None, diagnostics.upstream.clone()?),
     };
-    Some((status, serde_json::from_str(&text).ok()?))
+    let record: serde_json::Value = serde_json::from_str(&text).ok()?;
+    let frame = record.get("event").filter(|event| event.is_object()).unwrap_or(&record);
+    let status = status.or_else(|| {
+        ["status", "status_code"]
+            .iter()
+            .find_map(|key| frame.get(key)?.as_u64())
+    });
+    let error = frame
+        .get("error")
+        .or_else(|| frame.get("response")?.get("error"))
+        .and_then(serde_json::Value::as_object)
+        .cloned();
+    Some(Failure { status, error })
 }
 
 /// The facts of a Codex failure record: `resets_at`, a Unix time in seconds,
 /// or `resets_in_seconds`, counted from when the failure was received, of
-/// the first error object among a stream event's `error`, a WebSocket
-/// envelope's `event.error`, a failed response's `response.error`, or an
-/// HTTP failure body's `error`. A value that is not a number reads as
+/// the failure's error object, out of every envelope (`failure`). A value that is not a number reads as
 /// absent; without either, the standard `Retry-After` reading applies.
 pub fn read_codex_failure(
     diagnostics: &ProviderErrorDiagnostics,
     received_at: Timestamp,
 ) -> ProviderFailureFacts {
-    let limit = record(diagnostics).and_then(|(_, failure)| error_object(&failure).cloned());
+    let limit = failure(diagnostics).and_then(|failure| failure.error);
     if let Some(limit) = limit {
         if let Some(resets_at) = limit.get("resets_at").and_then(serde_json::Value::as_f64) {
             return ProviderFailureFacts {
@@ -92,17 +107,4 @@ pub fn read_codex_failure(
         }
     }
     read_http_failure(diagnostics, received_at)
-}
-
-/// The error object of a Codex failure, which carries its type, its code
-/// and when a usage limit lifts.
-fn error_object(
-    failure: &serde_json::Value,
-) -> Option<&serde_json::Map<String, serde_json::Value>> {
-    let nested = |outer: &str| failure.get(outer)?.get("error")?.as_object();
-    failure
-        .get("error")
-        .and_then(serde_json::Value::as_object)
-        .or_else(|| nested("event"))
-        .or_else(|| nested("response"))
 }

@@ -42,8 +42,10 @@ pub(crate) fn read_failure(
 
 /// The reset of a usage limit's record: the failing assistant line and the
 /// `result` line, joined by a newline as received, when the result's API
-/// error is the usage limit; the moment is the assistant line's
-/// `api_error_params.rate_limit_info.resetsAt`, in Unix seconds. It comes
+/// error is the usage limit; the moment is the earlier of the assistant
+/// line's `api_error_params.rate_limit_info.resetsAt`, the window's reset,
+/// and its `overageResetsAt`, the usage credits' reset, of those present,
+/// in Unix seconds, since either lifts the limit. It comes
 /// before the account's quota, which may be older than the refusal; the
 /// quota stands in only for a limit that names no reset, which the backend
 /// reads for any provider.
@@ -57,10 +59,9 @@ fn usage_limit_reset(diagnostics: &ProviderErrorDiagnostics) -> Option<Timestamp
         return None;
     }
     let notice: serde_json::Value = serde_json::from_str(notice).ok()?;
-    let reset = notice
-        .get("api_error_params")?
-        .get("rate_limit_info")?
-        .get("resetsAt")?
-        .as_f64()?;
-    unix_seconds(reset)
+    let info = notice.get("api_error_params")?.get("rate_limit_info")?;
+    ["resetsAt", "overageResetsAt"]
+        .iter()
+        .filter_map(|key| unix_seconds(info.get(key)?.as_f64()?))
+        .min()
 }
