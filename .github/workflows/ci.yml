@@ -32,6 +32,9 @@ jobs:
         with:
           key: ci
       - run: bun install --frozen-lockfile
+      # The machine manager's storage tests run the programs a Cloud server
+      # installs (docs/cloud/setup.md); the stock image lacks bsdtar and nft.
+      - run: sudo apt-get update -q && sudo apt-get install -y -q e2fsprogs libarchive-tools nftables
       - run: cargo check --locked --workspace --all-targets --features demi-runner/test-fixtures
       - run: cargo test --locked --workspace --features demi-runner/test-fixtures
       - run: bun run test
