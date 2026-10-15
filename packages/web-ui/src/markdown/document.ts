@@ -12,7 +12,7 @@ import { utf8Bytes } from '@demicodes/utils'
 import { t } from '../files/locales/text'
 import { joinPath, parentPath } from '../files/paths'
 import type { ThemeMode } from '../theme/appTheme'
-import { decodedTarget } from './filePath'
+import { WEB_LINK_REL, decodedTarget } from './filePath'
 import { codeBlockHtml } from './highlight'
 import { escapeHtml } from './html'
 import { mathExtensions } from './math'
@@ -286,7 +286,7 @@ function documentPurifier(): Purifier {
       const href = node.getAttribute('href') ?? ''
       if (isExternal(href)) {
         node.setAttribute('target', '_blank')
-        node.setAttribute('rel', 'noopener noreferrer')
+        node.setAttribute('rel', WEB_LINK_REL)
       } else if (href.startsWith('/')) {
         node.setAttribute('data-file-link', '')
       }

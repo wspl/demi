@@ -13,6 +13,8 @@ defineProps<{
   createdAt: string
   fork?: () => Promise<void>
   forkState?: MessageForkState
+  /** No Fork at all, as on a share's page, which acts on no conversation (`sharing.md` § Safety). */
+  hideFork?: boolean
   /**
    * Shares this answer, beside Fork; absent where nothing shares. It waits,
    * `shareWait`, until the message completes, as Fork does.
@@ -31,7 +33,7 @@ defineProps<{
 <template>
   <div class="mt-2 flex flex-wrap items-center gap-1 text-fg-faint">
     <CopyButton :source="content" />
-    <Tooltip :content="t('transcript.assistant.fork')" :disabled="!fork">
+    <Tooltip v-if="!hideFork" :content="t('transcript.assistant.fork')" :disabled="!fork">
       <IconButton
         :icon="GitFork"
         size="sm"

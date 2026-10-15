@@ -83,3 +83,23 @@ export function setThemeChoice(choice: ThemeChoice): void {
     localStorage.removeItem(STORAGE_KEY)
   appThemeStore.setMode(systemPrefersLight() ? 'light' : 'dark')
 }
+
+/**
+ * Mirrors the system's mode onto `<html data-theme>` and follows it, never
+ * reading or writing the remembered choice: a page with no account of its
+ * own, such as a shared conversation's, follows its reader's system, and
+ * leaves the product's choice on the same site as it was.
+ */
+export function followSystemTheme(): () => void {
+  const media = typeof window.matchMedia === 'function'
+    ? window.matchMedia('(prefers-color-scheme: light)')
+    : null
+  const apply = (light: boolean): void => {
+    appThemeStore.setMode(light ? 'light' : 'dark')
+    document.documentElement.setAttribute('data-theme', appThemeStore.state.mode)
+  }
+  apply(media?.matches ?? false)
+  const change = (event: MediaQueryListEvent) => apply(event.matches)
+  media?.addEventListener('change', change)
+  return () => media?.removeEventListener('change', change)
+}

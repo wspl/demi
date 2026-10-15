@@ -1,6 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
 import type { AttachmentLookup } from '@demicodes/web-ui/markdown/types'
 import { lookupAttachment } from '../api/attachments'
+import { blobUrl } from '../api/uploads'
 import { useProduct } from '../state/product'
 
 /**
@@ -23,6 +24,6 @@ export function useMessageAttachments(
   })
   return computed(() => {
     const shown = conversationId()
-    return shown === undefined ? undefined : (id) => lookupAttachment(shown, id, () => latest.value)
+    return shown === undefined ? undefined : (id) => lookupAttachment({ path: `/conversations/${encodeURIComponent(shown)}`, blobUrl }, id, () => latest.value)
   })
 }

@@ -475,7 +475,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .merge(runners_and_downloads())
         .merge(web_app_routes);
     let app = match web_directory {
-        Some(directory) => assets::serve(app, directory),
+        Some(directory) => assets::serve(app, directory, state.services.public_url.clone()),
         None => app.fallback(no_route),
     };
     edge(app, closing, state)
