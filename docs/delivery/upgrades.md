@@ -350,7 +350,11 @@ after an upgrade.
   guesswork. When a server keeps data of a development build, its schema
   enters the history as a published release's does, named by that build's
   version, with a tested migration, so the next deploy and the next release
-  carry the data on.
+  carry the data on. It enters once per deploy, not once per change: the
+  first change to a schema after a deploy adds the deployed schema with its
+  migration, and every later change before the next deploy extends that
+  migration, so two deploys apart there is one step whatever was changed
+  between them.
 
 A deploy prints what it built, the server's release afterwards
 (`demi-server status`) and how long each stage took.
