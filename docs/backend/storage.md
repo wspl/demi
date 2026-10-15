@@ -237,11 +237,17 @@ input, which the multi-worker control service also relies on
   `permission_requests` stores each conversation's
   [permission requests](../agent/permissions.md#requests): id, conversation,
   categories, a JSON array of category ids sorted so that the same
-  categories compare equal, the command line, the agent that ran it (its node, number and
+  categories compare equal, the host it asks to reach, a device or a
+  pairing code, the command line, the agent that ran it (its node, number and
   description, or the root), when it was raised, whether the user has read it,
   and, once decided, the decision. `permission_grants` stores each grant: conversation, category and
-  when it was granted, one row per conversation and category. Allow writes
-  the grants and decides the requests they complete in one
+  when it was granted, one row per conversation and category.
+  `reachable_hosts` stores the hosts each conversation may reach beyond its
+  primary Host, one row per conversation and device
+  ([Hosts a conversation may reach](../execution/sessions-and-targets.md#hosts-a-conversation-may-reach)),
+  and `pairing_passes` each pairing code the user allowed a conversation to
+  pair, deleted when a `demi host pair` uses it. Allow writes
+  the grants, the host or the pass, and decides the requests they complete in one
   transaction; a new request is written with the removal of the request it
   replaces; a decided request is deleted once its message is in the agent's
   checkpoint, and the requests still decided at start are delivered then; an
