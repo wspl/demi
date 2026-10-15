@@ -794,6 +794,25 @@ CREATE TABLE share_blocks (
   PRIMARY KEY (token, agent, idx)
 ) STRICT;
 CREATE INDEX share_blocks_by_type ON share_blocks (token, agent, json_extract(block, '$.type'), idx);
+CREATE TABLE share_agents (
+  token       TEXT NOT NULL,
+  number      INTEGER NOT NULL CHECK (number >= 1),
+  description TEXT NOT NULL,
+  profile     TEXT,
+  PRIMARY KEY (token, number)
+) STRICT;
+CREATE TABLE share_attachments (
+  token      TEXT NOT NULL,
+  number     INTEGER NOT NULL CHECK (number >= 1),
+  name       TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  size       INTEGER NOT NULL CHECK (size >= 0),
+  width      INTEGER CHECK (width >= 1),
+  height     INTEGER CHECK (height >= 1),
+  blob       TEXT NOT NULL,
+  CHECK ((width IS NULL) = (height IS NULL)),
+  PRIMARY KEY (token, number)
+) STRICT;
 ";
 
 /// From the conversation schema of transcript block format 7 and checkpoint
@@ -2583,6 +2602,29 @@ CREATE TABLE share_blocks (
   PRIMARY KEY (token, agent, idx)
 ) STRICT;
 CREATE INDEX share_blocks_by_type ON share_blocks (token, agent, json_extract(block, '$.type'), idx);
+-- Each subagent a snapshot holds, with the description and profile it had
+-- when the snapshot was taken, for its transcript's header.
+CREATE TABLE share_agents (
+  token       TEXT NOT NULL,
+  number      INTEGER NOT NULL CHECK (number >= 1),
+  description TEXT NOT NULL,
+  profile     TEXT,
+  PRIMARY KEY (token, number)
+) STRICT;
+-- Each attachment a snapshot's text names that existed when it was taken,
+-- copied from `attachments`; its blob stays shared with the conversation's.
+CREATE TABLE share_attachments (
+  token      TEXT NOT NULL,
+  number     INTEGER NOT NULL CHECK (number >= 1),
+  name       TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  size       INTEGER NOT NULL CHECK (size >= 0),
+  width      INTEGER CHECK (width >= 1),
+  height     INTEGER CHECK (height >= 1),
+  blob       TEXT NOT NULL,
+  CHECK ((width IS NULL) = (height IS NULL)),
+  PRIMARY KEY (token, number)
+) STRICT;
 
 -- Each ended command's whole output: stored as a blob, with the bytes at
 -- its end the backend does not have and why; or not stored, and why; and

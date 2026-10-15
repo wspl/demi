@@ -9,7 +9,8 @@
 use std::sync::Arc;
 
 use demi_provider_common::testing::MockVendor;
-use demi_shared_types::{Block, ToolView};
+use demi_conversation_socket_protocol::{ServerFrame, TranscriptPatch};
+use demi_shared_types::{Block, SessionPhase, ToolView};
 use demi_web_api_protocol::conversations::{TranscriptPage, WholeBlock};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::shares::{ShareAnswer, ShareKind, SharedConversation};
@@ -22,7 +23,7 @@ use crate::conversations::{
     transcript,
 };
 use crate::subagents::{Scripts, say, shell, tree_on};
-use crate::support::{Answer, Harness, Session, TestBackend, eventually};
+use crate::support::{Answer, Harness, Session, TestBackend};
 use crate::uploads::{PNG, upload, with_upload};
 
 /// Shares `target` of `FIRST` as `session`.
@@ -187,14 +188,19 @@ async fn an_answers_share_holds_its_message_and_answer_alone_until_the_owner_sto
     backend.close().await;
 }
 
-// A few seconds: the root runs two shell jobs on a real device, one of them
+/// The root's answer once its child reports.
+const SAID: &str =
+    "the helper said hi: ![The shot](attachment:a1), [the notes](attachment:a2), [a preview](attachment:a3-preview)";
+
+// A few seconds: the root runs three shell jobs on a real device, one of them
 // the spawn of a child.
 #[tokio::test]
 async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_were_until_taken_again() {
     let scripts = Arc::new(Scripts::default());
     let (_harness, backend, master, _paired, root, _provider) = tree_on(&scripts, Harness::new()).await;
     std::fs::write(format!("{root}/shown.png"), &*PNG).unwrap();
-    std::fs::write(format!("{root}/kept.md"), "# Not shown\n").unwrap();
+    std::fs::write(format!("{root}/notes.md"), "# Notes\n").unwrap();
+    std::fs::write(format!("{root}/preview.md"), "# Preview\n").unwrap();
     let stranger = backend.make_user(&master, "stranger@example.test", "user").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
@@ -205,21 +211,30 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
     scripts.root(
         FIRST,
         vec![
-            shell("t1", "printf 'hello from the command\\n' && demi attachment upload shown.png kept.md"),
+            shell("t1", "printf 'hello from the command\\n' && demi attachment upload shown.png"),
             shell("t2", "demi agent spawn --description helper <<< 'Say hi'"),
             say("asked the helper"),
             // The child's completion wakes the idle parent.
-            say("the helper said hi: ![The shot](attachment:a1)"),
+            // a2 and a3 do not exist yet; `a3-preview` is no attachment's
+            // name.
+            say(SAID),
         ],
     );
     socket.send(&with_upload("m1", "Look at this", &[(&shot, "shot.png")])).await;
-    eventually("the parent hears its child", || async {
-        texts(&transcript(&backend, &master, FIRST).await.blocks)
-            .iter()
-            .any(|text| text.starts_with("the helper said hi"))
-    })
-    .await;
-    socket.until_idle().await;
+    // The root's answer after its child's report, and then its rest.
+    socket
+        .until(|frame| {
+            matches!(frame, ServerFrame::TranscriptPatch { patches, .. } if patches.iter().any(|patch| match patch {
+                TranscriptPatch::Add { value: Block::Text(text), .. }
+                | TranscriptPatch::ReplaceBlock { value: Block::Text(text), .. } => text.text == SAID,
+                TranscriptPatch::AppendText { delta, .. } => delta.contains("the helper said hi"),
+                _ => false,
+            }))
+        })
+        .await;
+    socket
+        .until(|frame| matches!(frame, ServerFrame::Phase { subagent_id: None, phase: SessionPhase::Idle }))
+        .await;
     let own = transcript(&backend, &master, FIRST).await;
     let child = own.subagents[0].child.number;
 
@@ -282,7 +297,7 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
     let said = own
         .blocks
         .iter()
-        .find(|block| matches!(block, Block::Text(text) if text.text.starts_with("the helper said hi")))
+        .find(|block| matches!(block, Block::Text(text) if text.text == SAID))
         .unwrap();
     let ShareAnswer::Answer { token: answer, .. } =
         shared(&share(&backend, &master, json!({ "kind": "answer", "blockId": said.id() })).await)
@@ -296,20 +311,36 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
     assert_eq!(named.name, "shown.png");
     let bytes = public(&backend, &answer, &format!("/blobs/{}", named.blob), None).await;
     assert_eq!(bytes.body, *PNG);
-    missed(&public(&backend, &answer, "/attachments/a2", None).await, "an attachment it does not name");
-    let a2 = public(&backend, &token, "/attachments/a2", None).await;
-    missed(&a2, "an attachment the conversation's share names in no text");
+    missed(&public(&backend, &answer, "/attachments/a2", None).await, "an attachment that did not exist");
     assert!(public(&backend, &answer, "", None).await.json::<SharedConversation>().agents.is_empty());
+    // A number past the column's range is no attachment, here and in the
+    // conversation's own route.
+    let past = "a9223372036854775808";
+    missed(&public(&backend, &answer, &format!("/attachments/{past}"), None).await, "a number out of range");
+    let own_past = backend
+        .get(&format!("/api/conversations/{FIRST}/attachments/{past}"), Some(&master))
+        .await;
+    assert_eq!(own_past.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
 
-    // A later message is not shared until the owner takes the snapshot again.
-    scripts.root(FIRST, vec![say("later answer")]);
+    // A later message, and the attachments it uploads, are not shared until
+    // the owner takes the snapshot again.
+    scripts.root(
+        FIRST,
+        vec![shell("t3", "demi attachment upload notes.md preview.md"), say("later answer")],
+    );
     socket.chat("m2", "One more").await;
     assert!(!texts(&page(&backend, &token, "").await.blocks).contains(&"later answer".to_owned()));
+    missed(&public(&backend, &token, "/attachments/a2", None).await, "an attachment uploaded since");
     let retaken = backend
         .put(&format!("/api/conversations/{FIRST}/shares/{token}"), &master, json!({}))
         .await;
     assert!(matches!(shared(&retaken), ShareAnswer::Conversation { token: same, .. } if same.as_str() == token));
     assert!(texts(&page(&backend, &token, "").await.blocks).contains(&"later answer".to_owned()));
+    let notes = public(&backend, &token, "/attachments/a2", None).await;
+    assert_eq!(notes.status, StatusCode::OK, "{}", String::from_utf8_lossy(&notes.body));
+    assert_eq!(notes.json::<demi_web_api_protocol::attachments::ConversationAttachment>().name, "notes.md");
+    // A target with more after the number names no attachment.
+    missed(&public(&backend, &token, "/attachments/a3", None).await, "a3-preview");
 
     // Archiving keeps it; deleting the conversation removes it.
     let archived = backend
