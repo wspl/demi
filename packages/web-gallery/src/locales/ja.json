@@ -56,7 +56,8 @@
       "states": "状態",
       "session": "セッション",
       "panel": "パネル",
-      "windows": "ウィンドウ"
+      "windows": "ウィンドウ",
+      "shared": "共有ページ"
     },
     "dialogs": {
       "account": "アカウント",

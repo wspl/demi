@@ -14,7 +14,7 @@ import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } 
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import { keepComposition } from '@demicodes/utils'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
-import { isHttpUrl, isLikelyFilePath } from '../../markdown/filePath'
+import { WEB_LINK_REL, isHttpUrl, isLikelyFilePath } from '../../markdown/filePath'
 import { codeRuns, codeTextColor } from '../../markdown/highlight'
 import { bareUrls, closesFence, fenceInfo, typedFormat } from '../../markdown/user-markdown'
 import AttachmentNodeView from './AttachmentNodeView.vue'
@@ -110,7 +110,7 @@ const ImageNode = Node.create({
  */
 export function linkAttributes(target: string): Record<string, string> {
   if (isHttpUrl(target)) {
-    return { 'data-link': 'web', 'data-target': target, href: target, target: '_blank', rel: 'noopener noreferrer' }
+    return { 'data-link': 'web', 'data-target': target, href: target, target: '_blank', rel: WEB_LINK_REL }
   }
   return { 'data-link': isLikelyFilePath(target) ? 'file' : 'text', 'data-target': target }
 }

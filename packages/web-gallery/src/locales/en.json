@@ -56,7 +56,8 @@
       "states": "States",
       "session": "Session",
       "panel": "Panel",
-      "windows": "Windows"
+      "windows": "Windows",
+      "shared": "Shared Page"
     },
     "dialogs": {
       "account": "Account",

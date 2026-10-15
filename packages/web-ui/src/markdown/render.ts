@@ -4,7 +4,7 @@ import { baseName } from '@demicodes/utils'
 import type { MarkdownRenderOptions, MessageAttachment, MessageFileTarget, MessageFiles } from './types'
 import type { HostImage } from '../files/host-image'
 import { codeBlockHtml } from './highlight'
-import { attachmentId, isHttpUrl, linkedCommit, messageFileTarget, messageImage } from './filePath'
+import { WEB_LINK_REL, attachmentId, isHttpUrl, linkedCommit, messageFileTarget, messageImage } from './filePath'
 import { codeFileTarget } from './code-paths'
 import { linkedAgent } from '../agent/agent-links'
 import type { CopiedStoredFile } from '../agent/message-input/copied-message'
@@ -24,7 +24,7 @@ let openLinks = 0
 
 /** A link that leaves for the web, in a new tab. */
 function webLink(url: string): string {
-  return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">`
+  return `<a href="${escapeHtml(url)}" target="_blank" rel="${WEB_LINK_REL}">`
 }
 
 /**

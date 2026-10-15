@@ -279,3 +279,75 @@ async fn a_page_socket_message_over_the_limit_fails_the_socket() {
     assert_eq!(socket.closed().await, None);
     backend.close().await;
 }
+
+/// What the backend answers a request for `path` that sends `host` as its
+/// `Host`, or none: written by hand, since an HTTP client always sends the
+/// one its URL names. The answer's status line and headers, lowercased.
+async fn raw_head(url: &str, path: &str, host: Option<&str>) -> String {
+    use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
+    let address = url.trim_start_matches("http://");
+    let mut stream = tokio::net::TcpStream::connect(address).await.unwrap();
+    let host = host.map(|host| format!("Host: {host}\r\n")).unwrap_or_default();
+    let request = format!("GET {path} HTTP/1.0\r\n{host}Accept: text/html\r\nConnection: close\r\n\r\n");
+    stream.write_all(request.as_bytes()).await.unwrap();
+    let mut answer = Vec::new();
+    stream.read_to_end(&mut answer).await.unwrap();
+    let answer = String::from_utf8_lossy(&answer).into_owned();
+    answer.split("\r\n\r\n").next().unwrap().to_lowercase()
+}
+
+#[tokio::test]
+async fn a_shared_link_answers_its_own_entry_under_a_policy_that_reaches_only_its_share() {
+    // Cost: one backend start on a temporary directory; under a second.
+    let mut harness = Harness::new().with_web(&[
+        ("index.html", "<html>product page</html>"),
+        ("share.html", "<html>shared page</html>"),
+        ("build.json", r#"{ "build": "b7f3" }"#),
+    ]);
+    harness.public_url = Some("https://demi.example.test/".parse().unwrap());
+    let (backend, _master) = harness.start_set_up().await;
+    let routes = "https://demi.example.test/api/shares/Qm9iZXhhbXBsZTEyMzQ https://demi.example.test/api/shares/Qm9iZXhhbXBsZTEyMzQ/";
+    let expected = [
+        "default-src 'none'".to_owned(),
+        "script-src 'self'".to_owned(),
+        "font-src 'self' data:".to_owned(),
+        format!("connect-src {routes}"),
+        format!("img-src {routes} blob: data:"),
+        format!("media-src {routes} blob:"),
+        "frame-ancestors 'none'".to_owned(),
+    ];
+
+    // Any token gets the page, which asks the share's routes whether it
+    // exists; the policy names the backend's public URL whatever `Host`
+    // the request sends, a name a proxy passes on, one it rejects, or none.
+    for host in [Some("demi.example.test"), Some("bad_host.example"), None] {
+        let head = raw_head(&backend.url, "/s/Qm9iZXhhbXBsZTEyMzQ", host).await;
+        assert!(head.starts_with("http/1.0 200") || head.starts_with("http/1.1 200"), "{host:?}: {head}");
+        let policy = head
+            .lines()
+            .find_map(|line| line.strip_prefix("content-security-policy: "))
+            .unwrap_or_else(|| panic!("{host:?}: no policy in {head}"));
+        for directive in &expected {
+            assert!(
+                policy.split("; ").any(|part| part == directive.to_lowercase()),
+                "{host:?}: {directive:?} in {policy:?}"
+            );
+        }
+        assert!(!policy.contains("connect-src 'self'"), "{host:?}: {policy:?}");
+        assert!(head.contains("referrer-policy: no-referrer"), "{host:?}: {head}");
+        assert!(head.contains("x-robots-tag: noindex, nofollow"), "{host:?}: {head}");
+    }
+
+    // An address cannot write the policy: what the token holds stays in its path.
+    let forged = raw_head(&backend.url, "/s/x%3B%20connect-src%20*", None).await;
+    assert!(
+        forged.contains("connect-src https://demi.example.test/api/shares/x%3b%20connect%2dsrc%20%2a "),
+        "{forged}"
+    );
+    assert!(!forged.contains("connect-src *"), "{forged}");
+
+    // The product's pages stay the product's entry.
+    let product = raw_head(&backend.url, "/chat/c-1", None).await;
+    assert!(!product.contains("content-security-policy"), "{product}");
+    backend.close().await;
+}

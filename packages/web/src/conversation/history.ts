@@ -1,210 +1,24 @@
-import {
-  EMPTY_TRANSCRIPT,
-  addPage,
-  latestWindow,
-  windowEnd,
-  withWholeBlock,
-  type HeldTranscript,
-} from '@demicodes/web-ui/transport/protocol'
-import { shownWindow, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
-import { ApiError, apiRequest, readResponse } from '../api/client'
-import {
-  commandCallSchema,
-  transcriptPageSchema,
-  wholeBlockSchema,
-  type TranscriptPage,
-} from '../api/generated/web-api'
-import type { Block } from '@demicodes/protocol'
+import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
+import { apiRequest, readResponse } from '../api/client'
+import { commandCallSchema } from '../api/generated/web-api'
 import type { Conversation } from '../state/types'
-
-/** Where a page is read from (`web-api.md` § Pages). */
-type PageAt =
-  | { kind: 'latest' }
-  | { kind: 'before' | 'after'; index: number; edge: string }
-  | { kind: 'around'; block: string }
+import { createHistoryReads } from './history-reads'
 
 /**
  * The reads of conversations' history (`web-api.md` § Conversation
- * history), each held where the page shows it
- * (`web-application.md` § Transcript windows). A page that one read is
- * already fetching is not fetched twice: a second read waits for the first;
- * `live` says whether the conversation's stream keeps its root's end, whose
- * length then stands.
+ * history): a conversation's root is live while its stream is open, as
+ * `live` says, and a subagent while it runs.
  */
-export function createHistoryReads(signal: () => AbortSignal, live: (conversation: Conversation) => boolean) {
-  const fetching = new Map<string, Promise<void>>()
-
-  function path(conversation: Conversation): string {
-    return `/conversations/${encodeURIComponent(conversation.id)}/transcript`
-  }
-
-  /** One page of the agent `node`'s transcript, the root's for null. */
-  async function readPage(conversation: Conversation, node: string | null, at: PageAt): Promise<TranscriptPage> {
-    const query = new URLSearchParams()
-    if (node !== null) {
-      query.set('node', node)
-    }
-    if (at.kind === 'before' || at.kind === 'after') {
-      query.set(at.kind, String(at.index))
-      query.set('edge', at.edge)
-    } else if (at.kind === 'around') {
-      query.set('around', at.block)
-    }
-    const response = await apiRequest(`${path(conversation)}?${query}`, { signal: signal() })
-    return readResponse(response, transcriptPageSchema)
-  }
-
-  function historyOf(conversation: Conversation, node: string | null): HeldTranscript {
-    return node === null
-      ? conversation.history
-      : conversation.subagents.find((agent) => agent.id === node)?.history ?? EMPTY_TRANSCRIPT
-  }
-
-  /** Takes `page` into the agent's history, with what it names beside its blocks. */
-  function take(conversation: Conversation, node: string | null, page: TranscriptPage): void {
-    const failures = { ...page.failures }
-    if (node === null) {
-      conversation.history = addPage(conversation.history, page, live(conversation))
-      conversation.failures = { ...conversation.failures, ...failures }
-      conversation.instructions = page.instructions
-      conversation.summaries = {
-        ...conversation.summaries,
-        ...Object.fromEntries(page.summaries.map((summary) => [summary.marker, summary.summaryTokens])),
-      }
-      return
-    }
-    const agent = conversation.subagents.find((candidate) => candidate.id === node)
-    if (agent) {
-      agent.history = addPage(agent.history, page, agent.phase === 'running')
-      agent.failures = { ...agent.failures, ...failures }
-    }
-  }
-
-  /** Reads a page once at a time, and takes it. */
-  function read(conversation: Conversation, node: string | null, at: PageAt): Promise<void> {
-    const key = `${conversation.id}:${node ?? ''}:${JSON.stringify(at)}`
-    const pending = fetching.get(key)
-    if (pending) {
-      return pending
-    }
-    const reading = (async () => {
-      try {
-        take(conversation, node, await readPage(conversation, node, at))
-      } finally {
-        fetching.delete(key)
-      }
-    })()
-    fetching.set(key, reading)
-    return reading
-  }
-
-  /**
-   * Reads the next page at an edge of the window the reader is in
-   * (`web-application.md` § Transcript windows). A page the transcript's
-   * rewrite refuses drops the windows that no longer join and reads the
-   * page around the block in view again (§ Rewrites).
-   */
-  async function readBeside(conversation: Conversation, node: string | null, side: 'before' | 'after'): Promise<void> {
-    const history = historyOf(conversation, node)
-    const window = node === null ? shownWindow(history, conversation.shownAt) : shownWindow(history, null)
-    const edge = side === 'before' ? window.blocks[0] : window.blocks.at(-1)
-    if (!edge || (side === 'before' ? window.start === 0 : windowEnd(window) >= history.length)) {
-      return
-    }
-    const index = side === 'before' ? window.start : windowEnd(window) - 1
-    try {
-      await read(conversation, node, { kind: side, index, edge: edge.id })
-    } catch (error) {
-      if (!(error instanceof ApiError) || error.code !== 'transcript_changed') {
-        throw error
-      }
-      await recover(conversation, node, edge.id)
-    }
-  }
-
-  async function recover(conversation: Conversation, node: string | null, anchor: string): Promise<void> {
-    const keep = (history: HeldTranscript): HeldTranscript => {
-      const latest = latestWindow(history)
-      return { length: history.length, windows: latest ? [latest] : [] }
-    }
-    if (node === null) {
-      conversation.history = keep(conversation.history)
-    } else {
-      const agent = conversation.subagents.find((candidate) => candidate.id === node)
-      if (agent) {
-        agent.history = keep(agent.history)
-      }
-    }
-    await readAround(conversation, node, anchor).catch((error: unknown) => {
-      // The rewrite removed the block: the latest is what the reader sees now.
-      if (!(error instanceof ApiError) || error.code !== 'block_not_found') {
-        throw error
-      }
-      if (node === null) {
-        conversation.shownAt = null
-      }
-    })
-  }
-
-  /**
-   * Shows the window around the block `block`, reading it first when the
-   * page does not hold it. A subagent's panel shows one window, from its
-   * latest back, so there its latest page is read first, as the panel reads
-   * it, and the pages before it until one holds the block.
-   */
-  async function readAround(conversation: Conversation, node: string | null, block: string): Promise<void> {
-    const held = () => historyOf(conversation, node).windows.some((window) => window.blocks.some((candidate) => candidate.id === block))
-    if (node === null) {
-      if (!held()) {
-        await read(conversation, node, { kind: 'around', block })
-      }
-      conversation.shownAt = block
-      return
-    }
-    if (historyOf(conversation, node).windows.length === 0) {
-      await read(conversation, node, { kind: 'latest' })
-    }
-    let start = shownWindow(historyOf(conversation, node), null).start
-    while (!held() && start > 0) {
-      await readBeside(conversation, node, 'before')
-      const reached = shownWindow(historyOf(conversation, node), null).start
-      // A rewrite moved the window: the next scroll there reads on.
-      if (reached >= start) {
-        return
-      }
-      start = reached
-    }
-  }
-
+export function createConversationHistoryReads(signal: () => AbortSignal, live: (conversation: Conversation) => boolean) {
+  const reads = createHistoryReads<Conversation>(
+    signal,
+    (conversation, node) => node === null
+      ? live(conversation)
+      : conversation.subagents.find((agent) => agent.id === node)?.phase === 'running',
+    (conversation) => `/conversations/${encodeURIComponent(conversation.id)}/transcript`,
+  )
   return {
-    /** The latest page of the agent `node`'s transcript. */
-    readLatest: (conversation: Conversation, node: string | null) => read(conversation, node, { kind: 'latest' }),
-    /** The page before the window the reader is in. */
-    readBefore: (conversation: Conversation, node: string | null) => readBeside(conversation, node, 'before'),
-    /** The page after the window the reader is in. */
-    readAfter: (conversation: Conversation, node: string | null) => readBeside(conversation, node, 'after'),
-    readAround,
-    /**
-     * Reads a block whole, for a row the page holds light or a command's call
-     * (`web-api.md` § Light form): a block the page holds is replaced by it,
-     * and the block is the answer.
-     */
-    async readWhole(conversation: Conversation, node: string | null, id: string): Promise<Block> {
-      const query = node === null ? '' : `?node=${encodeURIComponent(node)}`
-      const response = await apiRequest(`${path(conversation)}/blocks/${encodeURIComponent(id)}${query}`, { signal: signal() })
-      const { block, failures } = await readResponse(response, wholeBlockSchema)
-      if (node === null) {
-        conversation.history = withWholeBlock(conversation.history, block)
-        conversation.failures = { ...conversation.failures, ...failures }
-        return block
-      }
-      const agent = conversation.subagents.find((candidate) => candidate.id === node)
-      if (agent) {
-        agent.history = withWholeBlock(agent.history, block)
-        agent.failures = { ...agent.failures, ...failures }
-      }
-      return block
-    },
+    ...reads,
     /** Where the call that started the command `commandId` lies (`web-api.md` § Subagents and commands). */
     async findCommand(conversation: Conversation, commandId: string): Promise<TranscriptReveal> {
       const response = await apiRequest(
@@ -217,4 +31,4 @@ export function createHistoryReads(signal: () => AbortSignal, live: (conversatio
   }
 }
 
-export type HistoryReads = ReturnType<typeof createHistoryReads>
+export type HistoryReads = ReturnType<typeof createConversationHistoryReads>
