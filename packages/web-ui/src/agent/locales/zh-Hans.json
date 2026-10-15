@@ -266,7 +266,7 @@
   "workflows": {
     "label": "工作流",
     "labelTip": "工作流：{name}",
-    "default": "默认",
+    "default": "全局工作流",
     "none": "无子智能体",
     "reading": "正在读取工作流…",
     "failed": "无法读取工作流",

@@ -219,7 +219,7 @@ pub(crate) const CONTROL: Schema = Schema {
 /// conversation starts with (`web-api.md` § User preferences), none before
 /// the first choice, and a Fork's metadata holds the workflow its
 /// destination keeps (format 3). A Fork reserved before was reserved to
-/// start with Default, which its record keeps.
+/// start with Global Workflow, which its record keeps.
 fn control_from_0_1_22_dev_20261015t105826z(
     transaction: &Transaction<'_>,
     _: &dyn ReadBlob,
@@ -577,7 +577,7 @@ CREATE INDEX saved_sends_by_age ON saved_sends (sent_at);
 
 /// From the control schema with administered accounts to the one with a
 /// conversation's Workflow menu choice (`subagents.md` § Workflows of a
-/// project): every conversation uses Default, as a new one does.
+/// project): every conversation uses Global Workflow, as a new one does.
 const CONTROL_FROM_ADMINISTERED_ACCOUNTS: &str = "
 ALTER TABLE conversations ADD COLUMN workflow_kind TEXT NOT NULL DEFAULT 'default' CHECK (workflow_kind IN ('default', 'none', 'workflow'));
 ALTER TABLE conversations ADD COLUMN workflow_id TEXT CHECK ((workflow_kind = 'workflow') = (workflow_id IS NOT NULL));
@@ -3222,7 +3222,7 @@ mod tests {
             title: "Fork".to_owned().into(),
             target: ConversationTarget::Cloud { path: None },
             model: None,
-            // A Fork reserved before its workflow was kept starts with Default.
+            // A Fork reserved before its workflow was kept starts with Global Workflow.
             workflow: demi_shared_types::WorkflowChoice::Default,
             created_at: "2026-10-14T08:00:00Z".parse().unwrap(),
             attached_hosts: vec![AttachedHostRecord {

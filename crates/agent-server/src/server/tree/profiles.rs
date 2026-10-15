@@ -25,7 +25,7 @@ const SUBAGENTS_OFF: &str = "subagents are turned off in settings; do this work 
 
 /// Why a spawn fails in a conversation whose Workflow menu says No
 /// Subagents.
-const OFF_HERE: &str = "subagents are turned off for this conversation; do this work in this session, or ask the user to choose Default or a workflow in the composer's Workflow menu.";
+const OFF_HERE: &str = "subagents are turned off for this conversation; do this work in this session, or ask the user to choose Global Workflow or a workflow in the composer's Workflow menu.";
 
 /// What a spawn makes its child of: the profile's settings, or the
 /// parent's for the inherit profile.
@@ -67,7 +67,7 @@ impl Limits {
 /// with: each enabled profile of the user's, or the chosen workflow's.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub(crate) struct ProfileListing {
-    /// False while the user has subagents off with Default chosen, with No
+    /// False while the user has subagents off with Global Workflow chosen, with No
     /// Subagents chosen, and while the chosen workflow is unavailable.
     enabled: bool,
     choice: WorkflowChoice,
@@ -228,7 +228,7 @@ impl<H: HostResolver> Tree<H> {
 
     /// `demi agent profiles list`, from the user's settings and the
     /// conversation's choice now: the chosen workflow's profiles in its
-    /// order; or, with Default and subagents on, each enabled profile of the
+    /// order; or, with Global Workflow and subagents on, each enabled profile of the
     /// user's in name order; an unavailable one with what is missing.
     pub(crate) async fn profiles(&self) -> Result<ProfileListing, String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
@@ -505,7 +505,7 @@ impl ProfileListing {
                 "Subagents are turned off in settings; demi agent spawn fails until the user turns them on.".to_owned(),
             ),
             WorkflowChoice::None => Some(
-                "Subagents are turned off for this conversation; demi agent spawn fails until the user chooses Default or a workflow in the composer's Workflow menu.".to_owned(),
+                "Subagents are turned off for this conversation; demi agent spawn fails until the user chooses Global Workflow or a workflow in the composer's Workflow menu.".to_owned(),
             ),
             WorkflowChoice::Workflow { id } if !self.enabled => Some(format!(
                 "This conversation's workflow \"{id}\" is unavailable: {}; demi agent spawn fails until the user chooses another in the composer's Workflow menu.",

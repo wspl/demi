@@ -76,7 +76,7 @@ export function workflowShown(choice: WorkflowChoice, list: WorkflowList): Workf
 }
 
 /**
- * The rows of the menu: Default and No Subagents, then each workflow by its
+ * The rows of the menu: Global Workflow and No Subagents, then each workflow by its
  * name, one that does not read with why, and the chosen one when it is gone.
  */
 export function workflowRows(choice: WorkflowChoice, list: WorkflowList): WorkflowRow[] {

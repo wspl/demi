@@ -266,7 +266,7 @@
   "workflows": {
     "label": "Workflow",
     "labelTip": "Workflow: {name}",
-    "default": "Default",
+    "default": "Global Workflow",
     "none": "No Subagents",
     "reading": "Reading Workflows…",
     "failed": "Couldn’t Read Workflows",

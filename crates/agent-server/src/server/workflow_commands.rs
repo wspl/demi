@@ -96,7 +96,7 @@ fn render(listing: &WorkflowListing) -> String {
         WorkflowChoice::Default | WorkflowChoice::None => None,
     };
     let uses = match &listing.chosen {
-        WorkflowChoice::Default => "Default, the user's Settings > Subagents".to_owned(),
+        WorkflowChoice::Default => "Global Workflow, the user's Settings > Subagents".to_owned(),
         WorkflowChoice::None => "No Subagents".to_owned(),
         WorkflowChoice::Workflow { id } => {
             match listing.workflows.iter().find(|workflow| workflow.id == *id) {

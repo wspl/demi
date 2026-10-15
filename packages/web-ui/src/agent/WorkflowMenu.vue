@@ -14,7 +14,7 @@ import { workflowRows, workflowShown, type WorkflowChoice, type WorkflowList } f
 /**
  * The composer's Workflow menu at the row's left end (`product.md` § A
  * conversation's workflow): it shows the conversation's choice and offers
- * Default, No Subagents and the project's workflows by name. A workflow
+ * Global Workflow, No Subagents and the project's workflows by name. A workflow
  * that does not read, or the chosen one once it is gone, stands in the menu
  * with why and cannot be chosen. Where the row has no room (`compact`), it
  * keeps its mark alone, and its tip reads the choice.

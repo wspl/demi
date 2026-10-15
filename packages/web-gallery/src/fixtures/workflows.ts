@@ -15,5 +15,5 @@ export const projectWorkflows: WorkflowList = {
   ],
 }
 
-/** A project without workflows: the menu offers Default and No Subagents only. */
+/** A project without workflows: the menu offers Global Workflow and No Subagents only. */
 export const noWorkflows: WorkflowList = { state: 'read', workflows: [] }
