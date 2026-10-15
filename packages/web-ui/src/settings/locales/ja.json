@@ -376,7 +376,7 @@
     "description": "タスクの一部を受け持つ子エージェント。",
     "switchDescription": "オフにしても、実行中のサブエージェントは止まりません。",
     "maxLive": "サブエージェントの最大数",
-    "maxLiveDescription": "1 つのチャットで同時に実行できるサブエージェントの最大数。",
+    "maxLiveDescription": "すべてのチャットを合わせて同時に実行できるサブエージェントの最大数。",
     "maxLiveConfirmTitle": "サブエージェントを無制限にしますか？",
     "maxDepth": "最大の階層",
     "maxDepthDescription": "1 の場合、サブエージェントを起動できるのはメインのエージェントだけです。",

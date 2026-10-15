@@ -376,7 +376,7 @@
     "description": "Child agents that take on parts of a task.",
     "switchDescription": "Turning off doesn’t stop running subagents.",
     "maxLive": "Maximum subagents",
-    "maxLiveDescription": "The most subagents one conversation runs at once.",
+    "maxLiveDescription": "The most subagents that run at once across all your conversations.",
     "maxLiveConfirmTitle": "Allow unlimited subagents?",
     "maxDepth": "Maximum depth",
     "maxDepthDescription": "At 1, only the main agent starts subagents.",
