@@ -1,7 +1,7 @@
 {
   "notifications": {
     "turnStopped": "ターンがエラーで停止しました。",
-    "allowTo": "この会話に {action} を許可しますか？",
+    "allowTo": "この会話に「{action}」を許可しますか？",
     "saveCredential": "認証情報「{name}」を保存しますか？",
     "allowUse": "この会話に「{name}」の使用を許可しますか？"
   },

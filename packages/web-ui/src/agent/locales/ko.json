@@ -96,7 +96,8 @@
       "document": "문서"
     },
     "shellFallback": "shell 명령 실행",
-    "turnFailed": "턴 실패",
+    "turnFailed": "턴이 실패했습니다.",
+    "failureResets": "{failure} {reset}됩니다.",
     "work": {
       "ran": "명령 {count}개 실행",
       "checked": "명령 {count}개 확인",

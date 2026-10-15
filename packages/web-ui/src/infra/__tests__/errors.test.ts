@@ -95,7 +95,7 @@ test('a refusal the user corrects in the form names no request and says the page
   expect(formError(new Coded('invalid_credentials', 'Current password is wrong'), corrections))
     .toEqual({ message: 'That is not your current password.', requestId: null })
   expect(formError(new Coded('internal_error', 'The store failed'), corrections))
-    .toEqual({ message: 'The store failed', requestId: 'req_k3v9x2m7qd4h8w1p' })
+    .toEqual({ message: 'Something went wrong on the server.', requestId: 'req_k3v9x2m7qd4h8w1p' })
 })
 
 /** A refusal with its code and the values its text needs, as an API error carries them. */
@@ -146,6 +146,23 @@ test('a coded page failure and a codeless answer are worded in the page’s lang
     expect([errorMessage(lost), errorMessage(proxied)]).toEqual(['The upload lost its connection.', 'The request failed (502).'])
     createPageI18n('zh-Hans')
     expect([errorMessage(lost), errorMessage(proxied)]).toEqual(['上传连接已断开。', '请求失败（502）。'])
+  } finally {
+    createPageI18n('en')
+  }
+})
+
+// A refusal carries its values, and the page writes each as its language
+// writes it: a size as a size, a count choosing the plural form.
+test('a refusal’s size is written in the page’s language, and its count picks the plural form', () => {
+  const tooLarge = new Worded('too_large', 'An upload is at most 26214400 bytes', { limitBytes: 26_214_400 })
+  try {
+    expect(errorMessage(tooLarge)).toBe('It’s larger than the 25 MB limit.')
+    expect(errorMessage(new Worded('workspace_in_use', '1 conversation(s)', { count: 1 }))).toBe('1 conversation still uses this project.')
+    expect(errorMessage(new Worded('workspace_in_use', '3 conversation(s)', { count: 3 }))).toBe('3 conversations still use this project.')
+    createPageI18n('zh-Hans')
+    expect(errorMessage(tooLarge)).toBe('超过了 25 MB 的大小限制。')
+    createPageI18n('ja')
+    expect(errorMessage(tooLarge)).toBe('サイズの上限 (25 MB) を超えています。')
   } finally {
     createPageI18n('en')
   }

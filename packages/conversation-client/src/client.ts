@@ -16,6 +16,7 @@ import {
   type TranscriptVersion,
   schemaRefusal,
 } from '@demicodes/protocol'
+import { MAX_PAGE_MESSAGE_BYTES } from '@demicodes/protocol'
 import { asError, createId } from '@demicodes/utils'
 import type { ConversationClientListener, ClientSessionEvent, ServerFrameOf } from './events'
 import { FrameTooLargeError, type ConversationClientTransport } from './transport'
@@ -26,20 +27,31 @@ export interface HeldEdge {
   edge: string
 }
 
-/** A correlated refusal: the edit was not accepted. */
-export class EditRejectedError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'EditRejectedError'
+/**
+ * A frame the backend or the session refused: the code the page words it
+ * by and the values that text needs (`localization.md` § Text from the
+ * backend), with the refusal in English as the message.
+ */
+export class RefusedError extends Error {
+  override name = 'RefusedError'
+  readonly code: string
+  readonly params: Readonly<Record<string, unknown>>
+
+  constructor(refusal: { code: string; params?: Record<string, unknown>; reason: string }) {
+    super(refusal.reason)
+    this.code = refusal.code
+    this.params = refusal.params ?? {}
   }
 }
 
+/** A correlated refusal: the edit was not accepted. */
+export class EditRejectedError extends RefusedError {
+  override name = 'EditRejectedError'
+}
+
 /** A correlated refusal: the steer was not accepted, and a queued message it came from stays queued. */
-export class SteerRejectedError extends Error {
-  constructor(message: string) {
-    super(message)
-    this.name = 'SteerRejectedError'
-  }
+export class SteerRejectedError extends RefusedError {
+  override name = 'SteerRejectedError'
 }
 
 /** A correlated refusal: the message saved for later is no longer on the list, as another page sent or removed it. */
@@ -225,7 +237,7 @@ export class ConversationClient {
         if (event.type === 'steer_result' && event.steerId === turnId) {
           return event.outcome.status === 'accepted'
             ? { resolve: undefined }
-            : { reject: new SteerRejectedError(event.outcome.reason) }
+            : { reject: new SteerRejectedError(event.outcome) }
         }
         const written = (event.type === 'transcript_reset' || event.type === 'transcript_patch')
           && this.writtenTurns.has(turnId)
@@ -250,10 +262,10 @@ export class ConversationClient {
         if (event.type === 'edit_result' && event.operationId === request.operationId) {
           return event.outcome.status === 'accepted'
             ? { resolve: undefined }
-            : { reject: new EditRejectedError(event.outcome.reason) }
+            : { reject: new EditRejectedError(event.outcome) }
         }
         if (event.type === 'rejected' && event.command === 'edit_and_send') {
-          return { reject: new EditRejectedError(event.reason) }
+          return { reject: new EditRejectedError(event) }
         }
         if (event.type === 'error' && event.code === 'invalid_frame') {
           return { reject: new SessionError(event) }
@@ -456,7 +468,7 @@ export class ConversationClient {
       this.transport.send(frame)
     } catch (error) {
       if (error instanceof FrameTooLargeError) {
-        this.refuse(frame, error.message)
+        this.refuse(frame, { code: 'too_large', params: { limitBytes: MAX_PAGE_MESSAGE_BYTES }, reason: error.message })
         return false
       }
       this.disconnect(asError(error))
@@ -466,12 +478,12 @@ export class ConversationClient {
   }
 
   /** Answers a frame the transport would not send as the backend answers a frame it refuses. */
-  private refuse(frame: ClientFrame, reason: string): void {
+  private refuse(frame: ClientFrame, refusal: { code: string; params: Record<string, number>; reason: string }): void {
     if (frame.type === 'steer') {
-      this.handle({ type: 'steer_result', steerId: frame.steerId, outcome: { status: 'rejected', reason } })
+      this.handle({ type: 'steer_result', steerId: frame.steerId, outcome: { status: 'rejected', ...refusal } })
       return
     }
-    this.handle({ type: 'rejected', command: frame.type, reason })
+    this.handle({ type: 'rejected', command: frame.type, ...refusal })
   }
 
   /**
@@ -515,7 +527,7 @@ export class ConversationClient {
       case 'error':
         return { reject: new SessionError(event) }
       case 'rejected':
-        return event.command === command ? { reject: new Error(event.reason) } : undefined
+        return event.command === command ? { reject: new RefusedError(event) } : undefined
       case 'closed':
         return { reject: new Error('Agent connection closed') }
       case 'disconnected':
@@ -694,10 +706,10 @@ export class ConversationClient {
         return
       case 'rejected':
         this.emit(frame)
-        this.rejectAction(frame.command, new Error(frame.reason))
+        this.rejectAction(frame.command, new RefusedError(frame))
         if (frame.command === 'abort') {
           for (const waiter of this.abortWaiters.splice(0)) {
-            waiter.reject(new Error(frame.reason))
+            waiter.reject(new RefusedError(frame))
           }
         }
         return
@@ -853,7 +865,7 @@ export class ConversationClient {
     if (frame.outcome.status === 'accepted') {
       waiter.resolve()
     } else {
-      waiter.reject(new SteerRejectedError(frame.outcome.reason))
+      waiter.reject(new SteerRejectedError(frame.outcome))
     }
   }
 

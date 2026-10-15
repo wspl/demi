@@ -96,7 +96,8 @@
       "document": "文件"
     },
     "shellFallback": "執行 shell 命令",
-    "turnFailed": "輪次失敗",
+    "turnFailed": "輪次失敗。",
+    "failureResets": "{failure}{reset}。",
     "work": {
       "ran": "執行了 {count} 個命令",
       "checked": "檢查了 {count} 個命令",

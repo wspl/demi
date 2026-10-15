@@ -95,7 +95,9 @@ for (const failure of ['none', 'before-confirmation', 'before-reconciliation'] a
       if (failure === 'none') {
         expect(current.lastError).toBeNull()
       } else {
-        expect(current.lastError).toEqual({ message: 'generation failed', requestId: null })
+        // The failure kept: the page's headline for the one the socket reported, whose code names no headline of its own.
+        const message = failure === 'before-confirmation' ? 'The turn failed.' : 'generation failed'
+        expect({ ...current.lastError }).toEqual({ message, requestId: null })
       }
     } finally {
       runtime.dispose()
@@ -299,7 +301,7 @@ test('a steer the session accepts waits as a pending steer, and one it refuses, 
     // The turn is ending: the session refuses the next steer.
     const refused = runtime.steer(content, 'second')
     await waitFor(() => h.sent.filter((frame) => frame.type === 'steer').length === 2)
-    h.receive({ type: 'steer_result', steerId: 'second', outcome: { status: 'rejected', reason: 'The running turn is finishing' } })
+    h.receive({ type: 'steer_result', steerId: 'second', outcome: { status: 'rejected', code: 'turn_finishing', reason: 'The running turn is finishing' } })
     await waitFor(() => h.sent.at(-1)?.type === 'send')
     expect(h.sent.at(-1)).toEqual({ type: 'send', messageId: 'second', content })
     h.receive({ type: 'queue', queue: [{ id: 'second', content }] })
@@ -414,7 +416,7 @@ test('a failure the session reported is over once another tab starts the next ac
     h.receive({ type: 'phase', phase: 'running' })
     h.receive({ type: 'error', message: 'The provider failed', code: 'provider_error' })
     h.receive({ type: 'phase', phase: 'idle' })
-    expect(current.lastError).toEqual({ message: 'The provider failed', requestId: null })
+    expect({ ...current.lastError }).toEqual({ message: 'The turn failed.', requestId: null })
     // Another tab sends: this tab hears only the session start the next action.
     h.receive({ type: 'phase', phase: 'running' })
     expect(current.lastError).toBeNull()
@@ -756,8 +758,8 @@ test('a session that refuses to open is a failure told once', async () => {
   })
   await expect(runtime.connect()).rejects.toThrow(refusal)
   expect(current.load).toBe('failed')
-  // The refusal names the socket's request, which the page shows with it.
-  expect(current.lastError).toEqual({ message: refusal, requestId: 'req_socket0000000001' })
+  // In the page's words for its code, with the socket's request.
+  expect({ ...current.lastError }).toEqual({ message: 'Choose a model for this conversation first.', requestId: 'req_socket0000000001' })
   expect(connects).toBe(1)
   runtime.dispose()
 })

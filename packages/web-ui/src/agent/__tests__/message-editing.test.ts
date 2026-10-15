@@ -154,7 +154,7 @@ test('explicit rejection restores editing with the draft and attachments intact'
   await submitMessageEdit({
     get: () => state,
     set: (next) => { state = next },
-    send: async () => { throw new EditRejectedError('save failed') },
+    send: async () => { throw new EditRejectedError({ code: 'save_failed', reason: 'save failed' }) },
   })
   expect(state).toEqual({ phase: 'editing', request })
 })

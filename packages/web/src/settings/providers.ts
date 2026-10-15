@@ -569,7 +569,10 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       // Automatic refresh stays silent unless the user explicitly joins it.
       if (!current.signal.aborted && refreshingUsage.value[provider.id]?.[accountId] === 'manual') {
         usageFailures.value[provider.id] ??= {}
-        usageFailures.value[provider.id]![accountId] = shownError(error)
+        // The vendor's own words, as they came (`localization.md` § Text from the backend).
+        usageFailures.value[provider.id]![accountId] = error instanceof ApiError && error.code === 'quota_unavailable'
+          ? { message: error.message, requestId: error.requestId }
+          : shownError(error)
         // The account's line shows it, wherever its windows show; no toast.
         reportError(t('providers.usageFailed'), error)
       }

@@ -4,7 +4,7 @@ import { computed, onMounted, ref } from 'vue'
 import { z } from 'zod'
 import SettingsSkills from './SettingsSkills.vue'
 import type { AddSourceAnswer, SettingsSkillDraft, SettingsSkillSource } from './types'
-import { errorMessage, PluginCallError, usePage, type HeadlineText } from '@demicodes/plugin-sdk'
+import { formatBytes, PluginCallError, usePage, type HeadlineText } from '@demicodes/plugin-sdk'
 import {
   addedSourceSchema,
   skillsStateSchema,
@@ -12,7 +12,9 @@ import {
   type CheckUpdates,
   type SetEnabled,
   type SetSourceEnabled,
+  type Failure,
   type SourceCall,
+  type Skipped,
 } from './generated/plugin'
 
 /**
@@ -30,16 +32,49 @@ const page = usePage()
 const plugin = page.plugin
 const state = plugin.state(skillsStateSchema)
 
+/**
+ * Why the last fetch failed, in the page's words (`localization.md` § Text
+ * from the backend): one of Demi's limits or finds, or git's or the
+ * system's own words, as they came.
+ */
+function fetchFailure(failure: Failure): string {
+  const problem = failure.problem
+  switch (problem?.code) {
+    case 'repository_too_large':
+    case 'files_too_large':
+      return t(`problems.fetch.${problem.code}`, { limit: formatBytes(problem.limitBytes) })
+    case 'too_many_skills':
+      return t('problems.fetch.too_many_skills', { limit: problem.limit })
+    case 'no_commit':
+    case 'no_skill':
+      return t(`problems.fetch.${problem.code}`)
+    case 'failed':
+    case undefined:
+      return failure.message
+  }
+}
+
+/** Why a SKILL.md is not a skill, in the page's words; its English for one recorded before codes were. */
+function skipReason(skipped: Skipped): string {
+  const problem = skipped.problem
+  if (!problem) {
+    return skipped.reason
+  }
+  return problem.code === 'too_large'
+    ? t('problems.skip.too_large', { limit: formatBytes(problem.limitBytes) })
+    : t(`problems.skip.${problem.code}`)
+}
+
 const sources = computed<SettingsSkillSource[]>(() =>
   (state.value?.sources ?? []).map((source) => ({
     id: source.id,
     origin: source.origin,
     commit: source.commit ?? undefined,
     fetching: source.fetching,
-    failure: source.failure ?? undefined,
+    failure: source.failure ? { at: source.failure.at, message: fetchFailure(source.failure) } : undefined,
     updateAvailable: source.updateAvailable,
     skills: source.skills.map((skill) => ({ ...skill, takenBy: skill.takenBy ?? undefined })),
-    skipped: source.skipped,
+    skipped: source.skipped.map((skipped) => ({ path: skipped.path, reason: skipReason(skipped) })),
   })),
 )
 
@@ -63,16 +98,23 @@ function change(method: string, params: SourceCall | SetEnabled | SetSourceEnabl
   )
 }
 
-/** The refusals that are about the origin typed, which the dialog says under its field (`skills.md` § The page). */
-const ORIGIN_REFUSALS = ['invalid_origin', 'source_exists']
+/**
+ * The refusals that are about the origin typed, which the dialog says under
+ * its field (`skills.md` § The page), in the page's words.
+ */
+const ORIGIN_REFUSALS = new Map<string, (origin: string) => string>([
+  ['invalid_origin', () => t('refusals.invalid_origin')],
+  ['source_exists', (origin) => t('refusals.source_exists', { origin })],
+])
 
 async function add(draft: SettingsSkillDraft): Promise<AddSourceAnswer> {
   try {
     await plugin.call('add_source', { origin: draft.origin } satisfies AddSource, addedSourceSchema)
     return { kind: 'added' }
   } catch (error) {
-    if (error instanceof PluginCallError && ORIGIN_REFUSALS.includes(error.reason)) {
-      return { kind: 'refused', message: errorMessage(error) }
+    const refusal = error instanceof PluginCallError ? ORIGIN_REFUSALS.get(error.reason) : undefined
+    if (refusal) {
+      return { kind: 'refused', message: refusal(draft.origin.trim()) }
     }
     page.errors.report(t('failures.add'), error)
     return { kind: 'failed' }

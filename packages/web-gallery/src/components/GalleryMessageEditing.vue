@@ -98,11 +98,11 @@ const editHost: MessageEditHost = {
       }
     }
     if (outcome.value === 'reject') {
-      throw new EditRejectedError('The conversation changed. Exit editing and reopen the message.')
+      throw new EditRejectedError({ code: 'edit_stale', reason: 'The conversation changed. Open the message again to edit it.' })
     }
     const index = session.blocks.findIndex((block) => block.id === request.targetBlockId)
     if (index < 0 || request.version.revision !== revision.value) {
-      throw new EditRejectedError('The conversation changed. Reopen the message to edit it.')
+      throw new EditRejectedError({ code: 'edit_stale', reason: 'The conversation changed. Open the message again to edit it.' })
     }
     session.blocks = [
       ...session.blocks.slice(0, index),

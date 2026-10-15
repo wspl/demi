@@ -96,7 +96,8 @@
       "document": "ドキュメント"
     },
     "shellFallback": "シェルコマンドを実行",
-    "turnFailed": "ターンが失敗しました",
+    "turnFailed": "ターンが失敗しました。",
+    "failureResets": "{failure}{reset}されます。",
     "work": {
       "ran": "{count} 件のコマンドを実行",
       "checked": "{count} 件のコマンドを確認",

@@ -30,7 +30,8 @@ export interface Text<Schema extends object> {
   t(key: TextKey<Schema>, named: NamedValue, plural: number): string
   /**
    * The text at `key`, a key composed at run time such as an error code's,
-   * filled with `named`; null when the catalogue has none.
+   * filled with `named`, its plural form chosen by a numeric `count` among
+   * them; null when the catalogue has none.
    */
   find(key: string, named?: NamedValue): string | null
 }
@@ -132,9 +133,23 @@ export function defineText<Schema extends object>(scope: string, catalogue: Cata
     find(key, named = {}) {
       const { global } = page()
       const path = `${scope}.${key}`
-      return global.te(path) ? global.t(path, named) : null
+      if (!global.te(path)) {
+        return null
+      }
+      return typeof named.count === 'number' ? global.t(path, named, named.count) : global.t(path, named)
     },
   }
+}
+
+/**
+ * The text at `path` among every package's, `plugins.skills.permissions.…`,
+ * filled with `named`; null when no catalogue has it. For a text whose
+ * package the caller does not know, as a plugin's category, which the plugin
+ * words under its own id.
+ */
+export function findText(path: string, named: NamedValue = {}): string | null {
+  const { global } = page()
+  return global.te(path) ? global.t(path, named) : null
 }
 
 /**

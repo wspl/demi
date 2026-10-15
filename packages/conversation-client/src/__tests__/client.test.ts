@@ -44,7 +44,7 @@ for (const outcome of ['rejected', 'error', 'closed', 'disconnected'] as const) 
     const h = harness()
     const result = h.client.submit([{ type: 'text', text: 'keep the draft' }]).catch((error: unknown) => error)
     if (outcome === 'rejected') {
-      h.receive({ type: 'rejected', command: 'send', reason: 'The conversation is archived' })
+      h.receive({ type: 'rejected', command: 'send', code: 'conversation_archived', reason: 'The conversation is archived' })
     } else if (outcome === 'error') {
       h.receive({ type: 'error', message: 'invalid frame', code: 'invalid_frame' })
     } else if (outcome === 'closed') {
@@ -108,7 +108,7 @@ for (const ending of ['rejected', 'disconnected'] as const) {
     }
     const result = h.client.editAndSend(request).catch((error: unknown) => error)
     if (ending === 'rejected') {
-      h.receive({ type: 'edit_result', operationId: 'edit-1', outcome: { status: 'rejected', reason: 'stale' } })
+      h.receive({ type: 'edit_result', operationId: 'edit-1', outcome: { status: 'rejected', code: 'edit_stale', reason: 'stale' } })
     } else {
       h.client.disconnect()
     }
@@ -167,7 +167,7 @@ test('a steer resolves on its own accepted result and fails on a rejected one', 
   const h = harness()
   const accepted = h.client.steer([{ type: 'text', text: 'also this' }], 'steer-1')
   const rejected = h.client.steer([{ type: 'text', text: 'and this' }], 'steer-2').catch((error: unknown) => error)
-  h.receive({ type: 'steer_result', steerId: 'steer-2', outcome: { status: 'rejected', reason: 'No session is open on this connection' } })
+  h.receive({ type: 'steer_result', steerId: 'steer-2', outcome: { status: 'rejected', code: 'no_session', reason: 'No session is open on this connection' } })
   h.receive({ type: 'steer_result', steerId: 'steer-1', outcome: { status: 'accepted' } })
   await accepted
   expect(await rejected).toMatchObject({ message: 'No session is open on this connection' })
@@ -314,8 +314,8 @@ test('retry, resume and compact resolve when their action ends, and a busy sessi
   const resume = h.client.resume()
   const compact = h.client.compact().catch((error: unknown) => error)
   h.receive({ type: 'phase', phase: 'running' })
-  h.receive({ type: 'rejected', command: 'compact', reason: 'Session is busy (running)' })
-  expect(await compact).toMatchObject({ message: 'Session is busy (running)' })
+  h.receive({ type: 'rejected', command: 'compact', code: 'session_busy', reason: 'Session is busy (running)' })
+  expect(await compact).toMatchObject({ message: 'Session is busy (running)', code: 'session_busy' })
   h.receive({ type: 'phase', phase: 'idle' })
   await resume
   expect(h.sent).toEqual([{ type: 'retry' }, { type: 'resume' }, { type: 'compact' }])
