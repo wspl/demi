@@ -146,9 +146,8 @@ order:
   application supplies, not the user's words; the instructions block is the
   one that holds instructions to follow, the user's personal ones and the
   project's `AGENTS.md` or `CLAUDE.md` files, which every agent reads, and
-  `.demi/instructions.md`, which Demi alone reads, so instructions the user
-  wants Demi to keep for a project go in one of them
-  ([Instructions](instructions.md)). A file the user attaches arrives as an
+  `.demi/instructions.md`, which Demi alone reads; the model writes to one
+  only when the user asks ([Instructions](instructions.md)). A file the user attaches arrives as an
   `<attachment>` tag naming its path on the Host.
 
 A rule belongs here only when its moment arises during ordinary work rather
