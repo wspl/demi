@@ -1,5 +1,12 @@
-import { expect, test } from 'bun:test'
-import { formatDay, formatModified, formatMoment, formatPast, formatReset, formatUntil } from '../dates'
+import { afterEach, expect, test } from 'bun:test'
+import { createPageI18n } from '../../i18n/text'
+import type { Language } from '../../i18n/languages'
+import { formatAge, formatDay, formatModified, formatMoment, formatPast, formatReset, formatSpan, formatUntil } from '../dates'
+
+// The page speaks English unless a test says otherwise.
+afterEach(() => {
+  createPageI18n('en')
+})
 
 // When a usage window resets, as Settings and the context card both say it
 // (`usage-and-quota.md` § What a snapshot says), against a fixed clock in the
@@ -84,4 +91,38 @@ test.each([
   { scenario: 'a moment the clock has passed', at: inMs(-SECOND), wording: 'in a few seconds' },
 ])('a time to come of $scenario reads "$wording"', ({ at, wording }) => {
   expect(formatUntil(at, now)).toBe(wording)
+})
+
+// The duration words of the thinking label, the command time tag, the agent
+// status bar and the reset times: each unit floored, the seconds never shown
+// from the hour on.
+test.each([
+  { scenario: 'a moment', ms: 0, wording: '0s' },
+  { scenario: 'under a minute', ms: 42_900, wording: '42s' },
+  { scenario: 'on the minute', ms: 180_000, wording: '3m' },
+  { scenario: 'minutes and seconds', ms: 134_900, wording: '2m 14s' },
+  { scenario: 'an hour and seconds', ms: 3_659_000, wording: '1h' },
+  { scenario: 'hours and minutes', ms: 3_930_000, wording: '1h 5m' },
+  { scenario: 'more than a day', ms: 97_200_000, wording: '27h' },
+  { scenario: 'a clock set back', ms: -5_000, wording: '0s' },
+])('a span of $scenario reads "$wording"', ({ ms, wording }) => {
+  expect(formatSpan(ms)).toBe(wording)
+})
+
+// Each language says a date and a time as Intl says them in it, and the
+// compact forms Intl has no words for from its catalogue
+// (`localization.md` § Where the text lives).
+test.each<{ language: Language; age: string; day: string; past: string; reset: string; span: string }>([
+  { language: 'en', age: '2h', day: 'October 7, 2026', past: '5 minutes ago', reset: 'Resets in 3h 42m', span: '2m 14s' },
+  { language: 'zh-Hans', age: '2 小时', day: '2026年10月7日', past: '5分钟前', reset: '3 小时 42 分钟后重置', span: '2 分 14 秒' },
+  { language: 'zh-Hant', age: '2 小時', day: '2026年10月7日', past: '5分鐘前', reset: '3 小時 42 分鐘後重設', span: '2 分 14 秒' },
+  { language: 'ja', age: '2 時間', day: '2026年10月7日', past: '5 分前', reset: '3 時間 42 分後にリセット', span: '2 分 14 秒' },
+  { language: 'ko', age: '2시간', day: '2026년 10월 7일', past: '5분 전', reset: '3시간 42분 후 재설정', span: '2분 14초' },
+])('in $language an age reads "$age" and a day "$day"', ({ language, age, day, past, reset, span }) => {
+  createPageI18n(language)
+  expect(formatAge(inMs(-2 * HOUR - MINUTE), now)).toBe(age)
+  expect(formatDay(at(2026, 9, 7, 14, 0))).toBe(day)
+  expect(formatPast(inMs(-5 * MINUTE), now)).toBe(past)
+  expect(formatReset(inMs(3 * HOUR + 42 * MINUTE), now)).toBe(reset)
+  expect(formatSpan(134_900)).toBe(span)
 })

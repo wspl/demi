@@ -5,6 +5,7 @@ import { defineComponent, h } from 'vue'
 import { FileDiff } from '@lucide/vue'
 import { ICON_PX, definePage, type PanelKind } from '@demicodes/plugin-sdk'
 import { PLUGIN } from './generated/plugin'
+import { t } from './locales/text'
 import ChangeBadge from './ChangeBadge.vue'
 import ChangeTab from './ChangeTab.vue'
 import { changeDataSchema, firstChangeData, showCommit, showRequestEdit, type ChangeData } from './data'
@@ -17,7 +18,7 @@ const ChangeMark = defineComponent({
 export const changeKind: PanelKind<ChangeData> = {
   kind: 'change',
   schema: changeDataSchema,
-  title: () => 'Change',
+  title: () => t('kind.title'),
   mark: ChangeMark,
   content: ChangeTab,
   badge: ChangeBadge,

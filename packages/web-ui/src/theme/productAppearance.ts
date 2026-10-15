@@ -1,3 +1,4 @@
+import { t } from '../locales/text'
 import type { TitleText } from '../ui/ui-text'
 
 /** The selected product appearance; gallery presets consume the same axes. */
@@ -10,33 +11,35 @@ export const productAppearance = {
 
 /** The tones a user can pick in settings. */
 export type ProductTone = 'ink' | 'warm'
-export const PRODUCT_TONES: readonly {
-  id: ProductTone;
-  label: TitleText
-}[] = [
-  { id: 'ink', label: 'Ink' },
-  { id: 'warm', label: 'Warm' },
-]
+export const PRODUCT_TONES: readonly ProductTone[] = ['ink', 'warm']
+
+/** A tone's name, as Settings › General says it. */
+export function toneName(tone: ProductTone): TitleText {
+  return t(`appearance.tones.${tone}`)
+}
 
 export type ProductAccent = 'blue' | 'purple' | 'pink' | 'red' | 'orange' | 'green' | 'teal'
 
 export interface ProductAccentOption {
   id: ProductAccent
-  name: string
   /** The swatch shown in a picker; the theme derives the working colours from the hue. */
   swatch: string
 }
 
-/** Seven hues that work as an accent on a neutral surface; yellows and cyans do not. */
 export const PRODUCT_ACCENTS: readonly ProductAccentOption[] = [
-  { id: 'blue', name: 'Blue', swatch: 'oklch(65% 0.19 255)' },
-  { id: 'purple', name: 'Purple', swatch: 'oklch(65% 0.19 295)' },
-  { id: 'pink', name: 'Pink', swatch: 'oklch(65% 0.19 350)' },
-  { id: 'red', name: 'Red', swatch: 'oklch(65% 0.19 25)' },
-  { id: 'orange', name: 'Orange', swatch: 'oklch(65% 0.19 55)' },
-  { id: 'green', name: 'Green', swatch: 'oklch(65% 0.19 150)' },
-  { id: 'teal', name: 'Teal', swatch: 'oklch(65% 0.19 190)' },
+  { id: 'blue', swatch: 'oklch(65% 0.19 255)' },
+  { id: 'purple', swatch: 'oklch(65% 0.19 295)' },
+  { id: 'pink', swatch: 'oklch(65% 0.19 350)' },
+  { id: 'red', swatch: 'oklch(65% 0.19 25)' },
+  { id: 'orange', swatch: 'oklch(65% 0.19 55)' },
+  { id: 'green', swatch: 'oklch(65% 0.19 150)' },
+  { id: 'teal', swatch: 'oklch(65% 0.19 190)' },
 ]
+
+/** The accents with their names in the page's language, as a swatch picker lists them. */
+export function productAccentOptions(): { id: ProductAccent; name: TitleText; swatch: string }[] {
+  return PRODUCT_ACCENTS.map((accent) => ({ ...accent, name: t(`appearance.accents.${accent.id}`) }))
+}
 
 export const DEFAULT_ACCENT: ProductAccent = 'blue'
 

@@ -48,7 +48,7 @@ import type { PlaceholderText } from '../ui/ui-text'
 import { usePhone } from '../ui/phone'
 import {
   DEFAULT_SEND_WHILE_RUNNING,
-  SEND_WAY_LABELS,
+  sendWayLabel,
   chooseSendWay,
   clickAsksOtherWay,
   otherWay,
@@ -404,11 +404,11 @@ const compactUnavailable = computed(() => {
 const working = computed(() => props.running || props.compacting)
 const submitLabel = computed(() => shownEdit.value
   ? shownEdit.value.phase === 'uncertain' ? 'Retry' : 'Save and resend'
-  : working.value ? SEND_WAY_LABELS[props.sendWhileRunning] : 'Send',
+  : working.value ? sendWayLabel(props.sendWhileRunning) : 'Send',
 )
 /** The send button's tip: while the agent works, also the key that sends the other way. */
 const submitTip = computed(() => !shownEdit.value && working.value
-  ? `${submitLabel.value} · ${otherWayKeys()} to ${SEND_WAY_LABELS[otherWay(props.sendWhileRunning)].toLowerCase()}`
+  ? `${submitLabel.value} · ${otherWayKeys()} to ${sendWayLabel(otherWay(props.sendWhileRunning)).toLowerCase()}`
   : submitLabel.value,
 )
 

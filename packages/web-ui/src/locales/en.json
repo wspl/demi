@@ -1,0 +1,94 @@
+{
+  "settings": {
+    "general": {
+      "title": "General",
+      "description": "Language, look and messages.",
+      "appearance": "Appearance",
+      "language": "Language",
+      "system": "System",
+      "theme": "Theme",
+      "light": "Light",
+      "dark": "Dark",
+      "tone": "Tone",
+      "accent": "Accent",
+      "textSize": "Message text size",
+      "messages": "Messages",
+      "sendWhileRunning": "Enter while the agent works",
+      "sendWhileRunningDescription": "Steer sends to the running turn. Queue waits for it to end. {keys} does the other.",
+      "resumeAtRetry": "Resume after a usage limit resets",
+      "resumeAtRetryDescription": "Continues a turn that stopped at a usage limit when the limit resets.",
+      "preview": {
+        "title": "Preview",
+        "firstLine": "Text at this size,",
+        "secondLine": "line after line.",
+        "button": "Button"
+      }
+    }
+  },
+  "appearance": {
+    "tones": {
+      "ink": "Ink",
+      "warm": "Warm"
+    },
+    "accents": {
+      "blue": "Blue",
+      "purple": "Purple",
+      "pink": "Pink",
+      "red": "Red",
+      "orange": "Orange",
+      "green": "Green",
+      "teal": "Teal"
+    }
+  },
+  "sendWay": {
+    "steer": "Steer",
+    "queue": "Queue"
+  },
+  "dates": {
+    "fewSecondsAgo": "a few seconds ago",
+    "inFewSeconds": "in a few seconds",
+    "age": {
+      "now": "now",
+      "minutes": "{count}m",
+      "hours": "{count}h",
+      "days": "{count}d",
+      "weeks": "{count}w"
+    },
+    "span": {
+      "seconds": "{seconds}s",
+      "minutes": "{minutes}m",
+      "minutesSeconds": "{minutes}m {seconds}s",
+      "hours": "{hours}h",
+      "hoursMinutes": "{hours}h {minutes}m"
+    },
+    "retry": {
+      "Resets": {
+        "today": "Resets at {clock}",
+        "weekday": "Resets {weekday} at {clock}",
+        "day": "Resets {day} at {clock}"
+      },
+      "Resume": {
+        "today": "Resume at {clock}",
+        "weekday": "Resume {weekday} at {clock}",
+        "day": "Resume {day} at {clock}"
+      },
+      "resetting": {
+        "today": "resetting at {clock}",
+        "weekday": "resetting {weekday} at {clock}",
+        "day": "resetting {day} at {clock}"
+      }
+    },
+    "reset": {
+      "now": "Resets now",
+      "underMinute": "Resets in <1m",
+      "in": "Resets in {span}",
+      "weekday": "Resets {weekday} {clock}",
+      "day": "Resets {day}"
+    }
+  },
+  "errors": {
+    "conversation_archived": "This conversation is archived. Restore it first.",
+    "email_taken": "Another account uses this email address.",
+    "saved_full": "A conversation keeps up to {limit} messages saved for later."
+  }
+}
