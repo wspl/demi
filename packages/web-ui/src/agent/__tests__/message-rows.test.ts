@@ -696,7 +696,8 @@ const thought = (id: string, body: string, run = id): Block => ({ type: 'thinkin
 test.each([
   ['thinking before the answer', [thought('k-1', 'The folder is the workspace.'), text('a-2', 'Three files.')], 'work:k-1 [k-1]'],
   ['thinking before a call', [thought('k-1', 'List the folder first.'), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [k-1 c-1]'],
-  ['two thoughts before the answer', [thought('k-1', 'The folder is the workspace.'), thought('k-2', 'Count its files.', 'k-1'), text('a-2', 'Three files.')], 'work:k-2'],
+  // Thinking blocks next to each other are one step (`runtime.md` § Work groups).
+  ['two thoughts before the answer', [thought('k-1', 'The folder is the workspace.'), thought('k-2', 'Count its files.', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [k-1]'],
   ['textless thinking before a call', [thought('k-1', ''), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [c-1]'],
   ['white-space-only thinking before a call', [thought('k-1', ' \n'), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [c-1]'],
 ] as const)('a turn with %s shows the same rows after the page is reopened', (_name, turn, run) => {
