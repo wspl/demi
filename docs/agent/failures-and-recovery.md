@@ -311,9 +311,12 @@ resume when their tree is next restored, such as when the user opens the
 conversation, as they always do.
 
 The shutdown tells its interruptions from a crash's by a mark in the control
-records, one per root, written in the same step that saves the root's
-`interrupted` record, so a shutdown cut short, such as by a deployment that
-stops waiting, still leaves a mark for each root it interrupted
+records, one per root, written before it aborts the root's running turn, so
+a shutdown cut short, such as by a deployment that stops waiting, still
+leaves a mark for each root it began to interrupt. At start a marked root
+resumes when its last turn ended interrupted, whichever record says so: the
+one the shutdown wrote, or the one written at open when the shutdown was cut
+short before saving it
 ([Startup and shutdown](../backend/backend.md#startup-and-shutdown)). At
 start, after the shards are up, the backend resumes the marked roots in the
 background, removing each mark before it acts on it; the start waits for
