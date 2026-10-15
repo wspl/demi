@@ -4,7 +4,7 @@
 use bytes::Bytes;
 use demi_provider_common::{
     EntriesOf, InferenceItem, InferenceRequest, MediaBytes, Medium, ProviderEvent, RequestBlock,
-    ResultPart, UserPart,
+    ResultPart, UserPart, testing::every_vendor_accepts,
 };
 use demi_shared_types::{B64Bytes, BlobRef, TokenUsage};
 use serde_json::{Value, json};
@@ -122,6 +122,8 @@ async fn a_new_process_resumes_the_blocks_with_the_clis_entries_as_they_were_and
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
     let shot = image(b"shot");
+    // Codex joins its call id and item id with `|`, which Claude refuses.
+    let codex_id = "call_a1b2c3|fc_68e0a1".to_owned();
     let items = vec![
         // The user's message, which Demi wrote.
         InferenceItem::UserMessage {
@@ -158,12 +160,12 @@ async fn a_new_process_resumes_the_blocks_with_the_clis_entries_as_they_were_and
         },
         InferenceItem::ToolUse {
             model_id: "gpt-5.5".into(),
-            tool_use_id: "call_a1b2c3".into(),
+            tool_use_id: codex_id.clone(),
             tool_name: "shell_exec".into(),
             input: json!({ "script": "rm x" }),
         },
         InferenceItem::ToolResult {
-            tool_use_id: "call_a1b2c3".into(),
+            tool_use_id: codex_id.clone(),
             output: vec![ResultPart::Text("denied".into())],
             is_error: true,
         },
@@ -285,12 +287,12 @@ async fn a_new_process_resumes_the_blocks_with_the_clis_entries_as_they_were_and
         written("assistant", gpt(json!({ "type": "text", "text": "Listing." }))),
         written(
             "assistant",
-            gpt(json!({ "type": "tool_use", "id": "call_a1b2c3", "name": "mcp__main__shell_exec", "input": { "script": "rm x" } })),
+            gpt(json!({ "type": "tool_use", "id": "call_a1b2c3_fc_68e0a1", "name": "mcp__main__shell_exec", "input": { "script": "rm x" } })),
         ),
         written(
             "user",
             json!({ "role": "user", "content": [{
-                "type": "tool_result", "tool_use_id": "call_a1b2c3",
+                "type": "tool_result", "tool_use_id": "call_a1b2c3_fc_68e0a1",
                 "content": [{ "type": "text", "text": "denied" }], "is_error": true,
             }] }),
         ),
@@ -301,6 +303,16 @@ async fn a_new_process_resumes_the_blocks_with_the_clis_entries_as_they_were_and
     ];
     let unchained_session: Vec<Value> = session.iter().map(unchained).collect();
     assert_eq!(unchained_session, expected);
+    // Every call and result names an id the vendor accepts, Codex's too.
+    let ids: Vec<&str> = session
+        .iter()
+        .flat_map(|entry| entry["message"]["content"].as_array().into_iter().flatten())
+        .filter_map(|block| block["id"].as_str().or(block["tool_use_id"].as_str()))
+        .collect();
+    assert_eq!(ids.len(), 6);
+    for id in ids {
+        assert!(every_vendor_accepts(id), "{id}");
+    }
     // The CLI's entries keep their ids.
     let ids: Vec<&Value> = session[2..8].iter().map(|entry| &entry["uuid"]).collect();
     assert_eq!(

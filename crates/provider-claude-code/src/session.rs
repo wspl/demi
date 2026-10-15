@@ -17,7 +17,7 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use bytes::Bytes;
 use demi_provider_common::{
-    InferenceItem, MediaBytes, Medium, RequestBlock, ResultPart, UserPart,
+    InferenceItem, MediaBytes, Medium, RequestBlock, ResultPart, UserPart, wire::messages,
 };
 use demi_shared_types::{B64Bytes, BlobRef};
 use serde_json::{Map, Value, json};
@@ -428,7 +428,7 @@ fn written_as(item: &InferenceItem, written: &[Value], pending: &[Value]) -> Opt
                 model_id,
                 json!({
                     "type": "tool_use",
-                    "id": tool_use_id,
+                    "id": messages::tool_use_id(tool_use_id),
                     "name": format!("mcp__{MCP_SERVER}__{tool_name}"),
                     "input": input,
                 }),
@@ -441,7 +441,7 @@ fn written_as(item: &InferenceItem, written: &[Value], pending: &[Value]) -> Opt
         } => {
             let mut result = json!({
                 "type": "tool_result",
-                "tool_use_id": tool_use_id,
+                "tool_use_id": messages::tool_use_id(tool_use_id),
                 "content": result_content(output),
             });
             if *is_error {

@@ -2,8 +2,25 @@
 //! that read it share: the Anthropic API's own, and Claude Code, whose CLI
 //! passes the API's stream events through (`claude-code.md` § Reading).
 
+use std::borrow::Cow;
+
 use demi_shared_types::TokenUsage;
 use serde::Deserialize;
+
+/// A stored tool call id as the Messages API takes a tool use's and its
+/// result's, which allows letters, digits, `_` and `-`: each other
+/// character becomes `_`, so Codex's `call_7Qm…|fc_68e…` goes as
+/// `call_7Qm…_fc_68e…` (`runtime.md` § Replay). It follows from the stored
+/// id alone, so every request sends the same bytes; an id the API allows
+/// goes as it is.
+pub fn tool_use_id(id: &str) -> Cow<'_, str> {
+    let allowed = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '-';
+    if id.chars().all(allowed) {
+        Cow::Borrowed(id)
+    } else {
+        Cow::Owned(id.chars().map(|c| if allowed(c) { c } else { '_' }).collect())
+    }
+}
 
 /// An API call's token counts as one of its events states them. A count the
 /// event leaves out, or states as `null`, is one it does not change.
