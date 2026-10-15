@@ -39,7 +39,11 @@ uuid = { version = "1", features = ["v4"] }
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading"] }
 
 [dev-dependencies]
+demi-command-protocol = { path = "../command-protocol", features = ["testing"] }
 demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
+# The registry's decisions and the native fixture service, for the leases
+# of installed manifests.
+demi-runner-command-packages = { path = "../runner-command-packages", features = ["testing"] }
 demi-runner-jobs = { path = ".", features = ["testing"] }
 rmp-serde = "1.3"
 serde.workspace = true

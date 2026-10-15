@@ -1,14 +1,14 @@
 //! What the runner keeps through a connection loss (`runner.md` § Command
-//! lifetime): its jobs with their directories and execution contexts, the
-//! installed manifest, and the requests its jobs' commands make of the
-//! backend. A connection serves them while it lasts; without one, the jobs
-//! run on, their messages go nowhere, and after `UNREACHED_GRACE` the runner
-//! stops them and its services, keeping their ends for the next connection.
+//! lifetime): its jobs with their directories and execution contexts, and
+//! the requests its jobs' commands make of the backend. A connection serves
+//! them while it lasts; without one, the jobs run on, their messages go
+//! nowhere, and after `UNREACHED_GRACE` the runner stops them and its
+//! services, keeping their ends for the next connection.
 
 use std::sync::Arc;
 
 use demi_runner_jobs::{
-    commands::contexts::{ContextTable, Installation, Installed},
+    commands::contexts::ContextTable,
     connection::{ConnectionHandle, Ended, Live, Reach, Relay, Request},
     job_directories::JobDirectories,
     tasks::{Commands, JobConfig, JobTable, WorkId},
@@ -31,11 +31,6 @@ pub struct Kept {
     pub jobs: JobTable,
     pub directories: Arc<JobDirectories>,
     pub contexts: ContextTable,
-    /// The manifest jobs see, and the leases of the one installed.
-    pub installation: watch::Sender<Installation>,
-    pub installed: Option<Installed>,
-    /// Numbers manifest installs, so only the latest one counts.
-    pub installs: u64,
     pub relay: Relay,
     pub watches: JoinSet<Ended>,
     /// How the jobs' commands reach the backend.
@@ -73,7 +68,6 @@ impl Kept {
         let directories = JobDirectories::open(registered.jobs.clone()).await;
         let (reach, reaching) = watch::channel(Reach::Away);
         let (handle, requests) = ConnectionHandle::new(reaching);
-        let (installation, installations) = watch::channel(Installation::Absent);
         let (jobs_output, forwarded) = mpsc::channel(OUTPUT_QUEUE);
         let output = watch::Sender::new(None);
         let forwarder = tokio::spawn(forward(forwarded, output.subscribe()));
@@ -86,7 +80,6 @@ impl Kept {
             commands: Some(Commands {
                 dispatcher: registered.dispatcher.clone(),
                 connection: handle.clone(),
-                installation: installations,
                 paths: registered.paths.clone(),
                 services: registered.services.clone(),
                 endpoint: registered.endpoint.clone(),
@@ -97,9 +90,6 @@ impl Kept {
             jobs,
             directories,
             contexts: ContextTable::new(registered.index.clone()),
-            installation,
-            installed: None,
-            installs: 0,
             relay: Relay::default(),
             watches: JoinSet::new(),
             handle,
@@ -253,8 +243,6 @@ impl Kept {
     pub async fn close(&mut self) {
         self.reach.send_replace(Reach::Unreached);
         self.jobs.close().await;
-        self.installation.send_replace(Installation::Absent);
-        self.installed = None;
     }
 }
 

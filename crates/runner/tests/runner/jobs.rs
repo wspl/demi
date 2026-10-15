@@ -1,12 +1,18 @@
 //! Shell jobs as the backend runs them (`runner.md` § Shell jobs): large
-//! output through functions and compound pipelines drains, and a kill ends a
-//! job that blocks in a utility.
+//! output through functions and compound pipelines drains, a kill ends a
+//! job that blocks in a utility, and each job runs with the manifest its
+//! start names (`commands.md` § Dispatch the same declaration on each
+//! surface).
 
 use std::{collections::BTreeMap, time::Duration};
 
-use demi_runner_protocol::wire::{Inbound, JobFileChange, JobPathChange, Outbound, OutputStream, Signal};
+use demi_runner_protocol::{
+    manifest::Manifest,
+    wire::{Inbound, JobFileChange, JobPathChange, Outbound, OutputStream, Signal},
+};
+use serde_json::json;
 
-use crate::{Host, start_job, start_job_in};
+use crate::{Host, context, start_job, start_job_in};
 
 #[tokio::test]
 async fn functions_and_compound_pipelines_drain_large_output_and_here_documents() {
@@ -63,6 +69,88 @@ async fn cancellation_terminates_a_blocking_native_builtin() {
                 break;
             }
         }
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// A manifest whose one command is `name`.
+fn manifest_of(name: &str) -> Manifest {
+    let tree = json!({
+        "name": name, "summary": "Fixture command", "kind": "rpc",
+        "input": {"type": "object", "properties": {}}
+    });
+    Manifest::build([serde_json::from_value(tree).unwrap()], []).unwrap()
+}
+
+/// Starts `script` as job `job` with the manifest of `hash`.
+async fn start_declared(host: &mut Host, job: &str, hash: &str, script: &str) {
+    let cwd = host.home().to_string_lossy().into_owned();
+    host.send(Inbound::JobStart {
+        manifest_hash: Some(hash.into()),
+        viewable: None,
+        context: context(),
+        job_id: job.into(),
+        script: script.into(),
+        cwd,
+        env: BTreeMap::new(),
+        stdin: None,
+        stdout: None,
+    })
+    .await;
+}
+
+/// A conversation's root and its subagent, whose manifests differ, start a
+/// command at the same moment on one Host: the runner installs both, and
+/// each job runs with its own, whichever came last. A start naming a
+/// manifest the connection never installed fails before its script runs.
+/// Cost: one runner process, about a second.
+#[tokio::test]
+async fn jobs_started_at_once_each_run_with_the_manifest_their_start_names() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        let root = manifest_of("root-only");
+        let child = manifest_of("child-only");
+        for (job, manifest, script) in [
+            ("root", &root, "root-only --help >/dev/null && printf root"),
+            ("child", &child, "child-only --help >/dev/null && printf child"),
+        ] {
+            host.send(Inbound::Manifest {
+                manifest: serde_json::to_value(manifest).unwrap(),
+            })
+            .await;
+            start_declared(&mut host, job, &manifest.hash, script).await;
+        }
+        let unknown = manifest_of("never-sent");
+        start_declared(&mut host, "unknown", &unknown.hash, "printf ran").await;
+        let mut outputs = BTreeMap::<String, Vec<u8>>::new();
+        let mut exits = BTreeMap::new();
+        while exits.len() < 3 {
+            match host.frame().await {
+                Outbound::JobOutput { job_id, bytes, .. } => {
+                    outputs.entry(job_id).or_default().extend(bytes.0);
+                }
+                Outbound::JobExit {
+                    job_id,
+                    exit_code,
+                    spawn_error,
+                    ..
+                } => {
+                    exits.insert(job_id, (exit_code, spawn_error.and_then(|error| error.detail)));
+                }
+                other => panic!("unexpected {other:?}"),
+            }
+        }
+        assert_eq!(exits["root"], (Some(0), None), "{outputs:?}");
+        assert_eq!(exits["child"], (Some(0), None), "{outputs:?}");
+        assert_eq!(outputs["root"], b"root");
+        assert_eq!(outputs["child"], b"child");
+        assert_eq!(
+            exits["unknown"],
+            (None, Some("job manifest is not installed".to_owned()))
+        );
+        assert!(!outputs.contains_key("unknown"));
         host.close().await;
     })
     .await
