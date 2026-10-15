@@ -308,7 +308,7 @@ hosts it reaches:
 | `demi conversation move <project>` | Moves this conversation into a project, by name or id | `conversation.organize`, and the project's host when the conversation may not reach it |
 | `demi conversation move --out` | Moves it out of its project, to the same directory on the same Host | `conversation.organize` |
 | `demi conversation create-project <name> [<directory>]` | Makes a project of a directory on the primary Host, its shell's directory by default, and moves this conversation into it | `conversation.organize` |
-| `demi host move <host> <directory>` | Makes `<host>` where this conversation runs, in `<directory>`, an absolute path there; the primary Host it leaves is attached. A directory that does not exist when the move applies fails the move, and the agent is told why | The host, when the conversation may not reach it |
+| `demi host move <host> <directory>` | Makes `<host>` where this conversation runs, in `<directory>`, an absolute path there; the primary Host it leaves is attached. The command checks the directory at once and fails, with nothing pending, when the host is offline or the path is no directory there (`/srv/x is not a directory on build-box`) | The host, when the conversation may not reach it |
 | `demi host devices` | Lists the user's paired devices and the Cloud, with their states | none |
 | `demi host install-command [--system linux\|macos\|windows]` | Prints the command that installs the runner on a computer, as Add Device shows it; it holds no credential | none |
 | `demi host pair <code>` | Pairs the computer whose installer shows `<code>` with the user's account and attaches it to this conversation ([Installation, pairing and removal](runner.md#installation-pairing-and-removal)) | The new host, every time |
@@ -508,7 +508,7 @@ touches no conversation's files. This table names every way to a Host:
 | Device access | A [direct channel](direct-channel.md) between the page and a paired device's runner, which carries the page's user streams, file transfers, file text, listings and file watch of the user's conversations on that device, and the relay probes that measure its paths; the [device log](../product/web-api.md#device-log); browsing a paired device's directories to choose a target, and reading
 the [workflows](../agent/subagents.md#workflows-of-a-project) of a directory
 for a new conversation there, with the [file watch](../product/web-api.md#file-watch) that keeps the dialog's listings current; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show | Nothing: the caller must own the device, and its runner must be connected | Not woken |
-| Machine access | Creating a Cloud project; [placing a provider's process](../providers/claude-code.md#where-it-runs) on the user's Cloud; [a Claude Code sign-in](../providers/claude-code.md#accounts-and-sign-in), which runs the CLI's login there | The Cloud's admission; no file gate | Woken; a running reset is waited for |
+| Machine access | Creating a Cloud project; checking the directory of a `demi host move` to the Cloud; [placing a provider's process](../providers/claude-code.md#where-it-runs) on the user's Cloud; [a Claude Code sign-in](../providers/claude-code.md#accounts-and-sign-in), which runs the CLI's login there | The Cloud's admission; no file gate | Woken; a running reset is waited for |
 
 Device access and machine access touch no conversation's files, so they take no
 file gate and check no conversation's binding. Device access reaches a device
