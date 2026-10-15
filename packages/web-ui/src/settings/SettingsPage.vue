@@ -73,11 +73,11 @@ onBeforeUnmount(leaveBar)
 <template>
   <div
     class="mx-auto flex w-full flex-col gap-8"
-    :class="[wide ? 'max-w-none' : 'max-w-2xl', fill ? '@md:h-full @md:min-h-0' : '']"
+    :class="[wide ? 'max-w-none' : 'max-w-2xl', fill ? 'wide:h-full wide:min-h-0' : '']"
   >
-    <header class="select-none" :class="nested ? 'hidden @md:block' : ''">
+    <header class="select-none" :class="nested ? 'hidden wide:block' : ''">
       <!-- In the dialog, its narrow bar goes back; elsewhere, and wide, this button does. -->
-      <div v-if="back" class="-ml-2 mb-2" :class="bar ? 'hidden @md:block' : ''">
+      <div v-if="back" class="-ml-2 mb-2" :class="bar ? 'hidden wide:block' : ''">
         <Button variant="ghost" size="sm" @click="emit('back')">
           <ChevronLeft :size="ICON_PX.in24" />
           {{ back }}
