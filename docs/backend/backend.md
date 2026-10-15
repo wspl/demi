@@ -630,9 +630,10 @@ runs on a Host: commands and Clouds go on, and the next start takes them up
    reaches a tree after its shutdown. Agent turns are
    aborted: a running turn records that its session was shut down, and a
    command it watched keeps running
-   ([Dispose and restore](../agent/runtime.md#dispose-and-restore)); a root
-   turn's record and its mark in `interrupted_turns` are saved in one step,
-   so the next start resumes it however far the shutdown got
+   ([Dispose and restore](../agent/runtime.md#dispose-and-restore)); before
+   it aborts a root's running turn, the shard marks the root in
+   `interrupted_turns`, so the next start resumes it however far the shutdown
+   got
    ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)). Claude
    Code CLI installs are cancelled; the next need starts them again. A Cloud
    boot waiting for its runner ends at once, since the closed listener lets
