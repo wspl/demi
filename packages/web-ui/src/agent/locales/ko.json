@@ -92,6 +92,7 @@
     },
     "connecting": "연결 중",
     "newFile": "새 파일",
+    "moreFiles": "+{count}개 파일",
     "picture": {
       "open": "{name} 크게 열기",
       "play": "{name} 재생"

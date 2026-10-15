@@ -5,7 +5,7 @@ import { useButtonIconSpin } from './button-icon-spin'
 import type { Component } from 'vue'
 import { disabledTooltip } from './disabled'
 import { useOperationControl, type Operation } from './operations'
-import { ICON_PX } from './icon-metrics'
+import { useIconPx } from './icon-metrics'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
 import CornerDot from './CornerDot.vue'
 import type { StatusDotTone } from './StatusDot.vue'
@@ -89,17 +89,21 @@ defineExpose({
   },
 })
 
+const icons = useIconPx()
 const glyphPx = computed(() => {
   if (props.iconSize != null) {
     return props.iconSize
   }
   if (props.size === 'xs') {
-    return ICON_PX.in20
+    return icons.value.in20
+  }
+  if (props.size === 'sm') {
+    return icons.value.in24
   }
   if (props.size === 'lg') {
-    return ICON_PX.in32
+    return icons.value.in32
   }
-  return ICON_PX.in28
+  return icons.value.in28
 })
 </script>
 
@@ -129,6 +133,7 @@ const glyphPx = computed(() => {
       :aria-disabled="unavailable || undefined"
       :aria-busy="loading || running || undefined"
       :data-pressed="!disabled && pressed ? true : undefined"
+      :data-drawn-target="size === 'sm' || size === 'md' || undefined"
       :class="[
         circle ? 'rounded-full' : 'rounded-md',
         blocked && !running ? 'opacity-40' : '',

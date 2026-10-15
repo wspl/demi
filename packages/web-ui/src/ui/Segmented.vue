@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { pressOnKey } from './button-events'
 import { disabledTooltip } from './disabled'
-import { ICON_PX } from './icon-metrics'
+import { useIconPx } from './icon-metrics'
 import { clickedChoice } from './segmented'
 import Tooltip from './Tooltip.vue'
 import type { SentenceText, TitleText } from './ui-text'
@@ -44,6 +44,7 @@ const props = withDefaults(defineProps<{
 })
 
 const model = defineModel<T>({ required: true })
+const icons = useIconPx()
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
 
 const selectedIndex = computed(
@@ -138,9 +139,10 @@ function choose(clicked: T | undefined) {
         :tabindex="disabled ? undefined : index === selectedIndex ? 0 : -1"
         class="relative z-10 inline-flex cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-colors duration-200 ease-out"
         :class="[
+          // A phone draws either size at its segment's height (`base.css`).
           iconOnly
-            ? (size === 'sm' ? 'size-5' : 'size-6')
-            : (size === 'sm' ? 'px-1.5 py-0.5 text-[11px] leading-4' : 'h-6 px-2 text-[12px]'),
+            ? (size === 'sm' ? 'size-5 phone:size-segment' : 'size-segment')
+            : (size === 'sm' ? 'px-1.5 py-0.5 text-control-xs leading-4 phone:h-segment phone:px-3 phone:py-0' : 'h-segment px-2 text-control-sm phone:px-3'),
           model === option.value ? 'text-fg-emphasis' : 'text-fg-subtle hover:text-fg',
         ]"
         @click.stop="choose(option.value)"
@@ -150,7 +152,7 @@ function choose(clicked: T | undefined) {
         <component
           :is="option.icon"
           v-if="option.icon"
-          :size="ICON_PX.in24"
+          :size="icons.in24"
         />
         <template v-if="!iconOnly">{{ option.label }}</template>
       </Tooltip>

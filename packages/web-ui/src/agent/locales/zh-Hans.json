@@ -92,6 +92,7 @@
     },
     "connecting": "正在连接",
     "newFile": "新建文件",
+    "moreFiles": "+{count} 个文件",
     "picture": {
       "open": "放大查看 {name}",
       "play": "播放 {name}"

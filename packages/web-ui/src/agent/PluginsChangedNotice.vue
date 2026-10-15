@@ -49,4 +49,11 @@ const emit = defineEmits<{
   line-height: 0;
   margin-right: calc((var(--plugins-changed-row-h) - var(--spacing-hit-sm)) / 2);
 }
+
+/* A phone's row is 44 px, around its 36 px buttons. */
+@media (max-width: 767px) {
+  .plugins-changed-notice {
+    --plugins-changed-row-h: var(--spacing-row);
+  }
+}
 </style>

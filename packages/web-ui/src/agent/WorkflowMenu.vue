@@ -8,7 +8,7 @@ import Menu from '../ui/Menu.vue'
 import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Tooltip from '../ui/Tooltip.vue'
-import { ICON_PX } from '../ui/icon-metrics'
+import { useIconPx } from '../ui/icon-metrics'
 import { workflowRows, workflowShown, type WorkflowChoice, type WorkflowList } from './workflow-menu'
 
 /**
@@ -27,6 +27,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ change: [choice: WorkflowChoice] }>()
 
+const icons = useIconPx()
 const shown = computed(() => workflowShown(props.choice, props.list))
 const rows = computed(() => workflowRows(props.choice, props.list))
 const fixed = computed(() => rows.value.slice(0, 2))
@@ -50,7 +51,7 @@ function choose(choice: WorkflowChoice | null, close: () => void) {
     <template #trigger="{ isOpen }">
       <Tooltip :content="tip ?? ''" :disabled="!tip">
         <span class="relative inline-flex items-center overflow-hidden">
-          <Network :size="ICON_PX.in28" class="mr-1 shrink-0" />
+          <Network :size="icons.chip" class="mr-1 shrink-0" />
           <span
             v-if="!compact"
             class="whitespace-nowrap"
@@ -58,7 +59,7 @@ function choose(choice: WorkflowChoice | null, close: () => void) {
           >{{ shown.label }}</span>
           <TriangleAlert
             v-if="shown.unavailable"
-            :size="ICON_PX.in28"
+            :size="icons.chip"
             class="ml-1 shrink-0 text-on-warning"
           />
         </span>

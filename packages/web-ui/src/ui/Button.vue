@@ -6,6 +6,7 @@ import { disabledTooltip } from './disabled'
 import { useOperationControl, type Operation } from './operations'
 import Tooltip from './Tooltip.vue'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
+import { useIconPx } from './icon-metrics'
 import type { SentenceText } from './ui-text'
 
 defineOptions({ inheritAttrs: false })
@@ -73,7 +74,8 @@ const { running, blocked, press } = useOperationControl(() => props.operation, f
 const working = computed(() => props.loading === true || running.value)
 const unavailable = computed(() => props.disabled === true || props.loading === true || blocked.value)
 /** The spinner takes a leading icon's size, which follows the button's. */
-const spinnerPx = computed(() => (props.size === 'xs' ? 10 : props.size === 'sm' ? 12 : 14))
+const icons = useIconPx()
+const spinnerPx = computed(() => (props.size === 'xs' ? icons.value.in12 : props.size === 'sm' ? icons.value.in20 : icons.value.in24))
 
 defineExpose({
   /** Presses the button as a click does, for a shortcut that stands for it: refused while it is disabled or working. */
@@ -87,17 +89,19 @@ function onClick(event: MouseEvent): void {
   press(attrs.onClick, event)
 }
 
+// Its heights are the icon buttons' (`base.css`), so a phone draws it at the
+// phone's: 28, 36 and 40 px, and the large one 44.
 const sizeClass = computed(() => {
   if (props.size === 'lg') {
-    return 'h-9 px-3.5 text-chrome'
+    return 'h-9 px-3.5 text-chrome phone:h-11'
   }
   if (props.size === 'xs') {
-    return 'h-5 px-1.5 text-[11px]'
+    return 'h-hit-xs px-1.5 text-control-xs phone:px-2.5'
   }
   if (props.size === 'sm') {
-    return 'h-6 px-2 text-[12px]'
+    return 'h-hit-sm px-2 text-control-sm phone:px-3'
   }
-  return 'h-7 px-2.5 text-chrome'
+  return 'h-hit px-2.5 text-chrome phone:px-3.5'
 })
 </script>
 
@@ -130,6 +134,7 @@ const sizeClass = computed(() => {
       role="button"
       :tabindex="unavailable ? undefined : 0"
       :data-default-action="variant === 'primary' || undefined"
+      :data-drawn-target="size !== 'xs' || undefined"
       class="relative inline-flex w-full cursor-default items-center justify-center gap-1 whitespace-nowrap rounded-md transition-[color,background-color,box-shadow] duration-200 ease-out select-none"
       :aria-disabled="unavailable || undefined"
       :aria-busy="working || undefined"
@@ -166,5 +171,14 @@ const sizeClass = computed(() => {
 /* A leading icon gives its place to the spinner. */
 .button-spinner + :deep(svg) {
   display: none;
+}
+
+/* On a phone an icon beside the label is a chip's (`PHONE_ICON_PX.chip`),
+   whatever size the caller drew it at for the desktop. */
+@media (max-width: 767px) {
+  :slotted(svg.lucide) {
+    width: 16px;
+    height: 16px;
+  }
 }
 </style>

@@ -16,7 +16,7 @@ withDefaults(defineProps<{
     role="button"
     :aria-disabled="disabled || undefined"
     :tabindex="disabled ? undefined : 0"
-    class="btn-solid inline-flex h-7 cursor-default select-none items-center gap-1.5 rounded-full px-2.5 text-chrome"
+    class="btn-solid inline-flex h-chip cursor-default select-none items-center gap-1.5 rounded-full px-2.5 text-chrome"
     :class="disabled ? 'text-fg-faint' : 'text-fg-body hover:text-fg-emphasis'"
     @keydown="pressOnKey"
     @keyup="pressOnKey"

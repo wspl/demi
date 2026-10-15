@@ -133,6 +133,56 @@
   --spacing-hit-sm: 24px;
   --spacing-hit: 28px;
   --spacing-hit-lg: 32px;
+  /* The sizes below, like the hit sizes above, are the desktop's; a phone
+     draws them at its own (the phone's metrics, under the root's rules). */
+  /* A transcript's work row, a tab. */
+  --spacing-row: 28px;
+  /* A chip under the composer: the model, the workflow, Running, Agents. */
+  --spacing-chip: 28px;
+  /* A file-change pill under a work row, and its text. */
+  --spacing-pill: 22px;
+  --text-pill: 12px;
+  /* A form field: a text field, a field's menu. */
+  --spacing-field: 28px;
+  /* A segmented control's segment. */
+  --spacing-segment: 24px;
+  /* A small control's text: a small button, a segment, a pill. */
+  --text-control-xs: 11px;
+  --text-control-sm: 12px;
+  /* A footnote beside controls: an answer's time, a version's count. */
+  --text-caption: 11px;
+  /* A Settings row's label, and its description or an inset row's label. */
+  --text-setting: var(--agent-chrome);
+  --text-setting-small: 12px;
+}
+
+/* The phone's metrics (`web-application.md` § One phone scale): every control
+   is drawn at a finger's size, read from these, as iOS's own apps draw
+   theirs; the gallery's Phone section lists them. A toolbar or action
+   button is 40 with a 20 px icon (`ICON_PX` in `ui/icon-metrics.ts` holds the
+   icons' sizes, `useIconPx` the phone's), an answer's actions 36 with 18,
+   a small one 28 with 16; rows, tabs and fields are 44, a chip 32, a
+   file-change pill 28 with 13 px text, a segment 36; text that names a control or a row is 15, a Settings
+   label 17. The large icon button stays 32, the size the sidebar's rows
+   already draw on a phone. */
+@media (max-width: 767px) {
+  :root {
+    --agent-chrome: 15px;
+    --spacing-hit-xs: 28px;
+    --spacing-hit-sm: 36px;
+    --spacing-hit: 40px;
+    --spacing-row: 44px;
+    --spacing-chip: 32px;
+    --spacing-pill: 28px;
+    --text-pill: 13px;
+    --spacing-field: 44px;
+    --spacing-segment: 36px;
+    --text-control-xs: 15px;
+    --text-control-sm: 15px;
+    --text-caption: 13px;
+    --text-setting: 17px;
+    --text-setting-small: 15px;
+  }
 }
 
 :root,
@@ -447,8 +497,10 @@ button,
 
 /* On a phone a control is pressed, not read: a long press on one selects no
    text and brings up no callout, while a message's text stays selectable.
-   And a finger's target is 44 × 44 px at least: a smaller control's hit
-   area reaches past its edges, where nothing else of it draws. */
+   A control drawn at the phone's size is its own target (`data-drawn-target`,
+   such as a toolbar's 40 px button or an answer's 36 px actions 8 px apart),
+   so neighbours never share one; a smaller control's hit area reaches past
+   its edges to 44 × 44 px, where nothing else of it draws. */
 @media (max-width: 767px) {
   @layer base {
     :where(button, [role="button"], [role="checkbox"], [role="switch"], [role="radio"], [role="tab"], [role="menuitem"], [role="option"]) {
@@ -461,7 +513,7 @@ button,
       position: relative;
     }
 
-    :where(button, [role="button"], [role="tab"])::before {
+    :where(button, [role="button"], [role="tab"]):not([data-drawn-target])::before {
       content: "";
       position: absolute;
       inset-block: min(0px, calc((100% - 44px) / 2));
@@ -839,7 +891,7 @@ html[data-theme="light"] .file-pill {
   font-size: 16px;
 }
 
-/* Its icons grow with its text, as the sidebar's rows' do (ICON_PX.phoneRow). */
+/* Its icons grow with its text, as the sidebar's rows' do (the phone's ICON_PX.row). */
 .sheet .menu-row svg.lucide {
   width: 18px;
   height: 18px;
@@ -946,7 +998,7 @@ html[data-theme="light"] .file-pill {
   box-shadow: var(--shadow-float);
 }
 
-/* 44px capsule. Chip is 28, so 8px inset — concentric with the end caps.
+/* 44px capsule (52 on a phone, whose chip is 40). Chip is 28, so 8px inset — concentric with the end caps.
    Inset is padding, not grid tracks, so column-gap cannot push the + off-center.
    Attach-to-field space is on the editor side — never steal from the left inset.
    Editor stays on one node; capsule vs expanded only changes grid placement. */
@@ -969,6 +1021,12 @@ html[data-theme="light"] .file-pill {
     + var(--composer-editor-pad-top)
     + var(--composer-editor-pad-bottom)
   );
+}
+
+@media (max-width: 767px) {
+  .composer-frame {
+    --composer-shell-height: 52px;
+  }
 }
 
 .composer-shell {

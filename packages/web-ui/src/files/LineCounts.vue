@@ -11,7 +11,7 @@ defineProps<{ added: number; removed: number; compact?: boolean; zeros?: boolean
 <template>
   <span
     v-if="zeros || added > 0 || removed > 0"
-    class="inline-flex shrink-0 font-mono text-[11px] tabular-nums"
+    class="inline-flex shrink-0 font-mono text-caption tabular-nums"
     :class="compact ? 'gap-0.5' : 'gap-1'"
   >
     <span v-if="zeros || added > 0" class="text-on-success">+{{ added }}</span>
