@@ -2,7 +2,7 @@ import type { AgentMessage } from '@demicodes/protocol'
 import { inject, provide, type InjectionKey } from 'vue'
 import { homePath } from '../files/paths'
 import { codeText } from '../infra/errors'
-import { useCredentialAction, wordedActions } from '../permissions/types'
+import { hostAction, reachAction, useCredentialAction, wordedActions } from '../permissions/types'
 import { around, t } from './locales/text'
 
 /**
@@ -73,15 +73,18 @@ function mainAgentMessage(): ReceiptRow {
 
 /**
  * What a permission decision let the conversation do, in the page's words
- * (`localization.md` § Text from the backend): its categories' actions, or
- * the use of a saved credential; the English the message recorded for a
- * decision recorded before ids were, which names neither.
+ * (`localization.md` § Text from the backend): its categories' actions and
+ * its host's, or the use of a saved credential; the English the message
+ * recorded for a category the page has no words for, or for a decision
+ * recorded before ids were, which names neither.
  */
 function permissionAction(event: Extract<AgentMessage['event'], { type: 'permission' }>): string {
   if (event.credential) {
     return useCredentialAction(event.credential)
   }
-  return (event.categories?.length ? wordedActions(event.categories) : null) ?? event.action
+  const host = event.pairing ? [hostAction({ kind: 'pairing' })] : event.host ? [reachAction(event.host)] : []
+  const categories = event.categories ?? []
+  return (categories.length || host.length ? wordedActions(categories, host) : null) ?? event.action
 }
 
 /** The agent a message names: its description, or its number when it has none. */

@@ -9,17 +9,20 @@ import RequestFrame from './RequestFrame.vue'
 import {
   categoryDescription,
   categoryTitle,
-  requestAction,
+  hostDescription,
+  hostTitle,
+  requestTitle,
   type PermissionDecision,
   type PermissionRequestView,
 } from './types'
 
 /**
  * The body of a permission request's card (`permissions.md` § What the user
- * sees): what the agent asks to do, its categories' actions joined with
- * "and", the command it ran, which subagent ran it, what a grant of each
- * category allows, under the category's title when there are several, and
- * Deny or Allow for This Conversation.
+ * sees, § Hosts): what the agent asks to do, its categories' actions and
+ * its host's joined with "and", the command it ran, which subagent ran it,
+ * what each part allows, under its title when there are several, and Deny
+ * or Allow for This Conversation; a request with a host reads Allow, since
+ * a host is allowed for this conversation by nature.
  */
 const props = defineProps<{
   request: PermissionRequestView
@@ -33,9 +36,20 @@ const emit = defineEmits<{
   decide: [id: string, decision: PermissionDecision]
 }>()
 
-const title = computed(() => t('request.allowTitle', { action: requestAction(props.request) }))
-/** The categories whose grant the card explains: each with a description the command set still declares. */
-const described = computed(() => props.request.categories.filter((category) => category.description))
+const title = computed(() => requestTitle(props.request))
+/** The parts the card explains: each category with a description the command set still declares, then the host. */
+const described = computed(() => {
+  const parts = props.request.categories
+    .filter((category) => category.description)
+    .map((category) => ({ key: category.id, title: categoryTitle(category), description: categoryDescription(category) }))
+  const host = props.request.host
+  if (host) {
+    parts.push({ key: 'host', title: hostTitle(host), description: hostDescription(host) })
+  }
+  return parts
+})
+/** Several parts are explained each under its title. */
+const several = computed(() => props.request.categories.length + (props.request.host ? 1 : 0) > 1)
 const ran = computed(() => {
   const subagent = props.request.subagent
   return subagent
@@ -54,18 +68,18 @@ const ran = computed(() => {
           class="block font-mono text-[12px] leading-[18px] text-fg-body"
         />
       </ScrollArea>
-      <template v-if="request.categories.length > 1">
+      <template v-if="several">
         <div
-          v-for="category in described"
-          :key="category.id"
+          v-for="part in described"
+          :key="part.key"
           class="flex flex-col pt-1 leading-5"
         >
-          <span class="font-medium text-fg-body">{{ categoryTitle(category) }}</span>
-          <p class="text-fg-muted">{{ categoryDescription(category) }}</p>
+          <span class="font-medium text-fg-body">{{ part.title }}</span>
+          <p class="text-fg-muted">{{ part.description }}</p>
         </div>
       </template>
       <p v-else-if="described.length" class="pt-1 leading-5 text-fg-muted">
-        {{ categoryDescription(described[0]!) }}
+        {{ described[0]!.description }}
       </p>
     </div>
     <template #footer>
@@ -80,7 +94,7 @@ const ran = computed(() => {
         variant="primary"
         :disabled="deciding"
         @click="emit('decide', request.id, 'allow')"
-        >{{ t('request.allowConversation') }}</Button
+        >{{ request.host ? t('request.allow') : t('request.allowConversation') }}</Button
       >
     </template>
   </RequestFrame>

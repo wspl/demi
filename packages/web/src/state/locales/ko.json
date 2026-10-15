@@ -1,7 +1,6 @@
 {
   "notifications": {
     "turnStopped": "턴이 오류로 중지되었습니다.",
-    "allowTo": "이 대화에서 {action} 작업을 허용하시겠습니까?",
     "saveCredential": "“{name}” 자격 증명을 저장하시겠습니까?",
     "allowUse": "이 대화에서 “{name}” 사용을 허용하시겠습니까?"
   },
