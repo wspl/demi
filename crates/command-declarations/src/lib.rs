@@ -36,6 +36,9 @@ use serde_with::rust::unwrap_or_skip;
 /// The deepest a command tree nests.
 pub const MAX_DEPTH: usize = 32;
 
+/// The most bytes a command's body read from its standard input may hold.
+pub const MAX_STDIN_BODY: usize = 1024 * 1024;
+
 /// The most characters a group's index entry holds
 /// (`system-prompt.md` § Capability index).
 pub const MAX_INDEX_ENTRY: usize = 600;

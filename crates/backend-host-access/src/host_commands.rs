@@ -24,6 +24,7 @@ use demi_backend_database::conversation_index::{
     AttachedHostRecord, ExecutionTarget, RecordChange,
 };
 use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob};
+use demi_command_declarations::MAX_STDIN_BODY;
 use demi_host_interface::{
     Call, GroupBuilder, LeafBuilder, ProcessEnd, RpcError, RpcInvocation, RpcPort, TypedRpc,
 };
@@ -583,10 +584,16 @@ async fn shell(
     .map_err(RpcError::Failed)
 }
 
-/// The whole of the call's stdin, as a script.
+/// The whole of the call's stdin, as a script, up to the limit of a stdin
+/// body; reading stops at the limit, so an endless producer is not drained.
 async fn script_from_stdin(port: &RpcPort) -> Result<String, RpcError> {
     let mut bytes = Vec::new();
     while let Some(chunk) = port.read_stdin().await? {
+        if bytes.len() + chunk.len() > MAX_STDIN_BODY {
+            return Err(RpcError::Failed(
+                "the script on stdin exceeds 1 MiB: copy a long one to the host as a file and run that".into(),
+            ));
+        }
         bytes.extend_from_slice(&chunk);
     }
     if bytes.is_empty() {

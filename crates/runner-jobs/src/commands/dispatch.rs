@@ -7,7 +7,7 @@ use crate::{
     commands::rpc,
 };
 use bytes::Bytes;
-use demi_command_declarations::UsageError;
+use demi_command_declarations::{MAX_STDIN_BODY, UsageError};
 use demi_command_protocol::{Completion, Invocation, LocalInvocation};
 use demi_command_sdk::{
     Exchange, ExchangeError, Handler, Input, InvocationContext, Output, ServiceError,
@@ -22,9 +22,6 @@ use std::{future::Future, pin::Pin, sync::Arc};
 
 /// The program's name, which a failure that names no command begins with.
 pub const RUNNER: &str = "demi-runner";
-
-/// The most a command's body read from its standard input may hold.
-const BODY_BYTES: usize = 1024 * 1024;
 
 /// Runs the declared commands of live contexts, for the local endpoint and
 /// for declared builtins alike.
@@ -164,7 +161,7 @@ impl Dispatcher {
                 let mut bytes = Vec::new();
                 if !raw.live {
                     while let Some(chunk) = invocation.input.next().await? {
-                        if bytes.len() + chunk.len() > BODY_BYTES {
+                        if bytes.len() + chunk.len() > MAX_STDIN_BODY {
                             return Err(ServiceError::failed(DispatchError::BodyTooLarge).into());
                         }
                         bytes.extend_from_slice(&chunk);
