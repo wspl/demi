@@ -167,10 +167,18 @@ each release, and a version it does not name would still run. The
 [Claude Code suite](../delivery/scenarios.md#claude-code-suite) checks
 whichever CLI executable it is given against what the product relies on.
 
-What is **installed** is a fact of each machine and is asked of that machine
-when someone wants to know. The backend keeps no table of it. A machine that is
-offline or asleep has no answer, and showing a version is never a reason to
-wake one.
+What is **installed** is a fact of each machine. The backend installs and
+upgrades the CLI itself, so it keeps what each runner connection has: the
+versions the machine names when the backend first asks it on that
+connection, and from then on what the backend's own installs and removals
+leave. A process start takes the version from what is kept and asks the
+machine nothing; for example, the root's process and three subagents'
+processes starting on a laptop ask its runner once in all. What is kept is
+dropped, and asked again at the next start, when the runner connection ends
+(a runner that restarts, a Cloud that stops or is reset), when the runner
+says the package was lost, or when an install fails. The kept list is in
+memory only; nothing stores it. A machine that is offline or asleep has no
+answer, and showing a version is never a reason to wake one.
 
 A newer version does not interrupt work, and neither does reading the
 pointer: a start on a machine that has a usable version never waits for the

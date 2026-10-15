@@ -645,12 +645,22 @@ next spawn on its agents can start `explore` and `reviewer`.
   a workflow only applies when the user picks it in a conversation, never
   because a repository holds it, so cloning a project changes nothing about
   how its conversations spawn.
-- **Each spawn reads the workflow as the file is then.** The Host reads the
-  workflow file at each spawn and at each `demi agent profiles list`, as a spawn
-  reads the settings at that moment ([Limits](#limits)); the menu lists the
-  workflows from the conversation's [file watch](../product/web-api.md#file-watch),
-  so a workflow added, changed or removed shows at once, with no polling. A file
-  that does not parse is listed as unavailable with the parse error.
+- **Each spawn takes the workflow as the file is then, without asking the
+  Host.** The backend keeps each directory's workflows the way it keeps the
+  project instruction files
+  ([When it is sent](instructions.md#when-it-is-sent)): it reads
+  `.demi/workflows` once, subscribes to it with the runner's
+  [file watch](../execution/runner.md#watching-files), and reads again in
+  the background when the runner says it changed. A spawn, `demi agent
+  profiles list`, `demi agent workflows list`, the root's instructions and
+  the menu all take what it holds, as a spawn takes the settings at that
+  moment ([Limits](#limits)), so a workflow added, changed or removed is
+  used from the next spawn and shows in the menu at once, and a slow or
+  stopped Host never holds a spawn. Only the first read of a directory holds
+  them, for at most 5 seconds; past that, or while the Host is stopped or
+  offline, they take the last result, or none, which offers Default and No
+  Subagents. A file that does not parse is listed as unavailable with the
+  parse error.
 - **How the model learns the format.** `demi agent workflows --help`, the
   group's own help, which a command group may give a longer text than its
   one-line description, is where the format is written: where workflow files live, each field, and a
