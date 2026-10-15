@@ -23,18 +23,18 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::credentials::{CredentialSeal, StoredCredential};
 use demi_backend_database::permissions::{
-    AnswerProblem, Answered, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead, PermissionRefusal,
-    StoredAsk, StoredRequest, Undecided,
+    AnswerProblem, Answered, AskedHost, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead,
+    PermissionRefusal, StoredAsk, StoredRequest, Undecided,
 };
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_command_declarations::Category;
 use demi_host_interface::{RpcError, RpcInvocation};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, PermissionOutcome};
 use demi_web_api_protocol::credentials::{Keep, RequestedValues};
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use demi_web_api_protocol::permissions::{
-    ConversationPermissions, PermissionCategory, PermissionDecision, PermissionRequest,
-    PermissionRequestId,
+    ConversationPermissions, PermissionCategory, PermissionDecision, PermissionHost,
+    PermissionRequest, PermissionRequestId,
 };
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::oneshot;
@@ -90,6 +90,10 @@ pub trait PermissionShard {
     /// The user's credentials changed: every page receives them, and the
     /// expiry looks at their times again.
     fn credentials_changed(&self);
+
+    /// The name the user knows the device by: Cloud for the user's Cloud,
+    /// a paired device's own name.
+    fn host_name<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, String>;
 }
 
 /// How a credential request was answered, which its waiting command
@@ -203,15 +207,17 @@ impl From<PermissionRefusal> for PermissionError {
     }
 }
 
-/// The check of one `rpc` call that needs `categories`, one or more
-/// (`permissions.md` § The check): it passes when the call's conversation
-/// has the grant of each, whichever agent of its tree runs it. Otherwise it
-/// records one request of the categories the conversation lacks and fails
-/// the call with the message the agent reads, and no handler runs.
+/// The check of one `rpc` call that needs `categories` and brings `host`
+/// into its conversation, at least one of the two (`permissions.md` § The
+/// check, § Hosts): it passes when the call's conversation has the grant of
+/// each category and may reach the host, whichever agent of its tree runs
+/// it. Otherwise it records one request of what the conversation lacks and
+/// fails the call with the message the agent reads, and no handler runs.
 pub async fn check(
     shard: &dyn PermissionShard,
     invocation: &RpcInvocation,
     categories: &[&Category],
+    host: Option<AskedHost>,
 ) -> Result<(), RpcError> {
     let Asking {
         conversation,
@@ -221,22 +227,35 @@ pub async fn check(
     let ids = categories.iter().map(|category| category.id.clone()).collect();
     let checked = shard
         .control()
-        .check_permission(conversation.clone(), ids, command, agent)
+        .check_permission(conversation.clone(), ids, host, command, agent)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     match checked {
         Checked::Granted => Ok(()),
-        Checked::Raised { lacking, .. } => {
+        Checked::Raised { lacking, host, .. } => {
             changed(shard, &conversation);
-            let lacking: Vec<&Category> = lacking
+            let mut actions: Vec<String> = lacking
                 .iter()
-                .filter_map(|id| categories.iter().find(|category| category.id == *id).copied())
+                .filter_map(|id| categories.iter().find(|category| category.id == *id))
+                .map(|category| category.action.clone())
                 .collect();
+            if let Some(host) = &host {
+                actions.push(host_action(shard, host).await);
+            }
             Err(RpcError::Failed(format!(
                 "this conversation needs the user's permission to {}; the request was sent to the user, and you will be told when the user decides",
-                joined(lacking.iter().map(|category| category.action.as_str()))
+                joined(actions.iter().map(String::as_str))
             )))
         }
+    }
+}
+
+/// What reaching `host` lets the conversation do, as the card's title, the
+/// refusal and the decision's message say it (`permissions.md` § Hosts).
+async fn host_action(shard: &dyn PermissionShard, host: &AskedHost) -> String {
+    match host {
+        AskedHost::Device(device) => format!("reach {}", shard.host_name(device).await),
+        AskedHost::Pairing(_) => "pair a computer and reach it".to_owned(),
     }
 }
 
@@ -397,9 +416,9 @@ fn use_action(name: &str) -> String {
     format!("use the credential \u{201c}{name}\u{201d}")
 }
 
-/// The actions of several categories as one phrase: joined with "and", as
-/// the card's title and the decision's message join them (`permissions.md`
-/// § Several categories).
+/// The actions of several categories and a host as one phrase: joined with
+/// "and", as the card's title and the decision's message join them
+/// (`permissions.md` § Hosts).
 fn joined<'a>(actions: impl Iterator<Item = &'a str>) -> String {
     actions.collect::<Vec<_>>().join(" and ")
 }
@@ -429,47 +448,54 @@ pub async fn read(
             description: declared.map(|category| category.description.clone()),
         }
     };
+    let mut listed = Vec::with_capacity(requests.len());
+    for Undecided { request, renewal } in requests {
+        let (id, command, agent, created_at) = (
+            request.id,
+            request.command,
+            request.agent.subagent,
+            request.created_at,
+        );
+        listed.push(match request.ask {
+            StoredAsk::Permission { categories, host } => PermissionRequest::Permission {
+                id,
+                categories: categories.iter().map(|id| category(id)).collect(),
+                host: match host {
+                    Some(AskedHost::Device(device)) => Some(PermissionHost::Device {
+                        name: shard.host_name(&device).await,
+                        device_id: device,
+                    }),
+                    Some(AskedHost::Pairing(_)) => Some(PermissionHost::Pairing {}),
+                    None => None,
+                },
+                command,
+                agent,
+                created_at,
+            },
+            StoredAsk::Credential { name, ask } => PermissionRequest::Credential {
+                id,
+                name,
+                reason: ask.reason,
+                fields: ask.fields,
+                keep: ask.keep,
+                renewal,
+                command,
+                agent,
+                created_at,
+            },
+            StoredAsk::Allowance { name, credential } => PermissionRequest::Allowance {
+                id,
+                name,
+                removed: credential.is_none(),
+                command,
+                agent,
+                created_at,
+            },
+        });
+    }
     Ok(ConversationPermissions {
         revision,
-        requests: requests
-            .into_iter()
-            .map(|Undecided { request, renewal }| {
-                let (id, command, agent, created_at) = (
-                    request.id,
-                    request.command,
-                    request.agent.subagent,
-                    request.created_at,
-                );
-                match request.ask {
-                    StoredAsk::Permission { categories } => PermissionRequest::Permission {
-                        id,
-                        categories: categories.iter().map(|id| category(id)).collect(),
-                        command,
-                        agent,
-                        created_at,
-                    },
-                    StoredAsk::Credential { name, ask } => PermissionRequest::Credential {
-                        id,
-                        name,
-                        reason: ask.reason,
-                        fields: ask.fields,
-                        keep: ask.keep,
-                        renewal,
-                        command,
-                        agent,
-                        created_at,
-                    },
-                    StoredAsk::Allowance { name, credential } => PermissionRequest::Allowance {
-                        id,
-                        name,
-                        removed: credential.is_none(),
-                        command,
-                        agent,
-                        created_at,
-                    },
-                }
-            })
-            .collect(),
+        requests: listed,
     })
 }
 
@@ -553,15 +579,26 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
     let Some(decision) = request.decision else {
         return;
     };
+    let mut host_name = None;
     let action = match &request.ask {
-        StoredAsk::Permission { categories: ids } => {
+        StoredAsk::Permission { categories: ids, host } => {
             let categories = declared(&*shard).await;
-            joined(ids.iter().map(|id| {
-                categories
-                    .iter()
-                    .find(|category| category.id == *id)
-                    .map_or(id.as_str(), |category| category.action.as_str())
-            }))
+            let mut actions: Vec<String> = ids
+                .iter()
+                .map(|id| {
+                    categories
+                        .iter()
+                        .find(|category| category.id == *id)
+                        .map_or_else(|| id.clone(), |category| category.action.clone())
+                })
+                .collect();
+            if let Some(host) = host {
+                if let AskedHost::Device(device) = host {
+                    host_name = Some(shard.host_name(device).await);
+                }
+                actions.push(host_action(&*shard, host).await);
+            }
+            joined(actions.iter().map(String::as_str))
         }
         StoredAsk::Allowance { name, .. } => use_action(name),
         // A credential request's command returns its answer.
@@ -578,13 +615,18 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
             outcome: decision.outcome,
             action: action.clone(),
             categories: match &request.ask {
-                StoredAsk::Permission { categories } => categories.clone(),
+                StoredAsk::Permission { categories, .. } => categories.clone(),
                 StoredAsk::Allowance { .. } | StoredAsk::Credential { .. } => Vec::new(),
             },
             credential: match &request.ask {
                 StoredAsk::Allowance { name, .. } => Some(name.clone()),
                 StoredAsk::Permission { .. } | StoredAsk::Credential { .. } => None,
             },
+            host: host_name.clone(),
+            pairing: matches!(
+                request.ask,
+                StoredAsk::Permission { host: Some(AskedHost::Pairing(_)), .. }
+            ),
         },
         origin: None,
     };

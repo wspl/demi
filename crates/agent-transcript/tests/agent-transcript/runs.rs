@@ -151,6 +151,8 @@ fn text_the_users_words_and_decisions_end_a_run() {
             action: "manage skills".into(),
             categories: vec!["skills.manage".into()],
             credential: None,
+            host: None,
+            pairing: false,
         },
     );
     call(&mut log, "c");

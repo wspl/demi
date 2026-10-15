@@ -4,21 +4,21 @@
 //! moves its conversation into or out of a project, or into a project it
 //! makes of a directory, as a pending move that the shard makes once the
 //! conversation's tree is next idle (`pending.rs`). And what the dispatch
-//! needs to know of a call that names a project or a device: whether it
-//! brings a paired device into the conversation (`permissions.md` § Several
-//! categories).
+//! needs to know of a call that names a project or a host: the host it
+//! brings into the conversation, when the conversation may not reach it
+//! (`permissions.md` § Hosts).
 
 use std::future::Future;
 use std::rc::{Rc, Weak};
 
-use demi_backend_database::conversation_index::{ChangeOutcome, RecordChange};
+use demi_backend_database::conversation_index::RecordChange;
 use demi_backend_database::workspaces::{WorkspaceRecord, new_workspace_id};
-use demi_backend_host_access::host_commands::{conversation_of, reachable};
+use demi_backend_host_access::host_commands::{conversation_of, devices_named, pend_move};
 use demi_backend_page_sync::Part;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_web_api_protocol::conversations::{ConversationTarget, TITLE_MAX};
 use demi_web_api_protocol::devices::DeviceKind;
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use demi_web_api_protocol::text::Trimmed;
 use demi_web_api_protocol::workspaces::WORKSPACE_NAME_MAX;
 use futures_util::future::LocalBoxFuture;
@@ -291,36 +291,13 @@ async fn move_to(shard: Rc<Shard>, call: Call<MoveArgs>, port: RpcPort) -> Resul
     // A move to where it runs replaces a move that waits, and is made as
     // nothing.
     let there = record.target == target;
-    pend(&shard, &conversation, target).await?;
+    pend_move(shard.host_shard(), &conversation, target).await?;
     if there {
         port.stdout("This conversation runs there already.\n").await?;
     } else {
         port.stdout(said).await?;
     }
     Ok(0)
-}
-
-/// Records the move to `target` as the conversation's pending move, which
-/// the shard makes once its tree is next idle.
-async fn pend(
-    shard: &Shard,
-    conversation: &ConversationId,
-    target: ConversationTarget,
-) -> Result<(), RpcError> {
-    match shard
-        .services()
-        .control
-        .set_pending_move(conversation.clone(), target)
-        .await
-        .map_err(failed)?
-    {
-        Ok(_) => {
-            shard.settle_when_idle(conversation);
-            Ok(())
-        }
-        Err(ChangeOutcome::Archived) => Err(failed("this conversation is archived")),
-        Err(_) => Err(failed("this conversation is gone")),
-    }
 }
 
 async fn create_project(
@@ -363,8 +340,8 @@ async fn create_project(
         .ok_or_else(|| failed("this conversation's primary Host is no longer the user's"))?;
     shard.mark(Part::Workspaces);
     let host_name = shard.host_name(&device).await;
-    pend(
-        &shard,
+    pend_move(
+        shard.host_shard(),
         &conversation,
         ConversationTarget::Workspace {
             workspace_id: workspace.id.clone(),
@@ -380,47 +357,31 @@ async fn create_project(
 }
 
 impl Shard {
-    /// Whether the project or device `named`, as a `bringsHost` argument
-    /// names it, brings into the conversation a paired device that is
-    /// neither its primary Host nor attached (`permissions.md` § Several
-    /// categories): a project by id or name stands for its device, then a
-    /// paired device by id or name. A name that names nothing brings
-    /// nothing; the handler refuses it.
-    pub(crate) async fn brings_paired_device(
+    /// The host the project or host `named`, as a `bringsHost` argument
+    /// names it, brings into the conversation when the conversation may not
+    /// reach it (`permissions.md` § Hosts): a project by id or name stands
+    /// for its host, and a host by any name or id it goes by. Of the hosts
+    /// a name may stand for, the first the conversation may not reach;
+    /// none when it may reach them all, or the name names nothing, which
+    /// the handler refuses.
+    pub(crate) async fn brought_host(
         &self,
         conversation: &ConversationId,
         named: &str,
-    ) -> Result<bool, String> {
-        let control = &self.services().control;
-        let device = match named_project(self, named).await.map_err(|error| error.to_string())? {
-            Named::One(workspace) => Some(workspace.device),
-            Named::Several => None,
-            Named::None => {
-                let paired = control
-                    .paired_devices(self.user().clone())
-                    .await
-                    .map_err(|error| error.to_string())?;
-                paired
-                    .iter()
-                    .find(|device| device.id.as_str() == named)
-                    .or_else(|| paired.iter().find(|device| device.name == named))
-                    .map(|device| device.id.clone())
-            }
-        };
-        let Some(device) = device else {
-            return Ok(false);
-        };
-        let paired = control
-            .device(device.clone())
-            .await
-            .map_err(|error| error.to_string())?
-            .is_some_and(|record| record.kind == DeviceKind::User);
-        if !paired {
-            return Ok(false);
+    ) -> Result<Option<DeviceId>, RpcError> {
+        let mut devices = Vec::new();
+        if let Named::One(workspace) = named_project(self, named).await? {
+            devices.push(workspace.device);
         }
-        let hosts = reachable(self.host_shard(), conversation)
-            .await
-            .map_err(|error| error.to_string())?;
-        Ok(!hosts.iter().any(|host| host.device == device))
+        for host in devices_named(self.host_shard(), conversation, named).await? {
+            devices.push(host.device);
+        }
+        let control = &self.services().control;
+        for device in devices {
+            if !control.may_reach(conversation.clone(), device.clone()).await.map_err(failed)? {
+                return Ok(Some(device));
+            }
+        }
+        Ok(None)
     }
 }

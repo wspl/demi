@@ -16,7 +16,7 @@ use demi_backend_page_sync::UserMarks;
 use demi_backend_permissions::{PermissionShard, Revisions, Waits, deliver};
 use demi_command_declarations::{Category, Node};
 use demi_shared_types::{AgentMessage, NodeId};
-use demi_web_api_protocol::ids::ConversationId;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use demi_web_api_protocol::permissions::RequestingAgent;
 use futures_util::future::LocalBoxFuture;
 
@@ -114,6 +114,10 @@ impl PermissionShard for Shard {
 
     fn credentials_changed(&self) {
         self.mark_credentials();
+    }
+
+    fn host_name<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, String> {
+        Box::pin(Shard::host_name(self, device))
     }
 }
 

@@ -1,14 +1,17 @@
 //! What the agent can change of its own conversation
 //! (`sessions-and-targets.md` § What the agent can change, § Switch the
-//! primary target): `demi host pair` pairs a computer whose installer shows
-//! a code and attaches it, `demi host attach` attaches a device at once, which the
-//! next context block announces; `demi host detach` and `demi conversation
-//! move` wait until the conversation's work ends and are then made in one
-//! transition; a move that fails then leaves the conversation where it was
-//! and wakes the root with Demi's notice of the reason. The model is the
-//! scripted family of the subagent scenarios, the devices real runners, and
-//! the conversation holds both grants, as storage keeps them. No test calls
-//! a real model.
+//! primary target, § Hosts a conversation may reach): `demi host pair` asks
+//! the user each time, then pairs a computer whose installer shows the code
+//! and attaches it; `demi host attach` attaches a device at once, which the
+//! next context block announces; `demi host move` asks once for a host the
+//! conversation may not reach, checks its directory and waits, as `demi
+//! host detach` and `demi conversation move` do, until the conversation's
+//! work ends, when they are made in one transition; a move that fails then
+//! leaves the conversation where it was and wakes the root with Demi's
+//! notice of the reason. The model is the scripted family of the subagent
+//! scenarios, the devices real runners, and the conversation holds Organize
+//! Conversations and the hosts it reaches, as storage keeps them, unless a
+//! test asks. No test calls a real model.
 
 use std::sync::Arc;
 
@@ -19,8 +22,10 @@ use serde_json::json;
 use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
 
 use crate::conversations::{FIRST, SECOND, Socket, choose, create, transcript, working_on};
+use crate::permissions::{decide, host_of, permissions};
 use crate::subagents::{Scripts, WAIT, say, shell, tree_on};
 use crate::support::{Harness, Paired, Session, TestBackend, eventually, stored_token};
+use demi_web_api_protocol::permissions::PermissionHost;
 
 /// Makes a project of a new directory of `device`'s home, named `name`, and
 /// answers its id.
@@ -90,17 +95,38 @@ fn pending(harness: &Harness, id: &str) -> bool {
         .unwrap()
 }
 
-/// Grants the conversation both categories, as an allow stores them.
-fn grant_both(harness: &Harness, id: &str) {
-    for category in ["conversation.organize", "host.devices"] {
-        harness
-            .control_database()
-            .execute(
-                "INSERT INTO permission_grants (conversation_id, category, granted_at) VALUES (?1, ?2, 1)",
-                [id, category],
-            )
-            .unwrap();
-    }
+/// Grants the conversation Organize Conversations, as an allow stores it.
+fn grant_organize(harness: &Harness, id: &str) {
+    harness
+        .control_database()
+        .execute(
+            "INSERT INTO permission_grants (conversation_id, category, granted_at) VALUES (?1, 'conversation.organize', 1)",
+            [id],
+        )
+        .unwrap();
+}
+
+/// Lets the conversation reach `device`, as an allow of it stores it.
+fn reach(harness: &Harness, id: &str, device: &Paired) {
+    harness
+        .control_database()
+        .execute(
+            "INSERT INTO reachable_hosts (conversation_id, device_id, added_at) VALUES (?1, ?2, 1)",
+            [id, device.id()],
+        )
+        .unwrap();
+}
+
+/// The conversation's primary device and directory, as storage holds them.
+fn primary(harness: &Harness, id: &str) -> (Option<String>, Option<String>) {
+    harness
+        .control_database()
+        .query_row(
+            "SELECT target_device_id, target_path FROM conversations WHERE id = ?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap()
 }
 
 /// What the root of `id` was asked last.
@@ -116,9 +142,10 @@ fn last_asked(scripts: &Scripts, id: &str) -> String {
 async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_ends() {
     let scripts = Arc::new(Scripts::default());
     let (harness, backend, master, laptop, _, _) = tree_on(&scripts, Harness::new()).await;
-    let _studio = backend.pair(&master, "studio").await;
+    let studio = backend.pair(&master, "studio").await;
     let notes = project(&backend, &master, &laptop, "notes").await;
-    grant_both(&harness, FIRST);
+    grant_organize(&harness, FIRST);
+    reach(&harness, FIRST, &studio);
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
@@ -166,12 +193,12 @@ async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_e
     backend.close().await;
 }
 
-// Several seconds: two real runners, one of them paired by the agent.
+// Several seconds: two real runners, one of them paired by the agent, which
+// runs the shell jobs of two turns, the second woken by the user's allow.
 #[tokio::test]
-async fn an_agent_pairs_a_computer_from_its_installers_code_and_runs_commands_there() {
+async fn an_agent_pairs_a_computer_from_its_installers_code_once_the_user_allows_that_code() {
     let scripts = Arc::new(Scripts::default());
     let (harness, backend, master, _laptop, _, _) = tree_on(&scripts, Harness::new()).await;
-    grant_both(&harness, FIRST);
     let state = backend.sync(&master).await.snapshot().await;
     // The computer the agent installed the runner on, which waits to be
     // paired under the code it shows.
@@ -186,37 +213,67 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_and_runs_commands_th
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
+    // A pairing asks the user, every time.
     scripts.root(
         FIRST,
         vec![
             shell("t1", "demi host install-command --system linux"),
-            shell("t2", "demi host pair 0000-0000-0000-0000-0000-0000-00"),
-            shell("t3", &format!("demi host pair {code} --name build")),
-            shell("t4", &format!("demi host pair {code}")),
-            shell("t5", "demi host shell --host buildbox 'echo reached'"),
-            say("done"),
+            shell("t2", &format!("demi host pair {code}; echo exit=$?")),
+            say("I asked the user"),
         ],
     );
     socket.chat("m1", "Pair the build computer").await;
     let asked = scripts.asked(|session| session == FIRST);
     // The command the agent runs there is the one Add Device shows.
     assert!(asked[1].contains(&state.install_commands.linux), "{}", asked[1]);
-    // A code no runner waits under says to read the newest one.
     assert!(
-        asked[2].contains("read the newest one it shows and pass that"),
+        asked[2].contains("this conversation needs the user's permission to pair a computer and reach it; the request was sent to the user"),
         "{}",
         asked[2]
     );
-    // No agent names the host: `--name` is no option of the pair.
-    assert!(asked[3].contains("unexpected argument '--name'"), "{}", asked[3]);
-    // The live code pairs the computer and attaches it under its device's
-    // name, the one the user sees.
-    assert!(
-        asked[4].contains("Paired as buildbox; attached as buildbox."),
-        "{}",
-        asked[4]
+    assert!(asked[2].contains("exit=1"), "{}", asked[2]);
+    let requests = permissions(&backend, &master, FIRST).await;
+    assert_eq!(requests.requests.len(), 1, "{requests:?}");
+    let request = &requests.requests[0];
+    assert_eq!(host_of(request), Some(&PermissionHost::Pairing {}));
+
+    // The allow lets that code pair once: the computer is paired, attached
+    // under its device's name and reached; another code asks again.
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t3", &format!("demi host pair {code} --name build")),
+            shell("t4", &format!("demi host pair {code}")),
+            shell("t5", "demi host shell --host buildbox 'echo reached'"),
+            shell("t6", "demi host pair 0000-0000-0000-0000-0000-0000-00; echo exit=$?"),
+            say("done"),
+        ],
     );
-    assert!(asked[5].contains("reached"), "{}", asked[5]);
+    let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
+    assert_eq!(allowed.status, StatusCode::NO_CONTENT);
+    eventually("the woken turn ends", || async {
+        scripts.asked(|session| session == FIRST).len() == 8
+    })
+    .await;
+    let asked = scripts.asked(|session| session == FIRST);
+    assert!(
+        asked[3].contains("The user allowed this conversation to pair a computer and reach it"),
+        "{}",
+        asked[3]
+    );
+    // No agent names the host: `--name` is no option of the pair.
+    assert!(asked[4].contains("unexpected argument '--name'"), "{}", asked[4]);
+    assert!(
+        asked[5].contains("Paired as buildbox; attached as buildbox."),
+        "{}",
+        asked[5]
+    );
+    assert!(asked[6].contains("reached"), "{}", asked[6]);
+    assert!(
+        asked[7].contains("permission to pair a computer and reach it; the request"),
+        "{}",
+        asked[7]
+    );
     // It is the user's device, its runner holds its token, and the
     // conversation reaches it.
     let devices = backend.devices(&master).await;
@@ -235,7 +292,7 @@ async fn a_move_that_fails_leaves_the_conversation_in_place_and_wakes_the_root_w
     let scripts = Arc::new(Scripts::default());
     let (harness, backend, master, laptop, root, _) = tree_on(&scripts, Harness::new()).await;
     let ledable = project(&backend, &master, &laptop, "ledable-app").await;
-    grant_both(&harness, FIRST);
+    grant_organize(&harness, FIRST);
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
@@ -294,6 +351,98 @@ async fn a_move_that_fails_leaves_the_conversation_in_place_and_wakes_the_root_w
         "{notice:?}"
     );
     assert_eq!(notice.sender, None);
+    backend.close().await;
+}
+
+// Several seconds: two real devices, and one runs the shell jobs of five
+// turns, the second woken by the user's allow.
+#[tokio::test]
+async fn a_host_move_asks_once_for_a_host_out_of_reach_and_lands_in_its_directory_with_the_host_it_left_attached() {
+    let scripts = Arc::new(Scripts::default());
+    let (harness, backend, master, laptop, root, _) = tree_on(&scripts, Harness::new()).await;
+    let studio = backend.pair(&master, "studio").await;
+    let app = format!("{}/app", studio.runner.home());
+    std::fs::create_dir_all(&app).unwrap();
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+
+    // Listing the devices asks nothing; moving to one the conversation may
+    // not reach asks to reach it.
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t1", "demi host devices"),
+            shell("t2", &format!("demi host move studio {app}; echo exit=$?")),
+            say("I asked the user"),
+        ],
+    );
+    socket.chat("m1", "Work on the studio").await;
+    let asked = scripts.asked(|session| session == FIRST);
+    assert!(asked[1].contains(&format!("studio  {}  online", studio.id())), "{}", asked[1]);
+    assert!(
+        asked[2].contains("demi host move: this conversation needs the user's permission to reach studio; the request was sent to the user"),
+        "{}",
+        asked[2]
+    );
+    let requests = permissions(&backend, &master, FIRST).await;
+    assert_eq!(requests.requests.len(), 1, "{requests:?}");
+    let request = &requests.requests[0];
+    assert_eq!(
+        host_of(request),
+        Some(&PermissionHost::Device {
+            device_id: studio.id().try_into().unwrap(),
+            name: "studio".into()
+        })
+    );
+
+    // Once allowed, a directory that is none there fails at once with
+    // nothing pending, and the move to one waits until the work ends.
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t3", &format!("demi host move studio {app}/missing; echo exit=$?")),
+            shell("t4", &format!("demi host move studio {app}")),
+            say("moving"),
+        ],
+    );
+    let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
+    assert_eq!(allowed.status, StatusCode::NO_CONTENT);
+    eventually("the move is made", || async {
+        primary(&harness, FIRST) == (Some(studio.id().to_owned()), Some(app.clone()))
+    })
+    .await;
+    let asked = scripts.asked(|session| session == FIRST);
+    assert!(
+        asked[4].contains(&format!("{app}/missing is not a directory on studio")) && asked[4].contains("exit=1"),
+        "{}",
+        asked[4]
+    );
+    assert!(
+        asked[5].contains(&format!("The move to studio ({app}) applies when this conversation's work ends")),
+        "{}",
+        asked[5]
+    );
+    assert_eq!(attached(&harness, FIRST), ["laptop"]);
+    assert!(!pending(&harness, FIRST));
+
+    // The host it left and the one it was allowed stay reachable: moving
+    // back, detaching studio and attaching it again ask nothing.
+    scripts.root(FIRST, vec![shell("t5", &format!("demi host move laptop {root}")), say("back")]);
+    socket.chat("m2", "Go back").await;
+    eventually("the move back is made", || async {
+        primary(&harness, FIRST) == (Some(laptop.id().to_owned()), Some(root.clone()))
+    })
+    .await;
+    scripts.root(FIRST, vec![shell("t6", "demi host detach studio"), say("detached")]);
+    socket.chat("m3", "Let go of the studio").await;
+    eventually("the detach is made", || async { attached(&harness, FIRST).is_empty() }).await;
+    scripts.root(FIRST, vec![shell("t7", "demi host attach studio"), say("attached")]);
+    socket.chat("m4", "Use the studio again").await;
+    eventually("the attach ran", || async {
+        last_asked(&scripts, FIRST).contains("Attached studio as studio")
+    })
+    .await;
+    assert!(permissions(&backend, &master, FIRST).await.requests.is_empty());
     backend.close().await;
 }
 
