@@ -3261,7 +3261,9 @@ impl Association {
         let mut sis_to_reset = vec![];
         // Streams whose outgoing direction the application already reset with
         // `Stream::stop()`, which cleared the read half: that request, queued,
-        // in flight or answered, is the reset RFC 8831 section 6.7 asks for.
+        // in flight or answered with success, is the reset RFC 8831 section
+        // 6.7 asks for. One that failed reset nothing, so such a stream gets
+        // the reciprocal like any other.
         let mut reset_by_application = vec![];
 
         let performed = sna32lte(p.sender_last_tsn, self.peer_last_tsn);
@@ -3283,7 +3285,8 @@ impl Association {
                     if matches!(
                         stream.state,
                         RecvSendState::Readable | RecvSendState::ReadWritable
-                    ) {
+                    ) || self.failed_reset_streams.contains(&id)
+                    {
                         sis_to_reset.push(id);
                     } else {
                         reset_by_application.push(id);
@@ -3316,7 +3319,7 @@ impl Association {
         // the new generation unwritable while the redundant request is in
         // flight, and the request would then reset that new generation. Its
         // own request completes the Finished queued above, or, already
-        // answered, completes it now.
+        // answered with success, completes it now.
         let all_reciprocal = reset_by_application.is_empty();
         for id in reset_by_application {
             if !self.stream_reset_in_progress(id) {

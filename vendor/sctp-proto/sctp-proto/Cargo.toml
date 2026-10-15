@@ -70,6 +70,6 @@ version = "1.5.0"
 [package.metadata.demi]
 maintainer = "demi-runner-direct"
 patches = [
-    "An incoming stream reset sends no reciprocal reset for a stream the application already reset with stop() or close(); its own request completes the Finished, at once when already answered. The redundant request kept a just reused id's new generation unwritable, so the runner could not acknowledge a data channel the browser reopened on it (upstream through 0.10.6)",
+    "An incoming stream reset sends no reciprocal reset for a stream the application already reset with stop() or close() unless that reset failed; its own request completes the Finished, at once when already answered with success. The redundant request kept a just reused id's new generation unwritable, so the runner could not acknowledge a data channel the browser reopened on it (upstream through 0.10.6)",
     "The release's tests, benchmarks, examples and CI files are left out",
 ]
