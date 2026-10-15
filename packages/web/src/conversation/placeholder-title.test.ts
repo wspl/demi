@@ -43,11 +43,11 @@ test('an untitled conversation reads New conversation in the page\'s language, a
   app.mount(element)
   pages.push(() => app.unmount())
 
-  expect(element.textContent).toContain('新しい会話')
+  expect(element.textContent).toContain('新しいチャット')
   setPageLanguage('en')
   await nextTick()
   expect(element.textContent).toContain('New conversation')
-  expect(element.textContent).not.toContain('新しい会話')
+  expect(element.textContent).not.toContain('新しいチャット')
 
   // The field starts with the words shown; leaving them as they are is no
   // rename, and other words are one.
