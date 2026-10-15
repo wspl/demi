@@ -88,6 +88,7 @@ import GalleryMessageFiles from '../components/GalleryMessageFiles.vue'
 import GalleryAgentLinks from '../components/GalleryAgentLinks.vue'
 import { attachmentMarkdown, edgedImagesMarkdown, fiveMediaMarkdown, listAttachmentMarkdown, loneImageMarkdown, twoMediaMarkdown } from '../fixtures/attachments'
 import { productWould } from '../product-would'
+import { useGalleryShares } from '../fixtures/sharing'
 import { useAgentContext } from '../agent-context'
 import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
@@ -899,6 +900,8 @@ const sessionFlow = useTurnFlow({
   terminals,
 })
 const session = sessionFlow.state
+/** The conversation's shares and the service that makes them, as the product's header menu and answer footers use them. */
+const { shares: sessionShares, service: shareService } = useGalleryShares()
 session.pendingSteers = [{ id: 'pending-1', content: steerPrompt }]
 session.queue = [
   { id: 'q1', content: [{ type: 'text', text: 'Also add a case for the expired cookie.' }] },
@@ -2058,7 +2061,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'blocks'">
       <GallerySection
         title="Assistant Message"
-        note="Intermediate updates have no copy, fork or timestamp toolbar. Final replies keep their toolbar, including while a later user request runs. Preview fork success, pending creation, and a retry after failure."
+        note="Intermediate updates have no copy, fork or timestamp toolbar. Final replies keep their toolbar, including while a later user request runs. Preview fork success, pending creation, and a retry after failure. Share, beside Fork, makes the answer’s share at once and copies its link, then opens the share dialog (Dialogs); it waits, like Fork, until the message completes, and on an answer that has a share it opens the dialog on that link. The conversation header’s ⋯ menu holds Share Conversation… in the same way."
       >
         <GallerySpecimen variant="message footer" wide>
           <GalleryAssistantMessages />
@@ -3514,6 +3517,8 @@ onBeforeUnmount(() => {
                 @revealed="frameReveal = null"
                 @reveal="(at) => (frameReveal = at)"
                 :aside-open="panelAsideOpen"
+                :share="shareService"
+                :shares="sessionShares"
                 :select-edit="panelWork.selectEdit"
                 :files="sessionFiles"
                 @open-aside="panelAsideOpen = true"
@@ -3863,6 +3868,8 @@ onBeforeUnmount(() => {
       <ChatSession
         :conversation="session"
         has-provider
+        :share="shareService"
+        :shares="sessionShares"
         :select-edit="(selection) => { panelWork.selectEdit(selection); view = 'panel' }"
         :files="sessionFiles"
         :edit-version="editVersion"

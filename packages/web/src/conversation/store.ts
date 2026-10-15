@@ -344,6 +344,7 @@ export const useConversations = defineStore('conversations', () => {
       | 'unread'
       | 'cwd'
       | 'pluginsChanged'
+      | 'shares'
       | 'unreadPermissionRequests'
       | 'createdAt'
       | 'updatedAt'
@@ -362,6 +363,7 @@ export const useConversations = defineStore('conversations', () => {
       readRevision: record.readRevision,
       unread: record.unread,
       pluginsChanged: record.pluginsChanged,
+      shares: record.shares,
       // The sidebar's mark settles once the request is read, though it still waits.
       needsYou: record.unreadPermissionRequests > 0,
       createdAt: record.createdAt,

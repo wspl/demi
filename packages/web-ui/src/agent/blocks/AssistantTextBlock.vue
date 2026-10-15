@@ -2,6 +2,7 @@
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import AssistantMessageFooter from './AssistantMessageFooter.vue'
 import type { MessageForkState } from '../message-fork'
+import type { AnswerShare } from '../sharing'
 import { useTextArrivals } from '../whole-blocks'
 
 withDefaults(defineProps<{
@@ -9,6 +10,8 @@ withDefaults(defineProps<{
   createdAt: string
   fork?: () => Promise<void>
   forkState?: MessageForkState
+  share?: AnswerShare
+  shareWait?: boolean
   /** Regenerate in the footer; absent where it is not offered. */
   regenerate?: () => void
   isStreaming?: boolean
@@ -34,6 +37,8 @@ const arrivals = useTextArrivals()
       :created-at="createdAt"
       :fork="fork"
       :fork-state="forkState"
+      :share="share"
+      :share-wait="shareWait"
       :regenerate="regenerate"
     />
   </div>
