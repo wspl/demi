@@ -78,10 +78,16 @@ say; `demi credentials` keeps the secrets it handles out of the transcript
 The control database holds each share's record: its token, its user, its
 conversation, its kind, `conversation` or `answer` with the answer's block,
 and when it was taken ([Control records](../backend/storage.md#control-records)).
-The snapshot is kept in the conversation's database, the blocks it shows,
-each subagent's included, and the command outputs they show, whole, copied
-from the transcript as they were, since a later edit or compaction rewrites
-the transcript ([Message editing](../agent/message-editing.md)). Deleting the
+The snapshot is kept in the conversation's database: its blocks, each
+subagent's included, and the command outputs they show, whole, copied from
+the transcript as they were, since a later edit or compaction rewrites the
+transcript ([Message editing](../agent/message-editing.md)). A conversation's
+snapshot copies every block except `context` blocks, the hidden inputs that
+carry the execution context, instructions and skills, and `response` blocks,
+the usage of a request; the shared page hides the rest as the conversation
+does, with the same rule, so the backend keeps no second list of what a page
+shows. The page's compaction dividers read their summary sizes from the
+snapshot's own blocks. Deleting the
 conversation removes both in its first step
 ([Deleting a conversation](../backend/storage.md#deleting-a-conversation)), and
 the blobs a snapshot shows stay referenced while it does
