@@ -120,8 +120,8 @@ pub enum PermissionRefusal {
     Archived,
     /// No undecided request of that id in the conversation.
     NotFound,
-    /// The answer does not fit the request, as the words for the user say.
-    InvalidAnswer(String),
+    /// The answer does not fit the request.
+    InvalidAnswer(AnswerProblem),
     /// A credential of the requested name is saved with other fields, as
     /// the words for the user say.
     FieldsDiffer(String),
@@ -295,7 +295,7 @@ impl ControlService {
                 Ok(stored) => match (&stored.ask, outcome) {
                     (StoredAsk::Credential { .. }, PermissionOutcome::Allowed) => {
                         return Ok(Err(PermissionRefusal::InvalidAnswer(
-                            "Enter a value for each field to save the credential.".into(),
+                            AnswerProblem::ValuesMissing,
                         )));
                     }
                     (StoredAsk::Credential { .. }, PermissionOutcome::Denied) => {
@@ -433,11 +433,11 @@ impl ControlService {
             };
             let StoredAsk::Credential { name, ask } = &stored.ask else {
                 return Ok(Err(PermissionRefusal::InvalidAnswer(
-                    "Only a credential request is answered with values.".into(),
+                    AnswerProblem::NotACredentialRequest,
                 )));
             };
-            if let Err(reason) = fitting(&ask.fields, &values) {
-                return Ok(Err(PermissionRefusal::InvalidAnswer(reason)));
+            if let Err(problem) = fitting(&ask.fields, &values) {
+                return Ok(Err(PermissionRefusal::InvalidAnswer(problem)));
             }
             let owner = owner_of(&transaction, &conversation)?;
             let keep_until = credentials::keep_until(now, keep)?;
@@ -729,18 +729,46 @@ fn allow(
     Ok(())
 }
 
+/// Why an answer does not fit its request: its English is the refusal's
+/// message, and the field and the limit it names are the values the page
+/// words it with (`localization.md` § Text from the backend).
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum AnswerProblem {
+    /// An allow of a credential request came without its values.
+    #[error("Enter a value for each field to save the credential.")]
+    ValuesMissing,
+    /// The field labelled `label` has no value.
+    #[error("Enter a value for \u{201c}{label}\u{201d}.")]
+    ValueMissing { label: String },
+    /// The value of the field labelled `label` is over `limit_bytes`.
+    #[error("The value of \u{201c}{label}\u{201d} can be at most 64 KiB.")]
+    ValueTooLarge { label: String, limit_bytes: usize },
+    /// The answer has a value for `name`, which the request does not ask.
+    #[error("The request has no field \u{201c}{name}\u{201d}.")]
+    UnknownField { name: String },
+    /// Values answer a request that is not a credential's.
+    #[error("Only a credential request is answered with values.")]
+    NotACredentialRequest,
+    /// A declined request came with values.
+    #[error("A declined request takes no values.")]
+    DeclinedWithValues,
+}
+
 /// Whether `values` holds a value of at most 64 KiB for each of `fields`
 /// and nothing else (`web-api.md` § Conversation permissions).
-/// The refusal is in words for the user, naming the field by its label.
-fn fitting(fields: &[CredentialField], values: &BTreeMap<String, String>) -> Result<(), String> {
+fn fitting(
+    fields: &[CredentialField],
+    values: &BTreeMap<String, String>,
+) -> Result<(), AnswerProblem> {
     for field in fields {
-        let label = field.label.as_str();
+        let label = field.label.as_str().to_owned();
         match values.get(&field.name) {
-            None => return Err(format!("Enter a value for \u{201c}{label}\u{201d}.")),
+            None => return Err(AnswerProblem::ValueMissing { label }),
             Some(value) if value.len() > VALUE_MAX_BYTES => {
-                return Err(format!(
-                    "The value of \u{201c}{label}\u{201d} can be at most 64 KiB."
-                ));
+                return Err(AnswerProblem::ValueTooLarge {
+                    label,
+                    limit_bytes: VALUE_MAX_BYTES,
+                });
             }
             Some(_) => {}
         }
@@ -749,7 +777,7 @@ fn fitting(fields: &[CredentialField], values: &BTreeMap<String, String>) -> Res
         .keys()
         .find(|name| !fields.iter().any(|field| &field.name == *name))
     {
-        return Err(format!("The request has no field \u{201c}{other}\u{201d}."));
+        return Err(AnswerProblem::UnknownField { name: other.clone() });
     }
     Ok(())
 }
