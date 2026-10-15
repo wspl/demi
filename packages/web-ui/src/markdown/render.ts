@@ -10,6 +10,7 @@ import { linkedAgent } from '../agent/agent-links'
 import type { CopiedStoredFile } from '../agent/message-input/copied-message'
 import { KEEPS_WINDOWS } from '../ui/window-stack'
 import { escapeHtml } from './html'
+import { imagePlaceholderHtml } from './image-placeholder'
 import { mathExtensions } from './math'
 import { scrollingTable } from './table'
 import { declaredSize, type PixelSize } from '../files/thumbnail'
@@ -304,9 +305,12 @@ const messageRenderer: RendererObject = {
     if (attachment !== null)
       return attachmentTarget(attachment, escapeHtml(token.text), (found) => attachmentMedium(found, token))
     const source = imageSource(token.href)
-    // A Host image shows its alt text while its file is read, as an attachment does.
-    if (source === null || source === 'loading')
+    // A target that loads nothing is words; a Host image whose file is being
+    // read or is not there keeps its place with its alt text in a box.
+    if (source === null && messageImage(token.href, activeOptions?.files) === null)
       return escapeHtml(token.text)
+    if (source === null || source === 'loading')
+      return imagePlaceholderHtml(token.text)
     const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
     // A Host image names its file, which the viewer a click opens follows.
     const file = source.path === null ? '' : ` ${HOST_FILE_ATTRIBUTE}="${escapeHtml(source.path)}"`
