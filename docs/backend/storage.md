@@ -346,7 +346,7 @@ Host. The node lifecycle and its commits are defined in
 | `blocks` | One transcript block per node and block index, found also by the block's id and by the command a `shell` call's view names, for a page read around a block, a block read whole and the call that started a command ([Conversation history](../product/web-api.md#conversation-history)) |
 | `command_outputs` | The record of each ended command's whole output, by command id ([Command outputs](#command-outputs)) |
 | `attachments` | Each attachment the agent uploaded, by its number: the file's name, its media type, its size and its blob ([Attachment commands](../execution/commands.md#attachment-commands)); a Fork's seed copies the rows, and the blobs stay shared |
-| `share_blocks` | Each share's snapshot: its blocks, by share, agent and index ([Sharing](../product/sharing.md#storage-and-routes)) |
+| `share_blocks`, `share_agents` | Each share's snapshot: its blocks, by share, agent and index, and each subagent it holds with the description and profile it had then ([Sharing](../product/sharing.md#storage-and-routes)) |
 
 For example, saving a streamed assistant block updates that block's row and
 the node checkpoint together. It does not serialize the whole transcript into
