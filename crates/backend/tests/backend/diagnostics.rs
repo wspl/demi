@@ -186,3 +186,85 @@ async fn a_page_reports_its_own_errors_thirty_a_minute() {
     backend.close().await;
     log.close().await;
 }
+
+/// A request whose client goes away before its answer, as a fetch that
+/// times out and retries does, logs its line too, under its ID and with
+/// its user: a summary read that waits for a migrating conversation is
+/// abandoned. A restart and a migration, under a second.
+#[tokio::test]
+async fn a_request_its_client_abandons_logs_its_line() {
+    use tokio::io::AsyncWriteExt as _;
+
+    use demi_backend_database::{DatabaseKind, schema_testing};
+    use demi_conversation_socket_protocol::ClientFrame;
+
+    use crate::conversations::{FIRST, Socket, create};
+    use crate::support::PATIENCE;
+
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    create(&backend, &master, FIRST).await;
+    backend.close().await;
+    schema_testing::store_as_shipped(
+        &harness
+            .data_dir()
+            .join("conversations")
+            .join(format!("{FIRST}.sqlite")),
+        DatabaseKind::Conversation,
+    );
+    let log = ServerLogCapture::open(&harness);
+    let backend = harness.start().await;
+    let hold = backend.hold_migrations();
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.send(&ClientFrame::Open { from: None, edge: None }).await;
+    tokio::time::timeout(PATIENCE, hold.until_migrating(1))
+        .await
+        .expect("opening the conversation migrates its database");
+
+    // The page's summary read waits for the migration; its client goes.
+    let mut client = tokio::net::TcpStream::connect(backend.address()).await.unwrap();
+    let head = format!(
+        "GET /api/conversations HTTP/1.1\r\nhost: {}\r\ncookie: {}\r\n\r\n",
+        backend.address(),
+        master.cookie
+    );
+    client.write_all(head.as_bytes()).await.unwrap();
+    tokio::time::timeout(PATIENCE, hold.until_reads_wait(1))
+        .await
+        .expect("the summary read waits for the migration");
+    drop(client);
+
+    let abandoned = || async {
+        let read = backend.get("/api/server/log", Some(&master)).await;
+        assert_eq!(read.status, StatusCode::OK);
+        read.json::<ServerLog>()
+            .lines
+            .into_iter()
+            .find(|line| line.message == "a request was abandoned")
+    };
+    eventually("the abandoned request's line is in the log", || async {
+        abandoned().await.is_some()
+    })
+    .await;
+    let line = abandoned().await.unwrap();
+    assert_eq!(line.level, LogLevel::Info);
+    for (field, value) in [
+        ("method", json!("GET")),
+        ("path", json!("/api/conversations")),
+        ("user_id", json!(master.user.id.as_str())),
+    ] {
+        assert_eq!(line.fields[field], value, "{field} in {line:?}");
+    }
+    assert!(line.fields["duration_ms"].is_u64(), "{line:?}");
+    // Its ID finds it as an answered request's would.
+    let id = line.fields["request_id"].as_str().unwrap().to_owned();
+    let found = lines_of(&backend, &master, &id).await.lines;
+    assert!(
+        found.iter().any(|line| line.message == "a request was abandoned"),
+        "{found:?}"
+    );
+    hold.release();
+    drop(socket);
+    backend.close().await;
+    log.close().await;
+}
