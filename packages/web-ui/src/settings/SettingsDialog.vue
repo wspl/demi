@@ -27,9 +27,12 @@ import type {
  * The settings surface: one large dialog with a section rail and one page at a time.
  * The rail sits on the page surface, the page on the dialog surface, so the two read
  * as the app's own sidebar and content. Layout follows the dialog width, not the viewport.
- * On a narrow screen the dialog fills the window (Dialog's xl size) and reads as iOS
- * Settings does: the rail is a list of the sections, and a section opens as a page of
- * its own with a back button to the list.
+ * On a phone (`usePhone`) or in a container narrower than 28rem the dialog fills the
+ * window (Dialog's xl size) and reads as iOS Settings does, one thing at a time and
+ * never the rail beside a page: the rail is a list of the sections, and a section
+ * slides over it as a page of its own with a back button to the list, and slides
+ * away again. This holds at every width below 768 px, not only below 28rem
+ * (the `wide:` variant of `base.css`, which the pages inside use too).
  *
  * The rail's filter finds sections and the settings they hold (`SettingsEntry`); a
  * setting found opens its section with its row highlighted. Escape in the filter
@@ -73,8 +76,19 @@ const shown = computed(() => tab.value ?? firstSection.value)
 
 const container = ref<HTMLElement>()
 const { width } = useElementSize(container)
-/** Narrow as the container queries below are (28rem): the list rows take a finger's height. */
-const narrow = computed(() => width.value > 0 && width.value < 448)
+/** One thing at a time, as the `wide:` variant says it in CSS: the list rows take a finger's height. */
+const narrow = computed(() => phone.value || (width.value > 0 && width.value < 448))
+
+/**
+ * The page the narrow layout shows, also while it slides away on the way back
+ * to the list: the section last open, not the first, which the list would name.
+ */
+const lastOpen = ref<SettingsTab | null>(null)
+watch(tab, (now) => {
+  if (now !== null)
+    lastOpen.value = now
+}, { immediate: true })
+const pageSection = computed(() => tab.value ?? (narrow.value ? lastOpen.value : null) ?? shown.value)
 
 /** A level the open page opened inside itself, which the narrow bar goes back from first. */
 // Shallow: a split takes its level off only while it is the one it put on, by identity.
@@ -89,6 +103,15 @@ function back(): void {
   }
   tab.value = null
 }
+
+/**
+ * Narrow, the list and the page are two panes on one spot: the page waits
+ * off the right edge, slides in over the list when a section is picked, and
+ * the list steps back a little as iOS Settings' does. A pane out of sight is
+ * `invisible` once it has moved, so neither focus nor a reader reaches it.
+ * Wide, they stand side by side and nothing moves.
+ */
+const PANE = 'transition-[translate,visibility] duration-[260ms] ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none'
 
 const query = ref('')
 const filtered = computed(() => filterSettings(shownSections.value, query.value))
@@ -185,16 +208,18 @@ const displayName = computed(() =>
     <!-- The rail and the page scroll on their own. min-h-0 lets the body shrink to a
          floating panel's cap; grow lets it fill a panel that fills a narrow window. -->
     <div ref="container" class="@container h-[36rem] min-h-0 shrink grow">
-      <div class="flex h-full flex-col overflow-hidden @md:flex-row">
+      <!-- Narrow, the list and the page are stacked and one slides over the other (`pane` below); wide, they stand in a row. -->
+      <div class="relative flex h-full overflow-hidden wide:flex-row">
         <!-- Wide: a rail beside the page. Narrow: the list of sections, until one opens. -->
         <!-- The account and the filter stay put; only the section list scrolls. -->
         <!-- The rail and the page are each a region (`ui/region.ts`): a menu opened in one grows toward its inside. -->
         <aside
           data-region
-          class="min-h-0 shrink-0 flex-col gap-3 bg-surface px-3 pb-3 @md:flex @md:w-56 @md:pt-3"
-          :class="tab === null ? 'flex flex-1 @md:flex-none' : 'hidden'"
+          class="absolute inset-0 flex min-h-0 flex-col gap-3 bg-surface px-3 pb-3 wide:static wide:w-56 wide:shrink-0 wide:pt-3"
+          :class="[PANE, tab === null ? '' : '-translate-x-[30%] invisible wide:visible wide:translate-x-0']"
+          :inert="narrow && tab !== null"
         >
-          <div class="-mx-3 -mb-3 flex h-11 shrink-0 select-none items-center pl-4 pr-12 @md:hidden">
+          <div class="-mx-3 -mb-3 flex h-11 shrink-0 select-none items-center pl-4 pr-12 wide:hidden">
             <span class="text-[15px] font-medium text-fg-emphasis">{{ t('dialog.title') }}</span>
           </div>
           <div
@@ -270,10 +295,11 @@ const displayName = computed(() =>
         </aside>
         <section
           data-region
-          class="relative min-h-0 min-w-0 flex-1 flex-col @md:flex"
-          :class="tab === null ? 'hidden' : 'flex'"
+          class="absolute inset-0 flex min-h-0 min-w-0 flex-col bg-surface-dialog wide:static wide:flex-1"
+          :class="[PANE, tab === null ? 'translate-x-full invisible wide:visible wide:translate-x-0' : '']"
+          :inert="narrow && tab === null"
         >
-          <div class="flex h-11 shrink-0 select-none items-center pl-2 pr-12 @md:hidden">
+          <div class="flex h-11 shrink-0 select-none items-center pl-2 pr-12 wide:hidden">
             <Button variant="ghost" size="sm" @click="back">
               <ChevronLeft :size="ICON_PX.in24" />
               {{ level?.label ?? t('dialog.title') }}
@@ -281,10 +307,10 @@ const displayName = computed(() =>
           </div>
           <ScrollArea
             class="min-h-0 flex-1"
-            viewport-class="flex flex-col px-5 pb-6 pt-2 @md:px-8 @md:py-8"
+            viewport-class="flex flex-col px-5 pb-6 pt-2 wide:px-8 wide:py-8"
           >
             <div ref="page" class="contents">
-              <slot :section="shown" />
+              <slot :section="pageSection" />
             </div>
           </ScrollArea>
         </section>

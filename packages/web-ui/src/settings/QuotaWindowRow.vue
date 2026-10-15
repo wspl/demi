@@ -11,18 +11,19 @@ import type { SettingsQuotaWindow } from './types'
  * reset and its use at the end, "Resets in 4h 42m · 4% used", the reset
  * worded by `formatReset` and left out when unknown. Settings and the context
  * card both show a window only through this row. Where the line is short the
- * reset truncates; the name and the use never do.
+ * reset wraps at its spaces and the use, "4% used", drops under it whole,
+ * right-aligned, and none of it is cut.
  */
 defineProps<{ window: SettingsQuotaWindow }>()
 </script>
 
 <template>
   <div class="flex flex-col gap-1">
-    <div class="flex items-baseline gap-3 whitespace-nowrap">
+    <div class="flex items-baseline gap-3">
       <span class="shrink-0 text-fg-body">{{ window.label }}</span>
-      <span class="ml-auto flex min-w-0 items-baseline">
-        <ResetTime v-if="window.resetsAt" class="min-w-0 truncate" :timestamp="window.resetsAt" />
-        <span class="shrink-0"><template v-if="window.resetsAt">&nbsp;·&nbsp;</template>{{ t('quota.used', { share: formatPercent(window.used, window.max) }) }}</span>
+      <span class="ml-auto min-w-0 text-right">
+        <ResetTime v-if="window.resetsAt" :timestamp="window.resetsAt" />
+        <template v-if="window.resetsAt">&nbsp;· </template><span class="whitespace-nowrap">{{ t('quota.used', { share: formatPercent(window.used, window.max) }) }}</span>
       </span>
     </div>
     <Meter :value="window.used" :max="window.max" :label="window.label" />

@@ -79,7 +79,7 @@ const directCloud: CloudState = {
 const anatomy: [string, string][] = [
   [
     'Shell',
-    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Data & privacy. A plugin’s section is on the rail while its plugin is on. On a narrow screen, where the app’s side panes become overlays, the dialog fills the window: square corners, no scrim around it. Below a phone width it reads as iOS Settings: the rail is a list of the sections with rows a finger can hit, and a section opens as a page of its own with a back button to the list. The filter finds single settings by their label or what people call them (dark mode finds Theme), lists them under their section, and opens one with its row highlighted; Escape in the filter clears it before it closes the dialog.'
+    'One large dialog. The rail sits on the page surface with the account name on top and a filter under it, the page on the dialog surface, so it reads like the app itself. A whole unused page stays on the rail and is disabled with an In development tooltip: Data & privacy. A plugin’s section is on the rail while its plugin is on. On a narrow screen, where the app’s side panes become overlays, the dialog fills the window: square corners, no scrim around it. In the phone layout (below 768 px, however wide the dialog still is) it reads as iOS Settings and never shows the rail beside a page: the rail is a list of the sections with rows a finger can hit, and a section slides over it as a page of its own, with a back button to the list. The Phone page shows it on a real phone frame. The filter finds single settings by their label or what people call them (dark mode finds Theme), lists them under their section, and opens one with its row highlighted; Escape in the filter clears it before it closes the dialog.'
   ],
   [
     'Page',
@@ -588,7 +588,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Full · Narrow"
-        note="A phone-width window: the dialog fills it edge to edge with square corners and no scrim around it, the close button stays in its corner. It opens on the list of sections; a section opens as its own page with Settings to go back, and Providers opens on its list of providers, not on one of them."
+        note="A phone-width window: the dialog fills it edge to edge with square corners and no scrim around it, the close button stays in its corner. It opens on the list of sections; a section slides over it as its own page with Settings to go back, and slides away again, and Providers opens on its list of providers, not on one of them."
       >
         <GalleryOverlayWell size="narrow">
           <Button v-if="!fullNarrowOpen" size="md" @click="fullNarrowOpen = true">Open</Button>
