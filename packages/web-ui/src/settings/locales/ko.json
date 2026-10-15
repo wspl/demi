@@ -376,7 +376,7 @@
     "description": "작업의 일부를 맡는 서브에이전트입니다.",
     "switchDescription": "끄더라도 실행 중인 서브에이전트는 중지되지 않습니다.",
     "maxLive": "최대 서브에이전트 수",
-    "maxLiveDescription": "한 대화에서 동시에 실행할 수 있는 서브에이전트의 최대 수입니다.",
+    "maxLiveDescription": "모든 대화를 합쳐 동시에 실행할 수 있는 서브에이전트의 최대 수입니다.",
     "maxLiveConfirmTitle": "서브에이전트를 무제한으로 허용하시겠습니까?",
     "maxDepth": "최대 깊이",
     "maxDepthDescription": "1이면 메인 에이전트만 서브에이전트를 시작할 수 있습니다.",

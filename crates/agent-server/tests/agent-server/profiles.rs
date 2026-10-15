@@ -9,7 +9,8 @@ use demi_agent_store::ClosePhase;
 use demi_agent_tools::{Profile, ProfileModel, SubagentSettings};
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
 use demi_provider_common::{InferenceRequest, ProviderRun, ProviderRuntime, RequestLimits};
-use demi_shared_types::{AgentMessageEvent, CompletionOutcome};
+use demi_agent_server::testing::TestClient;
+use demi_shared_types::{AgentMessageEvent, CompletionOutcome, NodeId};
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Value, json};
 use tokio_util::sync::CancellationToken;
@@ -19,8 +20,8 @@ use crate::subagents::{
     spawn_during_turn,
 };
 use crate::support::{
-    Fixture, Gate, Model, TestProduct, agent, agent_call, conversation, is_idle, listed_model,
-    open, until,
+    Fixture, Gate, Model, TestProduct, agent, agent_call, agent_in, conversation, is_idle,
+    is_waiting, listed_model, open, until,
 };
 
 /// A profile the user created, enabled, with the parent's model and
@@ -655,6 +656,77 @@ async fn at_the_depth_limit_a_childs_spawn_fails_and_unlimited_lets_it_through()
     assert_eq!(fixture.store.record(&grandchild).unwrap().parent, Some(other));
 }
 
+/// The refusal of a start at the live limit, with `live` subagents across
+/// the user's conversations, `here` of them in the caller's.
+fn full(live: u32, here: u32, max: u32) -> String {
+    format!(
+        "{live} subagents are live across your conversations, {here} of them in this one, and Settings > Subagents allows {max}; wait for one to finish, or do this work in this session.\n"
+    )
+}
+
+// Two conversations of one user at a limit of 2, one subagent live in each:
+// a spawn in either fails, one closing lets the other's spawn through, and
+// a resume that fails after taking its place gives the place back.
+#[tokio::test(flavor = "local")]
+async fn the_live_limit_counts_the_subagents_of_all_the_users_conversations_together() {
+    let model = Model::default();
+    let gate = Gate::new();
+    // Never opened: the other conversation's root has no script to read
+    // its children's completions with.
+    let held_b = Gate::new();
+    // Each completion wakes the root once.
+    model.root([said("noted"), said("noted")]);
+    model.child("task remote", [said("remote done")]);
+    model.child("task held a", [held_said(&gate, "a done")]);
+    model.child("task held b", [held_said(&held_b, "b done")]);
+    model.child("task later b", [held_said(&held_b, "later done")]);
+    let remote = Profile {
+        model: model_settings("other", "big-model", None),
+        ..profile("remote", "Works on another provider.")
+    };
+    let product = product(vec![remote]);
+    product.subagents.borrow_mut().max_live = NonZeroU32::new(2);
+    let fixture = fixture(&model, product);
+    fixture.resolver.provide_runtime("other", model.clone());
+    fixture.resolver.list("other", vec![listed_model("big-model", &[], &[])]);
+    let mut client = fixture.opened().await;
+    let other = NodeId::try_from("other conversation").unwrap();
+    let mut other_client = TestClient::connect(&fixture.server, &other);
+    other_client.send(open()).await;
+    other_client.next_until(is_waiting).await;
+
+    // A closed child whose provider the user then removes: its resume
+    // fails after the check of the live limit.
+    let remote = spawn(&fixture, &root(), json!({ "prompt": "task remote", "profile": "remote" })).await;
+    client.next_until(is_closed(&remote)).await;
+    until(|| fixture.store.record(&remote).unwrap().delivered).await;
+    fixture.resolver.remove("other");
+
+    let held_a = spawn(&fixture, &root(), json!({ "prompt": "task held a" })).await;
+    let in_other = |prompt: &str| {
+        agent_in(&fixture.server, &other, &other, "spawn", json!({ "prompt": prompt }))
+    };
+    let first_in_other = in_other("task held b").await;
+    assert_eq!(first_in_other.code, 0, "{first_in_other:?}");
+
+    // One live in each, the limit: a third spawn in either fails.
+    let here = refused_spawn(&fixture, json!({ "prompt": "task third" })).await;
+    assert_eq!(here, format!("demi agent spawn: {}", full(2, 1, 2)));
+    let there = in_other("task later b").await;
+    assert_eq!(refused(&there), format!("demi agent spawn: {}", full(2, 1, 2)));
+
+    // One closes, and a resume fails after taking its place.
+    gate.open();
+    client.next_until(is_closed(&held_a)).await;
+    let resume = json!({ "id": fixture.number(&remote), "message": "again" });
+    let resumed = agent(&fixture.server, &root(), "resume", resume).await;
+    assert_eq!(refused(&resumed), "demi agent resume: Provider \"other\" is not available\n");
+
+    // The other conversation's spawn goes through.
+    let later = in_other("task later b").await;
+    assert_eq!(later.code, 0, "{later:?}");
+}
+
 #[tokio::test(flavor = "local")]
 async fn at_the_live_limit_a_spawn_at_any_depth_and_a_resume_fail_and_unlimited_lets_them_through()
 {
@@ -678,11 +750,7 @@ async fn at_the_live_limit_a_spawn_at_any_depth_and_a_resume_fail_and_unlimited_
 
     // Two live subagents, the limit: the root's third spawn, a child's
     // spawn one level down, and the resume of the closed first all fail.
-    let full = |live: u32, max: u32| {
-        format!(
-            "this conversation has {live} live subagents and Settings > Subagents allows {max}; wait for one to finish (`demi agent list`), or do this work in this session.\n"
-        )
-    };
+    let full = |live: u32, max: u32| full(live, live, max);
     let third = agent(&fixture.server, &root(), "spawn", json!({ "prompt": "task third" })).await;
     assert_eq!(refused(&third), format!("demi agent spawn: {}", full(2, 2)));
     let below = agent(&fixture.server, &held_a, "spawn", json!({ "prompt": "task third" })).await;

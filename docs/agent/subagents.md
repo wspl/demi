@@ -684,17 +684,24 @@ conversation of the user:
 
 | Limit | Meaning | Default |
 | --- | --- | --- |
-| Maximum subagents | How many subagents of one conversation may be live at once, at every depth together; the root is not one | 10 |
+| Maximum subagents | How many subagents may be live at once across all the user's conversations, at every depth together; roots are not counted | 10 |
 | Maximum depth | How many levels of subagents the tree may have below the root. At 1, only the root spawns: its children cannot. At 2, its children spawn too, and their children cannot | 1 |
 
-For example, with the defaults, the root spawns ten children; an eleventh
-spawn fails until one of them closes, and a child's own spawn fails at
-once. Either limit may be a whole number from 1, or Unlimited, which
+For example, with the defaults, a conversation running six subagents
+leaves four for all the user's other conversations together; the eleventh
+spawn, in whichever conversation, fails until one of them closes, and a
+child's own spawn fails at once. The limit bounds what the user runs at
+once, the tokens and the Hosts' load, which grow with the subagents of all
+conversations, not of one. The user's backend shard keeps the count over
+its conversations: a conversation with a live subagent is never evicted
+([Persistence](#persistence)), so every live subagent is counted.
+
+Either limit may be a whole number from 1, or Unlimited, which
 Settings confirms first with a warning that agents may then start subagents
 without bound, which can make a conversation unstable and spend many tokens.
 Codex bounds its agent threads the same two ways (`agents.max_threads`,
 `agents.max_depth`); it is the user's to loosen, not the model's. A limit
-lowered under what a conversation has live ends nothing: the live
+lowered under what is live ends nothing: the live
 subagents go on, and spawns fail until the count is under the new limit.
 
 **Each spawn reads the current settings.** A spawn reads the Subagents switch,
@@ -739,11 +746,11 @@ any child is created, with a message that says which:
    this agent is at the deepest level of subagents Settings > Subagents allows (1); do this work in this session.
    ```
 
-6. **The conversation is under its limit of live subagents.** Otherwise,
-   with the count as it is, which a lowered limit leaves above the limit:
+6. **The user is under the limit of live subagents.** Otherwise, with the
+   counts as they are, which a lowered limit leaves above the limit:
 
    ```text
-   this conversation has 12 live subagents and Settings > Subagents allows 10; wait for one to finish (`demi agent list`), or do this work in this session.
+   12 subagents are live across your conversations, 3 of them in this one, and Settings > Subagents allows 10; wait for one to finish, or do this work in this session.
    ```
 
    A `resume` makes a closed child live again, so it fails the same way.
@@ -1092,8 +1099,9 @@ The role is a node option, not a depth. Every child has its parent's commands.
   ([Working directory](#working-directory)). Every node reaches its Host through the
   conversation's host access, because the execution target belongs to the
   conversation ([Resolve a target](../execution/sessions-and-targets.md#resolve-a-target)).
-- The user's two [limits](#limits) bound the tree: the live subagents of
-  the conversation and its depth. No command changes them.
+- The user's two [limits](#limits) bound the trees: the live subagents of
+  all the user's conversations together, and each tree's depth. No command
+  changes them.
 - A shell result is cut by the same rule in every node, whatever its model
   ([Results and previews](runtime.md#results-and-previews)), and every node
   reads any command's whole output of the conversation

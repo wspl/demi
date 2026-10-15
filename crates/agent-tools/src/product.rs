@@ -48,8 +48,8 @@ impl ToolsetSource for Toolset {
 pub struct SubagentSettings {
     /// Whether the user has subagents on.
     pub enabled: bool,
-    /// How many subagents of a conversation may be live at once, at every
-    /// depth together; none for Unlimited.
+    /// How many subagents may be live at once across all the user's
+    /// conversations, at every depth together; none for Unlimited.
     pub max_live: Option<NonZeroU32>,
     /// How many levels of subagents a tree may have below its root: at 1,
     /// only the root spawns. None for Unlimited.

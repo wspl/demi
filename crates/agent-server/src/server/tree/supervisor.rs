@@ -280,21 +280,42 @@ impl<H: HostResolver> Tree<H> {
         Ok(())
     }
 
-    /// Check 6 of a spawn, and of a resume: the conversation is under its
-    /// limit of live subagents, counting the starts that passed this check
-    /// and have not yet joined the directory. The slot answered holds the
-    /// new child's place until it joins the directory or its start fails.
-    fn reserve_live(self: &Rc<Self>, limits: Limits) -> Result<LiveSlot<H>, String> {
+    /// Check 6 of a spawn, and of a resume: the user is under the limit of
+    /// live subagents across all the conversations of `server`, the user's
+    /// shard, counting in each tree the starts that passed this check and
+    /// have not yet joined its directory. The slot answered holds the new
+    /// child's place until it joins the directory or its start fails.
+    fn reserve_live(
+        self: &Rc<Self>,
+        server: &AgentServer<H>,
+        limits: Limits,
+    ) -> Result<LiveSlot<H>, String> {
         if let Some(max) = limits.max_live {
-            let live = self.children.borrow().len() + self.admitted.get();
+            let here = self.live_count();
+            // This tree is in the map while it starts a child: a disposing
+            // tree starts none.
+            let elsewhere: usize = server
+                .trees
+                .borrow()
+                .values()
+                .filter(|tree| !Rc::ptr_eq(tree, self))
+                .map(|tree| tree.live_count())
+                .sum();
+            let live = here + elsewhere;
             if live >= max.get() as usize {
                 return Err(format!(
-                    "this conversation has {live} live subagents and Settings > Subagents allows {max}; wait for one to finish (`demi agent list`), or do this work in this session."
+                    "{live} subagents are live across your conversations, {here} of them in this one, and Settings > Subagents allows {max}; wait for one to finish, or do this work in this session."
                 ));
             }
         }
         self.admitted.set(self.admitted.get() + 1);
         Ok(LiveSlot { tree: self.clone() })
+    }
+
+    /// The live subagents of this tree, at every depth, with the starts
+    /// that hold a place among them.
+    fn live_count(&self) -> usize {
+        self.children.borrow().len() + self.admitted.get()
     }
 
     /// Starts a child of `caller` for `demi agent spawn`, `fork` or `resume`
@@ -374,7 +395,7 @@ impl<H: HostResolver> Tree<H> {
             None => owner.directory_at(&now),
         };
         self.check_depth(owner, setup.limits).await?;
-        let slot = self.reserve_live(setup.limits)?;
+        let slot = self.reserve_live(&server, setup.limits)?;
         let runtime = self
             .child_runtime(&server, owner, &setup.model)
             .await
@@ -448,7 +469,7 @@ impl<H: HostResolver> Tree<H> {
             under: now,
         };
         self.check_depth(owner, setup.limits).await?;
-        let slot = self.reserve_live(setup.limits)?;
+        let slot = self.reserve_live(&server, setup.limits)?;
         // The child starts on the source's model, which compacts what the
         // profile's model cannot hold, and switches at its first request.
         let from = seed.state.model.clone();
@@ -583,7 +604,7 @@ impl<H: HostResolver> Tree<H> {
             return Err("The previous completion is not saved by the parent yet; retry resume after receiving it".to_owned());
         }
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
-        let slot = self.reserve_live(self.limits(&server).await?)?;
+        let slot = self.reserve_live(&server, self.limits(&server).await?)?;
         // The runtime comes first: a child whose provider entry is gone
         // stays archived.
         let archived = self.stored(&id).await?;
@@ -1641,7 +1662,7 @@ impl<H: HostResolver> Tree<H> {
     }
 }
 
-/// A start's place among the conversation's live subagents, from the check
+/// A start's place among the user's live subagents, from the check
 /// of the live limit until its child is in the directory or the start
 /// fails ([`Tree::reserve_live`]).
 struct LiveSlot<H: HostResolver> {

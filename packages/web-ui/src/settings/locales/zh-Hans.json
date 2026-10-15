@@ -376,7 +376,7 @@
     "description": "分担任务部分工作的子智能体。",
     "switchDescription": "关闭不会停止正在运行的子智能体。",
     "maxLive": "子智能体上限",
-    "maxLiveDescription": "一个对话同时运行的子智能体最大数量。",
+    "maxLiveDescription": "所有对话合计同时运行的子智能体最大数量。",
     "maxLiveConfirmTitle": "允许无限数量的子智能体？",
     "maxDepth": "最大深度",
     "maxDepthDescription": "为 1 时，只有主智能体可以启动子智能体。",

@@ -501,7 +501,22 @@ pub async fn agent_call<H: HostResolver>(
     cancel: CancellationToken,
 ) -> Result<CommandRun, RpcError> {
     let path: Vec<&str> = std::iter::once("agent").chain(verb.split(' ')).collect();
-    demi_call(server, node, &path, args, json, cancel, true).await
+    demi_call(server, &conversation(), node, &path, args, json, cancel, true).await
+}
+
+/// `demi agent <verb>` run to its end as a job of `node` of the
+/// conversation `root`, another than the scenarios' own.
+pub async fn agent_in<H: HostResolver>(
+    server: &Rc<AgentServer<H>>,
+    root: &NodeId,
+    node: &NodeId,
+    verb: &str,
+    args: Value,
+) -> CommandRun {
+    let path: Vec<&str> = std::iter::once("agent").chain(verb.split(' ')).collect();
+    demi_call(server, root, node, &path, args, false, CancellationToken::new(), true)
+        .await
+        .expect("the call is dispatched")
 }
 
 /// Runs `demi shell <verb>` as a job of `node`, whose call `cancel`
@@ -514,7 +529,7 @@ pub async fn shell_call<H: HostResolver>(
     cancel: CancellationToken,
     read: bool,
 ) -> Result<CommandRun, RpcError> {
-    demi_call(server, node, &["shell", verb], args, false, cancel, read).await
+    demi_call(server, &conversation(), node, &["shell", verb], args, false, cancel, read).await
 }
 
 /// `demi shell <verb>` run to its end as a job of `node`.
@@ -529,9 +544,11 @@ pub async fn shell_command<H: HostResolver>(
         .expect("the call is dispatched")
 }
 
-/// Runs `demi <path>` as [`agent_call`] does.
+/// Runs `demi <path>` as [`agent_call`] does, as a job of `node` of the
+/// conversation `root`.
 async fn demi_call<H: HostResolver>(
     server: &Rc<AgentServer<H>>,
+    root: &NodeId,
     node: &NodeId,
     path: &[&str],
     args: Value,
@@ -539,9 +556,7 @@ async fn demi_call<H: HostResolver>(
     cancel: CancellationToken,
     read: bool,
 ) -> Result<CommandRun, RpcError> {
-    let live = server
-        .node(&conversation(), node)
-        .expect("the calling node is live");
+    let live = server.node(root, node).expect("the calling node is live");
     let mut invocation: RpcInvocation = serde_json::from_value(json!({
         "path": std::iter::once("demi").chain(path.iter().copied()).collect::<Vec<_>>(),
         "argv": [],
@@ -551,7 +566,7 @@ async fn demi_call<H: HostResolver>(
         "cwd": "/workspace",
         "env": {},
         "context": {
-            "conversation": conversation(),
+            "conversation": root,
             "caller": { "kind": "agent", "number": live.record().number },
             "locale": { "timeZone": "UTC", "languages": ["en"] },
             "colorScheme": "light",
