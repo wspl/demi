@@ -2062,6 +2062,21 @@ html[data-theme="light"] .file-pill {
   cursor: pointer;
 }
 
+/* A document's table fits the document's width, as on GitHub: its columns
+   share the width, a long cell wrapping, so a comparison of eight products
+   reads at a glance; only a table whose cells cannot wrap that narrow
+   scrolls, and a small one is as wide as its content. A reply's table keeps
+   its readable measure instead. */
+.markdown-document table {
+  width: auto;
+  min-width: 0;
+}
+
+.markdown-document :is(th, td) {
+  min-width: 0;
+  max-width: none;
+}
+
 /* Interface controls are not document text; editable fields keep native selection. */
 @layer base {
   :where(button, [role="button"], [role="tab"], [role="menu"], nav, label, legend) {

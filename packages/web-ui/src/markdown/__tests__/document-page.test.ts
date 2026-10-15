@@ -123,4 +123,24 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     await opened.close()
   })
 
+  test('a wide table fits the document, its cells wrapping, and a small one is as wide as its content', async () => {
+    const opened = await page()
+    const row = (cell: string) => `| ${Array.from({ length: 5 }, () => cell).join(' | ')} |`
+    const widths = await opened.evaluate(async (markdown) => {
+      await window.show(markdown)
+      return [...document.querySelectorAll('table')].map((table) => table.getBoundingClientRect().width)
+    }, [
+      row('Product'),
+      row('---'),
+      row('Local worktrees, SSH hosts or your cloud VMs'),
+      '',
+      '| A | B |',
+      '| --- | --- |',
+      '| 1 | 2 |',
+    ].join('\n'))
+    expect(widths[0]).toBeLessThanOrEqual(WIDTH)
+    expect(widths[1]).toBeLessThan(WIDTH / 2)
+    await opened.close()
+  })
+
 })
