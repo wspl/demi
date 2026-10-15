@@ -23,6 +23,7 @@ import GalleryTranscript from '../components/GalleryTranscript.vue'
 import GalleryStepPlaces from '../components/GalleryStepPlaces.vue'
 import { stepPlaces } from '../fixtures/step-places'
 import GalleryEditSelection from '../components/GalleryEditSelection.vue'
+import GalleryFilePills from '../components/GalleryFilePills.vue'
 import RequestCard from '@demicodes/web-ui/permissions/RequestCard.vue'
 import {
   afterDecision,
@@ -1002,6 +1003,7 @@ useGalleryTranscripts(() => ({ blocks: workFlow.state.blocks, subagents: [] }))
 /** The requests of the Request’s Changes specimens, which the panel under them reads as the product reads a conversation. */
 const signInBlocks = signInRequestBlocks('sign-in')
 const signInOffBlocks = signInRequestBlocks('sign-in-off')
+const signInOutsideBlocks = signInRequestBlocks('sign-in-outside')
 /** The same request still working, its last call ended and no reply yet. */
 const signInRunningBlocks = signInRequestBlocks('sign-in-running').slice(0, -1)
 // The calls being written: a finished sentence, then a call with its title,
@@ -1025,6 +1027,7 @@ const cleanupBlocks = cleanupRequestBlocks()
 const parentBlocks = subagentParentBlocks()
 const childBlocks = subagentBlocks()
 useGalleryTranscripts(() => ({ blocks: signInBlocks, subagents: [] }))
+useGalleryTranscripts(() => ({ blocks: signInOutsideBlocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: uncopiedBlocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: movedBlocks, subagents: [] }))
 useGalleryTranscripts(() => ({ blocks: cleanupBlocks, subagents: [] }))
@@ -2757,7 +2760,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Request’s Changes"
-        note="A request runs from the user’s message to their next one, through command reports, receipts and steers. The pills under each call name its files, and a work group’s pills each file once; a pill opens the Change view below on its file at that call’s first edit, and a pill whose edit it already shows leaves it as it is; only the panel’s own control closes it. A subagent’s changes show only in its own transcript. With the changes plugin off, the pills are no controls."
+        note="A request runs from the user’s message to their next one, through command reports, receipts and steers. The pills under each call name its files, and a work group’s pills each file once; a pill opens the Change view below on its file at that call’s first edit, and a pill whose edit it already shows leaves it as it is; only the panel’s own control closes it. A subagent’s changes show only in its own transcript. With the changes plugin off, the pills are no controls. A conversation outside a project shows no pills; its Change view still lists the files."
       >
         <GallerySpecimen variant="two files, login.ts edited three times across a command report" wide>
           <div class="gallery-frame h-[30rem] bg-surface">
@@ -2881,6 +2884,23 @@ onBeforeUnmount(() => {
               />
             </div>
           </GalleryEditSelection>
+        </GallerySpecimen>
+        <GallerySpecimen variant="a conversation outside a project · no pills" wide>
+          <GalleryFilePills :shown="false">
+            <div class="gallery-frame h-[30rem] bg-surface">
+              <AgentMessageList
+                class="h-full"
+                conversation-id="gallery-request-outside"
+                :blocks="signInOutsideBlocks"
+                :pending-steers="[]"
+                :queue="[]"
+                phase="idle"
+                :bottom-offset="0"
+                :persisted-scroll-state="undefined"
+                read-only
+              />
+            </div>
+          </GalleryFilePills>
         </GallerySpecimen>
       </GallerySection>
       <!-- The panel the pills above open; a click on what it already shows leaves it as it is, as in the product. -->
