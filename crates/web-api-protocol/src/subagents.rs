@@ -20,8 +20,8 @@ use crate::ids::ProfileId;
 pub struct SubagentSettings {
     /// The Subagents switch: true for a user who never turned it off.
     pub enabled: bool,
-    /// Maximum subagents: how many subagents of one conversation may be
-    /// live at once (`subagents.md` § Limits).
+    /// Maximum subagents: how many subagents may be live at once across
+    /// all the user's conversations (`subagents.md` § Limits).
     pub max_live: SubagentLimit,
     /// Maximum depth: how many levels of subagents a tree may have below
     /// its root.

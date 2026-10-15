@@ -61,7 +61,8 @@ pub struct Tree<H: HostResolver> {
     /// with one is not quiescent, as if the child were live already.
     starting: RefCell<HashMap<NodeId, usize>>,
     /// The starts past the check of the live limit whose child is not yet
-    /// in `children`, which that check counts as live.
+    /// in `children`, which that check, in this tree and in every other of
+    /// the user's, counts as live.
     admitted: Cell<usize>,
     /// Starts past their reservation, and closes: what dispose waits for.
     lifecycle: TaskTracker,
