@@ -24,7 +24,7 @@
     "signOut": "サインアウト"
   },
   "row": {
-    "unpin": "ピン留めを外す",
+    "unpin": "ピン留めを解除",
     "archive": "アーカイブ"
   },
   "project": {
@@ -43,8 +43,8 @@
     "copyId": "チャット ID をコピー",
     "pin": "ピン留め",
     "pinMany": "{count} 件のチャットをピン留め",
-    "unpin": "ピン留めを外す",
-    "unpinMany": "{count} 件のチャットのピン留めを外す",
+    "unpin": "ピン留めを解除",
+    "unpinMany": "{count} 件のチャットのピン留めを解除",
     "archive": "アーカイブ",
     "archiveMany": "{count} 件のチャットをアーカイブ",
     "delete": "削除…",
@@ -85,8 +85,8 @@
       "many": "{count} 件のチャットをピン留めできませんでした"
     },
     "unpin": {
-      "one": "{name}のピン留めを外せませんでした",
-      "many": "{count} 件のチャットのピン留めを外せませんでした"
+      "one": "{name}のピン留めを解除できませんでした",
+      "many": "{count} 件のチャットのピン留めを解除できませんでした"
     },
     "delete": {
       "one": "{name}を削除できませんでした",
