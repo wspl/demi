@@ -11,7 +11,7 @@
 use std::{collections::HashMap, io, sync::Arc, time::Duration};
 
 use demi_command_protocol::{ArtifactLocation, ServiceSequence, host_target};
-use demi_runner_command_packages::{ServiceBackend, RuntimeError, ServiceLease};
+use demi_runner_command_packages::{ServiceBackend, RuntimeError};
 use demi_runner_protocol::wire::{self, Inbound};
 use futures_util::future::BoxFuture;
 use tokio::{
@@ -21,7 +21,7 @@ use tokio::{
 use tokio_util::sync::CancellationToken;
 
 use crate::commands::{
-    contexts::ExecutionContext,
+    contexts::{ExecutionContext, PackageLeases},
     rpc::CallEvent,
 };
 
@@ -84,7 +84,7 @@ pub enum Request {
     /// Makes a job's execution context live.
     Context {
         context: Arc<ExecutionContext>,
-        leases: Vec<ServiceLease>,
+        leases: PackageLeases,
         reply: oneshot::Sender<io::Result<()>>,
     },
 }
@@ -203,7 +203,7 @@ impl ConnectionHandle {
     pub async fn register_context(
         &self,
         context: Arc<ExecutionContext>,
-        leases: Vec<ServiceLease>,
+        leases: PackageLeases,
     ) -> io::Result<()> {
         let (reply, answer) = oneshot::channel();
         let ended = || io::Error::other("the runner is stopping");

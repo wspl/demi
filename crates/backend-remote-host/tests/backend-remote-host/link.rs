@@ -690,6 +690,92 @@ async fn jobs_share_the_selected_manifest_only_within_one_connection() {
     assert_eq!(kinds(&drain(&mut link).await), ["manifest", "job_start"]);
 }
 
+/// A start that fails before its script runs, as one naming a manifest its
+/// runner does not hold does, makes the next job send its manifest again,
+/// though it was the last one the connection carried.
+/// Cost: in process, no runner, under a millisecond.
+#[tokio::test(flavor = "local")]
+async fn a_failed_start_makes_the_next_job_send_its_manifest_again() {
+    let device = device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let catalog = CommandCatalog::new(Vec::new(), Rc::new(NoArtifacts)).unwrap();
+    let selection = catalog.select(&CommandSet::new()).unwrap();
+    let start = || {
+        let mut start = job_start("true");
+        start.commands = Some(selection.clone());
+        host.start_job(start)
+    };
+    let manifests = |frames: &[Inbound]| {
+        frames
+            .iter()
+            .filter(|frame| matches!(frame, Inbound::Manifest { .. }))
+            .count()
+    };
+    let job = start().await.unwrap();
+    assert_eq!(manifests(&drain(&mut link).await), 1);
+    let mut exit = job_exit(job.id(), None, None);
+    if let Outbound::JobExit { spawn_error, .. } = &mut exit {
+        *spawn_error = Some(demi_runner_protocol::wire::SpawnError {
+            kind: demi_runner_protocol::wire::SpawnErrorKind::Other,
+            detail: Some("job manifest is not installed".into()),
+        });
+    }
+    link.send(exit).await;
+    assert!(matches!(job.end().await.status, ProcessEnd::NotStarted(_)));
+    start().await.unwrap();
+    assert_eq!(manifests(&drain(&mut link).await), 1);
+}
+
+/// A job whose manifest waits for room in the connection's queue and is
+/// given up before it got there leaves the manifest unsent: the next job
+/// with the same commands sends it before its start.
+/// Cost: in process, no runner, a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_manifest_given_up_before_it_was_queued_goes_with_the_next_job() {
+    let device = device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let catalog = CommandCatalog::new(Vec::new(), Rc::new(NoArtifacts)).unwrap();
+    let selection = catalog.select(&CommandSet::new()).unwrap();
+    let start = |commands: Option<&demi_backend_remote_host::CommandSelection>| {
+        let host = host.clone();
+        let mut start = job_start("true");
+        start.commands = commands.cloned();
+        let id = start.id.clone();
+        let started = tokio::task::spawn_local(async move { host.start_job(start).await.map(drop) });
+        (id, started)
+    };
+    // Starts without commands fill the queue and the test's end of it, so
+    // the next send waits for room.
+    let fillers: Vec<_> = (0..4 * demi_backend_remote_host::OUTBOUND_FRAMES)
+        .map(|_| start(None))
+        .collect();
+    for _ in 0..20 {
+        tokio::task::yield_now().await;
+    }
+    let (_, given_up) = start(Some(&selection));
+    for _ in 0..20 {
+        tokio::task::yield_now().await;
+    }
+    given_up.abort();
+    assert!(given_up.await.unwrap_err().is_cancelled());
+    let (next, started) = start(Some(&selection));
+    let mut manifests = 0;
+    loop {
+        match link.next().await {
+            Inbound::Manifest { .. } => manifests += 1,
+            Inbound::JobStart { job_id, .. } if job_id == next => break,
+            _ => {}
+        }
+    }
+    assert_eq!(manifests, 1);
+    started.await.unwrap().unwrap();
+    for (_, filler) in fillers {
+        filler.await.unwrap().unwrap();
+    }
+}
+
 /// A resolver that answers from a script of its own.
 struct Scripted {
     calls: Cell<usize>,

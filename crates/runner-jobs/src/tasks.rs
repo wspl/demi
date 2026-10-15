@@ -12,7 +12,7 @@ use crate::kept_output::KeptOutput;
 use crate::scratch::{SCRATCH_ENV, Scratch};
 use crate::{
     commands::{
-        contexts::{self, ContextPaths, ExecutionContext, Installation},
+        contexts::{self, ContextPaths, ExecutionContext, PinnedManifest},
         dispatch::Dispatcher,
     },
     connection::ConnectionHandle,
@@ -93,7 +93,6 @@ pub struct Commands {
     pub dispatcher: Arc<Dispatcher>,
     /// How its commands reach the backend, whichever connection serves.
     pub connection: ConnectionHandle,
-    pub installation: watch::Receiver<Installation>,
     pub paths: ContextPaths,
     pub services: ServiceHandle,
     /// The local endpoint command clients reach.
@@ -136,7 +135,7 @@ pub enum TaskCommand {
         stdout: Option<wire::PipeRef>,
         /// The manifest, command context and viewable media types of a job
         /// with declared commands.
-        commands: Option<(String, CommandContext, Option<Viewable>)>,
+        commands: Option<(PinnedManifest, CommandContext, Option<Viewable>)>,
     },
     Process {
         command: String,
@@ -408,7 +407,7 @@ impl JobConfig {
     async fn context(
         &self,
         job_id: &str,
-        manifest_hash: &str,
+        manifest: PinnedManifest,
         command: CommandContext,
         edits: demi_command_protocol::EditContext,
         media: Arc<JobMedia>,
@@ -419,16 +418,7 @@ impl JobConfig {
             .commands
             .as_ref()
             .ok_or_else(|| io::Error::other("shell command dispatcher is unavailable"))?;
-        let mut installation = commands.installation.clone();
-        let installed = installation
-            .wait_for(|installation| !matches!(installation, Installation::Installing))
-            .await
-            .map_err(|_| io::Error::other("host connection closed"))?
-            .clone();
-        let manifest = match installed {
-            Installation::Ready(manifest) if manifest.hash == manifest_hash => manifest,
-            _ => return Err(io::Error::other("job manifest is not installed")),
-        };
+        let manifest = manifest.manifest().await?;
         let context = Arc::new(
             ExecutionContext::create(
                 job_id.to_owned(),
@@ -553,7 +543,7 @@ impl JobConfig {
                 };
                 job = Some((Logs::new(output, lengths, announced), recorder.clone(), running));
                 let commands = match commands {
-                    Some((manifest_hash, command, viewable)) => {
+                    Some((manifest, command, viewable)) => {
                         let (sender, receiver) = mpsc::unbounded_channel();
                         arrivals = Some(receiver);
                         let media = Arc::new(JobMedia::new(
@@ -563,7 +553,7 @@ impl JobConfig {
                         ));
                         let setup = self.context(
                             &id,
-                            &manifest_hash,
+                            manifest,
                             command,
                             edit_context,
                             media,
