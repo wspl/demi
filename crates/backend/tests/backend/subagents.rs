@@ -1355,6 +1355,7 @@ async fn a_child_elsewhere_gets_the_project_directorys_skills_and_none_from_anot
     project_skill(project, "release");
     project_skill(&project.join("app"), "nested");
     project_skill(&home, "outside");
+    crate::work::into_project(&backend, &master, FIRST, &paired, project).await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
