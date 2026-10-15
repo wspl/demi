@@ -181,48 +181,61 @@ receives the directory when its first job needs it.
 
 ## Project skills
 
-A repository can carry its own skills, in the directories other agents read
-too. For a node working in `~/app/web`, inside the git repository `~/app`, the
-plugin looks in:
+A project can carry its own skills, in the directories other agents read too,
+and only there: for a conversation in the project `~/app`, the plugin looks in
 
 ```text
-~/app/web/.agents/skills/    ~/app/web/.claude/skills/
-~/app/.agents/skills/        ~/app/.claude/skills/
+~/app/.agents/skills/    ~/app/.claude/skills/
 ```
 
-that is, `.agents/skills` and `.claude/skills` in the node's working
-directory and in each directory above it up to the root of its git
-repository, the nearest directory that holds `.git`. Outside a git
-repository, only the working directory is searched. Every directory under
-these that holds a `SKILL.md` is a skill, and the search does not descend into
-a skill's directory. It reads at most 2,000 directories, to a depth of six
-below each skills directory, and finds at most 100 skills.
+and nowhere else: not in a directory above the project, such as the root of
+an enclosing git repository, not in a subagent's own working directory, and
+not in the user's home or another agent's configuration. A conversation
+outside a project looks in the same two directories of its own working
+directory. Every node of the conversation, a subagent working elsewhere
+included, gets the same project skills. The only other skills are the user
+skills above; no other skill is read or offered, and the Claude Code provider
+keeps the CLI's own skills out ([Starting](../providers/claude-code.md)).
+Every directory under these two that holds a `SKILL.md` is a skill, and the
+search does not descend into a skill's directory. It reads at most 2,000
+directories, to a depth of six below each skills directory, and finds at most
+100 skills.
 
-Project skills are always available: they come with the repository, and
-changing the repository is how they change. Their files stay where they are,
+Project skills are always available: they come with the project, and
+changing the project is how they change. Their files stay where they are,
 and the catalog names the `SKILL.md` at its own path on the Host. Demi does
-not check them first: the user chose the working directory, and the agent
-runs its code in any case.
+not check them first: the user chose the directory, and the agent runs its
+code in any case.
 
-The plugin reads them through its port's
+**The runner says when they change; a request never waits for the Host.** The
+plugin reads them through its port's
 [Host files](../architecture/plugins.md#reading-a-conversations-files), which
-never wakes a Host:
+never wakes a Host, and keeps them current with the runner's
+[file watch](../execution/runner.md#watching-files):
 
-- It searches at the first request of each input turn of a node, and again at
-  the next request of that turn when the Host was not running, until a search
-  succeeds. For example, on a stopped Cloud the first request lists no
-  project skill; the model's first command wakes the Cloud, and the request
-  after it lists them.
-- It keeps the result in memory, for the conversation's Host and the node's
-  working directory, and lists it while a search cannot run. An edit to the
-  repository's skills reaches the catalog at the next input turn.
+- For each Host and project directory a loaded conversation uses, the plugin
+  searches once and subscribes to what shows a skill coming, going or its
+  `SKILL.md` changing: the two skills directories, whether they exist yet or
+  not, and each skill's `SKILL.md`. When a subscription says something
+  changed, it searches again in the background and keeps the new result.
+  The subscriptions are released when no loaded conversation uses that
+  directory on that Host.
+- A request lists what the plugin holds at that moment and never waits for
+  a search. Until the first search answers, or while the Host is stopped or
+  offline, the request lists no project skill; the catalog block that
+  follows the search reaches the next request. For example, on a stopped
+  Cloud the first request lists no project skill; the model's first command
+  wakes the Cloud, the Host's coming online starts the search, and a request
+  after it lists them. An edit to a `SKILL.md` reaches the next request.
+- A search that fails, or a subscription the runner answers `failed`, is
+  logged, and the plugin keeps the last result it had; a Host that comes
+  online again is searched again.
 - A project skill that is not a skill, or has warnings, is logged. The page
   shows only user skills.
 
 When two skills that are available have the same name, one of them is listed:
-a project skill over a user skill, as the format's guide asks; of two project
-skills, the one in the nearer directory; and in one directory, `.agents/skills`
-over `.claude/skills`. The other is logged as shadowed.
+a project skill over a user skill, as the format's guide asks; and of two project
+skills, `.agents/skills` over `.claude/skills`. The other is logged as shadowed.
 
 ## What the model sees
 
@@ -268,7 +281,7 @@ of some, the block says `No skills are available now.`; when no skill is
 available and the model was never told of one, the plugin writes nothing.
 
 So a subagent receives the catalog before its first request as its parent
-did, for its own working directory; a conversation whose user turns a skill on
+did, with the conversation's project skills; a conversation whose user turns a skill on
 mid-conversation learns of it before its next request; and after a compaction
 the model is told the catalog again.
 
@@ -372,11 +385,12 @@ made on the page does.
 - A conversation that runs no job installs nothing on its Host; one that runs
   a job installs each directory once per runner connection, and a directory
   no longer on is removed from the Host at its next installation.
-- A repository's `.agents/skills` and `.claude/skills` skills, in the working
-  directory and up to the repository's root, are in the catalog at their own
-  paths; on a stopped Cloud they appear at the request after the Cloud woke,
-  and no search wakes it; a project skill shadows a user skill of the same
-  name.
+- The project directory's `.agents/skills` and `.claude/skills` skills, and
+  no others, are in the catalog at their own paths, for every node of the
+  conversation; a request never waits for their search; on a stopped Cloud
+  they appear at a request after the Cloud woke, and no search wakes it; an
+  edit to a `SKILL.md` reaches the next request without a new search being
+  asked for; a project skill shadows a user skill of the same name.
 - A skill that sets `disable-model-invocation` is never in the catalog.
 - A catalog over 8,000 characters is shortened, then cut with the count of
   the skills left out.
