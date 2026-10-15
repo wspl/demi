@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { ICON_PX } from '../../ui/icon-metrics'
 import type { ToolCallBlock } from '../block-types'
 import { storedShellView } from '../block-helpers'
-import { useEditSelection, useTranscript } from '../edit-selection'
+import { useEditSelection, useFilePills, useTranscript } from '../edit-selection'
 import { callPills, pillSelection, requestFileSelection } from '../../files/request-changes'
 import FileChangePills from './FileChangePills.vue'
 
@@ -11,13 +11,14 @@ import FileChangePills from './FileChangePills.vue'
  * The files a shell call changed, as pills under its row, as the call's
  * view stores them: what it wrote, removed (struck through) and renamed,
  * but for a file outside its agent's working directory. A pill opens its file in the
- * call's request, at the call's first edit of it (`edit-tracking.md`
- * § What the conversation shows).
+ * call's request, at the call's first edit of it; a conversation outside a
+ * project shows none (`edit-tracking.md` § What the conversation shows).
  */
 const props = defineProps<{ block: ToolCallBlock }>()
 const select = useEditSelection()
 const transcript = useTranscript()
-const files = computed(() => callPills(props.block))
+const pillsShown = useFilePills()
+const files = computed(() => pillsShown() ? callPills(props.block) : [])
 
 /**
  * What each pill opens, by path; none while the call belongs to no request,

@@ -261,6 +261,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :share="share"
     :shares="conversation.shares"
     :select-edit="selectEdit"
+    :file-pills="conversation.projectId !== null"
     :files="files"
     :primary-host="primaryHost"
     :permission-requests="permissions.stateFor(conversation.id).requests"

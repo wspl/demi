@@ -330,7 +330,11 @@ parent's own commands changed.
   Files*, which opens the Change view on the call or run at the first file
 it holds, as a pill does,
   where every file is listed, so a call that removed sixty screenshots
-  reads as a few pills and a count.
+  reads as a few pills and a count. A conversation outside a project shows
+  no pills: it works in its own workspace, where what the agent writes is
+  mostly scratch, such as a probe script or a downloaded page, and a row of
+  pills under every turn would only repeat it. Its Change view still lists
+  them.
 - **The Change view.** A pill opens the `edit` intent, which the work panel's
   Change view opens in Conversation mode on the request
   ([Intents](../architecture/plugin-pages.md#intents)); with the `changes`
