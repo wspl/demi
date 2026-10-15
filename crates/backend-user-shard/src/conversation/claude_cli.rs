@@ -7,7 +7,7 @@
 //! on; and the installs no conversation asked for, whose outcome the
 //! settings page shows.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::rc::{Rc, Weak};
@@ -17,9 +17,10 @@ use std::time::Duration;
 use bytes::Bytes;
 use demi_backend_cloud::access::MachineAccess;
 use demi_backend_database::StorageError;
+use demi_backend_plugins::Lost;
 use demi_backend_providers::llm::claude_releases::ReleaseError;
 use demi_backend_remote_host::{
-    AttachedArtifact, RemoteHost, ServiceCallError, ServiceRequest, WeakLink,
+    AttachedArtifact, Link, RemoteHost, ServiceCallError, ServiceRequest, WeakLink,
 };
 use demi_backend_runners::command_context::{command_context, provider_context};
 use demi_command_package_claude_code_protocol::{
@@ -29,13 +30,14 @@ use demi_command_protocol::{
     ArtifactLocation, ArtifactUrl, CommandCaller, CommandContext, PackageArtifact,
 };
 use demi_host_interface::{
-    FileContents, Host as _, HostError, MkdirOptions, Process, ProcessEnd, RmOptions, WriteOptions,
+    FileContents, Host as _, HostError, MkdirOptions, Process, ProcessEnd, RmOptions, SpawnError,
+    SpawnErrorKind, WriteOptions,
 };
 use demi_provider_claude_code::{
     AccountMachine, AccountWork, CliSite, CliStart, CliSystem, ConfigDir, Placed, Placement,
     PreparedProcesses, StartError, StartStage, StartSteps,
 };
-use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{CliInstall, CliMachine};
 use futures_util::FutureExt as _;
 use futures_util::future::{BoxFuture, LocalBoxFuture, Shared};
@@ -92,10 +94,11 @@ pub(crate) enum ProcessWork {
     Account(ProviderId),
 }
 
-/// A Cloud the CLI is wanted on: a Host there, its home, and the context
-/// the package's operations run under.
+/// A Cloud the CLI is wanted on: its device, a Host there, its home, and
+/// the context the package's operations run under.
 #[derive(Clone)]
 struct CliTarget {
+    device: DeviceId,
     host: RemoteHost,
     home: String,
     context: CommandContext,
@@ -231,7 +234,31 @@ impl Placement for CloudPlacement {
                     ))
                 })?;
             lap(&mut steps.spawn);
-            let exit = process.exit.shared();
+            // A start that finds the executable it was given gone, as after
+            // another runner sharing the cache removed it, drops what is
+            // kept of the machine's versions (`claude-code.md` § Which
+            // version).
+            let kept_by = self.shard.clone();
+            let device = access.device.id.clone();
+            let exit = process
+                .exit
+                .map(move |end| {
+                    let gone = matches!(
+                        &end,
+                        ProcessEnd::NotStarted(SpawnError {
+                            kind: SpawnErrorKind::ExecutableNotFound,
+                            ..
+                        })
+                    );
+                    // A shard that is gone keeps nothing to drop.
+                    if let (true, Some(shard)) = (gone, kept_by.upgrade()) {
+                        shard.claude_cli().forget_versions(&device);
+                        tracing::info!(device = %device, "the Claude Code versions kept for the device were dropped: its executable was gone");
+                    }
+                    end
+                })
+                .boxed_local()
+                .shared();
             config.exit = Some(exit.clone());
             Ok(Placed {
                 process: Process {
@@ -372,16 +399,91 @@ impl AccountMachine for ShardMachine {
     }
 }
 
-/// The CLI work of one user's shard: the versions being installed beside
-/// the one in use, the processes prepared ahead on the user's Cloud, and
-/// the run directory's real path there.
+/// The CLI work of one user's shard: the versions each machine has, the
+/// versions being installed beside the one in use, the processes prepared
+/// ahead on the user's Cloud, and the run directory's real path there.
 #[derive(Default)]
 pub(crate) struct ClaudeCli {
+    versions: RefCell<HashMap<DeviceId, KeptVersions>>,
     upgrading: RefCell<HashSet<String>>,
     prepared: Rc<PreparedProcesses>,
     /// The run directory with its links resolved, and the runner
     /// connection it was resolved over: a new connection resolves it again.
     run_dir: RefCell<Option<(WeakLink, String)>>,
+}
+
+/// The versions a machine has, newest install first, as one answer that
+/// every start waiting for it shares.
+type Versions = Shared<LocalBoxFuture<'static, Result<Vec<Installed>, CliError>>>;
+
+/// What the backend keeps of the CLI versions a machine has
+/// (`claude-code.md` § Which version): the answer of the runner
+/// connection `link`, asked once on it, or what the backend's own install
+/// over it left. A new connection asks again. `waiting` counts the starts
+/// that wait for an ask still under way.
+struct KeptVersions {
+    link: WeakLink,
+    versions: Versions,
+    waiting: Rc<Cell<usize>>,
+}
+
+impl KeptVersions {
+    fn new(link: WeakLink, versions: Versions) -> Self {
+        Self {
+            link,
+            versions,
+            waiting: Rc::default(),
+        }
+    }
+}
+
+/// A start waiting for an ask of a machine's versions. The last one to
+/// give up before the answer drops the ask, so the next start asks again
+/// rather than wait for an ask nobody waits for (`claude-code.md` § Which
+/// version).
+struct WaitingForVersions<'a> {
+    cli: &'a ClaudeCli,
+    device: &'a DeviceId,
+    versions: Versions,
+    waiting: Rc<Cell<usize>>,
+}
+
+impl<'a> WaitingForVersions<'a> {
+    fn new(cli: &'a ClaudeCli, device: &'a DeviceId, versions: Versions, waiting: Rc<Cell<usize>>) -> Self {
+        waiting.set(waiting.get() + 1);
+        Self {
+            cli,
+            device,
+            versions,
+            waiting,
+        }
+    }
+}
+
+impl Drop for WaitingForVersions<'_> {
+    fn drop(&mut self) {
+        self.waiting.set(self.waiting.get() - 1);
+        if self.waiting.get() > 0 || self.versions.peek().is_some() {
+            return;
+        }
+        let mut kept = self.cli.versions.borrow_mut();
+        if kept
+            .get(self.device)
+            .is_some_and(|kept| kept.versions.ptr_eq(&self.versions))
+        {
+            // Dropping the ask cancels its call to the machine.
+            kept.remove(self.device);
+            tracing::info!(device = %self.device, "the ask of the device's Claude Code versions was given up by every start that waited for it");
+        }
+    }
+}
+
+impl ClaudeCli {
+    /// Drops what is kept of `device`'s versions, for its next start to ask
+    /// again.
+    fn forget_versions(&self, device: &DeviceId) {
+        self.versions.borrow_mut().remove(device);
+    }
 }
 
 impl Shard {
@@ -448,6 +550,7 @@ impl Shard {
         let context =
             context.map_err(|error| format!("The command context could not be read: {error}"))?;
         let target = CliTarget {
+            device: access.device.id.clone(),
             host: access.host.clone(),
             home: access.home.clone(),
             context,
@@ -470,11 +573,20 @@ impl Shard {
         stages: &dyn Fn(StartStage),
     ) -> Result<String, CliError> {
         let releases = &self.services().claude_releases;
-        let installed = installed(self.services(), target).await?;
+        let installed = self.cli_versions(target).await?;
         let Some(newest) = installed.first() else {
             stages(StartStage::Install);
-            let wanted = releases.latest(false).await?;
-            return ensure(self.services(), target, &wanted).await;
+            let wanted = match releases.latest(false).await {
+                Ok(wanted) => wanted,
+                Err(error) => {
+                    // The install failed before the machine was asked to
+                    // do anything; what it has is asked again all the same.
+                    self.claude_cli().forget_versions(&target.device);
+                    return Err(error.into());
+                }
+            };
+            let installed = self.ensure_cli(target, &wanted).await?;
+            return Ok(installed.path.to_string_lossy().into_owned());
         };
         let Some(wanted) = releases.believed() else {
             return Ok(newest.path.to_string_lossy().into_owned());
@@ -487,6 +599,103 @@ impl Shard {
             self.upgrade_cli(target.clone(), wanted);
         }
         Ok(usable.path.to_string_lossy().into_owned())
+    }
+
+    /// The versions `target`'s machine has, newest install first, as the
+    /// backend keeps them for its runner connection (`claude-code.md`
+    /// § Which version): asked once on the connection, by whichever start
+    /// comes first, while the others wait for the same answer. A failed
+    /// ask, or one every start waiting for it gave up on, is kept by
+    /// nobody, so the next start asks again; a machine whose runner is not
+    /// connected is asked and nothing is kept.
+    async fn cli_versions(&self, target: &CliTarget) -> Result<Vec<Installed>, CliError> {
+        let Some(link) = self.devices().link(&target.device) else {
+            return installed(self.services(), target).await;
+        };
+        let (versions, waiting) = self.kept_or_asked(target, &link);
+        let _waiting =
+            WaitingForVersions::new(self.claude_cli(), &target.device, versions.clone(), waiting);
+        let answer = versions.clone().await;
+        if answer.is_err() {
+            let mut kept = self.claude_cli().versions.borrow_mut();
+            if kept
+                .get(&target.device)
+                .is_some_and(|kept| kept.versions.ptr_eq(&versions))
+            {
+                kept.remove(&target.device);
+            }
+        }
+        answer
+    }
+
+    /// What is kept of `target`'s versions for the connection `link`, else
+    /// an ask of the machine, which is kept from now on, with the count of
+    /// the starts waiting for it. The ask runs while a start waits for it:
+    /// the starts that wait poll it in turn.
+    fn kept_or_asked(&self, target: &CliTarget, link: &Link) -> (Versions, Rc<Cell<usize>>) {
+        let mut kept = self.claude_cli().versions.borrow_mut();
+        if let Some(kept) = kept.get(&target.device).filter(|kept| kept.link.is(link)) {
+            return (kept.versions.clone(), kept.waiting.clone());
+        }
+        // The ask holds the shard weakly: the shard keeps the ask.
+        let shard = Rc::downgrade(&self.this());
+        let asked = target.clone();
+        let versions = async move {
+            let Some(shard) = shard.upgrade() else {
+                return Err(CliError {
+                    version: None,
+                    reason: "the backend is shutting down".into(),
+                });
+            };
+            installed(shard.services(), &asked).await
+        }
+        .boxed_local()
+        .shared();
+        let entry = KeptVersions::new(link.downgrade(), versions.clone());
+        let waiting = entry.waiting.clone();
+        kept.insert(target.device.clone(), entry);
+        (versions, waiting)
+    }
+
+    /// Installs `release` on `target` and keeps what the install left for
+    /// the runner connection it ran over: that version alone, since the
+    /// runner removes the others it does not hold (`native-runtime.md`
+    /// § The cache). A failed install drops what is kept, for the next start
+    /// to ask the machine again.
+    async fn ensure_cli(&self, target: &CliTarget, release: &Release) -> Result<Installed, CliError> {
+        let link = self.devices().link(&target.device).map(|link| link.downgrade());
+        let ensured = ensure(self.services(), target, release).await;
+        let installed = match ensured {
+            Ok(installed) => installed,
+            Err(error) => {
+                self.claude_cli().forget_versions(&target.device);
+                return Err(error);
+            }
+        };
+        let current = self.devices().link(&target.device);
+        match (link, current) {
+            (Some(link), Some(current)) if link.is(&current) => {
+                let left: Result<_, CliError> = Ok(vec![installed.clone()]);
+                let versions = futures_util::future::ready(left).boxed_local().shared();
+                self.claude_cli()
+                    .versions
+                    .borrow_mut()
+                    .insert(target.device.clone(), KeptVersions::new(link, versions));
+            }
+            // The connection ended meanwhile: the next one asks.
+            _ => self.claude_cli().forget_versions(&target.device),
+        }
+        Ok(installed)
+    }
+
+    /// Drops what is kept of `device`'s CLI versions when `lost` names the
+    /// package's state there, which went without the runner saying so
+    /// (`claude-code.md` § Which version).
+    pub(crate) fn cli_package_lost(&self, device: &DeviceId, lost: &Lost<'_>) {
+        if matches!(lost, Lost::Every | Lost::Package(PACKAGE)) {
+            self.claude_cli().forget_versions(device);
+            tracing::info!(device = %device, "the Claude Code versions kept for the device were dropped: its package was lost");
+        }
     }
 
     /// Installs `release` on `target` beside the version in use, once per
@@ -506,7 +715,7 @@ impl Shard {
         let shard = self.this();
         self.tasks().spawn_local(async move {
             let upgraded = tokio::select! {
-                upgraded = ensure(shard.services(), &target, &release) => Some(upgraded),
+                upgraded = shard.ensure_cli(&target, &release) => Some(upgraded),
                 () = shard.closed() => None,
             };
             if let Some(Err(error)) = upgraded {
@@ -609,13 +818,12 @@ impl Shard {
         };
         let context = provider_context(control, self.user(), entry).await?;
         let target = CliTarget {
+            device: device.id.clone(),
             host,
             home,
             context,
         };
-        let listed = cancel
-            .run_until_cancelled(installed(self.services(), &target))
-            .await;
+        let listed = cancel.run_until_cancelled(self.cli_versions(&target)).await;
         let versions = match listed {
             Some(Ok(installed)) => Some(
                 installed
@@ -647,12 +855,12 @@ async fn installed(services: &Services, target: &CliTarget) -> Result<Vec<Instal
     Ok(status.installed)
 }
 
-/// Installs `release` on `target` and answers the executable's path.
+/// Installs `release` on `target` and answers the installed executable.
 async fn ensure(
     services: &Services,
     target: &CliTarget,
     release: &Release,
-) -> Result<String, CliError> {
+) -> Result<Installed, CliError> {
     let failed = |reason: String| CliError {
         version: Some(release.version.clone()),
         reason,
@@ -674,7 +882,7 @@ async fn ensure(
             }),
         })
         .collect();
-    let installed: Installed = call(
+    call(
         services,
         target,
         Operation::Ensure,
@@ -682,8 +890,7 @@ async fn ensure(
         attached,
         Some(&release.version),
     )
-    .await?;
-    Ok(installed.path.to_string_lossy().into_owned())
+    .await
 }
 
 /// Runs `operation` of the package on `target` with `input` as its whole
