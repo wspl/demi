@@ -103,6 +103,7 @@
       "document": "Document"
     },
     "shellFallback": "Run shell command",
+    "stepsNotShared": "{count} step not shared | {count} steps not shared",
     "turnFailed": "The turn failed.",
     "failureResets": "{failure} {reset}.",
     "work": {
@@ -177,7 +178,7 @@
   "share": {
     "titleConversation": "Share Conversation",
     "titleAnswer": "Share Answer",
-    "whoConversation": "Anyone with the link can read this conversation, including commands and their output. Later messages are not included.",
+    "whoConversation": "Anyone with the link can read the messages of this conversation, not the work between them. Later messages are not included.",
     "whoAnswer": "Anyone with the link can read this answer and the message it replies to.",
     "field": "Share link",
     "copyLink": "Copy Link",

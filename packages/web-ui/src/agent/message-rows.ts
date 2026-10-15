@@ -3,7 +3,7 @@ import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes
 import { assistantFooterIds, replyEndIds } from './assistant-footer'
 import type { PendingAction } from './activity-slot'
 import { listTailBlocks } from './list-tail'
-import type { ActivitySlotRow, MessageListBlock } from './pending-steers'
+import type { ActivitySlotRow, MessageListBlock, StepsNotSharedRow } from './pending-steers'
 import { rowKey, succeedKeys, type DrawnRow } from './row-key'
 import type { SessionFailureNotice, SessionLoad } from './session-status'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
@@ -33,6 +33,8 @@ export interface MessageRowsSource {
   atStart: boolean
   atEnd: boolean
   latest: boolean
+  /** The runs of steps a share does not hold, each after the row of the block it follows. */
+  stepsNotShared?: readonly StepsNotSharedRow[]
 }
 
 export interface MessageRows {
@@ -169,11 +171,21 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
   const slotRow = computed<ActivitySlotRow[]>(() => slot.value && source().latest
     ? [{ type: 'activity_slot', id: `tail-row:${waits.value}`, slot: slot.value }]
     : [])
+  // A share's runs of steps not shared, each after the row it follows.
+  const transcriptListRows = computed<MessageListBlock[]>(() => {
+    const rows = turnRows.value.filter((row) => row.id !== hiddenId.value)
+    const steps = source().stepsNotShared ?? []
+    if (steps.length === 0) {
+      return rows
+    }
+    const after = (id: string | null) => steps.filter((row) => row.after === id)
+    return [...after(null), ...rows.flatMap((row) => [row, ...after(row.id)])]
+  })
   const rows = computed<MessageListBlock[]>(() => {
     const failure = source().failure
     return [
       ...(source().atStart ? [] : [{ type: 'history_edge', id: 'history-before' } as const]),
-      ...turnRows.value.filter((row) => row.id !== hiddenId.value),
+      ...transcriptListRows.value,
       ...otherTurnBlocks.value,
       ...slotRow.value,
       ...(failure ? [{ type: 'session_failure', id: 'session-failure', failure } as const] : []),

@@ -1,12 +1,14 @@
 //! Shares (`sharing.md` § Storage and routes): each share's record in the
 //! control database, which the token finds, and its list in its
-//! conversation's database, the blocks it shows by the transcript rows that
-//! hold them or by its copies of the few still changing, which a share's
-//! pages read as a conversation's pages read its transcript
+//! conversation's database, the messages and texts it shows by the
+//! transcript rows that hold them or by its copies of the few still being
+//! written, and the counts of the steps between them, which a share's pages
+//! read as a conversation's pages read its transcript
 //! ([`tree::Transcript::Shared`]). A record goes with its conversation; the
 //! list goes with the conversation's database.
 
 use std::collections::BTreeSet;
+use std::ops::Range;
 
 use demi_agent_store::media::block_blobs;
 use demi_shared_types::{BlobRef, Block, BlockId, NodeId, Timestamp};
@@ -17,7 +19,7 @@ use comrak::{Arena, Options, parse_document};
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
 use super::StorageError;
-use super::columns::{decode, instant, json, to_json};
+use super::columns::{decode, instant, json};
 use super::control::ControlService;
 use super::conversation_attachments::{self, AttachmentNumber, AttachmentRow};
 
@@ -218,67 +220,134 @@ impl ControlService {
     }
 }
 
-/// The block types a conversation's share leaves out: the `context` blocks,
-/// the hidden inputs that carry the execution context, instructions and
-/// skills, and the `response` blocks, the usage of a request. The page
-/// hides the rest as the conversation's page does.
-const HIDDEN: &str = "('context', 'response')";
-
 /// Makes the list of the conversation's share `token` (`sharing.md`
-/// § Storage and routes), in place of one it had: every block each agent's
-/// current path shows (`message-editing.md` § Versions), the root's and
-/// each subagent's, in order, by the row that holds it. The list is made from the transcript's index of block
-/// types, without reading a block: only the blocks still changing are read,
-/// to copy them, and the texts that name an attachment.
-///
-/// A block still changing is one of the request a node is making or of the
-/// calls of the one before, since a request's `response` block follows its
-/// blocks and its calls run after it: a block after the node's last
-/// `response`, which the model may still be writing, and a call after the
-/// one before that still executing, whose result is still to come. Its
-/// entry points at its copy, as it stands, without the vendor's record of
-/// the session, which never leaves the backend.
+/// § Storage and routes), in place of one it had: what the root's current
+/// path says (`message-editing.md` § Versions), its messages and texts,
+/// with the steps between them.
 pub fn take_conversation(transaction: &Transaction<'_>, token: &ShareToken) -> Result<(), StorageError> {
     remove(transaction, token)?;
+    let Some(root) = root(transaction)? else {
+        return Ok(());
+    };
+    list(transaction, token, &root, 0..i64::MAX)
+}
+
+/// Makes the list of the root's answer `block` under `token`: the user's
+/// message that starts its request, through the text, with the texts and
+/// the steps between them, along the root's current path. False, and
+/// nothing made, when `block` is not a complete text of that path: the
+/// page offers Share only on the text that ends a reply, and which text
+/// does is the page's to judge (`web-api.md` § Sharing).
+pub fn take_answer(
+    transaction: &Transaction<'_>,
+    token: &ShareToken,
+    block: &BlockId,
+) -> Result<bool, StorageError> {
+    let Some(root) = root(transaction)? else {
+        return Ok(false);
+    };
+    let found: Option<(i64, String)> = transaction
+        .query_row(
+            "SELECT blocks.idx, blocks.block FROM blocks INDEXED BY blocks_by_id CROSS JOIN path_runs AS run
+               ON run.node_id = blocks.node_id AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+             WHERE json_extract(blocks.block, '$.id') = ?1 AND blocks.node_id = ?2",
+            params![block.as_str(), root],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((index, answer)) = found else {
+        return Ok(false);
+    };
+    let Block::Text(text) = json("blocks", "block", &answer)? else {
+        return Ok(false);
+    };
+    if !text.forkable {
+        return Ok(false);
+    }
+    // Along a path, a row's number is above the one it follows, so the
+    // message is the path's latest user row before the answer's.
+    let message: Option<i64> = transaction
+        .query_row(
+            "SELECT blocks.idx FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
+               ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'user'
+                 AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+             WHERE run.node_id = ?1 AND blocks.idx < ?2
+             ORDER BY blocks.idx DESC LIMIT 1",
+            params![root, index],
+            |row| row.get(0),
+        )
+        .optional()?;
+    let Some(message) = message else {
+        return Ok(false);
+    };
+    remove(transaction, token)?;
+    list(transaction, token, &root, message..index + 1)?;
+    Ok(true)
+}
+
+/// The root's node id; none in a conversation without one.
+fn root(transaction: &Transaction<'_>) -> Result<Option<String>, StorageError> {
+    Ok(transaction
+        .query_row("SELECT id FROM nodes WHERE parent_id IS NULL", [], |row| row.get(0))
+        .optional()?)
+}
+
+/// The block types a share shows, the root's messages and texts.
+const SAID: &str = "('user', 'steer', 'text')";
+
+/// The block types a share counts as steps not shared (`sharing.md`
+/// § Steps not shared): thinking and calls, a command's or a subagent's
+/// start among them. Every other block shows nothing and counts nothing.
+const STEPS: &str = "('thinking', 'redacted_thinking', 'tool_call')";
+
+/// Lists under `token` the rows of the root's current path numbered within
+/// `rows`, the one place a share's list is made: each message and text by
+/// the row that holds it, in order, and in place of each run of steps
+/// around them one entry of their count. Along a path, each row's number
+/// is above the one it follows, so the rows' order is the path's. The list
+/// is made from the transcript's index of block types, without reading a
+/// block: only the texts still being written are read, to copy them, and
+/// the copies, for the blobs they name.
+///
+/// A text still being written is one after the last `response` of the
+/// root's path, which ends each request the model answered: the model may
+/// still be writing it. Its entry points at its copy, as it stands, without
+/// the vendor's record of the session, which never leaves the backend.
+fn list(transaction: &Transaction<'_>, token: &ShareToken, root: &str, rows: Range<i64>) -> Result<(), StorageError> {
+    // Each step is counted in the run of those after the same number of
+    // messages and texts; a run is placed where its first step stands.
     transaction.execute(
         &format!(
-            "INSERT INTO share_entries (token, agent, position, node_id, idx)
-             SELECT ?1, nodes.number,
-                    row_number() OVER (PARTITION BY blocks.node_id ORDER BY run.start, blocks.idx) - 1,
-                    blocks.node_id, blocks.idx
-             FROM nodes CROSS JOIN path_runs AS run ON run.node_id = nodes.id
-               CROSS JOIN blocks INDEXED BY blocks_by_type
+            "WITH listed AS (
+               SELECT blocks.idx, json_extract(blocks.block, '$.type') IN {SAID} AS said
+               FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
                  ON blocks.node_id = run.node_id AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
-             WHERE json_extract(blocks.block, '$.type') NOT IN {HIDDEN}"
+                   AND (json_extract(blocks.block, '$.type') IN {SAID} OR json_extract(blocks.block, '$.type') IN {STEPS})
+               WHERE run.node_id = ?2 AND blocks.idx >= ?3 AND blocks.idx < ?4
+             ),
+             runs AS (SELECT idx, said, sum(said) OVER (ORDER BY idx) AS before FROM listed),
+             entries AS (
+               SELECT idx AS at, idx, NULL AS steps FROM runs WHERE said
+               UNION ALL
+               SELECT min(idx), NULL, count(*) FROM runs WHERE NOT said GROUP BY before
+             )
+             INSERT INTO share_entries (token, position, node_id, idx, steps)
+             SELECT ?1, row_number() OVER (ORDER BY at) - 1, iif(idx IS NULL, NULL, ?2), idx, steps FROM entries"
         ),
-        [token.as_str()],
+        params![token.as_str(), root, rows.start, rows.end],
     )?;
-    // Along a path, each row's number is above the one it follows, so the
-    // rows' order is the path's.
-    let responses = |offset: u8| {
-        format!(
-            "(SELECT blocks.idx FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
+    transaction.execute(
+        "INSERT INTO share_blocks (token, idx, block)
+         SELECT entry.token, entry.position, json_remove(row.block, '$.entries')
+         FROM share_entries AS entry JOIN blocks AS row ON row.node_id = entry.node_id AND row.idx = entry.idx
+         WHERE entry.token = ?1 AND json_extract(row.block, '$.type') = 'text'
+           AND entry.idx > coalesce(
+             (SELECT blocks.idx FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
                 ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'response'
                   AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
-              WHERE run.node_id = nodes.id ORDER BY blocks.idx DESC LIMIT 1 OFFSET {offset})"
-        )
-    };
-    transaction.execute(
-        &format!(
-            "WITH responses AS (
-               SELECT nodes.id AS node_id, {} AS last, {} AS before_last FROM nodes
-             )
-             INSERT INTO share_blocks (token, agent, idx, block)
-             SELECT entry.token, entry.agent, entry.position, json_remove(blocks.block, '$.entries')
-             FROM responses
-             JOIN share_entries AS entry
-               ON entry.token = ?1 AND entry.node_id = responses.node_id AND entry.idx > coalesce(responses.before_last, -1)
-             JOIN blocks ON blocks.node_id = entry.node_id AND blocks.idx = entry.idx
-             WHERE entry.idx > coalesce(responses.last, -1) OR json_extract(blocks.block, '$.status') = 'executing'",
-            responses(0),
-            responses(1),
-        ),
-        [token.as_str()],
+              WHERE run.node_id = ?2 ORDER BY blocks.idx DESC LIMIT 1),
+             -1)",
+        params![token.as_str(), root],
     )?;
     // The attachments its texts name, through `block_attachments`, while
     // every entry still names its row.
@@ -290,14 +359,7 @@ pub fn take_conversation(transaction: &Transaction<'_>, token: &ShareToken) -> R
         params![token.as_str()],
     )?;
     point_at_copies(transaction, token)?;
-    name_copied_blobs(transaction, token)?;
-    // Each subagent with the description and profile it has now.
-    transaction.execute(
-        "INSERT INTO share_agents (token, number, description, profile)
-         SELECT ?1, number, description, profile FROM nodes WHERE parent_id IS NOT NULL",
-        [token.as_str()],
-    )?;
-    Ok(())
+    name_copied_blobs(transaction, token)
 }
 
 /// Lists in `share_blobs` the blobs the copies of `token` name, the few
@@ -326,8 +388,8 @@ pub(crate) fn keep_rewritten(transaction: &Transaction<'_>, node: &NodeId, index
     let parameters = params![node.as_str(), index];
     transaction
         .prepare_cached(&format!(
-            "INSERT INTO share_blocks (token, agent, idx, block)
-             SELECT entry.token, entry.agent, entry.position, json_remove(row.block, '$.entries')
+            "INSERT INTO share_blocks (token, idx, block)
+             SELECT entry.token, entry.position, json_remove(row.block, '$.entries')
              FROM share_entries AS entry JOIN blocks AS row ON row.node_id = entry.node_id AND row.idx = entry.idx
              WHERE {rows}"
         ))?
@@ -353,101 +415,9 @@ fn point_at_copies(transaction: &Transaction<'_>, token: &ShareToken) -> Result<
     transaction.execute(
         "UPDATE share_entries SET node_id = NULL, idx = NULL
          FROM share_blocks AS copy
-         WHERE share_entries.token = ?1 AND copy.token = ?1
-           AND copy.agent = share_entries.agent AND copy.idx = share_entries.position",
+         WHERE share_entries.token = ?1 AND copy.token = ?1 AND copy.idx = share_entries.position",
         [token.as_str()],
     )?;
-    Ok(())
-}
-
-/// Makes the list of the root's answer `block` under `token`: the user's
-/// message that starts its request and the text, both copied. False, and
-/// nothing made, when `block` is not a complete text of the root's: the
-/// page offers Share only on the text that ends a reply, and which text
-/// does is the page's to judge (`web-api.md` § Sharing).
-pub fn take_answer(
-    transaction: &Transaction<'_>,
-    token: &ShareToken,
-    block: &BlockId,
-) -> Result<bool, StorageError> {
-    let root: Option<String> = transaction
-        .query_row("SELECT id FROM nodes WHERE parent_id IS NULL", [], |row| row.get(0))
-        .optional()?;
-    let Some(root) = root else {
-        return Ok(false);
-    };
-    // The answer on the root's current path (`message-editing.md`
-    // § Versions).
-    let found: Option<(i64, String)> = transaction
-        .query_row(
-            "SELECT blocks.idx, blocks.block FROM blocks INDEXED BY blocks_by_id CROSS JOIN path_runs AS run
-               ON run.node_id = blocks.node_id AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
-             WHERE json_extract(blocks.block, '$.id') = ?1 AND blocks.node_id = ?2",
-            params![block.as_str(), root],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()?;
-    let Some((index, answer)) = found else {
-        return Ok(false);
-    };
-    let answer: Block = json("blocks", "block", &answer)?;
-    let Block::Text(text) = &answer else {
-        return Ok(false);
-    };
-    if !text.forkable {
-        return Ok(false);
-    }
-    // Along a path, a row's number is above the one it follows, so the
-    // message is the path's latest user row before the answer's.
-    let message: Option<String> = transaction
-        .query_row(
-            "SELECT blocks.block FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
-               ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'user'
-                 AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
-             WHERE run.node_id = ?1 AND blocks.idx < ?2
-             ORDER BY blocks.idx DESC LIMIT 1",
-            params![root, index],
-            |row| row.get(0),
-        )
-        .optional()?;
-    let Some(message) = message else {
-        return Ok(false);
-    };
-    let message: Block = json("blocks", "block", &message)?;
-    remove(transaction, token)?;
-    keep_attachments(
-        transaction,
-        "SELECT attachment FROM block_attachments WHERE node_id = ?2 AND idx = ?3",
-        params![token.as_str(), root, index],
-    )?;
-    copy(transaction, token, 0, [&message, &answer])?;
-    name_copied_blobs(transaction, token)?;
-    Ok(true)
-}
-
-/// Copies `blocks` as the list of agent `agent` of `token`, its whole list.
-fn copy<'a>(
-    transaction: &Transaction<'_>,
-    token: &ShareToken,
-    agent: i64,
-    blocks: impl IntoIterator<Item = &'a Block>,
-) -> Result<(), StorageError> {
-    let mut statement = transaction
-        .prepare_cached("INSERT INTO share_blocks (token, agent, idx, block) VALUES (?1, ?2, ?3, ?4)")?;
-    let mut entry = transaction.prepare_cached(
-        "INSERT INTO share_entries (token, agent, position, node_id, idx) VALUES (?1, ?2, ?3, NULL, NULL)",
-    )?;
-    for (index, block) in blocks.into_iter().enumerate() {
-        // The vendor's record of the session never leaves the backend, and
-        // a share has no session to resume.
-        let mut block = block.clone();
-        if let Some(entries) = block.entries_mut() {
-            entries.clear();
-        }
-        let index = super::columns::count(index);
-        statement.execute(params![token.as_str(), agent, index, to_json(&block)])?;
-        entry.execute(params![token.as_str(), agent, index])?;
-    }
     Ok(())
 }
 
@@ -493,7 +463,7 @@ pub fn named_attachments(text: &str) -> BTreeSet<AttachmentNumber> {
 
 /// Removes the share `token`'s list and copies.
 pub fn remove(connection: &Connection, token: &ShareToken) -> Result<(), StorageError> {
-    for table in ["share_entries", "share_blocks", "share_blobs", "share_agents", "share_attachments"] {
+    for table in ["share_entries", "share_blocks", "share_blobs", "share_attachments"] {
         connection.execute(&format!("DELETE FROM {table} WHERE token = ?1"), [token.as_str()])?;
     }
     Ok(())
@@ -531,32 +501,6 @@ pub fn shown_attachment(
     conversation_attachments::read_shared(connection, token.as_str(), number)
 }
 
-/// A subagent the share `token` holds: its number, its spawn's
-/// description and its profile, as they were when it was taken.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SharedAgent {
-    pub number: u64,
-    pub description: String,
-    pub profile: Option<String>,
-}
-
-/// The subagents the share `token` holds, in the order they started.
-pub fn shared_agents(connection: &Connection, token: &ShareToken) -> Result<Vec<SharedAgent>, StorageError> {
-    let mut statement = connection.prepare(
-        "SELECT number, description, profile FROM share_agents WHERE token = ?1 ORDER BY number",
-    )?;
-    let mut rows = statement.query([token.as_str()])?;
-    let mut agents = Vec::new();
-    while let Some(row) = rows.next()? {
-        agents.push(SharedAgent {
-            number: decode("share_agents", "number", u64::try_from(row.get::<_, i64>(0)?))?,
-            description: row.get(1)?,
-            profile: row.get(2)?,
-        });
-    }
-    Ok(agents)
-}
-
 /// Every blob the shares' copies and kept attachments in a conversation's
 /// database name, which keeps them while the shares do (`storage.md`
 /// § Retention); the other blocks a list shows are the transcript's, which
@@ -578,10 +522,10 @@ mod tests {
     use demi_shared_types::{BlobRef, Block, Timestamp};
     use demi_web_api_protocol::ids::ShareToken;
 
-    use super::take_conversation;
+    use super::{take_answer, take_conversation};
     use crate::conversations::ConversationStores;
-    use crate::tree::tests::{conversation, id, record, reply, response, shell_call, store, update, user};
-    use crate::tree::{self, PageQuery, PageRead, Transcript};
+    use crate::tree::tests::{conversation, id, record, reply, response, store, update, user};
+    use crate::tree::{self, BlockRead, Entry, PageQuery, PageRead, Transcript};
 
     // A share's list of a conversation's transcripts (`sharing.md` § Storage
     // and routes), made and read on a conversation database in a temporary
@@ -640,10 +584,10 @@ mod tests {
             .unwrap();
     }
 
-    /// The whole of what the share holds of agent `agent`: the latest page,
-    /// which these transcripts fit in.
-    async fn shared(stores: &ConversationStores, agent: u64) -> Vec<Block> {
-        let transcript = Transcript::Shared { token: token(), agent };
+    /// The whole of what the share holds: the latest page, which these
+    /// transcripts fit in.
+    async fn shared(stores: &ConversationStores) -> Vec<Entry> {
+        let transcript = Transcript::Shared { token: token() };
         let read = stores
             .read(&conversation(), move |connection| {
                 tree::read_page(connection, &transcript, PageQuery { before: None, after: None, around: None, edge: None })
@@ -666,13 +610,26 @@ mod tests {
             .unwrap()
     }
 
-    fn ids(blocks: &[Block]) -> Vec<String> {
-        blocks.iter().map(|block| block.id().as_str().to_owned()).collect()
+    /// Each entry as its block's id, or `steps N` for a run of steps.
+    fn ids(entries: &[Entry]) -> Vec<String> {
+        entries
+            .iter()
+            .map(|entry| match entry {
+                Entry::Block(block) => block.id().as_str().to_owned(),
+                Entry::StepsNotShared(count) => format!("steps {count}"),
+            })
+            .collect()
+    }
+
+    /// The blocks of `entries`.
+    fn blocks(entries: &[Entry]) -> Vec<Block> {
+        entries.iter().filter_map(Entry::block).cloned().collect()
     }
 
     // Forty requests, each a message, its answer and the request's usage,
-    // and a subagent's one: the list names every shown block where the
-    // transcript holds it, and copies none, since none still changes.
+    // and a subagent's one: the list names every message and answer of the
+    // root where the transcript holds it, nothing of the subagent, and
+    // copies none, since no text is still being written.
     #[tokio::test(flavor = "local")]
     async fn a_long_conversations_share_lists_its_blocks_and_copies_none() {
         let (tree, stores, _data) = store().await;
@@ -692,28 +649,30 @@ mod tests {
         assert_eq!(rows(&stores, "SELECT COUNT(*) FROM share_blocks").await, 0);
         assert_eq!(rows(&stores, "SELECT COUNT(*) FROM share_entries WHERE node_id IS NULL").await, 0);
         let expected: Vec<String> = (0..40).flat_map(|round| [format!("u{round}"), format!("t{round}")]).collect();
-        assert_eq!(ids(&shared(&stores, 0).await), expected);
-        assert_eq!(ids(&shared(&stores, 1).await), ["cu", "ct"]);
+        assert_eq!(ids(&shared(&stores).await), expected);
     }
 
-    // The agent runs a call when the link is made; it then returns, and the
-    // agent answers. The share shows the call as it stood, still running,
-    // and nothing after it.
+    // The agent ran a call and is writing its answer when the link is made;
+    // it then finishes it and runs another call. The share shows the call
+    // as one step and the answer as it stood, and nothing after it.
     #[tokio::test(flavor = "local")]
-    async fn a_call_still_running_shows_as_it_stood_when_the_link_was_made() {
+    async fn a_text_still_being_written_shows_as_it_stood_when_the_link_was_made() {
         let (tree, stores, _data) = store().await;
-        let running = vec![(0, user("u1")), (1, executing_call("c1")), (2, response("r1"))];
-        tree.create_node(record("root", None, 0), update(running, 3)).await.unwrap();
+        let mut partial = reply("t1");
+        let Block::Text(text) = &mut partial else { unreachable!() };
+        text.text = "Half an".to_owned();
+        let writing = vec![(0, user("u1")), (1, returned_call("c1", "output")), (2, response("r1")), (3, partial.clone())];
+        tree.create_node(record("root", None, 0), update(writing, 4)).await.unwrap();
 
         make_list(&stores).await;
         tree.session_store(&id("root"))
-            .save(update(vec![(1, returned_call("c1", "later output")), (3, reply("t1")), (4, response("r2"))], 5))
+            .save(update(vec![(3, reply("t1")), (4, response("r2")), (5, executing_call("c2"))], 6))
             .await
             .unwrap();
 
-        let blocks = shared(&stores, 0).await;
-        assert_eq!(ids(&blocks), ["u1", "c1"]);
-        assert_eq!(blocks[1], executing_call("c1"));
+        let entries = shared(&stores).await;
+        assert_eq!(ids(&entries), ["u1", "steps 1", "t1"]);
+        assert_eq!(entries[2], Entry::Block(partial));
     }
 
     /// A message showing the image `blob`, its id `block`.
@@ -747,7 +706,7 @@ mod tests {
         let first = vec![(0, message_with_image("u1", &blob)), (1, reply("t1")), (2, response("r1"))];
         tree.create_node(record("root", None, 0), update(first, 3)).await.unwrap();
         make_list(&stores).await;
-        let before = shared(&stores, 0).await;
+        let before = blocks(&shared(&stores).await);
 
         // The edit adds a version beside the rows the share lists, which
         // stay as they are (`message-editing.md` § Versions).
@@ -765,8 +724,8 @@ mod tests {
             .await
             .unwrap();
 
-        let after = shared(&stores, 0).await;
-        assert_eq!(ids(&after), ["u1", "t1"]);
+        let after = blocks(&shared(&stores).await);
+        assert_eq!(after.iter().map(|block| block.id().as_str()).collect::<Vec<_>>(), ["u1", "t1"]);
         assert_eq!(after.iter().map(words).collect::<Vec<_>>(), before.iter().map(words).collect::<Vec<_>>());
         // It reads them from the transcript's rows still: nothing was
         // copied.
@@ -791,24 +750,176 @@ mod tests {
         assert!(shown && kept, "shown {shown}, kept {kept}");
     }
 
-    // A later call of the same request lists again what an earlier shell
-    // call changed, rewriting the earlier call's view after the link was
-    // made: the share shows the view as it was.
-    #[tokio::test(flavor = "local")]
-    async fn a_call_rewritten_after_sharing_shows_its_view_as_it_was() {
-        let (tree, stores, _data) = store().await;
-        let blocks = vec![(0, user("u1")), (1, shell_call("c1", "1")), (2, response("r1")), (3, reply("t1")), (4, response("r2"))];
-        tree.create_node(record("root", None, 0), update(blocks, 5)).await.unwrap();
-        make_list(&stores).await;
-
-        let mut relisted = serde_json::to_value(shell_call("c1", "1")).unwrap();
-        relisted["view"]["chunks"] = serde_json::json!([{ "stream": "stdout", "text": "written later" }]);
-        let relisted: Block = serde_json::from_value(relisted).unwrap();
-        tree.session_store(&id("root")).save(update(vec![(1, relisted)], 5)).await.unwrap();
-
-        let blocks = shared(&stores, 0).await;
-        assert_eq!(ids(&blocks), ["u1", "c1", "t1"]);
-        assert_eq!(blocks[1], shell_call("c1", "1"));
+    /// A thinking block, plain or redacted.
+    fn thought(block: &str, redacted: bool) -> Block {
+        let fields = if redacted {
+            serde_json::json!({ "type": "redacted_thinking", "data": "opaque" })
+        } else {
+            serde_json::json!({ "type": "thinking", "text": "Look first.", "signature": null })
+        };
+        let mut value = serde_json::json!({ "id": block, "createdAt": Timestamp::UNIX_EPOCH, "model": test_model() });
+        value.as_object_mut().unwrap().extend(fields.as_object().unwrap().clone());
+        serde_json::from_value(value).unwrap()
     }
 
+    /// Makes the share of the answer `block` under the test's token; false
+    /// when it is no answer the share takes.
+    async fn make_answer_list(stores: &ConversationStores, block: &'static str) -> bool {
+        stores
+            .db(&conversation())
+            .call(move |connection| {
+                let transaction = connection.transaction()?;
+                let taken = take_answer(&transaction, &token(), &block.try_into().unwrap())?;
+                transaction.commit()?;
+                Ok(taken)
+            })
+            .await
+            .unwrap()
+    }
+
+    /// Whether a read of the block `block` whole, and of the page around
+    /// it, both find it on the share's list.
+    async fn reaches(stores: &ConversationStores, block: &'static str) -> bool {
+        stores
+            .read(&conversation(), move |connection| {
+                let transcript = Transcript::Shared { token: token() };
+                let id = block.try_into().unwrap();
+                let whole = tree::read_block(connection, &transcript, &id)?;
+                let around = tree::read_page(
+                    connection,
+                    &transcript,
+                    PageQuery { before: None, after: None, around: Some(&id), edge: None },
+                )?;
+                match (whole, around) {
+                    (BlockRead::Block(_), PageRead::Page { .. }) => Ok(true),
+                    (BlockRead::NoBlock, PageRead::NoBlock) => Ok(false),
+                    _ => panic!("the whole read and the page read of {block} disagree"),
+                }
+            })
+            .await
+            .unwrap()
+            .unwrap()
+    }
+
+    // Thinking, plain or redacted, and calls are steps; a run after the
+    // last text, as when the link is made while the agent works, is a line
+    // of its own.
+    #[tokio::test(flavor = "local")]
+    async fn thinking_redacted_or_not_and_calls_are_steps_up_to_the_end() {
+        let (tree, stores, _data) = store().await;
+        let blocks = vec![
+            user("u1"),
+            thought("rt", true),
+            returned_call("c1", "out"),
+            response("r1"),
+            reply("t1"),
+            thought("th", false),
+            executing_call("c2"),
+            response("r2"),
+        ];
+        let count = blocks.len();
+        tree.create_node(record("root", None, 0), update(blocks.into_iter().enumerate().collect(), count))
+            .await
+            .unwrap();
+
+        make_list(&stores).await;
+
+        assert_eq!(ids(&shared(&stores).await), ["u1", "steps 2", "t1", "steps 2"]);
+    }
+
+    // The user edits the first message, and the agent answers it again;
+    // the conversation, which has a subagent, is shared after. Its list is
+    // the current path: neither the first version's rows, a step nor the
+    // subagent's blocks are reached, by id or as an anchor, which a share's
+    // route answers as a token that names no share.
+    #[tokio::test(flavor = "local")]
+    async fn a_share_reaches_no_other_branch_step_or_subagent() {
+        let (tree, stores, _data) = store().await;
+        let first = vec![(0, user("u1")), (1, thought("th", false)), (2, reply("t1")), (3, response("r1"))];
+        tree.create_node(record("root", None, 0), update(first, 4)).await.unwrap();
+        let child = vec![(0, user("cu")), (1, reply("ct")), (2, response("cr"))];
+        tree.create_node(record("child", Some("root"), 1), update(child, 3)).await.unwrap();
+        let session = tree.session_store(&id("root"));
+        session
+            .save(demi_agent_store::CheckpointUpdate {
+                moved_from: Some(0),
+                version: true,
+                ..update(vec![(0, user("u1-edited")), (1, reply("t1-edited")), (2, response("r2"))], 3)
+            })
+            .await
+            .unwrap();
+
+        make_list(&stores).await;
+
+        assert_eq!(ids(&shared(&stores).await), ["u1-edited", "t1-edited"]);
+        assert!(reaches(&stores, "t1-edited").await);
+        for block in ["u1", "t1", "th", "cu", "ct"] {
+            assert!(!reaches(&stores, block).await, "{block}");
+        }
+    }
+
+    // An answer is shared on the edited branch; the user then switches back
+    // to the first version. The share still holds its own branch.
+    #[tokio::test(flavor = "local")]
+    async fn an_answers_share_keeps_its_branch_when_the_path_switches() {
+        let (tree, stores, _data) = store().await;
+        let mut answer = reply("t1-edited");
+        let Block::Text(text) = &mut answer else { unreachable!() };
+        text.forkable = true;
+        let first = vec![(0, user("u1")), (1, reply("t1")), (2, response("r1"))];
+        tree.create_node(record("root", None, 0), update(first, 3)).await.unwrap();
+        let session = tree.session_store(&id("root"));
+        session
+            .save(demi_agent_store::CheckpointUpdate {
+                moved_from: Some(0),
+                version: true,
+                ..update(
+                    vec![(0, user("u1-edited")), (1, returned_call("c1", "out")), (2, response("r2")), (3, answer), (4, response("r3"))],
+                    5,
+                )
+            })
+            .await
+            .unwrap();
+
+        assert!(make_answer_list(&stores, "t1-edited").await);
+        session.switch(0, 1).await.unwrap();
+
+        assert_eq!(ids(&shared(&stores).await), ["u1-edited", "steps 1", "t1-edited"]);
+        assert!(!reaches(&stores, "t1").await);
+        // An answer the current path no longer holds is not shared anew.
+        assert!(!make_answer_list(&stores, "t1-edited").await);
+    }
+
+    // A message the share lists is rewritten after the link is made, as a
+    // later event marks it, so the share holds it as a copy. It still starts
+    // its request: with an answer before it too long for one page, the
+    // latest page starts at it.
+    #[tokio::test(flavor = "local")]
+    async fn a_message_the_share_holds_as_a_copy_still_starts_its_request() {
+        let (tree, stores, _data) = store().await;
+        let mut long = reply("t1");
+        let Block::Text(text) = &mut long else { unreachable!() };
+        text.text = "x".repeat(70 * 1024);
+        let blocks = vec![(0, user("u1")), (1, long), (2, response("r1")), (3, user("u2")), (4, reply("t2")), (5, response("r2"))];
+        tree.create_node(record("root", None, 0), update(blocks, 6)).await.unwrap();
+        make_list(&stores).await;
+
+        let mut marked = serde_json::to_value(user("u2")).unwrap();
+        marked["content"] = serde_json::json!([{ "type": "text", "text": "marked later" }]);
+        let marked: Block = serde_json::from_value(marked).unwrap();
+        tree.session_store(&id("root")).save(update(vec![(3, marked)], 6)).await.unwrap();
+        assert_eq!(rows(&stores, "SELECT COUNT(*) FROM share_blocks").await, 1, "the message is held as a copy");
+
+        let transcript = Transcript::Shared { token: token() };
+        let read = stores
+            .read(&conversation(), move |connection| {
+                tree::read_page(connection, &transcript, PageQuery { before: None, after: None, around: None, edge: None })
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        let PageRead::Page { start, length, blocks, .. } = read else { panic!("the latest page") };
+        assert_eq!((start, length), (2, 4));
+        assert_eq!(ids(&blocks), ["u2", "t2"]);
+    }
 }

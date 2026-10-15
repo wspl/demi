@@ -265,7 +265,8 @@ fn collect_references(shape: &Shape, names: &mut Vec<String>) {
                 collect_references(&property.shape, names);
             }
         }
-        Shape::Union { variants, .. } => {
+        Shape::Union { variants, joined, .. } => {
+            names.extend(joined.iter().cloned());
             for variant in variants {
                 names.extend(variant.extends.iter().cloned());
                 for property in &variant.object.properties {

@@ -2,11 +2,11 @@ import {
   EMPTY_TRANSCRIPT,
   addPage,
   latestWindow,
-  windowEnd,
   withWholeBlock,
   type HeldTranscript,
 } from '@demicodes/web-ui/transport/protocol'
-import { shownWindow } from '@demicodes/web-ui/agent/history'
+import { pageBeside, shownWindow } from '@demicodes/web-ui/agent/history'
+import { oneRunPerKey } from '@demicodes/utils'
 import { ApiError, apiRequest, readResponse } from '../api/client'
 import {
   transcriptPageSchema,
@@ -56,7 +56,7 @@ export function createHistoryReads<T extends HistoryHolder>(
   live: (holder: T, node: string | null) => boolean,
   path: (holder: T) => string,
 ) {
-  const fetching = new Map<string, Promise<void>>()
+  const once = oneRunPerKey<string, void>()
 
   /** One page of the agent `node`'s transcript, the root's for null. */
   async function readPage(holder: T, node: string | null, at: PageAt): Promise<TranscriptPage> {
@@ -102,20 +102,9 @@ export function createHistoryReads<T extends HistoryHolder>(
 
   /** Reads a page once at a time, and takes it. */
   function read(holder: T, node: string | null, at: PageAt): Promise<void> {
-    const key = `${holder.id}:${node ?? ''}:${JSON.stringify(at)}`
-    const pending = fetching.get(key)
-    if (pending) {
-      return pending
-    }
-    const reading = (async () => {
-      try {
-        take(holder, node, await readPage(holder, node, at))
-      } finally {
-        fetching.delete(key)
-      }
-    })()
-    fetching.set(key, reading)
-    return reading
+    return once(`${holder.id}:${node ?? ''}:${JSON.stringify(at)}`, async () => {
+      take(holder, node, await readPage(holder, node, at))
+    })
   }
 
   /**
@@ -127,18 +116,17 @@ export function createHistoryReads<T extends HistoryHolder>(
   async function readBeside(holder: T, node: string | null, side: 'before' | 'after'): Promise<void> {
     const history = historyOf(holder, node)
     const window = node === null ? shownWindow(history, holder.shownAt) : shownWindow(history, null)
-    const edge = side === 'before' ? window.blocks[0] : window.blocks.at(-1)
-    if (!edge || (side === 'before' ? window.start === 0 : windowEnd(window) >= history.length)) {
+    const beside = pageBeside(history, window, side)
+    if (!beside) {
       return
     }
-    const index = side === 'before' ? window.start : windowEnd(window) - 1
     try {
-      await read(holder, node, { kind: side, index, edge: edge.id })
+      await read(holder, node, { kind: side, ...beside })
     } catch (error) {
       if (!(error instanceof ApiError) || error.code !== 'transcript_changed') {
         throw error
       }
-      await recover(holder, node, edge.id)
+      await recover(holder, node, beside.edge)
     }
   }
 

@@ -48,7 +48,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Instructions | `PUT /instructions { text }`; the text is part of the product state ([Instructions](#instructions)) |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `DELETE /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }` |
 | Search | `GET /search?q=<query>` finds the caller's conversations ([Search](#search)) |
-| Sharing | `POST /conversations/:id/shares { kind, blockId? }`, `PUT /conversations/:id/shares/:token`, `DELETE /conversations/:id/shares/:token`; public `GET /shares/:token`, `GET /shares/:token/transcript?node=&before=\|after=\|around=`, `GET /shares/:token/transcript/blocks/:blockId?node=`, `GET /shares/:token/blobs/:sha256` ([Sharing](#sharing)) |
+| Sharing | `POST /conversations/:id/shares { kind, blockId? }`, `PUT /conversations/:id/shares/:token`, `DELETE /conversations/:id/shares/:token`; public `GET /shares/:token`, `GET /shares/:token/transcript?before=\|after=\|around=`, `GET /shares/:token/transcript/blocks/:blockId`, `GET /shares/:token/blobs/:sha256` ([Sharing](#sharing)) |
 | Conversation history | `GET /conversations/:id/transcript?node=&before=\|after=\|around=` reads one page of an agent's transcript, `GET /conversations/:id/transcript/blocks/:blockId?node=` one block whole, `GET /conversations/:id/subagents` the conversation's subagents and `GET /conversations/:id/commands/:commandId` where the call that started a command lies ([Conversation history](#conversation-history)); `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `POST /conversations/:id/fs/exists`, `WS /conversations/:id/fs/watch`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
@@ -1513,9 +1513,9 @@ The public routes take no session and ignore one:
 
 | Route | Answers |
 | --- | --- |
-| `GET /shares/:token` | `{ kind, title, takenAt, agents }`, `agents` each subagent the share holds as `{ number, description, profile }`, for its header |
-| `GET /shares/:token/transcript?node=&before=\|after=\|around=` | A page of what the share holds, as [Pages](#pages) answers it, `instructions` always empty and `failures` absent, so an error block shows its message without the retry times and accounts the facts carry; `node` a subagent's number the share holds |
-| `GET /shares/:token/transcript/blocks/:blockId?node=` | One block whole, as the conversation's whole-block read answers it |
+| `GET /shares/:token` | `{ kind, title, takenAt }`, for its header |
+| `GET /shares/:token/transcript?before=\|after=\|around=` | A page of what the share holds, as [Pages](#pages) answers it, `instructions` always empty and `failures` absent; a step entry reads as `{ type: "steps_not_shared", count }` in its place |
+| `GET /shares/:token/transcript/blocks/:blockId` | One block whole, as the conversation's whole-block read answers it |
 | `GET /shares/:token/blobs/:sha256?type=` | A blob the share shows |
 | `GET /shares/:token/attachments/:attachment` | An attachment the share's text names as `attachment:a3` and that existed when it was taken, as [the conversation's attachment route](#uploads-and-media) answers it; one uploaded later stays missing until Update Link |
 

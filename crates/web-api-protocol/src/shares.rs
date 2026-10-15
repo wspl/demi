@@ -1,10 +1,14 @@
-//! Shares (`web-api.md` § Sharing, `sharing.md`): a read-only snapshot of a
-//! conversation or of one answer of it, behind a random link. The owner
+//! Shares (`web-api.md` § Sharing, `sharing.md`): what was said in a
+//! conversation or in one answer of it, read-only behind a random link. The owner
 //! makes, takes again and removes one; anyone with its link reads it.
 
-use demi_shared_types::{BlockId, MAX_SAFE_INTEGER, Nullable, Timestamp};
-use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
+
+use demi_shared_types::{Block, BlockId, InstructionEntry, MAX_SAFE_INTEGER, Nullable, Timestamp, client_block};
+use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::conversations::CompactionSummary;
 
 use crate::ids::ShareToken;
 
@@ -96,7 +100,8 @@ impl ShareTarget {
     }
 }
 
-/// `GET /shares/:token`: what the shared page shows above the snapshot.
+/// `GET /shares/:token`: what the shared page shows above what the share
+/// holds.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SharedConversation {
@@ -108,39 +113,102 @@ pub struct SharedConversation {
     #[schemars(with = "Nullable<String>")]
     pub title: Option<String>,
     pub taken_at: Timestamp,
-    /// Each subagent the snapshot holds, in the order they started, for
-    /// the header of its transcript.
-    pub agents: Vec<SharedAgent>,
 }
 
-/// A subagent a share's snapshot holds.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+/// `GET /shares/:token/transcript`: a page of what the share holds, as a
+/// conversation's page is answered (`web-api.md` § Pages), with no failure
+/// facts and its `instructions` always empty.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct SharedAgent {
-    /// Its number, as an `agent:` link and the transcript's `node` name it.
-    #[garde(range(max = MAX_SAFE_INTEGER))]
-    pub number: u64,
-    /// The spawn's `--description`, or empty.
-    #[garde(skip)]
-    pub description: String,
-    /// The profile's name, or null for the inherit profile.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<String>")]
-    #[garde(skip)]
-    pub profile: Option<String>,
+pub struct SharedTranscriptPage {
+    /// The index of the page's first entry.
+    pub start: u32,
+    /// How many entries the share holds.
+    pub length: u32,
+    pub blocks: Vec<SharedEntry>,
+    pub instructions: Vec<InstructionEntry>,
+    pub summaries: Vec<CompactionSummary>,
 }
 
-/// `?node=&before=|after=|around=&edge=` of `GET /shares/:token/transcript`,
-/// which reads the snapshot's copy of an agent's transcript as a
-/// conversation's page reads the transcript (`web-api.md` § Pages). Queries
-/// are the backend's alone and are not emitted.
+/// What a share's page holds at an index (`sharing.md` § Steps not
+/// shared): a message or a text, as a page sends a block, or in place of a
+/// run of the agent's steps, `{ "type": "steps_not_shared", "count": 12 }`.
+#[derive(Debug, Clone, PartialEq)]
+pub enum SharedEntry {
+    Block(Block),
+    StepsNotShared(u64),
+}
+
+/// The tag of a run of steps not shared, which no block type takes.
+const STEPS_NOT_SHARED: &str = "steps_not_shared";
+
+/// A run of steps not shared as it is sent.
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct Steps {
+    #[serde(rename = "type")]
+    tag: String,
+    count: u64,
+}
+
+impl Serialize for SharedEntry {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Self::Block(block) => client_block::serialize(block, serializer),
+            Self::StepsNotShared(count) => Steps {
+                tag: STEPS_NOT_SHARED.to_owned(),
+                count: *count,
+            }
+            .serialize(serializer),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for SharedEntry {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        if value.get("type").and_then(serde_json::Value::as_str) == Some(STEPS_NOT_SHARED) {
+            let steps = Steps::deserialize(value).map_err(serde::de::Error::custom)?;
+            return Ok(Self::StepsNotShared(steps.count));
+        }
+        Block::deserialize(value).map(Self::Block).map_err(serde::de::Error::custom)
+    }
+}
+
+/// Written by hand because serde's untagged variant has no schema the
+/// contracts take: a block's variants joined by the run of steps, tagged
+/// the same way.
+impl JsonSchema for SharedEntry {
+    fn schema_name() -> Cow<'static, str> {
+        "SharedEntry".into()
+    }
+
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        json_schema!({
+            "oneOf": [
+                generator.subschema_for::<Block>(),
+                {
+                    "type": "object",
+                    "description": "A run of the agent's steps between two shown blocks, which the share does not hold.",
+                    "properties": {
+                        "type": { "type": "string", "const": STEPS_NOT_SHARED },
+                        "count": { "type": "integer", "format": "uint64", "minimum": 1, "maximum": MAX_SAFE_INTEGER },
+                    },
+                    "required": ["type", "count"],
+                    "additionalProperties": false,
+                },
+            ],
+        })
+    }
+}
+
+/// `?before=|after=|around=&edge=` of `GET /shares/:token/transcript`,
+/// which reads the share's list as a conversation's page reads the
+/// transcript (`web-api.md` § Pages). Queries are the backend's alone and
+/// are not emitted.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ShareTranscriptQuery {
-    /// The number of the subagent whose transcript the page is of, as an
-    /// `agent:` link names it; the conversation's own without it.
-    #[serde(default)]
-    pub node: Option<u64>,
     #[serde(default)]
     pub before: Option<u32>,
     #[serde(default)]
@@ -149,12 +217,4 @@ pub struct ShareTranscriptQuery {
     pub around: Option<BlockId>,
     #[serde(default)]
     pub edge: Option<BlockId>,
-}
-
-/// `?node=` of `GET /shares/:token/transcript/blocks/:blockId`.
-#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ShareNodeQuery {
-    #[serde(default)]
-    pub node: Option<u64>,
 }
