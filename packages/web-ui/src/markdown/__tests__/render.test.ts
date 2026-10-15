@@ -28,7 +28,7 @@ function shownImages(...paths: string[]): ReadonlyMap<string, HostImage> {
 /** A link of text to a Host file, as a message shows it: the file's icon, then the text. */
 function fileLink(path: string, text: string, line?: number): string {
   const name = path.split('/').at(-1)
-  return `<a href="${path}" class="icon-link" data-file-link${line ? ` data-line="${line}"` : ''}><span class="message-file-icon" data-file-icon="${name}" aria-hidden="true"></span>${text}</a>`
+  return `<a href="${path}" class="icon-link" data-file-link${line ? ` data-line="${line}"` : ''}><span class="message-link-icon" data-file-icon="${name}" aria-hidden="true"></span>${text}</a>`
 }
 
 test('a link opens a Host file or a web page, and anything else stays text', () => {
@@ -53,6 +53,14 @@ test('a link opens a Host file or a web page, and anything else stays text', () 
   expect(html).toContain('<a href="https://example.com/a" target="_blank" rel="noopener noreferrer">web</a>')
   for (const text of ['section', 'mail', 'word'])
     expect(html).toContain(`<p>${text}</p>`)
+})
+
+test('a commit link starts with the commit icon, spaced as a file link is, and is its text alone when nobody opens commits', () => {
+  const commit = '<span class="message-link-icon" data-commit-icon aria-hidden="true"></span>'
+  const html = renderMarkdown('The fix [Fix the total](commit:3f2a9c1); then [again](commit:3f2a9c1) here.', { files: { ...files, openCommit: () => {} } })
+  expect(html).toContain(`<a href="commit:3f2a9c1" class="icon-link icon-link-tight" data-commit-link="3f2a9c1"><span class="icon-lead">${commit}Fix</span> the total</a>;`)
+  expect(html).toContain(`<a href="commit:3f2a9c1" class="icon-link" data-commit-link="3f2a9c1"><span class="icon-lead">${commit}again</span></a>`)
+  expect(renderMarkdown('[Fix the total](commit:3f2a9c1)', { files })).toBe('<p>Fix the total</p>\n')
 })
 
 test('an image loads from the web, as a data URL, or from the Host; anything else shows its alt text', () => {
@@ -125,7 +133,7 @@ test('a link to an agent shows its mark and opens it; a number the conversation 
     open: () => {},
   }
   expect(renderMarkdown('I gave the icons to [File icons](agent:4) and the rest to [Fonts](agent:9).', { files, agents }))
-    .toBe('<p>I gave the icons to <span role="button" tabindex="0" class="agent-link icon-link" data-agent-link="4" data-keeps-windows><span class="agent-link-lead"><span class="agent-link-mark" data-agent-mark="4"></span>File</span> icons</span> and the rest to <span class="agent-link-missing" data-agent-link="9">Fonts</span>.</p>\n')
+    .toBe('<p>I gave the icons to <span role="button" tabindex="0" class="agent-link icon-link" data-agent-link="4" data-keeps-windows><span class="icon-lead"><span class="agent-link-mark" data-agent-mark="4"></span>File</span> icons</span> and the rest to <span class="agent-link-missing" data-agent-link="9">Fonts</span>.</p>\n')
   // Outside a conversation, the text alone.
   expect(renderMarkdown('[File icons](agent:4)')).toBe('<p>File icons</p>\n')
 })
