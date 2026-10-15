@@ -5,7 +5,7 @@ import type { SidebarProject } from '../types'
 function onDevice(id: string, name: string, device: string | null): SidebarProject {
   return device === null
     ? { id, name, path: `/${id}`, hostKind: 'device', device: { kind: 'removed' } }
-    : { id, name, path: `/${id}`, hostKind: 'device', device: { kind: 'paired', name: device, state: 'online' } }
+    : { id, name, path: `/${id}`, hostKind: 'device', device: { kind: 'paired', name: device, state: 'online', mark: null } }
 }
 
 test('a project names its device only beside a project of its name on another host', () => {

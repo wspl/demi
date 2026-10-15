@@ -18,8 +18,8 @@ import {
 // listing the test answers: a few milliseconds.
 
 const devices: WorkspaceDevice[] = [
-  { id: 'laptop', name: 'laptop', state: 'online' },
-  { id: 'build-01', name: 'build-01', state: 'offline' },
+  { id: 'laptop', name: 'laptop', state: 'online', mark: null },
+  { id: 'build-01', name: 'build-01', state: 'offline', mark: null },
 ]
 
 test('New project opens on the Cloud the first time, with no device chosen', () => {
@@ -68,7 +68,7 @@ test('a device paired from beside the device menu is selected there once the men
   // The claim has answered, but the page has not brought the device yet.
   expect(selected.value).toBe('laptop')
 
-  listed.value = [...listed.value, { id: 'studio', name: 'studio', state: 'online' }]
+  listed.value = [...listed.value, { id: 'studio', name: 'studio', state: 'online', mark: null }]
   await nextTick()
   expect(selected.value).toBe('studio')
   scope.stop()

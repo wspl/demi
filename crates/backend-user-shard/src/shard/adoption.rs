@@ -417,6 +417,7 @@ impl Shard {
             platform: RunnerPlatform::Darwin,
             os: OperatingSystem {
                 name: "macOS 26.5".into(),
+                distribution: None,
                 arch: "aarch64".into(),
             },
             version: "0".into(),

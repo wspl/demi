@@ -44,6 +44,59 @@ pub enum DeviceRoute {
 serde_plain::derive_display_from_serialize!(DeviceRoute);
 serde_plain::derive_fromstr_from_deserialize!(DeviceRoute);
 
+/// The logo of a device's mark (`product.md` § Conversations and projects):
+/// its system's, Apple for macOS, the Windows logo, for Linux its
+/// distribution's, or Tux for any other.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceLogo {
+    Apple,
+    Windows,
+    Ubuntu,
+    Debian,
+    Fedora,
+    Arch,
+    Centos,
+    Redhat,
+    Mint,
+    Tux,
+}
+
+impl DeviceLogo {
+    /// The logo of a device on `platform` whose runner last reported `os`:
+    /// before its runner first connected, a Linux device's distribution is
+    /// unknown, and it shows Tux.
+    pub fn of(platform: RunnerPlatform, os: Option<&OperatingSystem>) -> Self {
+        match platform {
+            RunnerPlatform::Darwin => Self::Apple,
+            RunnerPlatform::Win32 => Self::Windows,
+            RunnerPlatform::Linux => {
+                match os.and_then(|os| os.distribution.as_deref()) {
+                    Some("ubuntu") => Self::Ubuntu,
+                    Some("debian") => Self::Debian,
+                    Some("fedora") => Self::Fedora,
+                    Some("arch") => Self::Arch,
+                    Some("centos") => Self::Centos,
+                    Some("rhel") => Self::Redhat,
+                    Some("linuxmint") => Self::Mint,
+                    _ => Self::Tux,
+                }
+            }
+        }
+    }
+}
+
+/// A paired device's mark: its logo, and its number among the user's
+/// devices of that logo, none before its runner first connected. The page
+/// shows the number only while another device has the same logo.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct DeviceMark {
+    pub logo: DeviceLogo,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u32>")]
+    pub number: Option<u32>,
+}
+
 /// Whether a device's runner serves it: `online` while its runner is
 /// connected, `updating` while it replaces itself with the backend's runner
 /// release (`runner.md` § Runner updates), `offline` otherwise.
@@ -62,7 +115,8 @@ pub enum DeviceState {
 /// last reported its artifact cache holds, kept while it is offline
 /// (`native-runtime.md` § Installed artifacts); `os` and `runner_version`
 /// are the operating system and the runner release its runner last
-/// reported, null before its runner first connected; `direct` is whether
+/// reported, null before its runner first connected; `mark` is its mark,
+/// null for the Cloud; `direct` is whether
 /// `route` is how pages reach it (`direct-channel.md` § Choosing the
 /// path); `start_command` is what a person types in a terminal on a
 /// paired device to start its runner again, null for the Cloud.
@@ -88,6 +142,9 @@ pub struct DeviceDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub runner_version: Option<String>,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<DeviceMark>")]
+    pub mark: Option<DeviceMark>,
     pub route: DeviceRoute,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]

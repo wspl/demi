@@ -27,7 +27,7 @@ use demi_backend_remote_host::{
 use demi_host_interface::{HostIdentity, HostKey};
 use demi_runner_protocol::wire::{self, HostArtifact, Inbound, OperatingSystem};
 use demi_runner_protocol::values::BackendUrl;
-use demi_web_api_protocol::devices::{DeviceDto, DeviceKind, DeviceState};
+use demi_web_api_protocol::devices::{DeviceDto, DeviceKind, DeviceLogo, DeviceMark, DeviceState};
 use demi_web_api_protocol::ids::{DeviceId, UserId};
 use futures_util::future::ready;
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -429,7 +429,15 @@ impl Devices {
             )),
             _ => None,
         };
+        let mark = match device.kind {
+            DeviceKind::User => Some(DeviceMark {
+                logo: DeviceLogo::of(device.platform, device.os.as_ref()),
+                number: device.mark_number,
+            }),
+            DeviceKind::Managed => None,
+        };
         DeviceDto {
+            mark,
             state: self.state(&device.id),
             home: self.home(&device.id),
             installed: device.installed,

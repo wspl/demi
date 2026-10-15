@@ -12,8 +12,8 @@ import type { SidebarDevice } from './types'
 /**
  * Where a row's work runs, as the row's end shows it: a conversation's and a project's row end in
  * this one mark, in the same box, so the devices line up down both groups
- * (`product.md` § Conversations and projects). A device is the computer with a dot for its state,
- * without a dot once it is removed; its tip and its accessible label are the same text, "MacBook
+ * (`product.md` § Conversations and projects). A device is its mark (`DeviceIcon`), the plain
+ * computer without a dot once it is removed; its tip and its accessible label are the same text, "MacBook
  * Pro · Online" or "Removed device". A project on the Cloud shows the Cloud's glyph in the same box.
  * The mark stays while the pointer is over the row, so the row's buttons stand to its left.
  */
@@ -45,6 +45,12 @@ const label = computed(() => {
       :aria-label="label"
       :size="phone ? ICON_PX.in32 : ICON_PX.in20"
     />
-    <DeviceIcon v-else :state="host.kind === 'paired' ? host.state : null" :label="label" />
+    <DeviceIcon
+      v-else-if="host.kind === 'paired'"
+      :state="host.state"
+      :mark="host.mark"
+      :label="label"
+    />
+    <DeviceIcon v-else :state="null" :mark="null" :label="label" />
   </Tooltip>
 </template>

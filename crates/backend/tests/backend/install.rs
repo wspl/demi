@@ -1044,6 +1044,7 @@ async fn ask_socket(
             platform: wire::RunnerPlatform::Linux,
             os: wire::OperatingSystem {
                 name: "Ubuntu 26.04".into(),
+                distribution: Some("ubuntu".into()),
                 arch: "x86_64".into(),
             },
             version: release.into(),

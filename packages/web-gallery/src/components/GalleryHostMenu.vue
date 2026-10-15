@@ -37,8 +37,8 @@ const moveQuestion = useMoveQuestion()
 function host(id: string | null): HostMenuHost {
   const device = props.devices.find((item) => item.id === id)
   return device
-    ? { id: device.id, name: device.name, kind: 'device', state: device.state }
-    : { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online' }
+    ? { id: device.id, name: device.name, kind: 'device', state: device.state, mark: device.mark }
+    : { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null }
 }
 
 const primaryHost = computed(() => host(primaryId.value))

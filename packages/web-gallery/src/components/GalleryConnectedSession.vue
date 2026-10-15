@@ -40,10 +40,13 @@ useLiveGalleryCommand(session.terminals)
 // The session's messages find the files the gallery provides its transcripts.
 const messageFiles = useMessageFiles()
 const hosts = createGalleryFileHosts()
+// The hosts' marks are the ones the account's devices show, so the host menu and the folder
+// browser draw each device alike.
 const devices: HostDeviceOption[] = hosts.map((host) => ({
   id: host.id,
   name: host.label,
   state: host.state,
+  mark: host.mark ?? null,
 }))
 const folder = ref({
   deviceId: hosts[0]!.id,
@@ -65,8 +68,8 @@ const workspaceName = computed(() => folder.value.path.split('/').filter(Boolean
 const primaryHost = computed<HostMenuHost>(() => {
   const device = devices.find((candidate) => candidate.id === folder.value.deviceId)
   return device
-    ? { id: device.id, name: device.name, kind: 'device', state: device.state }
-    : { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online' }
+    ? { id: device.id, name: device.name, kind: 'device', state: device.state, mark: device.mark }
+    : { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null }
 })
 const attachedHosts = ref<HostMenuHost[]>([])
 // A move stays open while the agent works, as the product's: choosing asks to stop it first.

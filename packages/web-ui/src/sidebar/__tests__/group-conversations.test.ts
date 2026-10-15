@@ -7,7 +7,7 @@ test('conversation activity and pinning never reorder projects, including empty 
     id,
     name: id,
     hostKind: 'device',
-    device: { kind: 'paired', name: 'mac', state: 'online' },
+    device: { kind: 'paired', name: 'mac', state: 'online', mark: null },
     path: `/${id}`,
   }))
   const conversations: SidebarConversation[] = [

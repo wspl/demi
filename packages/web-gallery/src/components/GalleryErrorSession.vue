@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
 import { refusalFailure, requestFailure } from '../fixtures/request-failures'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { reactive } from 'vue'
@@ -56,10 +57,10 @@ interface SessionCase {
 }
 
 /** The user's devices, as the offline card's move lists them. */
-const errorDevices: HostDeviceOption[] = [
-  { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer' },
-  { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork' },
-]
+const errorDevices: HostDeviceOption[] = shownAmong([
+  { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer', mark: GALLERY_MARKS.mac },
+  { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork', mark: GALLERY_MARKS.windows },
+])
 
 /** The primary Host's card above the dock's chips, while it is an offline device. */
 function offlineCard(primary: HostMenuHost | undefined): OfflineHost | null {
@@ -208,7 +209,7 @@ const cases: SessionCase[] = [
     session: state('host-offline', {
       blocks: [...shortTranscriptBlocks(), hostOfflineErrorBlock()],
     }),
-    primary: reactive<HostMenuHost>({ id: 'mac', name: 'MacBook Pro', kind: 'device', state: 'offline' }),
+    primary: reactive<HostMenuHost>({ id: 'mac', name: 'MacBook Pro', kind: 'device', state: 'offline', mark: GALLERY_MARKS.mac }),
     composer: 'default',
   },
   {

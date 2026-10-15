@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
 import { Archive, Brain, Copy, Cpu, Folder, Pencil, Layers, Pin, Play, Plus, Server, Settings, Trash2, Zap } from '@lucide/vue'
 import type { Component } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -49,11 +50,11 @@ import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '@demicodes/web-ui/devices
 
 const { view } = useGalleryView()
 
-const hostDevices: HostDeviceOption[] = [
-  { id: 'mac', name: 'alex-mbp', state: 'online' },
-  { id: 'build', name: 'build-01', state: 'updating' },
-  { id: 'studio', name: 'studio', state: 'offline' },
-]
+const hostDevices: HostDeviceOption[] = shownAmong([
+  { id: 'mac', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
+  { id: 'build', name: 'build-01', state: 'updating', mark: GALLERY_MARKS.ubuntu },
+  { id: 'studio', name: 'studio', state: 'offline', mark: GALLERY_MARKS.windows },
+])
 const hostStatusItems = hostDevices.map((device) => ({
   id: device.id,
   label: device.name,
@@ -66,15 +67,15 @@ const hostStatusItems = hostDevices.map((device) => ({
  * can reach a device by, one it has not reached this session, and one
  * offline.
  */
-const menuDevices: HostDeviceOption[] = [
-  { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer' },
+const menuDevices: HostDeviceOption[] = shownAmong([
+  { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer', mark: GALLERY_MARKS.mac },
   // A Windows computer keeps the name Windows gave it, which fits the button whole.
-  { id: 'studio', name: 'DESKTOP-B5O1P43', state: 'online', path: 'localNetwork' },
-  { id: 'build', name: 'build-box', state: 'online', path: 'internet' },
-  { id: 'office', name: 'Office Mac mini', state: 'online', path: 'relay' },
-  { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'online' },
-  { id: 'old', name: 'Old Laptop', state: 'offline' },
-]
+  { id: 'studio', name: 'DESKTOP-B5O1P43', state: 'online', path: 'localNetwork', mark: GALLERY_MARKS.windows },
+  { id: 'build', name: 'build-box', state: 'online', path: 'internet', mark: GALLERY_MARKS.ubuntu },
+  { id: 'office', name: 'Office Mac mini', state: 'online', path: 'relay', mark: GALLERY_MARKS.macMini },
+  { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'online', mark: GALLERY_MARKS.fedora },
+  { id: 'old', name: 'Old Laptop', state: 'offline', mark: GALLERY_MARKS.debian },
+])
 const askedMove = useMoveQuestion()
 function askMove(stops?: WorkToStop) {
   void askedMove.ask(

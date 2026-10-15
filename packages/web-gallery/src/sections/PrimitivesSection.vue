@@ -24,6 +24,8 @@ import ThemeToggle from '@demicodes/web-ui/ui/ThemeToggle.vue'
 import ConversationStatusDot from '@demicodes/web-ui/agent/ConversationStatusDot.vue'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
 import DeviceIcon from '@demicodes/web-ui/devices/DeviceIcon.vue'
+import type { DeviceLogo, DeviceMark } from '@demicodes/web-ui/devices/mark'
+import type { DeviceState } from '@demicodes/web-ui/devices/state'
 import ContextUsageIndicator from '@demicodes/web-ui/agent/ContextUsageIndicator.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import Avatar from '@demicodes/web-ui/ui/Avatar.vue'
@@ -156,6 +158,29 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
     flag.value = false
   }, 1200)
 }
+
+/** Every logo a device's mark takes. */
+const DEVICE_LOGOS: DeviceLogo[] = ['apple', 'windows', 'ubuntu', 'debian', 'fedora', 'arch', 'centos', 'redhat', 'mint', 'tux']
+/** Marks with a number, as two or more devices of a logo show it, a two-digit one included. */
+const DEVICE_NUMBERS: { variant: string; mark: DeviceMark }[] = [
+  { variant: 'Apple 1', mark: { logo: 'apple', number: 1 } },
+  { variant: 'Apple 2', mark: { logo: 'apple', number: 2 } },
+  { variant: 'Windows 3', mark: { logo: 'windows', number: 3 } },
+  { variant: 'Ubuntu 4', mark: { logo: 'ubuntu', number: 4 } },
+  { variant: 'Tux 7', mark: { logo: 'tux', number: 7 } },
+  { variant: 'Apple 12', mark: { logo: 'apple', number: 12 } },
+  { variant: 'Debian 10', mark: { logo: 'debian', number: 10 } },
+]
+/** Each state, with and without a number, and a device since removed. */
+const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceMark | null }[] = [
+  { variant: 'online', state: 'online', mark: { logo: 'apple', number: 2 } },
+  { variant: 'updating', state: 'updating', mark: { logo: 'apple', number: 2 } },
+  { variant: 'offline', state: 'offline', mark: { logo: 'apple', number: 2 } },
+  { variant: 'online, alone', state: 'online', mark: { logo: 'windows', number: null } },
+  { variant: 'updating, alone', state: 'updating', mark: { logo: 'windows', number: null } },
+  { variant: 'offline, alone', state: 'offline', mark: { logo: 'windows', number: null } },
+  { variant: 'removed', state: null, mark: null },
+]
 </script>
 
 <template>
@@ -918,15 +943,26 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
 
       <GallerySection
         title="DeviceIcon"
-        note="The product’s one device glyph with its state’s dot: green online, amber updating, faint offline, and no dot for a device since removed. The devices list, the host menu and the sidebar draw a device with it."
+        note="A device’s mark, the same wherever a device is drawn: its system’s logo in the subtle icon color, its state’s dot at the logo’s top right, green online, amber updating, faint offline, and under the dot the number that tells it from the user’s other devices of the same logo, shown only while another has it. The dot and the number are cut out of what is behind them. A two-digit number reaches further left; a device since removed is the plain computer, without a dot."
       >
-        <div class="specimen-row">
+        <!-- One grid, so a row that wraps and the next set sit the same distance apart. -->
+        <div class="specimen-row text-fg-subtle">
+          <GallerySpecimen v-for="logo in DEVICE_LOGOS" :key="logo" :variant="logo">
+            <DeviceIcon state="online" :mark="{ logo, number: null }" />
+          </GallerySpecimen>
           <GallerySpecimen
-            v-for="specimen in ([['online', 'online'], ['updating', 'updating'], ['offline', 'offline'], ['removed', null]] as const)"
-            :key="specimen[0]"
-            :variant="specimen[0]"
+            v-for="specimen in DEVICE_NUMBERS"
+            :key="specimen.variant"
+            :variant="specimen.variant"
           >
-            <DeviceIcon :state="specimen[1]" />
+            <DeviceIcon state="online" :mark="specimen.mark" />
+          </GallerySpecimen>
+          <GallerySpecimen
+            v-for="specimen in DEVICE_STATES"
+            :key="specimen.variant"
+            :variant="specimen.variant"
+          >
+            <DeviceIcon :state="specimen.state" :mark="specimen.mark" />
           </GallerySpecimen>
         </div>
       </GallerySection>

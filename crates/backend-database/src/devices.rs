@@ -6,7 +6,7 @@
 
 use demi_runner_protocol::wire::{HostArtifact, OperatingSystem, RunnerPlatform};
 use demi_shared_types::Timestamp;
-use demi_web_api_protocol::devices::{DeviceKind, DeviceRoute};
+use demi_web_api_protocol::devices::{DeviceKind, DeviceLogo, DeviceRoute};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
@@ -71,6 +71,10 @@ pub struct DeviceRecord {
     pub cloud_started_at: Option<Timestamp>,
     /// How pages reach it (`direct-channel.md` § Choosing the path).
     pub route: DeviceRoute,
+    /// A paired device's number among its user's devices of its logo
+    /// (`product.md` § Conversations and projects); none before its runner
+    /// first reported its system, and for a Cloud.
+    pub mark_number: Option<u32>,
 }
 
 /// A paired device's system: its platform, and the operating system its
@@ -89,7 +93,7 @@ pub struct DeviceChange {
 }
 
 const DEVICE_COLUMNS: &str =
-    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, runner_instance, cloud_started_at, route";
+    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, runner_instance, cloud_started_at, route, mark_number";
 
 /// The name and platform of the one device a user's Cloud is.
 pub const CLOUD_NAME: &str = "Cloud";
@@ -134,6 +138,7 @@ impl ControlService {
                 runner_instance: None,
                 cloud_started_at: None,
                 route: DeviceRoute::Automatic,
+                mark_number: None,
             })
         })
         .await
@@ -338,6 +343,10 @@ impl ControlService {
     /// the one reported, of those whose context names a directory under
     /// that home: a Cloud conversation working in its session directory,
     /// and one the device is attached to without a directory of its own.
+    /// A paired device whose mark has no number yet, or whose logo the
+    /// report changes, takes one more than the highest number among its
+    /// user's other devices of its new logo (`product.md` § Conversations
+    /// and projects).
     pub async fn set_device_runner(
         &self,
         device: DeviceId,
@@ -348,27 +357,32 @@ impl ControlService {
     ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
-            let before: Option<Option<String>> = transaction
-                .query_row(
-                    "SELECT os FROM devices WHERE id = ?1",
-                    [device.as_str()],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            let before: Option<OperatingSystem> = match before.flatten() {
-                Some(text) => Some(json("devices", "os", &text)?),
-                None => None,
+            let Some(record) = one(&transaction, "id = ?1", device.as_str())? else {
+                return Ok(());
+            };
+            let logo = DeviceLogo::of(record.platform, Some(&os));
+            let mark_number = match record.kind {
+                DeviceKind::Managed => None,
+                DeviceKind::User
+                    if record.mark_number.is_some()
+                        && DeviceLogo::of(record.platform, record.os.as_ref()) == logo =>
+                {
+                    record.mark_number
+                }
+                DeviceKind::User => Some(next_mark_number(&transaction, &record, logo)?),
             };
             transaction.execute(
-                "UPDATE devices SET os = ?1, runner_version = ?2, runner_instance = ?3 WHERE id = ?4",
+                "UPDATE devices SET os = ?1, runner_version = ?2, runner_instance = ?3, mark_number = ?4
+                 WHERE id = ?5",
                 params![
                     to_json(&os),
                     runner_version,
                     runner_instance.cast_signed(),
+                    mark_number,
                     device.as_str()
                 ],
             )?;
-            let system_changed = before.as_ref() != Some(&os);
+            let system_changed = record.os.as_ref() != Some(&os);
             if system_changed || home_changed {
                 // A Cloud conversation names no device: the Cloud is its
                 // owner's managed one.
@@ -511,6 +525,28 @@ impl ControlService {
     }
 }
 
+/// One more than the highest mark number among the other paired devices of
+/// `device`'s user whose logo is `logo`; 1 when none has a number.
+fn next_mark_number(
+    connection: &Connection,
+    device: &DeviceRecord,
+    logo: DeviceLogo,
+) -> Result<u32, StorageError> {
+    let mut statement = connection.prepare_cached(&format!(
+        "SELECT {DEVICE_COLUMNS} FROM devices
+         WHERE user_id = ?1 AND kind = 'user' AND id != ?2 AND mark_number IS NOT NULL"
+    ))?;
+    let mut rows = statement.query(params![device.user.as_str(), device.id.as_str()])?;
+    let mut highest = 0;
+    while let Some(row) = rows.next()? {
+        let other = device_row(row)?;
+        if DeviceLogo::of(other.platform, other.os.as_ref()) == logo {
+            highest = highest.max(other.mark_number.unwrap_or(0));
+        }
+    }
+    Ok(highest + 1)
+}
+
 /// The one device `condition` selects with `value`.
 fn one(
     connection: &Connection,
@@ -582,5 +618,9 @@ fn device_row(row: &Row<'_>) -> Result<DeviceRecord, StorageError> {
             "route",
             row.get::<_, String>("route")?.parse::<DeviceRoute>(),
         )?,
+        mark_number: match row.get::<_, Option<i64>>("mark_number")? {
+            Some(number) => Some(decode("devices", "mark_number", u32::try_from(number))?),
+            None => None,
+        },
     })
 }

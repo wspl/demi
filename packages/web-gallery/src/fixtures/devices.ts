@@ -1,8 +1,9 @@
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { DeviceRoute, DirectAttempt, DirectStatus, PathFigures } from '@demicodes/web-ui/devices/direct'
 import type { SettingsDevice } from '@demicodes/web-ui/settings/types'
 import { demoDeviceReport, demoDeviceStart } from './device-installation'
 import { ago } from './time'
+import { shownAmong } from './device-marks'
 
 /**
  * The paths a demo device's attempts take, one per state its page shows
@@ -118,7 +119,7 @@ const day = minutes(24 * 60)
  * nothing.
  */
 function demoDevice(
-  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'seen' | 'start' | 'home'> & { os: SettingsDevice['os']; runnerVersion: string | null },
+  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'seen' | 'start' | 'home' | 'mark'> & { os: SettingsDevice['os']; runnerVersion: string | null },
   scenario: DirectScenario,
   paired: number,
 ): GalleryDevice {
@@ -133,23 +134,26 @@ function demoDevice(
 /** The release the demo server's runners follow. */
 export const DEMO_RUNNER_RELEASE = '9c1f…release'
 
-/** The paired devices of the Devices specimens. */
+/**
+ * The paired devices of the Devices specimens, each with its mark as the backend serves it: the
+ * two Ubuntu computers are Ubuntu 1 and 2.
+ */
 export function galleryDevices(): GalleryDevice[] {
   const current = (system: 'macos' | 'linux' | 'windows') => demoDeviceReport(system, DEMO_RUNNER_RELEASE)
   return [
-    demoDevice({ id: 'mac', name: 'alex-mbp', state: 'online', seen: ago(0), home: '/Users/alex', ...current('macos') }, 'connected', 40 * day),
+    demoDevice({ id: 'mac', name: 'alex-mbp', state: 'online', seen: ago(0), home: '/Users/alex', mark: { logo: 'apple', number: 1 }, ...current('macos') }, 'connected', 40 * day),
     demoDevice(
-      { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * day), start: demoDeviceStart('linux'), ...current('linux') },
+      { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * day), start: demoDeviceStart('linux'), mark: { logo: 'ubuntu', number: 1 }, ...current('linux') },
       'unreachable',
       90 * day,
     ),
     demoDevice(
-      { id: 'studio', name: 'studio-pc', state: 'online', seen: ago(0), ...demoDeviceReport('windows', 'an-older-release') },
+      { id: 'studio', name: 'studio-pc', state: 'online', seen: ago(0), mark: { logo: 'windows', number: 1 }, ...demoDeviceReport('windows', 'an-older-release') },
       'unreachable',
       12 * day,
     ),
     demoDevice(
-      { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'updating', seen: ago(minutes(2)), ...current('linux') },
+      { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'updating', seen: ago(minutes(2)), mark: { logo: 'ubuntu', number: 2 }, ...current('linux') },
       'notOffered',
       2 * day,
     ),
@@ -272,10 +276,13 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
   /** A device the pairing dialog paired joins the list, online and tried at once. */
   async function claim(_code: string) {
     await new Promise((resolve) => window.setTimeout(resolve, 900))
+    // A Mac, which takes the next Apple number, as the backend gives it.
+    const apple = devices.value.filter((device) => device.mark?.logo === 'apple')
     const device: SettingsDevice = {
       id: `device-${Date.now()}`,
       name: `host-${devices.value.length + 1}`,
       state: 'online',
+      mark: { logo: 'apple', number: Math.max(0, ...apple.map((device) => device.mark?.number ?? 0)) + 1 },
       seen: new Date().toISOString(),
       pairedAt: new Date().toISOString(),
       ...demoDeviceReport('macos', DEMO_RUNNER_RELEASE),
@@ -286,5 +293,8 @@ export function useGalleryDevices(initial: () => GalleryDevice[]) {
     return { ok: true as const, device }
   }
 
-  return { devices, shown, scenarios, setScenario, measure, tryNow, setRoute, rename, revoke, claim }
+  /** The list as the page shows it: a number only while another device has its logo. */
+  const listed = computed(() => shownAmong(devices.value))
+
+  return { devices: listed, shown, scenarios, setScenario, measure, tryNow, setRoute, rename, revoke, claim }
 }

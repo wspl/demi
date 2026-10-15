@@ -21,7 +21,7 @@ import { vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import type { SidebarDevice } from '@demicodes/web-ui/sidebar/types'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
 import { pluginEnabled } from '../plugins/enabled'
-import { hostKindOf } from './hosts'
+import { deviceMarkOf, hostKindOf } from './hosts'
 import { emptyLocalState, readLocalState, writeLocalState } from './local'
 import type { Device, Project } from './types'
 
@@ -34,7 +34,7 @@ const FILE_BROWSER_PLATFORMS: Record<DeviceDto['platform'], Device['platform']> 
 }
 
 /** A snapshot device as the file browser and the work panel take it. */
-function productDevice(device: DeviceDto): Device {
+function productDevice(device: DeviceDto, devices: readonly DeviceDto[]): Device {
   const platform = FILE_BROWSER_PLATFORMS[device.platform]
   return {
     id: device.id,
@@ -47,6 +47,7 @@ function productDevice(device: DeviceDto): Device {
     start: device.startCommand ? { command: device.startCommand, system: platform } : null,
     os: device.os,
     runnerVersion: device.runnerVersion,
+    mark: deviceMarkOf(device, devices),
   }
 }
 
@@ -123,17 +124,20 @@ export const useResources = defineStore('resources', () => {
   const devices = computed<Device[]>(() =>
     (product.snapshot?.devices ?? [])
       .filter((device) => device.kind === 'user')
-      .map(productDevice),
+      .map((device) => productDevice(device, product.snapshot?.devices ?? [])),
   )
   /** Any device of the snapshot by id, the user's Cloud included; null when unknown. */
   function deviceById(id: string | null): Device | null {
     const device = product.snapshot?.devices.find((candidate) => candidate.id === id)
-    return device ? productDevice(device) : null
+    return device && product.snapshot ? productDevice(device, product.snapshot.devices) : null
   }
   /** A device as a row's mark shows it: by name and state, or as one the account no longer lists. */
   function sidebarDevice(deviceId: string): SidebarDevice {
-    const device = product.snapshot?.devices.find((candidate) => candidate.id === deviceId)
-    return device ? { kind: 'paired', name: device.name, state: device.state } : { kind: 'removed' }
+    const devices = product.snapshot?.devices ?? []
+    const device = devices.find((candidate) => candidate.id === deviceId)
+    return device
+      ? { kind: 'paired', name: device.name, state: device.state, mark: deviceMarkOf(device, devices) }
+      : { kind: 'removed' }
   }
   /**
    * The device a conversation's sidebar row shows (`product.md` § Conversations and projects):

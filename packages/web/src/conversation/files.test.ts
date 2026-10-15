@@ -37,13 +37,14 @@ function laptop(name: string) {
     startCommand: null,
     os: null,
     runnerVersion: null,
+    mark: { logo: 'tux' as const, number: 1 },
     route: 'automatic' as const,
   }
 }
 
 /** The Cloud as the product state carries it, running or stopped. */
 function cloud(state: 'online' | 'offline') {
-  return { ...laptop('Cloud'), id: CLOUD, kind: 'managed' as const, state, home: '/home/demi' }
+  return { ...laptop('Cloud'), id: CLOUD, kind: 'managed' as const, state, home: '/home/demi', mark: null }
 }
 
 /** A watch socket the page opened, which the test plays as the backend would. */

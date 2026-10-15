@@ -1,3 +1,5 @@
+import type { DeviceMark } from '@demicodes/web-ui/devices/mark'
+import { GALLERY_MARKS, shownAmong } from './device-marks'
 import { createMemoryFileSource, dir, file, link, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserHost, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
 
@@ -188,11 +190,23 @@ export interface GalleryFileHost extends FileBrowserHost {
   places: FileBrowserPlaceGroup[]
 }
 
+/** The marks the backend serves the file hosts' devices, before a page shows them (`shownAmong`). */
+export const GALLERY_FILE_HOST_MARKS: Record<string, DeviceMark> = {
+  mac: GALLERY_MARKS.mac,
+  build: GALLERY_MARKS.ubuntu,
+  studio: GALLERY_MARKS.windows,
+}
+
+/**
+ * The paired devices of a specimen's account, with the marks they show among themselves: the one
+ * Mac shows no number, in the host menu and the folder browser alike.
+ */
 export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
-  return [
+  return shownAmong<GalleryFileHost>([
     {
       id: 'mac',
       label: 'alex-mbp',
+      mark: GALLERY_FILE_HOST_MARKS.mac,
       state: 'online',
       source: createMemoryFileSource(
         {
@@ -227,6 +241,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
     {
       id: 'build',
       label: 'build-01',
+      mark: GALLERY_FILE_HOST_MARKS.build,
       state: 'online',
       source: createMemoryFileSource(
         {
@@ -247,6 +262,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
     {
       id: 'studio',
       label: 'studio',
+      mark: GALLERY_FILE_HOST_MARKS.studio,
       state: 'offline',
       source: createMemoryFileSource(
         {
@@ -264,7 +280,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
         }
       ],
     },
-  ]
+  ])
 }
 
 /** A conversation can also browse an attached Cloud while it is stopped. */
