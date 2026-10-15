@@ -101,6 +101,16 @@ pub enum AgentMessageEvent {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]
         credential: Option<String>,
+        /// The host the request asked to reach, by the name it went by
+        /// (`permissions.md` § Hosts); none for a request of categories
+        /// alone or a pairing.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        host: Option<String>,
+        /// The request asked to pair a computer and reach it.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        #[garde(skip)]
+        pairing: bool,
     },
     /// The user's move of the conversation, which the user told the root
     /// of; the receipt row names where it now runs.

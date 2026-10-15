@@ -296,10 +296,10 @@ impl LeafBuilder {
         self
     }
 
-    /// The string field of the input that names a device or a project the
-    /// call may bring into the conversation: the dispatch resolves it and
-    /// asks for Manage Devices too when it is a paired device the
-    /// conversation does not reach (`permissions.md` § Several categories).
+    /// The string field of the input that names a host, a device or a
+    /// project the call may bring into the conversation: the dispatch
+    /// resolves it and asks the user for that host when the conversation
+    /// may not reach it (`permissions.md` § Hosts).
     pub fn brings_host(mut self, field: impl Into<String>) -> Self {
         self.leaf.brings_host = Some(field.into());
         self

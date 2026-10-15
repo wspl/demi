@@ -10,8 +10,8 @@
 //!
 //! A group may declare permission categories, and a leaf names the one it
 //! needs as its `permission` (`permissions.md` § Categories), and the input
-//! field that may bring a device into the conversation as its `bringsHost`
-//! (`permissions.md` § Several categories): the declaration is all a
+//! field that may bring a host into the conversation as its `bringsHost`
+//! (`permissions.md` § Hosts): the declaration is all a
 //! command does about permissions, which the backend's dispatch checks
 //! before a handler runs.
 

@@ -897,6 +897,14 @@ impl ControlService {
     }
 }
 
+impl ControlService {
+    /// Whether the conversation may reach `device` ([`may_reach`]).
+    pub async fn may_reach(&self, id: ConversationId, device: DeviceId) -> Result<bool, StorageError> {
+        self.call(move |connection, _| may_reach(connection, &id, &device))
+            .await
+    }
+}
+
 /// The two ends of a target switch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SwitchEnds {
@@ -1276,7 +1284,49 @@ pub fn insert_attached_host(
     if inserted {
         raise_hosts_revision(connection, conversation)?;
     }
+    add_reachable_host(connection, conversation, &host.device, now)?;
     Ok(inserted)
+}
+
+/// Puts `device` on the list of hosts the conversation may reach
+/// (`sessions-and-targets.md` § Hosts a conversation may reach), where it
+/// stays for the conversation's life; a device gone meanwhile, such as one
+/// revoked, joins nothing.
+pub fn add_reachable_host(
+    connection: &Connection,
+    conversation: &ConversationId,
+    device: &DeviceId,
+    now: Timestamp,
+) -> Result<(), StorageError> {
+    connection.execute(
+        "INSERT INTO reachable_hosts (conversation_id, device_id, added_at)
+         SELECT ?1, id, ?3 FROM devices WHERE id = ?2
+         ON CONFLICT (conversation_id, device_id) DO NOTHING",
+        params![conversation.as_str(), device.as_str(), now.as_millisecond()],
+    )?;
+    Ok(())
+}
+
+/// Whether the conversation may reach `device` (`sessions-and-targets.md`
+/// § Hosts a conversation may reach): it is the conversation's primary
+/// Host, the device of its project or the user's Cloud for a conversation
+/// there, or on its list.
+pub fn may_reach(
+    connection: &Connection,
+    conversation: &ConversationId,
+    device: &DeviceId,
+) -> Result<bool, StorageError> {
+    Ok(connection.query_row(
+        "SELECT EXISTS (SELECT 1 FROM reachable_hosts WHERE conversation_id = ?1 AND device_id = ?2)
+             OR EXISTS (
+               SELECT 1 FROM conversations c WHERE c.id = ?1 AND (
+                 c.target_device_id = ?2
+                 OR EXISTS (SELECT 1 FROM workspaces w WHERE w.id = c.target_workspace_id AND w.device_id = ?2)
+                 OR (c.target_kind = 'cloud' AND EXISTS (
+                   SELECT 1 FROM devices d WHERE d.id = ?2 AND d.kind = 'managed' AND d.user_id = c.user_id))))",
+        params![conversation.as_str(), device.as_str()],
+        |row| row.get(0),
+    )?)
 }
 
 /// Raises the revision of the conversation's attached hosts, which its

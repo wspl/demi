@@ -15,7 +15,7 @@ use demi_plugin_skills::testing::{Repos, skill_md};
 use demi_shared_types::Block;
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 use demi_web_api_protocol::permissions::{
-    ConversationPermissions, PermissionCategory, PermissionRequest, RequestingAgent,
+    ConversationPermissions, PermissionCategory, PermissionHost, PermissionRequest, RequestingAgent,
 };
 use reqwest::StatusCode;
 use serde_json::json;
@@ -93,6 +93,14 @@ pub(crate) async fn permissions(backend: &TestBackend, session: &Session, id: &s
 pub(crate) fn categories(request: &PermissionRequest) -> &[PermissionCategory] {
     match request {
         PermissionRequest::Permission { categories, .. } => categories,
+        other => panic!("not a permission request: {other:?}"),
+    }
+}
+
+/// The host a permission request asks to reach.
+pub(crate) fn host_of(request: &PermissionRequest) -> Option<&PermissionHost> {
+    match request {
+        PermissionRequest::Permission { host, .. } => host.as_ref(),
         other => panic!("not a permission request: {other:?}"),
     }
 }
@@ -670,7 +678,7 @@ async fn a_decision_whose_message_a_restart_cut_off_reaches_the_agent_once_at_th
 // Several seconds: a second real device holds the project, and a real
 // device runs the shell jobs of five turns in two conversations.
 #[tokio::test]
-async fn a_move_that_brings_a_device_asks_for_both_categories_in_one_request() {
+async fn a_move_into_a_project_on_a_host_out_of_reach_asks_for_the_category_and_the_host_in_one_request() {
     let scripts = Arc::new(Scripts::default());
     let World {
         harness,
@@ -683,8 +691,8 @@ async fn a_move_that_brings_a_device_asks_for_both_categories_in_one_request() {
     let studio = backend.pair(&master, "studio").await;
     let shop = project(&backend, &master, &studio, "shop-app").await;
 
-    // Neither grant: one request of both categories, and the refusal names
-    // both actions.
+    // Neither the category nor the host: one request of both, and the
+    // refusal names both actions.
     scripts.root(
         FIRST,
         vec![
@@ -695,7 +703,7 @@ async fn a_move_that_brings_a_device_asks_for_both_categories_in_one_request() {
     socket.chat("m1", "Move into shop-app").await;
     let refused = last_asked(&scripts, FIRST);
     assert!(
-        refused.contains("demi conversation move: this conversation needs the user's permission to organize conversations and manage devices; the request was sent to the user"),
+        refused.contains("demi conversation move: this conversation needs the user's permission to organize conversations and reach studio; the request was sent to the user"),
         "{refused}"
     );
     assert!(refused.contains("exit=1"), "{refused}");
@@ -703,10 +711,13 @@ async fn a_move_that_brings_a_device_asks_for_both_categories_in_one_request() {
     assert_eq!(asked.requests.len(), 1, "{asked:?}");
     let request = &asked.requests[0];
     let ids: Vec<&str> = categories(request).iter().map(|category| category.id.as_str()).collect();
-    assert_eq!(ids, ["conversation.organize", "host.devices"]);
+    assert_eq!(ids, ["conversation.organize"]);
     assert_eq!(
-        categories(request)[1].action.as_deref(),
-        Some("manage devices")
+        host_of(request),
+        Some(&PermissionHost::Device {
+            device_id: studio.id().try_into().unwrap(),
+            name: "studio".into()
+        })
     );
 
     // Allow grants both: the root is told with both actions, its command
@@ -724,7 +735,7 @@ async fn a_move_that_brings_a_device_asks_for_both_categories_in_one_request() {
     let woken = scripts.asked(|session| session == FIRST);
     assert!(
         woken[woken.len() - 2].contains(
-            "The user allowed this conversation to organize conversations and manage devices; the command `demi conversation move shop-app` can now run."
+            "The user allowed this conversation to organize conversations and reach studio; the command `demi conversation move shop-app` can now run."
         ),
         "{}",
         woken[woken.len() - 2]
@@ -734,14 +745,14 @@ async fn a_move_that_brings_a_device_asks_for_both_categories_in_one_request() {
         "{}",
         woken.last().unwrap()
     );
-    assert_eq!(granted(&harness, FIRST), ["conversation.organize", "host.devices"]);
+    assert_eq!(granted(&harness, FIRST), ["conversation.organize"]);
     eventually("the move is made", || async {
         target_of(&harness, FIRST) == ("workspace".to_owned(), Some(shop.clone()))
     })
     .await;
 
-    // With Organize Conversations granted before, the request holds Manage
-    // Devices alone.
+    // With Organize Conversations granted before, the request holds the
+    // host alone.
     create(&backend, &master, SECOND).await;
     choose(&backend, &master, SECOND, &provider, "m").await;
     working_on(&harness, &_device, SECOND);
@@ -760,16 +771,13 @@ async fn a_move_that_brings_a_device_asks_for_both_categories_in_one_request() {
     );
     second.chat("n1", "Move into shop-app").await;
     assert!(
-        last_asked(&scripts, SECOND).contains("permission to manage devices; the request"),
+        last_asked(&scripts, SECOND).contains("permission to reach studio; the request"),
         "{}",
         last_asked(&scripts, SECOND)
     );
     let other = permissions(&backend, &master, SECOND).await;
     assert_eq!(other.requests.len(), 1, "{other:?}");
-    let ids: Vec<&str> = categories(&other.requests[0])
-        .iter()
-        .map(|category| category.id.as_str())
-        .collect();
-    assert_eq!(ids, ["host.devices"]);
+    assert!(categories(&other.requests[0]).is_empty(), "{other:?}");
+    assert!(host_of(&other.requests[0]).is_some(), "{other:?}");
     backend.close().await;
 }
