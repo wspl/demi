@@ -602,6 +602,9 @@ At startup the backend:
    `hello` on the first connection names its wire version, so a manager of
    another release stops the start here
    ([Control and ownership](../cloud/managed-hosts.md#control-and-ownership)).
+   The turns a graceful shutdown interrupted are resumed in the background,
+   each owner's on its shard; the start waits for none of them
+   ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)).
 7. Opens its listener.
 8. Reports readiness to systemd, whose unit waits for it without a timeout,
    since a migration can take minutes
@@ -627,7 +630,10 @@ runs on a Host: commands and Clouds go on, and the next start takes them up
    reaches a tree after its shutdown. Agent turns are
    aborted: a running turn records that its session was shut down, and a
    command it watched keeps running
-   ([Dispose and restore](../agent/runtime.md#dispose-and-restore)). Claude
+   ([Dispose and restore](../agent/runtime.md#dispose-and-restore)); a root
+   turn's record and its mark in `interrupted_turns` are saved in one step,
+   so the next start resumes it however far the shutdown got
+   ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)). Claude
    Code CLI installs are cancelled; the next need starts them again. A Cloud
    boot waiting for its runner ends at once, since the closed listener lets
    no runner connect, and saves what the sandbox wrote, as a failed boot

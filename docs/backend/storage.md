@@ -314,6 +314,12 @@ with ID as the stable tie-breaker. Reorder writes one partition atomically and
 rejects archived rows or cross-partition targets.
 [Web API](../product/web-api.md#sidebar-mutations-and-read-state)
 owns the request contract.
+- **Turns a shutdown interrupted:** `interrupted_turns` holds one row per
+  root whose turn a graceful shutdown interrupted: the conversation and the
+  id of the `interrupted` record the shutdown wrote. The start that resumes
+  it deletes the row, and the row goes with its conversation
+  ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)).
+
 
 ## Conversation state and transactions
 
