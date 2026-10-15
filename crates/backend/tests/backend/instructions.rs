@@ -157,7 +157,7 @@ async fn an_edit_reaches_a_request_through_the_watch_and_a_silent_host_holds_non
     std::fs::create_dir_all(&skill).unwrap();
     std::fs::write(repo.join("AGENTS.md"), "FIRST RULES").unwrap();
     std::fs::write(skill.join("SKILL.md"), skill_md("name: release\ndescription: Cut a release.")).unwrap();
-    switch(&backend, &master, FIRST, &alpha, &repo).await;
+    crate::work::into_project(&backend, &master, FIRST, &alpha, &repo).await;
 
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
     let first = work.turn(vec![say("hello")]).await.first_request();
