@@ -133,6 +133,50 @@ async fn a_job_that_ends_while_the_connection_is_lost_is_listed_and_its_exit_fol
     .unwrap();
 }
 
+/// The runner starts a job id once in its life (`sessions-and-targets.md`
+/// § Recovery and persistence): a start that arrives again while the job
+/// runs leaves it running, once, and one that arrives after its end answers
+/// the exit the runner kept, so a start the backend sent again never runs
+/// a command twice. About a second: a login shell starts.
+#[tokio::test]
+async fn a_start_that_arrives_twice_runs_the_job_once() {
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        let script = "printf x >> runs; while [ ! -f go ]; do sleep 0.05; done; exit 4";
+        start_job(&mut host, "once", script).await;
+        until_exists(&host.home().join("runs")).await;
+        start_job(&mut host, "once", script).await;
+        std::fs::write(host.home().join("go"), "").unwrap();
+        let exit = |frame: Outbound| match frame {
+            Outbound::JobExit {
+                job_id,
+                exit_code,
+                spawn_error,
+                ..
+            } => Some((job_id, exit_code, spawn_error)),
+            _ => None,
+        };
+        let ended = loop {
+            if let Some(ended) = exit(host.frame().await) {
+                break ended;
+            }
+        };
+        assert_eq!(ended, ("once".to_owned(), Some(4), None));
+
+        start_job(&mut host, "once", script).await;
+        let again = loop {
+            if let Some(again) = exit(host.frame().await) {
+                break again;
+            }
+        };
+        assert_eq!(again, ended, "a start after the end answers the job's exit");
+        assert_eq!(std::fs::read_to_string(host.home().join("runs")).unwrap(), "x");
+        host.close().await;
+    })
+    .await
+    .unwrap();
+}
+
 /// A connection that stays away past the grace stops the runner's jobs as a
 /// stop does, and the next hello lists them ended for that reason
 /// (`runner.md` § Command lifetime). The test's runner keeps its jobs 200 ms

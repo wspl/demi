@@ -48,11 +48,10 @@ async fn filesystem_requests_and_kill_remain_available_during_job() {
 async fn a_start_the_runner_cannot_begin_ends_with_its_reason_as_the_spawn_error() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let mut host = Host::start(BTreeMap::new()).await.online().await;
-        // A second start under a live job's id cannot begin: its exit has no
+        // A start in a relative directory cannot begin: its exit has no
         // status, and the runner's reason is the spawn error's detail, never
         // the signal.
-        start_job(&mut host, "twin", "sleep 60").await;
-        start_job(&mut host, "twin", "sleep 60").await;
+        crate::start_job_in(&mut host, "nowhere", std::path::Path::new("relative"), "true").await;
         let exit = host.frame().await;
         assert!(
             matches!(
@@ -66,11 +65,10 @@ async fn a_start_the_runner_cannot_begin_ends_with_its_reason_as_the_spawn_error
                         detail: Some(detail),
                     }),
                     ..
-                } if job_id == "twin" && detail == "duplicate live task id"
+                } if job_id == "nowhere" && detail == "task cwd must be absolute"
             ),
             "{exit:?}"
         );
-        // Stopping ends the first job with the connection.
         host.close().await;
     })
     .await
