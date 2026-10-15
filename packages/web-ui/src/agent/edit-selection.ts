@@ -23,6 +23,23 @@ export function useEditSelection(): () => EditSelectionHandler | undefined {
   return inject(editSelectionKey, () => undefined)
 }
 
+const filePillsKey: InjectionKey<() => boolean> = Symbol('file-pills')
+
+/**
+ * Whether the transcript below shows the files its calls and folded runs
+ * changed as pills, read at each render: a conversation outside a project
+ * shows none, and its Change view still lists them (`edit-tracking.md`
+ * § What the conversation shows).
+ */
+export function provideFilePills(shown: () => boolean): void {
+  provide(filePillsKey, shown)
+}
+
+/** Whether the transcript a row is in shows file pills; one shown on its own does. */
+export function useFilePills(): () => boolean {
+  return inject(filePillsKey, () => true)
+}
+
 /** One agent's transcript as its rows see it: whose it is, its requests and where it wrote. */
 export interface TranscriptContext {
   /** The agent: null for the conversation's own, a subagent's id otherwise. */
