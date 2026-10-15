@@ -191,6 +191,16 @@ impl RunnerProcess {
             .expect("the runner runs")
     }
 
+    /// Stops the runner with `SIGSTOP`: it keeps its connection and answers
+    /// nothing until [`RunnerProcess::resume`], as a Host whose reads never
+    /// end.
+    #[cfg(unix)]
+    pub fn suspend(&self) {
+        let pid = rustix::process::Pid::from_raw(self.pid() as i32).expect("a process id");
+        rustix::process::kill_process(pid, rustix::process::Signal::STOP)
+            .expect("the runner can be signalled");
+    }
+
     /// Lets a runner that a script stopped with `SIGSTOP` go on.
     #[cfg(unix)]
     pub fn resume(&self) {

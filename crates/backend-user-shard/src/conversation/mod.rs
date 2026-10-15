@@ -15,6 +15,7 @@ mod deletion;
 mod failure_facts;
 mod fork;
 mod instructions;
+pub(crate) mod project_files;
 pub(crate) mod organize;
 pub(crate) mod pending;
 pub(crate) mod product;
@@ -154,6 +155,10 @@ pub(crate) fn conversation_parts(
                 if let Some(shard) = shard.upgrade() {
                     shard.poke_pending(&conversation);
                     shard.follow_failed_turn(&conversation);
+                    // A conversation no longer loaded keeps no project files.
+                    if shard.agent().tree(root).is_none() {
+                        shard.project_files().release(&conversation);
+                    }
                 }
                 marks.mark(Part::Conversation(conversation));
             })

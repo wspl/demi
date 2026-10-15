@@ -13,6 +13,7 @@ pub mod access;
 pub mod attachment_commands;
 pub mod file_watch;
 pub mod host_commands;
+pub mod kept;
 pub mod lease;
 pub mod plugin_files;
 pub mod remote_files;

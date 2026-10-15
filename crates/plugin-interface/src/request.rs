@@ -6,6 +6,7 @@ use demi_host_interface::{HostPaths, PortError, RpcError, RpcInvocation};
 use demi_shared_types::{NodeId, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::panel::PanelTab;
+use demi_web_api_protocol::workflows::WatchSubject;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -31,6 +32,9 @@ pub enum Request {
     /// and context): `seen` holds the text of its own blocks the model
     /// receives, oldest first, `cwd` is the node's working directory and
     /// `paths` how its Host writes paths (`runner.md` § Windows paths).
+    /// `project` is what the plugin's project search last found in the
+    /// conversation's project directory, for a plugin that declares one;
+    /// none until a search answered.
     Context {
         user: UserId,
         conversation: ConversationId,
@@ -39,6 +43,21 @@ pub enum Request {
         paths: HostPaths,
         turn: TurnId,
         seen: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        project: Option<Value>,
+    },
+    /// The plugin declares a project search: it searches `directory`, the
+    /// conversation's project directory, on its primary Host, with the
+    /// port's reads, and answers what it found and what tells of a change
+    /// to it. The backend keeps the answer, searches again when the runner
+    /// says one of `watch` changed or the Host comes online again, and gives
+    /// what it holds to each context request (`plugins.md` § Reading a
+    /// conversation's files).
+    ProjectSearch {
+        user: UserId,
+        conversation: ConversationId,
+        directory: String,
+        paths: HostPaths,
     },
     /// The plugin's page state: the user's, or, with `conversation`, that
     /// conversation's.
@@ -113,6 +132,12 @@ pub enum Reply {
     Result { result: Value },
     /// A request that answers nothing, such as a `panel_tab` or a `topic`.
     Done,
+    /// A project search's result, and the files and folders whose change
+    /// changes it.
+    Project {
+        found: Value,
+        watch: Vec<WatchSubject>,
+    },
 }
 
 /// Why a plugin gave up on a request.

@@ -148,6 +148,7 @@ impl Plugin for CommandPlugin {
                 | Request::PageCall { .. }
                 | Request::PanelTab { .. } => Err(PluginError::undeclared("page")),
                 Request::Context { .. } => Err(PluginError::undeclared("context source")),
+                Request::ProjectSearch { .. } => Err(PluginError::undeclared("project search")),
                 Request::PackageMessage { .. } | Request::PackageLost { .. } => {
                     Err(PluginError::undeclared("package messages"))
                 }
@@ -173,6 +174,7 @@ impl Plugin for NoRequests {
             | Request::PageCall { .. }
             | Request::PanelTab { .. } => "page",
             Request::Context { .. } => "context source",
+            Request::ProjectSearch { .. } => "project search",
             Request::PackageMessage { .. } | Request::PackageLost { .. } => "package messages",
         };
         Box::pin(async move { Err(PluginError::undeclared(what)) })

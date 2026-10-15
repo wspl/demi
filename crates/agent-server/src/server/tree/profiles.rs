@@ -191,7 +191,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// `demi agent workflows list`: the workflows of the conversation's
-    /// working directory and its choice, read now.
+    /// working directory, as the product holds them, and its choice.
     pub(crate) async fn workflows(&self) -> Result<WorkflowListing, String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
         server.deps.subagents.workflows(self.root.id()).await

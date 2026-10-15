@@ -250,6 +250,9 @@ impl Shard {
         let serving = self
             .devices()
             .bind(device, link, driver, seen.clone(), runner.installation);
+        // What its conversations keep of its files is searched again on the
+        // new connection.
+        self.project_files().online(device);
         let device = device.clone();
         let reported = async move {
             seen.hello(device, runner.os, runner.version, hello_instance, home_changed)

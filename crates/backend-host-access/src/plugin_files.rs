@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 
 use demi_backend_blobs::blobs::UserBlobs;
-use demi_backend_remote_host::{DirectoryFile, Link, Look, LookAt, RemoteHost, WeakLink};
+use demi_backend_remote_host::{DirectoryFile, HostSubscriber, Link, Look, LookAt, RemoteHost, WeakLink};
 use demi_host_interface::{FileKind, Host as _, HostError, HostErrorKind};
 use demi_plugin_interface::{EntryKind, HostDirectory, HostEntry, HostFile, HostRead, PluginId};
 use demi_shared_types::{B64Bytes, ReadAt};
@@ -49,6 +49,10 @@ pub enum ReadFilesError {
     /// The Host is not running, and a read never wakes it.
     #[error("the conversation's Host is not running")]
     NotRunning,
+    /// The conversation works on another Host than the one the read was
+    /// asked of.
+    #[error("the conversation works on another Host now")]
+    Moved,
     #[error(transparent)]
     Access(HostAccessError),
 }
@@ -76,10 +80,46 @@ impl dyn HostShard + '_ {
         reads: &[HostRead],
         cancel: &CancellationToken,
     ) -> Result<(Vec<HostFile>, ReadAt), ReadFilesError> {
+        self.read_files_on(id, None, reads, cancel).await
+    }
+
+    /// [`read_files`](Self::read_files), on the primary Host of `device`
+    /// alone when one is named: [`ReadFilesError::Moved`] once the
+    /// conversation works on another, so what a search of one Host finds is
+    /// never read on another.
+    pub async fn read_files_on(
+        &self,
+        id: &ConversationId,
+        device: Option<&DeviceId>,
+        reads: &[HostRead],
+        cancel: &CancellationToken,
+    ) -> Result<(Vec<HostFile>, ReadAt), ReadFilesError> {
         let access = self.admit_stream(id, None, Attention::Looks, cancel).await?;
+        if device.is_some_and(|device| *device != access.device) {
+            return Err(ReadFilesError::Moved);
+        }
         let waits = Waits::until_ended(cancel, &access.open.ended);
         let found = waits.wait(look_files(&access.host.host, reads)).await?;
         Ok(found.map_err(HostAccessError::Host)?)
+    }
+
+    /// A holder of subscriptions on the conversation's primary Host
+    /// (`runner.md` § Watching files), and that Host's device, admitted as
+    /// [`read_files`](Self::read_files) is: a stopped Cloud or an offline
+    /// device is not running and is not woken. The holder keeps no
+    /// admission, so it keeps no Cloud awake and no transition waits for it.
+    pub async fn watch_files(
+        &self,
+        id: &ConversationId,
+        cancel: &CancellationToken,
+    ) -> Result<(DeviceId, HostSubscriber), ReadFilesError> {
+        let access = self.admit_stream(id, None, Attention::Looks, cancel).await?;
+        let subscriber = access
+            .host
+            .host
+            .subscriber()
+            .map_err(|error| ReadFilesError::from(HostAccessError::Host(error)))?;
+        Ok((access.device, subscriber))
     }
 
     /// Brings `host`, admitted on `device` for a job, to the user's

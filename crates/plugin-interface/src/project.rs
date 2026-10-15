@@ -1,5 +1,6 @@
-//! The directories a project's files are searched in (`skills.md` § Project
-//! skills, `instructions.md` § Which files are read): the working directory
+//! The directories a project's instruction files and workflows are searched
+//! in (`instructions.md` § Which files are read, `subagents.md` § Workflows
+//! of a project): the working directory
 //! and each directory above it up to the root of its git repository, the
 //! nearest that holds `.git`; outside a repository, the working directory
 //! alone.

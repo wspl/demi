@@ -167,6 +167,14 @@ impl Link {
     }
 }
 
+#[cfg(feature = "testing")]
+impl Link {
+    /// The subjects the connection subscribes to on the runner now.
+    pub fn subscribed(&self) -> Vec<Subject> {
+        self.with_subscriptions(|subscriptions| subscriptions.by_subject.keys().cloned().collect())
+    }
+}
+
 impl HostSubscriber {
     /// Holds `subject`, subscribing on the runner unless another holder
     /// does: one that is live already is heard as live at once.
