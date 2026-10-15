@@ -618,6 +618,140 @@ async fn output<H: HostResolver>(
     Ok(0)
 }
 
+impl<H: HostResolver> Tree<H> {
+    /// Page `page`, from 1, of what `demi conversation history open` shows
+    /// of the conversation's command `id` (`compaction.md` § Reading the
+    /// earlier history): `head`, the line that names the call, on every
+    /// page, then the script after `$ `, then the whole output, both
+    /// streams, its lines as `demi shell output` shows them under its
+    /// header, all cut into pages of [`PAGE_CHARS`] less `reserve`, the line
+    /// the caller adds under a page; and how many pages there are. One pass
+    /// over the output finds both. A page past the last fails, naming how
+    /// many there are.
+    pub async fn command_page(
+        &self,
+        id: &CommandId,
+        head: &str,
+        script: &str,
+        page: u64,
+        reserve: usize,
+    ) -> Result<(String, u64), String> {
+        let found = find(self, id.as_str()).await?;
+        let binary = found.output.binary_stdout_length();
+        let text = found.output.text(Streams::Both, binary, Seen::default());
+        let shown = Page {
+            text: &text,
+            id: id.as_str(),
+            streams: Streams::Both,
+            end: found.end,
+            };
+        let last = text.last_line();
+        // Every page holds the head and room for the output's header.
+        let header = shown.header(Some((last, last))).chars().count() + 1;
+        let budget = PAGE_CHARS.saturating_sub(reserve + head.chars().count() + 1 + header);
+        let lead = script_lines(script).into_iter().map(|line| Entry {
+            lines: vec![line],
+            number: None,
+            output: false,
+        });
+        let (entries, pages) = paginate(lead, |from| shown.entries(from), budget, page);
+        let Some(entries) = entries else {
+            return Err(format!("the output of command {id} has {pages} pages"));
+        };
+        let mut printed = vec![head.to_owned()];
+        let mut lines = Vec::new();
+        let mut numbers: Option<(u64, u64)> = None;
+        let mut output = false;
+        for entry in entries {
+            if !entry.output {
+                printed.extend(entry.lines);
+                continue;
+            }
+            output = true;
+            if let Some(number) = entry.number {
+                numbers = Some(numbers.map_or((number, number), |(first, _)| (first, number)));
+            }
+            lines.extend(entry.lines);
+        }
+        // The output's header names the lines this page shows and stands
+        // before them, as a page of `demi shell output` shows it; an output
+        // without lines shows its header alone, on the last page.
+        if output || page == pages {
+            printed.push(shown.header(numbers));
+        }
+        printed.extend(lines);
+        Ok((printed.join("\n") + "\n", pages))
+    }
+}
+
+/// A script as `open` shows it: after `$ `, a line longer than a page's
+/// line in pieces of [`LINE_CHARS`], so a page holds each.
+fn script_lines(script: &str) -> Vec<String> {
+    let text = format!("$ {script}");
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        let characters: Vec<char> = line.chars().collect();
+        if characters.is_empty() {
+            lines.push(String::new());
+        }
+        for piece in characters.chunks(LINE_CHARS) {
+            lines.push(piece.iter().collect());
+        }
+    }
+    lines
+}
+
+/// What a page holds whole: a line of the script, or a piece of the output
+/// as a page renders it, with its line number; a note has none.
+struct Entry {
+    lines: Vec<String>,
+    number: Option<u64>,
+    /// Whether it is the output's, which the output's header stands over.
+    output: bool,
+}
+
+impl Page<'_> {
+    /// The output's pieces from line `from` on, as a page renders them.
+    fn entries(&self, from: u64) -> impl Iterator<Item = Entry> + '_ {
+        self.text.forward(from).map(|piece| Entry {
+            number: match piece {
+                Piece::Line { number, .. } => Some(number),
+                Piece::Note(_) => None,
+            },
+            lines: self.render(&piece),
+            output: true,
+        })
+    }
+}
+
+/// Cuts `lead`, then the output that `start` yields from its first line,
+/// into pages of `budget` characters, an entry whole on one page, and
+/// answers page `wanted`'s entries, none when there is no such page, with
+/// how many pages there are. The output is read once, from its start: a
+/// page never makes it scan again.
+fn paginate<I: Iterator<Item = Entry>>(
+    lead: impl Iterator<Item = Entry>,
+    start: impl FnOnce(u64) -> I,
+    budget: usize,
+    wanted: u64,
+) -> (Option<Vec<Entry>>, u64) {
+    let mut page = 1;
+    let mut used = 0;
+    let mut kept = Vec::new();
+    for entry in lead.chain(start(1)) {
+        let cost = chars(&entry.lines);
+        if used + cost > budget && used > 0 {
+            page += 1;
+            used = 0;
+        }
+        used += cost;
+        if page == wanted {
+            kept.push(entry);
+        }
+    }
+    ((1..=page).contains(&wanted).then_some(kept), page)
+}
+
 /// The lines `<from>-<to>` names, from the first line on and in order.
 fn range(lines: &str) -> Option<(u64, u64)> {
     let (from, to) = lines.split_once('-')?;
@@ -812,4 +946,46 @@ impl Page<'_> {
 /// The characters `lines` take, each with its newline.
 fn chars(lines: &[String]) -> usize {
     lines.iter().map(|line| line.chars().count() + 1).sum()
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::Cell;
+
+    use super::*;
+
+    /// An output of `lines` lines that charges each line it passes, as
+    /// finding line `from` passes every line before it.
+    fn output(lines: u64, scanned: &Cell<u64>, from: u64) -> impl Iterator<Item = Entry> + '_ {
+        scanned.set(scanned.get() + from - 1);
+        (from..=lines).map(move |number| {
+            scanned.set(scanned.get() + 1);
+            Entry {
+                lines: vec![format!("{number:>6}\t{}", "x".repeat(90))],
+                number: Some(number),
+                output: true,
+            }
+        })
+    }
+
+    // Instant: 20,000 short lines, about 200 pages. Paging the last of
+    // them scans each line once; a page that started a new scan from its
+    // first line would scan about 2 million.
+    #[test]
+    fn paging_a_long_output_scans_each_line_once_and_counts_every_page() {
+        let scanned = Cell::new(0);
+        let lead = vec![Entry { lines: vec!["$ seq 1 20000".to_owned()], number: None, output: false }];
+        let (first, pages) = paginate(lead.into_iter(), |from| output(20_000, &scanned, from), 10_000, 1);
+        assert_eq!(scanned.get(), 20_000);
+        let first = first.unwrap();
+        assert_eq!(first[0].number, None);
+        let shown: usize = first.iter().map(|entry| chars(&entry.lines)).sum();
+        assert!(shown <= 10_000, "{shown}");
+        scanned.set(0);
+        let (last, again) = paginate(std::iter::empty(), |from| output(20_000, &scanned, from), 10_000, pages);
+        assert_eq!((again, scanned.get()), (pages, 20_000));
+        assert_eq!(last.unwrap().last().unwrap().number, Some(20_000));
+        let (beyond, _) = paginate(std::iter::empty(), |from| output(20_000, &scanned, from), 10_000, pages + 1);
+        assert!(beyond.is_none());
+    }
 }

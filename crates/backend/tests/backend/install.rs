@@ -1054,6 +1054,7 @@ async fn ask_socket(
                 gid: 1,
                 hostname: "raw".into(),
                 home_dir: "/home/raw".into(),
+                scratch_root: "/demi/scratch".into(),
             },
             kernel: None,
             shell: None,

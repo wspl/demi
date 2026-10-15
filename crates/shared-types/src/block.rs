@@ -814,6 +814,30 @@ pub struct TextBlock {
     pub entries: Vec<serde_json::Value>,
 }
 
+/// What a stored `shell` call ran: its title and its script.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct ShellCommand {
+    /// The title the model wrote for the step, which the user sees.
+    #[serde(rename = "description")]
+    pub title: String,
+    pub script: String,
+}
+
+impl ToolCallBlock {
+    /// What the call ran, read from the input text it keeps, when it is a
+    /// `shell` call that started a command or was suppressed as a repeat;
+    /// none for any other call. The shell tool checked the input when the
+    /// call was made (`runtime.md` § Tool input); this reads the two fields
+    /// a stored call is shown and searched by
+    /// (`compaction.md` § Reading the earlier history).
+    pub fn shell_command(&self) -> Option<ShellCommand> {
+        self.view.as_ref()?;
+        // A view is written only for a call whose input decoded; an input
+        // that does not decode now names no command to show.
+        serde_json::from_str(&self.input).ok()
+    }
+}
+
 /// A tool call the provider requested, completed by the session with its
 /// result.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]

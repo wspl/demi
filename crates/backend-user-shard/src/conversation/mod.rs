@@ -13,6 +13,7 @@ mod connection_test;
 mod creation;
 mod deletion;
 mod failure_facts;
+mod history;
 mod fork;
 mod instructions;
 pub(crate) mod project_files;
@@ -96,20 +97,19 @@ pub(crate) fn conversation_parts(
             let conversation = conversation_of(root);
             let db = services.conversations.db(&conversation);
             // The summary reads the root's checkpoint, which each save of it
-            // changes, and the search index follows what each save of it
-            // wrote.
+            // changes, and the search index follows what each save of any
+            // agent wrote.
             let saved = {
                 let marks = marks.clone();
                 let root = root.clone();
                 let shard = shard.clone();
                 Rc::new(move |node: &NodeId, change: Option<TranscriptChange>| {
-                    if *node != root {
-                        return;
-                    }
                     if let (Some(change), Some(shard)) = (change, shard.upgrade()) {
                         shard.follow_save(conversation.clone(), change);
                     }
-                    marks.mark(Part::Conversation(conversation.clone()));
+                    if *node == root {
+                        marks.mark(Part::Conversation(conversation.clone()));
+                    }
                 })
             };
             Rc::new(SqliteTreeStore::new(db, blobs.clone(), saved)) as Rc<dyn AgentTreeStore>

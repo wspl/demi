@@ -42,6 +42,11 @@ pub struct HostIdentity {
     pub hostname: String,
     /// Where the account's home directory is on the Host.
     pub home_dir: String,
+    /// The absolute directory that holds the conversations' scratch
+    /// directories on the Host, each named by its conversation's id, as the
+    /// runner reported it (`runner.md` § Scratch directory); empty for a Host
+    /// that never connected.
+    pub scratch_root: String,
     /// How the Host writes its paths, from the system its runner reports.
     pub paths: crate::HostPaths,
 }

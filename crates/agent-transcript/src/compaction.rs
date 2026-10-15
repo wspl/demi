@@ -16,7 +16,7 @@ use super::{
 /// What the model reads first of a `compaction_boundary`, before the
 /// messages it kept and its summary (`compaction.md` § What the model
 /// receives afterward).
-pub const COMPACTION_NOTE: &str = "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary.";
+pub const COMPACTION_NOTE: &str = "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary. What the summary leaves out is still in the conversation: `demi conversation history` finds and reads it.";
 
 /// The summary of a `compaction_boundary` as the model reads it: in
 /// `<summary>` tags.
