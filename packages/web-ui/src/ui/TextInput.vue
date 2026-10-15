@@ -117,11 +117,13 @@ const frameHeightClass = computed(() => {
       return 'min-h-9 self-stretch'
     return 'min-h-7 self-stretch'
   }
+  // A phone draws a small field at a field's height too (`base.css`); the
+  // large one, a search field such as Settings' filter, stays 36 as iOS's.
   if (props.size === 'sm')
-    return 'h-6'
+    return 'h-6 phone:h-field'
   if (props.size === 'lg')
     return 'h-9'
-  return 'h-7'
+  return 'h-field'
 })
 
 // Keep complete class names visible to Tailwind's source scanner.

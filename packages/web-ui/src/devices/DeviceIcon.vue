@@ -57,7 +57,7 @@ const scale = computed(() => props.size / ICON_PX.markIn28)
       <!-- Its box centered under the dot; a second digit reaches further left. -->
       <span
         v-if="mark?.number != null"
-        class="device-mark-number pointer-events-none absolute -bottom-0.5 -right-0.5 min-w-1.5 text-center text-[8px] font-bold leading-none"
+        class="device-mark-number pointer-events-none absolute -bottom-0.5 -right-0.5 min-w-1.5 text-center text-[8px] font-bold leading-none phone:text-[11px]"
         aria-hidden="true"
       >{{ mark.number }}</span>
     </span>

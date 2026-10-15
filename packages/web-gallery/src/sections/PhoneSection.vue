@@ -14,6 +14,26 @@ const CONVERSATION = [
 ]
 /** How many phones have loaded: the next one loads then, so that the app's files load once, not all at once. */
 const loaded = ref(0)
+/**
+ * The phone's metrics (`base.css` and `PHONE_ICON_PX` in `icon-metrics.ts`,
+ * which every component reads): each control as a phone draws it.
+ */
+const METRICS = [
+  { control: 'Toolbar and action buttons: the bar’s, Attach, Send, Stop, Scroll to Bottom, the context', face: '40 px', icon: '20 px', text: '—' },
+  { control: 'An answer’s actions: Copy, Fork, Share, Regenerate, the version switcher', face: '36 px, 8 px apart', icon: '18 px', text: 'time 13 px' },
+  { control: 'A small icon button, such as a tab’s Close', face: '28 px', icon: '16 px', text: '—' },
+  { control: 'Buttons with a label', face: '36 px (small), 40 px, 44 px (large)', icon: '16 px', text: '15 px' },
+  { control: 'Work rows, the work panel’s, Agents’ and Running’s tabs, Settings’ rows and list items', face: '44 px', icon: '18 px', text: '15 px; Settings 17 px' },
+  { control: 'Chips under the composer: the model, the workflow, Running, Agents', face: '32 px', icon: '16 px', text: '15 px' },
+  { control: 'File-change pills under a work row', face: '28 px, 8 px apart', icon: '16 px', text: '13 px' },
+  { control: 'Segmented controls', face: '36 px', icon: '18 px', text: '15 px' },
+  { control: 'Form fields', face: '44 px', icon: '—', text: '16 px' },
+  { control: 'Switches', face: '51 × 31 px, as iOS’s', icon: '—', text: '—' },
+  { control: 'Settings’ descriptions', face: '—', icon: '—', text: '15 px' },
+  { control: 'The sidebar, menu sheets, Settings’ sections, the file tree', face: '44 px rows, 32 px actions', icon: '18 px', text: '16–17 px' },
+  { control: 'A device’s number badge', face: '—', icon: '—', text: '11 px' },
+  { control: 'The transcript’s prose; the composer’s text', face: '—', icon: '—', text: 'the user’s Message text size; 16 px at least' },
+]
 const PANES = [
   { scene: 'change', label: 'Work panel · Change' },
   { scene: 'file', label: 'Work panel · File' },
@@ -44,8 +64,31 @@ const PANES = [
       </div>
     </GallerySection>
     <GallerySection
+      title="One Phone Scale"
+      note="A phone draws every control at a finger’s size, not the desktop’s with a larger invisible target, as iOS’s own apps draw theirs: these are the sizes, one set every component reads. A control drawn at 36 px or more is its own target, and its neighbours stand far enough off that no two share one; only a smaller control, such as a tab’s Close, still reaches past its edges to 44 px. The desktop keeps its own sizes."
+    >
+      <table class="w-full max-w-4xl text-left text-[13px]">
+        <thead class="text-fg-subtle">
+          <tr>
+            <th class="py-1.5 pr-4 font-medium">Control</th>
+            <th class="py-1.5 pr-4 font-medium">Size</th>
+            <th class="py-1.5 pr-4 font-medium">Icon</th>
+            <th class="py-1.5 font-medium">Text</th>
+          </tr>
+        </thead>
+        <tbody class="text-fg-body">
+          <tr v-for="metric in METRICS" :key="metric.control" class="border-t border-line-subtle">
+            <td class="py-1.5 pr-4">{{ metric.control }}</td>
+            <td class="py-1.5 pr-4 whitespace-nowrap">{{ metric.face }}</td>
+            <td class="py-1.5 pr-4 whitespace-nowrap">{{ metric.icon }}</td>
+            <td class="py-1.5">{{ metric.text }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </GallerySection>
+    <GallerySection
       title="Panels and Windows"
-      note="The work panel opens full screen over the conversation, sliding in from the right, under its own bar: Conversation, which goes back to the conversation where it was, the tabs as a strip that scrolls sideways, 36 px tall, each tab, Change and File too, as wide as its title up to 160 px, and the selected one scrolled into view, and the strip’s controls; in the File view the tree covers the file’s whole width, its rows 44 px, and slides away when a file is picked. A file a message names opens there the same way. The Agents and Running windows rise as full-screen sheets with their tabs and Close; their tabs narrow to their icons, each with its status dot, 44 px wide at least and 36 px tall, and only the selected tab adds its name, cut short, so five agents fit across the screen as they would not by name (a child that failed keeps its tab while it is selected, as the phone after Running shows; a command that was stopped shows alone); a long press opens a tab’s menu and the strip scrolls sideways with the selected tab in view. Back closes each, as it closes a sheet. Settings fills the screen as iOS Settings does, its sections 44 px rows."
+      note="The work panel opens full screen over the conversation, sliding in from the right, under its own bar: Conversation, which goes back to the conversation where it was, the tabs as a strip that scrolls sideways, 44 px tall, each tab, Change and File too, as wide as its title up to 160 px, and the selected one scrolled into view, and the strip’s controls; in the File view the tree covers the file’s whole width, its rows 44 px, and slides away when a file is picked. A file a message names opens there the same way. The Agents and Running windows rise as full-screen sheets with their tabs and Close; their tabs narrow to their icons, each with its status dot, 44 px wide at least and 44 px tall, and only the selected tab adds its name, cut short, so five agents fit across the screen as they would not by name (a child that failed keeps its tab while it is selected, as the phone after Running shows; a command that was stopped shows alone); a long press opens a tab’s menu and the strip scrolls sideways with the selected tab in view. Back closes each, as it closes a sheet. Settings fills the screen as iOS Settings does, its sections 44 px rows."
     >
       <div class="flex flex-wrap gap-8">
         <GalleryPhoneFrame

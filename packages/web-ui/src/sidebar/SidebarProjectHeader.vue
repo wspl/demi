@@ -7,7 +7,7 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import RowSpinner from '@demicodes/web-ui/ui/RowSpinner.vue'
 import { provideRowTarget } from '@demicodes/web-ui/ui/operations'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
-import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { ICON_PX, useIconPx } from '@demicodes/web-ui/ui/icon-metrics'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
 import DeviceMark from './DeviceMark.vue'
 import { projectHostName, projectTarget } from './project-hosts'
@@ -27,6 +27,7 @@ const props = defineProps<{
 const working = provideRowTarget(() => projectTarget(props.project.id))
 
 const phone = usePhone()
+const icons = useIconPx()
 
 const emit = defineEmits<{
   create: []
@@ -46,7 +47,7 @@ const emit = defineEmits<{
   >
     <component
       :is="collapsed ? Folder : FolderOpen"
-      :size="phone ? ICON_PX.phoneRow : ICON_PX.in28"
+      :size="icons.row"
       class="shrink-0 text-fg-muted"
     />
     <!-- The text, then the host's mark in its own box at the row's end, as a conversation's row

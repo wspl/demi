@@ -6,7 +6,7 @@ import Fold from '@demicodes/web-ui/ui/Fold.vue'
 import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Shimmer from '@demicodes/web-ui/ui/Shimmer.vue'
-import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { useIconPx } from '@demicodes/web-ui/ui/icon-metrics'
 import { textWidth } from '@demicodes/web-ui/ui/text-width'
 import { useFollowEnd } from '../../composables/useFollowEnd'
 import { useWholeBlock } from '../whole-blocks'
@@ -39,6 +39,7 @@ const props = defineProps<{
 const slots = useSlots()
 /** The face, which names the button that toggles the row. */
 const faceId = useId()
+const icons = useIconPx()
 const isOpen = defineModel<boolean>('open', { default: false })
 const hasBodySlot = () => !!slots['body']
 const hasPinnedSlot = () => !!slots['pinned']
@@ -105,7 +106,7 @@ const shownPictures = computed(() => (props.pictures ?? []).slice(0, picturesFit
       it, which reaches the face's click as a click on the face does. -->
     <div
       ref="faceRow"
-      class="relative flex h-7 cursor-default select-none items-center gap-2 text-row transition-colors duration-200 ease-out"
+      class="relative flex h-row cursor-default select-none items-center gap-2 text-row transition-colors duration-200 ease-out"
       :class="isExpandable ? 'group text-fg-row hover:text-fg-muted' : 'text-fg-row'"
       @click="toggle"
     >
@@ -128,13 +129,13 @@ const shownPictures = computed(() => (props.pictures ?? []).slice(0, picturesFit
         <template v-if="showIcon()" #icon>
           <div
             class="functional-block-icon flex shrink-0 items-center justify-center"
-            :style="{ width: `${ICON_PX.in28}px`, height: `${ICON_PX.in28}px` }"
+            :style="{ width: `${icons.row}px`, height: `${icons.row}px` }"
           >
             <slot name="icon" />
           </div>
         </template>
         <!-- A row still working shimmers as one, whatever parts its face holds. -->
-        <Shimmer :active="isLoading" class="h-7 items-center gap-2 overflow-hidden">
+        <Shimmer :active="isLoading" class="h-row items-center gap-2 overflow-hidden">
           <slot />
           <!-- The chevron is part of the face: it follows the label's end, so it rolls with it rather than jumping to the new label's width. -->
           <span v-if="isExpandable" class="-ml-1 shrink-0 text-xs">
@@ -164,7 +165,7 @@ const shownPictures = computed(() => (props.pictures ?? []).slice(0, picturesFit
         <div
           v-if="showIcon()"
           class="functional-block-rail shrink-0"
-          :style="{ width: `${ICON_PX.in28}px` }"
+          :style="{ width: `${icons.row}px` }"
         />
         <!-- The body is bounded and does not scroll: the pinned part (a call's
           input) stays at its top, under its own bound, and only the part

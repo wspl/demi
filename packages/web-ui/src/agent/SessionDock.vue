@@ -63,7 +63,7 @@ const scrollBottom = computed(() =>
          the dock; it shows only away from the scroll bottom, where it covers nothing the user
          reads last. -->
     <span
-      class="pointer-events-none absolute right-0 z-20 inline-flex size-7"
+      class="pointer-events-none absolute right-0 z-20 inline-flex size-hit"
       :style="{ bottom: scrollBottom }"
     >
       <Transition

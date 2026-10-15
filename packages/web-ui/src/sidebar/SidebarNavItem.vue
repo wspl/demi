@@ -2,9 +2,8 @@
 import { computed } from 'vue'
 import type { Component } from 'vue'
 import { disabledTooltip } from '@demicodes/web-ui/ui/disabled'
-import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { useIconPx } from '@demicodes/web-ui/ui/icon-metrics'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
-import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { pressOnKey } from '@demicodes/web-ui/ui/button-events'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 
@@ -27,7 +26,7 @@ const props = defineProps<{
   hint?: SentenceText
 }>()
 
-const phone = usePhone()
+const icons = useIconPx()
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason) ?? props.hint)
 
 const emit = defineEmits<{
@@ -65,7 +64,7 @@ const emit = defineEmits<{
       <component
         :is="icon"
         v-if="icon"
-        :size="phone ? ICON_PX.phoneRow : ICON_PX.in28"
+        :size="icons.row"
         class="shrink-0"
       />
       <slot>

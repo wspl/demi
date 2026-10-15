@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { GitBranch, GitCommitHorizontal } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Dropdown from '../ui/Dropdown.vue'
-import { ICON_PX } from '../ui/icon-metrics'
+import { useIconPx } from '../ui/icon-metrics'
 import Menu from '../ui/Menu.vue'
 import { shownBranchName, type BranchList } from './history'
 import { t } from './locales/text'
@@ -26,6 +26,7 @@ const emit = defineEmits<{
 }>()
 
 /** The id of the detached HEAD's row, which no branch name can be. */
+const icons = useIconPx()
 const HEAD = '\u0000head'
 
 const items = computed(() => {
@@ -56,10 +57,11 @@ function choose(id: string, close: () => void): void {
 </script>
 
 <template>
-  <Dropdown :overlay-store="appOverlayStore" variant="ghost" size="sm" :disabled="!branches">
+  <!-- It gives way when the toolbar is narrow, its name cut short, as on a phone. -->
+  <Dropdown :overlay-store="appOverlayStore" variant="ghost" size="sm" width="shrink" :disabled="!branches">
     <template #trigger>
-      <span class="flex min-w-0 items-center gap-1.5 text-xs">
-        <GitBranch :size="ICON_PX.in20" class="shrink-0" aria-hidden="true" />
+      <span class="flex min-w-0 items-center gap-1.5">
+        <GitBranch :size="icons.in20" class="shrink-0" aria-hidden="true" />
         <span class="max-w-40 truncate">{{ shownBranchName(shown, branches) }}</span>
       </span>
     </template>
