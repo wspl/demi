@@ -34,7 +34,8 @@ const label = computed(() => {
 </script>
 
 <template>
-  <div class="px-[var(--agent-pad-x,2rem)]">
+  <!-- data-transcript-wait: the product checks tell a turn on its way by it, in any language (`browse.md`). -->
+  <div class="px-[var(--agent-pad-x,2rem)]" :data-transcript-wait="kind">
     <!-- The wait mark stays while only the reason changes. -->
     <FunctionalBlock
       loading

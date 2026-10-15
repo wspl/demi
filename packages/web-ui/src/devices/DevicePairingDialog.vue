@@ -57,7 +57,9 @@ function submit() {
     :stack="stack"
     @close="emit('close')"
   >
-    <div class="flex flex-col gap-4 px-5 pt-5">
+    <!-- The data-device-pairing and data-pairing-* hooks let the product checks pair a runner
+         in any language (`browse.md`). -->
+    <div class="flex flex-col gap-4 px-5 pt-5" data-device-pairing>
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('pairing.title') }}</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
@@ -102,6 +104,7 @@ function submit() {
             <template #below>
               <TextInput
                 v-model="code"
+                data-pairing-code
                 focused
                 :aria-label="t('pairing.code')"
                 :placeholder="t('pairing.paste')"
@@ -130,6 +133,7 @@ function submit() {
       <Button
         v-if="phase.kind === 'done'"
         variant="primary"
+        data-pairing-done
         @click="emit('close')"
         >{{ uiText('common.done') }}</Button
       >
@@ -141,12 +145,14 @@ function submit() {
         <Button
           v-if="phase.kind === 'setup'"
           variant="primary"
+          data-pairing-continue
           @click="emit('next')"
           >{{ uiText('common.continue') }}</Button
         >
         <Button
           v-else
           variant="primary"
+          data-pair-device
           :disabled="!code.trim()"
           :loading="phase.kind === 'pairing'"
           @click="submit"

@@ -247,6 +247,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       <div
         v-else-if="block.type === 'delivery_failure'"
         class="px-[var(--agent-pad-x,2rem)]"
+        data-delivery-failure
       >
         <ErrorNotice
           :label="t('transcript.user.notDelivered')"
