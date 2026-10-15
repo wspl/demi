@@ -7,7 +7,9 @@
 //! the user's devices, `pair` pairs the computer whose installer shows a
 //! code and attaches it, `attach` attaches one at once, and `detach` marks
 //! one to detach once the conversation's work ends. A `shell`
-//! job carries its invoking job's command context, caller and commands, and its standard input and output are the calling command's:
+//! job carries its invoking job's command context, caller and commands, and
+//! its standard input and output are the calling command's (a script read
+//! from stdin leaves the job none):
 //! the relayed pipes' far ends become the job's device, so the bytes flow
 //! between the two devices through the backend's pipes, never through a
 //! runner socket. Like the agent's own jobs, its admission installs the
@@ -22,6 +24,7 @@ use demi_backend_database::conversation_index::{
     AttachedHostRecord, ExecutionTarget, RecordChange,
 };
 use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob};
+use demi_command_declarations::MAX_STDIN_BODY;
 use demi_host_interface::{
     Call, GroupBuilder, LeafBuilder, ProcessEnd, RpcError, RpcInvocation, RpcPort, TypedRpc,
 };
@@ -70,7 +73,7 @@ const LIST_SUMMARY: &str = "Hosts this conversation can reach with `demi host sh
 
 const CURRENT_SUMMARY: &str = "The primary host: where the shell tool's commands run.";
 
-const SHELL_SUMMARY: &str = "Run a shell string in another host's bash: `demi host shell --host <name|id> <script>`. The script starts in that host's directory, which `demi host list` shows and no `cd` changes, with this command's stdin and stdout, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci \"tar c -C /work .\" | tar x`, `tar c . | demi host shell --host ci \"tar x -C /work\"`). stderr and the exit code pass through.";
+const SHELL_SUMMARY: &str = "Run a script in another host's bash, as ssh does: `demi host shell --host <name|id> <script>`, or without the script argument, the script on stdin, so one with quotes of its own needs no escaping (`demi host shell --host ci <<'EOF'` … `EOF`). The script starts in that host's directory, which `demi host list` shows and no `cd` changes. With a script argument, this command's stdin and stdout are the script's, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci \"tar c -C /work .\" | tar x`, `tar c . | demi host shell --host ci \"tar x -C /work\"`); a script read from stdin has no stdin of its own. stderr and the exit code pass through.";
 
 /// The input of a leaf that takes none, such as `demi host list`.
 #[derive(Deserialize, JsonSchema)]
@@ -126,10 +129,10 @@ struct DetachArgs {
 struct ShellArgs {
     /// Host name or device id from demi host list
     host: String,
-    /// One quoted shell script argument; stdin is streamed to the remote
-    /// program, not read as script text
+    /// One quoted shell script argument, to which stdin is streamed; without
+    /// it, stdin is the script
     #[schemars(length(min = 1))]
-    script: String,
+    script: Option<String>,
 }
 
 /// The `host` group, whose handlers act in `shard`.
@@ -552,6 +555,15 @@ async fn shell(
         },
         invocation,
     } = call;
+    // Without a script argument stdin is the script, as `ssh host bash -s`
+    // takes it, and the job gets no stdin of its own (`commands.md` § Demi
+    // command inputs). It is not the declaration's stdin field: that one,
+    // given as its positional, would leave stdin unread, where a script
+    // argument streams it to the far program.
+    let (script, streams_stdin) = match script {
+        Some(script) => (script, true),
+        None => (script_from_stdin(&port).await?, false),
+    };
     let conversation = conversation_of(&invocation)?;
     let hosts = reachable(&*shard, &conversation).await?;
     let Some(host) = named_host(&hosts, &wanted) else {
@@ -559,18 +571,49 @@ async fn shell(
             "{wanted}: not reachable from this conversation (see `demi host list`)"
         )));
     };
-    run_on_host(&*shard, &conversation, host, script, &invocation, &port)
-        .await
-        .map_err(RpcError::Failed)
+    run_on_host(
+        &*shard,
+        &conversation,
+        host,
+        script,
+        streams_stdin,
+        &invocation,
+        &port,
+    )
+    .await
+    .map_err(RpcError::Failed)
+}
+
+/// The whole of the call's stdin, as a script, up to the limit of a stdin
+/// body; reading stops at the limit, so an endless producer is not drained.
+async fn script_from_stdin(port: &RpcPort) -> Result<String, RpcError> {
+    let mut bytes = Vec::new();
+    while let Some(chunk) = port.read_stdin().await? {
+        if bytes.len() + chunk.len() > MAX_STDIN_BODY {
+            return Err(RpcError::Failed(
+                "the script on stdin exceeds 1 MiB: copy a long one to the host as a file and run that".into(),
+            ));
+        }
+        bytes.extend_from_slice(&chunk);
+    }
+    if bytes.is_empty() {
+        return Err(RpcError::Failed(
+            "no script: give it as an argument or on stdin, as a quoted heredoc".into(),
+        ));
+    }
+    String::from_utf8(bytes)
+        .map_err(|_| RpcError::Failed("the script on stdin is not UTF-8 text".into()))
 }
 
 /// Runs `script` as one job on `target` through the conversation's host
-/// access, with the calling command's standard input and output.
+/// access, with the calling command's standard output, and its standard
+/// input when `streams_stdin` says the script did not come from there.
 async fn run_on_host(
     shard: &dyn HostShard,
     conversation: &ConversationId,
     target: &ReachableHost,
     script: String,
+    streams_stdin: bool,
     invocation: &RpcInvocation,
     port: &RpcPort,
 ) -> Result<u8, String> {
@@ -588,7 +631,7 @@ async fn run_on_host(
         .pipes()
         .pipe(&relayed.stdout)
         .ok_or("the command's standard output is gone")?;
-    let stdin = match &relayed.stdin {
+    let stdin = match relayed.stdin.as_ref().filter(|_| streams_stdin) {
         Some(id) => Some(
             shard
                 .pipes()

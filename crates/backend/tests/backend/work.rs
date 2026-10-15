@@ -809,8 +809,9 @@ async fn far_jobs_released(device: &Paired) {
 // Several seconds: two real devices each install the builtin package, and `demi
 // host shell` runs jobs on both.
 //
-// Planted defect the image's step catches: a relayed stdout that reaches
-// `demi file view` cut or changed, so the far Host's image is no image.
+// Planted defects: a relayed stdout that reaches `demi file view` cut or
+// changed, so the far Host's image is no image; a `host shell` that requires
+// its script argument, so a heredoc script is refused.
 #[tokio::test]
 async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far_hosts_directory() {
     let vendor = MockVendor::start().await;
@@ -866,6 +867,54 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
         pushed.received[0]
     );
     assert!(std::fs::read(a.join("push.bin")).unwrap() == payload[..250_000]);
+
+    // Without a script argument, stdin is the script, as `ssh host bash -s`
+    // takes it: its quotes and `$` reach the far bash unchanged, and it has
+    // no stdin of its own.
+    let heredoc = r#"demi host shell --host alpha <<'EOF'
+said="it's \"quoted\" in $(basename "$PWD")"
+echo "$said" > said.txt
+cat said.txt
+read -r line || echo "no stdin"
+EOF"#;
+    let scripted = work
+        .turn(vec![shell("t2b", heredoc, 30_000), say("two and a half")])
+        .await;
+    let a_name = a.file_name().unwrap().to_string_lossy();
+    assert!(
+        scripted.received[0].contains(&format!("it's \"quoted\" in {a_name}\nno stdin")),
+        "{}",
+        scripted.received[0]
+    );
+    assert!(
+        std::fs::read_to_string(a.join("said.txt")).unwrap()
+            == format!("it's \"quoted\" in {a_name}\n")
+    );
+    let empty = work
+        .turn(vec![
+            shell(
+                "t2c",
+                "demi host shell --host alpha </dev/null; echo exit=$?; yes | demi host shell --host alpha; echo exit=$?",
+                10_000,
+            ),
+            say("no script"),
+        ])
+        .await;
+    assert!(
+        empty.received[0].contains(
+            "demi host shell: no script: give it as an argument or on stdin, as a quoted heredoc\nexit=1"
+        ),
+        "{}",
+        empty.received[0]
+    );
+    // An endless producer is refused at the limit, not drained.
+    assert!(
+        empty.received[0].contains(
+            "demi host shell: the script on stdin exceeds 1 MiB: copy a long one to the host as a file and run that\nexit=1"
+        ),
+        "{}",
+        empty.received[0]
+    );
 
     // Every shell on the attached host starts in its directory, whatever
     // the last one did, and `--host` takes the device's id as well.
