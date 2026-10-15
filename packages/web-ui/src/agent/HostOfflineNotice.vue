@@ -95,4 +95,11 @@ function choose(host: HostChoice): void {
   line-height: 0;
   margin-right: calc((var(--host-offline-row-h) - var(--spacing-hit-sm)) / 2);
 }
+
+/* A phone's row is 44 px, around its 36 px buttons. */
+@media (max-width: 767px) {
+  .host-offline-notice-row {
+    --host-offline-row-h: var(--spacing-row);
+  }
+}
 </style>

@@ -5,7 +5,7 @@ import { computed } from 'vue'
 import { CircleX, TriangleAlert, Zap } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { useIconPx } from '@demicodes/web-ui/ui/icon-metrics'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Button from '../ui/Button.vue'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
@@ -40,6 +40,7 @@ const state = computed(() =>
     props.settings?.modelId,
   ),
 )
+const icons = useIconPx()
 const unavailable = computed(() => state.value.kind === 'unavailable')
 const selected = computed(() =>
   state.value.kind === 'ready' ? state.value.selected : null,
@@ -68,20 +69,20 @@ const labelText = computed(() => {
   <div class="flex">
     <span
       v-if="load === 'loading'"
-      class="relative inline-flex h-7 items-center overflow-hidden px-2 text-chrome text-fg-subtle"
+      class="relative inline-flex h-chip items-center overflow-hidden px-2 text-chrome text-fg-subtle"
       role="status"
       :aria-label="labelText"
     >
-      <IndeterminateSpinner :size="14" />
+      <IndeterminateSpinner :size="icons.chip" />
       <span class="whitespace-nowrap pl-1.5">{{ labelText }}</span>
     </span>
     <span
       v-else-if="load === 'failed'"
-      class="relative inline-flex h-7 items-center overflow-hidden pl-2 text-chrome text-on-danger"
+      class="relative inline-flex h-chip items-center overflow-hidden pl-2 text-chrome text-on-danger"
       role="alert"
       :aria-label="labelText"
     >
-      <CircleX :size="14" class="shrink-0" />
+      <CircleX :size="icons.chip" class="shrink-0" />
       <span class="whitespace-nowrap pl-1.5">{{ labelText }}</span>
       <Button size="sm" class="ml-1.5" @click="emit('retry')">{{ shared('common.retry') }}</Button>
     </span>
@@ -102,10 +103,10 @@ const labelText = computed(() => {
               :class="isOpen ? 'text-fg-subtle' : 'text-fg-faint'"
             >{{ reasoningLabel }}</span>
           </span>
-          <Zap v-if="fast" :size="ICON_PX.in28" class="ml-1 shrink-0" />
+          <Zap v-if="fast" :size="icons.chip" class="ml-1 shrink-0" />
           <Tooltip v-if="unavailable" :content="t('models.unavailable')">
             <TriangleAlert
-              :size="ICON_PX.in28"
+              :size="icons.chip"
               class="ml-1 shrink-0 text-on-warning"
             />
           </Tooltip>

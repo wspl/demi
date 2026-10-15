@@ -37,7 +37,7 @@ const emit = defineEmits<{
     role="button"
     :aria-pressed="selected"
     tabindex="0"
-    class="group flex h-8 cursor-default select-none items-center gap-2 rounded-md px-1 transition-colors duration-200 ease-out"
+    class="group flex h-8 cursor-default select-none items-center gap-2 rounded-md px-1 phone:h-row phone:gap-3 transition-colors duration-200 ease-out"
     :class="[
       selected ? 'hover:bg-hover wide:bg-active' : 'hover:bg-hover',
       muted ? 'opacity-60' : '',
@@ -66,7 +66,7 @@ const emit = defineEmits<{
     </Tooltip>
     <span class="flex min-w-0 flex-1 flex-col leading-4">
       <TruncatedText
-        class="text-chrome"
+        class="text-setting"
         :class="selected ? 'text-fg wide:text-fg-emphasis' : 'text-fg'"
         :text="label"
       />

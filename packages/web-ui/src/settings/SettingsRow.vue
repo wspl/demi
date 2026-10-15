@@ -16,7 +16,7 @@ import type { SentenceText } from '../ui/ui-text'
  * Label and explanation on the left, the control on the right. Icons align with
  * the title. Controls center, or align with the title when detail is present.
  * The row decides by its own content whether the two fit side by side: the
- * label keeps at least 9rem, and where the control, at its own
+ * label keeps at least 9rem (11rem on a phone), and where the control, at its own
  * width, does not leave that, the control drops under the text, as in iOS
  * Settings, and takes the whole line. The line is a flex-wrap line, so what
  * the text and the control need decides it, in every language and in every
@@ -113,7 +113,7 @@ const working = provideRowTarget(() => props.target)
     <div
       class="flex min-w-0 flex-1 items-center"
       :class="[
-      inset ? 'min-h-9 gap-x-3 bg-(--fill-color) py-1.5 pl-7 pr-4 [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_2.5%)] *:on-fill' : compact ? (below ? 'gap-x-3 px-3 py-3' : 'min-h-10 gap-x-3 px-3 py-1.5') : 'min-h-14 gap-x-4 px-4 py-3',
+      inset ? 'min-h-9 phone:min-h-11 gap-x-3 bg-(--fill-color) py-1.5 pl-7 pr-4 [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_2.5%)] *:on-fill' : compact ? (below ? 'gap-x-3 px-3 py-3' : 'min-h-10 phone:min-h-11 gap-x-3 px-3 py-1.5') : 'min-h-14 gap-x-4 px-4 py-3',
       below ? 'flex-wrap gap-y-3' : inset ? 'flex-nowrap gap-y-2' : 'flex-wrap gap-y-2',
       accessory ? 'pr-0!' : '',
     ]"
@@ -126,14 +126,14 @@ const working = provideRowTarget(() => props.target)
       >
         <slot name="leading" />
       </div>
-      <!-- The text takes every line's room the controls leave, and never less than 9rem: below that the controls drop. -->
+      <!-- The text takes every line's room the controls leave, and never less than 9rem (11rem on a phone, whose controls and text are larger): below that the controls drop. -->
       <div
         class="min-w-0 select-none"
-        :class="[inset ? 'flex-1' : 'grow-[1000] basis-36', faded ? 'opacity-60' : '']"
+        :class="[inset ? 'flex-1' : 'grow-[1000] basis-36 phone:basis-44', faded ? 'opacity-60' : '']"
       >
         <div
-          class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 leading-5"
-          :class="inset ? 'text-[12px] text-fg-body' : 'text-chrome text-fg'"
+          class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 leading-5 phone:leading-[22px]"
+          :class="inset ? 'text-setting-small text-fg-body' : 'text-setting text-fg'"
         >
           <TruncatedText class="max-w-full shrink-0" wrap :text="label" />
           <div v-if="$slots.tags || statuses?.length" class="flex min-h-5 min-w-0 flex-wrap items-center gap-1">
@@ -150,7 +150,7 @@ const working = provideRowTarget(() => props.target)
         </div>
         <div
           v-if="description || $slots.description"
-          class="mt-0.5 min-w-0 text-[12px] leading-4 text-fg-subtle"
+          class="mt-0.5 min-w-0 text-setting-small leading-4 text-fg-subtle phone:leading-5"
         >
           <slot name="description">{{ description }}</slot>
         </div>

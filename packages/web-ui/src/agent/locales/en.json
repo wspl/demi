@@ -92,6 +92,7 @@
     },
     "connecting": "Connecting",
     "newFile": "New file",
+    "moreFiles": "+{count} File | +{count} Files",
     "picture": {
       "open": "Open {name} large",
       "play": "Play {name}"

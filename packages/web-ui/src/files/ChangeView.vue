@@ -525,7 +525,8 @@ function pick(path: string): void {
           <IconButton :icon="ArrowRight" variant="ghost" :aria-label="t('actions.forward')" :disabled="!canForward" @click="emit('forward')" />
         </Tooltip>
       </div>
-      <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 shrink-0" />
+      <!-- It gives way before the controls at the right, scrolling in its own box, as on a phone. -->
+      <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 min-w-0" />
       <!-- The file's controls keep to the right, whether or not a file is shown. -->
       <div class="ml-auto flex min-w-0 items-center gap-1">
         <!-- The branch the list shows, left of the toolbar's buttons. -->

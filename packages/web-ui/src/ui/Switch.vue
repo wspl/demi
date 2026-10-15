@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { disabledTooltip } from './disabled'
+import { useIconPx } from './icon-metrics'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
 import { useOperationControl, type Action, type Operation } from './operations'
 import Tooltip from './Tooltip.vue'
@@ -29,6 +30,7 @@ const props = withDefaults(defineProps<{
 })
 
 const tooltipContent = computed(() => disabledTooltip(props.disabled, props.disabledReason))
+const icons = useIconPx()
 // A flip starts the switch's operation; a flip while it runs starts nothing.
 const { running, blocked, press } = useOperationControl(() => props.operation, false)
 const unavailable = computed(() => props.disabled === true || blocked.value)
@@ -69,23 +71,24 @@ function onKeydown(event: KeyboardEvent) {
       @click="toggle"
       @keydown="onKeydown"
     >
-      <span v-if="label" class="select-none text-[12px] text-fg-subtle">{{ label }}</span>
+      <span v-if="label" class="select-none text-control-sm text-fg-subtle">{{ label }}</span>
       <!-- While its operation runs the switch keeps its look, with the spinner beside it. -->
       <span v-if="running" class="flex shrink-0" aria-hidden="true">
-        <IndeterminateSpinner :size="size === 'sm' ? 12 : 14" />
+        <IndeterminateSpinner :size="size === 'sm' ? icons.in20 : icons.in24" />
       </span>
+      <!-- A phone draws either size as iOS's switch, 51 × 31 px with a 27 px knob that travels 20. -->
       <span
-        class="inline-flex shrink-0 items-center rounded-full transition-colors duration-200 ease-out"
+        class="inline-flex shrink-0 items-center rounded-full transition-colors duration-200 ease-out phone:h-[31px] phone:w-[51px]"
         :class="[
           modelValue ? 'switch-on' : 'bg-track',
           size === 'sm' ? 'h-4 w-7 p-0.5' : 'h-5 w-9 p-0.5',
         ]"
       >
         <span
-          class="rounded-full bg-white shadow-sm transition-transform duration-200 ease-out"
+          class="rounded-full bg-white shadow-sm transition-transform duration-200 ease-out phone:size-[27px]"
           :class="[
             size === 'sm' ? 'size-3' : 'size-4',
-            modelValue ? 'translate-x-full' : 'translate-x-0',
+            modelValue ? 'translate-x-full phone:translate-x-5' : 'translate-x-0',
           ]"
         />
       </span>

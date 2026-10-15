@@ -201,7 +201,7 @@ const displayName = computed(() =>
     size="xl"
     :label="t('dialog.title')"
     :scroll-content="false"
-    close-over-content
+    :close-over-content="!phone"
     @close="emit('close')"
   >
     <!-- The query container must be an ancestor of what it sizes, so it wraps the row. -->

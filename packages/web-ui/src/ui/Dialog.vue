@@ -300,6 +300,15 @@ useEscapeClose(() => props.isOpen && !pinned.value && props.overlayStore.isTop(i
     right: calc(0.75rem + var(--safe-right));
   }
 
+  /* On a phone it stands centred on the 44 px bar at the panel's top, such
+     as Settings' back row, as far from the edge as a bar's buttons. */
+  @media (max-width: 767px) {
+    .dialog-fill .dialog-close {
+      top: calc((2.75rem - var(--spacing-hit)) / 2 + var(--safe-top));
+      right: calc(0.375rem + var(--safe-right));
+    }
+  }
+
   /* A panel that fills the window fades without scaling, so no scrim shows at its edges. */
   .dialog-enter-from .dialog-fill,
   .dialog-leave-to .dialog-fill {

@@ -8,6 +8,7 @@ import CornerPlus from '../../ui/CornerPlus.vue'
 import { useFitMore } from '../../ui/fit-more'
 import { textWidth } from '../../ui/text-width'
 import Tooltip from '../../ui/Tooltip.vue'
+import { useIconPx } from '../../ui/icon-metrics'
 import type { ChangeFile } from '../../files/changes'
 
 /**
@@ -37,6 +38,7 @@ const props = withDefaults(
 )
 
 const emit = defineEmits<{ select: [path: string]; openRest: [paths: string[]] }>()
+const icons = useIconPx()
 
 /** The most lines the pills take. */
 const MAX_ROWS = 2
@@ -48,6 +50,11 @@ function opens(path: string): boolean {
 const container = ref<HTMLElement>()
 /** The pills in the order of `files`, which `measure` lays out and each tip points at. */
 const pillEls = ref<HTMLElement[]>([])
+
+/** What the last pill says for the files that do not fit, "+3 Files". */
+function moreLabel(count: number): string {
+  return t('transcript.moreFiles', { count }, count)
+}
 
 /** The "+N Files" button's width beside its text: its side paddings (`px-2`). */
 const MORE_PADDING_PX = 16
@@ -70,7 +77,7 @@ const fitCount = useFitMore({
       widths: pillEls.value.map((pill) => Math.min(pill.offsetWidth, room)),
       gap: parseFloat(style.columnGap),
       rows: MAX_ROWS,
-      countWidth: (rest) => Math.ceil(textWidth(`+${rest} Files`, font)) + MORE_PADDING_PX,
+      countWidth: (rest) => Math.ceil(textWidth(moreLabel(rest), font)) + MORE_PADDING_PX,
     }
   },
 })
@@ -82,7 +89,7 @@ const opensRest = computed(() => props.restSelectable?.(hiddenPaths.value) ?? fa
 <template>
   <div
     ref="container"
-    class="flex min-w-0 flex-wrap items-center gap-1"
+    class="flex min-w-0 flex-wrap items-center gap-1 phone:gap-2"
   >
     <template v-for="(file, index) in files" :key="file.path">
       <component
@@ -90,14 +97,14 @@ const opensRest = computed(() => props.restSelectable?.(hiddenPaths.value) ?? fa
         :type="opens(file.path) ? 'button' : undefined"
         v-show="index < fitCount"
         ref="pillEls"
-        class="file-pill group/pill inline-flex h-[22px] max-w-64 select-none items-center gap-1.5 rounded-full pl-1.5 pr-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out"
+        class="file-pill group/pill inline-flex h-pill max-w-64 select-none items-center gap-1.5 rounded-full pl-1.5 pr-2 text-pill leading-4 phone:pl-2 phone:pr-2.5 text-fg-muted transition-colors duration-200 ease-out"
         :class="opens(file.path) ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
         @click="opens(file.path) && emit('select', file.path)"
       >
         <!-- The pills stand under the row they belong to, quieter than it: the
           icon a step back too, never so faint it reads as unavailable. -->
         <span class="relative inline-flex shrink-0 opacity-80 transition-opacity duration-200 ease-out group-hover/pill:opacity-100">
-          <FileIcon :name="baseName(file.path)" :is-directory="false" :size="14" />
+          <FileIcon :name="baseName(file.path)" :is-directory="false" :size="icons.in20" />
           <CornerPlus v-if="file.kind === 'added'" :label="t('transcript.newFile')" />
         </span>
         <!-- Name and counts use different fonts and sizes: align them on the baseline, not the box. -->
@@ -116,9 +123,9 @@ const opensRest = computed(() => props.restSelectable?.(hiddenPaths.value) ?? fa
       :is="opensRest ? 'button' : 'span'"
       :type="opensRest ? 'button' : undefined"
       v-if="hiddenPaths.length > 0"
-      class="file-pill inline-flex h-[22px] select-none items-center rounded-full px-2 text-xs leading-4 text-fg-muted transition-colors duration-200 ease-out"
+      class="file-pill inline-flex h-pill select-none items-center rounded-full px-2 text-pill leading-4 text-fg-muted transition-colors duration-200 ease-out"
       :class="opensRest ? 'btn [--shadow-btn:var(--shadow-pill)] hover:text-fg-body' : 'bg-btn shadow-[var(--shadow-pill)]'"
       @click="opensRest && emit('openRest', hiddenPaths)"
-    >+{{ hiddenPaths.length }} Files</component>
+    >{{ moreLabel(hiddenPaths.length) }}</component>
   </div>
 </template>
