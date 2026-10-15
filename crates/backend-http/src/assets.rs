@@ -18,12 +18,13 @@ use axum::body::Body;
 use axum::extract::{Path as UrlPath, Request};
 use axum::handler::HandlerWithoutStateExt as _;
 use axum::http::{Method, StatusCode};
-use axum::http::header::{ACCEPT, CONTENT_SECURITY_POLICY, CONTENT_TYPE, HOST, REFERRER_POLICY};
+use axum::http::header::{ACCEPT, CONTENT_SECURITY_POLICY, CONTENT_TYPE, REFERRER_POLICY};
 use axum::http::{HeaderName, HeaderValue};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum_extra::headers::{CacheControl, ETag, HeaderMapExt as _, IfNoneMatch};
+use demi_backend_runners::public_url::PublicUrl;
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 use tower::ServiceBuilder;
@@ -65,10 +66,13 @@ const HASHED: &str = "/assets/";
 /// How long a hashed file may be kept: a year, as long as caches keep anything.
 const HASHED_MAX_AGE: Duration = Duration::from_secs(365 * 24 * 60 * 60);
 
-/// `app` with the files of `directory` behind every path no route answers.
+/// `app` with the files of `directory` behind every path no route answers;
+/// a share's page names the share's routes at `public`, the URL its link
+/// names.
 pub(super) fn serve<S: Clone + Send + Sync + 'static>(
     app: Router<S>,
     directory: PathBuf,
+    public: PublicUrl,
 ) -> Router<S> {
     let index = directory.join("index.html");
     let build = directory.join("build.json");
@@ -96,27 +100,21 @@ pub(super) fn serve<S: Clone + Send + Sync + 'static>(
     .route(
         "/s/{token}",
         get(move |UrlPath(token): UrlPath<String>, request: Request| {
-            shared_page(shared.clone(), token, request)
+            let policy = shared_page_policy(&token, public.get().map(|url| url.url()));
+            revalidated_shared_page(shared.clone(), policy, request)
         }),
     )
     .fallback_service(files)
 }
 
-/// The page of the share `token` names: the build's own entry for it, which
-/// reads whether the share exists from the share's routes, as every page of
-/// a share does, so this answer tells nothing of what exists. It may load
-/// only the build's scripts, styles and fonts, connect only to the share's
-/// routes and show only the images and videos they serve; it sends no
-/// referrer that would carry the link, and is not indexed.
-async fn shared_page(path: PathBuf, token: String, request: Request) -> Response {
-    let host = request
-        .headers()
-        .get(HOST)
-        .and_then(|host| host.to_str().ok())
-        .map(str::to_owned);
+/// The page of a share: the build's own entry for it, which reads whether
+/// the share exists from the share's routes, as every page of a share
+/// does, so this answer tells nothing of what exists. It goes under
+/// `policy`, sends no referrer that would carry the link, and is not
+/// indexed.
+async fn revalidated_shared_page(path: PathBuf, policy: String, request: Request) -> Response {
     let mut response = revalidated(path, "text/html", request).await;
     let headers = response.headers_mut();
-    let policy = shared_page_policy(&token, host.as_deref());
     headers.insert(
         CONTENT_SECURITY_POLICY,
         HeaderValue::from_str(&policy).expect("the policy holds only visible ASCII"),
@@ -129,38 +127,30 @@ async fn shared_page(path: PathBuf, token: String, request: Request) -> Response
     response
 }
 
-/// The Content Security Policy of share `token`'s page, reached at `host`.
-/// A source names the share's routes as `<host>/api/shares/<token>` and
-/// what lies under it, without a scheme, so it matches the page's own; a
-/// path is all CSP narrows below an origin, and `'self'` takes none. The
-/// token is percent-encoded, as the page's requests encode it, so nothing
-/// in the address reaches the policy as a separator. A host that is not a
-/// plain name, an address and a port leaves the routes at `'self'`.
+/// The Content Security Policy of share `token`'s page (`sharing.md`
+/// § Safety): the build's own scripts, styles and fonts, and connections,
+/// images and videos only from the share's routes at `public`, the
+/// backend's public URL its link names, never from what a request's `Host`
+/// says. A source names `<public>/api/shares/<token>` and what lies under
+/// it, since a path is all CSP narrows below an origin and `'self'` takes
+/// none; the token is percent-encoded, so nothing in the address reaches
+/// the policy as a separator or another path. Without a public URL, which
+/// the backend sets as it starts listening, the page reaches nothing.
 ///
 /// Styles may be inline: the transcript's Markdown renders KaTeX and sized
 /// media with `style` attributes, and a style cannot run code. Fonts and
 /// images may be `data:` URLs, as the build inlines its smallest fonts and
 /// the page its empty icon; neither reaches anywhere.
-fn shared_page_policy(token: &str, host: Option<&str>) -> String {
-    let plain = |host: &&str| {
-        !host.is_empty()
-            && host
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || b".-:[]".contains(&byte))
-    };
-    let routes = match host.filter(plain) {
-        Some(host) => {
-            let route = format!(
-                "{host}/api/shares/{}",
-                percent_encoding::utf8_percent_encode(token, percent_encoding::NON_ALPHANUMERIC)
-            );
-            format!("{route} {route}/")
-        }
-        None => "'self'".to_owned(),
-    };
+fn shared_page_policy(token: &str, public: Option<&url::Url>) -> String {
+    let encoded = percent_encoding::utf8_percent_encode(token, percent_encoding::NON_ALPHANUMERIC);
+    let routes = public
+        .and_then(|public| public.join(&format!("api/shares/{encoded}")).ok())
+        .map(|route| format!("{route} {route}/"));
+    let connect = routes.as_deref().unwrap_or("'none'");
+    let media = routes.as_deref().map(|routes| format!("{routes} ")).unwrap_or_default();
     format!(
         "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; \
-         img-src {routes} blob: data:; media-src {routes} blob:; connect-src {routes}; \
+         img-src {media}blob: data:; media-src {media}blob:; connect-src {connect}; \
          base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     )
 }
