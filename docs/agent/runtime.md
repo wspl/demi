@@ -1777,6 +1777,14 @@ commands*, and a click opens it to every step.
 - Thinking that streams stays one row, *Thinking*, folded as any step, and
   the reader opens it to read along; it never opens by itself, since folding
   itself when it ends would shrink the list with nothing the reader did.
+- Thinking blocks next to each other, with no other step between them, show
+  as one step: one *Thought for 5s* whose time is theirs together and whose
+  text is theirs in order, a paragraph apart, as Claude's and ChatGPT's apps
+  show a model's thinking as one. A model may write several thinking blocks
+  in one response, Claude between its tool calls and sometimes twice in a
+  row; each stays its own block, with its signature, for replay, and only the
+  page joins them. Thinking on each side of a call stays two steps, since the
+  call between them is what the reader follows.
 - Thinking without text, empty or redacted, shows only while it is the newest block of a
   running turn, as what the agent does now; once anything follows it or the
   turn ends, it has nothing to show and goes, from the transcript and from
