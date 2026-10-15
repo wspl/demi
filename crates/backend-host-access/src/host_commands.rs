@@ -30,7 +30,7 @@ use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob, host_paths};
 use demi_command_declarations::MAX_STDIN_BODY;
 use demi_host_interface::{
     Call, DEMI_ROOT, FileKind, GroupBuilder, HostErrorKind, HostFs, LeafBuilder, ProcessEnd, RpcError,
-    RpcInvocation, RpcPort, TypedRpc,
+    BroughtHost, RpcInvocation, RpcPort, TypedRpc,
 };
 use demi_runner_protocol::files::FsFailure;
 use demi_web_api_protocol::conversations::ConversationTarget;
@@ -87,6 +87,7 @@ pub(crate) struct NoArgs {}
 #[serde(deny_unknown_fields)]
 struct AttachArgs {
     /// Device name or id from demi host devices
+    #[expect(dead_code, reason = "the dispatch resolves it, as the call's `brought`")]
     device: String,
 }
 
@@ -122,6 +123,7 @@ struct PairArgs {
 #[serde(deny_unknown_fields)]
 struct MoveArgs {
     /// Host name or device id from demi host devices; Cloud for the user's Cloud
+    #[expect(dead_code, reason = "the dispatch resolves it, as the call's `brought`")]
     host: String,
     /// An absolute directory on that host, which must exist
     #[schemars(length(min = 1))]
@@ -231,11 +233,34 @@ pub struct NamedDevice {
     pub cloud: bool,
 }
 
-/// Each of the user's devices `wanted` may name, most likely first: a host
-/// of the conversation by the name it goes by there, a device by its id, a
-/// paired device by its name, and the user's Cloud by `Cloud`, which makes
-/// its device on its first use.
-pub async fn devices_named(
+/// The host `wanted` names, as a `bringsHost` argument that names a host is
+/// resolved, once, by the dispatch (`permissions.md` § Hosts): of the hosts
+/// it may stand for, the first in this order: a host of the conversation by
+/// the name it goes by there or its id, a device by its id, a paired device
+/// by its name, and the user's Cloud by `Cloud`, which makes its device on
+/// its first use.
+pub async fn resolve_host(
+    shard: &dyn HostShard,
+    conversation: &ConversationId,
+    wanted: &str,
+) -> Result<NamedDevice, RpcError> {
+    devices_named(shard, conversation, wanted)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| RpcError::Failed(format!("{wanted}: no host of this name or id (see `demi host devices`)")))
+}
+
+/// The host the dispatch resolved for the call's `bringsHost` argument.
+pub fn brought(invocation: &RpcInvocation) -> Result<&BroughtHost, RpcError> {
+    invocation
+        .brought
+        .as_ref()
+        .ok_or_else(|| RpcError::Failed("the dispatch resolved no host for this call".into()))
+}
+
+/// Each of the user's devices `wanted` may name, in [`resolve_host`]'s order.
+async fn devices_named(
     shard: &dyn HostShard,
     conversation: &ConversationId,
     wanted: &str,
@@ -448,29 +473,20 @@ async fn attach(
     call: Call<AttachArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
-    let Call {
-        args: AttachArgs { device: wanted },
-        invocation,
-    } = call;
+    let Call { invocation, .. } = call;
     let conversation = conversation_of(&invocation)?;
-    let paired = shard
-        .control()
-        .paired_devices(shard.user().clone())
-        .await
-        .map_err(|error| RpcError::Failed(error.to_string()))?;
-    let found = paired
-        .iter()
-        .find(|device| device.name == wanted)
-        .or_else(|| paired.iter().find(|device| device.id.as_str() == wanted));
-    let Some(device) = found else {
-        return Err(RpcError::Failed(format!(
-            "{wanted}: no paired device of this name or id (see `demi host devices`); the Cloud is attached only when the conversation moves off it"
-        )));
-    };
-    let attached = attach_device(&*shard, &conversation, &device.id, &device.name).await?;
+    let host = brought(&invocation)?;
+    if host.cloud {
+        return Err(RpcError::Failed(
+            "Cloud: the Cloud is attached only when the conversation moves off it".into(),
+        ));
+    }
+    let device = DeviceId::try_from(host.device.clone())
+        .map_err(|_| RpcError::Failed("the dispatch resolved no device".into()))?;
+    let attached = attach_device(&*shard, &conversation, &device, &host.name).await?;
     port.stdout(format!(
         "Attached {} as {attached}; run commands there with `demi host shell --host {attached} <script>`.\n",
-        device.name
+        host.name
     ))
     .await?;
     Ok(0)
@@ -608,14 +624,16 @@ async fn detach(
 /// (`sessions-and-targets.md` § What the agent can change).
 async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let Call {
-        args: MoveArgs { host: wanted, directory },
+        args: MoveArgs { directory, .. },
         invocation,
     } = call;
     let conversation = conversation_of(&invocation)?;
-    let Some(host) = devices_named(&*shard, &conversation, &wanted).await?.into_iter().next() else {
-        return Err(RpcError::Failed(format!(
-            "{wanted}: no host of this name or id (see `demi host devices`)"
-        )));
+    let brought = brought(&invocation)?;
+    let host = NamedDevice {
+        device: DeviceId::try_from(brought.device.clone())
+            .map_err(|_| RpcError::Failed("the dispatch resolved no device".into()))?,
+        name: brought.name.clone(),
+        cloud: brought.cloud,
     };
     let failed = |error: demi_backend_database::StorageError| RpcError::Failed(error.to_string());
     let record = shard
@@ -630,7 +648,12 @@ async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) 
             host.name
         )));
     }
-    check_directory(&*shard, &host, &record, &directory).await?;
+    // A command stopped while the Host wakes or answers releases its access
+    // and records no move.
+    tokio::select! {
+        checked = check_directory(&*shard, &host, &record, &directory) => checked?,
+        () = port.cancelled() => return Err(RpcError::Failed("the call was cancelled".into())),
+    }
     let target = if host.cloud {
         ConversationTarget::Cloud {
             path: Some(directory.clone()),

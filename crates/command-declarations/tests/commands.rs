@@ -656,7 +656,7 @@ fn a_brings_host_field_is_a_string_field_of_an_rpc_leafs_input() {
         "properties": {"project": {"type": "string"}, "out": {"type": "boolean"}}});
     let leaf = |kind: &str, field: &str| {
         let mut leaf = json!({"name": "move", "summary": "Move", "kind": kind,
-            "input": input.clone(), "bringsHost": field});
+            "input": input.clone(), "bringsHost": {"field": field, "names": "project"}});
         if kind == "native" {
             leaf["binding"] = json!({"package": "demi.file", "operation": "file.read",
                 "descriptorHash": "a".repeat(64)});
