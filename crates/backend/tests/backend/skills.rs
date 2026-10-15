@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use crate::conversations::{FIRST, anthropic_at, create};
 use crate::instructions::until_carried;
 use crate::support::{Harness, Session, TestBackend};
-use crate::work::{Driven, say, shell, switch};
+use crate::work::{Driven, into_project, say, shell, switch};
 
 /// How many of the skills plugin's blocks the request `request` carries:
 /// catalogs, and the word that none is left.
@@ -104,7 +104,7 @@ async fn a_skill_on_reaches_the_catalog_and_the_jobs_that_need_it_find_it_instal
         skill_md("name: release\ndescription: Cut a release."),
     )
     .unwrap();
-    switch(&backend, &master, FIRST, &alpha, &home).await;
+    into_project(&backend, &master, FIRST, &alpha, &home).await;
 
     let source = add_tools(&backend, &master).await;
     assert_eq!(
@@ -224,7 +224,7 @@ async fn a_skill_created_added_to_a_group_or_repaired_reaches_a_later_request() 
     std::fs::create_dir_all(skills.join("broken")).unwrap();
     std::fs::write(skills.join("group/one/SKILL.md"), manifest("one")).unwrap();
     std::fs::write(skills.join("broken/SKILL.md"), "not a skill").unwrap();
-    switch(&backend, &master, FIRST, &alpha, &alpha.runner.home_dir().join("app")).await;
+    into_project(&backend, &master, FIRST, &alpha, &alpha.runner.home_dir().join("app")).await;
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
     let first = work.turn(vec![say("hello")]).await.first_request();
     assert!(first.contains("<name>one</name>"), "{first}");
@@ -242,6 +242,42 @@ async fn a_skill_created_added_to_a_group_or_repaired_reaches_a_later_request() 
 fn any_under(paths: &[String], directory: &std::path::Path) -> bool {
     let directory = directory.to_str().unwrap();
     paths.iter().any(|path| path.starts_with(directory))
+}
+
+// A few seconds: a real runner on a paired device answers the search and
+// holds the subscriptions.
+//
+// Fixed bug: a conversation working in the home folder outside a project
+// searched and watched `~/.claude/skills`, Claude Code's own skills.
+#[tokio::test]
+async fn a_conversation_outside_a_project_has_no_project_skills_until_it_moves_into_one() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
+    create(&backend, &master, FIRST).await;
+    let home = alpha.runner.home_dir().to_owned();
+    let skills = home.join(".claude/skills");
+    std::fs::create_dir_all(skills.join("release")).unwrap();
+    std::fs::write(
+        skills.join("release/SKILL.md"),
+        skill_md("name: release\ndescription: Cut a release."),
+    )
+    .unwrap();
+    switch(&backend, &master, FIRST, &alpha, &home).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
+    let outside = work.turn(vec![say("hello")]).await.first_request();
+    assert!(!outside.contains("<name>release</name>"), "{outside}");
+    assert!(!any_under(&backend.subscribed(&master, alpha.id()).await, &skills));
+
+    // Moved into a project of the same directory: its skills are offered
+    // and watched.
+    into_project(&backend, &master, FIRST, &alpha, &home).await;
+    let inside = work.turn(vec![say("moved")]).await.first_request();
+    assert!(inside.contains("<name>release</name>"), "{inside}");
+    assert!(any_under(&backend.subscribed(&master, alpha.id()).await, &skills));
+    backend.close().await;
 }
 
 // A few seconds: a real runner on a paired device answers the searches and
@@ -262,7 +298,7 @@ async fn the_plugin_off_keeps_nothing_and_on_again_searches_at_the_next_request(
     let manifest = |name: &str| skill_md(&format!("name: {name}\ndescription: The skill {name}."));
     std::fs::create_dir_all(skills.join("release")).unwrap();
     std::fs::write(skills.join("release/SKILL.md"), manifest("release")).unwrap();
-    switch(&backend, &master, FIRST, &alpha, &app).await;
+    into_project(&backend, &master, FIRST, &alpha, &app).await;
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
     let first = work.turn(vec![say("hello")]).await.first_request();
     assert!(first.contains("<name>release</name>"), "{first}");

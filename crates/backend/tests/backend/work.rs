@@ -89,6 +89,40 @@ pub(crate) async fn switch(
     );
 }
 
+/// Moves the conversation into a new project of `path` on `device`, as the
+/// page's move into a project does; answers the project's id.
+pub(crate) async fn into_project(
+    backend: &TestBackend,
+    master: &Session,
+    id: &str,
+    device: &Paired,
+    path: &Path,
+) -> String {
+    let body = json!({ "kind": "device", "deviceId": device.id(), "path": path.to_str().unwrap(), "name": "project" });
+    let created = backend.post("/api/workspaces", Some(master), body).await;
+    assert_eq!(
+        created.status,
+        StatusCode::CREATED,
+        "{}",
+        String::from_utf8_lossy(&created.body)
+    );
+    let project = created.json::<serde_json::Value>()["workspace"]["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let target = json!({ "target": { "kind": "workspace", "workspaceId": project } });
+    let moved = backend
+        .patch(&format!("/api/conversations/{id}"), master, target)
+        .await;
+    assert_eq!(
+        moved.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&moved.body)
+    );
+    project
+}
+
 /// A conversation the test drives: its socket, and the path of the scripted
 /// endpoint its model answers from.
 pub(crate) struct Driven<'a> {
