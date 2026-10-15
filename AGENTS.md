@@ -60,6 +60,7 @@ contributors start with CONTRIBUTING.md. -->
 - Explain responsibilities, boundaries, observable behavior, and design rationale. Leave implementation details that code can express clearly to code.
 - Distinguish verified facts, suspected problems, proposals, and open decisions.
 - UI text follows macOS capitalization: the gallery's Writing page (`packages/web-gallery/src/sections/WritingSection.vue`) is the rule.
+- UI text, in English and in every language Demi speaks, says a thing the way established software says it: VS Code first, in its translation for that language, then macOS, then the language's Microsoft and Apple style guides ([Localization](docs/product/localization.md)). When unsure how to word a label, a menu, an error or an empty state, look up how VS Code words the same thing, and follow it.
 - Follow the [Google Developer Documentation Style Guide](https://developers.google.com/style). Use Diátaxis, arc42, and C4 as optional aids to clarity and completeness, not as mandatory directories, sections, or deliverables.
 
 # Design Documentation

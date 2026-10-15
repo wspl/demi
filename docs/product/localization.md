@@ -7,6 +7,14 @@ This page says what is translated, where each text lives, how text that
 comes from the backend is worded, and how the language is chosen. How each
 language is written, its glossary included, is the gallery's Writing page.
 
+Each language says what established software says in it, never a literal
+rendering of the English: a term, a button, a menu item or an error takes
+the wording, the form and the tone that VS Code's translation in that
+language uses for the same thing, then macOS's own, then the vendor's
+style guide for the language (Microsoft's Style Guides and Terminology,
+Apple's). Where they differ, VS Code's wins, since Demi's users read it
+every day; the glossary records each choice.
+
 ## What is translated
 
 Every text Demi itself shows a person: the web app, every plugin's pages,
@@ -35,7 +43,13 @@ Settings › General › Language offers *System*, *English*, *简体中文*,
 follow it; *System* is the default and takes the first of the browser's
 languages that Demi speaks, else English: `zh-Hant`, `zh-TW`, `zh-HK` and
 `zh-MO` count as 繁體中文 and any other `zh` tag as 简体中文.
-A change applies at once in every open page, as other preferences do, and
+The page alone resolves *System*, and reports the language it resolved
+with the browser's other facts in the `locale` preference, so the backend
+reads that instead of resolving it again. The page keeps the language it
+last showed in the browser's storage and starts in it, so a user whose
+choice differs from the browser's sees no other language before the
+preferences arrive. A change applies at once in every open page, as other
+preferences do, and
 the document's `lang` follows it, so each language's own font draws its
 characters: one Han character looks different in Chinese, Japanese and
 Korean, and the font stack names each language's system font (PingFang SC,
@@ -84,5 +98,5 @@ The backend sends codes and values, and the page words them:
 - **Emails and the pages the backend renders** are worded by the backend
   from its own catalogue, one per language beside the crate that sends
   them, with `rust-i18n`: an email in the recipient's `language`, or with
-  *System* in the first of the languages their browser last reported (the
-  `locale` preference); a page in the request's `Accept-Language`.
+  *System* in the language their page last resolved (the `locale`
+  preference); a page in the request's `Accept-Language`.
