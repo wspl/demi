@@ -40,7 +40,10 @@ import {
   type RequestEdit,
   type RequestEditRef,
 } from './request-changes'
-import { GONE_MESSAGE } from './file-cache'
+import { goneMessage } from './file-cache'
+import { t as shared } from '../locales/text'
+import { t } from './locales/text'
+import { formatCount } from '../ui/numbers'
 import { COMMITS_HEIGHT, TREE_WIDTH } from './file-view'
 import { baseName } from '@demicodes/utils'
 import { relativePath, resolveHostPath } from './paths'
@@ -113,16 +116,16 @@ const treeWidth = defineModel<number>('treeWidth', { default: TREE_WIDTH.default
 /** Markdown and SVG only: the text diff, or both sides rendered. */
 const presentation = defineModel<'diff' | 'preview'>('presentation', { default: 'diff' })
 
-const modeOptions: readonly SegmentedOption<ChangeMode>[] = [
-  { value: 'commits', label: 'Commits' },
-  { value: 'conversation', label: 'Conversation' },
-]
-const presentationOptions: readonly SegmentedOption<'diff' | 'preview'>[] = [
-  { value: 'diff', label: 'Diff', icon: Diff },
-  { value: 'preview', label: 'Preview', icon: Eye },
-]
+const modeOptions = computed<readonly SegmentedOption<ChangeMode>[]>(() => [
+  { value: 'commits', label: t('changes.commits') },
+  { value: 'conversation', label: t('changes.conversation') },
+])
+const presentationOptions = computed<readonly SegmentedOption<'diff' | 'preview'>[]>(() => [
+  { value: 'diff', label: t('changes.diff'), icon: Diff },
+  { value: 'preview', label: t('changes.preview'), icon: Eye },
+])
 /** Git's copy is decoded whole, so the committed side stops at the runner's limit (`file-previews.md` § Changes). */
-const COMMITTED_TOO_LARGE = 'Over 8 MiB: too large to show.'
+const committedTooLarge = computed(() => t('view.committedTooLarge'))
 
 const workingTree = computed(() => props.changes.uncommitted)
 const request = computed(() => mode.value === 'conversation' ? props.changes.conversation : null)
@@ -219,10 +222,12 @@ const nextEdit = computed(() => {
   const at = editAt.value
   return at === null ? edits.value[0] : edits.value[at + 1]
 })
-const editLabel = computed(() => editAt.value === null ? 'All Changes' : `Edit ${editAt.value + 1} / ${edits.value.length}`)
+const editLabel = computed(() => editAt.value === null
+  ? t('changes.allChanges')
+  : t('changes.editOf', { at: formatCount(editAt.value + 1), total: formatCount(edits.value.length) }))
 const editItems = computed(() => [
-  ...(allChanges.value ? [{ id: 'all', icon: Files, label: 'All Changes' }] : []),
-  ...edits.value.map((entry, index) => ({ id: String(index), icon: Pencil, label: entry.title, value: `Edit ${index + 1}` })),
+  ...(allChanges.value ? [{ id: 'all', icon: Files, label: t('changes.allChanges') }] : []),
+  ...edits.value.map((entry, index) => ({ id: String(index), icon: Pencil, label: entry.title, value: t('changes.edit', { at: formatCount(index + 1) }) })),
 ])
 
 function showEdit(target: RequestEdit | null | undefined): void {
@@ -270,11 +275,11 @@ const emptyText = computed(() => {
   if (missingCommit.value)
     return ''
   if (showsCommit.value)
-    return commitDetails.value ? 'This commit changes no files here.' : ''
+    return commitDetails.value ? t('changes.commitNoFiles') : ''
   return emptyChangeSetText(workingTree.value)
 })
 /** What a commit the repository lacks says in place of its files. */
-const noCommitText = computed(() => `No commit ${shortCommit(commit.value ?? '')} in ${props.rootName ?? props.root}`)
+const noCommitText = computed(() => t('changes.noCommit', { id: shortCommit(commit.value ?? ''), root: props.rootName ?? props.root }))
 /** The sidebar's files in either mode, as one tree shows them; a request's paths from the workspace. */
 const treeFiles = computed<ChangeTreeFile[]>(() => {
   if (showsCommit.value) {
@@ -302,20 +307,20 @@ const treeFiles = computed<ChangeTreeFile[]>(() => {
 const idleText = computed(() => {
   if (mode.value === 'conversation') {
     if (!request.value)
-      return 'Select a changed file in the conversation.'
-    return request.value.files.length > 0 ? 'Select a changed file.' : 'These changes are no longer in the conversation.'
+      return t('changes.selectInConversation')
+    return request.value.files.length > 0 ? t('changes.selectFile') : t('changes.goneFromConversation')
   }
   if (missingCommit.value)
-    return `${noCommitText.value}.`
+    return noCommitText.value
   if (showsCommit.value)
     return emptyText.value
-  return workingTree.value.files.length > 0 ? 'Select a changed file.' : emptyText.value
+  return workingTree.value.files.length > 0 ? t('changes.selectFile') : emptyText.value
 })
 
 /** What stands where the diff would, when the contents it needs were not kept. */
 const unkeptText = computed(() => selectedChange.value?.kind === 'deleted'
-  ? 'The previous contents weren’t kept.'
-  : 'This change’s contents weren’t kept.')
+  ? t('changes.previousNotKept')
+  : t('changes.changeNotKept'))
 
 const kind = computed(() => selectedChange.value ? previewKind(selectedChange.value.path) : 'text')
 const sourceView = computed(() => selectedChange.value !== null && hasSourceView(selectedChange.value.path))
@@ -367,8 +372,8 @@ const hasBefore = computed(() => {
 })
 const hasAfter = computed(() => selectedChange.value?.kind !== 'deleted')
 const labels = computed(() => mode.value === 'commits' && !showsCommit.value
-  ? { before: 'Committed', after: 'Working tree' }
-  : { before: 'Before', after: 'After' })
+  ? { before: t('changes.committed'), after: t('changes.workingTree') }
+  : { before: t('changes.before'), after: t('changes.after') })
 const place = computed<DocumentPlace>(() => ({
   path: absolutePath.value,
   root: props.root,
@@ -411,7 +416,7 @@ const workingState = computed<State>(() => {
   if (showsCommit.value && !commitDetails.value) {
     const entry = shownCommit.entry.value
     if (entry?.failure && entry.answer === null)
-      return { phase: 'failed', message: entry.failure.message ?? 'The commit could not be read.', requestId: entry.failure.requestId ?? null }
+      return { phase: 'failed', message: entry.failure.message ?? t('changes.commitReadFailed'), requestId: entry.failure.requestId ?? null }
     if (entry?.answer !== 'gone')
       return { phase: 'loading' }
   }
@@ -431,10 +436,10 @@ const workingState = computed<State>(() => {
       // A side that is not text: each version as a card of its own.
       return { phase: 'binary' }
     case 'gone':
-      return { phase: 'failed', message: GONE_MESSAGE, requestId: null }
+      return { phase: 'failed', message: goneMessage(), requestId: null }
     case null:
       return entry.failure
-        ? { phase: 'failed', message: entry.failure.message ?? 'The change could not be read.', requestId: entry.failure.requestId ?? null }
+        ? { phase: 'failed', message: entry.failure.message ?? t('changes.changeReadFailed'), requestId: entry.failure.requestId ?? null }
         : { phase: 'loading' }
   }
 })
@@ -442,7 +447,7 @@ const workingState = computed<State>(() => {
 /** Why the last read of the sides shown could not be made, while what it answered before stays. */
 const staleBecause = computed(() => {
   const entry = mode.value === 'commits' ? keptSides.value.entry.value : null
-  return entry?.answer && entry.failure ? entry.failure.message ?? 'The read failed.' : null
+  return entry?.answer && entry.failure ? entry.failure.message ?? t('view.readAgainFailed') : null
 })
 
 /** All Changes of a file the request removed ends with nothing: the diff is its start against an empty file. */
@@ -509,15 +514,15 @@ function pick(path: string): void {
 </script>
 
 <template>
-  <TreeFrame ref="frame" v-model:open="tree" v-model:width="treeWidth" name="changed files">
+  <TreeFrame ref="frame" v-model:open="tree" v-model:width="treeWidth" tree="changes">
     <template #header>
       <!-- Back and Forward move through what this view has shown, mode and file. -->
       <div class="flex shrink-0 items-center">
-        <Tooltip content="Back">
-          <IconButton :icon="ArrowLeft" variant="ghost" aria-label="Back" :disabled="!canBack" @click="emit('back')" />
+        <Tooltip :content="t('actions.back')">
+          <IconButton :icon="ArrowLeft" variant="ghost" :aria-label="t('actions.back')" :disabled="!canBack" @click="emit('back')" />
         </Tooltip>
-        <Tooltip content="Forward">
-          <IconButton :icon="ArrowRight" variant="ghost" aria-label="Forward" :disabled="!canForward" @click="emit('forward')" />
+        <Tooltip :content="t('actions.forward')">
+          <IconButton :icon="ArrowRight" variant="ghost" :aria-label="t('actions.forward')" :disabled="!canForward" @click="emit('forward')" />
         </Tooltip>
       </div>
       <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 shrink-0" />
@@ -532,8 +537,8 @@ function pick(path: string): void {
         />
         <!-- All Changes, then each edit of the request in turn, as GitHub picks a pull request's commits. -->
         <div v-if="mode === 'conversation' && edits.length > 1" class="flex shrink-0 items-center">
-          <Tooltip content="Previous edit">
-            <IconButton :icon="ChevronLeft" variant="ghost" aria-label="Previous edit" :disabled="previousEdit === undefined" @click="showEdit(previousEdit)" />
+          <Tooltip :content="t('changes.previousEdit')">
+            <IconButton :icon="ChevronLeft" variant="ghost" :aria-label="t('changes.previousEdit')" :disabled="previousEdit === undefined" @click="showEdit(previousEdit)" />
           </Tooltip>
           <Dropdown :overlay-store="appOverlayStore" variant="ghost" size="sm">
             <template #trigger>
@@ -549,8 +554,8 @@ function pick(path: string): void {
               />
             </template>
           </Dropdown>
-          <Tooltip content="Next edit">
-            <IconButton :icon="ChevronRight" variant="ghost" aria-label="Next edit" :disabled="nextEdit === undefined" @click="showEdit(nextEdit)" />
+          <Tooltip :content="t('changes.nextEdit')">
+            <IconButton :icon="ChevronRight" variant="ghost" :aria-label="t('changes.nextEdit')" :disabled="nextEdit === undefined" @click="showEdit(nextEdit)" />
           </Tooltip>
         </div>
         <Segmented
@@ -561,11 +566,11 @@ function pick(path: string): void {
           icon-only
           class="shrink-0"
         />
-        <Tooltip v-if="opens !== false" content="Open file" class="shrink-0">
+        <Tooltip v-if="opens !== false" :content="t('changes.openFile')" class="shrink-0">
           <IconButton
             :icon="FileOutput"
             variant="ghost"
-            aria-label="Open file"
+            :aria-label="t('changes.openFile')"
             :disabled="!selectedChange || selectedChange.kind === 'deleted'"
             @click="selectedChange && emit('open', selectedChange.path)"
           />
@@ -595,17 +600,17 @@ function pick(path: string): void {
       <RegionNote
         v-if="unwatched"
         :icon="History"
-        label="Showing changes as they were last read."
+        :label="t('changes.notWatched')"
         :detail="unwatched"
-        action="Refresh"
+        :action="t('actions.refresh')"
         @action="refreshUnwatched"
       />
       <RegionNote
         v-if="staleBecause"
         :icon="RefreshCw"
-        label="Could not refresh this change."
+        :label="t('changes.refreshFailed')"
         :detail="staleBecause"
-        action="Retry"
+        :action="shared('common.retry')"
         @action="retry"
       />
       <div class="min-h-0 flex-1">
@@ -619,19 +624,19 @@ function pick(path: string): void {
             :path="committedPath"
             :kind="mediaPair"
             :contents="sideContents.before"
-            :too-large="COMMITTED_TOO_LARGE"
+            :too-large="committedTooLarge"
           />
         </template>
         <template v-if="hasAfter" #after>
-          <FilePreview :path="afterPath" :kind="mediaPair" :contents="sideContents.after" :too-large="showsCommit ? COMMITTED_TOO_LARGE : undefined" />
+          <FilePreview :path="afterPath" :kind="mediaPair" :contents="sideContents.after" :too-large="showsCommit ? committedTooLarge : undefined" />
         </template>
       </PreviewPair>
       <PreviewPair v-else-if="state.phase === 'binary'" :key="`${shownKey}:${committedPath}`" v-bind="labels">
         <template v-if="hasBefore" #before>
-          <FileSummary :path="committedPath" :contents="sideContents?.before" :too-large="COMMITTED_TOO_LARGE" />
+          <FileSummary :path="committedPath" :contents="sideContents?.before" :too-large="committedTooLarge" />
         </template>
         <template v-if="hasAfter" #after>
-          <FileSummary :path="afterPath" :contents="sideContents?.after" :too-large="showsCommit ? COMMITTED_TOO_LARGE : undefined" />
+          <FileSummary :path="afterPath" :contents="sideContents?.after" :too-large="showsCommit ? committedTooLarge : undefined" />
         </template>
       </PreviewPair>
       <PreviewPair
@@ -661,8 +666,8 @@ function pick(path: string): void {
         <RegionStatus
           class="h-full"
           :status="state.phase === 'loading' || state.phase === 'failed' ? state.phase : 'note'"
-          :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'failed' ? 'Could not read this change.' : state.phase === 'unavailable' ? unkeptText : idleText"
-          loading-label="Reading…"
+          :label="state.phase === 'loading' ? t('reading') : state.phase === 'failed' ? t('changes.readFailed') : state.phase === 'unavailable' ? unkeptText : idleText"
+          :loading-label="t('reading')"
           :detail="state.phase === 'failed' ? state.message : null"
           :request-id="state.phase === 'failed' ? state.requestId : null"
           :on-retry="retry"
@@ -679,7 +684,7 @@ function pick(path: string): void {
         :root="root"
         :root-name="rootName"
         :selected="selected"
-        empty-text="These changes are no longer in the conversation."
+        :empty-text="t('changes.goneFromConversation')"
         @select="pick"
       />
       <!-- Commits: the item's files above, the branch's commits below, a divider between them. -->
@@ -702,14 +707,14 @@ function pick(path: string): void {
             v-model="commitsHeight"
             orientation="horizontal"
             side="end"
-            label="commit list"
+            :label="t('tree.resizeCommits')"
             :min="COMMITS_HEIGHT.min"
             :max="Math.max(COMMITS_HEIGHT.min, sidebarHeight - COMMITS_HEIGHT.min)"
             :default-value="COMMITS_HEIGHT.default"
           />
           <div class="shrink-0 border-t border-line" :style="{ height: `${listHeight}px` }">
             <div v-if="onNoBranch" class="flex h-full select-none items-center justify-center bg-surface-editor px-4 text-center text-[13px] text-fg-subtle">
-              This commit is on no branch.
+              {{ t('changes.onNoBranch') }}
             </div>
             <CommitList
               v-else

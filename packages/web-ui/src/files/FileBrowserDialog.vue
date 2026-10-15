@@ -13,6 +13,8 @@ import type {
   FileBrowserSource,
 } from './types'
 import type { HeadlineText, TitleText } from '../ui/ui-text'
+import { t as shared } from '../locales/text'
+import { t } from './locales/text'
 
 /**
  * The file browser as a modal: a plain title bar over the file browser, which
@@ -45,7 +47,7 @@ const emit = defineEmits<{
 const showHidden = defineModel<boolean>('showHidden', { default: false })
 
 const title = computed(
-  () => props.title ?? (props.mode === 'file' ? 'Open File' : 'Select Folder'),
+  () => props.title ?? (props.mode === 'file' ? t('browser.openFile') : t('browser.selectFolder')),
 )
 </script>
 
@@ -69,7 +71,7 @@ const title = computed(
         <IconButton
           :icon="X"
           variant="ghost"
-          aria-label="Close"
+          :aria-label="shared('common.close')"
           @click="emit('close')"
         />
       </header>

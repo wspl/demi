@@ -5,6 +5,7 @@ import { defineComponent, h, type PropType } from 'vue'
 import { File } from '@lucide/vue'
 import { FileIcon, ICON_PX, baseName, definePage, type PanelKind } from '@demicodes/plugin-sdk'
 import { PLUGIN } from './generated/plugin'
+import { t } from './locales/text'
 import FileTab from './FileTab.vue'
 import { fileDataSchema, firstFileData, showFile, type FileData } from './data'
 
@@ -20,7 +21,7 @@ const FileMark = defineComponent({
 export const fileKind: PanelKind<FileData> = {
   kind: 'file',
   schema: fileDataSchema,
-  title: (data) => data.path ? `File: ${baseName(data.path)}` : 'File',
+  title: (data) => data.path ? t('kind.titleNamed', { name: baseName(data.path) }) : t('kind.title'),
   mark: FileMark,
   content: FileTab,
   pinned: { data: firstFileData },

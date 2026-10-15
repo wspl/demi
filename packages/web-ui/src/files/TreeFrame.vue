@@ -8,6 +8,7 @@ import Tooltip from '../ui/Tooltip.vue'
 import TooltipPlacement from '../ui/TooltipPlacement.vue'
 import { usePhone } from '../ui/phone'
 import { CONTENT_MIN_WIDTH, TREE_MOTION_MS, TREE_WIDTH } from './file-view'
+import { t } from './locales/text'
 
 /**
  * The frame a file view sits in: a header row, and under it the view with a
@@ -32,9 +33,9 @@ import { CONTENT_MIN_WIDTH, TREE_MOTION_MS, TREE_WIDTH } from './file-view'
  * view's whole width, sliding in from the end, and a pick in it slides it
  * away again (`web-application.md` § The phone layout).
  */
-defineProps<{
-  /** The tree in its control's words: `file tree` reads "Show file tree". */
-  name: string
+const props = defineProps<{
+  /** What the tree lists, which names its control: the files of a folder, or the files a change touches. */
+  tree: 'files' | 'changes'
 }>()
 
 defineSlots<{
@@ -61,6 +62,10 @@ const overWidth = computed(() => (phone.value ? bodyWidth.value : Math.min(width
 const over = ref(false)
 const shown = computed(() => docks.value ? open.value : over.value)
 const overlap = computed(() => shown.value && !docks.value ? overWidth.value : 0)
+const toggleLabel = computed(() => props.tree === 'files'
+  ? (shown.value ? t('tree.hideFiles') : t('tree.showFiles'))
+  : (shown.value ? t('tree.hideChanges') : t('tree.showChanges')))
+const resizeLabel = computed(() => props.tree === 'files' ? t('tree.resizeFiles') : t('tree.resizeChanges'))
 
 // A tree shown over the view does not come back by itself when the frame narrows again.
 watch(docks, () => {
@@ -168,12 +173,12 @@ defineExpose({ show, dismiss })
     <div class="flex h-11 shrink-0 items-center gap-1 px-2">
       <TooltipPlacement placement="bottom">
         <slot name="header" />
-        <Tooltip v-if="$slots.tree" :content="shown ? `Hide ${name}` : `Show ${name}`" class="shrink-0">
+        <Tooltip v-if="$slots.tree" :content="toggleLabel" class="shrink-0">
           <IconButton
             :icon="FolderTree"
             variant="ghost"
             :pressed="shown"
-            :aria-label="shown ? `Hide ${name}` : `Show ${name}`"
+            :aria-label="toggleLabel"
             @click="toggle"
           />
         </Tooltip>
@@ -193,7 +198,7 @@ defineExpose({ show, dismiss })
           :min="TREE_WIDTH.min"
           :max="room"
           :default-value="TREE_WIDTH.default"
-          :label="name"
+          :label="resizeLabel"
         />
         <!-- Behind a tree shown over the view: a click beside the tree puts it away. The view stays as it is,
              as beside an open menu; the tree's shadow sets it above. -->

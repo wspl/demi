@@ -6,6 +6,8 @@ import TextInput from '../../ui/TextInput.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import type { FindOptions } from '../searchPanel'
 import { noResults, type SentenceText } from '../../ui/ui-text'
+import { t as shared } from '../../locales/text'
+import { t } from '../locales/text'
 
 /**
  * The code view's find bar, below the text: the query with its match count,
@@ -30,11 +32,11 @@ const emit = defineEmits<{
 
 type Toggle = 'caseSensitive' | 'wholeWord' | 'regexp'
 
-const toggles: readonly { key: Toggle; icon: Component; label: SentenceText }[] = [
-  { key: 'caseSensitive', icon: CaseSensitive, label: 'Match case' },
-  { key: 'wholeWord', icon: WholeWord, label: 'Match whole word' },
-  { key: 'regexp', icon: Regex, label: 'Use regular expression' },
-]
+const toggles = computed<readonly { key: Toggle; icon: Component; label: SentenceText }[]>(() => [
+  { key: 'caseSensitive', icon: CaseSensitive, label: t('search.matchCase') },
+  { key: 'wholeWord', icon: WholeWord, label: t('search.wholeWord') },
+  { key: 'regexp', icon: Regex, label: t('search.regexp') },
+])
 
 const status = computed(() => props.count === 0
   ? noResults()
@@ -53,8 +55,8 @@ function flip(key: Toggle): void {
       class="min-w-0 max-w-72 flex-1"
       size="sm"
       search
-      placeholder="Find"
-      aria-label="Find"
+      :placeholder="t('search.label')"
+      :aria-label="t('search.label')"
       main-field="true"
       :model-value="options.search"
       @update:model-value="emit('change', { ...options, search: $event })"
@@ -73,14 +75,14 @@ function flip(key: Toggle): void {
         @click="flip(toggle.key)"
       />
     </Tooltip>
-    <Tooltip content="Previous match">
-      <IconButton :icon="ArrowUp" size="sm" variant="ghost" aria-label="Previous match" :disabled="count === 0" @click="emit('previous')" />
+    <Tooltip :content="t('search.previous')">
+      <IconButton :icon="ArrowUp" size="sm" variant="ghost" :aria-label="t('search.previous')" :disabled="count === 0" @click="emit('previous')" />
     </Tooltip>
-    <Tooltip content="Next match">
-      <IconButton :icon="ArrowDown" size="sm" variant="ghost" aria-label="Next match" :disabled="count === 0" @click="emit('next')" />
+    <Tooltip :content="t('search.next')">
+      <IconButton :icon="ArrowDown" size="sm" variant="ghost" :aria-label="t('search.next')" :disabled="count === 0" @click="emit('next')" />
     </Tooltip>
-    <Tooltip content="Close" class="ml-auto">
-      <IconButton :icon="X" size="sm" variant="ghost" aria-label="Close" @click="emit('close')" />
+    <Tooltip :content="shared('common.close')" class="ml-auto">
+      <IconButton :icon="X" size="sm" variant="ghost" :aria-label="shared('common.close')" @click="emit('close')" />
     </Tooltip>
   </div>
 </template>

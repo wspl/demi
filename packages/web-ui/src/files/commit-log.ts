@@ -1,6 +1,7 @@
 import { computed, shallowRef, watch, type ComputedRef } from 'vue'
 import { useShowings } from './showing'
 import type { CommitHistorySource, CommitLogPage, LoggedCommit } from './history'
+import { t } from './locales/text'
 
 /** One branch's commits as the list shows them, page after page. */
 export interface CommitLogView {
@@ -80,7 +81,7 @@ export function useCommitLog(
       const after = failed.value
       if (after === undefined)
         return null
-      return shown.entries.value.get(after)?.failure?.message ?? 'The commits could not be listed.'
+      return shown.entries.value.get(after)?.failure?.message ?? t('changes.commitsFailed')
     }),
     loadMore() {
       if (failed.value !== undefined) {

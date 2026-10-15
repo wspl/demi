@@ -20,6 +20,7 @@
  */
 import { errorMessage, requestIdOf } from '../infra/errors'
 import { reactive, shallowRef } from 'vue'
+import { t } from './locales/text'
 import { FileBrowserError, type FileBrowserFailure } from './types'
 import {
   Subscription,
@@ -46,7 +47,9 @@ export const MAX_ENTRIES = 4096
 export const SUMMARY_REREAD_MS = 1000
 
 /** What a view says of an answer that nothing is at the path. */
-export const GONE_MESSAGE = 'It is no longer there.'
+export function goneMessage(): string {
+  return t('gone')
+}
 
 /**
  * What an entry is, which decides what it subscribes to (`plugin-pages.md`
@@ -94,7 +97,7 @@ export function failureShown(entry: ShownEntry<unknown> | null | undefined): Fil
   if (!entry || entry.answer === 'value')
     return null
   if (entry.answer === 'gone')
-    return { kind: 'not-found', message: GONE_MESSAGE }
+    return { kind: 'not-found', message: goneMessage() }
   return entry.failure
 }
 
@@ -250,7 +253,9 @@ class Entry<T> {
       get unwatched() {
         for (const subscription of subscriptions.value) {
           const { status, reason } = subscription.state
-          if (status === 'unavailable' || status === 'refused')
+          if (status === 'refused')
+            return t('view.watchRefused')
+          if (status === 'unavailable')
             return reason
         }
         return null
@@ -641,7 +646,7 @@ export class HostFiles implements WatchListener {
     if (answer === 'value' && value !== undefined)
       return value
     if (answer === 'gone')
-      throw new FileBrowserError('not-found', GONE_MESSAGE)
+      throw new FileBrowserError('not-found', goneMessage())
     if (answer === 'binary' || answer === 'too-large')
       throw new FileBrowserError(answer)
     throw new FileBrowserError(failure?.kind ?? 'other', failure?.message)

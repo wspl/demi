@@ -1,0 +1,21 @@
+{
+  "search": {
+    "label": "찾기",
+    "matchCase": "대/소문자 구분",
+    "wholeWord": "단어 단위로",
+    "regexp": "정규식 사용",
+    "previous": "이전 검색 결과",
+    "next": "다음 검색 결과"
+  },
+  "syntaxColorsUnavailable": "구문 색 지정을 사용할 수 없습니다",
+  "diff": {
+    "unchanged": "변경되지 않은 줄 {count}개",
+    "noNewline": "파일 끝에 줄 바꿈이 없습니다"
+  },
+  "fold": {
+    "folded": "접힌 코드",
+    "unfold": "펼치기",
+    "foldLine": "줄 접기",
+    "unfoldLine": "줄 펼치기"
+  }
+}

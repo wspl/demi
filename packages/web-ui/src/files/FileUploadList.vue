@@ -12,7 +12,10 @@ import { ICON_PX } from '../ui/icon-metrics'
 import FileIcon from './FileIcon.vue'
 import { uploadFiles, uploadSize, type FileUpload, type FileUploads } from './file-uploads'
 import { formatBytes } from './format'
-import { baseName, countOf } from '@demicodes/utils'
+import { t as shared } from '../locales/text'
+import { t } from './locales/text'
+import { formatCount } from '../ui/numbers'
+import { baseName } from '@demicodes/utils'
 
 /**
  * A source's uploads, and nothing while there are none; its host sets its
@@ -56,8 +59,8 @@ function stop(upload: FileUpload): void {
 /** A folder's files as a count: `40 files`, or `12 / 40 files` of those landed. */
 function fileCount(upload: FileUpload, landed: boolean): string {
   const files = uploadFiles(upload)
-  const total = countOf(files.length, 'file')
-  return landed ? `${files.filter((step) => step.done).length} / ${total}` : total
+  const total = t('uploads.files', { count: formatCount(files.length) }, files.length)
+  return landed ? `${formatCount(files.filter((step) => step.done).length)} / ${total}` : total
 }
 
 /** The line under the name: an upload's facts, or why it failed. */
@@ -66,7 +69,7 @@ function facts(upload: FileUpload): string {
   const size = formatBytes(uploadSize(upload))
   const state = upload.state
   if (state.phase === 'waiting')
-    return (folder ? ['Waiting', fileCount(upload, false), size] : ['Waiting', size]).join(' · ')
+    return (folder ? [t('uploads.waiting'), fileCount(upload, false), size] : [t('uploads.waiting'), size]).join(' · ')
   if (state.phase === 'uploading') {
     const parts = folder ? [fileCount(upload, true)] : []
     parts.push(`${formatBytes(state.sent)} / ${size}`)
@@ -75,10 +78,10 @@ function facts(upload: FileUpload): string {
     return parts.join(' · ')
   }
   if (state.phase === 'done')
-    return folder ? `Completed · ${fileCount(upload, false)}` : 'Completed'
+    return folder ? `${t('uploads.completed')} · ${fileCount(upload, false)}` : t('uploads.completed')
   // One failure says itself; a folder's several say how many.
   if (state.failures.length > 1)
-    return `${state.failures.length} / ${fileCount(upload, false)} failed`
+    return t('uploads.failedOf', { failed: formatCount(state.failures.length), files: fileCount(upload, false) })
   const failure = state.failures[0]!
   return failure.path ? `${failure.path}: ${failure.message}` : failure.message
 }
@@ -91,11 +94,11 @@ const FAILURES_LISTED = 8
   <section
     v-if="uploads.items.length > 0"
     class="flex min-h-0 flex-col border-t border-line bg-surface-editor"
-    aria-label="Uploads"
+    :aria-label="t('uploads.title')"
   >
     <div class="flex h-8 shrink-0 select-none items-center pl-3 pr-1 text-chrome font-medium text-fg-muted">
-      <span class="min-w-0 flex-1 truncate">Uploads</span>
-      <Button v-if="finished" size="sm" variant="ghost" class="shrink-0" @click="uploads.clearFinished()">Clear</Button>
+      <span class="min-w-0 flex-1 truncate">{{ t('uploads.title') }}</span>
+      <Button v-if="finished" size="sm" variant="ghost" class="shrink-0" @click="uploads.clearFinished()">{{ t('actions.clear') }}</Button>
     </div>
     <ScrollArea class="flex-1" viewport-class="px-1 pb-1">
       <ul>
@@ -110,15 +113,15 @@ const FAILURES_LISTED = 8
             {{ baseName(upload.path) }}
           </Tooltip>
           <div class="flex shrink-0 items-center">
-            <Tooltip v-if="upload.state.phase === 'failed'" content="Retry">
-              <IconButton :icon="RotateCw" size="xs" variant="ghost" aria-label="Retry" spin-on-click @click="uploads.retry(upload.id)" />
+            <Tooltip v-if="upload.state.phase === 'failed'" :content="shared('common.retry')">
+              <IconButton :icon="RotateCw" size="xs" variant="ghost" :aria-label="shared('common.retry')" spin-on-click @click="uploads.retry(upload.id)" />
             </Tooltip>
-            <Tooltip :content="underWay(upload) ? 'Cancel' : 'Dismiss'">
+            <Tooltip :content="underWay(upload) ? shared('common.cancel') : t('actions.dismiss')">
               <IconButton
                 :icon="X"
                 size="xs"
                 variant="ghost"
-                :aria-label="underWay(upload) ? 'Cancel' : 'Dismiss'"
+                :aria-label="underWay(upload) ? shared('common.cancel') : t('actions.dismiss')"
                 @click="stop(upload)"
               />
             </Tooltip>
@@ -150,7 +153,7 @@ const FAILURES_LISTED = 8
                       {{ failure.path }}: {{ failure.message }}
                     </li>
                     <li v-if="upload.state.failures.length > FAILURES_LISTED">
-                      and {{ upload.state.failures.length - FAILURES_LISTED }} more
+                      {{ t('uploads.more', { count: formatCount(upload.state.failures.length - FAILURES_LISTED) }) }}
                     </li>
                   </ul>
                 </template>

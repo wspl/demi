@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { countOf, countUnlessOne } from '@demicodes/utils'
+import { pageLanguage } from '../i18n/text'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
+import { formatCount } from '../ui/numbers'
 import type { UploadClash } from './file-uploads'
+import { t } from './locales/text'
 
 /**
  * The question before an upload writes over what a directory has: the
@@ -33,37 +35,68 @@ const emit = defineEmits<{
 
 const merges = computed(() => props.clashes.some((clash) => clash.isDirectory && clash.takenByDirectory))
 
-/** `file`, `folder`, or `item` for a mix. */
-function noun(files: number, folders: number): string {
-  return folders === 0 ? 'file' : files === 0 ? 'folder' : 'item'
+/** What a count of names or items is: only files, only folders, or a mix. */
+type Kind = 'files' | 'folders' | 'items'
+
+function kindOf(files: number, folders: number): Kind {
+  return folders === 0 ? 'files' : files === 0 ? 'folders' : 'items'
+}
+
+/** A name as the dialog quotes it. */
+function quoted(name: string): string {
+  return t('conflict.item', { name })
 }
 
 const title = computed(() => {
   const clashes = props.clashes
   if (clashes.length === 1)
-    return `Replace ${clashes[0]!.name}?`
+    return t('conflict.titleOne', { name: quoted(clashes[0]!.name) })
   const folders = clashes.filter((clash) => clash.isDirectory).length
-  return `Replace ${countOf(clashes.length, noun(clashes.length - folders, folders))}?`
+  const count = clashes.length
+  const named = { count: formatCount(count) }
+  switch (kindOf(count - folders, folders)) {
+    case 'files':
+      return t('conflict.titleFiles', named, count)
+    case 'folders':
+      return t('conflict.titleFolders', named, count)
+    case 'items':
+      return t('conflict.titleItems', named, count)
+  }
 })
 
 /** The names in a sentence: all of them up to three, then the first two and how many more. */
 const listed = computed(() => {
-  const names = props.clashes.map((clash) => clash.name)
+  const names = props.clashes.map((clash) => quoted(clash.name))
   if (names.length <= 3)
-    return new Intl.ListFormat('en', { type: 'conjunction' }).format(names)
-  return `${names.slice(0, 2).join(', ')} and ${names.length - 2} more`
+    return new Intl.ListFormat(pageLanguage(), { type: 'conjunction' }).format(names)
+  return t('conflict.namesMore', { first: names[0]!, second: names[1]!, count: formatCount(names.length - 2) })
+})
+
+/** What Skip does: uploads nothing, or only what else is going. */
+const skipSentence = computed(() => {
+  const { files, folders } = props.others
+  const count = files + folders
+  const named = { count: formatCount(count) }
+  if (count === 0)
+    return t('conflict.skipNothing')
+  switch (kindOf(files, folders)) {
+    case 'files':
+      return t('conflict.skipFiles', named, count)
+    case 'folders':
+      return t('conflict.skipFolders', named, count)
+    case 'items':
+      return t('conflict.skipItems', named, count)
+  }
 })
 
 const body = computed(() => {
   const one = props.clashes.length === 1
-  const them = one ? 'it' : 'them'
-  const { files, folders } = props.others
-  const count = files + folders
-  const rest = count === 0 ? 'nothing' : `the other ${countUnlessOne(count, noun(files, folders))}`
-  const answers = merges.value
-    ? `Merge keeps both, replacing files with the same names. Replace deletes ${them} first.`
-    : `Replace writes over ${them}.`
-  return `${listed.value} ${one ? 'is' : 'are'} already in ${props.directory}. ${answers} Skip leaves ${them} and uploads ${rest}.`
+  const named = { names: listed.value, directory: props.directory }
+  const already = one ? t('conflict.alreadyOne', named) : t('conflict.alreadyMany', named)
+  const answer = merges.value
+    ? one ? t('conflict.mergeOne') : t('conflict.mergeMany')
+    : one ? t('conflict.replaceOne') : t('conflict.replaceMany')
+  return t('conflict.body', { already, answer, skip: skipSentence.value })
 })
 </script>
 
@@ -79,9 +112,9 @@ const body = computed(() => {
       <p class="text-[13px] leading-5 text-fg-muted">{{ body }}</p>
     </div>
     <template #footer>
-      <Button @click="emit('skip')">Skip</Button>
-      <Button v-if="merges" @click="emit('merge')">Merge</Button>
-      <Button variant="danger" @click="emit('replace')">Replace</Button>
+      <Button @click="emit('skip')">{{ t('conflict.skip') }}</Button>
+      <Button v-if="merges" @click="emit('merge')">{{ t('conflict.merge') }}</Button>
+      <Button variant="danger" @click="emit('replace')">{{ t('conflict.replace') }}</Button>
     </template>
   </Dialog>
 </template>

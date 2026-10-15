@@ -6,6 +6,7 @@ import Dropdown from '../ui/Dropdown.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import Menu from '../ui/Menu.vue'
 import { shownBranchName, type BranchList } from './history'
+import { t } from './locales/text'
 
 /**
  * The branch the commit list shows, in the Change view's toolbar
@@ -37,7 +38,7 @@ const items = computed(() => {
       id: branch,
       icon: GitBranch,
       label: branch,
-      ...(branch === list.current ? { value: 'Checked Out' } : {}),
+      ...(branch === list.current ? { value: t('changes.checkedOut') } : {}),
     })),
   ]
 })
@@ -69,7 +70,7 @@ function choose(id: string, close: () => void): void {
         :selected-id="selectedId"
         :item-height="28"
         filterable
-        filter-placeholder="Search branches"
+        :filter-placeholder="t('changes.searchBranches')"
         @select="choose($event, close)"
       />
     </template>

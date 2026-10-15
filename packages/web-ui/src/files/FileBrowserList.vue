@@ -25,6 +25,7 @@ import { ICON_PX } from '../ui/icon-metrics'
 import type { FileBrowserSort, FileBrowserSortKey } from './file-browser-state'
 import { formatModified } from '../ui/dates'
 import { entryKind, formatBytes } from './format'
+import { t } from './locales/text'
 import { isHiddenName, isValidEntryName } from './paths'
 import type {
   FileBrowserEntry,
@@ -67,15 +68,15 @@ const emit = defineEmits<{
   cancelCreate: []
 }>()
 
-const columns: {
+const columns = computed<{
   key: FileBrowserSortKey
   label: TitleText
   class: string
-}[] = [
-  { key: 'name', label: 'Name', class: '' },
-  { key: 'modifiedAt', label: 'Date Modified', class: 'hidden @md:flex' },
-  { key: 'size', label: 'Size', class: 'text-right' },
-]
+}[]>(() => [
+  { key: 'name', label: t('list.name'), class: '' },
+  { key: 'modifiedAt', label: t('list.dateModified'), class: 'hidden @md:flex' },
+  { key: 'size', label: t('list.size'), class: 'text-right' },
+])
 
 const scroll = ref<InstanceType<typeof ScrollArea>>()
 const listEl = ref<HTMLElement>()
@@ -223,7 +224,7 @@ watch(
     if (!creating) {
       return
     }
-    newName.value = 'New folder'
+    newName.value = t('list.newFolderDefault')
     nextTick(() => {
       newNameInput.value?.focus()
       newNameInput.value?.select()
@@ -247,19 +248,19 @@ const failureCopy = computed<{ icon: Component; title: HeadlineText } | null>(()
   if (failure.kind === 'not-found')
     return {
       icon: FolderX,
-      title: 'This folder does not exist.',
+      title: t('list.notFound'),
     }
   if (failure.kind === 'permission')
     return {
       icon: Lock,
-      title: 'You do not have permission to open this folder.',
+      title: t('list.noPermission'),
     }
   if (failure.kind === 'offline')
     return {
       icon: WifiOff,
-      title: 'The device is offline.',
+      title: t('list.offline'),
     }
-  return { icon: FolderX, title: 'This folder could not be read.' }
+  return { icon: FolderX, title: t('list.unreadable') }
 })
 
 defineExpose({
@@ -312,7 +313,7 @@ defineExpose({
         ref="listEl"
         class="flex min-h-full flex-col gap-px outline-none"
         role="listbox"
-        :aria-label="mode === 'file' ? 'Files' : 'Folders'"
+        :aria-label="mode === 'file' ? t('list.files') : t('list.folders')"
         tabindex="0"
         :aria-activedescendant="selectedIndex >= 0 ? `${listId}-${selectedIndex}` : undefined"
         @focus="onFocus"
@@ -335,7 +336,7 @@ defineExpose({
               v-model="newName"
               :disabled="createPending"
               size="sm"
-              aria-label="New folder name"
+              :aria-label="t('list.newFolderName')"
               literal
               @keydown="onNewNameKeydown"
               @blur="!createPending && emit('cancelCreate')"
@@ -413,7 +414,7 @@ defineExpose({
           v-else-if="!entries.length && !creating"
           class="flex flex-1 select-none items-center justify-center py-10 text-chrome text-fg-subtle"
         >
-          Empty folder
+          {{ t('list.empty') }}
         </div>
       </div>
       <TypeSelectHint :query="typeSelect.query.value" :matched="typeSelect.matched.value" />

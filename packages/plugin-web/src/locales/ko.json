@@ -1,0 +1,37 @@
+{
+  "settings": {
+    "title": "웹 검색",
+    "keywords": "웹, 검색, Exa, API 키, 로그인"
+  },
+  "account": {
+    "label": "Exa 계정",
+    "signedIn": "로그인됨",
+    "notConnected": "연결되지 않음",
+    "signOut": "로그아웃",
+    "signIn": "로그인"
+  },
+  "key": {
+    "label": "API 키",
+    "description": "도메인과 날짜 같은 모든 필터를 사용할 수 있습니다.",
+    "unchecked": "확인되지 않음: {reason}",
+    "remove": "제거",
+    "placeholder": "Exa API 키",
+    "save": "저장"
+  },
+  "inUse": {
+    "label": "사용 중",
+    "key": "내 API 키",
+    "account": "내 Exa 계정",
+    "anonymous": "익명(제한됨)"
+  },
+  "refusals": {
+    "keyRefused": "Exa에서 이 키를 거부했습니다. 키를 전부 복사했는지 확인하십시오.",
+    "exaUnavailable": "Exa에서 키를 확인하는 검색에 응답하지 않았습니다. 다시 시도하십시오."
+  },
+  "errors": {
+    "signIn": "Exa 로그인을 시작할 수 없습니다",
+    "signOut": "Exa에서 로그아웃할 수 없습니다",
+    "saveKey": "키를 저장할 수 없습니다",
+    "removeKey": "키를 제거할 수 없습니다"
+  }
+}

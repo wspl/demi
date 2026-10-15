@@ -6,7 +6,8 @@ import ImagePreview from './ImagePreview.vue'
 import MediaPreview from './MediaPreview.vue'
 import { baseName } from '@demicodes/utils'
 import { mediaFactParts, type MediaFacts, type ShownFile } from './file-bar'
-import { MISSING_FILE, TOO_LARGE_NOTE } from './preview'
+import { t } from './locales/text'
+import { missingFile, tooLargeNote } from './preview'
 import { useShowing } from './showing'
 import type { FileContents, FileDescription } from './types'
 
@@ -63,7 +64,7 @@ const state = computed<State>(() => {
   if (entry.answer === 'gone')
     return { phase: 'missing' }
   if (entry.answer !== 'value' || description === undefined)
-    return { phase: 'failed', message: entry.failure?.message ?? 'The file could not be read.', requestId: entry.failure?.requestId ?? null }
+    return { phase: 'failed', message: entry.failure?.message ?? t('view.readFailedDetail'), requestId: entry.failure?.requestId ?? null }
   const failed = undecodable.value
   return failed?.path === props.path && failed.version === description.version
     ? { phase: 'undecodable', description }
@@ -146,22 +147,22 @@ defineExpose({
       v-else-if="state.phase === 'undecodable'"
       :name="name"
       :description="state.description"
-      note="This browser cannot show this file."
+      :note="t('view.browserCannotShow')"
       :download="contents.url(path, { download: true })"
     />
     <FileCard
       v-else-if="state.phase === 'too-large'"
       :name="name"
       :description="null"
-      :note="tooLarge ?? TOO_LARGE_NOTE"
+      :note="tooLarge ?? tooLargeNote()"
     />
     <RegionStatus
       v-else
       class="h-full"
       :status="state.phase === 'loading' ? 'loading' : 'failed'"
-      :icon="state.phase === 'missing' ? MISSING_FILE.icon : undefined"
-      :label="state.phase === 'loading' ? 'Reading…' : state.phase === 'missing' ? MISSING_FILE.label : 'Could not read this file.'"
-      loading-label="Reading…"
+      :icon="state.phase === 'missing' ? missingFile().icon : undefined"
+      :label="state.phase === 'loading' ? t('reading') : state.phase === 'missing' ? missingFile().label : t('view.readFailed')"
+      :loading-label="t('reading')"
       :detail="state.phase === 'failed' ? state.message : null"
       :request-id="state.phase === 'failed' ? state.requestId : null"
       :on-retry="shown.retry"

@@ -1,0 +1,37 @@
+{
+  "settings": {
+    "title": "Web 検索",
+    "keywords": "Web, 検索, Exa, API キー, サインイン"
+  },
+  "account": {
+    "label": "Exa アカウント",
+    "signedIn": "サインイン済み",
+    "notConnected": "未接続",
+    "signOut": "サインアウト",
+    "signIn": "サインイン"
+  },
+  "key": {
+    "label": "API キー",
+    "description": "ドメインや日付など、すべてのフィルターを使用できます。",
+    "unchecked": "未確認: {reason}",
+    "remove": "削除",
+    "placeholder": "Exa API キー",
+    "save": "保存"
+  },
+  "inUse": {
+    "label": "使用中",
+    "key": "API キー",
+    "account": "Exa アカウント",
+    "anonymous": "匿名 (制限あり)"
+  },
+  "refusals": {
+    "keyRefused": "Exa がこのキーを拒否しました。キー全体をコピーしたか確認してください。",
+    "exaUnavailable": "Exa がキーを確認する検索に応答しませんでした。もう一度お試しください。"
+  },
+  "errors": {
+    "signIn": "Exa のサインインを開始できませんでした",
+    "signOut": "Exa からサインアウトできませんでした",
+    "saveKey": "キーを保存できませんでした",
+    "removeKey": "キーを削除できませんでした"
+  }
+}

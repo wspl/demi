@@ -1,7 +1,8 @@
-import { baseName, pluralize } from '@demicodes/utils'
+import { baseName } from '@demicodes/utils'
 import { languageName } from '../editor/language'
 import { formatCount } from '../ui/numbers'
 import { entryKind, fileExtension, formatBytes } from './format'
+import { t } from './locales/text'
 import { formatZoom } from './image-zoom'
 import { hasSourceView, previewKind } from './preview'
 import type { PixelSize } from './thumbnail'
@@ -56,7 +57,8 @@ function lineCount(text: string): number {
   return text === '' ? 0 : text.replace(/(\r\n?|\n)$/, '').split(/\r\n?|\n/).length
 }
 
-const MEDIA_NOUNS = { image: 'Image', video: 'Video', audio: 'Audio', pdf: 'Document' } as const
+/** The catalogue's text for a media file's kind, `kind.image`. */
+const MEDIA_KINDS = { image: 'kind.image', video: 'kind.video', audio: 'kind.audio', pdf: 'kind.document' } as const
 
 /**
  * What a file is, in full: *PNG Image*, *TypeScript*, *Plain Text* for text
@@ -67,10 +69,10 @@ function kindName(path: string, shown: ShownFile): string {
   const kind = previewKind(path)
   const asText = shown.as === 'text' || shown.as === 'start'
   if (kind !== 'text' && kind !== 'markdown' && !asText)
-    return `${fileExtension(name) ?? ''} ${MEDIA_NOUNS[kind]}`.trim()
+    return t(MEDIA_KINDS[kind], { extension: fileExtension(name) ?? '' }).trim()
   if (shown.as === 'card')
     return entryKind(name, false)
-  return languageName(path) ?? 'Plain Text'
+  return languageName(path) ?? t('kind.plainText')
 }
 
 /** The facts after a file's kind. */
@@ -78,7 +80,7 @@ function facts(shown: ShownFile): string[] {
   switch (shown.as) {
     case 'text': {
       const lines = lineCount(shown.text)
-      return [`${formatCount(lines)} ${pluralize(lines, 'line')}`, formatBytes(new TextEncoder().encode(shown.text).length)]
+      return [t('kind.lines', { count: formatCount(lines) }, lines), formatBytes(new TextEncoder().encode(shown.text).length)]
     }
     // Its lines are not known: the page holds only the start.
     case 'start':

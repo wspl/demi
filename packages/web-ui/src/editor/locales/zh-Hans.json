@@ -1,0 +1,21 @@
+{
+  "search": {
+    "label": "查找",
+    "matchCase": "区分大小写",
+    "wholeWord": "全字匹配",
+    "regexp": "使用正则表达式",
+    "previous": "上一个匹配项",
+    "next": "下一个匹配项"
+  },
+  "syntaxColorsUnavailable": "语法着色不可用",
+  "diff": {
+    "unchanged": "{count} 个未更改的行",
+    "noNewline": "文件末尾没有换行符"
+  },
+  "fold": {
+    "folded": "已折叠的代码",
+    "unfold": "展开",
+    "foldLine": "折叠行",
+    "unfoldLine": "展开行"
+  }
+}

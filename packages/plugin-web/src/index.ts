@@ -5,6 +5,7 @@
 import { Globe } from '@lucide/vue'
 import { definePage } from '@demicodes/plugin-sdk'
 import { PLUGIN } from './generated/plugin'
+import { t } from './locales/text'
 import WebSearchSettings from './WebSearchSettings.vue'
 
 export * from './generated/plugin'
@@ -13,11 +14,16 @@ export const webPage = definePage({
   plugin: PLUGIN,
   settings: {
     group: 'Agent',
+    // The label and keywords are read where the settings list them, so a language chosen later words them too.
     item: {
       id: 'web-search',
-      label: 'Web Search',
+      get label() {
+        return t('settings.title')
+      },
       icon: Globe,
-      keywords: ['web', 'search', 'Exa', 'API key', 'sign in'],
+      get keywords() {
+        return t('settings.keywords').split(', ')
+      },
     },
     component: WebSearchSettings,
   },

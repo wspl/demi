@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import FileCard from './FileCard.vue'
 import { baseName } from '@demicodes/utils'
-import { TOO_LARGE_NOTE } from './preview'
+import { tooLargeNote } from './preview'
 import { useShowing } from './showing'
 import type { FileContents } from './types'
 
@@ -34,7 +34,7 @@ const download = computed(() => tooLarge.value
   <FileCard
     :name="baseName(path)"
     :description="description"
-    :note="tooLarge ? props.tooLarge ?? TOO_LARGE_NOTE : note"
+    :note="tooLarge ? props.tooLarge ?? tooLargeNote() : note"
     :download="download"
   />
 </template>

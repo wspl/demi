@@ -8,6 +8,7 @@ import type { FileBrowserEntry, FileBrowserSource } from './types'
 import { isHiddenName, joinPath } from './paths'
 import { DEFAULT_SORT, sortEntries } from './file-browser-state'
 import { failureShown } from './file-cache'
+import { t } from './locales/text'
 import { useShowing } from './showing'
 
 /**
@@ -55,11 +56,11 @@ function isCurrent(entry: FileBrowserEntry): boolean {
     </div>
     <MenuItem
       v-else-if="failure"
-      :label="failure.kind === 'permission' ? 'No Access' : 'Unavailable'"
+      :label="failure.kind === 'permission' ? t('directoryMenu.noAccess') : t('directoryMenu.unavailable')"
       :note="failure.message"
       disabled
     />
-    <MenuItem v-else-if="entries.length === 0" label="Empty" disabled />
+    <MenuItem v-else-if="entries.length === 0" :label="t('directoryMenu.empty')" disabled />
     <template v-else>
       <MenuItem
         v-for="entry in entries"
