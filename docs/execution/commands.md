@@ -348,7 +348,7 @@ installs a manifest before its job; this avoids revalidating the same command
 schemas before every shell invocation. The runner keeps every manifest
 installed on the connection, by its hash, until the connection ends, and a
 job's start names the hash it pins: the job runs with exactly that manifest,
-whichever was installed last. Jobs that start at once on one connection
+whatever was installed after it. Jobs that start at once on one connection
 therefore never depend on each other's order. For example, a conversation's
 root and its subagent, whose manifests differ in the agent commands, start a
 command at the same moment on the same laptop: the runner installs both
