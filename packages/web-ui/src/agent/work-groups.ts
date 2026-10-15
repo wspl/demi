@@ -1,4 +1,6 @@
+import type { HeldBlock, TextArrival } from '@demicodes/conversation-client'
 import type { MessageListBlock } from './pending-steers'
+import type { ShownBlock } from './whole-blocks'
 import { upperFirst } from '@demicodes/utils'
 import { t } from './locales/text'
 import { parseToolCallInput, storedShellView } from './block-helpers'
@@ -55,6 +57,11 @@ export function isNoticeStep(step: WorkStep): step is NoticeStep {
   return step.type === 'wakeup' || step.type === 'agent_message'
 }
 
+/** Whether `step` shows the block `id`: it is that block, or thinking that joins it. */
+export function stepHolds(step: WorkStep & Pick<ShownBlock, 'parts'>, id: string): boolean {
+  return step.id === id || (step.parts?.some((part) => part.id === id) ?? false)
+}
+
 /** What names a step across its forms: a call keeps its key from being written to its block, so its row never rolls again. */
 export function stepKey(step: WorkStep): string {
   switch (step.type) {
@@ -84,13 +91,12 @@ function isEmptyThinking(block: MessageListBlock): boolean {
  * being written after them. A thinking block without text shows only while
  * it is the newest block of a running turn, as what the agent is doing;
  * once anything follows it or the turn ends, it has nothing to show and
- * goes. The steps at the end
- * of a running turn are one group from the first step on, each new step
+ * goes. Thinking blocks next to each other are one step. The steps at the
+ * end of a running turn are one group from the first step on, each new step
  * showing over the one before in the same row, so a step that joins never
- * adds a row that then merges into it. Once they ended, they stay one group
- * when they hold a call, a notice or a receipt, or are a lone step; only
- * thinking alone falls apart into its steps. A group of a lone call, notice
- * or receipt shows as that step's own row (`WorkGroupBlock`).
+ * adds a row that then merges into it; ended, they stay one group, thinking
+ * alone a lone step. A group of a lone step shows as that step's own row
+ * (`WorkGroupBlock`).
  *
  * A group is named after the run's first block, as `stepKey` names it, so
  * the row keeps its name while the run grows, a call being written becomes
@@ -117,10 +123,10 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
     }
     const next = blocks[end]
     const live = running && next === undefined
-    const steps = blocks.slice(index, end).filter((step, at, run): step is WorkStep =>
-      isWorkStep(step) && !(isEmptyThinking(step) && !(live && at === run.length - 1)))
-    const grouped = steps.length > 0 && (live || steps.length === 1 || steps.some((step) => step.type !== 'thinking'))
-    if (grouped) {
+    const steps = joinThinking(blocks.slice(index, end).filter((step, at, run): step is WorkStep =>
+      isWorkStep(step) && !(isEmptyThinking(step) && !(live && at === run.length - 1))))
+    // Thinking alone is one step once joined, so every run that shows anything is a row.
+    if (steps.length > 0) {
       rows.push({
         type: 'work_group',
         id: workRowId(block),
@@ -129,15 +135,73 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
         endedAt: next && 'createdAt' in next ? next.createdAt : null,
       })
     }
-    else {
-      rows.push(...steps)
-    }
     index = end
   }
   return rows
 }
 
 type ThinkingStep = Extract<WorkStep, { type: 'thinking' }>
+type HeldThinking = Extract<HeldBlock, { type: 'thinking' }>
+
+/**
+ * Thinking blocks next to each other, with no other step between them, as
+ * the one step the page shows them as (`runtime.md` § Work groups): named
+ * and started as the first, so its row stays the row it was when the next
+ * one streams in and it ends where the last ends, which makes its time
+ * theirs together; its text theirs in order, a paragraph apart; light while
+ * any of its `parts` is, which an opened row reads whole. Each stays its
+ * own block in the transcript.
+ */
+function joinThinking(steps: readonly WorkStep[]): WorkStep[] {
+  const joined: WorkStep[] = []
+  let parts: HeldThinking[] = []
+  const flush = () => {
+    if (parts.length === 1)
+      joined.push(parts[0]!)
+    else if (parts.length > 1)
+      joined.push(joinedThinking(parts))
+    parts = []
+  }
+  for (const step of steps) {
+    if (step.type === 'thinking') {
+      parts.push(step)
+      continue
+    }
+    flush()
+    joined.push(step)
+  }
+  flush()
+  return joined
+}
+
+/** The step `parts`, thinking blocks next to each other, show as. */
+function joinedThinking(parts: readonly HeldThinking[]): HeldThinking & { parts: readonly HeldThinking[] } {
+  let text = ''
+  // Each piece of a part's text arrived where it now stands in the joined
+  // text; what was there before the part, the separator included, had
+  // arrived already, as the text of a part read whole has.
+  const arrivals: TextArrival[] = []
+  for (const part of parts) {
+    if (part.text.trim() === '')
+      continue
+    if (text !== '')
+      text += '\n\n'
+    const offset = text.length
+    arrivals.push({ end: offset, at: Number.NEGATIVE_INFINITY })
+    for (const arrival of part.arrivals ?? [])
+      arrivals.push({ end: offset + arrival.end, at: arrival.at })
+    text += part.text
+  }
+  const { light: _light, arrivals: _arrivals, ...first } = parts[0]!
+  return {
+    ...first,
+    text,
+    textLength: parts.reduce((sum, part) => sum + (part.textLength ?? 0), 0),
+    ...(parts.some((part) => part.light) ? { light: true } : {}),
+    ...(parts.some((part) => part.arrivals) ? { arrivals } : {}),
+    parts,
+  }
+}
 type CallBlockStep = Extract<WorkStep, { type: 'tool_call' }>
 type PendingStep = Extract<WorkStep, { type: 'pending_call' }>
 

@@ -1,5 +1,6 @@
 import { reactive, watch } from 'vue'
 import type { MessageListBlock } from './pending-steers'
+import { stepHolds } from './work-groups'
 
 /**
  * Where a block brought into view shows: `row`, the list's row that holds
@@ -46,7 +47,8 @@ export function useOpenRuns(rows: () => readonly MessageListBlock[], scope: () =
   function reveal(id: string): RevealTarget | null {
     for (const row of rows()) {
       if (row.type === 'work_group') {
-        if (!row.steps.some((step) => step.id === id)) {
+        const step = row.steps.find((each) => stepHolds(each, id))
+        if (!step) {
           continue
         }
         // A run of one step is that step's own row: it is marked as it is.
@@ -54,7 +56,7 @@ export function useOpenRuns(rows: () => readonly MessageListBlock[], scope: () =
           return { row: row.id, step: null }
         }
         open.add(row.id)
-        return { row: row.id, step: id }
+        return { row: row.id, step: step.id }
       }
       if (row.id === id) {
         return { row: id, step: null }

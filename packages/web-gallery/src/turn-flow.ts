@@ -113,6 +113,8 @@ const WORK_STEPS: WorkStep[] = [
   { kind: 'think', text: '' },
   { kind: 'call', description: 'Trial-run three mjsunit tests on d8.wasm', script: 'tools/run-tests.sh mjsunit/array-sort', lines: ['tools/run-tests.sh: Permission denied'], exitCode: 126 },
   { kind: 'think', text: 'The runner script has no execute bit. Set it, then point the status file at the new suite paths.' },
+  // A model may think twice in a row; the page shows the two as one step.
+  { kind: 'think', text: 'The status file is the only other place that names the old paths, so one edit covers it.' },
   {
     kind: 'call',
     description: 'Make the runner script executable',
