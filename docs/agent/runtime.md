@@ -1744,8 +1744,9 @@ off the screen. The transcript shows each run of consecutive steps as one
 row, as Cursor and Claude's own apps do. For example, the user asks to fix
 failing tests, and the agent checks a directory, runs the tests, sets a
 script's execute bit, patches a status file and runs the suite again, with
-thinking between. While it works, one row shows the newest step, each new one
-rolling over the one before; once the answer comes, the row reads *Ran 5
+thinking between. While it works, the row shows what is done above what runs
+now, *Ran 3 commands* over the fourth command, so the reader sees the work
+behind the newest step; once the answer comes, the row reads *Ran 5
 commands*, and a click opens it to every step.
 
 - Which blocks make a run the backend decides, once: each block of a run
@@ -1783,9 +1784,29 @@ commands*, and a click opens it to every step.
 - The run at the end of a running turn is one row, from its first step until
   the turn ends or another block follows the run: the same row throughout,
   so a step that joins never adds a row that then merges into it. Folded, it
-  is its newest step, a step that arrives replacing the one before, a call
-  being written rolling over to its description once written, and the call's
-  block, which then takes its place, keeping that face. While it holds a lone
+  has two lines: the steps before the newest, read as an ended run reads
+  (below), *Ran 3 commands, checked 1 command*, and under it the newest
+  step, its face and tag as a lone step's. For example:
+
+  ```text
+  ls tests/                       2s      one step: one line
+  Ran 1 command                           a second step arrives: the first
+  bun test auth                   12s     joins the line above
+  Ran 1 command                           it ends; the turn waits for the
+  bun test auth               Failed      model, and the step stays
+  Ran 2 commands                          the next step arrives, and the
+  chmod +x scripts/run.sh                 count takes the one before
+  Ran 3 commands                          the answer comes: one line, as an
+                                          ended run reads
+  ```
+
+  The newest step stays on the second line until a step replaces it or the
+  run ends, a call being written rolling over to its description once
+  written, and the call's block, which then takes its place, keeping that
+  face. The first line shows once a step before the newest says something:
+  steps of thinking alone read nothing, so a run of thinking and one call is
+  still one line. Only the second line shimmers, as what runs; the first is
+  done. A click on either line opens the run. While it holds a lone
   call, opening it shows the call, not a stack of one step, as an ended lone
   call does. From its second step on, opened, the row stands still as a
   stack and what runs, *Running 4 commands*, with the steps under it, and
@@ -1821,8 +1842,8 @@ commands*, and a click opens it to every step.
   ended, as one the agent left running and ended its turn on, wears its
   time on the ended run's row too, *Ran 3 commands* then the time tag, until
   it ends, so a folded row never hides that something still runs.
-- A running run's folded face is its newest step's, its tag included: the
-  time while the step's command runs, and *Failed* or *Stopped* once it
+- A running run's second line is its newest step's face, its tag included:
+  the time while the step's command runs, and *Failed* or *Stopped* once it
   ended so, while the turn waits for the model.
 - Folded, the files the run's calls changed show under the row, each once,
   counted from its two ends within the run ([What the conversation
