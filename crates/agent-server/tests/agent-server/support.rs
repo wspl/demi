@@ -457,12 +457,18 @@ pub fn named_node(store: &MemoryTreeStore, run: &CommandRun) -> NodeId {
 struct NodePort {
     stdout: RefCell<Vec<u8>>,
     stderr: RefCell<Vec<u8>>,
+    /// Whether the calling process reads its stdout; when not, each write
+    /// fails, as a relayed pipe that broke does.
+    read: bool,
 }
 
 impl PortTransport for NodePort {
     fn request(&self, request: PortRequest) -> LocalBoxFuture<'_, Result<PortResponse, PortError>> {
         Box::pin(async move {
             match request {
+                PortRequest::Stdout { .. } if !self.read => {
+                    Err(PortError::Ended("the stdout pipe broke".into()))
+                }
                 PortRequest::Stdout { bytes } => {
                     self.stdout.borrow_mut().extend_from_slice(bytes.as_bytes());
                     Ok(PortResponse::Written {})
@@ -495,7 +501,20 @@ pub async fn agent_call<H: HostResolver>(
     cancel: CancellationToken,
 ) -> Result<CommandRun, RpcError> {
     let path: Vec<&str> = std::iter::once("agent").chain(verb.split(' ')).collect();
-    demi_call(server, node, &path, args, json, cancel).await
+    demi_call(server, node, &path, args, json, cancel, true).await
+}
+
+/// Runs `demi shell <verb>` as a job of `node`, whose call `cancel`
+/// cancels; `read` says whether the calling process reads its stdout.
+pub async fn shell_call<H: HostResolver>(
+    server: &Rc<AgentServer<H>>,
+    node: &NodeId,
+    verb: &str,
+    args: Value,
+    cancel: CancellationToken,
+    read: bool,
+) -> Result<CommandRun, RpcError> {
+    demi_call(server, node, &["shell", verb], args, false, cancel, read).await
 }
 
 /// `demi shell <verb>` run to its end as a job of `node`.
@@ -505,7 +524,7 @@ pub async fn shell_command<H: HostResolver>(
     verb: &str,
     args: Value,
 ) -> CommandRun {
-    demi_call(server, node, &["shell", verb], args, false, CancellationToken::new())
+    shell_call(server, node, verb, args, CancellationToken::new(), true)
         .await
         .expect("the call is dispatched")
 }
@@ -518,6 +537,7 @@ async fn demi_call<H: HostResolver>(
     args: Value,
     json: bool,
     cancel: CancellationToken,
+    read: bool,
 ) -> Result<CommandRun, RpcError> {
     let live = server
         .node(&conversation(), node)
@@ -544,6 +564,7 @@ async fn demi_call<H: HostResolver>(
     let port = Rc::new(NodePort {
         stdout: RefCell::new(Vec::new()),
         stderr: RefCell::new(Vec::new()),
+        read,
     });
     let path = invocation.path.join(" ");
     // A failure is told as the backend's dispatcher tells it: a runtime

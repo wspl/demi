@@ -35,7 +35,7 @@ use crate::support::{
     AGENT_CALL, CommandRun, Fixture, Gate, LiveHosts, Model, ScriptedShells, TestProduct, agent, agent_call, conversation,
     held, is_idle, is_pending_steers, listed_model, named_node, open, request_text, scripted_host_server,
     scripted_host_server_in, send,
-    shell_command, texts, until,
+    shell_call, shell_command, texts, until,
 };
 
 pub(crate) fn said(text: &str) -> Turn {
@@ -1013,6 +1013,83 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     shells.last().end();
     page.next_until(is_child_command(&child, false)).await;
     second.next_until(is_child_command(&child, false)).await;
+}
+
+// A child starts its tests, looks at them with `demi shell status 1 --wait
+// 10m`, and ends its turn to wait for their end; the look never reaches
+// the child, since its call was stopped or its stdout broke. When the
+// tests end, the child is woken with their end report and answers anew,
+// rather than being closed with its old "waiting" answer as its result:
+// an end counts as seen only once a look showed it to the model
+// (`runtime.md` § Command reports). Once a stopped wait survived its call,
+// showed the end to no one and marked it seen before the end report, which
+// reads the stored end, was made, and the supervisor closed the idle child;
+// the work silently stopped. The store holds that read here until the look
+// is over. Under a second on the paused clock, each.
+async fn a_status_wait_that_reaches_no_one_leaves_the_end_report(stopped: bool) {
+    let model = Model::default();
+    model.child(
+        "task test",
+        [
+            Turn::Events(vec![event::tool_call(
+                "call-1",
+                "shell",
+                json!({"script": "test", "description": "Run the tests", "intervalMs": null}),
+            )]),
+            said("waiting"),
+            said("tests passed"),
+        ],
+    );
+    model.root([said("noted")]);
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide_runtime("stub", model.clone());
+    let shells = Rc::new(ScriptedShells::default());
+    let store = MemoryTreeStore::new();
+    let server = scripted_host_server(providers, shells.clone(), store.clone());
+    let mut page = TestClient::connect(&server, &conversation());
+    page.send(open()).await;
+    page.next_until(is_pending_steers).await;
+    let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task test" })).await;
+    let child = named_node(&store, &spawned);
+    wait_for_execution(&server, "waiting").await;
+
+    // The look waits for the tests' end; a stopped call is driven on, as
+    // the relay awaits a cancelled call's handler to its end.
+    let reads = store.hold_command_ends();
+    let cancel = CancellationToken::new();
+    let mut look = Box::pin(shell_call(
+        &server,
+        &child,
+        "status",
+        json!({ "id": ["1"], "wait": "10m" }),
+        cancel.clone(),
+        !stopped,
+    ));
+    assert!(futures_util::poll!(&mut look).is_pending());
+    if stopped {
+        cancel.cancel();
+    }
+    shells.last().exit_with(Vec::new());
+    // Its result is the stopped or broken call's, which reaches no one.
+    let _ = look.await;
+    reads.release();
+    page.next_until(is_closed(&child)).await;
+
+    let requests = model.requests_of("task test");
+    assert_eq!(requests.len(), 3, "the end woke the child");
+    let woken = request_text(&requests[2]);
+    assert!(woken.contains("Command 1 (Run the tests) ended with exit code 0."), "{woken}");
+    assert_eq!(
+        store.record(&child).and_then(|record| record.closed).map(|close| close.phase),
+        Some(ClosePhase::Completed {
+            result: "tests passed".into()
+        })
+    );
+}
+
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_stopped_status_wait_leaves_the_end_report() {
+    a_status_wait_that_reaches_no_one_leaves_the_end_report(true).await;
 }
 
 // The backend restarted while an aborted child's command, and its aborted

@@ -36,6 +36,10 @@ use crate::AgentServer;
 /// The characters of one line a page shows.
 const LINE_CHARS: usize = 2_000;
 
+/// The exit status of a call the runner cancelled (`commands.md` § Handle
+/// an `rpc` call); its relay ends it with the cause all the same.
+const CANCELLED: u8 = 130;
+
 /// The size of the writes `--raw` makes.
 const RAW_CHUNK_BYTES: usize = 1024 * 1024;
 
@@ -189,7 +193,15 @@ async fn status<H: HostResolver>(
             Ok(wait) => Duration::from_millis(wait),
             Err(reason) => return fail(&format!("--wait {text}: {reason}")),
         };
-        wait_for_ends(&call.tree, &args.id, wait).await;
+        // A stopped call stops waiting, and lets go of its look with it:
+        // nobody reads what it would show, and a handler left waiting would
+        // show the end to no one (`runtime.md` § Command reports). A call
+        // stopped as the commands end is stopped all the same.
+        tokio::select! {
+            biased;
+            () = port.cancelled() => return Ok(CANCELLED),
+            () = wait_for_ends(&call.tree, &args.id, wait) => {}
+        }
     }
     let mut failed = false;
     let mut shown = Vec::new();
