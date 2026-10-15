@@ -71,46 +71,50 @@ const surface = ref<InstanceType<typeof SessionSurface>>()
 
 <template>
   <section class="flex h-full min-h-0 flex-col bg-surface" data-shared-conversation>
-    <header class="flex h-11 shrink-0 items-center gap-1.5 px-3">
-      <template v-if="agent !== null">
-        <IconButton
-          :icon="ChevronLeft"
-          variant="ghost"
-          :aria-label="t('share.back')"
-          data-shared-back
-          @click="emit('openAgent', null)"
-        />
-        <AgentMark :phase="null" :size="ICON_PX.in28" />
-        <h1 class="min-w-0 truncate text-chrome font-normal text-fg">
-          {{ shownAgent ? sharedAgentName(shownAgent) : '' }}
-        </h1>
-        <span v-if="shownAgent?.profile" class="shrink-0 truncate text-chrome text-fg-subtle">{{ shownAgent.profile }}</span>
-      </template>
-      <h1 v-else class="min-w-0 truncate text-chrome font-normal text-fg">{{ shownTitle }}</h1>
-    </header>
     <SessionSurface ref="surface" class="min-h-0">
-      <AgentMessageList
-        :key="agent ?? 'root'"
-        class="h-full"
-        :conversation-id="`share:${agent ?? 'root'}`"
-        :node="agent === null ? null : String(agent)"
-        :blocks="shown.blocks"
-        :at-start="edges.atStart"
-        :at-end="edges.atEnd"
-        :summaries="summaries"
-        :pending-steers="[]"
-        :queue="[]"
-        phase="idle"
-        :load="load"
-        :load-error="loadError"
-        :bottom-offset="surface?.dockHeight ?? 0"
-        :persisted-scroll-state="undefined"
-        read-only
-        hide-fork
-        @read-before="emit('readBefore')"
-        @read-after="emit('readAfter')"
-        @retry-load="emit('retryLoad')"
-      />
+      <div class="flex h-full flex-col">
+        <!-- The title stands in the transcript's column, its text where the rows' text starts. -->
+        <header class="flex h-11 shrink-0 items-center gap-1.5 px-[calc(var(--session-gutter)+var(--agent-pad-x,2rem))]">
+          <template v-if="agent !== null">
+            <IconButton
+              class="-ml-2"
+              :icon="ChevronLeft"
+              variant="ghost"
+              :aria-label="t('share.back')"
+              data-shared-back
+              @click="emit('openAgent', null)"
+            />
+            <AgentMark :phase="null" :size="ICON_PX.in28" />
+            <h1 class="min-w-0 truncate text-chrome font-normal text-fg">
+              {{ shownAgent ? sharedAgentName(shownAgent) : '' }}
+            </h1>
+            <span v-if="shownAgent?.profile" class="shrink-0 truncate text-chrome text-fg-subtle">{{ shownAgent.profile }}</span>
+          </template>
+          <h1 v-else class="min-w-0 truncate text-chrome font-normal text-fg">{{ shownTitle }}</h1>
+        </header>
+        <AgentMessageList
+          :key="agent ?? 'root'"
+          class="min-h-0 flex-1"
+          :conversation-id="`share:${agent ?? 'root'}`"
+          :node="agent === null ? null : String(agent)"
+          :blocks="shown.blocks"
+          :at-start="edges.atStart"
+          :at-end="edges.atEnd"
+          :summaries="summaries"
+          :pending-steers="[]"
+          :queue="[]"
+          phase="idle"
+          :load="load"
+          :load-error="loadError"
+          :bottom-offset="surface?.dockHeight ?? 0"
+          :persisted-scroll-state="undefined"
+          read-only
+          hide-fork
+          @read-before="emit('readBefore')"
+          @read-after="emit('readAfter')"
+          @retry-load="emit('retryLoad')"
+        />
+      </div>
     </SessionSurface>
     <footer class="shrink-0 py-2 text-center text-[12px] text-fg-subtle">{{ t('share.footer') }}</footer>
   </section>
