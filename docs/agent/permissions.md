@@ -221,7 +221,7 @@ not yet paired, and names it by its pairing code: Allow lets the
 conversation pair that code, so the agent's next `demi host pair` with it is
 dispatched, and the device it pairs joins the list. Another code asks again. The request holds the host
 as `host`, beside the categories, and one command that needs both, such as
-`demi conversation move ledable-app` into a project on a host the
+`demi conversation move website` into a project on a host the
 conversation lacks without Organize Conversations, is one request:
 
 ```text
@@ -230,7 +230,7 @@ conversation lacks without Organize Conversations, is one request:
 | build-box?                                                    |
 |                                                               |
 | The agent ran                                                 |
-|   demi conversation move ledable-app                          |
+|   demi conversation move website                          |
 |                                                               |
 | ▸ Organize Conversations                                      |
 |   Organize Conversations lets the agents of this ...          |

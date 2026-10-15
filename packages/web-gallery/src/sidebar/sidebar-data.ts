@@ -44,7 +44,7 @@ export function demoProjects(): SidebarProject[] {
       path: '/Users/alex/Projects/shop'
     },
     {
-      id: 'p-ledable',
+      id: 'p-photo-album',
       // The only project of its name: the mark alone shows its device, whose name shows in its tip.
       name: 'photo-album',
       hostKind: 'device',

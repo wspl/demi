@@ -153,9 +153,9 @@ describe('the end of a running turn', () => {
 })
 
 // `runtime.md` § Work groups: thinking blocks next to each other show as one
-// step. Production conversation ca9f8a0a, blocks 446 and 447: one Claude
-// response thought twice in a row, 4 s then 1 s, and ran a shell call; the
-// opened run showed Thought for 4s and Thought for 1s over the call.
+// step. One Claude response thought twice in a row, 4 s then 1 s, and ran a
+// shell call; the opened run showed Thought for 4s and Thought for 1s over
+// the call.
 describe('thinking blocks next to each other', () => {
   const at = (seconds: number) => new Date(Date.parse(createdAt) + seconds * 1000).toISOString()
   const thought = (id: string, text: string, second: number): Block => ({ ...thinking(id, text), createdAt: at(second) })

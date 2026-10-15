@@ -689,18 +689,18 @@ async fn a_move_into_a_project_on_a_host_out_of_reach_asks_for_the_category_and_
         provider,
     } = opened(&scripts).await;
     let studio = backend.pair(&master, "studio").await;
-    let ledable = project(&backend, &master, &studio, "ledable-app").await;
+    let website = project(&backend, &master, &studio, "website").await;
 
     // Neither the category nor the host: one request of both, and the
     // refusal names both actions.
     scripts.root(
         FIRST,
         vec![
-            shell("t1", "demi conversation move ledable-app; echo exit=$?"),
+            shell("t1", "demi conversation move website; echo exit=$?"),
             say("I asked the user"),
         ],
     );
-    socket.chat("m1", "Move into ledable-app").await;
+    socket.chat("m1", "Move into website").await;
     let refused = last_asked(&scripts, FIRST);
     assert!(
         refused.contains("demi conversation move: this conversation needs the user's permission to organize conversations and reach studio; the request was sent to the user"),
@@ -725,7 +725,7 @@ async fn a_move_into_a_project_on_a_host_out_of_reach_asks_for_the_category_and_
     scripts.root(
         FIRST,
         vec![
-            shell("t2", "demi conversation move ledable-app"),
+            shell("t2", "demi conversation move website"),
             say("moving"),
         ],
     );
@@ -735,7 +735,7 @@ async fn a_move_into_a_project_on_a_host_out_of_reach_asks_for_the_category_and_
     let woken = scripts.asked(|session| session == FIRST);
     assert!(
         woken[woken.len() - 2].contains(
-            "The user allowed this conversation to organize conversations and reach studio; the command `demi conversation move ledable-app` can now run."
+            "The user allowed this conversation to organize conversations and reach studio; the command `demi conversation move website` can now run."
         ),
         "{}",
         woken[woken.len() - 2]
@@ -747,7 +747,7 @@ async fn a_move_into_a_project_on_a_host_out_of_reach_asks_for_the_category_and_
     );
     assert_eq!(granted(&harness, FIRST), ["conversation.organize"]);
     eventually("the move is made", || async {
-        target_of(&harness, FIRST) == ("workspace".to_owned(), Some(ledable.clone()))
+        target_of(&harness, FIRST) == ("workspace".to_owned(), Some(website.clone()))
     })
     .await;
 
@@ -767,9 +767,9 @@ async fn a_move_into_a_project_on_a_host_out_of_reach_asks_for_the_category_and_
     second.open().await;
     scripts.root(
         SECOND,
-        vec![shell("s1", "demi conversation move ledable-app"), say("asked")],
+        vec![shell("s1", "demi conversation move website"), say("asked")],
     );
-    second.chat("n1", "Move into ledable-app").await;
+    second.chat("n1", "Move into website").await;
     assert!(
         last_asked(&scripts, SECOND).contains("permission to reach studio; the request"),
         "{}",
