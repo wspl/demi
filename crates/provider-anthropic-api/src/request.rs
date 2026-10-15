@@ -7,7 +7,7 @@ use std::borrow::Cow;
 
 use demi_provider_common::{
     InferenceItem, InferenceRequest, MediaBytes, Medium, PromptCache, ResultPart, ToolDefinition,
-    UserPart, VendorPolicy, json_body, thinking::effort_budget,
+    UserPart, VendorPolicy, json_body, thinking::effort_budget, wire::messages,
 };
 use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, is_blank};
 use serde::Serialize;
@@ -127,12 +127,12 @@ enum Block<'a> {
         title: &'a str,
     },
     ToolUse {
-        id: &'a str,
+        id: Cow<'a, str>,
         name: &'a str,
         input: Cow<'a, serde_json::Value>,
     },
     ToolResult {
-        tool_use_id: &'a str,
+        tool_use_id: Cow<'a, str>,
         content: Vec<ResultBlock<'a>>,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         is_error: bool,
@@ -412,7 +412,7 @@ fn item_content(item: &InferenceItem) -> Option<(Role, Vec<Content<'_>>)> {
             (
                 Role::Assistant,
                 vec![Block::ToolUse {
-                    id: tool_use_id,
+                    id: messages::tool_use_id(tool_use_id),
                     name: tool_name,
                     input,
                 }],
@@ -425,7 +425,7 @@ fn item_content(item: &InferenceItem) -> Option<(Role, Vec<Content<'_>>)> {
         } => (
             Role::User,
             vec![Block::ToolResult {
-                tool_use_id,
+                tool_use_id: messages::tool_use_id(tool_use_id),
                 content: tool_result_content(output),
                 is_error: *is_error,
             }],

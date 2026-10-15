@@ -5,7 +5,7 @@ use std::{num::NonZeroU32, sync::Arc};
 use demi_provider_common::{
     InferenceItem, MediaBytes, Medium, PromptCache, Provider, ProviderEvent, ResultPart,
     RuntimeEnv, ToolDefinition, UserPart, VendorPolicy,
-    testing::{MockVendor, inference_request, property_order, titled_tool},
+    testing::{MockVendor, every_vendor_accepts, inference_request, property_order, titled_tool},
 };
 use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary};
 use serde_json::{Value, json};
@@ -623,4 +623,47 @@ async fn media_travels_inline_and_what_the_api_cannot_read_becomes_text() {
             { "type": "document", "source": { "type": "base64", "media_type": "application/pdf", "data": "JVBERg==" }, "title": "document-3.pdf" },
         ])
     );
+}
+
+/// A Codex call after a model switch, stored as `call_…|fc_…`: its call and
+/// its result go to the vendor under one id the vendor's pattern accepts,
+/// so they pair, and the same request sends the same bytes again, so the
+/// cached prefix holds.
+// Cost: two requests to a local stub, a few milliseconds.
+#[tokio::test]
+async fn a_codex_call_replays_under_an_id_the_vendor_accepts_the_same_each_time() {
+    let codex_id = "call_7QmZ|fc_68e0a1";
+    let vendor = MockVendor::start().await;
+    let mut runtime = runtime_with(&vendor, VendorPolicy::default());
+    let mut request = inference_request();
+    request.items = vec![
+        InferenceItem::UserMessage { content: text("list") },
+        InferenceItem::ToolUse {
+            model_id: "gpt-6.1-sol".into(),
+            tool_use_id: codex_id.into(),
+            tool_name: "shell".into(),
+            input: json!({ "script": "ls" }),
+        },
+        InferenceItem::ToolResult {
+            tool_use_id: codex_id.into(),
+            output: vec![ResultPart::Text("a.txt".into())],
+            is_error: false,
+        },
+        InferenceItem::UserMessage { content: text("continue") },
+    ]
+    .into();
+    for _ in 0..2 {
+        vendor.respond(stop());
+        run(runtime.as_mut(), request.clone()).await;
+    }
+    let requests = vendor.requests();
+    assert_eq!(requests[0].body, requests[1].body);
+    let body = requests[0].json();
+    let messages = body["messages"].as_array().unwrap();
+    let call = &messages[1]["content"][0];
+    let result = &messages[2]["content"][0];
+    assert_eq!((&call["type"], &result["type"]), (&json!("tool_use"), &json!("tool_result")));
+    let id = call["id"].as_str().unwrap();
+    assert!(every_vendor_accepts(id), "{id}");
+    assert_eq!(result["tool_use_id"], call["id"]);
 }
