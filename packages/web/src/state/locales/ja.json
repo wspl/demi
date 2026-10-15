@@ -1,7 +1,6 @@
 {
   "notifications": {
     "turnStopped": "ターンがエラーで停止しました。",
-    "allowTo": "このチャットに「{action}」を許可しますか？",
     "saveCredential": "認証情報「{name}」を保存しますか？",
     "allowUse": "このチャットに「{name}」の使用を許可しますか？"
   },

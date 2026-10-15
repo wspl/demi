@@ -72,16 +72,25 @@ test('a decision and a failed move are worded from their ids and code in the pag
   const plain = (event: AgentMessage['event']): AgentMessage =>
     ({ id: 'p1', recipientId: 'conversation-1', timestamp: '2026-10-11T12:00:00.000Z', content: 'Body.', event })
   const both = plain({
-    type: 'permission', outcome: 'allowed', action: 'manage devices and manage credentials',
-    categories: ['host.devices', 'credentials.manage'], credential: null,
+    type: 'permission', outcome: 'allowed', action: 'organize conversations and manage credentials',
+    categories: ['conversation.organize', 'credentials.manage'], credential: null,
+  })
+  const host = plain({
+    type: 'permission', outcome: 'allowed', action: 'organize conversations and reach build-box',
+    categories: ['conversation.organize'], credential: null, host: 'build-box',
+  })
+  const pairing = plain({
+    type: 'permission', outcome: 'denied', action: 'pair a computer and reach it', categories: [], credential: null, pairing: true,
   })
   const credential = plain({ type: 'permission', outcome: 'denied', action: 'use the credential “GitHub”', categories: [], credential: 'GitHub' })
   const moveFailed = plain({ type: 'move_failed', reason: 'the conversation is archived', code: 'conversation_archived' })
   try {
     createPageI18n('zh-Hans')
-    expect(receiptRow(both).notice).toBe('你已允许此对话执行以下操作：管理设备和管理凭据')
+    expect(receiptRow(both).notice).toBe('你已允许此对话执行以下操作：整理对话和管理凭据')
+    expect(receiptRow(host).notice).toBe('你已允许此对话执行以下操作：整理对话和访问 build-box')
+    expect(receiptRow(pairing).notice).toBe('你已拒绝此对话执行以下操作：配对一台电脑并访问它')
     createPageI18n('ja')
-    expect(receiptRow(both).notice).toBe('このチャットで次の操作を許可しました: デバイスの管理、認証情報の管理')
+    expect(receiptRow(both).notice).toBe('このチャットで次の操作を許可しました: チャットの整理、認証情報の管理')
     expect(receiptRow(credential).notice).toBe('このチャットで次の操作を拒否しました: 認証情報「GitHub」の使用')
     expect(receiptRow(moveFailed).notice).toBe('移動できませんでした: このチャットはアーカイブされています。先に復元してください。')
   } finally {

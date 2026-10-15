@@ -28,21 +28,38 @@ export const organizeConversations: PermissionCategoryView = {
     'Organize Conversations lets the agents of this conversation rename it, list your projects, make a project of a directory, and move this conversation into or out of one. Projects show in your sidebar on every device.',
 }
 
-/** Manage Devices, as the product's `demi host` declares it. */
-export const manageDevices: PermissionCategoryView = {
-  id: 'host.devices',
-  action: 'manage devices',
-  description:
-    'Manage Devices lets the agents of this conversation list your devices, and attach them to this conversation or detach them. The agents run commands as you on an attached device.',
-}
-
-/** A move into a project on a device the conversation lacks, without either grant: one request of both categories. */
+/** A move into a project on a host the conversation may not reach, without Organize Conversations: one request of the category and the host. */
 export function moveRequest(): PermissionRequestView {
   return {
     kind: 'permission',
     id: 'pr-move',
-    categories: [organizeConversations, manageDevices],
+    categories: [organizeConversations],
+    host: { kind: 'device', deviceId: 'device-build-box', name: 'build-box' },
     command: 'demi conversation move photo-album',
+    subagent: null,
+  }
+}
+
+/** A move to a host the conversation may not reach: a request of the host alone. */
+export function hostRequest(): PermissionRequestView {
+  return {
+    kind: 'permission',
+    id: 'pr-host',
+    categories: [],
+    host: { kind: 'device', deviceId: 'device-build-box', name: 'build-box' },
+    command: 'demi host move build-box /srv/shop',
+    subagent: null,
+  }
+}
+
+/** A pairing, which asks every time. */
+export function pairingRequest(): PermissionRequestView {
+  return {
+    kind: 'permission',
+    id: 'pr-pair',
+    categories: [],
+    host: { kind: 'pairing' },
+    command: 'demi host pair K7QM-2XWD',
     subagent: null,
   }
 }
@@ -53,6 +70,7 @@ export function rootRequest(): PermissionRequestView {
     kind: 'permission',
     id: 'pr-root',
     categories: [manageSkills],
+    host: null,
     command: 'demi skills add vercel-labs/agent-skills --skill web-design-guidelines',
     subagent: null,
   }
@@ -64,6 +82,7 @@ export function subagentRequest(): PermissionRequestView {
     kind: 'permission',
     id: 'pr-subagent',
     categories: [manageSkills],
+    host: null,
     command: 'demi skills enable vercel-labs/agent-skills --skill react-best-practices',
     subagent: { number: 2, description: 'Frontend review' },
   }
@@ -78,6 +97,7 @@ export function queuedRequests(): PermissionRequestView[] {
       kind: 'permission',
       id: 'pr-retired',
       categories: [retiredCategory],
+      host: null,
       command: 'demi conversations show 12',
       subagent: { number: 3, description: 'History search' },
     },

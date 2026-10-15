@@ -6,6 +6,7 @@ use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use serde_with::rust::unwrap_or_skip;
 
 use crate::credentials::{CredentialField, Keep, RequestedValues};
+use crate::ids::DeviceId;
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -33,6 +34,22 @@ pub struct PermissionCategory {
     pub description: Option<String>,
 }
 
+/// The host a permission request asks the conversation to reach
+/// (`permissions.md` § Hosts), by its `kind`: a device of the user's, by its
+/// id and the name it goes by now, or the computer `demi host pair` pairs,
+/// which has no name yet.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum PermissionHost {
+    Device {
+        #[garde(skip)]
+        device_id: DeviceId,
+        #[garde(skip)]
+        name: String,
+    },
+    Pairing {},
+}
+
 /// The subagent that ran a refused command, by the number and the
 /// description the model knows it by.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
@@ -50,14 +67,20 @@ pub struct RequestingAgent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum PermissionRequest {
-    /// The grants of the categories a command lacked, one or more
-    /// (`permissions.md` § Several categories).
+    /// The grants of the categories a command lacked and the host it asks
+    /// to reach, at least one of the two (`permissions.md` § Hosts).
     Permission {
         #[garde(skip)]
         id: PermissionRequestId,
         /// The categories the call lacked, ordered by id.
-        #[garde(length(min = 1), dive)]
+        #[garde(dive)]
         categories: Vec<PermissionCategory>,
+        /// The host the call asks to reach; null when it asks for
+        /// categories alone.
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<PermissionHost>")]
+        #[garde(dive)]
+        host: Option<PermissionHost>,
         /// The command line as the agent ran it, quoted for a POSIX shell.
         #[garde(skip)]
         command: String,

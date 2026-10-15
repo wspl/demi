@@ -43,6 +43,16 @@ impl HostPaths {
         format!("{directory}{}{name}", self.separator())
     }
 
+    /// Whether `path` is absolute on the Host: from `/` on a Posix Host,
+    /// from a drive, `C:\`, or a share on Windows.
+    pub fn is_absolute(self, path: &str) -> bool {
+        let style = match self {
+            Self::Posix => typed_path::PathType::Unix,
+            Self::Windows => typed_path::PathType::Windows,
+        };
+        typed_path::Utf8TypedPath::new(path, style).is_absolute()
+    }
+
     /// `path` read against `directory`, as a shell in `directory` reads it:
     /// as it is when it is absolute, otherwise under `directory`, with `.`
     /// and `..` taken out, in the Host's spelling of paths.
