@@ -95,6 +95,11 @@ pub struct Manifest {
     /// context).
     #[serde(default)]
     pub context: bool,
+    /// Whether it searches each conversation's project directory
+    /// ([`Request::ProjectSearch`](crate::Request::ProjectSearch)), which the
+    /// backend keeps current and gives to its context requests.
+    #[serde(default)]
+    pub project_search: bool,
     /// Its user streams (`plugins.md` § Calling its command package).
     #[serde(default)]
     pub streams: Vec<Stream>,
@@ -116,6 +121,7 @@ impl Manifest {
             description: description.into(),
             commands: Vec::new(),
             context: false,
+            project_search: false,
             streams: Vec::new(),
             page: None,
             oauth: None,

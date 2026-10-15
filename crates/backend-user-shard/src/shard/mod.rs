@@ -56,6 +56,7 @@ use tracing::Instrument as _;
 
 use crate::conversation::claude_cli::ClaudeCli;
 use crate::conversation::pending::PendingWatches;
+use crate::conversation::project_files::ProjectFiles;
 use crate::conversation::retry_resume::RetryResumes;
 use crate::conversation::search::SearchIndexer;
 use crate::conversation::titles::Titles;
@@ -133,11 +134,9 @@ pub struct Shard {
     /// How many times each conversation's permission requests changed
     /// since the shard started.
     permission_revisions: demi_backend_permissions::Revisions,
-    /// How often each conversation's Workflow menu choice was changed in
-    /// this run, whatever it was changed to: the instructions source reads
-    /// the chosen workflow again after each (`subagents.md` § Workflows of a
-    /// project).
-    workflow_choices: RefCell<HashMap<demi_web_api_protocol::ids::ConversationId, u64>>,
+    /// The project files its conversations use, kept current by the
+    /// runner's file watch.
+    project_files: ProjectFiles,
     /// Each conversation's watch for its tree to be idle, which makes the
     /// changes its agent asked for then.
     pending_watches: PendingWatches,
@@ -182,6 +181,7 @@ impl Shard {
             rate_limit,
         );
         let devices = Devices::new(services.returning.clone());
+        let project_files = ProjectFiles::new(&shard);
         Self {
             search: SearchIndexer::new(&services, &user),
             user,
@@ -206,7 +206,7 @@ impl Shard {
             plugins,
             plugin_installs: PluginInstalls::default(),
             permission_revisions: demi_backend_permissions::Revisions::default(),
-            workflow_choices: RefCell::default(),
+            project_files,
             pending_watches: PendingWatches::default(),
             credential_waits: demi_backend_permissions::Waits::default(),
             credential_expiry: credentials::CredentialExpiry::default(),
@@ -301,6 +301,10 @@ impl Shard {
 
     pub(crate) fn agent(&self) -> &Rc<AgentServer<ShardHosts>> {
         &self.agent
+    }
+
+    pub(crate) fn project_files(&self) -> &ProjectFiles {
+        &self.project_files
     }
 
     pub(crate) fn titles(&self) -> &Titles {

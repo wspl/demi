@@ -15,6 +15,7 @@ use reqwest::StatusCode;
 use serde_json::{Value, json};
 
 use crate::conversations::{FIRST, anthropic_at, create};
+use crate::instructions::until_carried;
 use crate::support::{Harness, Session, TestBackend};
 use crate::work::{Driven, say, shell, switch};
 
@@ -200,5 +201,94 @@ async fn a_job_run_on_an_attached_device_finds_the_skill_installed_there() {
         .await;
     let output = &read.received[0];
     assert!(output.contains("Review a change."), "{output}");
+    backend.close().await;
+}
+
+// A few seconds: a real runner on a paired device answers the first search
+// and reports each change of the project's skills.
+//
+// Planted defect it catches: a search that watches only the skills
+// directories and the skills it found, which misses all three changes.
+#[tokio::test]
+async fn a_skill_created_added_to_a_group_or_repaired_reaches_a_later_request() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
+    create(&backend, &master, FIRST).await;
+    let skills = alpha.runner.home_dir().join("app/.agents/skills");
+    let manifest = |name: &str| skill_md(&format!("name: {name}\ndescription: The skill {name}."));
+    std::fs::create_dir_all(skills.join("empty")).unwrap();
+    std::fs::create_dir_all(skills.join("group/one")).unwrap();
+    std::fs::create_dir_all(skills.join("broken")).unwrap();
+    std::fs::write(skills.join("group/one/SKILL.md"), manifest("one")).unwrap();
+    std::fs::write(skills.join("broken/SKILL.md"), "not a skill").unwrap();
+    switch(&backend, &master, FIRST, &alpha, &alpha.runner.home_dir().join("app")).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
+    let first = work.turn(vec![say("hello")]).await.first_request();
+    assert!(first.contains("<name>one</name>"), "{first}");
+    assert!(!first.contains("<name>broken</name>"), "{first}");
+
+    std::fs::write(skills.join("empty/SKILL.md"), manifest("empty")).unwrap();
+    std::fs::create_dir_all(skills.join("group/two")).unwrap();
+    std::fs::write(skills.join("group/two/SKILL.md"), manifest("two")).unwrap();
+    std::fs::write(skills.join("broken/SKILL.md"), manifest("broken")).unwrap();
+    until_carried(&mut work, &["<name>empty</name>", "<name>two</name>", "<name>broken</name>"]).await;
+    backend.close().await;
+}
+
+/// Whether any of `paths` is in `directory`.
+fn any_under(paths: &[String], directory: &std::path::Path) -> bool {
+    let directory = directory.to_str().unwrap();
+    paths.iter().any(|path| path.starts_with(directory))
+}
+
+// A few seconds: a real runner on a paired device answers the searches and
+// holds the subscriptions.
+//
+// Planted defects it catches: a switch that leaves the plugin's search kept,
+// and a request that keeps one for a plugin the user has off.
+#[tokio::test]
+async fn the_plugin_off_keeps_nothing_and_on_again_searches_at_the_next_request() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
+    create(&backend, &master, FIRST).await;
+    let app = alpha.runner.home_dir().join("app");
+    let skills = app.join(".agents/skills");
+    let manifest = |name: &str| skill_md(&format!("name: {name}\ndescription: The skill {name}."));
+    std::fs::create_dir_all(skills.join("release")).unwrap();
+    std::fs::write(skills.join("release/SKILL.md"), manifest("release")).unwrap();
+    switch(&backend, &master, FIRST, &alpha, &app).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
+    let first = work.turn(vec![say("hello")]).await.first_request();
+    assert!(first.contains("<name>release</name>"), "{first}");
+    assert!(any_under(&backend.subscribed(&master, alpha.id()).await, &skills));
+
+    let switch_to = async |enabled: bool| {
+        let switched = backend
+            .put("/api/plugins/skills", &master, json!({ "enabled": enabled }))
+            .await;
+        assert_eq!(switched.status, StatusCode::NO_CONTENT);
+    };
+    // Off: what it kept is released, and a request keeps nothing for it.
+    switch_to(false).await;
+    crate::support::eventually("the skills are no longer watched", || async {
+        !any_under(&backend.subscribed(&master, alpha.id()).await, &skills)
+    })
+    .await;
+    work.turn(vec![say("off")]).await;
+    assert!(!any_under(&backend.subscribed(&master, alpha.id()).await, &skills));
+
+    // On again: the next request searches, and finds the skill added while
+    // nothing watched.
+    std::fs::create_dir_all(skills.join("deploy")).unwrap();
+    std::fs::write(skills.join("deploy/SKILL.md"), manifest("deploy")).unwrap();
+    switch_to(true).await;
+    let on = work.turn(vec![say("on")]).await.first_request();
+    assert!(on.contains("<name>deploy</name>"), "{on}");
     backend.close().await;
 }

@@ -9,6 +9,8 @@
 //! builds its child's model from the catalog; a live tree's subagent list
 //! is the one its open sends; and a Cloud reset holds a
 //! conversation whose child's profile infers with a provider on the Cloud.
+//! Every node gets the project directory's skills and no others, and a spawn
+//! takes the workflow the backend holds without asking a Host.
 //! The model is a scripted family that answers each
 //! node of a tree from a script of its own; the device is a real runner. No
 //! test calls a real model.
@@ -44,6 +46,7 @@ use tokio::sync::Notify;
 use crate::conversations::{FIRST, SECOND, Socket, choose, create, on_device, transcript};
 use crate::cloud::reset;
 use crate::support::{Harness, Session, TestBackend, eventually};
+use demi_plugin_skills::testing::skill_md;
 
 /// One scripted answer: the events of one request.
 pub(crate) type Answer = Vec<ProviderEvent>;
@@ -1325,5 +1328,108 @@ async fn a_reset_holds_a_conversation_whose_subagent_infers_with_a_provider_on_t
         proceed.notify_one();
         opening.await;
     }
+    backend.close().await;
+}
+
+/// Writes the skill `name` into `.agents/skills` of `directory`.
+fn project_skill(directory: &std::path::Path, name: &str) {
+    let skill = directory.join(".agents/skills").join(name);
+    std::fs::create_dir_all(&skill).unwrap();
+    std::fs::write(skill.join("SKILL.md"), skill_md(&format!("name: {name}\ndescription: The skill {name}."))).unwrap();
+}
+
+// About a second: a real runner on a paired device answers the search, and
+// the root's one shell job spawns the child.
+//
+// Planted defect it catches: a search from each node's own directory up to
+// its repository's root, which finds `nested` and `outside` and not the
+// project's own `release`.
+#[tokio::test]
+async fn a_child_elsewhere_gets_the_project_directorys_skills_and_none_from_another_directory() {
+    let scripts = Arc::new(Scripts::default());
+    let (_harness, backend, master, paired, root, _provider) = tree(&scripts).await;
+    let home = paired.runner.home_dir().to_owned();
+    let project = std::path::Path::new(&root);
+    // The project is inside a repository whose root is the device's home.
+    std::fs::create_dir_all(home.join(".git")).unwrap();
+    project_skill(project, "release");
+    project_skill(&project.join("app"), "nested");
+    project_skill(&home, "outside");
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+
+    scripts.child(vec![say("here")]);
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t1", "demi agent spawn --cwd app --description mover <<< 'Look around'"),
+            say("dispatched"),
+            say("received"),
+        ],
+    );
+    socket.chat("m1", "Delegate").await;
+    eventually("the child asked", || {
+        let asked = !scripts.asked(|session| session != FIRST).is_empty();
+        async move { asked }
+    })
+    .await;
+    let child = scripts.asked(|session| session != FIRST).remove(0);
+    let parent = scripts.asked(|session| session == FIRST).remove(0);
+    for asked in [&child, &parent] {
+        assert!(asked.contains("<name>release</name>"), "{asked}");
+        assert!(!asked.contains("<name>nested</name>"), "{asked}");
+        assert!(!asked.contains("<name>outside</name>"), "{asked}");
+    }
+    backend.close().await;
+}
+
+// A few seconds: two real runners; a job on the attached one stops the
+// primary Host's runner and then spawns, through its own.
+//
+// Planted defect it catches: a spawn that reads the workflow on the Host,
+// which waits for a Host that never answers.
+#[tokio::test]
+async fn a_spawn_takes_the_held_workflow_while_the_host_answers_nothing() {
+    let scripts = Arc::new(Scripts::default());
+    let (_harness, backend, master, laptop, root, _provider) = tree(&scripts).await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let workflows = std::path::Path::new(&root).join(".demi/workflows");
+    std::fs::create_dir_all(&workflows).unwrap();
+    std::fs::write(
+        workflows.join("team.yaml"),
+        "name: Team\nprofiles:\n  - id: helper\n    description: Helps.\n",
+    )
+    .unwrap();
+    // Working on alpha, then on the laptop again, leaves alpha attached.
+    for (device, path) in [(&alpha, alpha.runner.home().to_owned()), (&laptop, root.clone())] {
+        let target = json!({ "target": { "kind": "device", "deviceId": device.id(), "path": path } });
+        let moved = backend.patch(&format!("/api/conversations/{FIRST}"), &master, target).await;
+        assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    }
+    let chosen = json!({ "workflow": { "type": "workflow", "id": "team" } });
+    let chose = backend.patch(&format!("/api/conversations/{FIRST}"), &master, chosen).await;
+    assert_eq!(chose.status, StatusCode::OK, "{}", String::from_utf8_lossy(&chose.body));
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    // The root's first request takes the workflow's instructions, which
+    // holds the directory's workflows from then on.
+    scripts.root(FIRST, vec![say("ready")]);
+    socket.chat("m1", "Get ready").await;
+
+    scripts.child(vec![say("helped")]);
+    let script = format!(
+        "demi host shell --host alpha 'kill -STOP {} && demi agent spawn --profile helper --description helper <<< Help'",
+        laptop.runner.pid()
+    );
+    scripts.root(FIRST, vec![shell("t1", &script), say("dispatched"), say("received")]);
+    // The turn's job runs on the stopped Host: its end waits for it.
+    socket.send(&crate::conversations::send("m2", "Delegate")).await;
+    eventually("the child asked", || {
+        let asked = !scripts.asked(|session| session != FIRST).is_empty();
+        async move { asked }
+    })
+    .await;
+    laptop.runner.resume();
+    socket.until_idle().await;
     backend.close().await;
 }

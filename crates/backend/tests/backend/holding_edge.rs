@@ -6,8 +6,7 @@
 //! comes.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 use tokio::io::{AsyncBufReadExt as _, AsyncRead, AsyncReadExt as _, AsyncWriteExt as _, BufReader};
 use tokio::net::{TcpListener, TcpStream};
@@ -19,9 +18,9 @@ pub struct HoldingEdge {
     pub url: String,
     /// Cancelled to cut every pipe WebSocket the edge carries.
     cut: CancellationToken,
-    /// How many pipe uploads the edge carried: a runner sends a file's
-    /// bytes to the backend with one (`runner.md` § File contents).
-    pipe_puts: Arc<AtomicUsize>,
+    /// The body of each pipe upload the edge carried: a runner sends a
+    /// file's bytes to the backend with one (`runner.md` § File contents).
+    pipe_uploads: Arc<Mutex<Vec<Vec<u8>>>>,
     _accepting: AbortOnDropHandle<()>,
 }
 
@@ -32,8 +31,8 @@ impl HoldingEdge {
         let url = format!("http://{}", listener.local_addr().unwrap());
         let cut = CancellationToken::new();
         let cutting = cut.clone();
-        let pipe_puts = Arc::new(AtomicUsize::new(0));
-        let counting = pipe_puts.clone();
+        let pipe_uploads = Arc::new(Mutex::new(Vec::new()));
+        let counting = pipe_uploads.clone();
         let accepting = tokio::spawn(async move {
             // Each connection's task goes with the edge.
             let mut connections = tokio::task::JoinSet::new();
@@ -45,7 +44,7 @@ impl HoldingEdge {
         Self {
             url,
             cut,
-            pipe_puts,
+            pipe_uploads,
             _accepting: AbortOnDropHandle::new(accepting),
         }
     }
@@ -57,8 +56,13 @@ impl HoldingEdge {
     }
 
     /// How many pipe uploads the edge carried so far.
-    pub fn pipe_puts(&self) -> usize {
-        self.pipe_puts.load(Ordering::SeqCst)
+    /// How many of the pipe uploads the edge carried hold `bytes`.
+    pub fn pipe_uploads_of(&self, bytes: &[u8]) -> usize {
+        let uploads = self.pipe_uploads.lock().unwrap();
+        uploads
+            .iter()
+            .filter(|body| body.windows(bytes.len()).any(|window| window == bytes))
+            .count()
     }
 }
 
@@ -69,7 +73,7 @@ async fn carry(
     client: TcpStream,
     backend: SocketAddr,
     cut: CancellationToken,
-    pipe_puts: Arc<AtomicUsize>,
+    pipe_uploads: Arc<Mutex<Vec<Vec<u8>>>>,
 ) {
     let upstream = TcpStream::connect(backend).await.unwrap();
     let (client_read, mut client_write) = client.into_split();
@@ -85,9 +89,7 @@ async fn carry(
             let Some(head) = read_head(&mut client).await else {
                 return;
             };
-            if head.starts_with("PUT /api/pipes/") {
-                pipe_puts.fetch_add(1, Ordering::SeqCst);
-            }
+            let pipe_upload = head.starts_with("PUT /api/pipes/");
             let header = |name: &str| {
                 head.lines().skip(1).find_map(|line| {
                     let (key, value) = line.split_once(':')?;
@@ -118,6 +120,7 @@ async fn carry(
             let length = header("content-length");
             let chunked = header("transfer-encoding").is_some_and(|coding| coding.contains("chunked"));
             let mut request = head.into_bytes();
+            let mut body = Vec::new();
             if let Some(length) = length {
                 let length: usize = length.parse().unwrap();
                 let start = request.len();
@@ -125,10 +128,14 @@ async fn carry(
                 if client.read_exact(&mut request[start..]).await.is_err() {
                     return;
                 }
+                body.extend_from_slice(&request[start..]);
             } else if chunked {
-                if !read_chunks(&mut client, &mut request).await {
+                if !read_chunks(&mut client, &mut request, &mut body).await {
                     return;
                 }
+            }
+            if pipe_upload {
+                pipe_uploads.lock().unwrap().push(body);
             }
             // The whole request, held until its body ended.
             if upstream_write.write_all(&request).await.is_err() {
@@ -158,8 +165,13 @@ async fn read_head(client: &mut BufReader<impl AsyncRead + Unpin>) -> Option<Str
 }
 
 /// Appends a chunked body to `request` as it was sent, through its last
-/// chunk and its trailers; false when the client closed before its end.
-async fn read_chunks(client: &mut BufReader<impl AsyncRead + Unpin>, request: &mut Vec<u8>) -> bool {
+/// chunk and its trailers, and its chunks' data to `body`; false when the
+/// client closed before its end.
+async fn read_chunks(
+    client: &mut BufReader<impl AsyncRead + Unpin>,
+    request: &mut Vec<u8>,
+    body: &mut Vec<u8>,
+) -> bool {
     loop {
         let mut line = String::new();
         if client.read_line(&mut line).await.unwrap_or(0) == 0 {
@@ -186,5 +198,6 @@ async fn read_chunks(client: &mut BufReader<impl AsyncRead + Unpin>, request: &m
         if client.read_exact(&mut request[start..]).await.is_err() {
             return false;
         }
+        body.extend_from_slice(&request[start..start + size]);
     }
 }

@@ -276,6 +276,75 @@ mod shells {
     }
 }
 
+mod project_reads {
+    use demi_backend_database::accounts::TokenHash;
+    use demi_backend_database::control::testing;
+    use demi_backend_database::conversation_index::Creation;
+    use demi_backend_host_access::plugin_files::ReadFilesError;
+    use demi_plugin_interface::HostRead;
+    use demi_runner_protocol::wire::RunnerPlatform;
+    use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
+    use tokio_util::sync::CancellationToken;
+
+    use crate::services::Services;
+    use crate::shard::{ShardPlacement, ShardPool};
+
+    const ID: &str = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a02";
+
+    // Under a second: a runner the test plays, which answers no read.
+    //
+    // Planted defect it catches: a search's read that goes to whichever Host
+    // the conversation works on now, whose answer would be kept under the
+    // Host the search was asked of.
+    #[tokio::test(flavor = "local")]
+    async fn a_read_bound_to_a_host_the_conversation_left_is_refused() {
+        let data = tempfile::tempdir().unwrap();
+        let services = Services::start_for_tests(data.path()).await;
+        let control = services.control.clone();
+        let owner: UserId = testing::master(&control).await.id;
+        let id = ConversationId::try_from(ID).unwrap();
+        assert!(matches!(
+            control
+                .create_conversation(owner.clone(), id.clone(), demi_backend_database::conversation_index::ConversationStart::default())
+                .await
+                .unwrap(),
+            Creation::Created(_)
+        ));
+        let laptop = control
+            .create_device(owner.clone(), "laptop".into(), RunnerPlatform::Linux, TokenHash::of("laptop"))
+            .await
+            .unwrap()
+            .id;
+        testing::execute(
+            &control,
+            "UPDATE conversations SET target_kind = 'device', target_device_id = ?2, target_path = '/work'
+             WHERE id = ?1",
+            vec![ID.to_owned(), laptop.to_string()],
+        )
+        .await;
+        let pool = ShardPool::start(ShardPlacement::Inline, services).await.unwrap();
+        let refused = pool
+            .shards()
+            .of(&owner)
+            .call(move |shard, _| async move {
+                let _connection = shard.connect_for_tests(&laptop, "/home/ana");
+                let left = DeviceId::try_from("device-it-left").unwrap();
+                let reads = [HostRead::new("/work/AGENTS.md".to_owned(), 0)];
+                let cancel = CancellationToken::new();
+                let read = shard.host_shard().read_files_on(&id, Some(&left), &reads, &cancel);
+                // The runner here answers no read: one that goes out never ends.
+                matches!(
+                    tokio::time::timeout(std::time::Duration::from_secs(5), read).await,
+                    Ok(Err(ReadFilesError::Moved))
+                )
+            })
+            .await
+            .unwrap();
+        assert!(refused);
+        pool.close().await;
+    }
+}
+
 mod remote_files {
     use demi_backend_host_access::remote_files::{RemoteFile, RemoteFileRefusal};
     use demi_shared_types::UserContentBlock;

@@ -1,7 +1,7 @@
 //! `GET /conversations/:id/workflows` (`subagents.md` § Workflows of a
-//! project): the Workflow menu's list, read through the conversation's host
-//! access in the form that never wakes its Host, with the Host's number
-//! before the read, as every answer the file watch keeps current carries.
+//! project): the Workflow menu's list, as the backend keeps it with the
+//! runner's file watch, with the Host's number before the read that found
+//! it, as every answer the file watch keeps current carries.
 
 use axum::Json;
 use axum::extract::{Path, State};
@@ -28,8 +28,11 @@ pub(super) async fn list(
         .call(move |shard, _| async move { shard.menu_workflows(&record.id).await })
         .await?
         .map_err(|error| match error {
-            // A Host that is not running answers as a stopped one does.
-            ReadFilesError::NotRunning => ApiError::from(HostAccessError::Refused(Refusal::Stopped)),
+            // A Host that is not running answers as a stopped one does; the
+            // menu's reads are bound to no Host, so none answers moved.
+            ReadFilesError::NotRunning | ReadFilesError::Moved => {
+                ApiError::from(HostAccessError::Refused(Refusal::Stopped))
+            }
             ReadFilesError::Access(error) => ApiError::from(error),
         })?;
     Ok(read_answer(&read_at, Json(workflows)))

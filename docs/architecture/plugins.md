@@ -266,6 +266,25 @@ uses ([Every way to a Host](../execution/sessions-and-targets.md#every-way-to-a-
 - A read takes the conversation's file gate only while it is admitted, so a
   target switch or an archive ends it instead of waiting for it.
 
+**A project search the backend keeps.** A plugin whose findings follow a
+project's files, as `plugin-skills`' project skills do, declares
+`projectSearch` in its manifest and answers `ProjectSearch` for a Host and
+a directory with what it found and what to watch: the paths its search read
+or would read, each a watch subject of the runner's
+[file watch](../execution/runner.md#watching-files), the directories it
+listed and the files it parsed or looked for included, whether they exist
+yet or not, so a skill created, added to a group or repaired is seen. Its
+answer depends on the Host and the directory alone, never on a
+conversation, since one answer serves every conversation there. The
+backend keeps it with the project instruction files, in one place: it asks
+once, subscribes to what the answer names, asks again in the background
+when the runner says one changed or the Host comes online, and hands what
+it holds to the plugin's `Context` request as `project`, so the plugin's
+context never waits for the Host
+([When it is sent](../agent/instructions.md#when-it-is-sent)). Turning the
+plugin off releases what the backend keeps for it, and turning it on asks
+again at the next request.
+
 ### Calling its command package
 
 A plugin whose commands bind a command package can use that package's

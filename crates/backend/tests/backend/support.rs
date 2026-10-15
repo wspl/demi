@@ -905,6 +905,13 @@ impl TestBackend {
         self.backend.until_login_ended(&session.user.id, &login).await;
     }
 
+    /// The paths `session`'s user's device `device` is subscribed to on its
+    /// runner now.
+    pub async fn subscribed(&self, session: &Session, device: &str) -> Vec<String> {
+        let device = demi_web_api_protocol::ids::DeviceId::try_from(device).unwrap();
+        self.backend.subscribed(&session.user.id, &device).await
+    }
+
     /// The file gate of `session`'s user's conversation `conversation`.
     pub async fn file_gate(
         &self,

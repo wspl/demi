@@ -373,6 +373,7 @@ impl ProductPort for TestProduct {
     fn read_host_files<'a>(
         &'a self,
         _: &'a ConversationId,
+        _: Option<&'a demi_web_api_protocol::ids::DeviceId>,
         _: Vec<HostRead>,
         _: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>> {

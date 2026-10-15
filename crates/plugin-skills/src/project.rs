@@ -1,12 +1,16 @@
-//! Project skills (`skills.md` § Project skills): the skills a repository
-//! carries in `.agents/skills` and `.claude/skills`, in the node's working
-//! directory and each directory above it up to the repository's root,
-//! found through Host reads that never wake the Host. Each round of the
-//! search reads every path it needs in one request.
+//! Project skills (`skills.md` § Project skills): the skills a project
+//! carries in `.agents/skills` and `.claude/skills` of its directory, and
+//! nowhere else, found through Host reads that never wake the Host. Each
+//! round of the search reads every path it needs in one request. The backend
+//! keeps the result and searches again when what the search names to watch
+//! changes: the two skills directories, whether they exist yet or not, and
+//! each skill's `SKILL.md`.
 
 use demi_host_interface::HostPaths;
-use demi_plugin_interface::project;
-use demi_plugin_interface::{EntryKind, HostFile, HostRead, PluginPort, PortFailure};
+use demi_plugin_interface::{
+    EntryKind, HostFile, HostRead, PluginPort, PortFailure, SubscriptionKind, WatchSubject,
+};
+use serde::{Deserialize, Serialize};
 
 use crate::skill::{self, SKILL_MD_MAX_BYTES};
 
@@ -19,11 +23,12 @@ const MAX_DEPTH: usize = 6;
 /// The most project skills one search finds.
 const MAX_SKILLS: usize = 100;
 
-/// The skills directories of each directory searched, nearer first.
+/// The skills directories of the project, the first over the second.
 const SKILLS_DIRECTORIES: [&str; 2] = [".agents/skills", ".claude/skills"];
 
 /// A project skill, listed at its own path on the Host.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct ProjectSkill {
     pub(crate) name: String,
     pub(crate) description: String,
@@ -32,28 +37,31 @@ pub(crate) struct ProjectSkill {
     pub(crate) disable_model_invocation: bool,
 }
 
-/// The project skills for a node working in `cwd`, one per name: of two of
-/// a name, the one in the nearer directory, and in one directory,
-/// `.agents/skills` over `.claude/skills`. What is not a skill, has
-/// warnings or is shadowed is logged. `paths` is how the Host writes its
-/// paths, which every path the search reads is built in.
+/// The project skills of `directory`, one per name, `.agents/skills` over
+/// `.claude/skills`, with what tells of a change to them: every directory
+/// the search listed, the two skills directories whether they exist or not,
+/// and every `SKILL.md` it looked for below them, found, missing or not a
+/// skill, so a manifest created in an empty skill directory, a skill added
+/// to a group or a manifest repaired is seen. A skill's own directory is
+/// not listed, so a file added beside its `SKILL.md` changes nothing. What is not a
+/// skill, has warnings or is shadowed is logged. `paths` is how the Host
+/// writes its paths, which every path the search reads is built in.
 pub(crate) async fn search(
     port: &PluginPort,
     paths: HostPaths,
-    cwd: &str,
-) -> Result<Vec<ProjectSkill>, PortFailure> {
+    directory: &str,
+) -> Result<(Vec<ProjectSkill>, Vec<WatchSubject>), PortFailure> {
     let join = |directory: &str, name: &str| paths.join(directory, name);
-    let searched = searched_directories(port, paths, cwd).await?;
-    let mut frontier: Vec<Node> = Vec::new();
-    for (rank, directory) in searched.iter().enumerate() {
-        for (place, skills) in SKILLS_DIRECTORIES.iter().enumerate() {
-            frontier.push(Node {
-                path: join(directory, skills),
-                rank: rank * SKILLS_DIRECTORIES.len() + place,
-                depth: 0,
-            });
-        }
-    }
+    let mut frontier: Vec<Node> = SKILLS_DIRECTORIES
+        .iter()
+        .enumerate()
+        .map(|(rank, skills)| Node {
+            path: join(directory, skills),
+            rank,
+            depth: 0,
+        })
+        .collect();
+    let mut watch: Vec<WatchSubject> = Vec::new();
     let mut found: Vec<(usize, ProjectSkill)> = Vec::new();
     let mut read = 0;
     while !frontier.is_empty() && read < MAX_DIRECTORIES && found.len() < MAX_SKILLS {
@@ -79,15 +87,31 @@ pub(crate) async fn search(
             let [listing, manifest] = answers else {
                 unreachable!("two answers per node")
             };
-            if node.depth > 0
-                && let HostFile::File { bytes, size } = manifest
-            {
-                if let Some(skill) = project_skill(paths, &node.path, bytes.as_bytes(), *size) {
-                    found.push((node.rank, skill));
+            if node.depth > 0 {
+                watch.push(WatchSubject {
+                    kind: SubscriptionKind::File,
+                    path: join(&node.path, "SKILL.md"),
+                });
+                if let HostFile::File { bytes, size } = manifest {
+                    if let Some(skill) = project_skill(paths, &node.path, bytes.as_bytes(), *size) {
+                        found.push((node.rank, skill));
+                    }
+                    continue;
                 }
-                continue;
             }
-            let HostFile::Directory { entries } = listing else {
+            // A skills directory is watched whether it exists or not; one
+            // below it only while it is a directory.
+            let entries = match listing {
+                HostFile::Directory { entries } => Some(entries),
+                _ => None,
+            };
+            if node.depth == 0 || entries.is_some() {
+                watch.push(WatchSubject {
+                    kind: SubscriptionKind::FolderNames,
+                    path: node.path.clone(),
+                });
+            }
+            let Some(entries) = entries else {
                 continue;
             };
             if node.depth == MAX_DEPTH {
@@ -119,26 +143,15 @@ pub(crate) async fn search(
             None => skills.push(skill),
         }
     }
-    Ok(skills)
+    Ok((skills, watch))
 }
 
 /// A directory the search reads.
 struct Node {
     path: String,
-    /// The precedence of the skills directory it is in, nearer first.
+    /// The precedence of the skills directory it is in, the first first.
     rank: usize,
     depth: usize,
-}
-
-/// `cwd` and each directory above it up to the root of its git repository.
-async fn searched_directories(
-    port: &PluginPort,
-    paths: HostPaths,
-    cwd: &str,
-) -> Result<Vec<String>, PortFailure> {
-    let ancestors = paths.ancestors(cwd);
-    let found = port.read_host_files(project::root_reads(paths, &ancestors)).await?;
-    Ok(project::searched(&ancestors, &found).to_vec())
 }
 
 /// The skill in `directory` whose `SKILL.md` is `text`, of `size` bytes;

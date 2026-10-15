@@ -17,7 +17,7 @@ bench = false
 # Shared services and a shard for tests (`Services::start_for_tests`), and
 # the holds of a flow at one of its steps (`StepHold`): the runners' hellos
 # and the pages' synchronization channels.
-testing = []
+testing = ["demi-backend-remote-host/testing"]
 
 [dependencies]
 demi-agent-server = { path = "../agent-server" }

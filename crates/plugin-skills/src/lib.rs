@@ -15,17 +15,17 @@ mod sources;
 pub mod testing;
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use demi_plugin_interface::{
-    CommandPlugin, Manifest, Method, Page, Plugin, PluginError, PluginId, PluginPort, PortFailure,
-    PortRefusal, Reply, Request, Scope,
+    CommandPlugin, Manifest, Method, Page, Plugin, PluginError, PluginId, PluginPort, Reply,
+    Request, Scope,
 };
-use demi_shared_types::{Clock, SKILLS_SOURCE, SystemClock, TurnId};
+use demi_shared_types::{Clock, SKILLS_SOURCE, SystemClock};
 use futures_util::future::{LocalBoxFuture, join_all};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -71,6 +71,7 @@ impl Skills {
             "Teaches the agent workflows with skills from Git repositories you add with demi skills, and from your repository.",
         );
         manifest.context = true;
+        manifest.project_search = true;
         manifest.commands = commands::commands().manifest_commands();
         manifest.page = Some(page());
         Self {
@@ -102,7 +103,6 @@ impl demi_plugin_interface::PluginFactory for Skills {
             fetches: RefCell::default(),
             heads: RefCell::default(),
             checks: RefCell::default(),
-            projects: RefCell::default(),
         })))
     }
 }
@@ -184,14 +184,6 @@ struct State {
     heads: RefCell<BTreeMap<String, Head>>,
     /// Each running check of the sources' default branches.
     checks: RefCell<Vec<AbortHandle>>,
-    /// The last project search's skills, by conversation and working
-    /// directory, with the input turn it succeeded at.
-    projects: RefCell<HashMap<(String, String), ProjectSearch>>,
-}
-
-struct ProjectSearch {
-    turn: TurnId,
-    skills: Vec<ProjectSkill>,
 }
 
 /// How a fetch of a source ended.
@@ -234,23 +226,16 @@ impl Plugin for Instance {
     ) -> LocalBoxFuture<'_, Result<Reply, PluginError>> {
         Box::pin(async move {
             match request {
-                Request::Context {
-                    conversation,
-                    cwd,
-                    paths,
-                    turn,
-                    seen,
-                    ..
-                } => {
-                    let asked = Asked {
-                        conversation: conversation.to_string(),
-                        cwd,
-                        paths,
-                        turn,
-                        seen,
-                    };
-                    let text = self.0.context(&port, asked).await?;
+                Request::Context { seen, project, .. } => {
+                    let text = self.0.context(&port, project, &seen).await?;
                     Ok(Reply::Context { text })
+                }
+                Request::ProjectSearch {
+                    directory, paths, ..
+                } => {
+                    let (skills, watch) = project::search(&port, paths, &directory).await?;
+                    let found = serde_json::to_value(skills).expect("project skills encode as JSON");
+                    Ok(Reply::Project { found, watch })
                 }
                 Request::PageState { .. } => {
                     let state = self.0.state(&port).await?;
@@ -273,17 +258,6 @@ impl Plugin for Instance {
             }
         })
     }
-}
-
-/// A node's context request; the catalog is the same for every node of a
-/// working directory.
-struct Asked {
-    conversation: String,
-    cwd: String,
-    /// How the Host writes its paths.
-    paths: demi_host_interface::HostPaths,
-    turn: TurnId,
-    seen: Vec<String>,
 }
 
 impl State {
@@ -607,15 +581,25 @@ impl State {
         Ok(())
     }
 
-    /// The node's catalog block, when it differs from the newest the model
-    /// receives.
+    /// The node's catalog block, when it differs from the newest of `seen`,
+    /// the plugin's blocks the model receives: the project skills the
+    /// backend holds, `project`, and the user's skills that are on.
     async fn context(
         &self,
         port: &PluginPort,
-        asked: Asked,
+        project: Option<Value>,
+        seen: &[String],
     ) -> Result<Option<String>, PluginError> {
+        let project: Vec<ProjectSkill> = match project.map(serde_json::from_value) {
+            None => Vec::new(),
+            Some(Ok(skills)) => skills,
+            // What the backend holds is what this plugin's search answered.
+            Some(Err(error)) => {
+                return Err(PluginError::failed(format!("the project skills held do not read: {error}")));
+            }
+        };
         let mut entries: Vec<Entry> = Vec::new();
-        for skill in self.project_skills(port, &asked).await {
+        for skill in project {
             if !skill.disable_model_invocation {
                 entries.push(Entry {
                     name: skill.name,
@@ -641,43 +625,11 @@ impl State {
             }
         }
         let text = if entries.is_empty() {
-            (!asked.seen.is_empty()).then(|| NONE_AVAILABLE.to_owned())
+            (!seen.is_empty()).then(|| NONE_AVAILABLE.to_owned())
         } else {
             Some(catalog::render(&entries))
         };
-        Ok(text.filter(|text| asked.seen.last() != Some(text)))
-    }
-
-    /// The project skills for the node: searched at the first request of
-    /// each input turn, and again at the next request of the turn while the
-    /// Host was not running; what the last search found otherwise.
-    async fn project_skills(&self, port: &PluginPort, asked: &Asked) -> Vec<ProjectSkill> {
-        let key = (asked.conversation.clone(), asked.cwd.clone());
-        if let Some(search) = self.projects.borrow().get(&key)
-            && search.turn == asked.turn
-        {
-            return search.skills.clone();
-        }
-        match project::search(port, asked.paths, &asked.cwd).await {
-            Ok(skills) => {
-                let search = ProjectSearch {
-                    turn: asked.turn.clone(),
-                    skills: skills.clone(),
-                };
-                self.projects.borrow_mut().insert(key, search);
-                skills
-            }
-            Err(failure) => {
-                if !matches!(failure, PortFailure::Refused(PortRefusal::NotRunning)) {
-                    tracing::warn!(cwd = %asked.cwd, %failure, "the project skills were not searched");
-                }
-                self.projects
-                    .borrow()
-                    .get(&key)
-                    .map(|search| search.skills.clone())
-                    .unwrap_or_default()
-            }
-        }
+        Ok(text.filter(|text| seen.last() != Some(text)))
     }
 }
 
