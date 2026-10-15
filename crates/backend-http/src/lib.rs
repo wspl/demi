@@ -537,6 +537,9 @@ fn edge(app: Router<AppState>, closing: CancellationToken, state: AppState) -> R
             refuse_while_closing,
         ))
         .merge(pipes)
+        // Inside the request's span, so an abandoned request's line carries
+        // its fields.
+        .layer(middleware::from_fn(request_id::watch_abandon))
         // The request's line is `request_id::answered`'s alone: the layer's
         // own failure line would say a 5xx answer twice.
         .layer(

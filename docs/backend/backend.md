@@ -512,7 +512,13 @@ and so does every `error` frame it sends.
 answered, at `info`: its method, path, status, how long it took and its
 user, with the `code` of a JSON error, and at `warn` for a 5xx answer; a
 socket's line is its end line. So an ID the user copies always finds at
-least its request, a refused sign-in as much as a failed save. The ID is a
+least its request, a refused sign-in as much as a failed save. A request
+the client gives up on before its answer, a closed tab or a timed-out fetch,
+logs its line too, when the backend notices: *a request was abandoned*,
+with how long it had run, at warn once that is past 10 seconds, so a slow request the
+browser retried leaves each attempt in the log, not only the last one. The
+work it started goes on or stops as that work's own rule says; the line
+only records it. The ID is a
 field of the request's `tracing` span, so every event logged while the request is handled carries it, and
 work the request starts in another task is started inside the span: a
 session it opens, a Host operation it sends, a store write it waits for log

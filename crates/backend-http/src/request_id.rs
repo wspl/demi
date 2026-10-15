@@ -3,10 +3,11 @@
 //! never takes a name from the client. The ID is a field of the request's
 //! `tracing` span, every response carries it in `X-Request-Id`, and every
 //! JSON error carries it as `requestId`. Every request logs one line as it
-//! is answered, so that an ID a user copies always finds its request.
+//! is answered, or as its client abandons it, so that an ID a user copies
+//! always finds its request.
 
 use std::sync::LazyLock;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use axum::extract::Request;
 use axum::http::{HeaderName, HeaderValue, StatusCode};
@@ -91,6 +92,50 @@ pub(crate) fn span<B>(request: &axum::http::Request<B>) -> tracing::Span {
         cf_ray = ray,
         user_id = tracing::field::Empty,
     )
+}
+
+/// How long an abandoned request runs before its line is a warning.
+const SLOW_ABANDONED: Duration = Duration::from_secs(10);
+
+/// Logs *a request was abandoned* for a request whose client went away
+/// before its answer, a closed tab or a timed-out fetch: hyper then drops
+/// the answer's future, and with it this middleware's guard, which no
+/// answer released. Runs inside the request's span, which it logs in, so
+/// the line carries the span's ID, method, path, user and `cf-ray`. The
+/// work the request started goes on or stops as that work's own rule says.
+pub(crate) async fn watch_abandon(request: Request, next: Next) -> Response {
+    let mut pending = Pending {
+        span: tracing::Span::current(),
+        started: Instant::now(),
+        answered: false,
+    };
+    let response = next.run(request).await;
+    pending.answered = true;
+    response
+}
+
+/// A request not answered yet; dropped unanswered, it logs its abandon.
+struct Pending {
+    span: tracing::Span,
+    started: Instant,
+    answered: bool,
+}
+
+impl Drop for Pending {
+    fn drop(&mut self) {
+        if self.answered {
+            return;
+        }
+        let ran = self.started.elapsed();
+        let duration_ms = u64::try_from(ran.as_millis()).unwrap_or(u64::MAX);
+        self.span.in_scope(|| {
+            if ran > SLOW_ABANDONED {
+                tracing::warn!(duration_ms, "a request was abandoned");
+            } else {
+                tracing::info!(duration_ms, "a request was abandoned");
+            }
+        });
+    }
 }
 
 /// The line a request logs as it is answered, in its span: the status, how
