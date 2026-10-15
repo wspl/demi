@@ -166,7 +166,32 @@
   },
   "quota": {
     "unavailable": "사용량을 아직 확인할 수 없음",
-    "used": "{share} 사용"
+    "used": "{share} 사용",
+    "window": {
+      "period": {
+        "day": "일일",
+        "week": "주간",
+        "month": "월간",
+        "seconds": "{count}초",
+        "minutes": "{count}분",
+        "hours": "{count}시간",
+        "days": "{count}일",
+        "weeks": "{count}주"
+      },
+      "limit": {
+        "period": "{period} 한도",
+        "periodScope": "{period} {scope} 한도",
+        "scope": "{scope} 한도",
+        "unknown": "사용 한도"
+      },
+      "credits": {
+        "period": "{period} 크레딧",
+        "unknown": "크레딧"
+      },
+      "requests": "요청 속도",
+      "tokens": "토큰 속도",
+      "cap": "온디맨드 한도"
+    }
   },
   "sections": {
     "agent": "에이전트",

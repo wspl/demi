@@ -166,7 +166,32 @@
   },
   "quota": {
     "unavailable": "用量暂不可用",
-    "used": "已使用 {share}"
+    "used": "已使用 {share}",
+    "window": {
+      "period": {
+        "day": "每日",
+        "week": "每周",
+        "month": "每月",
+        "seconds": "{count} 秒",
+        "minutes": "{count} 分钟",
+        "hours": "{count} 小时",
+        "days": "{count} 天",
+        "weeks": "{count} 周"
+      },
+      "limit": {
+        "period": "{period}限额",
+        "periodScope": "{period} {scope} 限额",
+        "scope": "{scope} 限额",
+        "unknown": "用量限额"
+      },
+      "credits": {
+        "period": "{period}额度",
+        "unknown": "额度"
+      },
+      "requests": "请求速率",
+      "tokens": "Token 速率",
+      "cap": "按需用量上限"
+    }
   },
   "sections": {
     "agent": "智能体",

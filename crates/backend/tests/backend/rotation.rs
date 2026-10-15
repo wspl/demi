@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
-use demi_shared_types::{Block, Clock as _, QuotaWindow, Timestamp};
+use demi_shared_types::{Block, Clock as _, QuotaKind, QuotaWindow, Timestamp};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::providers::{Accounts, LoginState, ProviderAnswer, Providers, Rotation};
@@ -277,7 +277,7 @@ fn window(now: Timestamp, used: f64, hours: i64, period: u64) -> QuotaWindow {
     let resets_at = Timestamp::from_millisecond(now.as_millisecond() + hours * 3_600_000).unwrap();
     QuotaWindow {
         id: "five_hour".into(),
-        label: "5h session".into(),
+        kind: QuotaKind::Limit,
         used_percent: Some(used),
         used: None,
         limit: None,

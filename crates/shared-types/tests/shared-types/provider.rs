@@ -37,7 +37,7 @@ fn snapshot() -> Value {
         "accountLabel": null,
         "windows": [{
             "id": "primary",
-            "label": "5-hour",
+            "kind": "limit",
             "usedPercent": 34.0,
             "used": null,
             "limit": null,

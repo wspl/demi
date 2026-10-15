@@ -487,6 +487,11 @@ browser for the next time it opens, as a disclosure in Finder does.
 - **The line under the list says the room before compaction**: the threshold
   less the estimate, *676K until compaction*, never below zero, with the
   Compact button at its end.
+- **Nothing to show is no part.** While the usage or the window is
+  unknown, as in a new conversation before its first answer, the card leaves
+  out the whole context part, its header, bar, rows and Compact line, and
+  shows the usage limits alone; a model with no limits to show, such as one
+  on an API key, then has no indicator.
 - **A row with no tokens is left out**, and so are Summary before the first
   compaction and Skills while no skill is on.
 

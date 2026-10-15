@@ -8,7 +8,7 @@ use demi_provider_common::{
     Provider,
     testing::{MockResponse, MockVendor, inference_request},
 };
-use demi_shared_types::{QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow};
+use demi_shared_types::{QuotaKind, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow};
 use serde_json::{Value, json};
 
 use crate::{ACCOUNT, CHAT, chat, json_answer, pool_with, provider, run, runtime_of, secret};
@@ -55,7 +55,7 @@ async fn the_probe_asks_the_subscription_and_the_credits_billing_together() {
         reading.windows,
         [QuotaWindow {
             id: "monthly".into(),
-            label: "Monthly credits".into(),
+            kind: QuotaKind::Credits,
             used_percent: Some(25.0),
             used: Some(5_000.0),
             limit: Some(20_000.0),
@@ -80,16 +80,19 @@ async fn weekly_credits_take_their_share_and_period_end_and_a_cap_adds_its_windo
         } }),
     )
     .await;
-    let ids: Vec<(&str, &str)> = reading
+    // Each window is of the kind and the period the billing states, from
+    // the period's start to its end (`usage-and-quota.md` § Grok Build).
+    let ids: Vec<(&str, QuotaKind, Option<u64>)> = reading
         .windows
         .iter()
-        .map(|window| (window.id.as_str(), window.label.as_str()))
+        .map(|window| (window.id.as_str(), window.kind, window.period_seconds))
         .collect();
+    let week = Some(7 * 24 * 3600);
     assert_eq!(
         ids,
         [
-            ("weekly", "Weekly credits"),
-            ("on_demand_cap", "On-demand cap")
+            ("weekly", QuotaKind::Credits, week),
+            ("on_demand_cap", QuotaKind::Cap, week)
         ]
     );
     let weekly = &reading.windows[0];
@@ -105,6 +108,27 @@ async fn weekly_credits_take_their_share_and_period_end_and_a_cap_adds_its_windo
         (reading.windows[1].limit, reading.windows[1].used_percent),
         (Some(50.0), None)
     );
+}
+
+/// A monthly plan's credits have the period its billing states, from the
+/// current period's start to its end, which the page reads as a month; no
+/// length is made up when it states none (the first test).
+#[tokio::test]
+async fn monthly_credits_have_the_period_their_billing_states() {
+    let (reading, _vendor) = probe(
+        json!({ "subscriptionTier": "SuperGrok" }),
+        json!({ "config": {
+            "creditUsagePercent": 40,
+            "currentPeriod": { "type": "USAGE_PERIOD_TYPE_MONTHLY", "start": "2026-10-01T00:00:00Z", "end": "2026-11-01T00:00:00Z" },
+        } }),
+    )
+    .await;
+    let windows: Vec<(&str, QuotaKind, Option<u64>)> = reading
+        .windows
+        .iter()
+        .map(|window| (window.id.as_str(), window.kind, window.period_seconds))
+        .collect();
+    assert_eq!(windows, [("monthly", QuotaKind::Credits, Some(31 * 86_400))]);
 }
 
 #[tokio::test]

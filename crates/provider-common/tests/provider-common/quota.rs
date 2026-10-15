@@ -13,7 +13,7 @@ use demi_provider_common::{
     testing::FixedClock,
 };
 use demi_shared_types::{
-    QuotaPlan, QuotaSeverity, QuotaUnit, QuotaWindow, SnapshotSource, Timestamp,
+    QuotaKind, QuotaPlan, QuotaSeverity, QuotaUnit, QuotaWindow, SnapshotSource, Timestamp,
 };
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, HeaderValue, StatusCode};
@@ -21,7 +21,7 @@ use http::{HeaderMap, HeaderValue, StatusCode};
 fn window(id: &str, used_percent: f64) -> QuotaWindow {
     QuotaWindow {
         id: id.into(),
-        label: id.into(),
+        kind: QuotaKind::Limit,
         used_percent: Some(used_percent),
         used: None,
         limit: None,

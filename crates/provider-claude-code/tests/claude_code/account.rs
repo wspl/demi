@@ -19,7 +19,7 @@ use demi_provider_common::{
 };
 use futures_util::future::BoxFuture;
 use demi_shared_types::{
-    AuthState, LoginStage, QuotaScope, QuotaSeverity, RuntimeState, SnapshotSource,
+    AuthState, LoginStage, QuotaKind, QuotaScope, QuotaSeverity, RuntimeState, SnapshotSource,
 };
 use serde_json::json;
 
@@ -221,14 +221,14 @@ async fn the_quota_is_probed_with_the_accounts_token_and_observed_on_the_clis_li
         ]
     );
     let five_hour = &snapshot.windows[0];
-    assert_eq!(five_hour.label, "5h session");
+    assert_eq!((five_hour.kind, five_hour.period_seconds), (QuotaKind::Limit, Some(5 * 3600)));
     assert_eq!(five_hour.used_percent, Some(12.0));
     assert_eq!(
         five_hour.resets_at,
         Some("2026-09-24T10:00:00Z".parse().unwrap())
     );
     let scoped = &snapshot.windows[1];
-    assert_eq!(scoped.label, "7d Fable");
+    assert_eq!((scoped.kind, scoped.period_seconds), (QuotaKind::Limit, Some(7 * 86_400)));
     assert_eq!(scoped.severity, Some(QuotaSeverity::Critical));
     assert_eq!(
         scoped.scope,
@@ -312,10 +312,10 @@ async fn the_quota_is_probed_with_the_accounts_token_and_observed_on_the_clis_li
     assert_eq!(observed.windows.len(), 5);
 }
 
-/// A limit of the probe is named by its period and its model, never by the
-/// vendor's kind (`usage-and-quota.md` § Claude Code).
+/// A limit of the probe has its period and its model, never the vendor's
+/// kind, which the page names it from (`usage-and-quota.md` § Claude Code).
 #[tokio::test(flavor = "local")]
-async fn a_probed_limit_is_named_by_its_period_and_model() {
+async fn a_probed_limit_has_its_period_and_model() {
     let vendor = MockVendor::start().await;
     let usage = vendor.url("/api/oauth/usage");
     let urls = Urls {
@@ -334,12 +334,20 @@ async fn a_probed_limit_is_named_by_its_period_and_model() {
         ],
     })));
     let snapshot = provider.quota().unwrap().probe().await.unwrap();
-    let labels: Vec<&str> = snapshot
+    let names: Vec<(Option<u64>, Option<&str>)> = snapshot
         .windows
         .iter()
-        .map(|window| window.label.as_str())
+        .map(|window| {
+            assert_eq!(window.kind, QuotaKind::Limit);
+            let model = window.scope.as_ref().and_then(|scope| scope.label.as_deref());
+            (window.period_seconds, model)
+        })
         .collect();
-    assert_eq!(labels, ["7d Fable", "5h Fable", "7d", "Opus", "Other limit"]);
+    let (week, five_hours) = (Some(7 * 86_400), Some(5 * 3600));
+    assert_eq!(
+        names,
+        [(week, Some("Fable")), (five_hours, Some("Fable")), (week, None), (None, Some("Opus")), (None, None)]
+    );
 }
 
 #[tokio::test(flavor = "local")]

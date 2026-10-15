@@ -26,6 +26,7 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
 import { productWould } from '../product-would'
 import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
+import { HOUR_SECONDS, WEEK_SECONDS, windowNamed } from '../fixtures/usage-limits'
 
 /**
  * One row of each kind of control a settings card holds, as the product's
@@ -78,8 +79,8 @@ const theme = ref<Theme>('system')
 const sound = ref(true)
 /** The account row's usage, which Refresh reads again: each window a little further used. */
 const usage = ref<SettingsQuotaWindow[]>([
-  { id: 'five_hour', label: '5h session', used: 62, max: 100, resetsAt: ahead(130 * MINUTE) },
-  { id: 'seven_day', label: '7d all models', used: 31, max: 100, resetsAt: ahead(3 * DAY + 4 * HOUR) },
+  { id: 'five_hour', name: windowNamed('limit', 5 * HOUR_SECONDS), used: 62, max: 100, resetsAt: ahead(130 * MINUTE) },
+  { id: 'seven_day', name: windowNamed('limit', WEEK_SECONDS), used: 31, max: 100, resetsAt: ahead(3 * DAY + 4 * HOUR) },
 ])
 /** The vendor's words for a refresh that failed, until the next answer. */
 const usageFailure = ref<ShownError | null>(null)

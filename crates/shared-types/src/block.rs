@@ -8,7 +8,7 @@ use serde_with::rust::unwrap_or_skip;
 
 use crate::{
     AgentMessage, BlockId, CommandId, MAX_SAFE_INTEGER, ModelSelection, Nullable, ProviderErrorDiagnostics,
-    Timestamp, TokenUsage, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
+    QuotaWindowName, Timestamp, TokenUsage, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
 
 /// One block of a transcript.
@@ -654,9 +654,9 @@ pub struct ResumeBlock {
 }
 
 /// The agent's account reached its limit and the same request went on with
-/// another account: *alex@example.com reached its 5h session limit,
-/// resetting at 9:00 PM; continuing with sam@example.com*. The page words
-/// it, with the reset in the viewer's time zone.
+/// another account: *alex@example.com reached its 5-hour limit, resetting
+/// at 9:00 PM; continuing with sam@example.com*. The page words it, the
+/// window's name in the viewer's language and the reset in their time zone.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AccountSwitchBlock {
@@ -672,12 +672,12 @@ pub struct AccountSwitchBlock {
     /// The label of the account the agent continues with.
     #[garde(skip)]
     pub to: String,
-    /// The name of the window that was used up, such as `5h session`; null
-    /// when the failure and the account's quota name none.
+    /// What names the window that was used up, such as a limit of five
+    /// hours; null when the failure and the account's quota name none.
     #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<String>")]
-    #[garde(skip)]
-    pub window: Option<String>,
+    #[schemars(with = "Nullable<QuotaWindowName>")]
+    #[garde(dive)]
+    pub window: Option<QuotaWindowName>,
     /// When the used-up account can be used again; null when unknown.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Timestamp>")]
