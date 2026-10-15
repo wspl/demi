@@ -1487,7 +1487,7 @@ The public routes take no session and ignore one:
 | --- | --- |
 | `GET /shares/:token` | `{ kind, title, takenAt }` |
 | `GET /shares/:token/transcript?node=&before=\|after=\|around=` | A page of the snapshot, as [Pages](#pages) answers it, `instructions` always empty; `node` a subagent's number the snapshot holds |
-| `GET /shares/:token/transcript/blocks/:blockId?node=` | One block whole, with the command output it shows |
+| `GET /shares/:token/transcript/blocks/:blockId?node=` | One block whole, as the conversation's whole-block read answers it |
 | `GET /shares/:token/blobs/:sha256?type=` | A blob the snapshot shows |
 
 A token that names no share, a node or block the snapshot lacks, and a blob

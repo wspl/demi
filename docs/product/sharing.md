@@ -79,8 +79,8 @@ The control database holds each share's record: its token, its user, its
 conversation, its kind, `conversation` or `answer` with the answer's block,
 and when it was taken ([Control records](../backend/storage.md#control-records)).
 The snapshot is kept in the conversation's database: its blocks, each
-subagent's included, and the command outputs they show, whole, copied from
-the transcript as they were, since a later edit or compaction rewrites the
+subagent's included, copied from the transcript as they were, with the
+command output each call's view holds and no more, since a later edit or compaction rewrites the
 transcript ([Message editing](../agent/message-editing.md)). A conversation's
 snapshot copies every block except `context` blocks, the hidden inputs that
 carry the execution context, instructions and skills, and `response` blocks,
