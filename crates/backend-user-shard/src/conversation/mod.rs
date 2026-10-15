@@ -42,6 +42,7 @@ use demi_agent_tools::ContextSource;
 use instructions::Instructions;
 use demi_agent_transcript::RandomIds;
 use demi_agent_store::media::BlobStore;
+use demi_backend_database::search::TranscriptChange;
 use demi_backend_database::tree::SqliteTreeStore;
 use demi_backend_host_access::shells::ShardShellEnvironments;
 use demi_backend_host_access::{HostShard, conversation_of};
@@ -88,20 +89,27 @@ pub(crate) fn conversation_parts(
     let stores: TreeStores = {
         let services = services.clone();
         let marks = marks.clone();
+        let shard = shard.clone();
         // The shard's user owns every conversation it hosts.
         let blobs: Arc<dyn BlobStore> = Arc::new(services.blobs.for_user(&user));
         Rc::new(move |root: &NodeId| {
             let conversation = conversation_of(root);
             let db = services.conversations.db(&conversation);
             // The summary reads the root's checkpoint, which each save of it
-            // changes.
+            // changes, and the search index follows what each save of it
+            // wrote.
             let saved = {
                 let marks = marks.clone();
                 let root = root.clone();
-                Rc::new(move |node: &NodeId| {
-                    if *node == root {
-                        marks.mark(Part::Conversation(conversation.clone()));
+                let shard = shard.clone();
+                Rc::new(move |node: &NodeId, change: Option<TranscriptChange>| {
+                    if *node != root {
+                        return;
                     }
+                    if let (Some(change), Some(shard)) = (change, shard.upgrade()) {
+                        shard.follow_save(conversation.clone(), change);
+                    }
+                    marks.mark(Part::Conversation(conversation.clone()));
                 })
             };
             Rc::new(SqliteTreeStore::new(db, blobs.clone(), saved)) as Rc<dyn AgentTreeStore>

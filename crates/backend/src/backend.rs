@@ -21,7 +21,7 @@ use demi_backend_cloud::reset::recover_clouds;
 use demi_backend_database::StorageError;
 use demi_backend_database::server_log::ServerLog;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, runner_socket, web_build};
-use demi_backend_user_shard::conversation::search::index_at_start;
+use demi_backend_user_shard::conversation::search::{follow_resets, index_at_start};
 use demi_backend_user_shard::conversation::{
     finish_deletions, recover_forks, resume_after_restart, settle_pending,
 };
@@ -45,6 +45,9 @@ pub struct Backend {
     edge: Edge,
     /// Routes the machine manager's death events to their owners' shards.
     deaths: AbortOnDropHandle<()>,
+    /// Has the users whose search index is reset index their conversations
+    /// again (`storage.md` § Search index).
+    resets: AbortOnDropHandle<()>,
     /// Sources the runner executables of the paired devices' systems
     /// (`native-runtime.md` § Runner releases); a close ends it.
     runners: Option<AbortOnDropHandle<()>>,
@@ -281,6 +284,11 @@ impl Backend {
             services.clone(),
             shards.shards(),
         )));
+        let resets = AbortOnDropHandle::new(tokio::spawn(follow_resets(
+            services.search.resets(),
+            services.control.clone(),
+            shards.shards(),
+        )));
         // Before the backend serves, the machine manager settles what an
         // earlier backend left, which keeps every running Cloud, and resets
         // it left unfinished commit their disks; each running Cloud's shard
@@ -444,6 +452,7 @@ impl Backend {
             shards,
             edge,
             deaths,
+            resets,
             runners,
             ahead,
         })
@@ -459,6 +468,12 @@ impl Backend {
     #[cfg(feature = "testing")]
     pub fn hold_commits(&self) -> demi_backend_database::conversations::CommitHold {
         self.services.conversations.hold_commits()
+    }
+
+    /// How much work the users' search indexes have done so far.
+    #[cfg(feature = "testing")]
+    pub fn search_work(&self) -> demi_backend_database::search::SearchWork {
+        self.services.search.work()
     }
 
     /// Holds every migration of a conversation's database from now on,
@@ -638,6 +653,7 @@ impl Backend {
         self.services.claims.close();
         // No shard is left to route a death to.
         drop(self.deaths);
+        drop(self.resets);
         // A runner or package executable still being sourced is no longer
         // needed.
         drop(self.runners);
