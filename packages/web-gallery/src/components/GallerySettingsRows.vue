@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { requestFailure } from '../fixtures/request-failures'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { Monitor, Moon, RefreshCw, Sun } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsGroup from '@demicodes/web-ui/settings/SettingsGroup.vue'
@@ -32,11 +32,40 @@ import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
  * pages place them. Each control acts on the specimen's own state.
  */
 type Theme = 'light' | 'dark' | 'system'
-const themes: readonly SegmentedOption<Theme>[] = [
-  { value: 'light', label: 'Light', icon: Sun },
-  { value: 'dark', label: 'Dark', icon: Moon },
-  { value: 'system', label: 'System', icon: Monitor },
-]
+
+/**
+ * The rows in English, or in Japanese, whose longer labels show where a row
+ * puts its control under the text instead of beside it (SettingsRow).
+ */
+const props = defineProps<{ ja?: boolean }>()
+const EN = {
+  group: 'Every Control', name: 'Name', nameHint: 'Lowercase letters, digits and hyphens.',
+  baseUrl: 'Base URL', retries: 'Retries', retriesHint: 'A number, or Unlimited after a warning.',
+  confirmTitle: 'Allow unlimited retries?', confirmAction: 'Allow Unlimited',
+  confirmBody: 'A request that keeps failing is then tried again without end.',
+  textSize: 'Message text size', protocol: 'Protocol', theme: 'Theme',
+  light: 'Light', dark: 'Dark', system: 'System',
+  sound: 'Sound', soundHint: 'When a turn finishes in the background.',
+  export: 'Export', exportHint: 'A copy of every conversation, sent by email.', requestExport: 'Request Export',
+  requestExportWould: 'Request an Export', refresh: 'Refresh usage',
+}
+const JA: typeof EN = {
+  group: 'すべてのコントロール', name: '名前', nameHint: '小文字の英字、数字、ハイフン。',
+  baseUrl: 'ベース URL', retries: '再試行', retriesHint: '数値、または警告のあとに無制限。',
+  confirmTitle: '無制限の再試行を許可しますか?', confirmAction: '無制限を許可',
+  confirmBody: '失敗し続けるリクエストは、終わりなく再試行されます。',
+  textSize: 'メッセージのフォントサイズ', protocol: 'プロトコル', theme: 'テーマ',
+  light: 'ライト', dark: 'ダーク', system: 'システム',
+  sound: 'サウンド', soundHint: 'バックグラウンドでターンが完了したとき。',
+  export: '書き出し', exportHint: 'すべての会話のコピーをメールで送信します。', requestExport: '書き出しを依頼',
+  requestExportWould: '書き出しを依頼', refresh: '使用量を更新',
+}
+const c = computed(() => (props.ja ? JA : EN))
+const themes = computed<readonly SegmentedOption<Theme>[]>(() => [
+  { value: 'light', label: c.value.light, icon: Sun },
+  { value: 'dark', label: c.value.dark, icon: Moon },
+  { value: 'system', label: c.value.system, icon: Monitor },
+])
 const protocols = ['Chat Completions', 'Responses', 'Messages'] as const
 
 const name = ref('explore')
@@ -67,35 +96,35 @@ function refreshUsage(): void {
 </script>
 
 <template>
-  <SettingsGroup title="Every Control">
-    <SettingsRow label="Name" description="Lowercase letters, digits and hyphens.">
-      <TextInput v-model="name" aria-label="Name" class="w-48 max-w-full" />
+  <SettingsGroup :title="c.group">
+    <SettingsRow :label="c.name" :description="c.nameHint">
+      <TextInput v-model="name" :aria-label="c.name" class="w-48 max-w-full" />
     </SettingsRow>
-    <SettingsRow label="Base URL">
+    <SettingsRow :label="c.baseUrl">
       <CommitTextInput
         :model-value="baseUrl"
-        aria-label="Base URL"
+        :aria-label="c.baseUrl"
         class="w-72 max-w-full"
         @commit="baseUrl = $event"
       />
     </SettingsRow>
-    <SettingsRow label="Retries" description="A number, or Unlimited after a warning.">
+    <SettingsRow :label="c.retries" :description="c.retriesHint">
       <template v-if="retriesProblem" #detail>
         <InlineError :message="retriesProblem" />
       </template>
       <LimitField
         :model-value="retries"
-        label="Retries"
+        :label="c.retries"
         :overlay-store="appOverlayStore"
-        confirm-title="Allow unlimited retries?"
-        confirm-action="Allow Unlimited"
+        :confirm-title="c.confirmTitle"
+        :confirm-action="c.confirmAction"
         @commit="retries = $event"
         @problem="retriesProblem = $event"
       >
-        <p>A request that keeps failing is then tried again without end.</p>
+        <p>{{ c.confirmBody }}</p>
       </LimitField>
     </SettingsRow>
-    <SettingsRow label="Message text size">
+    <SettingsRow :label="c.textSize">
       <Slider
         v-model="fontSize"
         :min="12"
@@ -104,12 +133,12 @@ function refreshUsage(): void {
         class="w-48"
       />
     </SettingsRow>
-    <SettingsRow label="Protocol">
+    <SettingsRow :label="c.protocol">
       <Dropdown
         size="sm"
         :overlay-store="appOverlayStore"
         variant="default"
-        trigger-label="Protocol"
+        :trigger-label="c.protocol"
       >
         <template #trigger>{{ protocol }}</template>
         <template #content="{ close }">
@@ -126,19 +155,19 @@ function refreshUsage(): void {
         </template>
       </Dropdown>
     </SettingsRow>
-    <SettingsRow label="Theme">
+    <SettingsRow :label="c.theme">
       <Segmented v-model="theme" size="sm" :options="themes" />
     </SettingsRow>
-    <SettingsRow label="Sound" description="When a turn finishes in the background.">
-      <Switch v-model="sound" aria-label="Sound" />
+    <SettingsRow :label="c.sound" :description="c.soundHint">
+      <Switch v-model="sound" :aria-label="c.sound" />
     </SettingsRow>
-    <SettingsRow label="Export" description="A copy of every conversation, sent by email.">
-      <Button size="sm" @click="productWould('Request an Export')">Request Export</Button>
+    <SettingsRow :label="c.export" :description="c.exportHint">
+      <Button size="sm" @click="productWould(c.requestExportWould)">{{ c.requestExport }}</Button>
     </SettingsRow>
     <SettingsRow label="alex@example.com">
       <template #tags><Tag>Max 5×</Tag></template>
-      <Tooltip content="Refresh usage">
-        <IconButton size="sm" :icon="RefreshCw" aria-label="Refresh usage" spin-on-click @click="refreshUsage" />
+      <Tooltip :content="c.refresh">
+        <IconButton size="sm" :icon="RefreshCw" :aria-label="c.refresh" spin-on-click @click="refreshUsage" />
       </Tooltip>
       <template #below>
         <ProviderQuota :windows="usage" :auto-refresh="false" :error="usageFailure" @refresh="refreshUsage" />

@@ -15,11 +15,17 @@ import type { SentenceText } from '../ui/ui-text'
 /**
  * Label and explanation on the left, the control on the right. Icons align with
  * the title. Controls center, or align with the title when detail is present.
- * In a narrow card the control drops under the text. There a field (an element
- * marked `data-field`: a text input, a text area, a slider, a button-style
- * dropdown) stretches across the row; every other control (a switch, a button,
- * a segmented control) keeps its size and its right alignment. The same
- * container width decides both, so a control fills exactly when it has dropped.
+ * The row decides by its own content whether the two fit side by side: the
+ * label keeps at least 9rem, and where the control, at its own
+ * width, does not leave that, the control drops under the text, as in iOS
+ * Settings, and takes the whole line. The line is a flex-wrap line, so what
+ * the text and the control need decides it, in every language and in every
+ * plugin's page, with no width written in any row. A title wraps at its words
+ * and is cut only where one word is wider than the line. On its own line a
+ * field (an element marked `data-field`: a text input, a text area, a slider,
+ * a button-style dropdown, a segmented control) stretches across the row, a
+ * segmented control's segments sharing the width; every other control (a
+ * switch, a button) keeps its size and its right alignment.
  * An inset row belongs to the row above it (an agent's models). A compact row is
  * for lists of like items (models, accounts); an interactive one opens on click
  * without a hover wash. `muted` fades the label side only, so actions stay at
@@ -31,8 +37,7 @@ import type { SentenceText } from '../ui/ui-text'
  * distance to the row's end equals its distance to the row's top and bottom
  * (the edge-control rule). `statuses` are the row's state, each a label
  * right after the name, after the `tags`. The name tells rows apart, so it
- * keeps its width: where the tags do not fit beside it they move under it,
- * and only a name wider than the whole line is cut, whole in its tooltip
+ * keeps its width: where the tags do not fit beside it they move under it
  * (the Writing page's rule for long text). The `below` slot holds what needs
  * the row's whole width, such as an account's usage bars: it takes a line of
  * its own under the name and the controls at every width, from the row's
@@ -104,12 +109,12 @@ const working = provideRowTarget(() => props.target)
       @keydown.enter.self="!disabled && navigable && emit('click')"
       @keydown.space.self.prevent="!disabled && navigable && emit('click')"
     >
-    <!-- Wraps under @sm, where the controls drop under the text, and always with `below`, whose line is its own. -->
+    <!-- Wraps where the controls do not fit beside the text, and always with `below`, whose line is its own. -->
     <div
       class="flex min-w-0 flex-1 items-center"
       :class="[
       inset ? 'min-h-9 gap-x-3 bg-(--fill-color) py-1.5 pl-7 pr-4 [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_2.5%)] *:on-fill' : compact ? (below ? 'gap-x-3 px-3 py-3' : 'min-h-10 gap-x-3 px-3 py-1.5') : 'min-h-14 gap-x-4 px-4 py-3',
-      below ? 'flex-wrap gap-y-3' : inset ? 'flex-nowrap gap-y-2' : 'flex-wrap gap-y-2 @sm:flex-nowrap',
+      below ? 'flex-wrap gap-y-3' : inset ? 'flex-nowrap gap-y-2' : 'flex-wrap gap-y-2',
       accessory ? 'pr-0!' : '',
     ]"
     >
@@ -121,15 +126,16 @@ const working = provideRowTarget(() => props.target)
       >
         <slot name="leading" />
       </div>
+      <!-- The text takes every line's room the controls leave, and never less than 9rem: below that the controls drop. -->
       <div
-        class="min-w-0 flex-1 select-none"
-        :class="faded ? 'opacity-60' : ''"
+        class="min-w-0 select-none"
+        :class="[inset ? 'flex-1' : 'grow-[1000] basis-36', faded ? 'opacity-60' : '']"
       >
         <div
           class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 leading-5"
           :class="inset ? 'text-[12px] text-fg-body' : 'text-chrome text-fg'"
         >
-          <TruncatedText class="max-w-full shrink-0" :text="label" />
+          <TruncatedText class="max-w-full shrink-0" wrap :text="label" />
           <div v-if="$slots.tags || statuses?.length" class="flex min-h-5 min-w-0 flex-wrap items-center gap-1">
             <slot name="tags" />
             <Tooltip
@@ -152,18 +158,19 @@ const working = provideRowTarget(() => props.target)
           <slot name="detail" />
         </div>
       </div>
-    <!-- Beside the text the controls may take up to two thirds; inputs shrink, buttons never wrap.
-         The container spans the row's content box so a bare input can stretch to it.
-         Under the text (below @sm) a field takes the width its siblings leave; an inset row never drops. -->
+    <!-- The controls keep their own width beside the text, which wraps before they drop.
+         Dropped, they take the whole line (they are the only item on it, so their grow is all of it)
+         and a field stretches across it. An inset row never drops. -->
       <!-- A row with no controls shows its work at its end, before its accessory. -->
       <RowSpinner v-if="working && !$slots.default" class="ml-auto self-center" />
       <div
         v-if="$slots.default"
         @click="isolateControls && $event.stopPropagation()"
-        class="flex min-w-0 items-center justify-end gap-2 self-stretch @sm:basis-auto @sm:max-w-[66%]"
+        class="flex min-w-0 items-center justify-end gap-2 self-stretch"
         :class="[
-        inset ? 'shrink-0' : 'basis-full @max-sm:*:data-field:flex-1',
-        topAligned ? '@sm:h-5 @sm:self-start' : '',
+        inset ? 'shrink-0' : 'max-w-full grow *:data-field:grow',
+        topAligned && !inset ? 'h-5 self-start' : '',
+        topAligned && inset ? '@sm:h-5 @sm:self-start' : '',
         disabled ? 'pointer-events-none' : '',
       ]"
       >
