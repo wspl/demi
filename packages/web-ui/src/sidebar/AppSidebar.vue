@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, nextTick, ref, useId, watch } from 'vue'
 import { Archive, FolderPlus, Search, Settings, Smartphone, SquarePen } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -144,8 +145,8 @@ const groupLabels = computed(() => {
     }
   }
   return {
-    conversations: label('conversations', 'Conversations', plain.value),
-    projects: label('projects', 'Projects', groups.value.flatMap((group) => group.items)),
+    conversations: label('conversations', t('groups.conversations'), plain.value),
+    projects: label('projects', t('groups.projects'), groups.value.flatMap((group) => group.items)),
   }
 })
 const displayEntries = computed(() => [
@@ -490,13 +491,13 @@ function selectProjectConversations(project: SidebarProject): void {
     <div class="flex shrink-0 flex-col gap-px px-2">
       <SidebarNavItem
         :icon="SquarePen"
-        label="New"
+        :label="t('nav.new')"
         :shortcut="newShortcut"
         @click="emit('create', null)"
       />
       <SidebarNavItem
         :icon="Search"
-        label="Search"
+        :label="t('nav.search')"
         :shortcut="searchShortcut"
         @click="emit('search')"
       />
@@ -509,7 +510,7 @@ function selectProjectConversations(project: SidebarProject): void {
       />
       <SidebarNavItem
         :icon="Archive"
-        label="Archived"
+        :label="t('nav.archived')"
         @click="emit('openSettings', 'archived')"
       />
     </div>
@@ -540,8 +541,8 @@ function selectProjectConversations(project: SidebarProject): void {
           v-if="listStatus === 'loading' || listStatus === 'failed'"
           class="h-full min-h-40"
           :status="listStatus"
-          :label="listStatus === 'loading' ? 'Loading conversations…' : 'Couldn’t load conversations.'"
-          loading-label="Loading conversations…"
+          :label="listStatus === 'loading' ? t('list.loading') : t('list.failed')"
+          :loading-label="t('list.loading')"
           :on-retry="() => emit('retryList')"
         />
         <!-- Rows sit a hairline apart, the way menu items and the entries above do. -->
@@ -589,27 +590,27 @@ function selectProjectConversations(project: SidebarProject): void {
               <template #action>
                 <Tooltip
                   v-if="entry.group === 'projects'"
-                  content="Add project"
+                  :content="t('groups.addProject')"
                   placement="right"
                 >
                   <IconButton
                     :icon="FolderPlus"
                     :size="phone ? 'lg' : 'xs'"
                     variant="ghost"
-                    aria-label="Add project"
+                    :aria-label="t('groups.addProject')"
                     @click="emit('addProject')"
                   />
                 </Tooltip>
                 <Tooltip
                   v-else
-                  content="New conversation"
+                  :content="t('groups.newConversation')"
                   placement="right"
                 >
                   <IconButton
                     :icon="SquarePen"
                     :size="phone ? 'lg' : 'xs'"
                     variant="ghost"
-                    aria-label="New conversation"
+                    :aria-label="t('groups.newConversation')"
                     @click="emit('create', null)"
                   />
                 </Tooltip>
@@ -674,21 +675,21 @@ function selectProjectConversations(project: SidebarProject): void {
         @open-settings="emit('openSettings')"
       />
       <!-- A page that is itself on a phone has no phone to hand the account to. -->
-      <Tooltip v-if="!phone" content="Hand Off to Phone" placement="top">
+      <Tooltip v-if="!phone" :content="t('foot.handOff')" placement="top">
         <IconButton
           :icon="Smartphone"
           :size="phone ? 'lg' : 'md'"
           variant="ghost"
-          aria-label="Hand Off to Phone"
+          :aria-label="t('foot.handOff')"
           @click="emit('handOffToPhone')"
         />
       </Tooltip>
-      <Tooltip content="Settings" placement="right">
+      <Tooltip :content="t('foot.settings')" placement="right">
         <IconButton
           :icon="Settings"
           :size="phone ? 'lg' : 'md'"
           variant="ghost"
-          aria-label="Settings"
+          :aria-label="t('foot.settings')"
           @click="emit('openSettings')"
         />
       </Tooltip>

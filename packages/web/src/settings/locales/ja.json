@@ -1,0 +1,62 @@
+{
+  "corrections": {
+    "invalidCredentials": "現在のパスワードではありません。",
+    "invalidCode": "コードが間違っているか、期限切れです。最新のコードを使ってください。"
+  },
+  "credentials": {
+    "showFailed": "値を表示できませんでした"
+  },
+  "devices": {
+    "revokeFailed": "デバイスを取り消せませんでした",
+    "renameFailed": "デバイス名を変更できませんでした",
+    "routeFailed": "経路を変更できませんでした",
+    "resetNotStarted": "リセットを開始できませんでした。接続を確認して、もう一度お試しください。"
+  },
+  "plugins": {
+    "turnOnFailed": "プラグインをオンにできませんでした",
+    "turnOffFailed": "プラグインをオフにできませんでした"
+  },
+  "providers": {
+    "saveFailed": "プロバイダーを保存できませんでした",
+    "testFailed": "プロバイダーをテストできませんでした",
+    "refreshModelsFailed": "モデルを更新できませんでした",
+    "removeFailed": "プロバイダーを削除できませんでした",
+    "cliUpdateFailed": "コマンドラインツールを更新できませんでした",
+    "removeAccountFailed": "アカウントを削除できませんでした",
+    "testAccountFailed": "アカウントをテストできませんでした",
+    "addFailed": "プロバイダーを追加できませんでした",
+    "cliReadFailed": "コマンドラインツールを読み取れませんでした",
+    "checkUpdatesFailed": "アップデートを確認できませんでした",
+    "cliInstallFailed": "コマンドラインツールをインストールできませんでした",
+    "usageFailed": "使用状況を更新できませんでした",
+    "reorderFailed": "アカウントを並べ替えられませんでした",
+    "switchFailed": "アカウントを切り替えられませんでした",
+    "cancelLoginFailed": "サインインをキャンセルできませんでした",
+    "loginStopped": "このサインインはすでに終了しています。",
+    "removeModelFailed": "モデルを削除できませんでした"
+  },
+  "subagents": {
+    "turnOnFailed": "サブエージェントをオンにできませんでした",
+    "turnOffFailed": "サブエージェントをオフにできませんでした",
+    "limitFailed": "上限を変更できませんでした",
+    "enableFailed": "プロファイルを有効にできませんでした",
+    "disableFailed": "プロファイルを無効にできませんでした"
+  },
+  "users": {
+    "newPasswordFailed": "新しいパスワードを作成できませんでした",
+    "roleFailed": "ロールを変更できませんでした",
+    "disableFailed": "アカウントを無効にできませんでした",
+    "enableFailed": "アカウントを有効にできませんでした",
+    "signOutFailed": "アカウントをサインアウトできませんでした",
+    "loading": "ユーザーを読み込んでいます…",
+    "loadFailed": "ユーザーを読み込めませんでした。"
+  },
+  "about": {
+    "acknowledgementsFailed": "謝辞を読み込めませんでした。"
+  },
+  "dialog": {
+    "nameFailed": "名前を変更できませんでした",
+    "emailFailed": "メールを変更できませんでした",
+    "passwordFailed": "パスワードを変更できませんでした"
+  }
+}

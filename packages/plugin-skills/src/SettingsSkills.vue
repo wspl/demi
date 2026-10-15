@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, ref } from 'vue'
 import { GitBranch, RefreshCw, Trash2 } from '@lucide/vue'
 import type { Action, OverlayStore, PageContext, SettingsRowStatus } from '@demicodes/plugin-sdk'
@@ -62,13 +63,13 @@ function name(source: SettingsSkillSource): string {
 function sourceStatuses(source: SettingsSkillSource): SettingsRowStatus[] {
   if (source.fetching) {
     // A source with no commit and no failure has never been fetched: its first fetch adds it.
-    return [{ label: !source.commit && !source.failure ? 'Adding' : 'Updating' }]
+    return [{ label: !source.commit && !source.failure ? t('sources.adding') : t('sources.updating') }]
   }
   if (source.failure) {
-    return [{ label: 'Failed', tone: 'danger', detail: source.failure.message }]
+    return [{ label: t('sources.failed'), tone: 'danger', detail: source.failure.message }]
   }
   if (source.updateAvailable) {
-    return [{ label: 'Update available', tone: 'accent' }]
+    return [{ label: t('sources.updateAvailable'), tone: 'accent' }]
   }
   return []
 }
@@ -77,18 +78,18 @@ function sourceStatuses(source: SettingsSkillSource): SettingsRowStatus[] {
 function skillStatuses(skill: SettingsSkill): SettingsRowStatus[] {
   const statuses: SettingsRowStatus[] = []
   if (skill.warnings.length) {
-    statuses.push({ label: 'Warning', tone: 'warning', detail: skill.warnings.join('\n') })
+    statuses.push({ label: t('skill.warning'), tone: 'warning', detail: skill.warnings.join('\n') })
   }
   if (skill.takenBy) {
     statuses.push({
-      label: 'Name taken',
-      detail: `A skill named “${skill.name}” from ${skill.takenBy} is on. Turn it off to use this one.`,
+      label: t('skill.nameTaken'),
+      detail: t('skill.nameTakenDetail', { name: skill.name, origin: skill.takenBy }),
     })
   }
   if (skill.disableModelInvocation) {
     statuses.push({
-      label: 'Never offered',
-      detail: 'It sets disable-model-invocation.',
+      label: t('skill.neverOffered'),
+      detail: t('skill.neverOfferedDetail'),
     })
   }
   return statuses
@@ -144,7 +145,7 @@ const removedSkills = computed(() => {
   if (names.length <= NAMED_SKILLS) {
     return names
   }
-  return [...names.slice(0, NAMED_SKILLS), `and ${names.length - NAMED_SKILLS} more`]
+  return [...names.slice(0, NAMED_SKILLS), t('removeSource.more', { count: names.length - NAMED_SKILLS })]
 })
 
 /** Remove confirmed: once it is done, the question closes, if it still asks about this source. */
@@ -165,12 +166,12 @@ async function confirmRemove(): Promise<void> {
 
 <template>
   <SettingsPage
-    title="Skills"
-    description="Packaged workflows the agent can follow."
+    :title="t('title')"
+    :description="t('description')"
   >
-    <SettingsGroup title="Sources">
+    <SettingsGroup :title="t('sources.title')">
       <template #actions>
-        <Button size="sm" @click="addOpen = true">Add Source…</Button>
+        <Button size="sm" @click="addOpen = true">{{ t('sources.add') }}</Button>
       </template>
       <div v-for="source in sources" :key="source.id">
         <SettingsRow
@@ -204,11 +205,11 @@ async function confirmRemove(): Promise<void> {
                 :model-value="pack(source).checked"
                 size="sm"
                 :operation="operation('set_source_enabled', source.id)"
-                :aria-label="`Enable every skill in ${name(source)}`"
+                :aria-label="t('sources.enableAll', { name: name(source) })"
                 @update:model-value="(on) => onSwitchSource?.(source.id, on)"
               />
             </template>
-            <Tooltip content="Update">
+            <Tooltip :content="t('sources.update')">
               <IconButton
                 size="sm"
                 :icon="RefreshCw"
@@ -216,16 +217,16 @@ async function confirmRemove(): Promise<void> {
                 :spinning="source.fetching"
                 :disabled="source.fetching"
                 :operation="operation('update_source', source.id)"
-                aria-label="Update"
+                :aria-label="t('sources.update')"
                 @click="onUpdate?.(source.id)"
               />
             </Tooltip>
-            <Tooltip content="Remove">
+            <Tooltip :content="t('sources.remove')">
               <IconButton
                 size="sm"
                 :icon="Trash2"
                 variant="danger"
-                aria-label="Remove"
+                :aria-label="t('sources.remove')"
                 :operation="operation('remove_source', source.id)"
                 @click="askRemove(source)"
               />
@@ -259,7 +260,7 @@ async function confirmRemove(): Promise<void> {
                 :model-value="skill.enabled"
                 size="sm"
                 :operation="operation('set_enabled', skillKey(source, skill))"
-                :aria-label="`${skill.name} ${skill.enabled ? 'on' : 'off'}`"
+                :aria-label="skill.name"
                 @update:model-value="(on) => onSwitch?.(source.id, skill.name, on)"
               />
             </SettingsRow>
@@ -271,7 +272,7 @@ async function confirmRemove(): Promise<void> {
               :label="skipped.path"
             >
               <template #description>
-                <span class="block truncate">Not a skill: {{ skipped.reason }}</span>
+                <span class="block truncate">{{ t('skill.notASkill', { reason: skipped.reason }) }}</span>
               </template>
             </SettingsRow>
           </ScrollArea>
@@ -281,7 +282,7 @@ async function confirmRemove(): Promise<void> {
         v-if="empty"
         class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
       >
-        No sources
+        {{ t('sources.none') }}
       </div>
     </SettingsGroup>
     <AddSkillSourceDialog
@@ -293,8 +294,8 @@ async function confirmRemove(): Promise<void> {
     <ConfirmDialog
       :is-open="removeOpen"
       :overlay-store="overlayStore"
-      :title="`Remove “${removing ? name(removing) : ''}”?`"
-      action="Remove"
+      :title="t('removeSource.title', { name: removing ? name(removing) : '' })"
+      :action="t('sources.remove')"
       :goes="removedSkills"
       :operation="removing ? operation('remove_source', removing.id) : undefined"
       @close="removeOpen = false"
@@ -302,8 +303,8 @@ async function confirmRemove(): Promise<void> {
     >
       <p>
         {{ removing?.skills.length
-          ? 'Its skills go with it. You can add the repository again later.'
-          : 'The source leaves your skills. You can add the repository again later.' }}
+          ? t('removeSource.withSkills')
+          : t('removeSource.empty') }}
       </p>
     </ConfirmDialog>
   </SettingsPage>

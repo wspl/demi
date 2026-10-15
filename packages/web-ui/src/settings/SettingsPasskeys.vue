@@ -8,6 +8,7 @@ import RenameDialog from '../ui/RenameDialog.vue'
 import Tag from '../ui/Tag.vue'
 import { formatDay } from '../ui/dates'
 import AddPasskeyDialog from './AddPasskeyDialog.vue'
+import { t } from './locales/text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsPasskey, SettingsPasskeyHost } from './types'
@@ -71,32 +72,32 @@ const empty = computed(() => props.host.passkeys.length === 0)
 </script>
 
 <template>
-  <SettingsGroup title="Passkeys">
+  <SettingsGroup :title="t('passkeys.title')">
     <template #actions>
-      <Button size="sm" @click="adding = true">Add Passkey…</Button>
+      <Button size="sm" @click="adding = true">{{ t('passkeys.add') }}</Button>
     </template>
     <SettingsRow v-for="passkey in host.passkeys" :key="passkey.id" :label="passkey.name">
       <template #tags>
-        <Tag>{{ passkey.synced ? 'Synced' : 'This Device Only' }}</Tag>
+        <Tag>{{ passkey.synced ? t('passkeys.synced') : t('passkeys.thisDeviceOnly') }}</Tag>
       </template>
       <template #detail>
         <div class="flex flex-wrap gap-x-4 gap-y-0.5 text-[12px] leading-4 text-fg-subtle">
           <span>
-            Added
+            {{ t('passkeys.added') }}
             <span class="text-fg-muted">{{ formatDay(passkey.createdAt) }}</span>
           </span>
           <span v-if="passkey.lastUsedAt">
-            Last used
+            {{ t('passkeys.lastUsed') }}
             <span class="text-fg-muted"><RelativeTime :timestamp="passkey.lastUsedAt" /></span>
           </span>
         </div>
       </template>
-      <Button size="sm" :aria-label="`Rename ${passkey.name}`" @click="rename(passkey)">Rename…</Button>
-      <Button size="sm" :aria-label="`Remove ${passkey.name}`" :operation="removal(passkey)" @click="askRemove(passkey)">
-        Remove…
+      <Button size="sm" :aria-label="t('passkeys.renameLabel', { name: passkey.name })" @click="rename(passkey)">{{ t('passkeys.rename') }}</Button>
+      <Button size="sm" :aria-label="t('passkeys.removeLabel', { name: passkey.name })" :operation="removal(passkey)" @click="askRemove(passkey)">
+        {{ t('passkeys.remove') }}
       </Button>
     </SettingsRow>
-    <div v-if="empty" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">No passkeys</div>
+    <div v-if="empty" class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle">{{ t('passkeys.none') }}</div>
   </SettingsGroup>
   <AddPasskeyDialog
     :is-open="adding"
@@ -108,8 +109,8 @@ const empty = computed(() => props.host.passkeys.length === 0)
   <RenameDialog
     :is-open="renameOpen"
     :overlay-store="overlayStore"
-    title="Rename Passkey"
-    label="Passkey name"
+    :title="t('passkeys.renameTitle')"
+    :label="t('passkeys.nameLabel')"
     :name="renaming?.name ?? ''"
     :max-length="NAME_MAX_LENGTH"
     @close="renameOpen = false"
@@ -118,12 +119,12 @@ const empty = computed(() => props.host.passkeys.length === 0)
   <ConfirmDialog
     :is-open="removeOpen"
     :overlay-store="overlayStore"
-    :title="`Remove the passkey “${removing?.name ?? ''}”?`"
-    action="Remove"
+    :title="t('passkeys.removeTitle', { name: removing?.name ?? '' })"
+    :action="t('passkeys.removeAction')"
     :operation="removal(removing)"
     @close="removeOpen = false"
     @confirm="remove"
   >
-    <p>It can’t sign in to this account anymore. Your password and other passkeys still work.</p>
+    <p>{{ t('passkeys.removeBody') }}</p>
   </ConfirmDialog>
 </template>

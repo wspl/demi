@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { formError, shownError } from '@demicodes/web-ui/infra/errors'
 import { nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -65,8 +66,12 @@ async function submit(address: string, secret: string): Promise<void> {
     phase.value = {
       reason: phase.value.reason,
       error: formError(error, {
-        invalid_credentials: 'The email or password is incorrect.',
-        account_disabled: 'This account is disabled. Ask your administrator to enable it.',
+        get invalid_credentials() {
+          return t('login.invalidCredentials')
+        },
+        get account_disabled() {
+          return t('login.accountDisabled')
+        },
       }),
       ...(wait === null ? {} : { lockedUntil: Date.now() + wait * 1000 }),
     }

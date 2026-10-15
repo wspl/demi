@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /**
@@ -15,28 +16,52 @@ import type { SentenceText, TitleText } from '../ui/ui-text'
 export type DeviceRoute = 'automatic' | 'direct' | 'server'
 
 export const DEVICE_ROUTE_LABEL: Record<DeviceRoute, TitleText> = {
-  automatic: 'Automatic',
-  direct: 'Prefer P2P',
-  server: 'Relay Only',
+  get automatic() {
+    return t('route.automatic')
+  },
+  get direct() {
+    return t('route.direct')
+  },
+  get server() {
+    return t('route.server')
+  },
 }
 
 /** The line under the route that says what the chosen one does. */
 export const DEVICE_ROUTE_DESCRIPTION: Record<DeviceRoute, SentenceText> = {
-  automatic: 'Uses the faster path.',
-  direct: 'P2P whenever it connects.',
-  server: 'Never uses P2P.',
+  get automatic() {
+    return t('route.automaticDescription')
+  },
+  get direct() {
+    return t('route.directDescription')
+  },
+  get server() {
+    return t('route.serverDescription')
+  },
 }
 
 /** Where an attempt ended. */
 export type DirectStage = 'permission' | 'gathering' | 'checking' | 'handshake' | 'channel' | 'connected'
 
 export const DIRECT_STAGE_LABEL: Record<DirectStage, SentenceText> = {
-  permission: 'Permission',
-  gathering: 'Gathering addresses',
-  checking: 'Finding a path',
-  handshake: 'Encryption handshake',
-  channel: 'Opening the channel',
-  connected: 'Connected',
+  get permission() {
+    return t('stage.permission')
+  },
+  get gathering() {
+    return t('stage.gathering')
+  },
+  get checking() {
+    return t('stage.checking')
+  },
+  get handshake() {
+    return t('stage.handshake')
+  },
+  get channel() {
+    return t('stage.channel')
+  },
+  get connected() {
+    return t('stage.connected')
+  },
 }
 
 /** The browser's local network permission, where it reports one. */
@@ -175,7 +200,7 @@ function wholeUnlessSmall(value: number): string {
 
 /** A latency as a person reads it: "0.4 ms", "2 ms", "48 ms". */
 function formatLatency(ms: number): string {
-  return ms < 0.05 ? 'under 0.1 ms' : `${wholeUnlessSmall(ms)} ms`
+  return ms < 0.05 ? t('latency.under') : t('details.ms', { ms: wholeUnlessSmall(ms) })
 }
 
 /** A share lost as a person reads it: "0%", "0.5%", "6%". */
@@ -194,11 +219,11 @@ export function pathsLatency(status: DirectStatus): SentenceText | null {
   const { direct, relay } = status.figures
   const parts: string[] = []
   if (status.peer && direct) {
-    const lost = direct.loss ? `, ${formatLoss(direct.loss)} lost` : ''
-    parts.push(`${DEVICE_PATH_LABEL[peerKind(status) ?? 'internet']} ${formatLatency(direct.latencyMs)}${lost}`)
+    const named = { path: DEVICE_PATH_LABEL[peerKind(status) ?? 'internet'], latency: formatLatency(direct.latencyMs) }
+    parts.push(direct.loss ? t('latency.lost', { ...named, loss: formatLoss(direct.loss) }) : t('latency.path', named))
   }
   if (relay) {
-    parts.push(`Relay ${formatLatency(relay.latencyMs)}`)
+    parts.push(t('latency.relay', { latency: formatLatency(relay.latencyMs) }))
   }
   return parts.length ? parts.join(' · ') : null
 }
@@ -212,19 +237,19 @@ export function pathsLatency(status: DirectStatus): SentenceText | null {
 export function reasonSentence(reason: DirectReason): SentenceText | null {
   switch (reason.kind) {
     case 'slower':
-      return 'P2P is slower right now.'
+      return t('reason.slower')
     case 'blocked':
-      return 'This browser blocks local network access.'
+      return t('reason.blocked')
     case 'unreachable':
-      return 'Your networks block P2P connections.'
+      return t('reason.unreachable')
     case 'network':
-      return reason.side === 'browser' ? 'Your network blocks it.' : 'The device’s network blocks it.'
+      return reason.side === 'browser' ? t('reason.browserNetwork') : t('reason.deviceNetwork')
     case 'busy':
-      return 'The device has too many connections.'
+      return t('reason.busy')
     case 'dropped':
-      return 'The P2P connection dropped.'
+      return t('reason.dropped')
     case 'notOffered':
-      return 'P2P works only on the device’s network.'
+      return t('reason.notOffered')
     case 'serverOnly':
     case 'notYet':
       return null
@@ -243,10 +268,18 @@ export type DevicePath = PathKind | 'relay'
 
 /** Each path as its label names it, wherever the path is named: "Connected via LAN". */
 export const DEVICE_PATH_LABEL: Record<DevicePath, TitleText> = {
-  thisComputer: 'This Computer',
-  localNetwork: 'LAN',
-  internet: 'P2P',
-  relay: 'Relay',
+  get thisComputer() {
+    return t('path.thisComputer')
+  },
+  get localNetwork() {
+    return t('path.localNetwork')
+  },
+  get internet() {
+    return t('path.internet')
+  },
+  get relay() {
+    return t('path.relay')
+  },
 }
 
 /** The 16-bit groups of an IPv6 address, or null for any other text. */
@@ -310,12 +343,12 @@ export function pathKind(address: string): PathKind {
 /** How an online device is reached, as its row and its page's header say: "Connected via LAN", "Connected via relay". */
 export function connectedVia(status: DirectStatus): SentenceText {
   const path = statusPath(status)
-  return path === 'relay' ? 'Connected via relay' : `Connected via ${DEVICE_PATH_LABEL[path]}`
+  return t(`connected.${path}`)
 }
 
 /** The P2P row's subtitle while connected: "LAN · 192.168.1.20". */
 export function pathSentence(address: string): SentenceText {
-  return `${DEVICE_PATH_LABEL[pathKind(address)]} · ${address}`
+  return t('path.sentence', { path: DEVICE_PATH_LABEL[pathKind(address)], address })
 }
 
 /** The kind of the connected peer's path, from its address in use; null without a peer. */
@@ -335,5 +368,5 @@ export function statusPath(status: DirectStatus): DevicePath {
  * gives its own addresses is no address the user can use, so it says so.
  */
 export function shownAddress(address: string): string {
-  return address.endsWith('.local') ? 'Hidden by the browser' : address
+  return address.endsWith('.local') ? t('address.hidden') : address
 }

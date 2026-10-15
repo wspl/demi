@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, onMounted, ref } from 'vue'
 import { z } from 'zod'
 import SettingsSkills from './SettingsSkills.vue'
@@ -73,7 +74,7 @@ async function add(draft: SettingsSkillDraft): Promise<AddSourceAnswer> {
     if (error instanceof PluginCallError && ORIGIN_REFUSALS.includes(error.reason)) {
       return { kind: 'refused', message: errorMessage(error) }
     }
-    page.errors.report('Could Not Add the Source', error)
+    page.errors.report(t('failures.add'), error)
     return { kind: 'failed' }
   }
 }
@@ -86,9 +87,9 @@ async function add(draft: SettingsSkillDraft): Promise<AddSourceAnswer> {
     :operation="page.operation"
     :overlay-store="page.overlays"
     :add-source="add"
-    @update="(source) => change('update_source', { source }, 'Could Not Update the Source')"
-    @remove="(source) => change('remove_source', { source }, 'Could Not Remove the Source')"
-    @switch="(source, skill, enabled) => change('set_enabled', { source, skill, enabled }, 'Could Not Switch the Skill')"
-    @switch-source="(source, enabled) => change('set_source_enabled', { source, enabled }, 'Could Not Switch the Skills')"
+    @update="(source) => change('update_source', { source }, t('failures.update'))"
+    @remove="(source) => change('remove_source', { source }, t('failures.remove'))"
+    @switch="(source, skill, enabled) => change('set_enabled', { source, skill, enabled }, t('failures.switchSkill'))"
+    @switch-source="(source, enabled) => change('set_source_enabled', { source, enabled }, t('failures.switchSkills'))"
   />
 </template>

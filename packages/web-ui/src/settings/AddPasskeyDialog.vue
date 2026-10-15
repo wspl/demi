@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { ref, watch } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -57,7 +59,7 @@ const opening = useOpening(() => props.isOpen)
 /** Continue: the button works until the host and the browser's prompt have answered, which this opening alone shows. */
 async function submit(): Promise<void> {
   if (password.value === '') {
-    passwordProblem.value = 'Required'
+    passwordProblem.value = t('addPasskey.required')
     return
   }
   error.value = null
@@ -89,27 +91,27 @@ async function submit(): Promise<void> {
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Add Passkey"
+    :label="t('addPasskey.title')"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Add Passkey</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('addPasskey.title') }}</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          Enter your password. Your browser saves a passkey for signing in.
+          {{ t('addPasskey.hint') }}
         </p>
       </header>
       <form
         class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         @submit.prevent="continueButton?.press()"
       >
-        <SettingsRow label="Password">
+        <SettingsRow :label="t('addPasskey.password')">
           <template v-if="passwordProblem" #detail>
             <InlineError :message="passwordProblem" />
           </template>
           <TextInput
             v-model="password"
-            aria-label="Password"
+            :aria-label="t('addPasskey.password')"
             masked="password"
             focused
             autocomplete="current-password"
@@ -123,9 +125,9 @@ async function submit(): Promise<void> {
       <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
     </div>
     <template #footer>
-      <Button @click="emit('close')">Cancel</Button>
+      <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
       <Button ref="continueButton" variant="primary" :operation="{ action: 'add', target: 'passkey:new' }" @click="submit">
-        Continue
+        {{ uiText('common.continue') }}
       </Button>
     </template>
   </Dialog>

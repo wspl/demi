@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { inject, onBeforeUnmount, watch } from 'vue'
 import { ChevronLeft } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
@@ -46,7 +47,7 @@ watch(
       return
     }
     level = {
-      label: page?.title() ?? 'Back',
+      label: page?.title() ?? t('dialog.back'),
       back: () => {
         detailOpen.value = false
       },
@@ -88,7 +89,7 @@ onBeforeUnmount(leaveBar)
             @click="detailOpen = false"
           >
             <ChevronLeft :size="ICON_PX.in24" />
-            Back
+            {{ t('dialog.back') }}
           </Button>
           <TruncatedText class="text-chrome text-fg" :text="detailTitle ?? ''" />
         </div>

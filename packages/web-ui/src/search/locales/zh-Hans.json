@@ -1,0 +1,10 @@
+{
+  "title": "搜索",
+  "placeholder": "搜索对话",
+  "failed": "无法搜索。",
+  "searching": "正在搜索…",
+  "list": "对话",
+  "archived": "已存档",
+  "noConversations": "没有对话",
+  "noResults": "无结果"
+}

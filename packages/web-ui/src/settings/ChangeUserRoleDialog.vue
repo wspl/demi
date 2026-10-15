@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import { computed, ref, watch } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
@@ -7,7 +9,7 @@ import type { Action, Operation } from '../ui/operations'
 import Segmented from '../ui/Segmented.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsNewUser, UserRole } from './types'
-import { ROLE_DESCRIPTION, ROLE_LABEL } from './users'
+import { roleDescription, roleLabel } from './users'
 
 /**
  * Change Role…: moves an account between the roles below the administrator's
@@ -43,7 +45,7 @@ watch(
   { immediate: true },
 )
 
-const options = computed(() => props.roles.map((value) => ({ value, label: ROLE_LABEL[value] })))
+const options = computed(() => props.roles.map((value) => ({ value, label: roleLabel(value) })))
 const canSubmit = computed(() => role.value !== props.current)
 
 function submit(): unknown {
@@ -54,23 +56,23 @@ function submit(): unknown {
 </script>
 
 <template>
-  <Dialog :is-open="isOpen" :overlay-store="overlayStore" label="Change Role" @close="emit('close')">
+  <Dialog :is-open="isOpen" :overlay-store="overlayStore" :label="t('changeRole.title')" @close="emit('close')">
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Change Role</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('changeRole.title') }}</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          {{ name }} is {{ current === 'admin' ? 'an' : 'a' }} {{ ROLE_LABEL[current].toLowerCase() }} now.
+          {{ t('changeRole.current', { name, role: roleLabel(current) }) }}
         </p>
       </header>
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
-        <SettingsRow label="Role" :description="ROLE_DESCRIPTION[role]">
+        <SettingsRow :label="t('changeRole.role')" :description="roleDescription(role)">
           <Segmented v-model="role" size="sm" :options="options" />
         </SettingsRow>
       </div>
     </div>
     <template #footer>
-      <Button @click="emit('close')">Cancel</Button>
-      <Button variant="primary" :disabled="!canSubmit" :operation="operation" @click="submit">Change Role</Button>
+      <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
+      <Button variant="primary" :disabled="!canSubmit" :operation="operation" @click="submit">{{ t('changeRole.title') }}</Button>
     </template>
   </Dialog>
 </template>

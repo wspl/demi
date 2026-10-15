@@ -1,0 +1,16 @@
+{
+  "handoff": {
+    "wrongPassword": "암호가 올바르지 않습니다.",
+    "signOutFailed": "브라우저를 로그아웃할 수 없습니다"
+  },
+  "passkeys": {
+    "held": "이 암호 관리자에 계정의 패스키가 이미 있습니다.",
+    "renameFailed": "패스키 이름을 바꿀 수 없습니다",
+    "removeFailed": "패스키를 제거할 수 없습니다"
+  },
+  "login": {
+    "invalidCredentials": "이메일 또는 암호가 올바르지 않습니다.",
+    "accountDisabled": "이 계정은 사용 중지되었습니다. 관리자에게 사용 설정을 요청하십시오.",
+    "signOutFailed": "로그아웃할 수 없습니다"
+  }
+}

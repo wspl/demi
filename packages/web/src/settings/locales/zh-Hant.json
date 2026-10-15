@@ -1,0 +1,62 @@
+{
+  "corrections": {
+    "invalidCredentials": "這不是你目前的密碼。",
+    "invalidCode": "該驗證碼錯誤或已過期。請使用最新的驗證碼。"
+  },
+  "credentials": {
+    "showFailed": "無法顯示該值"
+  },
+  "devices": {
+    "revokeFailed": "無法撤銷裝置",
+    "renameFailed": "無法重新命名裝置",
+    "routeFailed": "無法變更連線路徑",
+    "resetNotStarted": "重設未能開始。請檢查網路連線後重試。"
+  },
+  "plugins": {
+    "turnOnFailed": "無法開啟外掛程式",
+    "turnOffFailed": "無法關閉外掛程式"
+  },
+  "providers": {
+    "saveFailed": "無法儲存提供者",
+    "testFailed": "無法測試提供者",
+    "refreshModelsFailed": "無法重新整理模型",
+    "removeFailed": "無法移除提供者",
+    "cliUpdateFailed": "無法更新命令列工具",
+    "removeAccountFailed": "無法移除帳戶",
+    "testAccountFailed": "無法測試帳戶",
+    "addFailed": "無法新增提供者",
+    "cliReadFailed": "無法讀取命令列工具",
+    "checkUpdatesFailed": "無法檢查更新",
+    "cliInstallFailed": "無法安裝命令列工具",
+    "usageFailed": "無法重新整理使用量",
+    "reorderFailed": "無法重新排序帳戶",
+    "switchFailed": "無法切換帳戶",
+    "cancelLoginFailed": "無法取消登入",
+    "loginStopped": "此登入已不再執行。",
+    "removeModelFailed": "無法移除模型"
+  },
+  "subagents": {
+    "turnOnFailed": "無法開啟子代理程式",
+    "turnOffFailed": "無法關閉子代理程式",
+    "limitFailed": "無法變更上限",
+    "enableFailed": "無法啟用設定檔",
+    "disableFailed": "無法停用設定檔"
+  },
+  "users": {
+    "newPasswordFailed": "無法產生新密碼",
+    "roleFailed": "無法變更角色",
+    "disableFailed": "無法停用帳戶",
+    "enableFailed": "無法啟用帳戶",
+    "signOutFailed": "無法登出該帳戶",
+    "loading": "正在載入使用者…",
+    "loadFailed": "無法載入使用者。"
+  },
+  "about": {
+    "acknowledgementsFailed": "無法載入致謝。"
+  },
+  "dialog": {
+    "nameFailed": "無法變更你的名稱",
+    "emailFailed": "無法變更電子郵件",
+    "passwordFailed": "無法變更密碼"
+  }
+}

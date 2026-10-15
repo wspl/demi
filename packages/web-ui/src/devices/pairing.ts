@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import { requestIdOf, type ShownError } from '../infra/errors'
 import { onScopeDispose, ref } from 'vue'
 
@@ -29,10 +30,15 @@ export type PairingPhase =
     }
 
 export const pairingErrors = {
-  invalid_code:
-    'This code is unavailable. Paste the runner’s latest code.',
-  rate_limited: 'Too many attempts. Wait a minute before trying again.',
-  unavailable: 'Could not reach Demi. Check your connection and try again.',
+  get invalid_code() {
+    return t('pairing.invalidCode')
+  },
+  get rate_limited() {
+    return t('pairing.rateLimited')
+  },
+  get unavailable() {
+    return t('pairing.unavailable')
+  },
 }
 
 /** UI lifecycle shared by settings, onboarding and host-selection entry points. */

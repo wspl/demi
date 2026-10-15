@@ -1,4 +1,4 @@
-import type { SettingsEntry, SettingsNavGroup, SettingsNavItem } from './types'
+import type { SettingsEntry, SettingsGroupId, SettingsNavGroup, SettingsNavItem } from './types'
 
 /** A section the rail filter found, with the settings of it that match. */
 export interface SettingsMatch {
@@ -9,7 +9,7 @@ export interface SettingsMatch {
 
 /** A group of the rail as the filter leaves it. */
 export interface SettingsMatchGroup {
-  label?: string
+  id?: SettingsGroupId
   matches: SettingsMatch[]
 }
 
@@ -26,7 +26,7 @@ export function filterSettings(groups: readonly SettingsNavGroup[], query: strin
   const q = query.trim().toLowerCase()
   return groups
     .map((group) => ({
-      label: group.label,
+      id: group.id,
       matches: group.items.flatMap((item): SettingsMatch[] => {
         if (!q) {
           return [{ item, settings: [] }]

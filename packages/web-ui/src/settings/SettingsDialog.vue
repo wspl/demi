@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, nextTick, onBeforeUnmount, provide, ref, shallowRef, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { accountDisplayName } from '../auth/account-display'
@@ -12,7 +13,7 @@ import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { usePhone } from '../ui/phone'
-import { SETTINGS_SECTIONS } from './sections'
+import { settingsGroupName, settingsSections } from './sections'
 import { filterSettings, firstMatch } from './settings-filter'
 import { highlightFound } from '../ui/found-highlight'
 import { settingsLevelKey, type SettingsLevel } from './navigation'
@@ -34,15 +35,13 @@ import type {
  * setting found opens its section with its row highlighted. Escape in the filter
  * clears it before it closes anything.
  */
-const props = withDefaults(defineProps<{
+const props = defineProps<{
   isOpen: boolean
   overlayStore: OverlayStore
   account?: SettingsAccountInfo
   /** The rail. Defaults to the product's sections. */
   sections?: SettingsNavGroup[]
-}>(), {
-  sections: () => SETTINGS_SECTIONS,
-})
+}>()
 
 /**
  * The open section; null for none, which a narrow dialog shows as the list of
@@ -63,7 +62,7 @@ const emit = defineEmits<{
 const phone = usePhone()
 /** The sections this layout lists: a phone has no keyboard to set up. */
 const shownSections = computed(() =>
-  props.sections
+  (props.sections ?? settingsSections())
     .map((group) => ({ ...group, items: group.items.filter((item) => !item.keyboard || !phone.value) }))
     .filter((group) => group.items.length),
 )
@@ -177,7 +176,7 @@ const displayName = computed(() =>
     :is-open="isOpen"
     :overlay-store="overlayStore"
     size="xl"
-    label="Settings"
+    :label="t('dialog.title')"
     :scroll-content="false"
     close-over-content
     @close="emit('close')"
@@ -196,7 +195,7 @@ const displayName = computed(() =>
           :class="tab === null ? 'flex flex-1 @md:flex-none' : 'hidden'"
         >
           <div class="-mx-3 -mb-3 flex h-11 shrink-0 select-none items-center pl-4 pr-12 @md:hidden">
-            <span class="text-[15px] font-medium text-fg-emphasis">Settings</span>
+            <span class="text-[15px] font-medium text-fg-emphasis">{{ t('dialog.title') }}</span>
           </div>
           <div
             v-if="account"
@@ -210,8 +209,8 @@ const displayName = computed(() =>
             class="shrink-0"
             :size="narrow ? 'lg' : 'md'"
             search
-            placeholder="Filter settings"
-            aria-label="Filter settings"
+            :placeholder="t('dialog.search')"
+            :aria-label="t('dialog.search')"
             @keydown.enter="openFirstMatch"
             @keydown.escape="clearFilter"
           >
@@ -223,21 +222,21 @@ const displayName = computed(() =>
             class="-mx-3 min-h-0 flex-1"
             viewport-class="px-3"
           >
-            <nav class="flex flex-col gap-3" aria-label="Settings sections">
+            <nav class="flex flex-col gap-3" :aria-label="t('dialog.sections')">
               <div
                 v-if="!filtered.length"
                 class="select-none px-2 py-3 text-[12px] text-fg-subtle"
               >No matches</div>
               <div
                 v-for="(group, index) in filtered"
-                :key="group.label ?? index"
+                :key="group.id ?? index"
                 class="flex flex-col gap-0.5"
               >
                 <div
-                  v-if="group.label"
+                  v-if="group.id"
                   class="select-none px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
                 >
-                  {{ group.label }}
+                  {{ settingsGroupName(group.id) }}
                 </div>
                 <template v-for="match in group.matches" :key="match.item.id">
                   <SidebarNavItem
@@ -277,7 +276,7 @@ const displayName = computed(() =>
           <div class="flex h-11 shrink-0 select-none items-center pl-2 pr-12 @md:hidden">
             <Button variant="ghost" size="sm" @click="back">
               <ChevronLeft :size="ICON_PX.in24" />
-              {{ level?.label ?? 'Settings' }}
+              {{ level?.label ?? t('dialog.title') }}
             </Button>
           </div>
           <ScrollArea

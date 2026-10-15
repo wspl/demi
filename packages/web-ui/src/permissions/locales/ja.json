@@ -1,0 +1,27 @@
+{
+  "keep": {
+    "1h": "1 時間",
+    "1d": "1 日",
+    "30d": "30 日",
+    "always": "常に"
+  },
+  "request": {
+    "allowTitle": "この会話に「{action}」を許可しますか？",
+    "agentRan": "エージェントが実行しました",
+    "subagentRan": "サブエージェント {number}（「{description}」）が実行しました",
+    "deny": "拒否",
+    "allowConversation": "この会話で許可",
+    "allow": "許可",
+    "dontAllow": "許可しない",
+    "decline": "辞退",
+    "save": "保存",
+    "updateCredential": "認証情報を更新",
+    "saveCredential": "認証情報を保存",
+    "keepUntil": "保持期限",
+    "needsValues": "すべてのフィールドに 64 KiB 以内の値が必要です。",
+    "allowCredentialTitle": "この会話に認証情報「{name}」の使用を許可しますか？",
+    "removed": "削除済み",
+    "youRemoved": "この認証情報は削除されています。",
+    "progress": "{position} / {count}"
+  }
+}

@@ -1,0 +1,621 @@
+{
+  "about": {
+    "title": "关于",
+    "version": "版本",
+    "acknowledgements": {
+      "title": "致谢",
+      "description": "Demi 中的开源软件及其许可证。",
+      "loading": "正在加载致谢…",
+      "none": "没有致谢"
+    }
+  },
+  "account": {
+    "title": "帐户",
+    "description": "你的名称、电子邮件和登录方式。",
+    "profile": {
+      "title": "个人资料",
+      "avatar": "头像",
+      "displayName": "显示名称",
+      "nameRequired": "输入名称。",
+      "email": "电子邮件",
+      "verified": "已验证",
+      "changeEmail": "更改电子邮件",
+      "password": "密码",
+      "passwordChanged": "上次更改于 {date}。",
+      "changePassword": "更改密码",
+      "change": "更改",
+      "emailUnavailable": "此服务器无法发送电子邮件。请联系管理员。"
+    },
+    "session": {
+      "title": "会话",
+      "signOut": "注销",
+      "signOutDescription": "结束此浏览器的会话。对话保留在服务器上。",
+      "signOutButton": "注销"
+    },
+    "danger": {
+      "title": "危险区域",
+      "delete": "删除帐户",
+      "deleteDescription": "删除你的帐户、设备和所有对话。此操作无法撤消。",
+      "deleteButton": "删除帐户"
+    }
+  },
+  "archived": {
+    "title": "已存档",
+    "description": "从侧边栏移除的对话。",
+    "search": "搜索已存档项",
+    "searchLabel": "搜索已存档的对话",
+    "loading": "正在加载已存档的对话…",
+    "open": "打开",
+    "restore": "恢复",
+    "delete": "删除…",
+    "none": "没有已存档的对话",
+    "noResults": "无结果"
+  },
+  "data": {
+    "title": "数据与隐私",
+    "description": "保留的内容及谁可以查看。",
+    "diagnostics": {
+      "title": "诊断",
+      "send": "发送使用数据",
+      "sendDescription": "崩溃和功能使用情况。绝不包含提示词、对话记录或文件内容。"
+    },
+    "danger": {
+      "title": "危险区域",
+      "deleteAll": "删除所有对话",
+      "deleteAllDescription": "项目和设置会保留。",
+      "deleteAllButton": "全部删除"
+    }
+  },
+  "devices": {
+    "title": "设备",
+    "description": "对话可以在其上工作的计算机。",
+    "yours": "你的设备",
+    "add": "添加设备…",
+    "loading": "正在加载设备…",
+    "lastSeen": "最后在线",
+    "none": "没有设备"
+  },
+  "keyboard": {
+    "title": "键盘",
+    "description": "点击“更改”，然后按下新的按键。",
+    "shortcuts": "快捷键",
+    "resetAll": "重置所有快捷键",
+    "reset": "重置",
+    "typesText": "{keys} 会输入文本。请加上 ⌘ 或 ⌃。",
+    "taken": "{keys} 已用于“{action}”。",
+    "actions": {
+      "new": "新建对话",
+      "search": "搜索对话",
+      "sidebar": "切换侧边栏",
+      "settings": "打开设置"
+    }
+  },
+  "notifications": {
+    "title": "通知",
+    "description": "智能体需要你或已完成时。",
+    "browser": {
+      "title": "浏览器",
+      "label": "浏览器通知",
+      "blocked": "已在此浏览器的网站设置中禁止。",
+      "thisBrowser": "仅限此浏览器。",
+      "unsupported": "此浏览器不支持通知。"
+    },
+    "when": {
+      "title": "在以下情况通知我",
+      "turnFinishes": "一个轮次完成",
+      "turnFails": "一个轮次失败",
+      "needsPermission": "Demi 需要权限",
+      "turnOnFirst": "请先开启浏览器通知。"
+    }
+  },
+  "passkeys": {
+    "title": "通行密钥",
+    "add": "添加通行密钥…",
+    "synced": "已同步",
+    "thisDeviceOnly": "仅限此设备",
+    "added": "添加于",
+    "lastUsed": "上次使用",
+    "rename": "重命名…",
+    "renameLabel": "重命名“{name}”",
+    "remove": "删除…",
+    "removeLabel": "删除“{name}”",
+    "none": "没有通行密钥",
+    "renameTitle": "重命名通行密钥",
+    "nameLabel": "通行密钥名称",
+    "removeTitle": "删除“{name}”？",
+    "removeBody": "它将无法再登录。你的密码和其他通行密钥仍可使用。",
+    "removeAction": "删除"
+  },
+  "sessions": {
+    "title": "已登录的浏览器",
+    "thisBrowser": "此浏览器",
+    "signedIn": "登录于",
+    "signedInWithCode": "使用 {name} 提供的代码登录",
+    "lastActive": "上次活动",
+    "signOut": "注销…",
+    "signOutLabel": "注销“{name}”",
+    "signOutTitle": "注销“{name}”？",
+    "signOutAction": "注销",
+    "signOutBody": "它已打开的页面会返回登录页面。对话保留在服务器上。"
+  },
+  "instructions": {
+    "title": "指令",
+    "description": "在每个对话中遵循，与各项目的 AGENTS.md 或 CLAUDE.md 一同生效。",
+    "personal": "个人指令",
+    "personalDescription": "例如回复所用的语言。",
+    "save": "保存"
+  },
+  "firstPassword": {
+    "label": "密码",
+    "new": "新密码",
+    "copy": "复制密码"
+  },
+  "dialog": {
+    "title": "设置",
+    "search": "筛选设置",
+    "sections": "设置分区",
+    "back": "返回"
+  },
+  "listItem": {
+    "remove": "删除"
+  },
+  "plugins": {
+    "title": "插件",
+    "description": "智能体和此应用可以做的事。",
+    "none": "没有插件"
+  },
+  "quota": {
+    "unavailable": "使用情况暂不可用",
+    "used": "已使用 {share}"
+  },
+  "sections": {
+    "agent": "智能体",
+    "workspace": "工作区",
+    "general": {
+      "keywords": "外观,样式",
+      "themeKeywords": "深色模式,浅色模式,外观",
+      "accentKeywords": "颜色,色彩",
+      "textSizeKeywords": "字体大小,文字大小,对话记录"
+    },
+    "account": {
+      "avatarKeywords": "图片,照片",
+      "displayNameKeywords": "昵称,名称",
+      "emailKeywords": "地址,邮箱",
+      "signOutKeywords": "退出登录,退出"
+    },
+    "notifications": {
+      "keywords": "浏览器,提醒",
+      "browserKeywords": "通知",
+      "finishesKeywords": "完成,结束",
+      "failsKeywords": "错误,出错",
+      "permissionKeywords": "权限请求,请求许可"
+    },
+    "providers": {
+      "keywords": "模型,API 密钥,anthropic,openai,claude code,codex,基础 URL,目录"
+    },
+    "credentials": {
+      "keywords": "令牌,密钥,登录,已保存的登录"
+    },
+    "instructions": {
+      "keywords": "个人指令,自定义指令,AGENTS.md,CLAUDE.md,规则"
+    },
+    "subagents": {
+      "keywords": "配置文件,生成,委派,子智能体",
+      "maxLiveKeywords": "限制,运行中,无限制",
+      "maxDepthKeywords": "限制,层级,孙级,无限制"
+    },
+    "plugins": {
+      "keywords": "插件,扩展"
+    },
+    "devices": {
+      "keywords": "添加设备,配对码,认领,撤销,运行器,计算机",
+      "cloudKeywords": "云,重置环境",
+      "storageKeywords": "磁盘,空间"
+    },
+    "archived": {
+      "keywords": "存档,恢复,对话"
+    },
+    "keyboard": {
+      "keywords": "快捷键,热键,绑定"
+    },
+    "data": {
+      "keywords": "对话记录,使用数据,删除"
+    },
+    "about": {
+      "keywords": "版本,许可证,开源,第三方,声明"
+    },
+    "users": {
+      "keywords": "帐户,人员,管理员,添加用户,邀请,重置密码,角色,禁用,全部注销"
+    }
+  },
+  "changeEmail": {
+    "title": "更改电子邮件",
+    "formHint": "今后使用新地址登录。",
+    "verifyHint": "已向 {email} 发送 {count} 位验证码。输入后即可完成。",
+    "doneHint": "你的电子邮件现在是 {email}。",
+    "newEmail": "新电子邮件",
+    "currentPassword": "当前密码",
+    "code": "验证码",
+    "codeLabel": "验证码",
+    "sameAsCurrent": "这已经是你的电子邮件。",
+    "resent": "已向 {email} 发送新验证码。",
+    "nothingArrived": "没有收到？",
+    "sendAgain": "重新发送",
+    "verify": "验证"
+  },
+  "changePassword": {
+    "title": "更改密码",
+    "hint": "输入当前密码并选择新密码。",
+    "current": "当前密码",
+    "new": "新密码",
+    "confirm": "确认新密码",
+    "unchanged": "这是你当前的密码。",
+    "done": "密码已更改"
+  },
+  "changeRole": {
+    "title": "更改角色",
+    "current": "{name} 当前的角色是{role}。",
+    "role": "角色"
+  },
+  "addPasskey": {
+    "title": "添加通行密钥",
+    "hint": "输入你的密码。浏览器会保存一个用于登录的通行密钥。",
+    "password": "密码",
+    "required": "必填"
+  },
+  "roles": {
+    "master": "所有者",
+    "admin": "管理员",
+    "user": "用户",
+    "masterDescription": "拥有服务器并管理所有帐户。",
+    "adminDescription": "添加和管理用户。",
+    "userDescription": "不管理其他帐户。"
+  },
+  "users": {
+    "title": "用户",
+    "description": "所有可以登录此服务器的人。",
+    "accounts": "帐户",
+    "add": "添加用户…",
+    "you": "你",
+    "disabled": "已禁用",
+    "choosesPassword": "尚未设置密码",
+    "lastActive": "上次活动",
+    "neverSignedIn": "尚未登录",
+    "actions": "操作",
+    "actionsFor": "“{name}”的操作",
+    "action": {
+      "resetPassword": "重置密码…",
+      "changeRole": "更改角色…",
+      "signInCode": "登录代码…",
+      "signOutEverywhere": "在所有位置注销…",
+      "disable": "禁用帐户…",
+      "enable": "启用帐户"
+    },
+    "confirm": {
+      "add": "请确认是你本人，以添加帐户。",
+      "resetPassword": "请确认是你本人，以重置密码。",
+      "newPassword": "请确认是你本人，以生成新密码。"
+    },
+    "ready": {
+      "added": "{email} 的帐户已就绪。将此密码交给对方，或让对方扫描二维码。",
+      "reset": "{email} 有了新密码。将此密码交给对方，或让对方扫描二维码。"
+    },
+    "reset": {
+      "title": "重置“{name}”的密码？",
+      "action": "重置密码",
+      "body": "Demi 会生成新的初始密码并仅显示一次。对方当前的密码将失效。已登录的浏览器和通行密钥保持不变。"
+    },
+    "signOutEverywhere": {
+      "title": "在所有位置注销“{name}”？",
+      "action": "在所有位置注销",
+      "body": "以“{name}”登录的每个浏览器都会返回登录页面。对方可以重新登录。"
+    },
+    "disable": {
+      "title": "禁用“{name}”的帐户？",
+      "action": "禁用帐户",
+      "body": "“{name}”会在所有位置注销，且无法登录。对方的云会停止，设备会断开连接。",
+      "note": "不会删除任何内容。“启用帐户”可恢复访问。"
+    }
+  },
+  "addUser": {
+    "title": "添加用户",
+    "hint": "对方在首次登录时自行设置密码。",
+    "email": "电子邮件",
+    "role": "角色",
+    "adminAdds": "管理员只能添加用户。",
+    "emailTaken": "已有帐户使用该电子邮件地址。"
+  },
+  "credentials": {
+    "title": "凭据",
+    "yours": "你的凭据",
+    "new": "新建凭据…",
+    "secret": "机密",
+    "visible": "可见",
+    "show": "显示“{label}”",
+    "hide": "隐藏“{label}”",
+    "keptUntil": "保留至",
+    "always": "始终",
+    "lastUsed": "上次使用",
+    "never": "从未",
+    "edit": "编辑",
+    "none": "没有凭据",
+    "saveFailed": "无法保存凭据",
+    "deleteFailed": "无法删除凭据",
+    "deleteTitle": "删除“{name}”？",
+    "deleteBody": "智能体将无法在任何对话中再读取它。此操作无法撤消。"
+  },
+  "credentialDialog": {
+    "edit": "编辑凭据",
+    "new": "新建凭据",
+    "name": "名称",
+    "note": "备注",
+    "noteDescription": "可选。智能体为何需要它。",
+    "keepUntil": "保留至",
+    "fields": "字段",
+    "addField": "添加字段",
+    "fieldsMax": "一个凭据最多有 {max} 个字段。",
+    "label": "标签",
+    "readAs": "读取为",
+    "labelPlaceholder": "API 密钥",
+    "labelOf": "字段 {n} 的标签",
+    "removeField": "删除字段 {n}",
+    "needsField": "凭据至少需要一个字段。",
+    "kind": "类型",
+    "value": "值",
+    "keepSaved": "留空以保留现有值",
+    "valueOf": "字段 {n} 的值",
+    "create": "创建凭据"
+  },
+  "credentialFields": {
+    "required": "必填",
+    "maxChars": "最多使用 {max} 个字符。",
+    "maxBytes": "最大 64 KiB。"
+  },
+  "subagents": {
+    "title": "子智能体",
+    "description": "分担任务部分工作的子智能体。",
+    "switchDescription": "关闭不会停止正在运行的子智能体。",
+    "maxLive": "子智能体上限",
+    "maxLiveDescription": "一个对话同时运行的子智能体最大数量。",
+    "maxLiveConfirmTitle": "允许无限数量的子智能体？",
+    "maxDepth": "最大层级",
+    "maxDepthDescription": "为 1 时，只有主智能体可以启动子智能体。",
+    "maxDepthConfirmTitle": "允许无限层级？",
+    "allowUnlimited": "允许无限制",
+    "unlimitedWarning": "这可能导致对话不稳定，并消耗大量词元。",
+    "profiles": "配置文件",
+    "profilesDescription": "没有配置文件时，子智能体继承其父级的设置。",
+    "newProfile": "新建配置文件…",
+    "unavailable": "不可用",
+    "context": "上下文 {size}",
+    "noInstructions": "无指令",
+    "ownInstructions": "自有指令",
+    "mayStart": "子级可再启动子智能体",
+    "noSpawning": "不可启动子智能体",
+    "edit": "编辑",
+    "none": "没有配置文件",
+    "saveFailed": "无法保存配置文件",
+    "deleteFailed": "无法删除配置文件",
+    "deleteTitle": "删除“{name}”？",
+    "deleteBody": "智能体将无法再使用它。正在运行的子智能体会继续运行。"
+  },
+  "profile": {
+    "new": "新建配置文件",
+    "edit": "编辑配置文件",
+    "hint": "智能体根据描述选择配置文件。",
+    "name": "名称",
+    "nameDescription": "必填。小写字母、数字和连字符，以字母开头。",
+    "description": "描述",
+    "descriptionDescription": "必填。用一行说明智能体何时使用它。",
+    "model": "模型",
+    "fast": "快速",
+    "context": "上下文",
+    "contextDescription": "其子智能体使用的上下文窗口。",
+    "instructions": "指令",
+    "instructionsDescription": "可选。附加到 Demi 自身的指令之后。",
+    "mayStart": "子级可再启动子智能体",
+    "mayStartDescription": "允许其子智能体启动子智能体。",
+    "delete": "删除",
+    "create": "创建配置文件",
+    "parentModel": "父级模型",
+    "providerGone": "其提供程序已不存在。请选择其他模型。",
+    "modelGone": "模型 {model} 已不存在。请选择其他模型。",
+    "effortGone": "{model} 不再提供推理强度 {effort}。请选择其他强度。",
+    "tierGone": "{model} 不再提供层级 {tier}。请选择其他层级。",
+    "nameCharacters": "仅使用小写字母、数字和连字符。",
+    "nameStart": "名称必须以字母开头。",
+    "nameLength": "最多使用 {max} 个字符。",
+    "nameDefault": "“default”是继承配置文件的名称。请选择其他名称。"
+  },
+  "providers": {
+    "title": "提供程序",
+    "loading": "正在加载提供程序…",
+    "subscriptions": "订阅",
+    "apiKeys": "API 密钥",
+    "name": "提供程序名称",
+    "rename": "重命名",
+    "saving": "正在保存…",
+    "addAccount": "添加帐户",
+    "showInMenu": "在模型菜单中显示",
+    "state": {
+      "setup": "未设置",
+      "signedOut": "已注销",
+      "error": "失败",
+      "unreachable": "无法连接"
+    },
+    "rotation": {
+      "title": "轮换",
+      "manual": "手动",
+      "inOrder": "按顺序",
+      "balanced": "均衡",
+      "manualHint": "每个智能体都使用活动帐户。",
+      "inOrderHint": "智能体使用列表中第一个未达到限制的帐户。",
+      "balancedHint": "每个智能体使用剩余额度最多的帐户。"
+    },
+    "account": {
+      "active": "活动",
+      "limitReached": "已达限制",
+      "activate": "激活",
+      "refreshUsage": "刷新使用情况",
+      "test": "测试连接",
+      "remove": "删除",
+      "reorder": "拖动以重新排序",
+      "move": "移动“{label}”",
+      "none": "没有帐户"
+    },
+    "connection": {
+      "endpoint": "终结点",
+      "protocol": "协议",
+      "apiKey": "API 密钥",
+      "keyOptional": "可选。加密存储在服务器上。",
+      "keyStored": "加密存储在服务器上。",
+      "keyReplace": "输入新密钥以替换",
+      "keyPaste": "粘贴你的 API 密钥",
+      "test": "测试连接",
+      "testDescription": "向第一个已启用的模型发送一个简短请求。",
+      "testing": "正在测试…",
+      "connected": "已连接",
+      "failed": "失败",
+      "enableModel": "请先启用一个模型"
+    },
+    "cli": {
+      "title": "命令行工具",
+      "version": "版本",
+      "versionDescription": "跟随最新版本并自动更新。",
+      "check": "检查更新",
+      "unreadable": "无法读取最新版本",
+      "noAnswer": "无响应",
+      "notInstalled": "未安装",
+      "installing": "正在云上安装",
+      "installFailed": "无法在云上安装",
+      "install": "安装"
+    },
+    "models": {
+      "title": "模型",
+      "updated": "更新于",
+      "refresh": "刷新",
+      "catalog": "目录",
+      "manual": "手动",
+      "filterModels": "筛选模型",
+      "add": "添加模型",
+      "loading": "正在加载模型…",
+      "unknown": "功能未知。编辑以补全。",
+      "accepts": "接受 {types}",
+      "reasoning": "推理 · {efforts}",
+      "fast": "有快速层级",
+      "edit": "编辑",
+      "remove": "删除",
+      "details": "详细信息",
+      "enable": "启用“{name}”",
+      "noResults": "无结果",
+      "signInToSee": "登录后可查看模型",
+      "none": "没有模型"
+    },
+    "removeProvider": {
+      "title": "删除“{name}”？",
+      "keyOnly": "其 API 密钥也会一并删除。",
+      "keyAndModels": "其 API 密钥和 {count} 个模型也会一并删除。",
+      "history": "使用其模型的对话会保留历史记录，但需要改用其他模型。"
+    },
+    "removeAccount": {
+      "title": "删除帐户“{label}”？",
+      "keeps": "{name} 会继续使用其活动帐户。",
+      "switches": "{name} 会切换到“{next}”。",
+      "none": "{name} 将没有帐户，在你添加帐户之前无法使用。",
+      "forgets": "Demi 会忘记其登录信息。你可以通过“添加帐户”重新添加。"
+    },
+    "removeModel": {
+      "title": "删除模型“{name}”？",
+      "body": "它会从 {provider} 的模型列表和模型菜单中移除。你可以使用其 ID 重新添加。"
+    },
+    "warning": {
+      "title": "使用多个帐户？",
+      "body": "使用多个个人订阅来绕过其使用限制，可能违反供应商的条款。",
+      "once": "Demi 不会再次询问。"
+    },
+    "connected": "“{account}”已连接",
+    "testFailed": "“{account}”测试失败",
+    "addModelFailed": "无法添加模型",
+    "saveModelFailed": "无法保存模型",
+    "duplicateModel": "此提供程序的另一个模型已使用此 ID"
+  },
+  "addProvider": {
+    "title": "添加提供程序",
+    "compatible": "兼容 API",
+    "compatibleHint": "代理或你自己的服务器",
+    "proxy": "代理",
+    "vendors": "供应商",
+    "loading": "正在加载供应商…",
+    "noResults": "无结果"
+  },
+  "addModel": {
+    "title": "添加模型",
+    "hint": "搜索 models.dev，或选择“自定义”。",
+    "model": "模型",
+    "searchFailed": "无法搜索 models.dev。",
+    "adding": "正在添加…",
+    "list": "模型",
+    "search": "搜索",
+    "custom": "自定义"
+  },
+  "modelDialog": {
+    "edit": "编辑模型",
+    "id": "模型 ID",
+    "name": "名称",
+    "nameDescription": "显示在模型菜单中。默认为 ID。",
+    "contextWindow": "上下文窗口",
+    "maxOutput": "最大输出",
+    "optional": "可选",
+    "reasoning": "推理",
+    "reasoningDescription": "第一项为默认值。",
+    "fastTier": "快速层级",
+    "fastTierDescription": "可选。服务层级 ID。",
+    "acceptedFiles": "接受的文件",
+    "textAlways": "始终接受文本。",
+    "unknown": "未知",
+    "textOnly": "仅文本",
+    "none": "无",
+    "accept": "接受{label}",
+    "removeExtension": "删除 {ext}",
+    "delete": "删除模型",
+    "duplicateId": "此提供程序的另一个模型已使用此 ID"
+  },
+  "presets": {
+    "images": "图像",
+    "videos": "视频",
+    "documents": "文档"
+  },
+  "efforts": {
+    "minimal": "最低",
+    "low": "低",
+    "medium": "中",
+    "high": "高",
+    "max": "最高"
+  },
+  "login": {
+    "title": "登录 {vendor}",
+    "deviceHint": "在供应商的页面上输入此代码。",
+    "codeHint": "在供应商的页面上登录，然后粘贴它显示的代码。",
+    "doneActive": "已登录。此帐户现在是 {vendor} 的活动帐户。",
+    "doneKept": "已登录。{vendor} 会继续使用其活动帐户。",
+    "failedHint": "登录未完成。",
+    "waitingCloud": "正在等待你的云连接…",
+    "installing": "正在你的云上安装命令行工具…",
+    "startingTool": "正在启动命令行工具…",
+    "contacting": "正在联系 {vendor}…",
+    "copyCode": "复制代码",
+    "openInBrowser": "在浏览器中打开",
+    "copyLink": "复制链接",
+    "copyLinkHint": "复制链接，以便从其他浏览器或设备登录",
+    "waiting": "正在等待",
+    "waitingExpires": "正在等待 · 代码将在 {left} 后过期",
+    "paste": "粘贴代码",
+    "code": "代码",
+    "signingIn": "正在登录…",
+    "waitingCode": "正在等待代码",
+    "waitingCodeExpires": "正在等待代码 · {left} 后过期"
+  },
+  "provider": {
+    "endpointInvalid": "输入 http 或 https 地址。"
+  }
+}

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed } from 'vue'
 import { CircleCheck } from '@lucide/vue'
@@ -47,15 +49,15 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Reset Cloud Environment"
+    :label="t('reset.title')"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 px-5 pt-5">
       <h3 class="pr-8 text-[15px] font-medium text-fg-emphasis">
-        Reset Cloud Environment
+        {{ t('reset.title') }}
       </h3>
       <p class="text-[13px] leading-5 text-fg-muted">
-        Stops Cloud tasks and resets system packages and settings. Your home files and Cloud projects stay.
+        {{ t('reset.body') }}
       </p>
       <p
         v-if="running"
@@ -64,7 +66,7 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
         class="flex items-center gap-2 text-chrome text-fg-muted"
       >
         <IndeterminateSpinner :size="ICON_PX.in24" />
-        {{ phase ? resetPhaseLabels[phase] : 'Starting the reset…' }}
+        {{ phase ? resetPhaseLabels[phase] : t('reset.starting') }}
       </p>
       <p
         v-else-if="ready"
@@ -84,9 +86,9 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
         variant="danger"
         :disabled="busy"
         @click="emit('reset')"
-        >{{ submitted ? 'Retry Reset' : 'Reset Environment' }}</Button
+        >{{ submitted ? t('reset.retry') : t('environment.reset') }}</Button
       >
-      <Button variant="primary" @click="emit('close')">{{ submitted ? 'Close' : 'Cancel' }}</Button>
+      <Button variant="primary" @click="emit('close')">{{ submitted ? uiText('common.close') : uiText('common.cancel') }}</Button>
     </template>
   </Dialog>
 </template>

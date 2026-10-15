@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import { computed, watch } from 'vue'
 import { shownError } from '@demicodes/web-ui/infra/errors'
 import { defineStore } from 'pinia'
@@ -55,7 +56,7 @@ export async function addPasskey(password: string | null): Promise<PasskeyOfferO
   try {
     const credential = await createPasskey(challenge.options)
     if (credential === 'held') {
-      return { kind: 'held', message: 'This password manager has a passkey for your account already.' }
+      return { kind: 'held', message: t('passkeys.held') }
     }
     if (!credential) {
       return { kind: 'dismissed' }
@@ -118,7 +119,7 @@ export const usePasskeys = defineStore('passkeys', () => {
       })
       .catch((error) => {
         shown.drop()
-        reportError('Could Not Rename the Passkey', error, { userVisible: true })
+        reportError(t('passkeys.renameFailed'), error, { userVisible: true })
       })
   }
 
@@ -129,7 +130,7 @@ export const usePasskeys = defineStore('passkeys', () => {
     } catch (error) {
       // A passkey already removed is what was asked: its row leaves all the same.
       if (!(error instanceof ApiError && error.code === 'passkey_not_found')) {
-        reportError('Could Not Remove the Passkey', error, { userVisible: true })
+        reportError(t('passkeys.removeFailed'), error, { userVisible: true })
         return
       }
     }

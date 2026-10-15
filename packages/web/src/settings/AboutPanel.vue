@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import SettingsAbout from '@demicodes/web-ui/settings/SettingsAbout.vue'
 import type { AcknowledgementsState } from '@demicodes/web-ui/settings/types'
@@ -44,7 +45,7 @@ async function load(): Promise<void> {
     acknowledgements.value = { status: 'ready', text: await response.text() }
   } catch (error) {
     if (!controller.signal.aborted) {
-      acknowledgements.value = { status: 'failed', error: shownError(error, 'Could not load the acknowledgements.') }
+      acknowledgements.value = { status: 'failed', error: shownError(error, t('about.acknowledgementsFailed')) }
     }
   } finally {
     if (request === controller) {

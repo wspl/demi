@@ -1,0 +1,46 @@
+{
+  "title": "スキル",
+  "description": "エージェントが従えるパッケージ化されたワークフロー。",
+  "keywords": "スキル,ワークフロー,git,SKILL.md",
+  "sources": {
+    "title": "ソース",
+    "add": "ソースを追加…",
+    "none": "ソースはありません",
+    "adding": "追加中",
+    "updating": "更新中",
+    "failed": "失敗",
+    "updateAvailable": "アップデートあり",
+    "enableAll": "「{name}」のすべてのスキルを有効にする",
+    "update": "更新",
+    "remove": "削除"
+  },
+  "skill": {
+    "warning": "警告",
+    "nameTaken": "名前は使用済みです",
+    "nameTakenDetail": "{origin} のスキル「{name}」がオンになっています。このスキルを使うには、そちらをオフにしてください。",
+    "neverOffered": "提供されません",
+    "neverOfferedDetail": "disable-model-invocation が設定されています。",
+    "notASkill": "スキルではありません: {reason}"
+  },
+  "removeSource": {
+    "title": "「{name}」を削除しますか？",
+    "withSkills": "スキルも一緒に削除されます。リポジトリはあとからもう一度追加できます。",
+    "empty": "このソースはスキルの一覧から外れます。リポジトリはあとからもう一度追加できます。",
+    "more": "他 {count} 件"
+  },
+  "addSource": {
+    "title": "ソースを追加",
+    "hint": "Git リポジトリ。その中の SKILL.md がそれぞれスキルになります。",
+    "repository": "リポジトリ",
+    "repositoryHint": "owner/repository または Git URL。",
+    "browse": "skills.sh を見る",
+    "cancel": "キャンセル"
+  },
+  "failures": {
+    "add": "ソースを追加できませんでした",
+    "update": "ソースを更新できませんでした",
+    "remove": "ソースを削除できませんでした",
+    "switchSkill": "スキルを切り替えられませんでした",
+    "switchSkills": "スキルを切り替えられませんでした"
+  }
+}
