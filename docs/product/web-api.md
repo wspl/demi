@@ -313,7 +313,13 @@ runner.
 A device in `GET /devices` and in the product state carries, besides its
 name and online state, `os`, the operating system and architecture its runner
 last reported, and `runnerVersion`, the runner release it last reported, such
-as `0.1.16`; both are null before its runner first connected, and `route`,
+as `0.1.16`; both are null before its runner first connected; `mark`, the
+logo and number of its [mark](product.md#conversations-and-projects):
+`{ logo, number }`, where `logo` is `apple`, `windows`, `ubuntu`, `debian`,
+`fedora`, `arch`, `centos`, `redhat`, `mint` or `tux`, which the backend
+derives from the platform and the reported distribution, and `number` is
+the device's number for that logo, null before its runner first connected
+(the page shows it only while another device has the same logo); and `route`,
 how pages reach it: `automatic`, `direct` or `server`, the routes
 Automatic, Prefer P2P and Relay Only of a
 [direct channel](../execution/direct-channel.md#choosing-the-path),

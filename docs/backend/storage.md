@@ -174,7 +174,8 @@ input, which the multi-worker control service also relies on
   [personal instructions](../agent/instructions.md#personal-instructions) of
   each user who has any: user and text. Saving an empty text deletes the row.
 - **Devices and workspaces:** `devices` stores ownership, kind, name,
-  platform, the operating system and architecture and the runner release its runner last reported, how pages reach it (`route`: `automatic`, the default, `direct` or `server`), the hash of the device's current token, claim and last-seen
+  platform, the operating system (with a Linux distribution's os-release `ID`) and architecture and the runner release its runner last reported, the device's
+  [mark](../product/product.md#conversations-and-projects) number, given when its runner first reports its system and again when its logo changes, how pages reach it (`route`: `automatic`, the default, `direct` or `server`), the hash of the device's current token, claim and last-seen
   times, and the JSON list of artifacts its runner last reported its cache
   holds ([Installed artifacts](../execution/native-runtime.md#installed-artifacts)),
   the instance its runner last said hello with, so a restarted backend tells
