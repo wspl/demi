@@ -92,6 +92,7 @@ impl ProductPort for ShardPort {
     fn read_host_files<'a>(
         &'a self,
         conversation: &'a ConversationId,
+        on: Option<&'a DeviceId>,
         reads: Vec<HostRead>,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>> {
@@ -99,11 +100,15 @@ impl ProductPort for ShardPort {
             let shard = self.shard()?;
             shard
                 .host_shard()
-                .read_files(conversation, &reads, cancel)
+                .read_files_on(conversation, on, &reads, cancel)
                 .await
                 .map(|(files, _)| files)
                 .map_err(|error| match error {
-                    ReadFilesError::NotRunning => PortFailure::Refused(PortRefusal::NotRunning),
+                    // A project search's Host that is no longer the
+                    // conversation's is not running for it.
+                    ReadFilesError::NotRunning | ReadFilesError::Moved => {
+                        PortFailure::Refused(PortRefusal::NotRunning)
+                    }
                     ReadFilesError::Access(error) => access_refusal(error),
                 })
         })
@@ -238,6 +243,8 @@ impl Shard {
         if !self.plugins().switch(plugin, enabled).await? {
             return Ok(());
         }
+        // Off, it keeps nothing; on, its next context request asks again.
+        self.project_files().plugins.forget(|(kept, _)| kept.as_str() == plugin);
         let marks = self.services().sync.of(self.user());
         for root in self.agent().live_roots() {
             marks.mark(Part::Conversation(

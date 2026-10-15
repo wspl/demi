@@ -244,9 +244,7 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
     std::fs::write(format!("{root}/shot.png"), &*PNG).unwrap();
     let mut work = Driven::open(&backend, &master, &vendor, CONVERSATION, &provider, "/work").await;
 
-    let mut sent = Vec::new();
     for (turn, number) in [("t1", "a1"), ("t2", "a2")] {
-        let before = edge.pipe_puts();
         let uploaded = work
             .turn(vec![shell(turn, "demi attachment upload shot.png", 30_000), say(turn)])
             .await;
@@ -254,11 +252,9 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
             shown_output(&uploaded.received[0]),
             format!("{number}  shot.png  image/png  {} bytes\n", PNG.len())
         );
-        sent.push(edge.pipe_puts() - before);
     }
-    // Each job sends the backend a pipe upload of its own; the file's bytes
-    // went in one more, the first time only.
-    assert_eq!(sent[0], sent[1] + 1, "{sent:?}");
+    // The file's bytes went to the backend once, the first time.
+    assert_eq!(edge.pipe_uploads_of(&PNG), 1);
     let read = async |number: &str| {
         backend
             .get(

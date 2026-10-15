@@ -128,16 +128,6 @@ impl Shard {
         self
     }
 
-    /// Notes that the conversation `id`'s Workflow menu choice changed.
-    pub(crate) fn workflow_choice_changed(&self, id: &ConversationId) {
-        *self.workflow_choices.borrow_mut().entry(id.clone()).or_default() += 1;
-    }
-
-    /// How often the conversation `id`'s choice changed in this run.
-    pub(crate) fn workflow_choice_changes(&self, id: &ConversationId) -> u64 {
-        self.workflow_choices.borrow().get(id).copied().unwrap_or(0)
-    }
-
     pub(crate) fn permission_revisions(&self) -> &Revisions {
         &self.permission_revisions
     }

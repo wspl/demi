@@ -31,3 +31,6 @@ pub use port::{
     StoredValue,
 };
 pub use request::{PanelTabChange, PluginError, Reply, Request};
+/// What a project search names to watch (`Reply::Project`).
+pub use demi_web_api_protocol::files::SubscriptionKind;
+pub use demi_web_api_protocol::workflows::WatchSubject;

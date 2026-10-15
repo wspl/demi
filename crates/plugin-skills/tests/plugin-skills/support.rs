@@ -1,5 +1,6 @@
 //! The plugin's requests through the loopback.
 
+use std::cell::RefCell;
 use std::rc::Rc;
 
 use demi_command_declarations::Node;
@@ -7,7 +8,9 @@ use demi_host_interface::RpcInvocation;
 use demi_host_interface::testing::{MemoryPort, test_command_context};
 use demi_plugin_interface::testing::command_line::{argv, parse, roots};
 use demi_plugin_interface::testing::{TestDemi, loopback};
-use demi_plugin_interface::{Plugin, PluginError, PluginFactory, PluginId, Reply, Request};
+use demi_plugin_interface::{
+    Plugin, PluginError, PluginFactory, PluginId, Reply, Request, WatchSubject,
+};
 use demi_plugin_skills::{Skills, SkillsState};
 use demi_shared_types::{NodeId, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
@@ -19,6 +22,8 @@ pub struct Plugged {
     pub plugin: Rc<dyn Plugin>,
     pub demi: Rc<TestDemi>,
     pub root: Node,
+    /// What the last project search found.
+    pub project: RefCell<Option<Value>>,
 }
 
 impl Plugged {
@@ -29,6 +34,7 @@ impl Plugged {
             plugin: loopback(skills.instance()),
             demi,
             root: roots(skills.manifest()).remove(0),
+            project: RefCell::default(),
         }
     }
 
@@ -124,20 +130,41 @@ impl Plugged {
         self.call("set_enabled", params).await
     }
 
-    /// The block the plugin adds before a request of turn `turn` of a node
-    /// working in `cwd`, which knew of the blocks `seen`.
-    pub async fn context(&self, cwd: &str, turn: &str, seen: &[&str]) -> Option<String> {
+    /// The block the plugin adds before a node's request, which knew of
+    /// the blocks `seen`, with what the last [`Plugged::search`] found as
+    /// the backend holds it.
+    pub async fn context(&self, seen: &[&str]) -> Option<String> {
         let request = Request::Context {
             user: user(),
-            conversation: ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap(),
+            conversation: conversation(),
             node: NodeId::try_from("conversation").unwrap(),
-            cwd: cwd.to_owned(),
+            cwd: "/home/me/app".to_owned(),
             paths: demi_host_interface::HostPaths::Posix,
-            turn: TurnId::try_from(turn).unwrap(),
+            turn: TurnId::try_from("t1").unwrap(),
             seen: seen.iter().map(|text| (*text).to_owned()).collect(),
+            project: self.project.borrow().clone(),
         };
         match self.plugin.call(request, self.demi.port()).await.unwrap() {
             Reply::Context { text } => text,
+            reply => panic!("{reply:?}"),
+        }
+    }
+
+    /// Searches the project directory `directory` as the backend asks the
+    /// plugin to, keeps what it found for the next contexts, and answers
+    /// what the search names to watch.
+    pub async fn search(&self, directory: &str) -> Vec<WatchSubject> {
+        let request = Request::ProjectSearch {
+            user: user(),
+            conversation: conversation(),
+            directory: directory.to_owned(),
+            paths: demi_host_interface::HostPaths::Posix,
+        };
+        match self.plugin.call(request, self.demi.port()).await.unwrap() {
+            Reply::Project { found, watch } => {
+                self.project.replace(Some(found));
+                watch
+            }
             reply => panic!("{reply:?}"),
         }
     }
@@ -151,6 +178,10 @@ impl Plugged {
             .collect();
         self.demi.host_files.replace(Some(files));
     }
+}
+
+fn conversation() -> ConversationId {
+    ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap()
 }
 
 pub fn user() -> UserId {

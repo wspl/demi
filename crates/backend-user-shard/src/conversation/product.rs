@@ -323,6 +323,17 @@ impl ContextSource for PluginContext {
                 .node_directory(node)
                 .await
                 .map_err(|error| format!("the plugin {} was not asked: {error}", self.plugin))?;
+            // A plugin the user has off keeps nothing, and is not asked.
+            let searches = shard
+                .plugins()
+                .searches_projects(&self.plugin)
+                .await
+                .map_err(|error| format!("the plugin {} was not asked: {error}", self.plugin))?;
+            let project = if searches {
+                shard.kept_project_search(&self.plugin, node.root).await
+            } else {
+                None
+            };
             let asked = ContextAsk {
                 conversation,
                 node: node.node.clone(),
@@ -330,6 +341,7 @@ impl ContextSource for PluginContext {
                 paths,
                 turn: turn.clone(),
                 seen: seen.iter().map(|text| (*text).to_owned()).collect(),
+                project,
             };
             // The request ends with the provider request it serves, which
             // drops this future.
