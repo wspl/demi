@@ -18,7 +18,7 @@ every day; the glossary records each choice.
 ## What is translated
 
 Every text Demi itself shows a person: the web app, every plugin's pages,
-the gallery, the notifications the page shows, emails, and the pages the
+the gallery's own controls and its specimens, the notifications the page shows, emails, and the pages the
 backend renders itself, such as the sign-in callback.
 
 What is never translated:
@@ -30,6 +30,9 @@ What is never translated:
   a model gives conversations, which follow the language the user writes in
   ([Product](product.md)).
 - Names: files, paths, commands, models, vendors, branches, accounts.
+- The gallery's notes, which document a section for the people building
+  Demi, and the content of its fixtures, such as a specimen conversation's
+  messages, which stand for what users write.
 - A vendor's or a system's own words quoted as they came, such as a
   provider's response, git's output or an operating system's error. They
   show under their disclosure, below a headline Demi words in the user's
@@ -61,7 +64,9 @@ its `:lang()`.
 Each package owns its text, as it owns its components: `web-ui`, `web`,
 `web-gallery` and each plugin package keep a catalogue per language,
 `src/locales/en.json`, `zh-Hans.json`, `zh-Hant.json`, `ja.json` and
-`ko.json`, English the source.
+`ko.json`, English the source. A large package splits its catalogue by
+folder, `src/agent/locales/`, each folder's text under its own scope, so
+the text of one area is found and changed beside its components.
 Keys name the place and the meaning, `settings.general.language`, never the
 English words, so rewording English keeps the key.
 
