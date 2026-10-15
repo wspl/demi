@@ -212,7 +212,9 @@ A host is allowed on its own: the list of hosts a conversation may reach
 grows one host at a time, by the user's answer to the agent that asked
 ([Hosts a conversation may reach](../execution/sessions-and-targets.md#hosts-a-conversation-may-reach)).
 A leaf whose argument names a host, a device or a project declares that
-argument as `bringsHost`; the check resolves it, a project to its host, and
+argument as `bringsHost`, saying which it names; the check resolves it
+once, a project by its id or name to its host, a host by the name it has in
+the conversation, a device's id, a paired device's name, then `Cloud`, and
 needs that host when the conversation may not reach it. `demi host pair`
 always brings a host the conversation may not reach, since the computer is
 not yet paired, and names it by its pairing code: Allow lets the
