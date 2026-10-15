@@ -1,18 +1,18 @@
 {
   "transcript": {
     "accountSwitch": {
-      "usage": "{from} が使用制限に達したため、{to} で続行します。",
-      "usageReset": "{from} が使用制限に達したため（{reset}）、{to} で続行します。",
-      "window": "{from} が {window} の制限に達したため、{to} で続行します。",
-      "windowReset": "{from} が {window} の制限に達したため（{reset}）、{to} で続行します。"
+      "usage": "{from} が利用上限に達したため、{to} で続けます。",
+      "usageReset": "{from} が利用上限に達したため（{reset}）、{to} で続けます。",
+      "window": "{from} が {window} の上限に達したため、{to} で続けます。",
+      "windowReset": "{from} が {window} の上限に達したため（{reset}）、{to} で続けます。"
     },
     "notice": {
-      "titled": "{notice}："
+      "titled": "{notice}:"
     },
     "receipt": {
-      "allowed": "この会話に次の操作を許可しました: {action}",
-      "denied": "この会話に次の操作を許可しませんでした: {action}",
-      "moved": "この会話を {host} · {path} に移動しました",
+      "allowed": "このチャットで次の操作を許可しました: {action}",
+      "denied": "このチャットで次の操作を拒否しました: {action}",
+      "moved": "このチャットを {host} · {path} に移動しました",
       "moveFailed": "移動できませんでした: {reason}",
       "fromMain": "{agent}からのメッセージ",
       "mainAgent": "メインエージェント",
@@ -49,10 +49,10 @@
       "stopped": "{span} 後に停止"
     },
     "thinking": {
-      "now": "考え中",
-      "briefly": "少し考えました",
-      "nowFor": "考え中 {span}",
-      "doneFor": "{span} 考えました",
+      "now": "思考中",
+      "briefly": "少し思考しました",
+      "nowFor": "思考中 {span}",
+      "doneFor": "思考時間: {span}",
       "requesting": "リクエスト中",
       "requestingFor": "リクエスト中 {span}"
     },
@@ -62,7 +62,7 @@
       "doneTo": "コンテキストを約 {tokens} トークンに圧縮しました"
     },
     "stopped": "停止済み",
-    "queued": "キューに登録済み {count} 件",
+    "queued": "{count} 件が待機中",
     "user": {
       "edit": "編集",
       "showMore": "さらに表示",
@@ -74,17 +74,17 @@
       "notDelivered": "このメッセージは配信されませんでした。"
     },
     "assistant": {
-      "fork": "フォーク",
-      "forkWait": "このメッセージの完了後にフォークできます。",
+      "fork": "分岐",
+      "forkWait": "このメッセージの完了後に分岐できます。",
       "regenerate": "再生成",
-      "forkFailed": "このメッセージからフォークできませんでした"
+      "forkFailed": "このメッセージから分岐できませんでした"
     },
     "edit": {
       "rejected": "編集が受け付けられませんでした。",
       "unconfirmed": "編集を確認できませんでした"
     },
     "connecting": "接続中",
-    "newFile": "新規ファイル",
+    "newFile": "新しいファイル",
     "picture": {
       "open": "{name} を拡大して開く",
       "play": "{name} を再生"
@@ -115,11 +115,11 @@
         "lost": "{count} 件のコマンドが不明"
       },
       "agent": {
-        "finished": "{count} 件のエージェントが完了",
-        "failed": "{count} 件のエージェントが失敗",
-        "stopped": "{count} 件のエージェントが停止"
+        "finished": "{count} 個のエージェントが完了",
+        "failed": "{count} 個のエージェントが失敗",
+        "stopped": "{count} 個のエージェントが停止"
       },
-      "heard": "{count} 件のエージェントから連絡"
+      "heard": "{count} 個のエージェントから連絡"
     }
   },
   "subagents": {
@@ -131,8 +131,8 @@
       "error": "失敗",
       "aborted": "停止済み"
     },
-    "forkedFrom": "{agent} からフォーク",
-    "inherited": "この会話から継承",
+    "forkedFrom": "{agent} から分岐",
+    "inherited": "このチャットから継承",
     "fast": "高速",
     "chip": "{count} 個のエージェント",
     "stopAgent": "エージェントを停止",
@@ -151,30 +151,30 @@
     "chip": "{count} 件を実行中"
   },
   "session": {
-    "loading": "会話を読み込んでいます…",
-    "loadFailed": "この会話を読み込めませんでした。",
-    "notFound": "会話が見つかりません",
-    "noneOpen": "開いている会話はありません",
+    "loading": "チャットを読み込んでいます…",
+    "loadFailed": "このチャットを読み込めませんでした。",
+    "notFound": "チャットが見つかりません",
+    "noneOpen": "開いているチャットはありません",
     "empty": "メッセージはありません",
-    "start": "会話を開始",
+    "start": "チャットを開始",
     "openSidebar": "サイドバーを開く",
     "openPanel": "パネルを開く",
     "closePanel": "パネルを閉じる",
-    "options": "{title}、会話のオプション",
+    "options": "{title}、チャットのオプション",
     "hostState": "{name} は{state}",
-    "renameTitle": "会話の名前を変更",
-    "titleLabel": "会話のタイトル",
-    "runsOn": "実行場所",
-    "backToConversation": "会話",
-    "archived": "この会話はアーカイブされています。",
-    "restore": "会話を復元"
+    "renameTitle": "チャットの名前を変更",
+    "titleLabel": "チャットのタイトル",
+    "runsOn": "実行先",
+    "backToConversation": "チャット",
+    "archived": "このチャットはアーカイブされています。",
+    "restore": "チャットを復元"
   },
   "dock": {
     "scrollToBottom": "一番下までスクロール",
     "resume": "再開",
-    "continue": "続行",
+    "continue": "続ける",
     "stillOffline": "{name} はまだオフラインです",
-    "continueWith": "{label} で続行"
+    "continueWith": "{label} で続ける"
   },
   "notices": {
     "hostOffline": "{name} はオフラインです。",
@@ -187,7 +187,7 @@
     "dismissDraft": "置き換えられた下書きを閉じる"
   },
   "composer": {
-    "placeholder": "何でも質問してください…",
+    "placeholder": "何でも聞いてください…",
     "message": "メッセージ",
     "noModels": "利用できるモデルがありません",
     "configureModels": "モデルを設定",
@@ -231,13 +231,13 @@
     "context": "コンテキスト",
     "model": "モデル",
     "off": "オフ",
-    "default": "既定（{window}）",
+    "default": "デフォルト（{window}）",
     "effort": {
       "minimal": "最小",
       "low": "低",
       "medium": "中",
       "high": "高",
-      "xhigh": "最高",
+      "xhigh": "極高",
       "max": "最大"
     },
     "loading": "モデルを読み込み中…",
@@ -247,10 +247,10 @@
   "workflows": {
     "label": "ワークフロー",
     "labelTip": "ワークフロー: {name}",
-    "default": "既定",
+    "default": "デフォルト",
     "none": "サブエージェントなし",
-    "reading": "ワークフローを読み取り中…",
-    "failed": "ワークフローを読み取れませんでした",
+    "reading": "ワークフローを読み込み中…",
+    "failed": "ワークフローを読み込めませんでした",
     "unavailable": "ワークフローを利用できません",
     "gone": "このワークフローはプロジェクトにありません。別のワークフローを選択してください。"
   },
@@ -259,13 +259,13 @@
     "windowUsed": "コンテキストウィンドウ、{percent} 使用済み",
     "tip": "コンテキスト {figure}",
     "compacting": "コンテキストを圧縮中…",
-    "unavailable": "コンテキストの使用状況を取得できません",
+    "unavailable": "コンテキストの使用量を取得できません",
     "compact": "圧縮",
     "untilCompaction": "圧縮まで {tokens}",
     "afterTurn": "ターンの終了後に使用できます",
     "availableFrom": "コンテキストが {from} になると使用できます（現在 {now}）",
-    "usageLimits": "使用制限",
-    "refreshUsage": "使用状況を更新",
+    "usageLimits": "利用上限",
+    "refreshUsage": "使用量を更新",
     "instructions": "指示",
     "personalInstructions": "個人用の指示",
     "workflowInstructions": "ワークフロー: {name}",
@@ -297,6 +297,6 @@
     "closeLeft": "左側を閉じる",
     "cannotShow": "このタブは表示できません。",
     "nothingOpen": "開いているものはありません",
-    "noFiles": "ファイルも変更点もありません"
+    "noFiles": "ファイルも変更もありません"
   }
 }

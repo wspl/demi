@@ -21,7 +21,7 @@
   "views": {
     "errors": {
       "primitives": "プリミティブ",
-      "conversation": "会話",
+      "conversation": "チャット",
       "messages": "メッセージとアップロード",
       "forms": "フォームと設定",
       "files": "ファイル"
@@ -29,7 +29,7 @@
     "signin": {
       "signin": "サインイン",
       "setup": "セットアップ",
-      "handoff": "スマートフォンへの引き継ぎ",
+      "handoff": "スマートフォンへのハンドオフ",
       "starting": "起動中"
     },
     "primitives": {
@@ -51,7 +51,7 @@
       "composer": "入力欄",
       "blocks": "ブロック",
       "lengths": "長さ",
-      "changes": "変更点",
+      "changes": "変更",
       "turns": "ターン",
       "states": "状態",
       "session": "セッション",

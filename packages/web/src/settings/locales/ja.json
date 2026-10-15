@@ -7,7 +7,7 @@
     "showFailed": "値を表示できませんでした"
   },
   "devices": {
-    "revokeFailed": "デバイスを取り消せませんでした",
+    "revokeFailed": "デバイスのアクセスを取り消せませんでした",
     "renameFailed": "デバイス名を変更できませんでした",
     "routeFailed": "経路を変更できませんでした",
     "resetNotStarted": "リセットを開始できませんでした。接続を確認して、もう一度お試しください。"
@@ -28,7 +28,7 @@
     "cliReadFailed": "コマンドラインツールを読み取れませんでした",
     "checkUpdatesFailed": "アップデートを確認できませんでした",
     "cliInstallFailed": "コマンドラインツールをインストールできませんでした",
-    "usageFailed": "使用状況を更新できませんでした",
+    "usageFailed": "使用量を更新できませんでした",
     "reorderFailed": "アカウントを並べ替えられませんでした",
     "switchFailed": "アカウントを切り替えられませんでした",
     "cancelLoginFailed": "サインインをキャンセルできませんでした",
@@ -56,7 +56,7 @@
   },
   "dialog": {
     "nameFailed": "名前を変更できませんでした",
-    "emailFailed": "メールを変更できませんでした",
+    "emailFailed": "メールアドレスを変更できませんでした",
     "passwordFailed": "パスワードを変更できませんでした"
   }
 }

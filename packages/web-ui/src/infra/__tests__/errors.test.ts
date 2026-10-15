@@ -129,8 +129,8 @@ test('an error shown before the language changes is reworded in the new language
     ])
     createPageI18n('ja')
     expect([said.value, toast.value]).toEqual([
-      '1 つの会話で後で送信するために保存できるメッセージは 200 件までです。',
-      '1 つの会話で後で送信するために保存できるメッセージは 200 件までです。',
+      '1 つのチャットで後で送信するために保存できるメッセージは 200 件までです。',
+      '1 つのチャットで後で送信するために保存できるメッセージは 200 件までです。',
     ])
   } finally {
     createPageI18n('en')
@@ -162,7 +162,7 @@ test('a refusal’s size is written in the page’s language, and its count pick
     createPageI18n('zh-Hans')
     expect(errorMessage(tooLarge)).toBe('超过了 25 MB 的大小限制。')
     createPageI18n('ja')
-    expect(errorMessage(tooLarge)).toBe('サイズの上限 (25 MB) を超えています。')
+    expect(errorMessage(tooLarge)).toBe('サイズの上限（25 MB）を超えています。')
   } finally {
     createPageI18n('en')
   }

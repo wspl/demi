@@ -19,36 +19,36 @@
       "nameRequired": "名前を入力してください。",
       "email": "メール",
       "verified": "確認済み",
-      "changeEmail": "メールの変更",
+      "changeEmail": "メールアドレスを変更",
       "password": "パスワード",
       "passwordChanged": "最終変更: {date}",
-      "changePassword": "パスワードの変更",
+      "changePassword": "パスワードを変更",
       "change": "変更",
       "emailUnavailable": "このサーバーはメールを送信できません。管理者に問い合わせてください。"
     },
     "session": {
       "title": "セッション",
       "signOut": "サインアウト",
-      "signOutDescription": "このブラウザーのセッションを終了します。会話はサーバーに残ります。",
+      "signOutDescription": "このブラウザーのセッションを終了します。チャットはサーバーに残ります。",
       "signOutButton": "サインアウト"
     },
     "danger": {
       "title": "危険な操作",
       "delete": "アカウントを削除",
-      "deleteDescription": "アカウント、デバイス、すべての会話を削除します。この操作は取り消せません。",
+      "deleteDescription": "アカウント、デバイス、すべてのチャットを削除します。この操作は取り消せません。",
       "deleteButton": "アカウントを削除"
     }
   },
   "archived": {
     "title": "アーカイブ済み",
-    "description": "サイドバーから外した会話。",
+    "description": "サイドバーから外したチャット。",
     "search": "アーカイブ済みを検索",
-    "searchLabel": "アーカイブ済みの会話を検索",
-    "loading": "アーカイブ済みの会話を読み込んでいます…",
+    "searchLabel": "アーカイブ済みのチャットを検索",
+    "loading": "アーカイブ済みのチャットを読み込んでいます…",
     "open": "開く",
     "restore": "復元",
     "delete": "削除…",
-    "none": "アーカイブ済みの会話はありません",
+    "none": "アーカイブ済みのチャットはありません",
     "noResults": "結果がありません"
   },
   "data": {
@@ -61,15 +61,15 @@
     },
     "danger": {
       "title": "危険な操作",
-      "deleteAll": "すべての会話を削除",
+      "deleteAll": "すべてのチャットを削除",
       "deleteAllDescription": "プロジェクトと設定は残ります。",
       "deleteAllButton": "すべて削除"
     }
   },
   "devices": {
     "title": "デバイス",
-    "description": "会話の作業先にできるマシン。",
-    "yours": "あなたのデバイス",
+    "description": "チャットの作業先にできるマシン。",
+    "yours": "お使いのデバイス",
     "add": "デバイスを追加…",
     "loading": "デバイスを読み込んでいます…",
     "lastSeen": "最終確認",
@@ -84,15 +84,15 @@
     "typesText": "{keys} は文字入力になります。⌘ または ⌃ を加えてください。",
     "taken": "{keys} はすでに「{action}」に使われています。",
     "actions": {
-      "new": "新しい会話",
-      "search": "会話を検索",
-      "sidebar": "サイドバーの切り替え",
+      "new": "新しいチャット",
+      "search": "チャットを検索",
+      "sidebar": "サイドバーを切り替える",
       "settings": "設定を開く"
     }
   },
   "notifications": {
     "title": "通知",
-    "description": "エージェントの確認が必要なときや完了したとき。",
+    "description": "エージェントがあなたの確認を待っているときや、完了したとき。",
     "browser": {
       "title": "ブラウザー",
       "label": "ブラウザー通知",
@@ -131,16 +131,16 @@
     "thisBrowser": "このブラウザー",
     "signedIn": "サインイン日",
     "signedInWithCode": "{name} のコードでサインイン",
-    "lastActive": "最終アクティビティ",
+    "lastActive": "最終アクセス",
     "signOut": "サインアウト…",
     "signOutLabel": "「{name}」をサインアウト",
     "signOutTitle": "「{name}」をサインアウトしますか？",
     "signOutAction": "サインアウト",
-    "signOutBody": "開いているページはサインインページに戻ります。会話はサーバーに残ります。"
+    "signOutBody": "開いているページはサインインページに戻ります。チャットはサーバーに残ります。"
   },
   "instructions": {
     "title": "指示",
-    "description": "すべての会話で、各プロジェクトの AGENTS.md や CLAUDE.md とともに従います。",
+    "description": "すべてのチャットで、各プロジェクトの AGENTS.md や CLAUDE.md とあわせて適用されます。",
     "personal": "個人用の指示",
     "personalDescription": "例: 返信に使う言語。",
     "save": "保存"
@@ -165,7 +165,7 @@
     "none": "プラグインはありません"
   },
   "quota": {
-    "unavailable": "使用状況はまだ利用できません",
+    "unavailable": "使用量はまだ取得できません",
     "used": "{share} 使用済み"
   },
   "sections": {
@@ -188,7 +188,7 @@
       "browserKeywords": "通知",
       "finishesKeywords": "完了,終了",
       "failsKeywords": "エラー",
-      "permissionKeywords": "許可の要求"
+      "permissionKeywords": "許可のリクエスト"
     },
     "providers": {
       "keywords": "モデル,API キー,anthropic,openai,claude code,codex,ベース URL,カタログ"
@@ -201,19 +201,19 @@
     },
     "subagents": {
       "keywords": "プロファイル,起動,委任,サブエージェント",
-      "maxLiveKeywords": "制限,実行中,無制限",
-      "maxDepthKeywords": "制限,階層,孫,無制限"
+      "maxLiveKeywords": "上限,実行中,無制限",
+      "maxDepthKeywords": "上限,階層,孫,無制限"
     },
     "plugins": {
       "keywords": "プラグイン,拡張機能"
     },
     "devices": {
-      "keywords": "デバイスを追加,ペアリングコード,登録,取り消し,ランナー,マシン",
+      "keywords": "デバイスを追加,ペアリングコード,登録,アクセスを取り消す,ランナー,マシン",
       "cloudKeywords": "クラウド,環境をリセット",
       "storageKeywords": "ディスク,容量"
     },
     "archived": {
-      "keywords": "アーカイブ,復元,会話"
+      "keywords": "アーカイブ,復元,チャット"
     },
     "keyboard": {
       "keywords": "ショートカット,ホットキー,割り当て"
@@ -229,11 +229,11 @@
     }
   },
   "changeEmail": {
-    "title": "メールの変更",
+    "title": "メールアドレスを変更",
     "formHint": "今後は新しいアドレスでサインインします。",
     "verifyHint": "{email} に {count} 桁のコードを送信しました。入力して完了します。",
     "doneHint": "メールアドレスは {email} になりました。",
-    "newEmail": "新しいメール",
+    "newEmail": "新しいメールアドレス",
     "currentPassword": "現在のパスワード",
     "code": "コード",
     "codeLabel": "確認コード",
@@ -244,7 +244,7 @@
     "verify": "確認"
   },
   "changePassword": {
-    "title": "パスワードの変更",
+    "title": "パスワードを変更",
     "hint": "現在のパスワードを入力し、新しいパスワードを設定します。",
     "current": "現在のパスワード",
     "new": "新しいパスワード",
@@ -279,7 +279,7 @@
     "you": "あなた",
     "disabled": "無効",
     "choosesPassword": "パスワード未設定",
-    "lastActive": "最終アクティビティ",
+    "lastActive": "最終アクセス",
     "neverSignedIn": "まだサインインしていません",
     "actions": "操作",
     "actionsFor": "「{name}」の操作",
@@ -327,7 +327,7 @@
   },
   "credentials": {
     "title": "認証情報",
-    "yours": "あなたの認証情報",
+    "yours": "保存済みの認証情報",
     "new": "新しい認証情報…",
     "secret": "シークレット",
     "visible": "表示",
@@ -336,13 +336,13 @@
     "keptUntil": "保持期限",
     "always": "常に",
     "lastUsed": "最終使用",
-    "never": "なし",
+    "never": "未使用",
     "edit": "編集",
     "none": "認証情報はありません",
     "saveFailed": "認証情報を保存できませんでした",
     "deleteFailed": "認証情報を削除できませんでした",
     "deleteTitle": "「{name}」を削除しますか？",
-    "deleteBody": "エージェントはどの会話でもこの認証情報を読み取れなくなります。この操作は取り消せません。"
+    "deleteBody": "エージェントはどのチャットでもこの認証情報を読み取れなくなります。この操作は取り消せません。"
   },
   "credentialDialog": {
     "edit": "認証情報を編集",
@@ -351,19 +351,19 @@
     "note": "メモ",
     "noteDescription": "任意。エージェントが必要とする理由。",
     "keepUntil": "保持期限",
-    "fields": "フィールド",
-    "addField": "フィールドを追加",
-    "fieldsMax": "1 つの認証情報のフィールドは最大 {max} 個です。",
+    "fields": "項目",
+    "addField": "項目を追加",
+    "fieldsMax": "1 つの認証情報の項目は最大 {max} 個です。",
     "label": "ラベル",
     "readAs": "読み取り名",
     "labelPlaceholder": "API キー",
-    "labelOf": "フィールド {n} のラベル",
-    "removeField": "フィールド {n} を削除",
-    "needsField": "認証情報には 1 つ以上のフィールドが必要です。",
+    "labelOf": "項目 {n} のラベル",
+    "removeField": "項目 {n} を削除",
+    "needsField": "認証情報には 1 つ以上の項目が必要です。",
     "kind": "種類",
     "value": "値",
     "keepSaved": "空のままにすると現在の値を維持します",
-    "valueOf": "フィールド {n} の値",
+    "valueOf": "項目 {n} の値",
     "create": "認証情報を作成"
   },
   "credentialFields": {
@@ -376,28 +376,28 @@
     "description": "タスクの一部を受け持つ子エージェント。",
     "switchDescription": "オフにしても、実行中のサブエージェントは止まりません。",
     "maxLive": "サブエージェントの最大数",
-    "maxLiveDescription": "1 つの会話で同時に実行できるサブエージェントの最大数。",
+    "maxLiveDescription": "1 つのチャットで同時に実行できるサブエージェントの最大数。",
     "maxLiveConfirmTitle": "サブエージェントを無制限にしますか？",
     "maxDepth": "最大の階層",
     "maxDepthDescription": "1 の場合、サブエージェントを起動できるのはメインのエージェントだけです。",
     "maxDepthConfirmTitle": "階層を無制限にしますか？",
     "allowUnlimited": "無制限にする",
-    "unlimitedWarning": "会話が不安定になり、多くのトークンを消費する可能性があります。",
+    "unlimitedWarning": "チャットが不安定になり、多くのトークンを消費する可能性があります。",
     "profiles": "プロファイル",
     "profilesDescription": "プロファイルがない場合、サブエージェントは親の設定を引き継ぎます。",
     "newProfile": "新しいプロファイル…",
-    "unavailable": "利用不可",
+    "unavailable": "利用できません",
     "context": "コンテキスト {size}",
     "noInstructions": "指示なし",
     "ownInstructions": "独自の指示",
-    "mayStart": "子も起動できる",
-    "noSpawning": "起動不可",
+    "mayStart": "サブエージェントも起動できる",
+    "noSpawning": "起動できない",
     "edit": "編集",
     "none": "プロファイルはありません",
     "saveFailed": "プロファイルを保存できませんでした",
     "deleteFailed": "プロファイルを削除できませんでした",
     "deleteTitle": "「{name}」を削除しますか？",
-    "deleteBody": "エージェントはこのプロファイルを使えなくなります。実行中のサブエージェントは続行されます。"
+    "deleteBody": "エージェントはこのプロファイルを使えなくなります。実行中のサブエージェントはそのまま動き続けます。"
   },
   "profile": {
     "new": "新しいプロファイル",
@@ -413,14 +413,14 @@
     "contextDescription": "サブエージェントが使うコンテキストウィンドウ。",
     "instructions": "指示",
     "instructionsDescription": "任意。Demi 自身の指示に追加されます。",
-    "mayStart": "子も起動できる",
+    "mayStart": "サブエージェントも起動できる",
     "mayStartDescription": "サブエージェントがサブエージェントを起動できるようにします。",
     "delete": "削除",
     "create": "プロファイルを作成",
     "parentModel": "親のモデル",
     "providerGone": "プロバイダーが見つかりません。別のモデルを選んでください。",
     "modelGone": "モデル {model} が見つかりません。別のモデルを選んでください。",
-    "effortGone": "{model} は推論の強度 {effort} に対応しなくなりました。別の強度を選んでください。",
+    "effortGone": "{model} は思考量「{effort}」に対応しなくなりました。別の思考量を選んでください。",
     "tierGone": "{model} はティア {tier} に対応しなくなりました。別のティアを選んでください。",
     "nameCharacters": "小文字、数字、ハイフンのみ使用できます。",
     "nameStart": "名前の先頭は文字にしてください。",
@@ -446,17 +446,17 @@
     "rotation": {
       "title": "ローテーション",
       "manual": "手動",
-      "inOrder": "順番",
-      "balanced": "バランス",
+      "inOrder": "順番に",
+      "balanced": "均等",
       "manualHint": "すべてのエージェントが有効なアカウントを使います。",
-      "inOrderHint": "エージェントは、一覧で制限に達していない最初のアカウントを使います。",
+      "inOrderHint": "エージェントは、一覧で上限に達していない最初のアカウントを使います。",
       "balancedHint": "各エージェントは、残りの余裕が最も多いアカウントを使います。"
     },
     "account": {
       "active": "有効",
-      "limitReached": "制限に達しました",
+      "limitReached": "上限に達しました",
       "activate": "有効にする",
-      "refreshUsage": "使用状況を更新",
+      "refreshUsage": "使用量を更新",
       "test": "接続をテスト",
       "remove": "削除",
       "reorder": "ドラッグして並べ替え",
@@ -492,7 +492,7 @@
     },
     "models": {
       "title": "モデル",
-      "updated": "更新",
+      "updated": "更新日時",
       "refresh": "更新",
       "catalog": "カタログ",
       "manual": "手動",
@@ -515,7 +515,7 @@
       "title": "「{name}」を削除しますか？",
       "keyOnly": "API キーも一緒に削除されます。",
       "keyAndModels": "API キーと {count} 個のモデルも一緒に削除されます。",
-      "history": "このモデルを使っている会話は履歴が残りますが、別のモデルが必要になります。"
+      "history": "これらのモデルを使っているチャットは履歴が残りますが、別のモデルが必要になります。"
     },
     "removeAccount": {
       "title": "アカウント「{label}」を削除しますか？",
@@ -530,7 +530,7 @@
     },
     "warning": {
       "title": "複数のアカウントを使いますか？",
-      "body": "複数の個人用サブスクリプションで使用制限を回避することは、ベンダーの規約に反する場合があります。",
+      "body": "複数の個人用サブスクリプションで利用上限を回避することは、ベンダーの規約に反する場合があります。",
       "once": "この確認は今後表示されません。"
     },
     "connected": "「{account}」に接続しました",
@@ -562,12 +562,12 @@
     "edit": "モデルを編集",
     "id": "モデル ID",
     "name": "名前",
-    "nameDescription": "モデルメニューに表示されます。既定では ID です。",
+    "nameDescription": "モデルメニューに表示されます。デフォルトは ID です。",
     "contextWindow": "コンテキストウィンドウ",
     "maxOutput": "最大出力",
     "optional": "任意",
     "reasoning": "推論",
-    "reasoningDescription": "最初のものが既定です。",
+    "reasoningDescription": "最初のものがデフォルトです。",
     "fastTier": "高速ティア",
     "fastTierDescription": "任意。サービスティア ID。",
     "acceptedFiles": "受け付けるファイル",

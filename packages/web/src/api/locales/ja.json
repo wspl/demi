@@ -7,7 +7,7 @@
     "binary": "テキストではありません。",
     "tooLarge": "大きすぎます。",
     "other": "ホストが応答しませんでした。",
-    "conversationBusy": "会話のホストを変更しています。",
+    "conversationBusy": "チャットのホストを変更しています。",
     "selectDevice": "接続済みのデバイスを選択してください。"
   }
 }

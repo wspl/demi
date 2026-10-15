@@ -81,9 +81,9 @@ test('a decision and a failed move are worded from their ids and code in the pag
     createPageI18n('zh-Hans')
     expect(receiptRow(both).notice).toBe('你已允许此对话执行以下操作：管理设备和管理凭据')
     createPageI18n('ja')
-    expect(receiptRow(both).notice).toBe('この会話に次の操作を許可しました: デバイスの管理、認証情報の管理')
-    expect(receiptRow(credential).notice).toBe('この会話に次の操作を許可しませんでした: 認証情報「GitHub」の使用')
-    expect(receiptRow(moveFailed).notice).toBe('移動できませんでした: この会話はアーカイブされています。先に復元してください。')
+    expect(receiptRow(both).notice).toBe('このチャットで次の操作を許可しました: デバイスの管理、認証情報の管理')
+    expect(receiptRow(credential).notice).toBe('このチャットで次の操作を拒否しました: 認証情報「GitHub」の使用')
+    expect(receiptRow(moveFailed).notice).toBe('移動できませんでした: このチャットはアーカイブされています。先に復元してください。')
   } finally {
     createPageI18n('en')
   }
