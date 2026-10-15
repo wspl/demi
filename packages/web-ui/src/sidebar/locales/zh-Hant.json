@@ -1,6 +1,6 @@
 {
   "nav": {
-    "new": "新增",
+    "new": "新對話",
     "search": "搜尋",
     "archived": "已封存"
   },
@@ -8,7 +8,7 @@
     "conversations": "對話",
     "projects": "專案",
     "addProject": "新增專案",
-    "newConversation": "新增對話"
+    "newConversation": "新對話"
   },
   "list": {
     "loading": "正在載入對話…",
@@ -19,7 +19,7 @@
     "settings": "設定"
   },
   "account": {
-    "label": "帳戶",
+    "label": "帳號",
     "settings": "設定",
     "signOut": "登出"
   },
@@ -28,7 +28,7 @@
     "archive": "封存"
   },
   "project": {
-    "newConversation": "新增對話"
+    "newConversation": "新對話"
   },
   "device": {
     "removed": "已移除的裝置",
@@ -52,7 +52,7 @@
   },
   "projectMenu": {
     "newHere": "在此新增對話",
-    "fold": "摺疊",
+    "fold": "收合",
     "unfold": "展開",
     "select": "選取對話",
     "remove": "移除專案"
@@ -60,8 +60,8 @@
   "delete": {
     "title": "刪除「{title}」？",
     "titleMany": "刪除 {count} 個對話？",
-    "one": "它的訊息和檔案將被刪除。此動作無法復原。",
-    "many": "它們的訊息和檔案將被刪除。此動作無法復原。",
+    "one": "它的訊息和檔案將被刪除。此操作無法復原。",
+    "many": "它們的訊息和檔案將被刪除。此操作無法復原。",
     "filesOne": "它變更過的檔案會保留在專案中。",
     "filesMany": "它們變更過的檔案會保留在各自的專案中。"
   },
@@ -77,8 +77,8 @@
       "many": "無法封存 {count} 個對話"
     },
     "restore": {
-      "one": "無法還原{name}",
-      "many": "無法還原 {count} 個對話"
+      "one": "無法取消封存{name}",
+      "many": "無法取消封存 {count} 個對話"
     },
     "pin": {
       "one": "無法釘選{name}",

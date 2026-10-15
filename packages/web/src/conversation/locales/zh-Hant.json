@@ -1,7 +1,7 @@
 {
   "failures": {
     "uploadAttachment": "無法上傳附件",
-    "answerRequest": "無法回覆要求",
+    "answerRequest": "無法回覆請求",
     "changeWorkPanel": "無法變更工作面板",
     "saveDraft": "無法儲存草稿",
     "saveMessage": "無法儲存訊息",
@@ -11,7 +11,7 @@
     "restoreDrafts": "無法還原草稿",
     "restoreStoredDraft": "無法還原草稿",
     "readDraft": "無法讀取草稿",
-    "readSaved": "無法讀取已儲存的訊息",
+    "readSaved": "無法讀取暫存的訊息",
     "readHosts": "無法讀取主機",
     "updateConversations": "無法更新對話",
     "deleteConversations": "無法刪除對話",
@@ -19,7 +19,7 @@
     "reorderConversations": "無法重新排序對話",
     "updateReadStatus": "無法更新已讀狀態",
     "reloadConversation": "無法重新載入對話",
-    "detachDevice": "無法分離裝置",
+    "detachDevice": "無法取消附加裝置",
     "changeModel": "無法變更模型",
     "changeWorkflow": "無法變更工作流程",
     "clearDraft": "無法清除草稿",
@@ -27,19 +27,19 @@
     "restoreDraft": "無法還原草稿",
     "dismissDraft": "無法捨棄草稿",
     "connectionLost": "連線已中斷",
-    "connectionLostMessage": "Demi 可能沒有收到您的要求。重新連線後請檢查對話。",
-    "requestNotAccepted": "對話未接受該要求。",
+    "connectionLostMessage": "Demi 可能沒有收到你的請求。重新連線後請檢查對話。",
+    "requestNotAccepted": "對話未接受該請求。",
     "fieldsNotUpdated": "部分欄位未更新。",
     "readPermissions": "無法讀取權限",
     "readFileWatch": "無法讀取檔案監看的訊息"
   },
   "drafts": {
-    "storeFailed": "此瀏覽器無法儲存您的草稿。",
+    "storeFailed": "此瀏覽器無法儲存你的草稿。",
     "readFailed": "此瀏覽器無法讀取已儲存的草稿。",
     "unreadable": "有一份已儲存的草稿無法讀取，已另行保留。",
-    "deliveryInterrupted": "傳送已中斷。重試以確認。"
+    "deliveryInterrupted": "傳送已中斷。請重試以確認。"
   },
-  "savedDeleted": "已刪除儲存的訊息",
+  "savedDeleted": "已刪除暫存的訊息",
   "newConversation": "新對話",
   "composer": {
     "cloudResetting": "雲端正在重設。"

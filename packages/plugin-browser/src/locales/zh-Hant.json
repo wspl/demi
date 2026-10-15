@@ -2,8 +2,8 @@
   "reasons": {
     "invalid_input": "瀏覽器只能開啟網頁、檔案和空白頁。",
     "tab_not_found": "此頁面已不在裝置上開啟。",
-    "tab_busy": "分頁正忙於處理另一個要求。請稍後再試。",
-    "stale_ref": "頁面在瀏覽器操作前已變更。",
+    "tab_busy": "分頁正在處理另一個請求。請稍後再試。",
+    "stale_ref": "瀏覽器操作之前，頁面已有變更。",
     "stale_cursor": "瀏覽器的記錄在讀取前已變更。",
     "stale_inventory": "頁面的檔案在讀取前已變更。",
     "stale_tools": "頁面的工具在使用前已變更。",
@@ -11,9 +11,9 @@
     "ambiguous_target": "頁面上有多處相符。",
     "not_actionable": "頁面的該部分目前無法使用。",
     "timeout": "瀏覽器未及時回應。",
-    "dialog_blocked": "頁面上的對話方塊正在等待回應。",
-    "dialog_not_found": "頁面上沒有等待回應的對話方塊。",
-    "invalid_dialog_action": "無法以該方式回應對話方塊。",
+    "dialog_blocked": "頁面上的對話框正在等待回應。",
+    "dialog_not_found": "頁面上沒有等待回應的對話框。",
+    "invalid_dialog_action": "無法以該方式回應對話框。",
     "history_boundary": "分頁在該方向上沒有可前往的頁面。",
     "navigation_failed": "瀏覽器無法載入頁面。",
     "protected_value": "頁面不公開該值。",
@@ -28,8 +28,8 @@
     "driver_error": "裝置上的瀏覽器發生問題。",
     "browser_unavailable": "瀏覽器無法在裝置上啟動。",
     "browser_lost": "裝置上的瀏覽器已停止。",
-    "cancelled": "要求已取消。",
-    "outcome_unknown": "與瀏覽器的連線已中斷。結果不明。",
+    "cancelled": "請求已取消。",
+    "outcome_unknown": "與瀏覽器的連線已中斷，結果未知。",
     "capture_unavailable": "此裝置無法擷取瀏覽器的頁面。",
     "capture_failed": "裝置無法擷取頁面。正在重試。",
     "capture_stopped": "裝置無法擷取頁面。",
@@ -38,7 +38,7 @@
     "conversation_busy": "對話正忙。請稍後再試。",
     "host_stopped": "雲端已停止。",
     "device_offline": "裝置已離線。",
-    "device_not_found": "裝置已從您的帳戶中移除。",
+    "device_not_found": "裝置已從你的帳號中移除。",
     "cloud_unavailable": "雲端目前無法使用。",
     "cloud_resetting": "雲端正在重設。",
     "cloud_capacity": "伺服器沒有足夠的空間啟動雲端。",
@@ -52,7 +52,7 @@
     "unreadable": "無法讀取伺服器的回應。",
     "refused": "伺服器無法完成該操作（{status}）。"
   },
-  "noBrowser": "此主機上沒有瀏覽器。請要求代理程式安裝一個。",
+  "noBrowser": "此主機上沒有瀏覽器。請讓智慧體安裝一個。",
   "starting": {
     "connecting": "正在連線…",
     "cloud": "正在啟動雲端…",
@@ -75,8 +75,8 @@
   "region": {
     "couldntOpen": "無法開啟此頁面。",
     "couldntShow": "無法顯示此頁面。",
-    "noH264": "此瀏覽器無法解碼 H.264 視訊。",
-    "waiting": "等待主機…"
+    "noH264": "此瀏覽器無法解碼 H.264 影片。",
+    "waiting": "正在等待主機…"
   },
   "menu": {
     "openLink": "在新分頁中開啟連結",
@@ -100,7 +100,7 @@
   },
   "viewport": {
     "title": "檢視區",
-    "web": "Web",
+    "web": "網頁",
     "mobile": "行動裝置",
     "custom": "自訂 {width} × {height} {scale}"
   },
