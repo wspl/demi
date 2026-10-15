@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from './locales/text'
+import { t as shared } from '../locales/text'
 import { computed, ref, shallowRef, watch, type Component } from 'vue'
 import { ArrowLeftToLine, ArrowRightToLine, ChevronLeft, Copy, CopyX, PanelRightClose, Plus, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
@@ -103,11 +105,11 @@ function openMenu(event: MouseEvent, id: string): void {
 }
 
 /** The tab menu's commands that close several tabs at once. */
-const closeManyItems: readonly { scope: Exclude<TabCloseScope, 'self'>; label: TitleText; icon: Component }[] = [
-  { scope: 'others', label: 'Close Others', icon: CopyX },
-  { scope: 'right', label: 'Close to the Right', icon: ArrowRightToLine },
-  { scope: 'left', label: 'Close to the Left', icon: ArrowLeftToLine },
-]
+const closeManyItems = computed<readonly { scope: Exclude<TabCloseScope, 'self'>; label: TitleText; icon: Component }[]>(() => [
+  { scope: 'others', label: t('panel.closeOthers'), icon: CopyX },
+  { scope: 'right', label: t('panel.closeRight'), icon: ArrowRightToLine },
+  { scope: 'left', label: t('panel.closeLeft'), icon: ArrowLeftToLine },
+])
 
 function closeScope(scope: TabCloseScope): void {
   if (menuId.value) {
@@ -157,7 +159,7 @@ function reorder(from: number, to: number): void {
         @click="emit('close')"
       >
         <ChevronLeft :size="20" class="shrink-0" />
-        Conversation
+        {{ t('session.backToConversation') }}
       </button>
       <TabStrip
         class="min-w-0 grow"
@@ -220,8 +222,8 @@ function reorder(from: number, to: number): void {
           </Tooltip>
         </template>
       </TabStrip>
-      <Tooltip v-if="!phone" content="Close panel" class="shrink-0">
-        <IconButton :icon="PanelRightClose" variant="ghost" aria-label="Close panel" @click="emit('close')" />
+      <Tooltip v-if="!phone" :content="t('session.closePanel')" class="shrink-0">
+        <IconButton :icon="PanelRightClose" variant="ghost" :aria-label="t('session.closePanel')" @click="emit('close')" />
       </Tooltip>
     </div>
     <div class="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -248,14 +250,14 @@ function reorder(from: number, to: number): void {
         v-if="shownTab"
         class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-6 text-center text-[13px] text-fg-faint"
       >
-        <span>This tab cannot be shown.</span>
+        <span>{{ t('panel.cannotShow') }}</span>
         <span class="font-mono text-[11px]">{{ shownTab.tab.kind }}</span>
       </div>
       <div
         v-else
         class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-6 text-center text-[13px] text-fg-faint"
       >
-        <span>{{ beforeFirstMessage ? 'No files or changes' : 'Nothing open' }}</span>
+        <span>{{ beforeFirstMessage ? t('panel.noFiles') : t('panel.nothingOpen') }}</span>
       </div>
       </template>
       </slot>
@@ -271,10 +273,10 @@ function reorder(from: number, to: number): void {
             :disabled="command.disabled"
             @select="command.run()"
           />
-          <MenuItem v-if="menuTab?.kind?.duplicate" :icon="Copy" label="Duplicate" @select="duplicate" />
+          <MenuItem v-if="menuTab?.kind?.duplicate" :icon="Copy" :label="t('panel.duplicate')" @select="duplicate" />
           <MenuDivider />
         </template>
-        <MenuItem :icon="X" label="Close" @select="closeScope('self')" />
+        <MenuItem :icon="X" :label="shared('common.close')" @select="closeScope('self')" />
         <MenuItem
           v-for="item in closeManyItems"
           :key="item.scope"

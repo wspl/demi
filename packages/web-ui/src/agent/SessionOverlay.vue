@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from './locales/text'
+import { t as shared } from '../locales/text'
 import { computed, inject, provide, ref, watch } from 'vue'
 import { useElementSize, useMutationObserver } from '@vueuse/core'
 import { Ellipsis, X } from '@lucide/vue'
@@ -163,7 +165,7 @@ function openStripMenu(event: MouseEvent): void {
           :default-value="defaultHeight"
           orientation="horizontal"
           side="end"
-          label="Window height"
+          :label="t('panel.windowHeight')"
           @update:model-value="space.share.value = dockWindowShare($event, space.area.value)"
           @commit="space.commit(dockWindowShare($event, space.area.value))"
         />
@@ -188,12 +190,12 @@ function openStripMenu(event: MouseEvent): void {
           </TabStrip>
           <Dropdown v-if="$slots.stripMenu" :overlay-store="appOverlayStore">
             <template #trigger="{ isOpen }">
-              <Tooltip content="More">
+              <Tooltip :content="t('panel.more')">
                 <IconButton
                   :icon="Ellipsis"
                   size="sm"
                   variant="ghost"
-                  aria-label="More"
+                  :aria-label="t('panel.more')"
                   :pressed="isOpen"
                 />
               </Tooltip>
@@ -205,12 +207,12 @@ function openStripMenu(event: MouseEvent): void {
             </template>
           </Dropdown>
           <slot name="trailing" />
-          <Tooltip content="Close">
+          <Tooltip :content="shared('common.close')">
             <IconButton
               :icon="X"
               size="sm"
               variant="ghost"
-              aria-label="Close"
+              :aria-label="shared('common.close')"
               @click="emit('close')"
             />
           </Tooltip>

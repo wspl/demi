@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed } from 'vue'
 import { CircleStop, X } from '@lucide/vue'
 import MenuDivider from '../ui/MenuDivider.vue'
@@ -64,14 +65,14 @@ function closeTab(id: string): void {
     <template #tabMenu="{ id }">
       <MenuItem
         :icon="CircleStop"
-        label="End Command"
+        :label="t('terminals.endCommand')"
         :disabled="terminalOf(id)?.phase !== 'running' || terminalOf(id)?.stopping === true"
         @select="emit('abort', id)"
       />
       <MenuDivider />
       <MenuItem
         :icon="X"
-        label="Close Tab"
+        :label="t('terminals.closeTab')"
         :disabled="terminalOf(id)?.phase === 'running'"
         @select="closeTab(id)"
       />

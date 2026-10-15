@@ -1,5 +1,6 @@
 import { isMacOS } from '@tiptap/core'
 import { ATTACHMENT_MARK } from '../markdown/user-markdown'
+import { t } from './locales/text'
 
 /**
  * Where a message of the list stands: kept by the server, on its way there,
@@ -38,7 +39,7 @@ export function savedPreview(markdown: string): string {
 
 /** The entry's text under the composer: `1 Saved`, `3 Saved`. */
 export function savedLabel(count: number): string {
-  return `${count} Saved`
+  return t('composer.saved.count', { count })
 }
 
 /** The key that saves the message for later, ⌘S on macOS and Ctrl+S elsewhere. */

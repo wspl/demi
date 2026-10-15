@@ -3,8 +3,10 @@ import type { ShownError } from '../infra/errors'
 import { useLocalStorage } from '@vueuse/core'
 import type { ContextRowKind, ContextUsage } from '@demicodes/protocol'
 import type { SettingsQuotaWindow } from '../settings/types'
+import { pageLanguage } from '../i18n/text'
 import { formatPercent } from '../ui/percent'
 import { formatTokens } from '../ui/token-count'
+import { t } from './locales/text'
 
 /** How full the context is, from 0 to 1 of its window, full at most; null without a window. */
 export function contextRatio(usage: ContextUsage | null): number | null {
@@ -25,7 +27,9 @@ export function contextPercent(usage: ContextUsage | null): string | null {
 }
 
 /** Why Compact waits while the agent's turn runs, which the session refuses as busy. */
-export const COMPACT_AFTER_TURN = 'Available after the turn ends'
+export function compactAfterTurn(): string {
+  return t('context.afterTurn')
+}
 
 /**
  * Why the user may not compact at `usage`, or null when they may: below the
@@ -40,20 +44,12 @@ export function compactionRefusal(usage: ContextUsage | null, sizeRefused = fals
     return null
   }
   const from = formatPercent(usage.compactFrom, usage.window)
-  return `Available from ${from} context (now ${formatPercent(usage.tokens, usage.window)})`
+  return t('context.availableFrom', { from, now: formatPercent(usage.tokens, usage.window) })
 }
 
 /** What a row of the context card is called (`compaction.md` § What fills the context). */
-const ROW_LABELS: Record<ContextRowKind, string> = {
-  messages: 'Messages',
-  systemPrompt: 'System prompt',
-  commands: 'Commands',
-  instructions: 'Instructions',
-  skills: 'Skills',
-  otherContext: 'Other context',
-  summary: 'Summary',
-  compactionBuffer: 'Compaction buffer',
-  freeSpace: 'Free space',
+function rowLabel(kind: ContextRowKind): string {
+  return t(`context.row.${kind}`)
 }
 
 /** One row of the context card, one figure. */
@@ -88,7 +84,7 @@ export function contextFigure(usage: ContextUsage): string {
 
 /** The ring's tip: the card header's figure under the word Context; none while the model has no window. */
 export function contextTip(usage: ContextUsage | null): string | undefined {
-  return usage?.window ? `Context ${contextFigure(usage)}` : undefined
+  return usage?.window ? t('context.tip', { figure: contextFigure(usage) }) : undefined
 }
 
 /** The rows that stand after what the request carries, in this order. */
@@ -100,7 +96,7 @@ const TRAILING_ROWS: readonly ContextRowKind[] = ['compactionBuffer', 'freeSpace
  * space (`compaction.md` § What fills the context).
  */
 export function contextCardRows(usage: ContextUsage): ContextCardRow[] {
-  const rows = usage.rows.map((row) => ({ ...row, label: ROW_LABELS[row.kind] }))
+  const rows = usage.rows.map((row) => ({ ...row, label: rowLabel(row.kind) }))
   const carried = rows.filter((row) => !TRAILING_ROWS.includes(row.kind)).toSorted((a, b) => b.tokens - a.tokens)
   const trailing = TRAILING_ROWS.flatMap((kind) => rows.filter((row) => row.kind === kind))
   return [...carried, ...trailing]
@@ -130,16 +126,15 @@ export function useContextListOpen(): Ref<boolean> {
 /** Where the browser keeps whether the context card lists its rows. */
 export const CONTEXT_LIST_KEY = 'demi-context-list-open'
 
-const SHARE = new Intl.NumberFormat('en-US', {
-  style: 'percent',
-  minimumFractionDigits: 1,
-  maximumFractionDigits: 1,
-})
-
 /** `tokens` as a share of `window` to a tenth of a percent, "24.2%"; a share too small to show reads "<0.1%". */
 export function formatShare(tokens: number, window: number): string {
   const share = tokens / window
-  return share > 0 && share < 0.0005 ? '<0.1%' : SHARE.format(share)
+  const format = new Intl.NumberFormat(pageLanguage(), {
+    style: 'percent',
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  })
+  return share > 0 && share < 0.0005 ? `<${format.format(0.001)}` : format.format(share)
 }
 
 /**

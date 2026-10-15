@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { ImageOff } from '@lucide/vue'
 import { transcriptRowOf, useMediaViewer } from '../files/media-viewer'
@@ -84,7 +85,7 @@ onBeforeUnmount(() => {
       type="button"
       class="relative block rounded"
       :class="picture.kind === 'image' ? 'cursor-zoom-in' : 'cursor-pointer'"
-      :aria-label="picture.kind === 'image' ? `Open ${picture.name} large` : `Play ${picture.name}`"
+      :aria-label="picture.kind === 'image' ? t('transcript.picture.open', { name: picture.name }) : t('transcript.picture.play', { name: picture.name })"
       v-bind="{ [KEEPS_WINDOWS]: '' }"
       @click.stop="openLarge"
     >

@@ -116,7 +116,6 @@ const step = computed(() => {
         <template #workspace><span class="text-chrome text-fg-muted">Local workspace</span></template>
         <template #composer>
           <GalleryComposer
-            placeholder="Ask anything…"
             :running="session.phase === 'running'"
             @send="productWould('Send the Message')"
             @stop="session.phase = 'idle'"

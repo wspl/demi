@@ -42,7 +42,6 @@
   "savedDeleted": "已删除保存的消息",
   "newConversation": "新对话",
   "composer": {
-    "placeholder": "询问任何问题…",
     "cloudResetting": "云正在重置。"
   },
   "workflows": {

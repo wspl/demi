@@ -2,6 +2,8 @@
 import { computed, ref } from 'vue'
 import { CircleAlert, RotateCw } from '@lucide/vue'
 import FileIcon from '../../files/FileIcon.vue'
+import { t } from '../locales/text'
+import { t as shared } from '../../locales/text'
 import { declaredSize, type PixelSize } from '../../files/thumbnail'
 import PicturePreview from '../../ui/PicturePreview.vue'
 import Tooltip from '../../ui/Tooltip.vue'
@@ -68,13 +70,13 @@ const failed = computed(() => props.transfer?.phase === 'failed')
 const caption = computed(() => {
   const { host, path, name } = props.capsule
   if (failed.value) {
-    return `${name} did not upload. Retry or delete it.`
+    return t('attachments.failed', { name })
   }
   if (uploading.value) {
-    return `Uploading ${Math.round(uploading.value.progress * 100)}% · ${name}`
+    return t('attachments.uploading', { percent: Math.round(uploading.value.progress * 100), name })
   }
   if (attaching.value) {
-    return `Attaching · ${name}`
+    return t('attachments.attaching', { name })
   }
   return host ? `${host} · ${path ?? name}` : path ?? name
 })
@@ -179,7 +181,7 @@ const preview = computed<
         v-if="failed"
         type="button"
         class="-mr-1 flex size-4 shrink-0 items-center justify-center rounded text-on-danger hover:bg-tint-danger-strong"
-        aria-label="Retry"
+        :aria-label="shared('common.retry')"
         @click.stop="emit('retry')"
       >
         <RotateCw :size="11" />

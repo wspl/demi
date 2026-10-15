@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../locales/text'
 import { computed } from 'vue'
 import ActivityMark from '@demicodes/web-ui/ui/ActivityMark.vue'
 import type { ActivityKind } from '../activity-slot'
@@ -25,7 +26,7 @@ const requestingElapsed = useElapsedTime(
 const label = computed(() => {
   switch (props.kind) {
     case 'connecting':
-      return 'Connecting'
+      return t('transcript.connecting')
     case 'requesting':
       return providerWaitLabel(requestingElapsed.value ?? 0)
   }

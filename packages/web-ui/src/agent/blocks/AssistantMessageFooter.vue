@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../locales/text'
 import { GitFork, RefreshCw } from '@lucide/vue'
 import type { MessageForkState } from '../message-fork'
 import CopyButton from '../../ui/CopyButton.vue'
@@ -23,24 +24,24 @@ defineProps<{
 <template>
   <div class="mt-2 flex flex-wrap items-center gap-1 text-fg-faint">
     <CopyButton :source="content" />
-    <Tooltip content="Fork" :disabled="!fork">
+    <Tooltip :content="t('transcript.assistant.fork')" :disabled="!fork">
       <IconButton
         :icon="GitFork"
         size="sm"
         variant="ghost"
-        aria-label="Fork"
+        :aria-label="t('transcript.assistant.fork')"
         :disabled="!fork"
-        disabled-reason="Fork is available after this message completes."
+        :disabled-reason="t('transcript.assistant.forkWait')"
         :loading="forkState?.phase === 'pending'"
         @click="fork?.()"
       />
     </Tooltip>
-    <Tooltip v-if="regenerate" content="Regenerate">
+    <Tooltip v-if="regenerate" :content="t('transcript.assistant.regenerate')">
       <IconButton
         :icon="RefreshCw"
         size="sm"
         variant="ghost"
-        aria-label="Regenerate"
+        :aria-label="t('transcript.assistant.regenerate')"
         @click="regenerate()"
       />
     </Tooltip>

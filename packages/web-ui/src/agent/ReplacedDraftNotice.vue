@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { around, t } from './locales/text'
+import { computed } from 'vue'
 import { X } from '@lucide/vue'
 import Button from '../ui/Button.vue'
 import IconButton from '../ui/IconButton.vue'
@@ -19,6 +21,9 @@ const emit = defineEmits<{
   restore: []
   dismiss: []
 }>()
+
+/** The sentence around the draft's first line, which stands apart in its own tone. */
+const sentence = computed(() => around('notices.replacedDraft', 'draft'))
 </script>
 
 <template>
@@ -27,17 +32,17 @@ const emit = defineEmits<{
     role="status"
   >
     <span class="min-w-0 flex-1 truncate">
-      A later save replaced <span class="text-fg-body">“{{ preview }}”</span>
+      {{ sentence[0] }}<span class="text-fg-body">{{ t('notices.quoted', { text: preview }) }}</span>{{ sentence[1] }}
     </span>
-    <Button size="sm" class="shrink-0" @click="emit('restore')">Restore</Button>
+    <Button size="sm" class="shrink-0" @click="emit('restore')">{{ t('notices.restore') }}</Button>
     <span class="replaced-draft-notice-dismiss">
-      <Tooltip content="Dismiss">
+      <Tooltip :content="t('notices.dismiss')">
         <IconButton
           :icon="X"
           size="sm"
           variant="ghost"
           circle
-          aria-label="Dismiss the replaced draft"
+          :aria-label="t('notices.dismissDraft')"
           @click="emit('dismiss')"
         />
       </Tooltip>

@@ -127,7 +127,7 @@ test('a copy of a lone file offers its picture under the file\'s name for when t
 function pastedIntoEmptyComposer(paste: (schema: Editor['schema']) => Slice): string {
   const editor = new Editor({
     element: null,
-    extensions: composerExtensions({ placeholder: '', submit: () => {}, cancel: () => true, editLast: () => false }),
+    extensions: composerExtensions({ placeholder: () => '', submit: () => {}, cancel: () => true, editLast: () => false }),
     content: { type: 'doc', content: [{ type: 'paragraph' }] },
   })
   try {

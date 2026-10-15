@@ -1,0 +1,301 @@
+{
+  "transcript": {
+    "accountSwitch": {
+      "usage": "{from} 계정이 사용 한도에 도달하여 {to} 계정으로 계속합니다.",
+      "usageReset": "{from} 계정이 사용 한도에 도달하여({reset}) {to} 계정으로 계속합니다.",
+      "window": "{from} 계정이 {window} 한도에 도달하여 {to} 계정으로 계속합니다.",
+      "windowReset": "{from} 계정이 {window} 한도에 도달하여({reset}) {to} 계정으로 계속합니다."
+    },
+    "notice": {
+      "titled": "{notice}:"
+    },
+    "receipt": {
+      "allowed": "이 대화에서 다음 작업을 허용했습니다: {action}",
+      "denied": "이 대화에서 다음 작업을 거부했습니다: {action}",
+      "moved": "이 대화를 {host} · {path}(으)로 이동했습니다",
+      "moveFailed": "이동하지 못했습니다: {reason}",
+      "fromMain": "{agent}의 메시지",
+      "mainAgent": "메인 에이전트",
+      "fromAgent": "에이전트의 메시지",
+      "finished": "에이전트가 완료되었습니다",
+      "failed": "에이전트가 실패했습니다",
+      "stopped": "에이전트가 중지되었습니다",
+      "unnamed": "에이전트 {number}"
+    },
+    "report": {
+      "finished": "명령이 완료되었습니다",
+      "failed": "명령이 종료 코드 {code}(으)로 실패했습니다",
+      "stoppedByYou": "사용자가 명령을 중지했습니다",
+      "stoppedByAgent": "다른 에이전트가 명령을 중지했습니다",
+      "stopped": "명령이 중지되었습니다",
+      "lost": "명령을 추적할 수 없습니다",
+      "untitled": "명령 {id}"
+    },
+    "runEnd": {
+      "failed": "실패",
+      "stopped": "중지됨",
+      "stopping": "중지하는 중…",
+      "lost": "유실됨",
+      "exitCode": "종료 코드 {code}"
+    },
+    "commandStatus": {
+      "lost": "유실됨",
+      "lostWhy": "유실됨: {reason}",
+      "stopping": "중지하는 중…",
+      "running": "{span} 동안 실행 중",
+      "exited": "{span} 후 종료됨",
+      "exitedZero": "{span} 후 종료 코드 0으로 종료됨",
+      "failed": "{span} 후 종료 코드 {code}(으)로 실패함",
+      "stopped": "{span} 후 중지됨"
+    },
+    "thinking": {
+      "now": "생각 중",
+      "briefly": "잠시 생각함",
+      "nowFor": "{span} 동안 생각 중",
+      "doneFor": "{span} 동안 생각함",
+      "requesting": "요청 중",
+      "requestingFor": "{span} 동안 요청 중"
+    },
+    "compaction": {
+      "running": "컨텍스트 압축 중…",
+      "done": "컨텍스트를 압축했습니다",
+      "doneTo": "컨텍스트를 약 {tokens} 토큰으로 압축했습니다"
+    },
+    "stopped": "중지됨",
+    "queued": "큐에 대기됨 {count}개",
+    "user": {
+      "edit": "편집",
+      "showMore": "자세히 표시",
+      "showLess": "간단히 표시",
+      "sendsNext": "에이전트의 다음 단계에서 보내집니다",
+      "sendNow": "지금 보내기",
+      "recall": "회수",
+      "recalled": "메시지를 회수함",
+      "notDelivered": "이 메시지를 전달하지 못했습니다."
+    },
+    "assistant": {
+      "fork": "포크",
+      "forkWait": "이 메시지가 완료된 후 포크할 수 있습니다.",
+      "regenerate": "다시 생성",
+      "forkFailed": "이 메시지에서 포크할 수 없음"
+    },
+    "edit": {
+      "rejected": "편집이 수락되지 않았습니다.",
+      "unconfirmed": "편집을 확인할 수 없음"
+    },
+    "connecting": "연결하는 중",
+    "newFile": "새 파일",
+    "picture": {
+      "open": "{name} 크게 열기",
+      "play": "{name} 재생"
+    },
+    "gone": {
+      "line": "{kind}을(를) 저장하지 않음: {reason}",
+      "image": "이미지",
+      "video": "비디오",
+      "document": "문서"
+    },
+    "shellFallback": "shell 명령 실행",
+    "turnFailed": "턴 실패",
+    "work": {
+      "ran": "명령 {count}개 실행",
+      "checked": "명령 {count}개 확인",
+      "used": "{tool} 사용",
+      "running": "명령 {count}개 실행 중",
+      "checking": "명령 {count}개 확인 중",
+      "using": "{tool} 사용 중",
+      "joined": "{first}, {next}",
+      "runningFor": "{what}, {time} 동안",
+      "command": {
+        "finished": "명령 {count}개 완료됨",
+        "failed": "명령 {count}개 실패함",
+        "stopped": "명령 {count}개 중지됨",
+        "stopping": "명령 {count}개 중지하는 중",
+        "lost": "명령 {count}개 유실됨"
+      },
+      "agent": {
+        "finished": "에이전트 {count}개 완료됨",
+        "failed": "에이전트 {count}개 실패함",
+        "stopped": "에이전트 {count}개 중지됨"
+      },
+      "heard": "에이전트 {count}개로부터 메시지 받음"
+    }
+  },
+  "subagents": {
+    "mainAgent": "메인 에이전트",
+    "agentNumber": "에이전트 {number}",
+    "phase": {
+      "running": "실행 중",
+      "completed": "완료됨",
+      "error": "실패",
+      "aborted": "중지됨"
+    },
+    "forkedFrom": "{agent}에서 포크함",
+    "inherited": "이 대화에서 상속됨",
+    "fast": "빠름",
+    "chip": "에이전트 {count}개",
+    "stopAgent": "에이전트 중지",
+    "copyId": "에이전트 ID 복사",
+    "closeTab": "탭 닫기",
+    "stopAll": "모두 중지",
+    "none": "실행 중인 에이전트 없음",
+    "completed": "완료됨",
+    "searchCompleted": "완료된 항목 검색",
+    "noneCompleted": "완료된 하위 에이전트 없음",
+    "thinkingOff": "생각 끔"
+  },
+  "terminals": {
+    "endCommand": "명령 종료",
+    "closeTab": "탭 닫기",
+    "chip": "실행 중 {count}개"
+  },
+  "session": {
+    "loading": "대화를 로드하는 중…",
+    "loadFailed": "이 대화를 로드할 수 없습니다.",
+    "notFound": "대화를 찾을 수 없음",
+    "noneOpen": "열린 대화 없음",
+    "empty": "메시지 없음",
+    "start": "대화 시작",
+    "openSidebar": "사이드바 열기",
+    "openPanel": "패널 열기",
+    "closePanel": "패널 닫기",
+    "options": "{title}, 대화 옵션",
+    "hostState": "{name} {state}",
+    "renameTitle": "대화 이름 바꾸기",
+    "titleLabel": "대화 제목",
+    "runsOn": "실행 위치",
+    "backToConversation": "대화",
+    "archived": "이 대화는 보관되었습니다.",
+    "restore": "대화 복원"
+  },
+  "dock": {
+    "scrollToBottom": "맨 아래로 스크롤",
+    "resume": "재개",
+    "continue": "계속",
+    "stillOffline": "{name}이(가) 아직 오프라인입니다",
+    "continueWith": "{label}(으)로 계속"
+  },
+  "notices": {
+    "hostOffline": "{name}이(가) 오프라인입니다.",
+    "moveHost": "다른 호스트로 이동…",
+    "pluginsChanged": "플러그 인이 변경됨",
+    "replacedDraft": "이후 저장으로 {draft}이(가) 바뀌었습니다",
+    "quoted": "“{text}”",
+    "restore": "복원",
+    "dismiss": "해제",
+    "dismissDraft": "바뀐 초안 해제"
+  },
+  "composer": {
+    "placeholder": "무엇이든 물어보십시오…",
+    "message": "메시지",
+    "noModels": "사용 가능한 모델 없음",
+    "configureModels": "모델 구성",
+    "attach": "첨부",
+    "attachFiles": "파일 첨부…",
+    "attachLocalFiles": "로컬 파일 첨부…",
+    "attachRemoteFile": "원격 파일 첨부…",
+    "cancelEdit": "편집 취소",
+    "saveForLater": "나중을 위해 저장",
+    "saveForLaterKeys": "나중을 위해 저장  {keys}",
+    "stop": "중지",
+    "send": "보내기",
+    "saveAndResend": "저장 후 다시 보내기",
+    "sendOtherWay": "{way} · {keys}로 {other}",
+    "modelUnavailable": "이 모델을 사용할 수 없습니다. 다른 모델을 선택한 후 보내십시오.",
+    "modelsLoading": "모델을 아직 로드하는 중입니다.",
+    "couldntAttach": "첨부할 수 없음",
+    "afterEdit": "편집 후 사용 가능",
+    "saved": {
+      "count": "저장됨 {count}개",
+      "notSaved": "저장되지 않음",
+      "edit": "편집",
+      "send": "보내기",
+      "delete": "삭제"
+    }
+  },
+  "attachments": {
+    "uploading": "업로드 중 {percent}% · {name}",
+    "attaching": "첨부하는 중 · {name}",
+    "failed": "{name}을(를) 업로드하지 못했습니다. 다시 시도하거나 삭제하십시오.",
+    "refused": "{name}이(가) 비어 있거나 {limit}을(를) 초과합니다.",
+    "retryOrRemove": "업로드하지 못한 첨부 파일을 다시 시도하거나 제거하십시오",
+    "waitForUpload": "첨부 파일 업로드가 끝날 때까지 기다리십시오",
+    "pastedNames": "{list}: 대신 이름을 붙여 넣었습니다.",
+    "couldntCopyPicture": "그림을 복사할 수 없음"
+  },
+  "models": {
+    "parent": "상위 모델",
+    "fast": "빠른 모드",
+    "reasoning": "추론",
+    "context": "컨텍스트",
+    "model": "모델",
+    "off": "끄기",
+    "default": "기본값({window})",
+    "effort": {
+      "minimal": "최소",
+      "low": "낮음",
+      "medium": "중간",
+      "high": "높음",
+      "xhigh": "매우 높음",
+      "max": "최대"
+    },
+    "loading": "모델을 로드하는 중…",
+    "loadFailed": "모델을 로드할 수 없습니다.",
+    "unavailable": "이 모델을 사용할 수 없습니다. 다른 모델을 선택한 후 보내십시오."
+  },
+  "workflows": {
+    "label": "워크플로",
+    "labelTip": "워크플로: {name}",
+    "default": "기본값",
+    "none": "하위 에이전트 없음",
+    "reading": "워크플로를 읽는 중…",
+    "failed": "워크플로를 읽을 수 없음",
+    "unavailable": "워크플로를 사용할 수 없음",
+    "gone": "이 워크플로가 더 이상 프로젝트에 없습니다. 다른 워크플로를 선택하십시오."
+  },
+  "context": {
+    "window": "컨텍스트 창",
+    "windowUsed": "컨텍스트 창, {percent} 사용됨",
+    "tip": "컨텍스트 {figure}",
+    "compacting": "컨텍스트 압축 중…",
+    "unavailable": "컨텍스트 사용량을 사용할 수 없음",
+    "compact": "압축",
+    "untilCompaction": "압축까지 {tokens}",
+    "afterTurn": "턴이 끝난 후 사용 가능",
+    "availableFrom": "컨텍스트가 {from}에 도달하면 사용 가능(현재 {now})",
+    "usageLimits": "사용 한도",
+    "refreshUsage": "사용량 새로 고침",
+    "instructions": "지침",
+    "personalInstructions": "개인 지침",
+    "workflowInstructions": "워크플로: {name}",
+    "row": {
+      "messages": "메시지",
+      "systemPrompt": "시스템 프롬프트",
+      "commands": "명령",
+      "instructions": "지침",
+      "skills": "기술",
+      "otherContext": "기타 컨텍스트",
+      "summary": "요약",
+      "compactionBuffer": "압축 버퍼",
+      "freeSpace": "여유 공간"
+    }
+  },
+  "address": {
+    "back": "뒤로",
+    "forward": "앞으로",
+    "stop": "중지",
+    "placeholder": "주소 입력",
+    "label": "브라우저 주소"
+  },
+  "panel": {
+    "more": "더 보기",
+    "windowHeight": "창 높이",
+    "duplicate": "탭 복제",
+    "closeOthers": "기타 항목 닫기",
+    "closeRight": "오른쪽에 있는 항목 닫기",
+    "closeLeft": "왼쪽에 있는 항목 닫기",
+    "cannotShow": "이 탭을 표시할 수 없습니다.",
+    "nothingOpen": "열린 항목 없음",
+    "noFiles": "파일 또는 변경 내용 없음"
+  }
+}

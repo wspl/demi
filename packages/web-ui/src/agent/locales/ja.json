@@ -1,0 +1,301 @@
+{
+  "transcript": {
+    "accountSwitch": {
+      "usage": "{from} が使用制限に達したため、{to} で続行します。",
+      "usageReset": "{from} が使用制限に達したため（{reset}）、{to} で続行します。",
+      "window": "{from} が {window} の制限に達したため、{to} で続行します。",
+      "windowReset": "{from} が {window} の制限に達したため（{reset}）、{to} で続行します。"
+    },
+    "notice": {
+      "titled": "{notice}："
+    },
+    "receipt": {
+      "allowed": "この会話に次の操作を許可しました: {action}",
+      "denied": "この会話に次の操作を許可しませんでした: {action}",
+      "moved": "この会話を {host} · {path} に移動しました",
+      "moveFailed": "移動できませんでした: {reason}",
+      "fromMain": "{agent}からのメッセージ",
+      "mainAgent": "メインエージェント",
+      "fromAgent": "エージェントからのメッセージ",
+      "finished": "エージェントが完了しました",
+      "failed": "エージェントが失敗しました",
+      "stopped": "エージェントが停止しました",
+      "unnamed": "エージェント {number}"
+    },
+    "report": {
+      "finished": "コマンドが完了しました",
+      "failed": "コマンドが終了コード {code} で失敗しました",
+      "stoppedByYou": "コマンドを停止しました",
+      "stoppedByAgent": "別のエージェントがコマンドを停止しました",
+      "stopped": "コマンドが停止しました",
+      "lost": "コマンドを追跡できなくなりました",
+      "untitled": "コマンド {id}"
+    },
+    "runEnd": {
+      "failed": "失敗",
+      "stopped": "停止済み",
+      "stopping": "停止中…",
+      "lost": "不明",
+      "exitCode": "終了コード {code}"
+    },
+    "commandStatus": {
+      "lost": "不明",
+      "lostWhy": "不明: {reason}",
+      "stopping": "停止中…",
+      "running": "{span} 実行中",
+      "exited": "{span} 後に終了",
+      "exitedZero": "{span} 後に終了コード 0 で終了",
+      "failed": "{span} 後に終了コード {code} で失敗",
+      "stopped": "{span} 後に停止"
+    },
+    "thinking": {
+      "now": "考え中",
+      "briefly": "少し考えました",
+      "nowFor": "考え中 {span}",
+      "doneFor": "{span} 考えました",
+      "requesting": "リクエスト中",
+      "requestingFor": "リクエスト中 {span}"
+    },
+    "compaction": {
+      "running": "コンテキストを圧縮中…",
+      "done": "コンテキストを圧縮しました",
+      "doneTo": "コンテキストを約 {tokens} トークンに圧縮しました"
+    },
+    "stopped": "停止済み",
+    "queued": "キューに登録済み {count} 件",
+    "user": {
+      "edit": "編集",
+      "showMore": "さらに表示",
+      "showLess": "表示を減らす",
+      "sendsNext": "エージェントの次のステップで送信されます",
+      "sendNow": "今すぐ送信",
+      "recall": "取り消す",
+      "recalled": "メッセージを取り消しました",
+      "notDelivered": "このメッセージは配信されませんでした。"
+    },
+    "assistant": {
+      "fork": "フォーク",
+      "forkWait": "このメッセージの完了後にフォークできます。",
+      "regenerate": "再生成",
+      "forkFailed": "このメッセージからフォークできませんでした"
+    },
+    "edit": {
+      "rejected": "編集が受け付けられませんでした。",
+      "unconfirmed": "編集を確認できませんでした"
+    },
+    "connecting": "接続中",
+    "newFile": "新規ファイル",
+    "picture": {
+      "open": "{name} を拡大して開く",
+      "play": "{name} を再生"
+    },
+    "gone": {
+      "line": "{kind}は保存されていません: {reason}",
+      "image": "画像",
+      "video": "動画",
+      "document": "ドキュメント"
+    },
+    "shellFallback": "シェルコマンドを実行",
+    "turnFailed": "ターンが失敗しました",
+    "work": {
+      "ran": "{count} 件のコマンドを実行",
+      "checked": "{count} 件のコマンドを確認",
+      "used": "{tool} を使用",
+      "running": "{count} 件のコマンドを実行中",
+      "checking": "{count} 件のコマンドを確認中",
+      "using": "{tool} を使用中",
+      "joined": "{first}、{next}",
+      "runningFor": "{what}（{time}）",
+      "command": {
+        "finished": "{count} 件のコマンドが完了",
+        "failed": "{count} 件のコマンドが失敗",
+        "stopped": "{count} 件のコマンドが停止",
+        "stopping": "{count} 件のコマンドを停止中",
+        "lost": "{count} 件のコマンドが不明"
+      },
+      "agent": {
+        "finished": "{count} 件のエージェントが完了",
+        "failed": "{count} 件のエージェントが失敗",
+        "stopped": "{count} 件のエージェントが停止"
+      },
+      "heard": "{count} 件のエージェントから連絡"
+    }
+  },
+  "subagents": {
+    "mainAgent": "メインエージェント",
+    "agentNumber": "エージェント {number}",
+    "phase": {
+      "running": "実行中",
+      "completed": "完了",
+      "error": "失敗",
+      "aborted": "停止済み"
+    },
+    "forkedFrom": "{agent} からフォーク",
+    "inherited": "この会話から継承",
+    "fast": "高速",
+    "chip": "{count} 個のエージェント",
+    "stopAgent": "エージェントを停止",
+    "copyId": "エージェント ID をコピー",
+    "closeTab": "タブを閉じる",
+    "stopAll": "すべて停止",
+    "none": "実行中のエージェントはありません",
+    "completed": "完了済み",
+    "searchCompleted": "完了したものを検索",
+    "noneCompleted": "完了したサブエージェントはありません",
+    "thinkingOff": "思考オフ"
+  },
+  "terminals": {
+    "endCommand": "コマンドを終了",
+    "closeTab": "タブを閉じる",
+    "chip": "{count} 件を実行中"
+  },
+  "session": {
+    "loading": "会話を読み込んでいます…",
+    "loadFailed": "この会話を読み込めませんでした。",
+    "notFound": "会話が見つかりません",
+    "noneOpen": "開いている会話はありません",
+    "empty": "メッセージはありません",
+    "start": "会話を開始",
+    "openSidebar": "サイドバーを開く",
+    "openPanel": "パネルを開く",
+    "closePanel": "パネルを閉じる",
+    "options": "{title}、会話のオプション",
+    "hostState": "{name} は{state}",
+    "renameTitle": "会話の名前を変更",
+    "titleLabel": "会話のタイトル",
+    "runsOn": "実行場所",
+    "backToConversation": "会話",
+    "archived": "この会話はアーカイブされています。",
+    "restore": "会話を復元"
+  },
+  "dock": {
+    "scrollToBottom": "一番下までスクロール",
+    "resume": "再開",
+    "continue": "続行",
+    "stillOffline": "{name} はまだオフラインです",
+    "continueWith": "{label} で続行"
+  },
+  "notices": {
+    "hostOffline": "{name} はオフラインです。",
+    "moveHost": "別のホストに移動…",
+    "pluginsChanged": "プラグインが変更されました",
+    "replacedDraft": "後の保存で{draft}が置き換えられました",
+    "quoted": "「{text}」",
+    "restore": "復元",
+    "dismiss": "閉じる",
+    "dismissDraft": "置き換えられた下書きを閉じる"
+  },
+  "composer": {
+    "placeholder": "何でも質問してください…",
+    "message": "メッセージ",
+    "noModels": "利用できるモデルがありません",
+    "configureModels": "モデルを設定",
+    "attach": "添付",
+    "attachFiles": "ファイルを添付…",
+    "attachLocalFiles": "ローカルファイルを添付…",
+    "attachRemoteFile": "リモートファイルを添付…",
+    "cancelEdit": "編集をキャンセル",
+    "saveForLater": "後で送信するために保存",
+    "saveForLaterKeys": "後で送信するために保存  {keys}",
+    "stop": "停止",
+    "send": "送信",
+    "saveAndResend": "保存して再送信",
+    "sendOtherWay": "{way} · {keys} で{other}",
+    "modelUnavailable": "このモデルは利用できません。別のモデルを選択して送信してください。",
+    "modelsLoading": "モデルを読み込み中です。",
+    "couldntAttach": "添付できませんでした",
+    "afterEdit": "編集後に使用できます",
+    "saved": {
+      "count": "{count} 件を保存済み",
+      "notSaved": "未保存",
+      "edit": "編集",
+      "send": "送信",
+      "delete": "削除"
+    }
+  },
+  "attachments": {
+    "uploading": "アップロード中 {percent}% · {name}",
+    "attaching": "添付中 · {name}",
+    "failed": "{name} をアップロードできませんでした。再試行するか削除してください。",
+    "refused": "{name} は空か、{limit} を超えています。",
+    "retryOrRemove": "アップロードできなかった添付ファイルを再試行するか削除してください",
+    "waitForUpload": "添付ファイルのアップロードが完了するまでお待ちください",
+    "pastedNames": "{list}: 代わりに名前を貼り付けました。",
+    "couldntCopyPicture": "画像をコピーできませんでした"
+  },
+  "models": {
+    "parent": "親のモデル",
+    "fast": "高速モード",
+    "reasoning": "推論",
+    "context": "コンテキスト",
+    "model": "モデル",
+    "off": "オフ",
+    "default": "既定（{window}）",
+    "effort": {
+      "minimal": "最小",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "最高",
+      "max": "最大"
+    },
+    "loading": "モデルを読み込み中…",
+    "loadFailed": "モデルを読み込めませんでした。",
+    "unavailable": "このモデルは利用できません。別のモデルを選択して送信してください。"
+  },
+  "workflows": {
+    "label": "ワークフロー",
+    "labelTip": "ワークフロー: {name}",
+    "default": "既定",
+    "none": "サブエージェントなし",
+    "reading": "ワークフローを読み取り中…",
+    "failed": "ワークフローを読み取れませんでした",
+    "unavailable": "ワークフローを利用できません",
+    "gone": "このワークフローはプロジェクトにありません。別のワークフローを選択してください。"
+  },
+  "context": {
+    "window": "コンテキストウィンドウ",
+    "windowUsed": "コンテキストウィンドウ、{percent} 使用済み",
+    "tip": "コンテキスト {figure}",
+    "compacting": "コンテキストを圧縮中…",
+    "unavailable": "コンテキストの使用状況を取得できません",
+    "compact": "圧縮",
+    "untilCompaction": "圧縮まで {tokens}",
+    "afterTurn": "ターンの終了後に使用できます",
+    "availableFrom": "コンテキストが {from} になると使用できます（現在 {now}）",
+    "usageLimits": "使用制限",
+    "refreshUsage": "使用状況を更新",
+    "instructions": "指示",
+    "personalInstructions": "個人用の指示",
+    "workflowInstructions": "ワークフロー: {name}",
+    "row": {
+      "messages": "メッセージ",
+      "systemPrompt": "システムプロンプト",
+      "commands": "コマンド",
+      "instructions": "指示",
+      "skills": "スキル",
+      "otherContext": "その他のコンテキスト",
+      "summary": "要約",
+      "compactionBuffer": "圧縮バッファー",
+      "freeSpace": "空き領域"
+    }
+  },
+  "address": {
+    "back": "戻る",
+    "forward": "進む",
+    "stop": "停止",
+    "placeholder": "アドレスを入力",
+    "label": "ブラウザーのアドレス"
+  },
+  "panel": {
+    "more": "その他",
+    "windowHeight": "ウィンドウの高さ",
+    "duplicate": "タブを複製",
+    "closeOthers": "その他を閉じる",
+    "closeRight": "右側を閉じる",
+    "closeLeft": "左側を閉じる",
+    "cannotShow": "このタブは表示できません。",
+    "nothingOpen": "開いているものはありません",
+    "noFiles": "ファイルも変更点もありません"
+  }
+}

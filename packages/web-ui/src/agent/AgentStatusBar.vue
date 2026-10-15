@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { around, t } from './locales/text'
 import { computed } from 'vue'
 import { Folder } from '@lucide/vue'
 import { baseName } from '@demicodes/utils'
@@ -80,6 +81,8 @@ const openFolder = computed(() => {
   return open ? () => open({ path: '', line: null, root: props.run.cwd }) : null
 })
 const forked = computed(() => (props.run.forkedFrom === null ? null : agents()?.find(props.run.forkedFrom) ?? null))
+/** What *Forked from agent N* says around the agent's name, as the language words it. */
+const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
 </script>
 
 <template>
@@ -104,11 +107,12 @@ const forked = computed(() => (props.run.forkedFrom === null ? null : agents()?.
       <!-- A fork of an agent the conversation does not have names it and acts on nothing. -->
       <template v-if="run.forkedFrom !== null">
         <StatusBarSegment v-if="forked" acting class="hidden @min-[40rem]:flex" @click="openForked">
-          Forked from
+          <span v-if="forkedSentence[0].trim()">{{ forkedSentence[0].trim() }}</span>
           <span class="inline-flex size-3.5 shrink-0"><AgentMark :phase="forked.run?.phase ?? null" :size="ICON_PX.in28" /></span>
-          agent {{ run.forkedFrom }}
+          {{ t('subagents.agentNumber', { number: run.forkedFrom }) }}
+          <span v-if="forkedSentence[1].trim()">{{ forkedSentence[1].trim() }}</span>
         </StatusBarSegment>
-        <StatusBarSegment v-else class="hidden @min-[40rem]:flex">Forked from agent {{ run.forkedFrom }}</StatusBarSegment>
+        <StatusBarSegment v-else class="hidden @min-[40rem]:flex">{{ t('subagents.forkedFrom', { agent: t('subagents.agentNumber', { number: run.forkedFrom }) }) }}</StatusBarSegment>
       </template>
     </div>
     <div class="ml-auto flex min-w-0 items-stretch">
@@ -126,13 +130,13 @@ const forked = computed(() => (props.run.forkedFrom === null ? null : agents()?.
             </template>
             <template v-if="run.model.fast">
               <span class="px-1.5 text-fg-faint" :class="effort ? '' : 'hidden @min-[28rem]:inline'" aria-hidden="true">·</span>
-              <span>Fast</span>
+              <span>{{ t('subagents.fast') }}</span>
             </template>
           </span>
         </StatusBarSegment>
         <template #overlay>
           <div>{{ run.model.provider }} · {{ run.model.model }}</div>
-          <div v-if="!run.profile" class="text-fg-muted">Inherited from this conversation</div>
+          <div v-if="!run.profile" class="text-fg-muted">{{ t('subagents.inherited') }}</div>
         </template>
       </Tooltip>
       <ContextUsageIndicator

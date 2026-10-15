@@ -116,6 +116,7 @@ import {
 } from '@demicodes/web-ui/agent/session-status'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
+import { t as agentText } from '@demicodes/web-ui/agent/locales/text'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
@@ -1376,7 +1377,7 @@ onBeforeUnmount(() => {
             variant="idle · empty"
             wide
           >
-            <GalleryComposer placeholder="Ask anything…" />
+            <GalleryComposer />
           </GallerySpecimen>
           <GallerySpecimen
             variant="narrow"
@@ -1384,7 +1385,7 @@ onBeforeUnmount(() => {
           >
             <!-- The frame keeps the dock's 12px around the composer, as the session does. -->
             <div class="max-w-full resize-x overflow-hidden p-3" style="width: 367px; min-width: 15.5rem">
-              <GalleryComposer placeholder="Ask anything…" />
+              <GalleryComposer />
             </div>
           </GallerySpecimen>
           <GallerySpecimen
@@ -1392,7 +1393,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               focused
             />
           </GallerySpecimen>
@@ -1401,7 +1401,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               draft="The login test in packages/web/src/auth.test.ts is failing after the session cookie rename."
             />
           </GallerySpecimen>
@@ -1410,7 +1409,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               draft="Fix the login test in packages/web/src/auth.test.ts."
               replaced="Fix the login bug before the release; the session cookie was renamed."
             />
@@ -1420,7 +1418,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               :offline-host="{
                 name: 'Old Laptop',
                 start: demoDeviceStart('macos'),
@@ -1434,7 +1431,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               :offline-host="{
                 name: 'Old Laptop',
                 start: demoDeviceStart('macos'),
@@ -1449,7 +1445,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               :offline-host="{
                 name: 'Old Laptop',
                 start: demoDeviceStart('windows'),
@@ -1464,7 +1459,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               plugins-changed
             />
           </GallerySpecimen>
@@ -1473,7 +1467,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               draft="The login test in packages/web/src/auth.test.ts is failing after the session cookie rename.&#10;Keep the fix in that file."
             />
           </GallerySpecimen>
@@ -1482,7 +1475,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               :draft="composerDrafts.long"
             />
           </GallerySpecimen>
@@ -1491,7 +1483,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               :draft="composerDrafts.formatted"
             />
           </GallerySpecimen>
@@ -1500,7 +1491,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               :draft="composerDrafts.ready"
               :attachments="[
                 {
@@ -1527,7 +1517,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               :draft="composerDrafts.lines"
               :attachments="[
                 { id: 'before', name: 'before.png', src: demoImageUrl, phase: 'ready' },
@@ -1541,7 +1530,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               :draft="composerDrafts.uploading"
               :attachments="[
                 {
@@ -1565,7 +1553,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               :draft="composerDrafts.attaching"
               :attachments="[
                 { id: 'before', name: 'before.png', src: demoImageUrl, phase: 'attaching' },
@@ -1578,7 +1565,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               :draft="composerDrafts.failed"
               :attachments="[
                 {
@@ -1601,7 +1587,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               draft="Drop a file between these words."
               dropping
             />
@@ -1629,7 +1614,6 @@ onBeforeUnmount(() => {
           >
             <GalleryOverlayWell>
               <GalleryComposer
-                placeholder="Ask anything…"
                 attach-open
               />
             </GalleryOverlayWell>
@@ -1639,7 +1623,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               running
               draft="Also add a case for the expired cookie."
             />
@@ -1649,7 +1632,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               running
             />
           </GallerySpecimen>
@@ -1658,7 +1640,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               service-tier-id="priority"
             />
           </GallerySpecimen>
@@ -1667,7 +1648,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               selected-provider-id="openai"
               selected-model-id="gpt-5"
             />
@@ -1677,7 +1657,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               :usage="usageAt(0.75)"
             />
           </GallerySpecimen>
@@ -1686,7 +1665,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               draft="The login test in packages/web/src/auth.test.ts is failing after the session cookie rename."
               :providers="openaiOnlyProviders"
               selected-provider-id="anthropic"
@@ -1698,7 +1676,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               :providers="offlineProviders"
             />
           </GallerySpecimen>
@@ -1715,7 +1692,6 @@ onBeforeUnmount(() => {
               >Break</Button>
             </div>
             <GalleryComposer
-              placeholder="Ask anything…"
               :model-load="composerModelLoad"
               @retry-models="retryModels"
             />
@@ -1725,7 +1701,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               hold="Cloud is resetting."
             />
           </GallerySpecimen>
@@ -1743,7 +1718,6 @@ onBeforeUnmount(() => {
               >
             </div>
             <GalleryComposer
-              placeholder="Ask anything…"
               draft="Run the login test again."
               :hold="composerHeld ? 'Cloud is resetting.' : null"
             />
@@ -1753,7 +1727,6 @@ onBeforeUnmount(() => {
             wide
           >
             <GalleryComposer
-              placeholder="Ask anything…"
               archived
             />
           </GallerySpecimen>
@@ -1771,7 +1744,6 @@ onBeforeUnmount(() => {
               >
             </div>
             <GalleryComposer
-              placeholder="Ask anything…"
               :archived="composerArchived"
               @restore="composerArchived = false"
             />
@@ -1786,19 +1758,16 @@ onBeforeUnmount(() => {
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="none saved · type, then Save for Later or ⌘S" wide>
             <GalleryComposer
-              placeholder="Ask anything…"
               draft="Check the server’s DNS next."
             />
           </GallerySpecimen>
           <GallerySpecimen variant="one saved · closed" wide>
             <GalleryComposer
-              placeholder="Ask anything…"
               :saved="twoSaved.slice(0, 1)"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="two saved · closed, with a message to save" wide>
             <GalleryComposer
-              placeholder="Ask anything…"
               draft="Check the server’s DNS next."
               :saved="twoSaved"
             />
@@ -1806,7 +1775,6 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="seven saved · open, the composer risen" wide>
             <div class="flex min-h-[19rem] flex-col justify-end p-3">
               <GalleryComposer
-                placeholder="Ask anything…"
                 :saved="sevenSaved"
                 saved-open
               />
@@ -1815,7 +1783,6 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="open · a message the server did not save, with Retry and Delete" wide>
             <div class="flex min-h-[13rem] flex-col justify-end p-3">
               <GalleryComposer
-                placeholder="Ask anything…"
                 :saved="notSavedOnTop"
                 saved-open
               />
@@ -1823,7 +1790,6 @@ onBeforeUnmount(() => {
           </GallerySpecimen>
           <GallerySpecimen variant="running · Stop beside Save for Later and Send" wide>
             <GalleryComposer
-              placeholder="Ask anything…"
               running
               draft="Then check the IPv6 records too."
               :saved="twoSaved"
@@ -1832,7 +1798,6 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="narrow · open" wide>
             <div class="flex min-h-[19rem] max-w-full resize-x flex-col justify-end overflow-hidden p-3" style="width: 367px; min-width: 15.5rem">
               <GalleryComposer
-                placeholder="Ask anything…"
                 draft="Check the server’s DNS next."
                 :saved="sevenSaved"
                 saved-open
@@ -1848,11 +1813,10 @@ onBeforeUnmount(() => {
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen variant="Default · a project with workflows" wide>
-            <GalleryComposer placeholder="Ask anything…" :workflows="projectWorkflows" />
+            <GalleryComposer :workflows="projectWorkflows" />
           </GallerySpecimen>
           <GallerySpecimen variant="Review Team chosen, with one saved message" wide>
             <GalleryComposer
-              placeholder="Ask anything…"
               :workflows="projectWorkflows"
               :workflow-choice="{ type: 'workflow', id: 'review' }"
               :saved="twoSaved.slice(0, 1)"
@@ -1860,32 +1824,28 @@ onBeforeUnmount(() => {
           </GallerySpecimen>
           <GallerySpecimen variant="the chosen workflow is gone" wide>
             <GalleryComposer
-              placeholder="Ask anything…"
               :workflows="projectWorkflows"
               :workflow-choice="{ type: 'workflow', id: 'explore' }"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="no workflows · No Subagents chosen" wide>
             <GalleryComposer
-              placeholder="Ask anything…"
               :workflows="noWorkflows"
               :workflow-choice="{ type: 'none' }"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="the workflows directory is a link" wide>
             <GalleryComposer
-              placeholder="Ask anything…"
               :workflows="{ state: 'unavailable', reason: 'Workflows are files of the project, not links.' }"
               :workflow-choice="{ type: 'workflow', id: 'review' }"
             />
           </GallerySpecimen>
           <GallerySpecimen variant="reading the workflows" wide>
-            <GalleryComposer placeholder="Ask anything…" :workflows="{ state: 'reading' }" />
+            <GalleryComposer :workflows="{ state: 'reading' }" />
           </GallerySpecimen>
           <GallerySpecimen variant="narrow" wide>
             <div class="flex max-w-full resize-x flex-col justify-end overflow-hidden p-3" style="width: 367px; min-width: 15.5rem">
               <GalleryComposer
-                placeholder="Ask anything…"
                 :workflows="projectWorkflows"
                 :workflow-choice="{ type: 'workflow', id: 'review' }"
                 :saved="twoSaved"
@@ -1969,7 +1929,7 @@ onBeforeUnmount(() => {
                       >
                         <SessionDockChip :disabled="specimen.offline" @click="productWould('Resume the Turn')">
                           <Play :size="ICON_PX.in28" />
-                          Resume
+                          {{ agentText('dock.resume') }}
                         </SessionDockChip>
                       </Tooltip>
                       <AgentsChip :agents="agents" @open="productWould('Open the Agents Window')" />
@@ -1977,7 +1937,6 @@ onBeforeUnmount(() => {
                   </template>
                   <!-- The composer's cards, such as the offline Host's, stand above the chips. -->
                   <GalleryComposer
-                    placeholder="Ask anything…"
                     :offline-host="specimen.offline ? dockOfflineHost(specimen.host) : null"
                     @moved="(_host, name) => { specimen.host = name; specimen.offline = false }"
                   />
@@ -2054,7 +2013,7 @@ onBeforeUnmount(() => {
           <GallerySpecimen variant="resume">
             <SessionDockChip @click="productWould('Resume the Turn')">
               <Play :size="ICON_PX.in28" />
-              Resume
+              {{ agentText('dock.resume') }}
             </SessionDockChip>
           </GallerySpecimen>
           <GallerySpecimen variant="running">
@@ -2997,7 +2956,6 @@ onBeforeUnmount(() => {
                 @scroll-to-bottom="turnList?.scrollToBottom()"
               >
                 <GalleryComposer
-                  placeholder="Ask anything…"
                   :running="turnFlow.state.phase === 'running' || turnFlow.startingTurn.value"
                   :compacting="turnFlow.state.phase === 'compacting'"
                   :flow="turnFlow"
@@ -3274,7 +3232,7 @@ onBeforeUnmount(() => {
                     @open="coverOpen = !coverOpen; coverAgentId = firstRunningSubagentId(agents)"
                   />
                 </template>
-                <GalleryComposer placeholder="Ask anything…" />
+                <GalleryComposer />
               </SessionDock>
             </template>
             <template #overDock>
@@ -3366,7 +3324,6 @@ onBeforeUnmount(() => {
               <!-- The composer stands in the dock's 12px, as the session's does. -->
               <div class="px-3 pb-3">
                 <GalleryComposer
-                  placeholder="Ask anything…"
                   :providers="historyModelsLoaded ? undefined : []"
                   :models="historyModelsLoaded ? undefined : {}"
                   :model-load="historyModelsLoaded ? 'ready' : 'loading'"

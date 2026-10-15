@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from './locales/text'
+import { t as shared } from '../locales/text'
 import { nextTick, ref } from 'vue'
 import { ArrowLeft, ArrowRight, RotateCw, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
@@ -111,7 +113,7 @@ defineExpose({
       <IconButton
         :icon="ArrowLeft"
         variant="ghost"
-        aria-label="Back"
+        :aria-label="t('address.back')"
         :disabled="backReason !== null"
         :disabled-reason="backReason ?? undefined"
         @click="emit('back')"
@@ -119,21 +121,21 @@ defineExpose({
       <IconButton
         :icon="ArrowRight"
         variant="ghost"
-        aria-label="Forward"
+        :aria-label="t('address.forward')"
         :disabled="forwardReason !== null"
         :disabled-reason="forwardReason ?? undefined"
         @click="emit('forward')"
       />
       <!-- Reload and Stop share the place and the size, and a click on either shows the other at once:
            Reload turns into Stop rather than turning its icon. -->
-      <Tooltip v-if="loading" content="Stop" class="inline-flex">
-        <IconButton :icon="X" variant="ghost" aria-label="Stop" @click="emit('stop')" />
+      <Tooltip v-if="loading" :content="t('address.stop')" class="inline-flex">
+        <IconButton :icon="X" variant="ghost" :aria-label="t('address.stop')" @click="emit('stop')" />
       </Tooltip>
-      <Tooltip v-else content="Reload" :disabled="!canReload" class="inline-flex">
+      <Tooltip v-else :content="shared('common.reload')" :disabled="!canReload" class="inline-flex">
         <IconButton
           :icon="RotateCw"
           variant="ghost"
-          aria-label="Reload"
+          :aria-label="shared('common.reload')"
           :disabled="!canReload"
           @click="emit('reload')"
         />
@@ -144,8 +146,8 @@ defineExpose({
       class="ml-2 min-w-0 flex-1"
       :focused="focused"
       :model-value="draft ?? address"
-      placeholder="Enter address"
-      aria-label="Browser address"
+      :placeholder="t('address.placeholder')"
+      :aria-label="t('address.label')"
       literal
       @update:model-value="draft = $event"
       @keydown.enter="submit"
