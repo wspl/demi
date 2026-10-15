@@ -10,7 +10,7 @@
     "taglineBody": "一切都從對話開始。"
   },
   "account": {
-    "fallback": "帳戶"
+    "fallback": "帳號"
   },
   "signIn": {
     "title": "登入",
@@ -24,15 +24,15 @@
   },
   "setup": {
     "title": "設定 Demi",
-    "message": "建立用於管理 Demi 的擁有者帳戶。",
-    "taken": "Demi 已完成設定。請使用其擁有者帳戶登入。",
+    "message": "建立用於管理 Demi 的擁有者帳號。",
+    "taken": "Demi 已完成設定。請使用其擁有者帳號登入。",
     "name": "名稱",
     "email": "電子郵件",
     "password": "密碼",
     "confirm": "確認密碼",
-    "create": "建立帳戶",
+    "create": "建立帳號",
     "passkeyTitle": "新增通行密鑰",
-    "passkeyMessage": "使用 Touch ID、Face ID 或密碼管理器登入。你也可以稍後在「設定」中新增。",
+    "passkeyMessage": "使用 Touch ID、Face ID 或密碼管理工具登入。你也可以稍後在「設定」中新增。",
     "addPasskey": "新增通行密鑰",
     "skip": "略過"
   },
@@ -53,7 +53,7 @@
     "passwordMessage": "請確認是你本人，以新增通行密鑰。",
     "password": "密碼",
     "readyTitle": "通行密鑰已就緒",
-    "readyMessage": "你的密碼管理器中已有 Demi 的通行密鑰。"
+    "readyMessage": "你的密碼管理工具中已有 Demi 的通行密鑰。"
   },
   "unlock": {
     "ios": "使用 Face ID 或 Touch ID 取代密碼登入。",
@@ -64,11 +64,11 @@
   },
   "handoff": {
     "title": "接力到手機",
-    "confirm": "請確認是你本人。隨後你的手機會開啟此頁面，並登入此帳戶。",
+    "confirm": "請確認是你本人。隨後你的手機會開啟此頁面，並登入此帳號。",
     "scan": "用手機相機掃描。",
     "done": "已接力到 {browser}。",
     "codeTitle": "登入代碼",
-    "codeConfirm": "請確認是你本人。隨後會產生一個代碼，用於登入「{name}」手機上的帳戶。",
+    "codeConfirm": "請確認是你本人。隨後會產生一個代碼，用於登入「{name}」手機上的帳號。",
     "codeScan": "用對方手機的相機掃描。",
     "codeDone": "已在 {browser} 上登入。",
     "readyScan": "或用對方手機的相機掃描以登入。",
