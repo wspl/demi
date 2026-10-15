@@ -1,6 +1,6 @@
 export const previewMarkdown = `# Login test
 
-The session cookie was renamed from \`sid\` to \`session\`. The helper already writes the new header. The login test still expects the old name. Cookie names follow [RFC 6265](https://httpwg.org/specs/rfc6265.html).
+The session cookie was renamed from \`sid\` to \`session\`. The helper already writes the new header. The login test still expects the old name. Cookie names follow [RFC 6265](https://httpwg.org/specs/rfc6265.html); the helper is [\`writeSessionCookie\`](https://example.com/docs/cookies), beside the plain \`readSessionCookie\`.
 
 ## What to change
 

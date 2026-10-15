@@ -25,11 +25,18 @@ function shownImages(...paths: string[]): ReadonlyMap<string, HostImage> {
   return new Map(paths.map((path) => [path, { state: 'shown', src: `/raw?path=${encodeURIComponent(path)}` }]))
 }
 
-/** A link of text to a Host file, as a message shows it: the file's icon, then the text. */
+/** The icon a message's link wears, with the first word of its text, which a line never parts from it. */
+function lead(icon: string, word: string): string {
+  return `<span class="icon-lead"><span class="message-link-icon" ${icon} aria-hidden="true"></span>${word}</span>`
+}
+
+/** A link of text to a Host file, as a message shows it: the file's icon, then the text, whose one word is `text`. */
 function fileLink(path: string, text: string, line?: number): string {
   const name = path.split('/').at(-1)
-  return `<a href="${path}" class="icon-link" data-file-link${line ? ` data-line="${line}"` : ''}><span class="message-link-icon" data-file-icon="${name}" aria-hidden="true"></span>${text}</a>`
+  return `<a href="${path}" data-file-link${line ? ` data-line="${line}"` : ''} class="icon-link">${lead(`data-file-icon="${name}"`, text)}</a>`
 }
+
+const WEB = 'target="_blank" rel="noopener noreferrer nofollow"'
 
 test('a link opens a Host file or a web page, and anything else stays text', () => {
   const html = renderMarkdown([
@@ -50,16 +57,32 @@ test('a link opens a Host file or a web page, and anything else stays text', () 
   expect(html).toContain(fileLink('C:/Users/alex/a.txt', 'windows'))
   expect(html).toContain(fileLink('/tmp/a.txt', 'url'))
   expect(html).toContain(fileLink('/work/out/my chart.png', 'spaced'))
-  expect(html).toContain('<a href="https://example.com/a" target="_blank" rel="noopener noreferrer nofollow">web</a>')
+  expect(html).toContain(`<a href="https://example.com/a" ${WEB} class="icon-link">${lead('data-link-icon', 'web')}</a>`)
   for (const text of ['section', 'mail', 'word'])
     expect(html).toContain(`<p>${text}</p>`)
 })
 
+test('code in a message\'s link drops code\'s look, its icon already saying what the link is, and code beside it stays code', () => {
+  const agents: MessageAgents = {
+    find: (number) => (number === 4 ? { number: 4, description: 'File icons', run: null } : null),
+    open: () => {},
+  }
+  const html = renderMarkdown(
+    '[`after.png`](out/after.png) [`3f2a9c1`](commit:3f2a9c1) [`docs`](https://example.com) [`icons`](agent:4) `plain`',
+    { files: { ...files, openCommit: () => {} }, agents },
+  )
+  expect(html).toBe('<p>'
+    + `${fileLink('/work/out/after.png', 'after.png')} `
+    + `<a href="commit:3f2a9c1" data-commit-link="3f2a9c1" class="icon-link">${lead('data-commit-icon', '3f2a9c1')}</a> `
+    + `<a href="https://example.com" ${WEB} class="icon-link">${lead('data-link-icon', 'docs')}</a> `
+    + '<span role="button" tabindex="0" class="agent-link icon-link" data-agent-link="4" data-keeps-windows><span class="icon-lead"><span class="agent-link-mark" data-agent-mark="4"></span>icons</span></span> '
+    + '<code>plain</code></p>\n')
+})
+
 test('a commit link starts with the commit icon, spaced as a file link is, and is its text alone when nobody opens commits', () => {
-  const commit = '<span class="message-link-icon" data-commit-icon aria-hidden="true"></span>'
   const html = renderMarkdown('The fix [Fix the total](commit:3f2a9c1); then [again](commit:3f2a9c1) here.', { files: { ...files, openCommit: () => {} } })
-  expect(html).toContain(`<a href="commit:3f2a9c1" class="icon-link icon-link-tight" data-commit-link="3f2a9c1"><span class="icon-lead">${commit}Fix</span> the total</a>;`)
-  expect(html).toContain(`<a href="commit:3f2a9c1" class="icon-link" data-commit-link="3f2a9c1"><span class="icon-lead">${commit}again</span></a>`)
+  expect(html).toContain(`<a href="commit:3f2a9c1" data-commit-link="3f2a9c1" class="icon-link icon-link-tight">${lead('data-commit-icon', 'Fix')} the total</a>;`)
+  expect(html).toContain(`<a href="commit:3f2a9c1" data-commit-link="3f2a9c1" class="icon-link">${lead('data-commit-icon', 'again')}</a>`)
   expect(renderMarkdown('[Fix the total](commit:3f2a9c1)', { files })).toBe('<p>Fix the total</p>\n')
 })
 
@@ -120,12 +143,14 @@ test('a link to a line opens the file there', () => {
     .toBe(`<p>${fileLink('/work/docs/execution/runner.md', 'runner.md', 438)} ${fileLink('/etc/hosts', 'range', 3)}</p>\n`)
 })
 
-test('inline code that names a file the Host has opens it in its code look; any other code, and plain text, stay as they are', () => {
+test('inline code that names a file the Host has opens it as a link of words; any other code, and plain text, stay as they are', () => {
   const reply = 'See `src/a.ts:42`, `src/gone.ts`, `README.md`, `runner` and src/b.ts.'
   // Until the Host answers, all of it is code.
   expect(renderMarkdown(reply, { files, codeFiles: null })).not.toContain('data-file-link')
   const html = renderMarkdown(reply, { files, codeFiles: new Set(['/work/src/a.ts', '/work/README.md', '/work/src/b.ts']) })
-  expect(html).toBe(`<p>See ${fileLink('/work/src/a.ts', '<code>src/a.ts:42</code>', 42)}, <code>src/gone.ts</code>, ${fileLink('/work/README.md', '<code>README.md</code>')}, <code>runner</code> and src/b.ts.</p>\n`)
+  // A link followed by ASCII punctuation keeps no space before it, as any icon link.
+  const a = `<a href="/work/src/a.ts" data-file-link data-line="42" class="icon-link icon-link-tight">${lead('data-file-icon="a.ts"', 'src')}/a.ts:42</a>`
+  expect(html).toBe(`<p>See ${a}, <code>src/gone.ts</code>, ${fileLink('/work/README.md', 'README.md').replace('"icon-link"', '"icon-link icon-link-tight"')}, <code>runner</code> and src/b.ts.</p>\n`)
 })
 
 test('a link to an agent shows its mark and opens it; a number the conversation does not have is its text', () => {
@@ -210,11 +235,13 @@ test('an attachment video shows its first frame with a play mark, with the size 
     .toBe(`<p class="media-lone"><a href="/blobs/6?type=video%2Fwebm" data-attachment-video="clip.webm"${file('a6')} data-keeps-windows class="message-video"><video src="/blobs/6?type=video%2Fwebm" muted playsinline preload="metadata" aria-label="The clip"></video>${mark}</a></p>\n`)
 })
 
-test('a link opens an attachment: an image or a video large, any other file as a download', () => {
+test('a link opens an attachment, with its file\'s icon: an image or a video large, any other file as a download', () => {
   const html = renderMarkdown('[shot](attachment:a1) [flow](attachment:a2) [report](attachment:a3) ![report](attachment:a3)', { files: withAttachments })
-  expect(html).toContain(`<a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png"${file('a1')} data-keeps-windows>shot</a>`)
-  expect(html).toContain(`<a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4"${file('a2')} data-keeps-windows>flow</a>`)
-  expect(html).toContain(`<a href="/blobs/3?type=application%2Fpdf" download="report.pdf"${file('a3')}>report</a> <a href="/blobs/3?type=application%2Fpdf" download="report.pdf"${file('a3')}>report</a>`)
+  const icon = (name: string, word: string) => `class="icon-link">${lead(`data-file-icon="${name}"`, word)}</a>`
+  expect(html).toContain(`<a href="/blobs/1?type=image%2Fpng" data-attachment-image="login.png"${file('a1')} data-keeps-windows ${icon('login.png', 'shot')}`)
+  expect(html).toContain(`<a href="/blobs/2?type=video%2Fmp4" data-attachment-video="flow.mp4"${file('a2')} data-keeps-windows ${icon('flow.mp4', 'flow')}`)
+  const report = `<a href="/blobs/3?type=application%2Fpdf" download="report.pdf"${file('a3')} ${icon('report.pdf', 'report')}`
+  expect(html).toContain(`${report} ${report}`)
 })
 
 test('an attachment number the conversation does not have says so beside its text', () => {
