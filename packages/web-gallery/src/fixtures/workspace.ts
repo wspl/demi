@@ -701,7 +701,7 @@ export function createGalleryWorkspace(latencyMs = 200, watch: 'live' | 'unavail
 } {
   const root = tree()
   // The workspace sits under the home directory the laptop fixtures use.
-  const home = dir({ Projects: dir({ demi: root, 'demi-slots': dir({ 2: slotTree() }) }) })
+  const home = dir({ Projects: dir({ shop: root, 'shop-slots': dir({ 2: slotTree() }) }) })
   const source = createMemoryFileSource({
     platform: 'macos',
     home: '/Users/alex',
