@@ -615,7 +615,12 @@ either without the user typing anything.
   fact: "The agent session was shut down while this turn was running." A graceful
   shutdown writes the record as it ends the turn; after a crash the restored
   conversation writes it when it is next opened. No turn ends unfinished
-  without either such a record or the user's own Stop.
+  without either such a record or the user's own Stop. A turn a graceful
+  shutdown interrupted, such as one a deployment or an upgrade ended,
+  goes on by itself once the backend is back, unless the user turned that
+  off in Settings › General
+  ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
+  its record stays in the transcript, followed by the turn's progress.
 
   A Host that goes offline does not stop a turn while it runs. The operation
   that needed it fails with the runner's offline error, worded for the agent
