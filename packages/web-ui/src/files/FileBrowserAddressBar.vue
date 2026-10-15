@@ -33,8 +33,10 @@ import type { FileBrowserSource } from './types'
  *
  * A bar too narrow for every name turns crumbs into their glyphs, one at a
  * time from the left, the name kept in a tooltip; the last crumb keeps its
- * name longest. When even the glyphs overflow, the bar keeps its right end and
- * clips its left.
+ * name longest. The widest name still shown, when it would be the next to go,
+ * is cut short with an ellipsis to fill the room instead, so the bar is never
+ * left half empty (`fitCrumbs`). When even the glyphs overflow, the bar keeps
+ * its right end and clips its left.
  */
 const props = withDefaults(
   defineProps<{
@@ -115,26 +117,30 @@ const crumbs = computed(() => pathCrumbs(props.path, props.source))
 /** What a crumb is laid out as, shown or measured: the classes that decide its width. */
 const CRUMB_LAYOUT = 'flex h-5 shrink-0 items-center gap-1 rounded px-1 text-chrome'
 
-const fit = ref<CrumbFit>({ collapsed: 0, clipped: false })
+const fit = ref<CrumbFit>({ collapsed: 0, clipped: false, truncated: null })
 
-function width(el: Element | null): number {
-  return el ? el.getBoundingClientRect().width : 0
+/** An element's layout width: what a transform on an ancestor, such as a dialog opening, does not scale. */
+function width(el: Element | null, scale: number): number {
+  return el ? el.getBoundingClientRect().width / scale : 0
 }
 
 /** Reads every crumb's width from the ruler, and fits them to the bar's room. */
 function measure(): void {
   if (!bar.value || !ruler.value)
     return
+  // The bar's painted width over its layout width is the scale the page puts on it; the ruler
+  // is measured painted too, so the same scale takes it back to layout pixels.
+  const scale = bar.value.getBoundingClientRect().width / bar.value.offsetWidth || 1
   // Each crumb's ruler entry holds it with its name, then as its glyph alone.
   const widths = [...ruler.value.querySelectorAll('[data-crumb]')].map((entry) => ({
-    full: width(entry.firstElementChild),
-    icon: width(entry.lastElementChild),
+    full: width(entry.firstElementChild, scale),
+    icon: width(entry.lastElementChild, scale),
   }))
   const style = getComputedStyle(bar.value)
   const available = bar.value.clientWidth -
     Number.parseFloat(style.paddingLeft) -
     Number.parseFloat(style.paddingRight)
-  fit.value = fitCrumbs(widths, width(ruler.value.querySelector('[data-separator]')), available)
+  fit.value = fitCrumbs(widths, width(ruler.value.querySelector('[data-separator]'), scale), available)
 }
 
 // The bar's width, and the ruler's for names that change width as the path or a font does.
@@ -208,7 +214,11 @@ watch(() => props.path, () => {
           :size="ICON_PX.in24"
           class="shrink-0 text-fg-faint"
         />
-        <Tooltip :content="crumb.name" :disabled="index >= fit.collapsed" class="shrink-0">
+        <Tooltip
+          :content="crumb.name"
+          :disabled="index >= fit.collapsed && fit.truncated?.index !== index"
+          class="shrink-0"
+        >
           <span
             :ref="(el) => bindCrumb(crumb.path, el)"
             :role="mode === 'browse' ? 'button' : 'link'"
@@ -222,6 +232,7 @@ watch(() => props.path, () => {
               index === crumbs.length - 1 && mode === 'navigate' ? '' : 'hover:bg-hover hover:text-fg',
               menuCrumb?.path === crumb.path ? 'bg-hover text-fg' : '',
             ]"
+            :style="fit.truncated?.index === index ? { width: `${fit.truncated.width}px` } : undefined"
             @click.stop="onCrumbClick(crumb.path)"
             @keydown="pressOnKey"
             @keyup="pressOnKey"
@@ -232,7 +243,11 @@ watch(() => props.path, () => {
               :is-directory="!(leaf === 'file' && index === crumbs.length - 1)"
               :icon="crumb.icon"
             />
-            <span v-if="index >= fit.collapsed" class="whitespace-nowrap">{{ crumb.name }}</span>
+            <span
+              v-if="index >= fit.collapsed"
+              :class="fit.truncated?.index === index ? 'min-w-0 truncate' : 'whitespace-nowrap'"
+              >{{ crumb.name }}</span
+            >
           </span>
         </Tooltip>
       </template>

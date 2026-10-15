@@ -194,6 +194,9 @@ const narrowHostId = ref(hosts[0]!.id)
 const narrowHost = computed(() => hosts.find((host) => host.id === narrowHostId.value)!)
 const fileChosen = ref<string | null>(null)
 const fileKey = ref(0)
+// A path whose names all fit the dialog's address bar, and one too long for it, on the laptop.
+const nestedPath = '/Users/alex/Projects/clients/acme-corporation'
+const deepPath = '/Users/alex/Projects/a project with a very long directory name that will not fit in the address bar/src'
 
 // One file browser, inline, switched between the states a folder can be in.
 const stateOptions = [
@@ -725,6 +728,42 @@ onMounted(() => {
       </GallerySection>
 
       <GallerySection
+        title="Select Folder, Long Path"
+        note="The path takes the room between the navigation and the toolbar’s icons, New Folder and Show Hidden Files, which stay on the row at its end. A path whose names fit shows them all; a longer one turns crumbs into their glyphs from the left, and the widest name still shown is cut short with an ellipsis to fill the room, the last keeping its name. Narrow, the path takes a row of its own, as under Narrow."
+      >
+        <div class="flex flex-col gap-6">
+          <GallerySpecimen wide variant="names fit">
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <FileBrowserDialog
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                mode="directory"
+                :source="hosts[0]!.source"
+                :initial-path="nestedPath"
+                :places="hosts[0]!.places"
+                @select="productWould(`Use ${$event} as the Project’s Folder`)"
+                @close="close"
+              />
+            </GalleryDialogFrame>
+          </GallerySpecimen>
+          <GallerySpecimen wide variant="names don’t fit">
+            <GalleryDialogFrame v-slot="{ open, close }">
+              <FileBrowserDialog
+                :is-open="open"
+                :overlay-store="appOverlayStore"
+                mode="directory"
+                :source="hosts[0]!.source"
+                :initial-path="deepPath"
+                :places="hosts[0]!.places"
+                @select="productWould(`Use ${$event} as the Project’s Folder`)"
+                @close="close"
+              />
+            </GalleryDialogFrame>
+          </GallerySpecimen>
+        </div>
+      </GallerySection>
+
+      <GallerySection
         title="Open File"
         note="The composer’s remote attachment: opens inside the conversation’s workspace. Folders are entered, a file is the answer. Cloud shows no status and remains selectable while asleep; its source wakes it when browsing."
       >
@@ -811,7 +850,7 @@ onMounted(() => {
 
       <GallerySection
         title="Address Bar"
-        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the file’s crumb keeps its name longest, then the bar clips its left and never its right. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. The crumbs start at the Host’s root, the root and the home wearing their glyphs. A click beside the crumbs turns the bar into a field with the whole path that completes as it is typed, a relative path starting at the workspace and ~ naming the home."
+        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the widest name still shown is cut short with an ellipsis rather than leave the bar half empty, the file’s crumb keeps its name longest, then the bar clips its left and never its right. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. The crumbs start at the Host’s root, the root and the home wearing their glyphs. A click beside the crumbs turns the bar into a field with the whole path that completes as it is typed, a relative path starting at the workspace and ~ naming the home."
       >
         <GallerySpecimen v-for="entry in addressWidths" :key="entry.variant" :variant="entry.variant" wide>
           <div class="flex" :style="{ width: entry.width }">
@@ -853,7 +892,7 @@ onMounted(() => {
             :overlay-store="appOverlayStore"
             mode="directory"
             :source="narrowHost.source"
-            :initial-path="narrowHostId === 'mac' ? '/Users/alex/Projects/a project with a very long directory name that will not fit in the address bar/src' : undefined"
+            :initial-path="narrowHostId === 'mac' ? deepPath : undefined"
             :places="narrowHost.places"
             :hosts="hosts"
             :host-id="narrowHostId"
