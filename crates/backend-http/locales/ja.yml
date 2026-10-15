@@ -1,0 +1,17 @@
+_version: 1
+oauth:
+  signed_in:
+    title: "%{vendor} にサインインしました"
+    text: "%{vendor} にサインインしました。このタブは閉じてかまいません。"
+  unknown_plugin:
+    title: "サインインが見つかりません"
+    text: "Demi にはここでサインインするものがありません。このタブを閉じてください。"
+  unknown_state:
+    title: "サインインの有効期限が切れました"
+    text: "このサインインは有効期限が切れたか、すでに使用されたか、別のアカウントで開始されました。このタブを閉じて、Demi でもう一度サインインしてください。"
+  denied:
+    title: "%{vendor} にサインインしていません"
+    text: "%{vendor} でサインインできませんでした（%{error}）。このタブを閉じて、Demi でもう一度お試しください。"
+  exchange_failed:
+    title: "%{vendor} にサインインしていません"
+    text: "%{vendor} でサインインを完了できませんでした：%{failure}。このタブを閉じて、Demi でもう一度お試しください。"

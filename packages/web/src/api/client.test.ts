@@ -6,7 +6,10 @@ import { productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
 import { useSession } from '../auth/session'
 import { useProduct } from '../state/product'
-import { ApiError, apiRequest, jsonBody } from './client'
+import { createPageI18n } from '@demicodes/web-ui/i18n/text'
+import { formError, shownError } from '@demicodes/web-ui/infra/errors'
+import { CODE_CORRECTIONS, EMAIL_CORRECTIONS } from '../settings/corrections'
+import { ApiError, apiError, apiRequest, jsonBody } from './client'
 
 // Every request of the page waits in its one HTTP client while the backend
 // cannot be reached, and goes once the page reaches it again; only the
@@ -189,4 +192,46 @@ test('an unchanged answer is read to its end, so the browser counts it answered,
   expect(response.status).toBe(304)
   expect(response.headers.get('etag')).toBe('"v1"')
   expect(answer!.bodyUsed).toBe(true)
+})
+
+// A refusal shows the catalogue's text for its code, filled with its
+// params, in the page's language; a code the catalogue has no text for, as
+// a newer backend may send, shows the backend's own message
+// (`localization.md` § Text from the backend). No I/O.
+test('a refusal is worded from its code and params, and from its message for a code the page does not know', () => {
+  const full = JSON.stringify({ code: 'saved_full', message: 'The conversation keeps 200 messages saved for later', params: { limit: 200 }, requestId: 'req_full000000000001' })
+  const unknown = JSON.stringify({ code: 'invalid_query', message: 'Unknown query parameter refresh', requestId: 'req_query00000000001' })
+  try {
+    createPageI18n('en')
+    expect(shownError(apiError(409, full)).message).toBe('A conversation keeps up to 200 messages saved for later.')
+    createPageI18n('zh-Hans')
+    expect(shownError(apiError(409, full)).message).toBe('一个对话最多保留 200 条稍后发送的消息。')
+    expect(shownError(apiError(400, unknown))).toEqual({ message: 'Unknown query parameter refresh', requestId: 'req_query00000000001' })
+  } finally {
+    createPageI18n('en')
+  }
+})
+
+// A newer backend may refuse with a code this page does not know: the
+// refusal keeps its code, says its message and names its request.
+test('a refusal with a code the page does not know keeps its message and request', () => {
+  const body = JSON.stringify({ code: 'from_a_newer_backend', message: 'The workspace is sealed', requestId: 'req_newer0000000001' })
+  const refused = apiError(409, body)
+  expect([refused.code, refused.message, refused.requestId]).toEqual(['from_a_newer_backend', 'The workspace is sealed', 'req_newer0000000001'])
+  expect(shownError(refused)).toEqual({ message: 'The workspace is sealed', requestId: 'req_newer0000000001' })
+})
+
+// Changing the account's email to a taken address: the form says the
+// catalogue's words in the page's language, and names no request, since the
+// user corrects it there.
+test('the email form says a taken address in the catalogue’s words without a request', () => {
+  const taken = JSON.stringify({ code: 'email_taken', message: 'The email address is taken', requestId: 'req_taken0000000001' })
+  try {
+    createPageI18n('zh-Hans')
+    for (const corrections of [EMAIL_CORRECTIONS, CODE_CORRECTIONS]) {
+      expect(formError(apiError(409, taken), corrections)).toEqual({ message: '另一个帐户已使用此电子邮件地址。', requestId: null })
+    }
+  } finally {
+    createPageI18n('en')
+  }
 })

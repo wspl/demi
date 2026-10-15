@@ -1,3 +1,4 @@
+import { errorMessage } from './errors'
 import { showToast } from './toast'
 
 /**
@@ -7,7 +8,7 @@ import { showToast } from './toast'
 export function reportCopyFailure(error: unknown): void {
   showToast({
     title: 'Could Not Copy',
-    message: error instanceof Error ? error.message : String(error),
+    message: () => errorMessage(error),
     tone: 'danger',
   })
 }

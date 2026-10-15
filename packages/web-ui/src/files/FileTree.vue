@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { errorMessage } from '../infra/errors'
 import RequestIdLine from '../ui/RequestIdLine.vue'
 import { computed, markRaw, nextTick, onBeforeUnmount, reactive, ref, shallowReactive, watch } from 'vue'
 import { Download, RefreshCw, Upload } from '@lucide/vue'
@@ -493,7 +494,7 @@ async function receive(directory: string, entries: readonly (DroppedEntry | File
   } catch (error) {
     showToast({
       title: 'Could Not Read What Was Dropped',
-      message: error instanceof Error ? error.message : String(error),
+      message: () => errorMessage(error),
       tone: 'danger',
     })
     return

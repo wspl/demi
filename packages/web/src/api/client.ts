@@ -1,13 +1,13 @@
 import { z } from 'zod'
 import { schemaRefusal } from '@demicodes/protocol'
 import { httpStatusLine } from '@demicodes/utils'
-import { errorBodySchema, type ErrorCode } from './generated/web-api'
+import { errorBodySchema, errorCodeSchema, type ErrorBody, type ErrorCode } from './generated/web-api'
 
 /** The header every answer of the backend names its request in. */
 export const REQUEST_ID_HEADER = 'X-Request-Id'
 
 /**
- * A request the backend refused, with its `{ code, message, requestId }`;
+ * A request the backend refused, with its `{ code, message, params, requestId }`;
  * `code` is null when something in front of the backend answered instead,
  * and `requestId` too unless the answer still named its request.
  */
@@ -15,7 +15,7 @@ export class ApiError extends Error {
   readonly status: number
   /** The answer's status line, such as `500 Internal Server Error`, with the code's standard phrase where the answer carried none, as HTTP/2's do. */
   readonly statusLine: string
-  readonly code: ErrorCode | null
+  readonly code: ErrorCode | UnknownErrorCode | null
   /** A plugin's own word for its refusal, with `plugin_refused`. */
   readonly reason: string | null
   /** How many seconds the answer's `Retry-After` asks to wait, as a locked sign-in's does. */
@@ -32,10 +32,12 @@ export class ApiError extends Error {
   readonly requestId: string | null
   /** With `provider_busy` for a sign-in's start, the caller's own sign-in that holds the entry. */
   readonly loginId: string | null
+  /** The values the page's text for `code` is filled with (`localization.md` § Text from the backend). */
+  readonly params: NonNullable<ErrorBody['params']>
 
   constructor(
     status: number,
-    code: ErrorCode | null,
+    code: ErrorCode | UnknownErrorCode | null,
     message: string,
     reason: string | null = null,
     retryAfterSeconds: number | null = null,
@@ -44,6 +46,7 @@ export class ApiError extends Error {
     credentialId: string | null = null,
     requestId: string | null = headers.get(REQUEST_ID_HEADER),
     loginId: string | null = null,
+    params: NonNullable<ErrorBody['params']> = {},
   ) {
     super(message)
     this.name = 'ApiError'
@@ -56,6 +59,7 @@ export class ApiError extends Error {
     this.credentialId = credentialId
     this.requestId = requestId
     this.loginId = loginId
+    this.params = params
   }
 }
 
@@ -71,7 +75,7 @@ export function onSessionExpired(handler: () => void): () => void {
   }
 }
 
-export function notifySessionExpired(code: ErrorCode): void {
+export function notifySessionExpired(code: ErrorCode | UnknownErrorCode): void {
   // A request an account still to choose its password sent is refused as a
   // session that ended is: the page asks who it is and shows what it finds.
   if (code === 'unauthenticated' || code === 'password_choice_required') {
@@ -282,13 +286,24 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits'>): Pr
 }
 
 /**
- * The error a failed answer stands for: the backend's `{ code, message }`,
- * or its status alone when something in front of the backend answered. An
- * expired session is noticed on the way.
+ * A code this page does not know, as a newer backend may send: kept, so the
+ * error still says its message and names its request, and told apart from
+ * every known code, so a comparison with a misspelled code does not compile.
  */
+const unknownErrorCodeSchema = z.string().brand<'UnknownErrorCode'>()
+export type UnknownErrorCode = z.infer<typeof unknownErrorCodeSchema>
+
+/** The error envelope, read with any code (`localization.md` § Text from the backend). */
+const errorEnvelopeSchema = errorBodySchema.extend({ code: errorCodeSchema.or(unknownErrorCodeSchema) })
+
 /** `Retry-After` in seconds; its date form is not one the backend sends. */
 const retryAfterSchema = z.coerce.number().int().nonnegative()
 
+/**
+ * The error a failed answer stands for: the backend's `{ code, message,
+ * params }`, or its status alone when something in front of the backend
+ * answered. An expired session is noticed on the way.
+ */
 export function apiError(status: number, text: string, headers: Headers = new Headers(), statusText = ''): ApiError {
   const retryAfter = headers.get('Retry-After')
   let body: unknown
@@ -298,7 +313,7 @@ export function apiError(status: number, text: string, headers: Headers = new He
     // A reverse proxy can return HTML instead of the backend error contract.
     body = null
   }
-  const parsed = errorBodySchema.safeParse(body)
+  const parsed = errorEnvelopeSchema.safeParse(body)
   if (parsed.success) {
     notifySessionExpired(parsed.data.code)
   }
@@ -313,6 +328,7 @@ export function apiError(status: number, text: string, headers: Headers = new He
     parsed.success ? parsed.data.credentialId ?? null : null,
     parsed.success ? parsed.data.requestId : headers.get(REQUEST_ID_HEADER),
     parsed.success ? parsed.data.loginId ?? null : null,
+    parsed.success ? parsed.data.params ?? {} : {},
   )
 }
 

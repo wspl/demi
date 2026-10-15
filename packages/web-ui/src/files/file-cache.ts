@@ -18,7 +18,7 @@
  * request. At most `budget` of text and `MAX_ENTRIES` entries stay, the
  * entries shown longest ago leaving first.
  */
-import { requestIdOf } from '../infra/errors'
+import { errorMessage, requestIdOf } from '../infra/errors'
 import { reactive, shallowRef } from 'vue'
 import { FileBrowserError, type FileBrowserFailure } from './types'
 import {
@@ -201,7 +201,7 @@ function failureOf(error: unknown): FileBrowserFailure {
   const requestId = requestIdOf(error)
   if (error instanceof FileBrowserError)
     return { kind: error.kind, message: error.message === error.kind ? undefined : error.message, requestId }
-  return { kind: 'other', message: error instanceof Error ? error.message : String(error), requestId }
+  return { kind: 'other', message: errorMessage(error), requestId }
 }
 
 /** The subscription key of `subject`, by which the kept files share it. */

@@ -2,11 +2,10 @@ import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { z } from 'zod'
 import { schemaRefusal } from '@demicodes/protocol'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import { errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
 import { Slot, type SlotAnswer } from '@demicodes/web-ui/infra/slot'
 import { browserOnline, openSocket, reconnectNow, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { connectionProblem } from '@demicodes/web-ui/transport/connection'
-import { asError } from '@demicodes/utils'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse, waitForBackendWith } from '../api/client'
 import {
   modelCatalogSchema,
@@ -633,7 +632,7 @@ export const useProduct = defineStore('product', () => {
           modelError.value = {
             key,
             retryAt: Date.now() + 60_000,
-            message: asError(cause).message,
+            message: errorMessage(cause),
           }
         }
         throw cause
@@ -678,7 +677,7 @@ export const useProduct = defineStore('product', () => {
       } catch (cause) {
         if (!current.signal.aborted) {
           vendorError.value =
-            cause instanceof Error ? cause.message : String(cause)
+            errorMessage(cause)
         }
         throw cause
       }

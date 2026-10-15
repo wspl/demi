@@ -82,7 +82,7 @@ function addProvider(vendor: SettingsVendor) {
     baseUrl: vendor.baseUrl ?? '',
     wireApi: vendor.wireApi,
     modelSource: 'catalog',
-    catalogFetched: 'just now',
+    catalogFetched: new Date().toISOString(),
     logo: vendor.logo,
   }))
 }
@@ -160,7 +160,7 @@ function test(p: SettingsProviderEntry, accountId?: string) {
 function refresh(p: SettingsProviderEntry) {
   void operations.start(providerOperation(p.id, { kind: 'refreshing' }), () =>
     slow(1400).then(() => {
-      p.catalogFetched = 'just now'
+      p.catalogFetched = new Date().toISOString()
     }),
   )
 }

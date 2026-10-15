@@ -1,4 +1,4 @@
-import { formatSpan } from '@demicodes/utils'
+import { formatSpan } from '../ui/dates'
 
 export function thinkingFaceLabel(streaming: boolean, elapsedMs: number | null): string {
   if (elapsedMs === null)

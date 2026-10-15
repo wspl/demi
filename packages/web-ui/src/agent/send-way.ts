@@ -1,6 +1,7 @@
 import { isMacOS } from '@tiptap/core'
 import { watch } from 'vue'
 import type { SessionPhase } from '@demicodes/protocol'
+import { t } from '../locales/text'
 import type { TitleText } from '../ui/ui-text'
 
 /**
@@ -16,10 +17,9 @@ export const DEFAULT_SEND_WHILE_RUNNING: SendWhileRunning = 'steer'
 /** How the composer sends a message: at once while nothing runs, otherwise one of the two ways. */
 export type SendWay = 'send' | SendWhileRunning
 
-/** Each way's name, as the send button and the setting say it. */
-export const SEND_WAY_LABELS: Record<SendWhileRunning, TitleText> = {
-  steer: 'Steer',
-  queue: 'Queue',
+/** A way's name, as the send button and the setting say it. */
+export function sendWayLabel(way: SendWhileRunning): TitleText {
+  return t(`sendWay.${way}`)
 }
 
 export function otherWay(way: SendWhileRunning): SendWhileRunning {

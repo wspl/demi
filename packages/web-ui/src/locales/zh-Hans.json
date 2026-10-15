@@ -1,0 +1,94 @@
+{
+  "settings": {
+    "general": {
+      "title": "通用",
+      "description": "语言、外观和消息。",
+      "appearance": "外观",
+      "language": "语言",
+      "system": "系统",
+      "theme": "主题",
+      "light": "浅色",
+      "dark": "深色",
+      "tone": "色调",
+      "accent": "强调色",
+      "textSize": "消息字号",
+      "messages": "消息",
+      "sendWhileRunning": "智能体工作时按 Enter",
+      "sendWhileRunningDescription": "“引导”会把消息发送给正在进行的轮次，“添加到队列”会等它结束。{keys} 则用另一种方式。",
+      "resumeAtRetry": "使用限制重置后继续",
+      "resumeAtRetryDescription": "轮次因使用限制而停止时，在限制重置后继续。",
+      "preview": {
+        "title": "预览",
+        "firstLine": "这个字号的文字，",
+        "secondLine": "一行接一行。",
+        "button": "按钮"
+      }
+    }
+  },
+  "appearance": {
+    "tones": {
+      "ink": "墨色",
+      "warm": "暖色"
+    },
+    "accents": {
+      "blue": "蓝色",
+      "purple": "紫色",
+      "pink": "粉红色",
+      "red": "红色",
+      "orange": "橙色",
+      "green": "绿色",
+      "teal": "青色"
+    }
+  },
+  "sendWay": {
+    "steer": "引导",
+    "queue": "添加到队列"
+  },
+  "dates": {
+    "fewSecondsAgo": "几秒前",
+    "inFewSeconds": "几秒后",
+    "age": {
+      "now": "刚刚",
+      "minutes": "{count} 分钟",
+      "hours": "{count} 小时",
+      "days": "{count} 天",
+      "weeks": "{count} 周"
+    },
+    "span": {
+      "seconds": "{seconds} 秒",
+      "minutes": "{minutes} 分钟",
+      "minutesSeconds": "{minutes} 分 {seconds} 秒",
+      "hours": "{hours} 小时",
+      "hoursMinutes": "{hours} 小时 {minutes} 分钟"
+    },
+    "retry": {
+      "Resets": {
+        "today": "{clock} 重置",
+        "weekday": "{weekday} {clock} 重置",
+        "day": "{day} {clock} 重置"
+      },
+      "Resume": {
+        "today": "{clock} 继续",
+        "weekday": "{weekday} {clock} 继续",
+        "day": "{day} {clock} 继续"
+      },
+      "resetting": {
+        "today": "{clock} 重置",
+        "weekday": "{weekday} {clock} 重置",
+        "day": "{day} {clock} 重置"
+      }
+    },
+    "reset": {
+      "now": "现在重置",
+      "underMinute": "不到 1 分钟后重置",
+      "in": "{span}后重置",
+      "weekday": "{weekday} {clock} 重置",
+      "day": "{day}重置"
+    }
+  },
+  "errors": {
+    "conversation_archived": "此对话已存档。请先恢复它。",
+    "email_taken": "另一个帐户已使用此电子邮件地址。",
+    "saved_full": "一个对话最多保留 {limit} 条稍后发送的消息。"
+  }
+}

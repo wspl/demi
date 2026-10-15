@@ -14,7 +14,7 @@ import {
   type MessageEditHost,
   type MessageEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
-import { reportError, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
+import { errorMessage, reportError, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
 import { ConversationSocketError } from '@demicodes/web-ui/transport/conversation-socket'
 import { CONVERSATION_UNREADABLE, transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
@@ -2287,7 +2287,7 @@ export const useConversations = defineStore('conversations', () => {
         } else {
           // Its row comes back, undelivered with the reason: a draft the
           // composer holds is not to be replaced, and the message is not lost.
-          pending.error = error instanceof Error ? error.message : String(error)
+          pending.error = errorMessage(error)
         }
       }
     }

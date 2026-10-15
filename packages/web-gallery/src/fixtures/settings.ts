@@ -392,7 +392,7 @@ export function mockProviders(): MockProvider[] {
           ],
         },
       ],
-      catalogFetched: '2 min ago',
+      catalogFetched: ago(2 * MINUTE),
       models: [
         model(
           {
@@ -495,7 +495,7 @@ export function mockProviders(): MockProvider[] {
     provider({
       id: 'anthropic', name: 'Anthropic', kind: 'api_key', family: 'anthropic', vendorId: 'anthropic',
       baseUrl: 'https://api.anthropic.com', wireApi: 'anthropic-messages', apiKey: '', keyConfigured: true, testedIn: '412 ms',
-      catalogFetched: '14 min ago',
+      catalogFetched: ago(14 * MINUTE),
       models: [
         model(
           {
@@ -575,7 +575,7 @@ export function mockProviders(): MockProvider[] {
     provider({
       id: 'openai', name: 'OpenAI', kind: 'api_key', family: 'openai', vendorId: 'openai',
       baseUrl: 'https://api.openai.com/v1', wireApi: 'openai-responses', apiKey: 'sk-proj-example-not-a-real-key',
-      state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: '3 days ago',
+      state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: ago(3 * DAY),
       models: [
         model(
           {
@@ -651,7 +651,7 @@ export function mockProviders(): MockProvider[] {
     provider({
       id: 'vertex', name: 'Google Vertex', kind: 'api_key', family: 'google', vendorId: 'google-vertex',
       baseUrl: 'https://us-central1-aiplatform.googleapis.com', wireApi: 'openai-chat', apiKey: 'ya29.example-not-a-real-token', state: 'disabled', enabled: false,
-      catalogFetched: '1 h ago',
+      catalogFetched: ago(HOUR),
       models: [
         model(
           {
@@ -782,7 +782,6 @@ export function createSettingsState() {
   return reactive({
     quotaRefreshCache: createQuotaRefreshCache(),
     general: {
-      language: 'English',
       theme: 'system' as 'light' | 'dark' | 'system',
       fontSize: DEFAULT_TRANSCRIPT_TEXT_SIZE,
     },

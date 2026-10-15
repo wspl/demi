@@ -1,0 +1,94 @@
+{
+  "settings": {
+    "general": {
+      "title": "一般",
+      "description": "語言、外觀和訊息。",
+      "appearance": "外觀",
+      "language": "語言",
+      "system": "系統",
+      "theme": "佈景主題",
+      "light": "淺色",
+      "dark": "深色",
+      "tone": "色調",
+      "accent": "強調色",
+      "textSize": "訊息字型大小",
+      "messages": "訊息",
+      "sendWhileRunning": "代理程式運作時按 Enter",
+      "sendWhileRunningDescription": "「引導」會將訊息傳送給進行中的輪次，「新增至佇列」會等它結束。{keys} 則使用另一種方式。",
+      "resumeAtRetry": "使用量限制重設後繼續",
+      "resumeAtRetryDescription": "輪次因使用量限制而停止時，在限制重設後繼續。",
+      "preview": {
+        "title": "預覽",
+        "firstLine": "這個字型大小的文字，",
+        "secondLine": "一行接一行。",
+        "button": "按鈕"
+      }
+    }
+  },
+  "appearance": {
+    "tones": {
+      "ink": "墨色",
+      "warm": "暖色"
+    },
+    "accents": {
+      "blue": "藍色",
+      "purple": "紫色",
+      "pink": "粉紅色",
+      "red": "紅色",
+      "orange": "橙色",
+      "green": "綠色",
+      "teal": "藍綠色"
+    }
+  },
+  "sendWay": {
+    "steer": "引導",
+    "queue": "新增至佇列"
+  },
+  "dates": {
+    "fewSecondsAgo": "幾秒前",
+    "inFewSeconds": "幾秒後",
+    "age": {
+      "now": "剛剛",
+      "minutes": "{count} 分鐘",
+      "hours": "{count} 小時",
+      "days": "{count} 天",
+      "weeks": "{count} 週"
+    },
+    "span": {
+      "seconds": "{seconds} 秒",
+      "minutes": "{minutes} 分鐘",
+      "minutesSeconds": "{minutes} 分 {seconds} 秒",
+      "hours": "{hours} 小時",
+      "hoursMinutes": "{hours} 小時 {minutes} 分鐘"
+    },
+    "retry": {
+      "Resets": {
+        "today": "{clock} 重設",
+        "weekday": "{weekday} {clock} 重設",
+        "day": "{day} {clock} 重設"
+      },
+      "Resume": {
+        "today": "{clock} 繼續",
+        "weekday": "{weekday} {clock} 繼續",
+        "day": "{day} {clock} 繼續"
+      },
+      "resetting": {
+        "today": "{clock} 重設",
+        "weekday": "{weekday} {clock} 重設",
+        "day": "{day} {clock} 重設"
+      }
+    },
+    "reset": {
+      "now": "現在重設",
+      "underMinute": "不到 1 分鐘後重設",
+      "in": "{span}後重設",
+      "weekday": "{weekday} {clock} 重設",
+      "day": "{day}重設"
+    }
+  },
+  "errors": {
+    "conversation_archived": "此對話已封存。請先還原。",
+    "email_taken": "另一個帳戶已使用此電子郵件地址。",
+    "saved_full": "一個對話最多保留 {limit} 則稍後傳送的訊息。"
+  }
+}

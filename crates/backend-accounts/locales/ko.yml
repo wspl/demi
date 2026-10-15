@@ -1,0 +1,4 @@
+_version: 1
+verification:
+  subject: "Demi 인증 코드"
+  body: "계정 이메일 주소를 %{email} 주소로 변경하려면 Demi에서 다음 코드를 입력하십시오: %{code}\n\n코드는 %{minutes}분 후에 만료됩니다. 변경을 요청하지 않았다면 이 이메일을 무시하십시오."

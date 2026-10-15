@@ -851,6 +851,47 @@ async fn a_failed_delivery_allows_a_retry_and_wrong_codes_or_a_new_password_end_
     backend.close().await;
 }
 
+// About 1 s: three email changes on a local backend, each hashing a password.
+#[tokio::test]
+async fn a_verification_mail_is_in_the_recipients_language() {
+    let harness = Harness::new().with_mail();
+    let (backend, master) = harness.start_set_up().await;
+    let mut addresses = ["one@example.test", "two@example.test", "three@example.test"].iter();
+    let mut mail_after = async |preferences: Value| {
+        let patched = backend
+            .patch("/api/settings/preferences", &master, preferences)
+            .await;
+        assert_eq!(patched.status, StatusCode::OK);
+        let started = start_email_change(&backend, &master, addresses.next().unwrap()).await;
+        assert_eq!(started.status, StatusCode::ACCEPTED);
+        // The cooldown between two codes is over.
+        harness.clock.advance(SignedDuration::from_mins(2));
+        harness.mailbox.sent().pop().unwrap()
+    };
+
+    // With System, the language the user's page last resolved and
+    // reported, whatever the browser's tags, which the page alone reads.
+    let system = mail_after(json!({
+        "locale": { "timeZone": "Asia/Taipei", "languages": ["en-US"], "language": "zh-Hant" }
+    }))
+    .await;
+    assert_eq!(system.subject, "你的 Demi 驗證碼");
+    assert!(system.body.contains("驗證碼在 10 分鐘內有效"), "{}", system.body);
+
+    let chosen = mail_after(json!({ "language": "zh-Hans" })).await;
+    assert_eq!(chosen.subject, "你的 Demi 验证码");
+    assert!(
+        chosen.body.contains(&format!("在 Demi 中输入 {}，", chosen.code)),
+        "{}",
+        chosen.body
+    );
+    assert!(chosen.body.contains("改为 two@example.test。"), "{}", chosen.body);
+
+    let english = mail_after(json!({ "language": "en" })).await;
+    assert_eq!(english.subject, "Your Demi verification code");
+    backend.close().await;
+}
+
 async fn start_email_change(backend: &TestBackend, session: &Session, email: &str) -> Answer {
     let body = json!({ "email": email, "password": MASTER_PASSWORD });
     backend.post("/api/auth/email", Some(session), body).await

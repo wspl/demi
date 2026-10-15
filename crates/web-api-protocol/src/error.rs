@@ -1,5 +1,7 @@
 //! The body of every JSON error, and the one list of the codes it carries.
 
+use std::collections::BTreeMap;
+
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -8,14 +10,21 @@ use demi_shared_types::RequestId;
 use crate::ids::LoginId;
 use crate::passkeys::PasskeyId;
 
-/// A JSON error answer: `{ code, message, requestId }`, and a plugin's own
-/// `reason` when a plugin refused the call.
+/// A JSON error answer: `{ code, message, params?, requestId }`, and a
+/// plugin's own `reason` when a plugin refused the call. The page words the
+/// answer from `code` and `params`; `message` is English, for the server
+/// log, API clients and a code the page has no words for
+/// (`localization.md` § Text from the backend).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ErrorBody {
     pub code: ErrorCode,
     /// Says what happened in words; for a refused body it names the field and
     /// the reason.
     pub message: String,
+    /// The values the page's text for `code` needs, such as `{ limit: 50 }`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    /// Each a number or a string.
+    pub params: BTreeMap<String, serde_json::Value>,
     /// With `plugin_refused`, the plugin's snake_case word for the refusal,
     /// such as `tab_not_found`.
     #[serde(default, skip_serializing_if = "Option::is_none")]

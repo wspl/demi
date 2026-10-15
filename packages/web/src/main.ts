@@ -1,4 +1,4 @@
-import { createApp, watch } from 'vue'
+import { createApp, shallowRef, watch } from 'vue'
 import { createPinia, disposePinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
 import {
@@ -12,6 +12,8 @@ import {
   setThemeChoice,
 } from '@demicodes/web-ui/theme/appTheme'
 import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
+import { createPageI18n, setPageLanguage } from '@demicodes/web-ui/i18n/text'
+import { keepShownLanguage, lastShownLanguage, resolveLanguage } from '@demicodes/web-ui/i18n/languages'
 import { reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
 import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/back-close'
 import { useConversations } from './conversation/store'
@@ -34,6 +36,13 @@ import { SETTINGS_ROUTE } from './settings/address'
 import { returnAddress, signInAddress } from './auth/return'
 import './style.css'
 
+// The page's text instance, before anything reads a text; it speaks the
+// language it last showed, or the browser's the first time, until the
+// user's choice arrives (`localization.md` § Choosing the language).
+const browserLanguages = shallowRef(navigator.languages)
+const startLanguage = lastShownLanguage() ?? resolveLanguage('system', browserLanguages.value)
+const i18n = createPageI18n(startLanguage)
+setPageLanguage(startLanguage)
 const pinia = createPinia()
 const router = createRouter({
   history: createWebHistory(),
@@ -222,6 +231,22 @@ const stopAppearance = watch(
   { immediate: true },
 )
 const stopTheme = applyThemeToDocument()
+// The page speaks the language the user chose, or with System the first of
+// the browser's that Demi speaks; a change of either, the choice made on
+// another page included, applies at once (`localization.md` § Choosing the
+// language).
+const stopLanguage = watch(
+  () => (product.snapshot ? resolveLanguage(preferences.language, browserLanguages.value) : null),
+  (language) => {
+    // Until the preferences arrive the page stays in the language it
+    // started in.
+    if (language !== null) {
+      setPageLanguage(language)
+      keepShownLanguage(language)
+    }
+  },
+  { immediate: true },
+)
 // The page reports its own facts when they may have changed: once the
 // stored preferences first arrive, when its theme changes, and on the events
 // below; never because the stored ones changed, which another page or the
@@ -231,7 +256,10 @@ const stopLocale = watch(
   () => void preferences.reportBrowser(),
   { immediate: true },
 )
-const reportBrowser = () => void preferences.reportBrowser()
+const reportBrowser = () => {
+  browserLanguages.value = navigator.languages
+  void preferences.reportBrowser()
+}
 window.addEventListener('languagechange', reportBrowser)
 const saveDrafts = () => {
   // The backend's saves go first: the web browser sends them after the page is gone.
@@ -276,7 +304,7 @@ const refreshVisible = () => {
 window.addEventListener('focus', refreshVisible)
 document.addEventListener('visibilitychange', refreshVisible)
 const stopPhonePage = installPhonePage()
-const app = createApp(App).use(pinia).use(router)
+const app = createApp(App).use(pinia).use(router).use(i18n)
 app.mount('#app')
 if (import.meta.hot) {
   import.meta.hot.dispose(() => {
@@ -288,6 +316,7 @@ if (import.meta.hot) {
     stopChoice()
     stopAppearance()
     stopTheme()
+    stopLanguage()
     stopLocale()
     notifications.stop()
     window.removeEventListener('languagechange', reportBrowser)

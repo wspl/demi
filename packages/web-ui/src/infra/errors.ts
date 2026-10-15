@@ -1,3 +1,4 @@
+import { find } from '../locales/text'
 import { showToast, showToastRequestId } from './toast'
 import type { HeadlineText, SentenceText } from '../ui/ui-text'
 
@@ -56,18 +57,50 @@ export function requestIdOf(error: unknown): string | null {
 
 /**
  * An error as the page shows it in a form or a row: its words, and the ID
- * of the request it came from, which goes beside them.
+ * of the request it came from, which goes beside them. The words are made
+ * as they are read, from the failure the error keeps, so a language chosen
+ * while it shows rewords it.
  */
 export interface ShownError {
-  message: SentenceText
+  readonly message: SentenceText
   requestId: string | null
+}
+
+/**
+ * What the page says of `error`, the one place a failure becomes words
+ * (`localization.md` § Text from the backend): a refusal's catalogue text
+ * for its `code`, filled with its `params`, such as `{ limit: 200 }`; its
+ * own `message` for a code the catalogue has no text for, as a newer
+ * backend may send, and for any other failure.
+ */
+export function errorMessage(error: unknown): SentenceText {
+  if (!(error instanceof Error)) {
+    return String(error)
+  }
+  if ('code' in error && typeof error.code === 'string') {
+    const params = 'params' in error && typeof error.params === 'object' && error.params !== null
+      ? Object.fromEntries(Object.entries(error.params))
+      : {}
+    const worded = find(`errors.${error.code}`, params)
+    if (worded !== null) {
+      return worded
+    }
+  }
+  return error.message
 }
 
 /** `error` as the page shows it, in `message`'s words when given. */
 export function shownError(error: unknown, message?: SentenceText): ShownError {
+  return worded(() => message ?? errorMessage(error), requestIdOf(error))
+}
+
+/** A shown error whose words `words` makes each time they are read. */
+function worded(words: () => SentenceText, requestId: string | null): ShownError {
   return {
-    message: message ?? (error instanceof Error ? error.message : String(error)),
-    requestId: requestIdOf(error),
+    get message() {
+      return words()
+    },
+    requestId,
   }
 }
 
@@ -96,7 +129,7 @@ export function formError(
 ): ShownError {
   const code = error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : null
   if (code !== null && code in corrections) {
-    return { message: corrections[code] ?? (error instanceof Error ? error.message : String(error)), requestId: null }
+    return worded(() => corrections[code] ?? errorMessage(error), null)
   }
   return shownError(error)
 }
@@ -158,7 +191,7 @@ export function reportError(
     return
   const toast = showToast({
     title,
-    message: options.message ?? message,
+    message: () => options.message ?? errorMessage(error),
     tone: 'danger',
     requestId,
   })

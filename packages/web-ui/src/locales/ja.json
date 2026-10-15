@@ -1,0 +1,94 @@
+{
+  "settings": {
+    "general": {
+      "title": "一般",
+      "description": "言語、外観、メッセージ。",
+      "appearance": "外観",
+      "language": "言語",
+      "system": "システム",
+      "theme": "テーマ",
+      "light": "ライト",
+      "dark": "ダーク",
+      "tone": "トーン",
+      "accent": "アクセントカラー",
+      "textSize": "メッセージのフォント サイズ",
+      "messages": "メッセージ",
+      "sendWhileRunning": "エージェントの作業中の Enter",
+      "sendWhileRunningDescription": "「割り込み」は実行中のターンにメッセージを送信します。「キューに追加」はターンの終了を待ちます。{keys} でもう一方の方法を使います。",
+      "resumeAtRetry": "使用制限のリセット後に再開",
+      "resumeAtRetryDescription": "使用制限で停止したターンを、制限がリセットされたときに再開します。",
+      "preview": {
+        "title": "プレビュー",
+        "firstLine": "このサイズのテキストが、",
+        "secondLine": "一行ずつ続きます。",
+        "button": "ボタン"
+      }
+    }
+  },
+  "appearance": {
+    "tones": {
+      "ink": "インク",
+      "warm": "ウォーム"
+    },
+    "accents": {
+      "blue": "ブルー",
+      "purple": "パープル",
+      "pink": "ピンク",
+      "red": "レッド",
+      "orange": "オレンジ",
+      "green": "グリーン",
+      "teal": "ティール"
+    }
+  },
+  "sendWay": {
+    "steer": "割り込み",
+    "queue": "キューに追加"
+  },
+  "dates": {
+    "fewSecondsAgo": "数秒前",
+    "inFewSeconds": "数秒後",
+    "age": {
+      "now": "今",
+      "minutes": "{count} 分",
+      "hours": "{count} 時間",
+      "days": "{count} 日",
+      "weeks": "{count} 週間"
+    },
+    "span": {
+      "seconds": "{seconds} 秒",
+      "minutes": "{minutes} 分",
+      "minutesSeconds": "{minutes} 分 {seconds} 秒",
+      "hours": "{hours} 時間",
+      "hoursMinutes": "{hours} 時間 {minutes} 分"
+    },
+    "retry": {
+      "Resets": {
+        "today": "{clock} にリセット",
+        "weekday": "{weekday} {clock} にリセット",
+        "day": "{day} {clock} にリセット"
+      },
+      "Resume": {
+        "today": "{clock} に再開",
+        "weekday": "{weekday} {clock} に再開",
+        "day": "{day} {clock} に再開"
+      },
+      "resetting": {
+        "today": "{clock} にリセット",
+        "weekday": "{weekday} {clock} にリセット",
+        "day": "{day} {clock} にリセット"
+      }
+    },
+    "reset": {
+      "now": "今すぐリセット",
+      "underMinute": "1 分以内にリセット",
+      "in": "{span}後にリセット",
+      "weekday": "{weekday} {clock} にリセット",
+      "day": "{day}にリセット"
+    }
+  },
+  "errors": {
+    "conversation_archived": "この会話はアーカイブされています。先に復元してください。",
+    "email_taken": "このメール アドレスは別のアカウントで使用されています。",
+    "saved_full": "1 つの会話で後で送信するために保存できるメッセージは {limit} 件までです。"
+  }
+}

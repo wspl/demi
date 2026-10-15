@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Folder } from '@lucide/vue'
-import { baseName, formatSpan } from '@demicodes/utils'
+import { baseName } from '@demicodes/utils'
+import { formatSpan } from '../ui/dates'
 import type { ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import StatusBarSegment from '../ui/StatusBarSegment.vue'
 import StatusDot from '../ui/StatusDot.vue'

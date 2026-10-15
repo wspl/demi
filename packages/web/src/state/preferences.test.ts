@@ -57,13 +57,15 @@ afterEach(() => {
   }
 })
 
-test('the web browser reports its time zone, languages and color scheme once, and again what differs from the stored ones', async () => {
+test('the web browser reports its time zone, languages, the language it resolves and color scheme once, and again what differs from the stored ones', async () => {
   useProduct().start()
   channels.last().connect(productState({ preferences: saved }))
   const preferences = usePreferences()
   const locale = {
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     languages: ['zh-CN', 'en'],
+    // The language the page resolves for System, which the backend's mail reads.
+    language: 'zh-Hans' as const,
   }
   setThemeChoice('dark')
   await preferences.reportBrowser()
