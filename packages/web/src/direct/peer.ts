@@ -24,6 +24,19 @@ export class ChannelFailed extends Error {
   }
 }
 
+/**
+ * A channel closed before it opened while its connection stood, as one
+ * whose opening the runner could not acknowledge does: it says nothing about
+ * the path, so the operation tries a new channel once (`direct-channel.md`
+ * § Choosing the path). A second one is a failure like any other.
+ */
+class ChannelNeverOpened extends ChannelFailed {
+  constructor() {
+    super('The direct channel closed before it opened')
+    this.name = 'ChannelNeverOpened'
+  }
+}
+
 /** The runner refused the operation, with the code and status the relay's route answers. */
 export class ChannelRefused extends Error {
   constructor(
@@ -244,7 +257,7 @@ export async function connectPeer(options: PeerOptions): Promise<DirectPeer> {
       listener(id)
   })
   return {
-    open: (header, answer) => openChannel(connection, header, answer),
+    open: (header, answer) => openOperation(connection, header, answer),
     attempt,
     probe: (id) => {
       if (probes.readyState === 'open')
@@ -396,8 +409,20 @@ class Inbox {
   }
 }
 
+/** What an operation uses of a data channel. */
+export type OperationDataChannel = Pick<
+  RTCDataChannel,
+  'readyState' | 'binaryType' | 'bufferedAmount' | 'bufferedAmountLowThreshold' | 'send' | 'close' | 'addEventListener' | 'removeEventListener'
+>
+
+/** What an operation uses of the connection: its state, and a new channel. */
+export interface ChannelMaker {
+  readonly connectionState: RTCPeerConnectionState
+  createDataChannel(label: string, init: RTCDataChannelInit): OperationDataChannel
+}
+
 /** Waits for `channel` to open, at most `limitMs` when given; one that closes first did not open. */
-function opened(channel: RTCDataChannel, limitMs?: number): Promise<void> {
+function opened(channel: OperationDataChannel, limitMs?: number): Promise<void> {
   if (channel.readyState === 'open')
     return Promise.resolve()
   return new Promise((resolve, reject) => {
@@ -418,12 +443,31 @@ function opened(channel: RTCDataChannel, limitMs?: number): Promise<void> {
   })
 }
 
-async function openChannel<T>(
-  connection: RTCPeerConnection,
+/**
+ * Opens an operation's channel; one that closes before it opens while the
+ * connection stands is replaced by a new one, once, and the operations on
+ * the connection's other channels go on.
+ */
+export async function openOperation<T>(
+  connection: ChannelMaker,
   header: ChannelHeader,
   answerSchema: z.ZodType<T>,
 ): Promise<OperationChannel<T>> {
-  let channel: RTCDataChannel
+  try {
+    return await openChannel(connection, header, answerSchema)
+  } catch (error) {
+    if (!(error instanceof ChannelNeverOpened))
+      throw error
+    return openChannel(connection, header, answerSchema)
+  }
+}
+
+async function openChannel<T>(
+  connection: ChannelMaker,
+  header: ChannelHeader,
+  answerSchema: z.ZodType<T>,
+): Promise<OperationChannel<T>> {
+  let channel: OperationDataChannel
   try {
     channel = connection.createDataChannel(header.op, { ordered: true })
   } catch (error) {
@@ -446,7 +490,12 @@ async function openChannel<T>(
     inbox.finish(lost ? new ChannelFailed('The direct connection went') : 'closed')
   })
   channel.addEventListener('error', () => inbox.finish(new ChannelFailed('The direct channel failed')))
-  await opened(channel)
+  try {
+    await opened(channel)
+  } catch (error) {
+    // Without a limit, only a close comes before the open.
+    throw connection.connectionState === 'connected' ? new ChannelNeverOpened() : error
+  }
   let answered: Promise<T> | null = null
   const answer = () => {
     answered ??= inbox.next().then((first) => {
