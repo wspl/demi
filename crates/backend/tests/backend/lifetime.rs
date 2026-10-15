@@ -17,6 +17,8 @@ use demi_conversation_socket_protocol::ServerFrame;
 use demi_host_interface::SpawnEnv;
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::{Block, ReportEvent, SessionPhase};
+use reqwest::StatusCode;
+use serde_json::json;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::watch;
 use tokio_util::task::AbortOnDropHandle;
@@ -372,6 +374,13 @@ async fn a_command_lost_after_a_shutdown_interrupted_its_call_is_reported_by_the
     work.start(vec![shell("Deploy the batch", "touch started; sleep 60", 600_000)])
         .await;
     until_exists(&home.join("started")).await;
+    // The interrupted turn waits for the user, as it does with the user's
+    // `resumeAfterRestart` off, so no resumed turn rewrites the transcript
+    // while the test reads it.
+    let off = backend
+        .patch("/api/settings/preferences", &master, json!({ "resumeAfterRestart": false }))
+        .await;
+    assert_eq!(off.status, StatusCode::OK);
     let address = backend.address();
     backend.close().await;
     alpha.runner.kill().await;
