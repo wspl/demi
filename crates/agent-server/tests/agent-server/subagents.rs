@@ -1099,6 +1099,67 @@ async fn a_status_whose_stdout_broke_leaves_the_end_report() {
     a_status_wait_that_reaches_no_one_leaves_the_end_report(false).await;
 }
 
+// A child that ended its turn to wait for its tests looks at them with
+// `demi shell status 1 --wait 10m`, which shows their end: the end report
+// that follows tells it nothing more, so it wakes no turn and costs no
+// request, and the child closes with its answer (`runtime.md` § Command
+// reports). The store holds the report's read of the stored end until the
+// look is over, so the report is made after the look in every run. Under a
+// second on the paused clock.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_status_wait_that_shows_the_end_leaves_no_end_report() {
+    let model = Model::default();
+    model.child(
+        "task test",
+        [
+            Turn::Events(vec![event::tool_call(
+                "call-1",
+                "shell",
+                json!({"script": "test", "description": "Run the tests", "intervalMs": null}),
+            )]),
+            said("waiting"),
+            // What a duplicate wake would answer.
+            said("woken again"),
+        ],
+    );
+    model.root([said("noted")]);
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide_runtime("stub", model.clone());
+    let shells = Rc::new(ScriptedShells::default());
+    let store = MemoryTreeStore::new();
+    let server = scripted_host_server(providers, shells.clone(), store.clone());
+    let mut page = TestClient::connect(&server, &conversation());
+    page.send(open()).await;
+    page.next_until(is_pending_steers).await;
+    let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task test" })).await;
+    let child = named_node(&store, &spawned);
+    wait_for_execution(&server, "waiting").await;
+
+    let reads = store.hold_command_ends();
+    let mut look = Box::pin(shell_call(
+        &server,
+        &child,
+        "status",
+        json!({ "id": ["1"], "wait": "10m" }),
+        CancellationToken::new(),
+        true,
+    ));
+    assert!(futures_util::poll!(&mut look).is_pending());
+    shells.last().exit_with(Vec::new());
+    let looked = look.await.expect("the call is dispatched");
+    assert!(looked.stdout.contains("status: exited\nexitCode: 0"), "{looked:?}");
+    reads.release();
+    page.next_until(is_closed(&child)).await;
+
+    assert_eq!(model.requests_of("task test").len(), 2, "the shown end woke the child again");
+    assert_eq!(
+        store.record(&child).and_then(|record| record.closed).map(|close| close.phase),
+        Some(ClosePhase::Completed {
+            result: "waiting".into()
+        })
+    );
+}
+
 // The backend restarted while an aborted child's command, and its aborted
 // child's, still stopped: restore skips the closed children but takes up
 // their commands, which show as stopping again under their child, are asked
