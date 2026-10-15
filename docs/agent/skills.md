@@ -191,8 +191,9 @@ and only there: for a conversation in the project `~/app`, the plugin looks in
 and nowhere else: not in a directory above the project, such as the root of
 an enclosing git repository, not in a subagent's own working directory, and
 not in the user's home or another agent's configuration. A conversation
-outside a project looks in the same two directories of its own working
-directory. Every node of the conversation, a subagent working elsewhere
+outside a project has no project skills, whatever its working directory: a
+conversation working in the home folder would otherwise take
+`~/.claude/skills`, another agent's own skills, for a project's. Every node of the conversation, a subagent working elsewhere
 included, gets the same project skills. The only other skills are the user
 skills above; no other skill is read or offered, and the Claude Code provider
 keeps the CLI's own skills out ([Starting](../providers/claude-code.md)).

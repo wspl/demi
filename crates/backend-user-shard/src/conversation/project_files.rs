@@ -9,6 +9,7 @@
 
 use std::rc::{Rc, Weak};
 
+use demi_backend_database::conversation_index::ExecutionTarget;
 use demi_backend_host_access::conversation_of;
 use demi_backend_host_access::kept::{Found, Kept, SearchError, Subscribe, Wait};
 use demi_plugin_interface::{PluginId, WatchSubject};
@@ -130,6 +131,8 @@ pub(crate) struct KeptAt {
     device: Option<DeviceId>,
     /// The directory it works in there.
     directory: String,
+    /// Whether it is in a project.
+    in_project: bool,
     /// Whether its tree is loaded.
     loaded: bool,
 }
@@ -144,6 +147,7 @@ impl Shard {
         Ok(KeptAt {
             device: target.device().cloned(),
             directory: target.path().to_owned(),
+            in_project: matches!(target, ExecutionTarget::Workspace { .. }),
             loaded: self.agent().tree(&demi_backend_host_access::root_of(id)).is_some(),
         })
     }
@@ -182,7 +186,12 @@ impl Shard {
         Ok(self.project_files().workflows.get(id, &device, at.directory, at.loaded, wait).await)
     }
 
-    /// What `plugin`'s project search holds for the conversation of `root`.
+    /// What `plugin`'s project search holds for the conversation of `root`;
+    /// none outside a project, whatever its directory, which is then neither
+    /// searched nor watched (`skills.md` § Project skills): a conversation
+    /// working in the home folder would otherwise take another agent's own
+    /// skills for a project's. A move into or out of a project releases
+    /// what was kept, so the next request starts or skips the search.
     pub(crate) async fn kept_project_search(&self, plugin: &PluginId, root: &NodeId) -> Option<Value> {
         let id = conversation_of(root);
         let at = match self.kept_at(&id).await {
@@ -192,6 +201,9 @@ impl Shard {
                 return None;
             }
         };
+        if !at.in_project {
+            return None;
+        }
         let key = (plugin.clone(), at.directory);
         self.project_files()
             .plugins
