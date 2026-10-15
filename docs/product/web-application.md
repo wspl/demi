@@ -409,12 +409,23 @@ conversation; the panel button covers the screen with the work panel, and
   sliding over it when picked, its bar *‹ Settings*; it never shows the list
   beside a page, whatever the dialog's width. The sidebar is a drawer over a scrim, 85% of the width and at most
   320 pixels, so the conversation shows beside it; a tap on the scrim or a
-  swipe left closes it. In the File view the tree covers the file's whole
+  swipe left closes it. A touch's first clear move decides what it is: a
+  vertical one scrolls the list, a leftward one drags the drawer, which
+  follows the finger from where it first touched while the scrim lightens
+  with it. Let go past 30% of its width, or with a flick still moving at
+  the lift, it goes on closing from where it stands; a shorter pull, or one
+  held still before the lift, springs back. A second finger or the system
+  taking the touch springs it back too: only a lift closes. A finger never
+  reorders the list, as in ChatGPT and Claude on a phone: a long press opens
+  the row's menu, and dragging rows is the mouse's. In the File view the tree covers the file's whole
   width and slides away when a file is picked.
 - **Menus are sheets.** Every menu rises from the bottom as a sheet, one
   web-ui primitive: it closes on a tap outside it, a pull down past 30% of
   its height or a flick, Escape and Back, and springs back from a shorter
   pull; a pull down at the top of its scrolled content becomes the close;
+  the pull follows the finger from where it first touched, a flick counts
+  by its speed at the lift, and a second finger or the system taking the
+  touch springs it back, as the drawer's does;
   it stops at 90% of the screen and scrolls; focus moves in and returns to
   the control that opened it; the page behind does not scroll. A menu sheet
   has no heading, as an iOS menu has none: what it acts on is the control

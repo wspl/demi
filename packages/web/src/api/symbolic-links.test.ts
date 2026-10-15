@@ -11,7 +11,7 @@ import { afterEach, expect, test } from 'bun:test'
 
 GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/chat' })
 // After the page, since the components ask for its elements.
-await import('../__tests__/vue-components')
+await import('@demicodes/web-ui/__tests__/vue-components')
 const { createApp, h, ref } = await import('vue')
 const { default: FileView } = await import('@demicodes/web-ui/files/FileView.vue')
 const { default: FileBrowser } = await import('@demicodes/web-ui/files/FileBrowser.vue')
