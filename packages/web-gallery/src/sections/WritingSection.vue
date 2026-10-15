@@ -12,6 +12,7 @@ import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import GalleryTextRules, { type TextRule } from '../components/GalleryTextRules.vue'
 import { productWould } from '../product-would'
+import { LANGUAGE_WRITING, everyLanguageRule } from './writing-languages'
 
 /**
  * The rule for UI text: macOS capitalization, as Apple's Human Interface
@@ -603,6 +604,33 @@ const sources: readonly Required<Source>[] = [
             <MenuItem :icon="Globe" label="Region" value="eu-central" @select="productWould('Choose Region')" />
           </Menu>
         </GallerySpecimen>
+      </div>
+    </GallerySection>
+
+    <GallerySection
+      title="Every Language"
+      note="Demi speaks English, 简体中文, 繁體中文, 日本語 and 한국어, each complete. A written convention, like the rest of this page: nothing checks it."
+    >
+      <GalleryTextRules :rules="[everyLanguageRule]" />
+    </GallerySection>
+
+    <GallerySection
+      v-for="writing in LANGUAGE_WRITING"
+      :key="writing.language"
+      :title="writing.title"
+      :note="`How ${writing.title} is written, each rule with what follows it and what breaks it, and Demi’s terms in it.`"
+    >
+      <div :lang="writing.language" class="space-y-4">
+        <GalleryTextRules :rules="writing.rules" />
+        <div class="max-w-5xl rounded-xl border border-line">
+          <h3 class="border-b border-line px-3 py-2 text-[13px] font-medium text-fg-emphasis">Glossary</h3>
+          <dl class="grid grid-cols-2 gap-x-6 gap-y-1 px-3 py-2 text-[12px] leading-5 sm:grid-cols-3 lg:grid-cols-4">
+            <div v-for="[english, term] in writing.glossary" :key="english" class="flex justify-between gap-2">
+              <dt class="text-fg-muted" lang="en">{{ english }}</dt>
+              <dd class="text-fg-body">{{ term }}</dd>
+            </div>
+          </dl>
+        </div>
       </div>
     </GallerySection>
 
