@@ -20,7 +20,7 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { Raw } from 'vue'
 import type { Slot } from '@demicodes/web-ui/infra/slot'
-import type { AttachedHost, ConversationTarget, DeviceKind, WorkflowChoice } from '../api/generated/web-api'
+import type { AttachedHost, ConversationShare, ConversationTarget, DeviceKind, WorkflowChoice } from '../api/generated/web-api'
 import type { NotSaved, RecordSlot } from '../conversation/record'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { SavedDraft, SavedFile } from '../conversation/drafts'
@@ -42,6 +42,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   archived: boolean
   /** The open tree runs with commands of plugins since turned on or off; a reload would change it. */
   pluginsChanged: boolean
+  /** The conversation's shares, its own and its answers' (`web-api.md` § Sharing). */
+  shares: ConversationShare[]
   createdAt: string
   cwd: string
   /** The parts of the root's transcript the page holds (`web-application.md` § Transcript windows). */
