@@ -1133,6 +1133,8 @@ pub(crate) async fn assemble<H: HostResolver>(
                 state: seed.state.clone(),
                 changed_blocks: seed.transcript.iter().cloned().enumerate().collect(),
                 block_count: seed.transcript.len(),
+                moved_from: None,
+                version: false,
             };
             store.create_node(record.clone(), initial).await?;
             // A new node has no commands of its own yet.

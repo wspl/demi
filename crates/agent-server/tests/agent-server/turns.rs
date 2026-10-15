@@ -1145,6 +1145,8 @@ async fn a_restored_report_of_a_command_no_shells_hold_carries_its_stored_output
                 },
                 changed_blocks: Vec::new(),
                 block_count: 0,
+                moved_from: None,
+                version: false,
             },
         )
         .await

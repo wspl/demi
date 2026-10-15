@@ -5,7 +5,7 @@
 use std::{future::Future, mem, rc::Rc, sync::Arc};
 
 use demi_agent_store::{
-    Checkpoint, CheckpointUpdate, SessionStore, StoreError,
+    Checkpoint, CheckpointUpdate, SessionStore, StoreError, Switched,
     media::{BlobStore, HeldMedia},
 };
 use demi_agent_transcript::{
@@ -930,6 +930,11 @@ impl SessionStore for NoStore {
 
     fn load(&self) -> LocalBoxFuture<'_, Result<Option<Checkpoint>, StoreError>> {
         Box::pin(async { Ok(None) })
+    }
+
+    fn switch(&self, _position: usize, _version: u32) -> LocalBoxFuture<'_, Result<Switched, StoreError>> {
+        // The copy runs one summary request and admits no switch.
+        Box::pin(async { Err(StoreError::Failed("a summary's session keeps no versions".to_owned())) })
     }
 
     fn blobs(&self) -> &dyn BlobStore {

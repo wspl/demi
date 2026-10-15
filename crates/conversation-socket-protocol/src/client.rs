@@ -36,10 +36,28 @@ pub enum ClientFrame {
         #[garde(dive)]
         content: Vec<ClientContent>,
     },
-    /// Replace a user message and everything after it.
+    /// Continue from a new version of a user message
+    /// (`message-editing.md` § Versions).
     EditAndSend {
         #[garde(dive)]
         request: EditRequest,
+    },
+    /// Continue from a new version of a message's answer; answered by an
+    /// `edit_result`, as an edit is.
+    Regenerate {
+        #[garde(dive)]
+        request: RegenerateRequest,
+    },
+    /// Make the `to`th version at the block's place current, from 1, against
+    /// the transcript `version` the page showed. The rewrite's patches
+    /// answer it; a refusal answers `rejected`.
+    SwitchVersion {
+        #[garde(skip)]
+        block_id: BlockId,
+        #[garde(range(min = 1))]
+        to: u32,
+        #[garde(dive)]
+        version: TranscriptVersion,
     },
     /// Add input to the running turn; its id is its `steer` block's.
     Steer {
@@ -132,6 +150,8 @@ pub enum ClientFrameKind {
     Open,
     Send,
     EditAndSend,
+    Regenerate,
+    SwitchVersion,
     Steer,
     SendSaved,
     CancelPendingSteer,
@@ -160,6 +180,8 @@ impl ClientFrame {
             Self::Open { .. } => ClientFrameKind::Open,
             Self::Send { .. } => ClientFrameKind::Send,
             Self::EditAndSend { .. } => ClientFrameKind::EditAndSend,
+            Self::Regenerate { .. } => ClientFrameKind::Regenerate,
+            Self::SwitchVersion { .. } => ClientFrameKind::SwitchVersion,
             Self::Steer { .. } => ClientFrameKind::Steer,
             Self::SendSaved { .. } => ClientFrameKind::SendSaved,
             Self::CancelPendingSteer { .. } => ClientFrameKind::CancelPendingSteer,
@@ -245,6 +267,22 @@ pub struct EditRequest {
     /// The complete replacement content.
     #[garde(length(min = 1), dive)]
     pub content: Vec<ClientContent>,
+}
+
+/// Regenerate of the answer to a user message (`message-editing.md`
+/// § Regenerate and the Up Arrow key): the message stays as it is.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct RegenerateRequest {
+    /// Chosen by the web app, so a repeated request is recognized.
+    #[garde(skip)]
+    pub operation_id: OperationId,
+    /// The `user` block whose answer gets a new version.
+    #[garde(skip)]
+    pub target_block_id: BlockId,
+    /// The transcript version the page showed; a stale one is refused.
+    #[garde(dive)]
+    pub version: TranscriptVersion,
 }
 
 /// One part of the content the web app sends. Files are referred to, never

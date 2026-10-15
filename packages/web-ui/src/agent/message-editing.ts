@@ -62,14 +62,16 @@ export type MessageEditRequest = z.infer<typeof messageEditRequestSchema>
 
 /**
  * An edit in progress. `sending` is an edit the user sent from the editor,
- * `regenerating` one Regenerate sent without opening it. `uncertain` means
- * the server's answer was lost: Retry checks the outcome before resending. A
- * failure is told by a toast at the moment it happens; the state itself
- * carries no message.
+ * `regenerating` a Regenerate sent without opening it, which `regenerate`
+ * marks while it is uncertain too, so Retry sends the same operation again.
+ * `uncertain` means the server's answer was lost: Retry checks the outcome
+ * before resending. A failure is told by a toast at the moment it happens;
+ * the state itself carries no message.
  */
 export const messageEditStateSchema = z.object({
   phase: z.enum(['editing', 'sending', 'regenerating', 'uncertain']),
   request: messageEditRequestSchema,
+  regenerate: z.literal(true).optional(),
 })
 export type MessageEditState = z.infer<typeof messageEditStateSchema>
 
@@ -203,11 +205,16 @@ export function changeMessageEditContent(
   return next
 }
 
-/** Where an edit is kept while it is sent, and how the host sends it. */
+/**
+ * Where an edit is kept while it is sent, and how the host sends it: as an
+ * edit, or, `regenerate`, as a Regenerate of the answer to its message,
+ * which sends no content (`message-editing.md` § Regenerate and the Up
+ * Arrow key).
+ */
 export interface MessageEditHost {
   get(): MessageEditState | null
   set(state: MessageEditState | null): void
-  send(request: MessageEditRequest): Promise<void>
+  send(request: MessageEditRequest, regenerate: boolean): Promise<void>
 }
 
 /** Only confirmation or explicit rejection permits changing a submitted request. */
@@ -216,15 +223,17 @@ export async function submitMessageEdit(host: MessageEditHost): Promise<void> {
   if (!draft || draft.phase === 'sending' || draft.phase === 'regenerating' || !editHasContent(draft)) {
     return
   }
-  await sendMessageEdit(host, structuredClone(toRaw(draft.request)), 'sending')
+  const regenerate = draft.phase === 'uncertain' && draft.regenerate === true
+  await sendMessageEdit(host, structuredClone(toRaw(draft.request)), regenerate ? 'regenerating' : 'sending')
 }
 
 /**
- * Regenerate: sends the edit of the last message with its content unchanged
- * at once, without the editor (`message-editing.md` § Regenerate and the Up
- * Arrow key). It is an edit like any other: a lost answer leaves it
- * uncertain, for Retry in the editor, and a refusal opens the editor on it.
- * Nothing is sent while another edit is in progress.
+ * Regenerate: asks at once, without the editor, for a new answer to the
+ * last message, `request` naming it with its content unchanged
+ * (`message-editing.md` § Regenerate and the Up Arrow key). It goes as an
+ * edit does: a lost answer leaves it uncertain, for Retry in the editor,
+ * and a refusal opens the editor on the message. Nothing is sent while
+ * another edit is in progress.
  */
 export async function regenerateMessage(host: MessageEditHost, request: MessageEditRequest): Promise<void> {
   if (host.get()) {
@@ -238,16 +247,18 @@ async function sendMessageEdit(
   request: MessageEditRequest,
   phase: 'sending' | 'regenerating',
 ): Promise<void> {
-  host.set({ phase, request })
+  const regenerate = phase === 'regenerating'
+  host.set(regenerate ? { phase, request, regenerate } : { phase, request })
   try {
-    await host.send(request)
+    await host.send(request, regenerate)
     if (host.get()?.request.operationId === request.operationId) {
       host.set(null)
     }
   } catch (error) {
     const rejected = error instanceof EditRejectedError
     if (host.get()?.request.operationId === request.operationId) {
-      host.set({ phase: rejected ? 'editing' : 'uncertain', request })
+      // A refused Regenerate opens the editor on the message, whose Save is an edit.
+      host.set(rejected || !regenerate ? { phase: rejected ? 'editing' : 'uncertain', request } : { phase: 'uncertain', request, regenerate })
     }
     reportError(
       rejected ? t('transcript.edit.rejected') : t('transcript.edit.unconfirmed'),

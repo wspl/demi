@@ -2,7 +2,7 @@
 //! (`web-api.md` § Conversation creation and Fork, § Sidebar mutations, read
 //! state and page synchronization).
 
-use demi_conversation_socket_protocol::{Failures, SubagentJob};
+use demi_conversation_socket_protocol::{BlockVersions, Failures, SubagentJob};
 use demi_shared_types::{
     Block, BlockId, CommandId, InstructionEntry, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp,
     WorkflowChoice,
@@ -409,6 +409,10 @@ pub struct TranscriptPage {
     /// The summary size of each compaction marker's boundary, which its
     /// divider tells; the boundary may be on another page.
     pub summaries: Vec<CompactionSummary>,
+    /// The versions of its blocks that have others (`message-editing.md`
+    /// § Versions); none in a share.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub versions: Vec<BlockVersions>,
 }
 
 /// A compaction marker of a page and its boundary's summary size.

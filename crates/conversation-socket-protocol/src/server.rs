@@ -13,7 +13,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::{ClientFrameKind, TranscriptPatch, TranscriptVersion};
+use crate::{BlockVersions, ClientFrameKind, TranscriptPatch, TranscriptVersion};
 
 /// What the providers read out of the error blocks a frame carries, by block
 /// id (`backend.md` § Failure facts). Attached when the frame is sent, never
@@ -67,6 +67,11 @@ pub enum ServerFrame {
         #[schemars(with = "Failures")]
         #[garde(skip)]
         failures: Option<Failures>,
+        /// The versions of its blocks that have others
+        /// (`message-editing.md` § Versions).
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[garde(dive)]
+        versions: Vec<BlockVersions>,
     },
     /// The patches of one batch; `revision` is one past the previous frame's.
     TranscriptPatch {
@@ -586,6 +591,12 @@ pub struct SubagentChild {
     /// tells a change while it runs.
     #[garde(length(min = 1))]
     pub cwd: String,
+    /// Whether the call that started it is on its parent's current path
+    /// (`message-editing.md` § Versions): the Agents window and `agent:`
+    /// links show only the children that are, and a `changed` frame tells
+    /// when a switch of versions changes it.
+    #[garde(skip)]
+    pub on_path: bool,
 }
 
 /// What a child's round runs on (`subagents.md` § What an agent runs on),

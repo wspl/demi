@@ -305,6 +305,8 @@ mod tests {
             state,
             changed_blocks: Vec::new(),
             block_count: 0,
+            moved_from: None,
+            version: false,
         };
         let blobs = Arc::new(blobs.clone());
         SqliteTreeStore::new(

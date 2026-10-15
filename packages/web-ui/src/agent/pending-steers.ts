@@ -1,5 +1,6 @@
 import type { WorkGroupBlock } from './work-groups'
-import type { Block, PendingCall, UserContentBlock } from '@demicodes/protocol'
+import type { HeldBlock } from '@demicodes/conversation-client'
+import type { PendingCall, UserContentBlock } from '@demicodes/protocol'
 import type { CompactionProgressBlock } from './list-tail'
 import type { QueueDividerBlock, QueuedRenderBlock } from './queued-messages'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
@@ -53,7 +54,7 @@ export interface SessionFailureRow {
 }
 
 export type MessageListBlock =
-  Block | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock | CompactionProgressBlock |
+  HeldBlock | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock | CompactionProgressBlock |
   PendingCallRenderBlock | WorkGroupBlock | ActivitySlotRow | DeliveryFailureRow | SessionFailureRow |
   /** A message on its way; `startsTurn` when it is a steer that starts the turn, which reads as the user's next message. */
   { type: 'pending_submission'; id: string; submission: PendingSubmissionState; startsTurn: boolean } |

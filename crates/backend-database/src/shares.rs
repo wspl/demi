@@ -226,8 +226,8 @@ const HIDDEN: &str = "('context', 'response')";
 
 /// Makes the list of the conversation's share `token` (`sharing.md`
 /// § Storage and routes), in place of one it had: every block each agent's
-/// transcript shows, the root's and each subagent's, in order, by the row
-/// that holds it. The list is made from the transcript's index of block
+/// current path shows (`message-editing.md` § Versions), the root's and
+/// each subagent's, in order, by the row that holds it. The list is made from the transcript's index of block
 /// types, without reading a block: only the blocks still changing are read,
 /// to copy them, and the texts that name an attachment.
 ///
@@ -243,29 +243,41 @@ pub fn take_conversation(transaction: &Transaction<'_>, token: &ShareToken) -> R
     transaction.execute(
         &format!(
             "INSERT INTO share_entries (token, agent, position, node_id, idx)
-             SELECT ?1, nodes.number, row_number() OVER (PARTITION BY blocks.node_id ORDER BY blocks.idx) - 1,
+             SELECT ?1, nodes.number,
+                    row_number() OVER (PARTITION BY blocks.node_id ORDER BY run.start, blocks.idx) - 1,
                     blocks.node_id, blocks.idx
-             FROM nodes CROSS JOIN blocks INDEXED BY blocks_by_type ON blocks.node_id = nodes.id
-             WHERE blocks.idx < nodes.block_count AND json_extract(blocks.block, '$.type') NOT IN {HIDDEN}"
+             FROM nodes CROSS JOIN path_runs AS run ON run.node_id = nodes.id
+               CROSS JOIN blocks INDEXED BY blocks_by_type
+                 ON blocks.node_id = run.node_id AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+             WHERE json_extract(blocks.block, '$.type') NOT IN {HIDDEN}"
         ),
         [token.as_str()],
     )?;
+    // Along a path, each row's number is above the one it follows, so the
+    // rows' order is the path's.
+    let responses = |offset: u8| {
+        format!(
+            "(SELECT blocks.idx FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
+                ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'response'
+                  AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+              WHERE run.node_id = nodes.id ORDER BY blocks.idx DESC LIMIT 1 OFFSET {offset})"
+        )
+    };
     transaction.execute(
-        "WITH responses AS (
-           SELECT nodes.id AS node_id,
-             (SELECT idx FROM blocks WHERE node_id = nodes.id AND json_extract(block, '$.type') = 'response'
-                AND idx < nodes.block_count ORDER BY idx DESC LIMIT 1) AS last,
-             (SELECT idx FROM blocks WHERE node_id = nodes.id AND json_extract(block, '$.type') = 'response'
-                AND idx < nodes.block_count ORDER BY idx DESC LIMIT 1 OFFSET 1) AS before_last
-           FROM nodes
-         )
-         INSERT INTO share_blocks (token, agent, idx, block)
-         SELECT entry.token, entry.agent, entry.position, json_remove(blocks.block, '$.entries')
-         FROM responses
-         JOIN share_entries AS entry
-           ON entry.token = ?1 AND entry.node_id = responses.node_id AND entry.idx > coalesce(responses.before_last, -1)
-         JOIN blocks ON blocks.node_id = entry.node_id AND blocks.idx = entry.idx
-         WHERE entry.idx > coalesce(responses.last, -1) OR json_extract(blocks.block, '$.status') = 'executing'",
+        &format!(
+            "WITH responses AS (
+               SELECT nodes.id AS node_id, {} AS last, {} AS before_last FROM nodes
+             )
+             INSERT INTO share_blocks (token, agent, idx, block)
+             SELECT entry.token, entry.agent, entry.position, json_remove(blocks.block, '$.entries')
+             FROM responses
+             JOIN share_entries AS entry
+               ON entry.token = ?1 AND entry.node_id = responses.node_id AND entry.idx > coalesce(responses.before_last, -1)
+             JOIN blocks ON blocks.node_id = entry.node_id AND blocks.idx = entry.idx
+             WHERE entry.idx > coalesce(responses.last, -1) OR json_extract(blocks.block, '$.status') = 'executing'",
+            responses(0),
+            responses(1),
+        ),
         [token.as_str()],
     )?;
     // The attachments its texts name, through `block_attachments`, while
@@ -303,35 +315,14 @@ fn name_copied_blobs(transaction: &Transaction<'_>, token: &ShareToken) -> Resul
     Ok(())
 }
 
-/// Which listed rows a write is about to replace or remove: one row, the
-/// rows of a node from an index on, or every row of a node and of its
-/// descendants.
-#[derive(Debug, Clone, Copy)]
-pub(crate) enum Rewritten<'a> {
-    Row(&'a NodeId, i64),
-    From(&'a NodeId, i64),
-    Subtree(&'a NodeId),
-}
-
-/// Keeps what every share shows of the rows `rewritten` names before a
-/// write replaces or removes them (`sharing.md` § Storage and routes): each
-/// listed row is copied into the share as it stands, with the blobs it
-/// names, and its entry points at the copy, in the write's transaction. The
-/// one guard of every write to `blocks` that changes a row.
-pub(crate) fn keep_rewritten(transaction: &Transaction<'_>, rewritten: Rewritten<'_>) -> Result<(), StorageError> {
-    let (rows, node, index) = match rewritten {
-        Rewritten::Row(node, index) => ("entry.node_id = ?1 AND entry.idx = ?2", node, index),
-        Rewritten::From(node, index) => ("entry.node_id = ?1 AND entry.idx >= ?2", node, index),
-        Rewritten::Subtree(node) => (
-            "entry.node_id IN (
-               WITH RECURSIVE subtree (id) AS (
-                 SELECT ?1 UNION ALL SELECT nodes.id FROM nodes JOIN subtree ON nodes.parent_id = subtree.id
-               ) SELECT id FROM subtree
-             ) AND ?2 IS NOT NULL",
-            node,
-            0,
-        ),
-    };
+/// Keeps what every share shows of the row `index` of `node` before a
+/// write replaces it, as a later event marks it (`message-editing.md`
+/// § Versions; `sharing.md` § Storage and routes): a listed row is copied
+/// into the share as it stands, with the blobs it names, and its entry
+/// points at the copy, in the write's transaction. The one guard of every
+/// write to `blocks` that changes a row; no write removes one.
+pub(crate) fn keep_rewritten(transaction: &Transaction<'_>, node: &NodeId, index: i64) -> Result<(), StorageError> {
+    let rows = "entry.node_id = ?1 AND entry.idx = ?2";
     let parameters = params![node.as_str(), index];
     transaction
         .prepare_cached(&format!(
@@ -379,20 +370,20 @@ pub fn take_answer(
     token: &ShareToken,
     block: &BlockId,
 ) -> Result<bool, StorageError> {
-    let root: Option<(String, i64)> = transaction
-        .query_row(
-            "SELECT id, block_count FROM nodes WHERE parent_id IS NULL",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
+    let root: Option<String> = transaction
+        .query_row("SELECT id FROM nodes WHERE parent_id IS NULL", [], |row| row.get(0))
         .optional()?;
-    let Some((root, block_count)) = root else {
+    let Some(root) = root else {
         return Ok(false);
     };
+    // The answer on the root's current path (`message-editing.md`
+    // § Versions).
     let found: Option<(i64, String)> = transaction
         .query_row(
-            "SELECT idx, block FROM blocks WHERE json_extract(block, '$.id') = ?1 AND node_id = ?2 AND idx < ?3",
-            params![block.as_str(), root, block_count],
+            "SELECT blocks.idx, blocks.block FROM blocks INDEXED BY blocks_by_id CROSS JOIN path_runs AS run
+               ON run.node_id = blocks.node_id AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+             WHERE json_extract(blocks.block, '$.id') = ?1 AND blocks.node_id = ?2",
+            params![block.as_str(), root],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
@@ -406,10 +397,15 @@ pub fn take_answer(
     if !text.forkable {
         return Ok(false);
     }
+    // Along a path, a row's number is above the one it follows, so the
+    // message is the path's latest user row before the answer's.
     let message: Option<String> = transaction
         .query_row(
-            "SELECT block FROM blocks WHERE node_id = ?1 AND json_extract(block, '$.type') = 'user' AND idx < ?2
-             ORDER BY idx DESC LIMIT 1",
+            "SELECT blocks.block FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
+               ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'user'
+                 AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+             WHERE run.node_id = ?1 AND blocks.idx < ?2
+             ORDER BY blocks.idx DESC LIMIT 1",
             params![root, index],
             |row| row.get(0),
         )
@@ -753,8 +749,17 @@ mod tests {
         make_list(&stores).await;
         let before = shared(&stores, 0).await;
 
+        // The edit adds a version beside the rows the share lists, which
+        // stay as they are (`message-editing.md` § Versions).
         let session = tree.session_store(&id("root"));
-        session.save(update(vec![(0, user("u1-edited"))], 1)).await.unwrap();
+        session
+            .save(demi_agent_store::CheckpointUpdate {
+                moved_from: Some(0),
+                version: true,
+                ..update(vec![(0, user("u1-edited"))], 1)
+            })
+            .await
+            .unwrap();
         session
             .save(update(vec![(1, response("r2")), (2, reply("t2")), (3, response("r3"))], 4))
             .await
@@ -763,6 +768,16 @@ mod tests {
         let after = shared(&stores, 0).await;
         assert_eq!(ids(&after), ["u1", "t1"]);
         assert_eq!(after.iter().map(words).collect::<Vec<_>>(), before.iter().map(words).collect::<Vec<_>>());
+        // It reads them from the transcript's rows still: nothing was
+        // copied.
+        let copies: i64 = stores
+            .read(&conversation(), |connection| {
+                Ok(connection.query_row("SELECT count(*) FROM share_blocks", [], |row| row.get(0))?)
+            })
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(copies, 0);
         let (shown, kept) = stores
             .read(&conversation(), move |connection| {
                 Ok((

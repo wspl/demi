@@ -14,6 +14,7 @@ use tokio::sync::Notify;
 use demi_conversation_socket_protocol::AgentCode;
 
 use super::{
+    ActionReply,
     ActionEnd, ErrorReport, SessionEvent, SessionShared, Settle, TurnError, ahead,
     cancel::{CancelReason, TurnCancel},
     compaction,
@@ -81,6 +82,12 @@ async fn run_action(s: &Rc<SessionShared>, started: StartedAction) {
         Ok(_) => execute(s, &kind, &cancel).await,
         Err(_) => Err(TurnError::Cancelled),
     };
+    if matches!(kind, ActionKind::Switch { .. }) {
+        end_switch(s, &cancel, body, reply).await;
+        drop(lease);
+        s.update(|core| core.start_next());
+        return;
+    }
     // A stop that came in while the body finished its last step still stops
     // it: no action completes after its abort.
     let body = body.and_then(|()| cancel.check());
@@ -213,6 +220,7 @@ async fn execute(
         ActionKind::Retry => retry(s, cancel).await,
         ActionKind::Resume { reason } => resume(s, cancel, reason.clone()).await,
         ActionKind::Edit => editing::run(s, cancel).await,
+        ActionKind::Switch { target, to } => editing::switch(s, cancel, target, *to).await,
         ActionKind::Compact => {
             // The server compared the estimate with the share from which the
             // user may compact before it took the frame; the log repeats it.
@@ -299,6 +307,35 @@ pub fn left_by_offline_host(blocks: &[Block]) -> Option<&ErrorDevice> {
 
 /// Records how the body ended, unless dispose stopped it: a stop leaves its
 /// marker in the transcript, a failure is reported.
+/// Ends a switch of versions: one that failed or was stopped changed
+/// nothing, so it leaves no stop marker and no failure record, and one that
+/// completed is answered as completed whatever came after its commit. The
+/// closing save records the session idle again.
+async fn end_switch(
+    s: &SessionShared,
+    cancel: &TurnCancel,
+    body: Result<(), TurnError>,
+    reply: Option<ActionReply>,
+) {
+    cancel.acknowledge(s.read(|core| core.can_abort_again()));
+    // The new path's usage reaches clients before the phase goes idle. A
+    // stopped switch's token is cancelled, so the estimate reads with one
+    // nothing stops.
+    if body.is_ok() {
+        compaction::report_context_usage(s, &TurnCancel::new()).await;
+    }
+    s.update(|core| core.end_action());
+    let result = match (body, persist::flush(s).await) {
+        (Ok(()), _) => Ok(ActionEnd::Completed),
+        (Err(TurnError::Cancelled), _) => Ok(ActionEnd::Dropped),
+        (Err(TurnError::Failed(report)), _) => Err(report),
+    };
+    if let Some(reply) = reply {
+        // A caller that dropped its handle wants no answer.
+        let _ = reply.send(result);
+    }
+}
+
 fn conclude(s: &SessionShared, cancel: &TurnCancel, body: Result<(), TurnError>) -> Outcome {
     match body {
         Ok(()) => Outcome::Completed,

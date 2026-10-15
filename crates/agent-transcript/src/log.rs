@@ -1,9 +1,9 @@
 //! The transcript itself: its blocks in order, changed only through methods
 //! that record each change in the journal, and its version.
 
-use std::{rc::Rc, sync::Arc};
+use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
-use demi_conversation_socket_protocol::{TranscriptPatch, TranscriptVersion};
+use demi_conversation_socket_protocol::{TranscriptPatch, TranscriptVersion, Versions};
 use demi_provider_common::{AccountSwitch, ToolCall};
 use demi_shared_types::{
     AbortBlock, AccountSwitchBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
@@ -32,6 +32,11 @@ pub struct PendingCall {
 
 pub struct TranscriptLog {
     blocks: Vec<Block>,
+    /// The versions at each place of the path that holds more than one
+    /// (`message-editing.md` § Versions), as the store reads them; a place
+    /// past the last block holds those of the block that comes there next,
+    /// as after Regenerate cut an answer.
+    versions: BTreeMap<usize, Versions>,
     journal: Journal,
     revision: u64,
     /// New for every log, at creation and at every restore, so a version
@@ -46,6 +51,7 @@ impl TranscriptLog {
         let epoch = ids.next_id();
         Self {
             blocks,
+            versions: BTreeMap::new(),
             journal: Journal::default(),
             revision: 0,
             epoch,
@@ -56,6 +62,17 @@ impl TranscriptLog {
 
     pub fn blocks(&self) -> &[Block] {
         &self.blocks
+    }
+
+    /// The log with the versions its stored path holds.
+    pub fn with_versions(mut self, versions: BTreeMap<usize, Versions>) -> Self {
+        self.versions = versions;
+        self
+    }
+
+    /// The versions at each place of the path that holds more than one.
+    pub fn versions(&self) -> &BTreeMap<usize, Versions> {
+        &self.versions
     }
 
     pub fn version(&self) -> TranscriptVersion {
@@ -216,22 +233,53 @@ impl TranscriptLog {
     /// block from there, never the blocks before it (`runtime.md` § Patches
     /// and versions). The changes recorded before it are superseded, and
     /// the rewrite's own save wrote its rows, so the batch marks none.
-    pub fn replace_all(&mut self, blocks: Vec<Block>) -> PatchBatch {
+    ///
+    /// The rows the rewrite leaves stay stored on their branch
+    /// (`message-editing.md` § Versions): an edit or Regenerate, `version`,
+    /// begins a new version at the first block that differs, the latest of
+    /// its place; the session's own rewrite stands in for what it replaced,
+    /// so the place keeps its versions. The places after it hold none.
+    pub fn replace_all(&mut self, blocks: Vec<Block>, version: bool) -> PatchBatch {
+        let kept = kept(&self.blocks, &blocks);
+        let mut versions = std::mem::take(&mut self.versions);
+        versions.split_off(&(kept + 1));
+        if version {
+            let count = match versions.get(&kept) {
+                Some(held) => held.count + 1,
+                None if self.blocks.len() > kept => 2,
+                None => 1,
+            };
+            versions.remove(&kept);
+            if count > 1 {
+                versions.insert(kept, Versions { index: count, count });
+            }
+        }
+        self.replace_from(kept, blocks, versions)
+    }
+
+    /// Replaces the path from `position` on with what a switch of versions
+    /// made current: `blocks` is the whole path, and `versions` the
+    /// versions of its places from `position` on.
+    pub fn switch(&mut self, position: usize, blocks: Vec<Block>, versions: BTreeMap<usize, Versions>) -> PatchBatch {
+        let mut kept = std::mem::take(&mut self.versions);
+        kept.split_off(&position);
+        kept.extend(versions);
+        self.replace_from(position, blocks, kept)
+    }
+
+    /// Publishes `blocks` from `from` on as one batch, with `versions`.
+    fn replace_from(&mut self, from: usize, blocks: Vec<Block>, versions: BTreeMap<usize, Versions>) -> PatchBatch {
         self.journal = Journal::default();
         self.revision += 1;
-        let kept = self
-            .blocks
-            .iter()
-            .zip(&blocks)
-            .take_while(|(old, new)| old == new)
-            .count();
+        self.versions = versions;
         let patches = std::iter::once(TranscriptPatch::Truncate {
-            length: patch_index(kept),
+            length: patch_index(from),
         })
-        .chain(blocks[kept..].iter().enumerate().map(|(offset, block)| {
+        .chain(blocks[from..].iter().enumerate().map(|(offset, block)| {
             TranscriptPatch::Add {
-                index: patch_index(kept + offset),
+                index: patch_index(from + offset),
                 value: block.clone(),
+                versions: self.versions.get(&(from + offset)).copied(),
             }
         }))
         .collect();
@@ -263,7 +311,12 @@ impl TranscriptLog {
             kept,
             entries: Vec::new(),
         });
-        self.journal.add(index, &block);
+        // The blocks it moves past the boundary keep their versions
+        // (`message-editing.md` § Versions); the boundary shows none.
+        let moved = self.versions.split_off(&index);
+        self.versions
+            .extend(moved.into_iter().map(|(position, versions)| (position + 1, versions)));
+        self.journal.add(index, &block, None);
         self.blocks.insert(index, block);
         id
     }
@@ -608,11 +661,18 @@ impl TranscriptLog {
     /// before it decide once (`runtime.md` § Work groups).
     fn append(&mut self, mut block: Block) {
         block.set_run(run_of(&self.blocks, &block));
-        self.journal.add(self.blocks.len(), &block);
+        let index = self.blocks.len();
+        self.journal.add(index, &block, self.versions.get(&index).copied());
         self.blocks.push(block);
     }
 
     fn record_replace(&mut self, index: usize) {
         self.journal.replace_block(index, &self.blocks[index]);
     }
+}
+
+/// How many blocks `old` and `new` share from the start: the first
+/// position a rewrite from `old` to `new` changes.
+pub fn kept(old: &[Block], new: &[Block]) -> usize {
+    old.iter().zip(new).take_while(|(old, new)| old == new).count()
 }

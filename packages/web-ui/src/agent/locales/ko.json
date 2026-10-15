@@ -85,6 +85,11 @@
       "rejected": "편집이 수락되지 않았습니다.",
       "unconfirmed": "편집을 확인할 수 없음"
     },
+    "versions": {
+      "previous": "이전 버전",
+      "next": "다음 버전",
+      "position": "버전 {index}/{count}"
+    },
     "connecting": "연결 중",
     "newFile": "새 파일",
     "picture": {

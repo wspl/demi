@@ -36,7 +36,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Notify, watch};
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{StoppingShells, Tree, unended_views};
+use super::{StoppingShells, Tree, cut_path, unended_views};
 use super::profiles::Limits;
 use crate::{
     Node,
@@ -63,6 +63,13 @@ pub(crate) struct Summary {
     /// Its transcript's revision when it closed; a live child's is its
     /// session's, and one read from the store has none it can tell, 0.
     pub(super) revision: u64,
+    /// Whether the call that started it is on its parent's current path,
+    /// as it was when the parent last was live; a live parent's session
+    /// tells it now (`message-editing.md` § Versions).
+    pub(super) started_on_path: bool,
+    /// Whether the pages last heard that it is on the current path; none
+    /// before a change of a path told them.
+    pub(super) shown_on_path: Option<bool>,
 }
 
 /// A live child: its node, and what its supervision keeps about it.
@@ -105,9 +112,9 @@ impl<H: HostResolver> Child<H> {
 
     /// Its job, as `record`, its record now or as it closed, describes it,
     /// while the conversation works at `now`.
-    fn job(&self, record: &NodeRecord, now: Option<&Placement>) -> SubagentJob {
+    fn job(&self, record: &NodeRecord, now: Option<&Placement>, on_path: bool) -> SubagentJob {
         record
-            .job(self.runs_on.clone(), now)
+            .job(self.runs_on.clone(), now, on_path)
             .expect("a child has a job")
     }
 
@@ -419,6 +426,7 @@ impl<H: HostResolver> Tree<H> {
             closed: None,
             delivered: false,
             forked_from: None,
+            started_by: owner.session().executing_call(),
             cwd: Some(ChildDirectory { cwd, under: now }),
         };
         let origin = Origin::New {
@@ -515,6 +523,7 @@ impl<H: HostResolver> Tree<H> {
             closed: None,
             delivered: false,
             forked_from: Some(source.number),
+            started_by: owner.session().executing_call(),
             cwd: Some(cwd),
         };
         seed.state.queue.push(self.text_message(message));
@@ -732,6 +741,86 @@ impl<H: HostResolver> Tree<H> {
         Ok(id)
     }
 
+    /// Whether `record`'s child belongs to the conversation's current path
+    /// (`message-editing.md` § Versions): the call that started it is on
+    /// its parent's current path, and so is each ancestor's. A live
+    /// parent's session tells whether it holds the call; a closed one's
+    /// path is the one it closed with. A child no call started is on every
+    /// path.
+    fn on_path(&self, record: &NodeRecord) -> bool {
+        let summaries = self.summaries.borrow();
+        let mut at = Some(record.clone());
+        while let Some(child) = at {
+            let Some(parent) = &child.parent else {
+                return true;
+            };
+            if let Some(call) = &child.started_by {
+                let started = match self.node(parent) {
+                    Some(live) => live.session().holds_block(call),
+                    None => summaries
+                        .get(&child.number)
+                        .is_none_or(|summary| summary.started_on_path),
+                };
+                if !started {
+                    return false;
+                }
+            }
+            at = summaries
+                .values()
+                .find(|summary| &summary.record.id == parent)
+                .map(|summary| summary.record.clone());
+        }
+        true
+    }
+
+    /// A path of the tree changed, by an edit, a Regenerate, a switch, a
+    /// retry or any rewrite: each child whose place on the current path
+    /// changed with it, at any depth, is told to the pages.
+    pub(crate) async fn paths_changed(&self) {
+        let records: Vec<NodeRecord> = self
+            .summaries
+            .borrow()
+            .values()
+            .map(|summary| summary.record.clone())
+            .collect();
+        let mut changed = Vec::new();
+        for record in records {
+            let on_path = self.on_path(&record);
+            let mut summaries = self.summaries.borrow_mut();
+            let Some(summary) = summaries.get_mut(&record.number) else {
+                continue;
+            };
+            if summary.shown_on_path.unwrap_or(true) != on_path {
+                changed.push((record, summary.runs_on.clone(), on_path));
+            }
+            summary.shown_on_path = Some(on_path);
+        }
+        if changed.is_empty() {
+            return;
+        }
+        let placement = self.placement().await;
+        for (record, runs_on, on_path) in changed {
+            if let Some(job) = record.job(runs_on, placement.as_ref(), on_path) {
+                self.sink.emit(ServerFrame::Subagent {
+                    event: SubagentEvent::Changed,
+                    job,
+                });
+            }
+        }
+    }
+
+    /// The child `id` leaves the directory: whether each of its own
+    /// children's start is on its path now stays as it closed.
+    fn keep_started_on_path(&self, id: &NodeId, session: &AgentSession) {
+        for summary in self.summaries.borrow_mut().values_mut() {
+            if summary.record.parent.as_ref() == Some(id)
+                && let Some(call) = &summary.record.started_by
+            {
+                summary.started_on_path = session.holds_block(call);
+            }
+        }
+    }
+
     /// The conversation works elsewhere now: each live child's page hears
     /// where the child works, which its record and the new placement give
     /// (`subagents.md` § Working directory).
@@ -741,7 +830,7 @@ impl<H: HostResolver> Tree<H> {
         for child in children {
             self.sink.emit(ServerFrame::Subagent {
                 event: SubagentEvent::Changed,
-                job: child.job(&child.node.record(), now.as_ref()),
+                job: child.job(&child.node.record(), now.as_ref(), self.on_path(&child.node.record())),
             });
         }
     }
@@ -792,7 +881,7 @@ impl<H: HostResolver> Tree<H> {
         self.remember(&record, &child.runs_on, 0);
         self.sink.emit(ServerFrame::Subagent {
             event: SubagentEvent::Changed,
-            job: child.job(&record, Some(&now)),
+            job: child.job(&record, Some(&now), self.on_path(&record)),
         });
         Ok(cwd)
     }
@@ -809,55 +898,59 @@ impl<H: HostResolver> Tree<H> {
                 let sink = self.sink.clone();
                 let clock = self.clock.clone();
                 let id = node.id().clone();
-                move |event| match event {
-                    SessionEvent::TranscriptChanged { patches, revision } => {
-                        if let Some(child) = child.upgrade() {
-                            let now = clock.now().as_millisecond();
-                            let session = child.node.session();
-                            child.telemetry.borrow_mut().observe(
-                                patches,
-                                |index| session.is_text_at(index),
-                                now,
-                            );
+                let paths = self.paths.clone();
+                move |event| {
+                    cut_path(&paths, event);
+                    match event {
+                        SessionEvent::TranscriptChanged { patches, revision } => {
+                            if let Some(child) = child.upgrade() {
+                                let now = clock.now().as_millisecond();
+                                let session = child.node.session();
+                                child.telemetry.borrow_mut().observe(
+                                    patches,
+                                    |index| session.is_text_at(index),
+                                    now,
+                                );
+                            }
+                            sink.emit(ServerFrame::SubagentTranscriptPatch {
+                                subagent_id: id.clone(),
+                                patches: patches.clone(),
+                                revision: *revision,
+                                failures: None,
+                            });
                         }
-                        sink.emit(ServerFrame::SubagentTranscriptPatch {
-                            subagent_id: id.clone(),
-                            patches: patches.clone(),
-                            revision: *revision,
-                            failures: None,
-                        });
-                    }
-                    SessionEvent::PendingCallsChanged { pending_calls } => {
-                        sink.emit(ServerFrame::PendingCalls {
-                            subagent_id: Some(id.clone()),
-                            pending_calls: pending_calls.clone(),
-                        });
-                    }
-                    SessionEvent::WaitingChanged { waited_ms } => {
-                        sink.emit(ServerFrame::Waiting {
-                            subagent_id: Some(id.clone()),
-                            waited_ms: *waited_ms,
-                        });
-                    }
-                    SessionEvent::PhaseChanged { phase } => {
-                        sink.emit(ServerFrame::Phase {
-                            subagent_id: Some(id.clone()),
-                            phase: *phase,
-                        });
-                    }
-                    SessionEvent::ContextUsageChanged { usage } => {
-                        sink.emit(ServerFrame::ContextUsage {
-                            node: id.clone(),
-                            usage: Some(usage.clone()),
-                        });
-                    }
-                    SessionEvent::ActionFailed { report } => {
-                        if let Some(child) = child.upgrade() {
-                            child.failure.replace(Some(report.message.clone()));
-                            child.wake.notify_one();
+                        SessionEvent::PendingCallsChanged { pending_calls } => {
+                            sink.emit(ServerFrame::PendingCalls {
+                                subagent_id: Some(id.clone()),
+                                pending_calls: pending_calls.clone(),
+                            });
                         }
+                        SessionEvent::WaitingChanged { waited_ms } => {
+                            sink.emit(ServerFrame::Waiting {
+                                subagent_id: Some(id.clone()),
+                                waited_ms: *waited_ms,
+                            });
+                        }
+                        SessionEvent::PhaseChanged { phase } => {
+                            sink.emit(ServerFrame::Phase {
+                                subagent_id: Some(id.clone()),
+                                phase: *phase,
+                            });
+                        }
+                        SessionEvent::ContextUsageChanged { usage } => {
+                            sink.emit(ServerFrame::ContextUsage {
+                                node: id.clone(),
+                                usage: Some(usage.clone()),
+                            });
+                        }
+                        SessionEvent::ActionFailed { report } => {
+                            if let Some(child) = child.upgrade() {
+                                child.failure.replace(Some(report.message.clone()));
+                                child.wake.notify_one();
+                            }
+                        }
+                        _ => {}
                     }
-                    _ => {}
                 }
             });
             Child {
@@ -877,7 +970,7 @@ impl<H: HostResolver> Tree<H> {
             .insert(child.id().clone(), child.clone());
         self.remember(&child.node.record(), &child.runs_on, 0);
         self.bump();
-        for frame in child_frames(&child, placement) {
+        for frame in child_frames(&child, placement, self.on_path(&child.node.record())) {
             self.sink.emit(frame);
         }
         child
@@ -887,9 +980,9 @@ impl<H: HostResolver> Tree<H> {
     /// § Persistence) from what each was spawned with, never from the
     /// user's profiles: a closed child whose completion never reached the
     /// owner is delivered now, and a live one is restored and continues. A
-    /// live one whose provider runtime cannot be built closes as an error
-    /// with the reason; one whose stored state does not rebuild is deleted
-    /// with its subtree.
+    /// live one whose provider runtime cannot be built, or whose stored
+    /// state does not rebuild, closes as an error with the reason, its rows
+    /// kept.
     pub(super) fn restore_children<'a>(
         self: &'a Rc<Self>,
         owner: &'a Rc<Node<H>>,
@@ -928,7 +1021,7 @@ impl<H: HostResolver> Tree<H> {
                 let origin = match self.stored(&id).await {
                     Ok(origin) => origin,
                     Err(error) => {
-                        self.delete_unbuilt(&id, &error).await;
+                        self.close_unrebuilt(owner, record, error).await;
                         continue;
                     }
                 };
@@ -944,7 +1037,7 @@ impl<H: HostResolver> Tree<H> {
                     }
                 };
                 if let Err(error) = self.start_child(&server, owner, origin, runtime, None, None).await {
-                    self.delete_unbuilt(&id, &error).await;
+                    self.close_unrebuilt(owner, record, error).await;
                 }
             }
         })
@@ -976,14 +1069,22 @@ impl<H: HostResolver> Tree<H> {
         })
     }
 
-    /// Deletes a live child whose stored state does not rebuild, with its
-    /// subtree.
-    async fn delete_unbuilt(&self, id: &NodeId, error: &str) {
-        tracing::warn!(node = %id, %error, "a live subagent could not be rebuilt and is deleted");
-        match self.store.delete_node(id).await {
-            Ok(()) => self.forget(id),
-            Err(error) => self.report(format!("subagent {id} was not deleted: {error}")),
-        }
+    /// Closes as failed the live child `record` of `owner` whose stored
+    /// state does not rebuild, with what failed, `error`: its rows stay as
+    /// they are, and its own live children close as an abort closes them
+    /// (`message-editing.md` § Versions: a child is never deleted).
+    async fn close_unrebuilt(&self, owner: &Node<H>, record: NodeRecord, error: String) {
+        tracing::warn!(node = %record.id, %error, "a live subagent could not be rebuilt and closes as failed");
+        let runs_on = self
+            .summaries
+            .borrow()
+            .get(&record.number)
+            .map(|summary| summary.runs_on.clone());
+        let Some(runs_on) = runs_on else {
+            self.report(format!("subagent {} has no summary and stays live in the store", record.id));
+            return;
+        };
+        self.close_unbuilt(owner, record, runs_on, error).await;
     }
 
     /// Closes the stored live child `record` of `owner`, whose round runs
@@ -1015,7 +1116,9 @@ impl<H: HostResolver> Tree<H> {
         let placement = self.placement().await;
         self.sink.emit(ServerFrame::Subagent {
             event: SubagentEvent::Closed,
-            job: closed.job(runs_on, placement.as_ref()).expect("a child has a job"),
+            job: closed
+                .job(runs_on, placement.as_ref(), self.on_path(&closed))
+                .expect("a child has a job"),
         });
         let origin = self.stored_origin(&closed.id, &close.phase).await;
         self.deliver(owner, &closed, &close, origin).await;
@@ -1197,6 +1300,7 @@ impl<H: HostResolver> Tree<H> {
             closed: Some(close.clone()),
             ..record.clone()
         };
+        self.keep_started_on_path(&record.id, session);
         self.children.borrow_mut().remove(&record.id);
         // In the step it leaves the directory: an open's snapshot lists it
         // closed from then on, before its `closed` frame goes.
@@ -1209,7 +1313,7 @@ impl<H: HostResolver> Tree<H> {
                 let placement = self.placement().await;
                 self.sink.emit(ServerFrame::Subagent {
                     event: SubagentEvent::Closed,
-                    job: child.job(&closed, placement.as_ref()),
+                    job: child.job(&closed, placement.as_ref(), self.on_path(&closed)),
                 });
                 if let Some(owner) = &owner {
                     self.deliver(owner, &record, &close, origin).await;
@@ -1365,7 +1469,7 @@ impl<H: HostResolver> Tree<H> {
     pub(super) fn replay(&self, placement: Option<&Placement>) -> Vec<ServerFrame> {
         self.descendants()
             .iter()
-            .flat_map(|child| child_frames(child, placement))
+            .flat_map(|child| child_frames(child, placement, self.on_path(&child.node.record())))
             .collect()
     }
 
@@ -1380,7 +1484,7 @@ impl<H: HostResolver> Tree<H> {
             .map(|summary| {
                 let child = summary
                     .record
-                    .child(summary.runs_on.clone(), placement)
+                    .child(summary.runs_on.clone(), placement, self.on_path(&summary.record))
                     .expect("a subagent's record has a child");
                 let revision = children.get(&summary.record.id).map_or(summary.revision, |live| {
                     live.node.session().transcript_version().revision
@@ -1402,7 +1506,7 @@ impl<H: HostResolver> Tree<H> {
             .map(|summary| {
                 summary
                     .record
-                    .job(summary.runs_on.clone(), placement)
+                    .job(summary.runs_on.clone(), placement, self.on_path(&summary.record))
                     .expect("a subagent's record has a child")
             })
             .collect()
@@ -1411,33 +1515,22 @@ impl<H: HostResolver> Tree<H> {
     /// Keeps `record` as its child's summary now, with what its round runs
     /// on and, once it closed, its transcript's last revision.
     fn remember(&self, record: &NodeRecord, runs_on: &JobModel, revision: u64) {
-        self.summaries.borrow_mut().insert(
+        let mut summaries = self.summaries.borrow_mut();
+        // What the pages heard of its place, and whether its start is on
+        // its parent's path, stay; a new child's start is.
+        let (started_on_path, shown_on_path) = summaries
+            .get(&record.number)
+            .map_or((true, None), |summary| (summary.started_on_path, summary.shown_on_path));
+        summaries.insert(
             record.number,
             Summary {
                 record: record.clone(),
                 runs_on: runs_on.clone(),
                 revision,
+                started_on_path,
+                shown_on_path,
             },
         );
-    }
-
-    /// Forgets the child `id` and its subtree, which the store deleted.
-    fn forget(&self, id: &NodeId) {
-        let mut summaries = self.summaries.borrow_mut();
-        let mut gone = vec![id.clone()];
-        while let Some(parent) = gone.pop() {
-            let children: Vec<(u64, NodeId)> = summaries
-                .iter()
-                .filter(|(_, summary)| summary.record.parent.as_ref() == Some(&parent) || summary.record.id == parent)
-                .map(|(number, summary)| (*number, summary.record.id.clone()))
-                .collect();
-            for (number, child) in children {
-                summaries.remove(&number);
-                if child != parent {
-                    gone.push(child);
-                }
-            }
-        }
     }
 
     /// Every live child, depth first in spawn order.
@@ -1765,13 +1858,13 @@ async fn stop_all(session: &AgentSession) {
 
 /// A child's `started` frame, its transcript, its phase, the calls it is
 /// writing and its wait for the model.
-fn child_frames<H: HostResolver>(child: &Child<H>, placement: Option<&Placement>) -> [ServerFrame; 5] {
+fn child_frames<H: HostResolver>(child: &Child<H>, placement: Option<&Placement>, on_path: bool) -> [ServerFrame; 5] {
     let session = child.node.session();
     let transcript = session.transcript();
     [
         ServerFrame::Subagent {
             event: SubagentEvent::Started,
-            job: child.job(&child.node.record(), placement),
+            job: child.job(&child.node.record(), placement, on_path),
         },
         {
             // The page holds none of a child's blocks until it shows it

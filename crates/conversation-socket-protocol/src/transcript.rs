@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "op", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum TranscriptPatch {
-    /// Insert a block at the index.
+    /// Insert a block at the index, with its place among the versions there
+    /// when it has others (`message-editing.md` § Versions).
     Add {
         #[garde(skip)]
         index: u32,
@@ -22,6 +23,9 @@ pub enum TranscriptPatch {
         #[schemars(with = "Block")]
         #[garde(dive)]
         value: Block,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(dive)]
+        versions: Option<Versions>,
     },
     /// Replace the block at the index.
     ReplaceBlock {
@@ -45,6 +49,51 @@ pub enum TranscriptPatch {
         #[garde(skip)]
         length: u32,
     },
+}
+
+/// Where a block stands among the versions at its place on the path
+/// (`message-editing.md` § Versions): the `index`th of `count`, from 1, in
+/// the order they were made. Only a block whose place holds two versions
+/// or more has one: an edited message, or the first block of a
+/// regenerated answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Versions {
+    #[garde(range(min = 1))]
+    pub index: u32,
+    #[garde(range(min = 2))]
+    pub count: u32,
+}
+
+/// The versions of one block of a reset or a page, by its id.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BlockVersions {
+    #[garde(skip)]
+    pub block_id: BlockId,
+    #[garde(range(min = 1))]
+    pub index: u32,
+    #[garde(range(min = 2))]
+    pub count: u32,
+}
+
+impl BlockVersions {
+    pub fn new(block_id: BlockId, versions: Versions) -> Self {
+        Self {
+            block_id,
+            index: versions.index,
+            count: versions.count,
+        }
+    }
+
+    /// The versions of `blocks`, whose places `versions` holds them by,
+    /// from the position `start` on.
+    pub fn of(blocks: &[Block], versions: &std::collections::BTreeMap<usize, Versions>, start: usize) -> Vec<Self> {
+        versions
+            .range(start..)
+            .filter_map(|(position, held)| Some(Self::new(blocks.get(*position)?.id().clone(), *held)))
+            .collect()
+    }
 }
 
 /// A transcript's version. The epoch is new each time the session's

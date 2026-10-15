@@ -3,6 +3,7 @@ import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import AssistantMessageFooter from './AssistantMessageFooter.vue'
 import type { MessageForkState } from '../message-fork'
 import type { AnswerShare } from '../sharing'
+import type { VersionChoice } from '../versions'
 import { useTextArrivals } from '../whole-blocks'
 
 withDefaults(defineProps<{
@@ -15,6 +16,8 @@ withDefaults(defineProps<{
   hideFork?: boolean
   /** Regenerate in the footer; absent where it is not offered. */
   regenerate?: () => void
+  /** The answer's versions in the footer; absent with none. */
+  versions?: VersionChoice
   isStreaming?: boolean
   showFooter?: boolean
 }>(), {
@@ -42,6 +45,7 @@ const arrivals = useTextArrivals()
       :share-wait="shareWait"
       :hide-fork="hideFork"
       :regenerate="regenerate"
+      :versions="versions"
     />
   </div>
 </template>

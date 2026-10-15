@@ -24,7 +24,7 @@ pub use cut::{
 };
 pub use ids::{IdSource, RandomIds};
 pub use journal::{DirtyRows, PatchBatch};
-pub use log::{PendingCall, TranscriptLog};
+pub use log::{PendingCall, TranscriptLog, kept};
 pub use replay::{REPLAY_CHARS, Replay, ReplayedBlock, RequestView, replay, tool_input};
 pub use reports::{duration, labelled_output, report_text, reports_text};
 

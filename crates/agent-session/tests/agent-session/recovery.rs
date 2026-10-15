@@ -431,7 +431,7 @@ async fn retry_reruns_the_last_input_turn_with_its_steers_as_one_replacement() {
     // send again, and the steer it keeps, now right after the message.
     assert!(matches!(
         &patches.borrow()[..2],
-        [TranscriptPatch::Truncate { length: 1 }, TranscriptPatch::Add { index: 1, value }]
+        [TranscriptPatch::Truncate { length: 1 }, TranscriptPatch::Add { index: 1, value, .. }]
             if value == &blocks[1]
     ));
     let requests = provider.requests();
@@ -444,6 +444,18 @@ async fn retry_reruns_the_last_input_turn_with_its_steers_as_one_replacement() {
     assert_eq!(
         kinds(&checkpoint.transcript),
         ["user", "steer", "text", "response"]
+    );
+    // The answer the retry replaced stays stored on its branch, and is no
+    // version the page offers (`message-editing.md` § Versions).
+    assert!(store.rows(&root()).iter().any(|row| matches!(row, Block::Text(text) if text.text == "after the steer")));
+    assert!(checkpoint.versions.is_empty(), "{:?}", checkpoint.versions);
+    assert!(
+        patches
+            .borrow()
+            .iter()
+            .all(|patch| !matches!(patch, TranscriptPatch::Add { versions: Some(_), .. })),
+        "{:?}",
+        patches.borrow()
     );
 }
 

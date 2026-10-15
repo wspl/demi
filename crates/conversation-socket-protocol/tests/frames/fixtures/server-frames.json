@@ -389,7 +389,7 @@
       "phase": "running",
       "startedAt": "2026-09-21T14:13:20.000Z",
       "endedAt": null,
-      "cwd": "/home/demi/app"
+      "cwd": "/home/demi/app", "onPath": true
     }
   },
   {
@@ -413,7 +413,7 @@
       "phase": "running",
       "startedAt": "2026-09-21T14:13:20.000Z",
       "endedAt": null,
-      "cwd": "/home/demi/lib"
+      "cwd": "/home/demi/lib", "onPath": true
     }
   },
   {
@@ -438,7 +438,7 @@
       "startedAt": "2026-09-21T14:13:20.000Z",
       "endedAt": "2026-09-21T14:15:00.000Z",
       "result": "All 12 tests pass.",
-      "cwd": "/home/demi/lib"
+      "cwd": "/home/demi/lib", "onPath": true
     }
   },
   {
