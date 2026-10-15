@@ -12,40 +12,40 @@
     "receipt": {
       "allowed": "이 대화에서 다음 작업을 허용했습니다: {action}",
       "denied": "이 대화에서 다음 작업을 거부했습니다: {action}",
-      "moved": "이 대화를 {host} · {path}(으)로 이동했습니다",
+      "moved": "이 대화를 이동했습니다: {host} · {path}",
       "moveFailed": "이동하지 못했습니다: {reason}",
       "fromMain": "{agent}의 메시지",
       "mainAgent": "메인 에이전트",
       "fromAgent": "에이전트의 메시지",
-      "finished": "에이전트가 완료되었습니다",
+      "finished": "에이전트가 작업을 마쳤습니다",
       "failed": "에이전트가 실패했습니다",
       "stopped": "에이전트가 중지되었습니다",
       "unnamed": "에이전트 {number}"
     },
     "report": {
       "finished": "명령이 완료되었습니다",
-      "failed": "명령이 종료 코드 {code}(으)로 실패했습니다",
+      "failed": "명령이 실패했습니다(종료 코드 {code})",
       "stoppedByYou": "사용자가 명령을 중지했습니다",
       "stoppedByAgent": "다른 에이전트가 명령을 중지했습니다",
       "stopped": "명령이 중지되었습니다",
-      "lost": "명령을 추적할 수 없습니다",
+      "lost": "명령 상태를 확인할 수 없습니다",
       "untitled": "명령 {id}"
     },
     "runEnd": {
       "failed": "실패",
       "stopped": "중지됨",
       "stopping": "중지하는 중…",
-      "lost": "유실됨",
+      "lost": "상태 알 수 없음",
       "exitCode": "종료 코드 {code}"
     },
     "commandStatus": {
-      "lost": "유실됨",
-      "lostWhy": "유실됨: {reason}",
+      "lost": "상태 알 수 없음",
+      "lostWhy": "상태 알 수 없음: {reason}",
       "stopping": "중지하는 중…",
       "running": "{span} 동안 실행 중",
       "exited": "{span} 후 종료됨",
       "exitedZero": "{span} 후 종료 코드 0으로 종료됨",
-      "failed": "{span} 후 종료 코드 {code}(으)로 실패함",
+      "failed": "{span} 후 실패함(종료 코드 {code})",
       "stopped": "{span} 후 중지됨"
     },
     "thinking": {
@@ -62,15 +62,15 @@
       "doneTo": "컨텍스트를 약 {tokens} 토큰으로 압축했습니다"
     },
     "stopped": "중지됨",
-    "queued": "큐에 대기됨 {count}개",
+    "queued": "대기 중 {count}개",
     "user": {
       "edit": "편집",
-      "showMore": "자세히 표시",
-      "showLess": "간단히 표시",
+      "showMore": "더 보기",
+      "showLess": "간략히 보기",
       "sendsNext": "에이전트의 다음 단계에서 보내집니다",
       "sendNow": "지금 보내기",
       "recall": "회수",
-      "recalled": "메시지를 회수함",
+      "recalled": "메시지 회수됨",
       "notDelivered": "이 메시지를 전달하지 못했습니다."
     },
     "assistant": {
@@ -83,19 +83,19 @@
       "rejected": "편집이 수락되지 않았습니다.",
       "unconfirmed": "편집을 확인할 수 없음"
     },
-    "connecting": "연결하는 중",
+    "connecting": "연결 중",
     "newFile": "새 파일",
     "picture": {
       "open": "{name} 크게 열기",
       "play": "{name} 재생"
     },
     "gone": {
-      "line": "{kind}을(를) 저장하지 않음: {reason}",
+      "line": "{kind} 저장 안 됨: {reason}",
       "image": "이미지",
-      "video": "비디오",
+      "video": "동영상",
       "document": "문서"
     },
-    "shellFallback": "shell 명령 실행",
+    "shellFallback": "셸 명령 실행",
     "turnFailed": "턴이 실패했습니다.",
     "failureResets": "{failure} {reset}됩니다.",
     "work": {
@@ -112,7 +112,7 @@
         "failed": "명령 {count}개 실패함",
         "stopped": "명령 {count}개 중지됨",
         "stopping": "명령 {count}개 중지하는 중",
-        "lost": "명령 {count}개 유실됨"
+        "lost": "명령 {count}개 상태 알 수 없음"
       },
       "agent": {
         "finished": "에이전트 {count}개 완료됨",
@@ -142,17 +142,17 @@
     "none": "실행 중인 에이전트 없음",
     "completed": "완료됨",
     "searchCompleted": "완료된 항목 검색",
-    "noneCompleted": "완료된 하위 에이전트 없음",
+    "noneCompleted": "완료된 서브에이전트 없음",
     "thinkingOff": "생각 끔"
   },
   "terminals": {
-    "endCommand": "명령 종료",
+    "endCommand": "명령 중지",
     "closeTab": "탭 닫기",
     "chip": "실행 중 {count}개"
   },
   "session": {
-    "loading": "대화를 로드하는 중…",
-    "loadFailed": "이 대화를 로드할 수 없습니다.",
+    "loading": "대화를 불러오는 중…",
+    "loadFailed": "이 대화를 불러올 수 없습니다.",
     "notFound": "대화를 찾을 수 없음",
     "noneOpen": "열린 대화 없음",
     "empty": "메시지 없음",
@@ -162,35 +162,35 @@
     "closePanel": "패널 닫기",
     "options": "{title}, 대화 옵션",
     "hostState": "{name} {state}",
-    "renameTitle": "대화 이름 바꾸기",
+    "renameTitle": "대화 이름 변경",
     "titleLabel": "대화 제목",
     "runsOn": "실행 위치",
     "backToConversation": "대화",
     "archived": "이 대화는 보관되었습니다.",
-    "restore": "대화 복원"
+    "restore": "대화 보관 해제"
   },
   "dock": {
     "scrollToBottom": "맨 아래로 스크롤",
     "resume": "재개",
     "continue": "계속",
-    "stillOffline": "{name}이(가) 아직 오프라인입니다",
-    "continueWith": "{label}(으)로 계속"
+    "stillOffline": "{name} 호스트는 아직 오프라인입니다",
+    "continueWith": "다음으로 계속: {label}"
   },
   "notices": {
-    "hostOffline": "{name}이(가) 오프라인입니다.",
+    "hostOffline": "{name} 호스트가 오프라인입니다.",
     "moveHost": "다른 호스트로 이동…",
-    "pluginsChanged": "플러그 인이 변경됨",
-    "replacedDraft": "이후 저장으로 {draft}이(가) 바뀌었습니다",
+    "pluginsChanged": "플러그인 변경됨",
+    "replacedDraft": "나중에 저장한 내용으로 대체되었습니다: {draft}",
     "quoted": "“{text}”",
     "restore": "복원",
-    "dismiss": "해제",
-    "dismissDraft": "바뀐 초안 해제"
+    "dismiss": "닫기",
+    "dismissDraft": "바뀐 초안 닫기"
   },
   "composer": {
-    "placeholder": "무엇이든 물어보십시오…",
+    "placeholder": "무엇이든 물어보세요…",
     "message": "메시지",
     "noModels": "사용 가능한 모델 없음",
-    "configureModels": "모델 구성",
+    "configureModels": "모델 설정",
     "attach": "첨부",
     "attachFiles": "파일 첨부…",
     "attachLocalFiles": "로컬 파일 첨부…",
@@ -201,9 +201,9 @@
     "stop": "중지",
     "send": "보내기",
     "saveAndResend": "저장 후 다시 보내기",
-    "sendOtherWay": "{way} · {keys}로 {other}",
+    "sendOtherWay": "{way} · {keys} 키로 {other}",
     "modelUnavailable": "이 모델을 사용할 수 없습니다. 다른 모델을 선택한 후 보내십시오.",
-    "modelsLoading": "모델을 아직 로드하는 중입니다.",
+    "modelsLoading": "모델을 아직 불러오는 중입니다.",
     "couldntAttach": "첨부할 수 없음",
     "afterEdit": "편집 후 사용 가능",
     "saved": {
@@ -217,18 +217,18 @@
   "attachments": {
     "uploading": "업로드 중 {percent}% · {name}",
     "attaching": "첨부하는 중 · {name}",
-    "failed": "{name}을(를) 업로드하지 못했습니다. 다시 시도하거나 삭제하십시오.",
-    "refused": "{name}이(가) 비어 있거나 {limit}을(를) 초과합니다.",
+    "failed": "{name} 업로드에 실패했습니다. 다시 시도하거나 삭제하십시오.",
+    "refused": "{name}: 비어 있거나 크기 한도({limit})를 초과합니다.",
     "retryOrRemove": "업로드하지 못한 첨부 파일을 다시 시도하거나 제거하십시오",
     "waitForUpload": "첨부 파일 업로드가 끝날 때까지 기다리십시오",
     "pastedNames": "{list}: 대신 이름을 붙여 넣었습니다.",
-    "couldntCopyPicture": "그림을 복사할 수 없음"
+    "couldntCopyPicture": "이미지를 복사할 수 없음"
   },
   "models": {
-    "parent": "상위 모델",
+    "parent": "상위 에이전트의 모델",
     "fast": "빠른 모드",
     "reasoning": "추론",
-    "context": "컨텍스트",
+    "context": "컨텍스트 길이",
     "model": "모델",
     "off": "끄기",
     "default": "기본값({window})",
@@ -240,26 +240,26 @@
       "xhigh": "매우 높음",
       "max": "최대"
     },
-    "loading": "모델을 로드하는 중…",
-    "loadFailed": "모델을 로드할 수 없습니다.",
+    "loading": "모델을 불러오는 중…",
+    "loadFailed": "모델을 불러올 수 없습니다.",
     "unavailable": "이 모델을 사용할 수 없습니다. 다른 모델을 선택한 후 보내십시오."
   },
   "workflows": {
     "label": "워크플로",
     "labelTip": "워크플로: {name}",
     "default": "기본값",
-    "none": "하위 에이전트 없음",
+    "none": "서브에이전트 없음",
     "reading": "워크플로를 읽는 중…",
     "failed": "워크플로를 읽을 수 없음",
     "unavailable": "워크플로를 사용할 수 없음",
     "gone": "이 워크플로가 더 이상 프로젝트에 없습니다. 다른 워크플로를 선택하십시오."
   },
   "context": {
-    "window": "컨텍스트 창",
-    "windowUsed": "컨텍스트 창, {percent} 사용됨",
+    "window": "컨텍스트 길이",
+    "windowUsed": "컨텍스트 길이, {percent} 사용",
     "tip": "컨텍스트 {figure}",
     "compacting": "컨텍스트 압축 중…",
-    "unavailable": "컨텍스트 사용량을 사용할 수 없음",
+    "unavailable": "컨텍스트 사용량을 확인할 수 없음",
     "compact": "압축",
     "untilCompaction": "압축까지 {tokens}",
     "afterTurn": "턴이 끝난 후 사용 가능",
@@ -274,7 +274,7 @@
       "systemPrompt": "시스템 프롬프트",
       "commands": "명령",
       "instructions": "지침",
-      "skills": "기술",
+      "skills": "스킬",
       "otherContext": "기타 컨텍스트",
       "summary": "요약",
       "compactionBuffer": "압축 버퍼",
@@ -292,11 +292,11 @@
     "more": "더 보기",
     "windowHeight": "창 높이",
     "duplicate": "탭 복제",
-    "closeOthers": "기타 항목 닫기",
-    "closeRight": "오른쪽에 있는 항목 닫기",
-    "closeLeft": "왼쪽에 있는 항목 닫기",
+    "closeOthers": "다른 탭 닫기",
+    "closeRight": "오른쪽 탭 닫기",
+    "closeLeft": "왼쪽 탭 닫기",
     "cannotShow": "이 탭을 표시할 수 없습니다.",
     "nothingOpen": "열린 항목 없음",
-    "noFiles": "파일 또는 변경 내용 없음"
+    "noFiles": "파일 또는 변경 사항 없음"
   }
 }
