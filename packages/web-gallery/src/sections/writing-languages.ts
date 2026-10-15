@@ -10,11 +10,11 @@ import type { TextRule } from '../components/GalleryTextRules.vue'
 
 /** The rule every language follows first. */
 export const everyLanguageRule: TextRule = {
-  title: 'VS Code’s translation first',
-  rule: 'Each language takes the wording, form and tone VS Code’s translation in that language uses for the same thing (its language packs, microsoft/vscode-loc), then macOS’s, then Microsoft’s and Apple’s style guides for the language. VS Code wins where they differ. The glossaries below follow it: where a term of Demi’s is one of VS Code’s, it is VS Code’s word.',
-  right: ['帐户', '提交更改', '終端機', 'コミットされていない変更', '작업 영역'],
-  wrong: ['账号', '未コミットの変更', '작업 공간'],
-  source: 'VS Code language packs (microsoft/vscode-loc); macOS 26; Microsoft and Apple style guides',
+  title: 'The best wording among many products',
+  rule: 'No one source decides a word. Compare how products that speak the language well say the same thing: AI apps of the same kind (Codex, ChatGPT, Claude), the system’s own apps (macOS, iOS), and developer tools such as VS Code for developer concepts only. Take what a user of that region reads without stopping, everyday words over a vendor’s house terms, and never a product’s word for a different thing that shares an English name. Each glossary entry names the products it was weighed against.',
+  right: ['归档', '供应商', '帳號', 'チャット', '기기'],
+  wrong: ['存档', '提供程序', '帳戶', '장치'],
+  source: 'Codex, ChatGPT, Claude, macOS and iOS; VS Code for developer concepts',
 }
 
 /** The rules the English page holds that hold in every language too. */
@@ -31,7 +31,7 @@ export interface LanguageWriting {
   /** The section's title: the language's name in itself. */
   title: string
   rules: readonly TextRule[]
-  /** Demi's terms: the English term, this language's, and why it is not VS Code's where it is not. */
+  /** Demi's terms: the English term, this language's, and the products it follows. */
   glossary: readonly (readonly [string, string, string?])[]
 }
 
