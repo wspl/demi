@@ -319,7 +319,7 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_once_the_user_allows
 async fn a_move_that_fails_leaves_the_conversation_in_place_and_wakes_the_root_with_the_reason() {
     let scripts = Arc::new(Scripts::default());
     let (harness, backend, master, laptop, root, _) = tree_on(&scripts, Harness::new()).await;
-    let ledable = project(&backend, &master, &laptop, "ledable-app").await;
+    let website = project(&backend, &master, &laptop, "website").await;
     grant_organize(&harness, FIRST);
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
@@ -328,17 +328,17 @@ async fn a_move_that_fails_leaves_the_conversation_in_place_and_wakes_the_root_w
     scripts.root(
         FIRST,
         vec![
-            shell("t1", &format!("demi conversation move ledable-app; {WAIT}")),
+            shell("t1", &format!("demi conversation move website; {WAIT}")),
             say("asked"),
         ],
     );
     scripts.root(FIRST, vec![say("noted")]);
     socket
-        .send(&crate::conversations::send("m1", "Move into ledable-app"))
+        .send(&crate::conversations::send("m1", "Move into website"))
         .await;
     eventually("the move waits", || async { pending(&harness, FIRST) }).await;
     let deleted = backend
-        .delete(&format!("/api/workspaces/{ledable}"), &master)
+        .delete(&format!("/api/workspaces/{website}"), &master)
         .await;
     assert_eq!(deleted.status, StatusCode::NO_CONTENT);
     std::fs::write(format!("{root}/go"), "").unwrap();
@@ -486,7 +486,7 @@ async fn a_move_a_restart_cut_off_is_made_at_the_next_start_even_to_an_offline_d
     let scripts = Arc::new(Scripts::default());
     let (harness, backend, master, _laptop, _, _) = tree_on(&scripts, Harness::new()).await;
     let mut studio = backend.pair(&master, "studio").await;
-    let ledable = project(&backend, &master, &studio, "ledable-app").await;
+    let website = project(&backend, &master, &studio, "website").await;
     studio.runner.stop().await;
     let address = backend.address();
     backend.close().await;
@@ -498,12 +498,12 @@ async fn a_move_a_restart_cut_off_is_made_at_the_next_start_even_to_an_offline_d
         .execute(
             "UPDATE conversations SET pending_id = 'm1', pending_kind = 'workspace', pending_workspace_id = ?2
              WHERE id = ?1",
-            [FIRST, ledable.as_str()],
+            [FIRST, website.as_str()],
         )
         .unwrap();
     let backend = harness.start_at(address).await;
     eventually("the move is made", || async {
-        target_of(&harness, FIRST) == ("workspace".to_owned(), Some(ledable.clone()))
+        target_of(&harness, FIRST) == ("workspace".to_owned(), Some(website.clone()))
     })
     .await;
     assert!(!pending(&harness, FIRST));

@@ -111,7 +111,7 @@ mod tests {
             HostIdentity {
                 uid: 0,
                 gid: 0,
-                hostname: "DESKTOP-B5O1P43".into(),
+                hostname: "DESKTOP-4KQ7M2A".into(),
                 home_dir: r"C:\Users\ana".into(),
                 paths: HostPaths::Windows,
             },

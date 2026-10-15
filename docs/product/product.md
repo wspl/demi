@@ -434,7 +434,7 @@ since the agent's work so far was done in the old place:
 ```text
   Move this conversation to MacBook Pro?
 
-  It will run in ~/code/ledable-app. Files on the Cloud stay there.
+  It will run in ~/code/website. Files on the Cloud stay there.
   The agent learns of the move when it next works, or now if you tell it.
 
                     [ Cancel ]  [ Move ]  [ Move and Tell Agent ]
@@ -443,7 +443,7 @@ since the agent's work so far was done in the old place:
 *Move and Tell Agent*, the default, moves it and wakes the agent with a
 message from the user that names the old and the new place, so it checks what
 the move means for its work and says so; the transcript shows it as a receipt
-row, *You moved this conversation to MacBook Pro · ~/code/ledable-app*. *Move*
+row, *You moved this conversation to MacBook Pro · ~/code/website*. *Move*
 moves it only, and the agent reads the move from its execution context at its
 next turn ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
 A new conversation that has sent nothing moves without asking.
@@ -456,7 +456,7 @@ work is idle:
   Stop the agent and move this conversation to MacBook Pro?
 
   The agent and 2 running commands will stop.
-  It will run in ~/code/ledable-app. Files on the Cloud stay there.
+  It will run in ~/code/website. Files on the Cloud stay there.
 
                 [ Cancel ]  [ Stop and Move ]  [ Stop, Move and Tell Agent ]
 ```
@@ -1042,9 +1042,9 @@ message full of package names still gets an English title. The instruction
 describes the place rather than listing a length per language: one line of a
 narrow sidebar about 24 columns wide, where a Latin character takes one column
 and a Chinese, Japanese or Korean character two, and the overflow is cut off.
-It holds no examples: a model copies an example's language and shape, as one
-gave an English request the half-Chinese title "lodash moment request 维护状态"
-after the instruction's examples ended in three Chinese ones. It also asks for natural grammar,
+It holds no examples: a model copies an example's language and shape, as a model
+gives an English request a half-Chinese title when the instruction's
+examples end in Chinese ones. It also asks for natural grammar,
 exact technical terms, file names, numbers and error codes kept, no tool
 names, no leading "the" or "my", and something meaningful even for a greeting.
 

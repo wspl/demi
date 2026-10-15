@@ -140,7 +140,7 @@ and the model reads:
 
 ```text
 The user moved this conversation from Cloud (/home/demi/sessions/0f4e…) to
-MacBook Pro (/Users/alex/code/ledable-app). Files did not move. Check what this
+MacBook Pro (/Users/alex/code/website). Files did not move. Check what this
 means for the work so far, and tell the user.
 ```
 
@@ -238,7 +238,7 @@ Each device appears once across the primary and attached bindings.
 An attached host goes by its device's name, the one the user sees in the
 header's menu and in Settings, with a numeric suffix when two names collide;
 nobody names it otherwise, so the user never meets a host under a name the
-agent made up, such as `lark` for `dc03-pff-200`. The name is read from the
+agent made up, such as `buildbox` for `ci-runner-07`. The name is read from the
 device whenever the hosts are listed, never stored, and no name stands for
 two hosts: of two attached devices named `laptop`, the one attached first is
 `laptop` and the other `laptop-2`; an attached device named as the primary
@@ -290,10 +290,10 @@ nothing: seeing a device is not reaching it.
 
 For example, the user has long reached a server through ssh, then pairs it
 as `build-box` and keeps a project there. In a conversation on the Cloud the
-agent runs `demi host move build-box /srv/ledable`; the card asks *Allow this
+agent runs `demi host move build-box /srv/website`; the card asks *Allow this
 conversation to reach build-box?*, the user allows it, and when the
-conversation's work ends it runs on build-box in `/srv/ledable`, the Cloud
-attached. A later `demi host move Cloud /home/demi/ledable` asks nothing,
+conversation's work ends it runs on build-box in `/srv/website`, the Cloud
+attached. A later `demi host move Cloud /home/demi/website` asks nothing,
 since the Cloud was the conversation's own.
 
 ## What the agent can change
