@@ -45,7 +45,8 @@ const hasPinnedSlot = () => !!slots['pinned']
 // Read at render time: a conditional icon slot changes between renders, and slots are not reactive.
 const showIcon = () => !!slots['icon']
 // A row whose block the page holds light opens to read it whole, before its body is there.
-const whole = useWholeBlock()
+// However the row opens, by its face or by its owner, a light block is read whole.
+const whole = useWholeBlock(() => isOpen.value)
 const isExpandable = computed(() => props.expandable || whole.light.value || hasPinnedSlot() || hasBodySlot() || !!props.errorText)
 const isLoading = computed(() => props.loading || whole.loading.value)
 const bodyArea = ref<InstanceType<typeof ScrollArea>>()
@@ -60,13 +61,6 @@ function toggle(): void {
     isOpen.value = !isOpen.value
   }
 }
-
-// However the row opens, by its face or by its owner, a light block is read whole.
-watch(isOpen, (open) => {
-  if (open) {
-    whole.open()
-  }
-})
 
 useFollowEnd(bodyScroll, bodyContent, () => !!props.stickBottom)
 
