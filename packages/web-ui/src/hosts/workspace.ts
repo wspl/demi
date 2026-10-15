@@ -91,7 +91,7 @@ export function usePairedSelection(
 }
 
 /** What New Project's button does with a device's directory: take it as it is, or make it first. */
-export type DeviceProjectAction = 'Add Project' | 'Create Project'
+export type DeviceProjectAction = 'add' | 'create'
 
 /**
  * New Project's button for a directory on a device (`product.md`
@@ -115,5 +115,5 @@ export function useDeviceProjectAction(options: {
       known.value = answer
     }
   }, { immediate: true })
-  return computed(() => (known.value ? 'Add Project' : 'Create Project'))
+  return computed(() => (known.value ? 'add' : 'create'))
 }

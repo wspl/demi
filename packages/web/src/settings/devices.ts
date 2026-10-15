@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import { defineStore } from 'pinia'
 import { useSession } from '../auth/session'
 import { computed, onScopeDispose, ref, watch } from 'vue'
@@ -59,7 +60,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       await readResponse(response, revokedDeviceSchema)
     } catch (error) {
       if (!current.signal.aborted) {
-        reportError('Could Not Revoke Device', error, { userVisible: true })
+        reportError(t('devices.revokeFailed'), error, { userVisible: true })
       }
     }
   }
@@ -105,12 +106,12 @@ export const useDeviceSettings = defineStore('device-settings', () => {
 
   /** Gives a paired device a new name, as the backend keeps it: without the spaces around it. */
   function rename(id: string, name: string): Promise<void> {
-    return change(id, { name: name.trim() }, 'Could Not Rename Device')
+    return change(id, { name: name.trim() }, t('devices.renameFailed'))
   }
 
   /** Sets a paired device's route, which every page of the user's follows. */
   function setRoute(id: string, route: DeviceRoute): Promise<void> {
-    return change(id, { route }, 'Could Not Change the Route')
+    return change(id, { route }, t('devices.routeFailed'))
   }
 
   async function resetCloud(operationId: string): Promise<void> {
@@ -134,7 +135,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         }
         resetError.value = shownError(
           error,
-          refused ? undefined : 'The reset could not start. Check your connection and try again.',
+          refused ? undefined : t('devices.resetNotStarted'),
         )
       }
     }

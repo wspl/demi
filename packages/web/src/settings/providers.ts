@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { useSession } from '../auth/session'
@@ -117,21 +118,21 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   function failureTitle(operation: SettingsProviderOperation): HeadlineText {
     switch (operation.kind) {
       case 'saving':
-        return 'Could Not Save the Provider'
+        return t('providers.saveFailed')
       case 'testing':
-        return 'Could Not Test the Provider'
+        return t('providers.testFailed')
       case 'refreshing':
-        return 'Could Not Refresh the Models'
+        return t('providers.refreshModelsFailed')
       case 'removing':
-        return 'Could Not Remove the Provider'
+        return t('providers.removeFailed')
       case 'cli':
-        return 'Could Not Update the Command-Line Tool'
+        return t('providers.cliUpdateFailed')
       case 'account':
         switch (operation.action) {
           case 'remove':
-            return 'Could Not Remove the Account'
+            return t('providers.removeAccountFailed')
           case 'test':
-            return 'Could Not Test the Account'
+            return t('providers.testAccountFailed')
         }
     }
   }
@@ -240,7 +241,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       select(saved.provider.id)
     }).catch((error) => {
       if (!current.signal.aborted) {
-        report('Could Not Add the Provider', error)
+        report(t('providers.addFailed'), error)
       }
     })
   }
@@ -502,7 +503,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     }
     void readCli(provider.id, false, lifetime.signal).catch((error) => {
       if (!lifetime.signal.aborted) {
-        reportError('Could Not Read the Command-Line Tool', error)
+        reportError(t('providers.cliReadFailed'), error)
       }
     })
   }
@@ -512,7 +513,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       try {
         await readCli(provider.id, true, signal)
       } catch (error) {
-        report('Could Not Check for Updates', error)
+        report(t('providers.checkUpdatesFailed'), error)
       }
     })
   }
@@ -523,7 +524,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         await apiRequest(`/providers/${encodeURIComponent(provider.id)}/cli/install`, { method: 'POST', signal })
         await readCli(provider.id, false, lifetime.signal)
       } catch (error) {
-        report('Could Not Install the Command-Line Tool', error)
+        report(t('providers.cliInstallFailed'), error)
       }
     })
   }
@@ -570,7 +571,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         usageFailures.value[provider.id] ??= {}
         usageFailures.value[provider.id]![accountId] = shownError(error)
         // The account's line shows it, wherever its windows show; no toast.
-        reportError('Could Not Refresh Usage', error)
+        reportError(t('providers.usageFailed'), error)
       }
     } finally {
       if (current === lifetime) {
@@ -645,7 +646,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       })
       .catch((error) => {
         shown.drop()
-        report('Could Not Reorder the Accounts', error)
+        report(t('providers.reorderFailed'), error)
       })
   }
 
@@ -680,7 +681,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       })
       .catch((error) => {
         shown.drop()
-        report('Could Not Switch Accounts', error)
+        report(t('providers.switchFailed'), error)
         return false
       })
   }
@@ -778,7 +779,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     if (!listed) {
       // Gone from the list while it ran, as when the server restarted.
       return shown.seen
-        ? { kind: 'failed', message: 'This sign-in is no longer running.', requestId: null }
+        ? { kind: 'failed', message: t('providers.loginStopped'), requestId: null }
         : { kind: 'starting', stage: 'preparing' }
     }
     const state = listed.login
@@ -849,7 +850,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   async function cancelLogin(id: string): Promise<void> {
     await apiRequest(`/providers/subscription-login/${encodeURIComponent(id)}`, { method: 'DELETE' })
-      .catch((error: unknown) => report('Could Not Cancel the Sign-In', error))
+      .catch((error: unknown) => report(t('providers.cancelLoginFailed'), error))
   }
 
   /**

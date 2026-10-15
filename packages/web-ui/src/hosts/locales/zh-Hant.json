@@ -1,0 +1,58 @@
+{
+  "menu": {
+    "where": "此對話的執行位置",
+    "runOn": "執行於",
+    "addDevice": "新增裝置…",
+    "attached": "已附加",
+    "detach": "中斷連結"
+  },
+  "lock": {
+    "archived": "此對話已封存。",
+    "moving": "此對話正在移動。"
+  },
+  "choices": {
+    "offline": "此裝置已離線。"
+  },
+  "move": {
+    "title": "將此對話移到 {host}？",
+    "titleStop": "停止代理程式並將此對話移到 {host}？",
+    "runsHome": "它將在該處的主目錄中執行。",
+    "runsIn": "它將在 {directory} 中執行。",
+    "runsOwn": "它將在該處的專屬目錄中執行。",
+    "filesStay": "{host} 上的檔案會保留在原處。",
+    "agentLearns": "代理程式會在下次工作時得知此移動，或在你告知時立即得知。",
+    "stopAndMove": "停止並移動",
+    "move": "移動",
+    "stopMoveTell": "停止、移動並告知代理程式",
+    "moveAndTell": "移動並告知代理程式"
+  },
+  "stop": {
+    "agent": "代理程式",
+    "subagents": "{count} 個子代理程式",
+    "commands": "{count} 個命令",
+    "sentence": "{list}將停止。"
+  },
+  "project": {
+    "title": "新增專案",
+    "selectFolder": "選取資料夾",
+    "loading": "正在載入裝置…",
+    "cloudDescription": "受管理的工作區，立即可用。",
+    "device": "裝置",
+    "deviceDescription": "你的某台裝置上的目錄。",
+    "chooseDevice": "選擇裝置",
+    "name": "專案名稱",
+    "addDevice": "新增裝置…",
+    "noDevices": "沒有裝置",
+    "directory": "目錄",
+    "browse": "瀏覽…",
+    "called": "專案將命名為 {name}。",
+    "takesName": "專案將使用資料夾的名稱。",
+    "add": "新增專案",
+    "create": "建立專案"
+  },
+  "directory": {
+    "switch": "切換目錄",
+    "chooseAnother": "選擇其他目錄…",
+    "useThis": "使用此資料夾"
+  }
+}

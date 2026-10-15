@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import { computed } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
@@ -25,7 +27,7 @@ const emit = defineEmits<{
 
 const one = computed(() => props.titles.length === 1)
 const title = computed(() =>
-  one.value ? `Delete “${props.titles[0]}”?` : `Delete ${props.titles.length} Conversations?`,
+  one.value ? t('delete.title', { title: props.titles[0] ?? '' }) : t('delete.titleMany', { count: props.titles.length }),
 )
 </script>
 
@@ -34,18 +36,18 @@ const title = computed(() =>
     :is-open="isOpen"
     :overlay-store="overlayStore"
     :title="title"
-    action="Delete"
+    :action="uiText('common.delete')"
     @close="emit('close')"
     @confirm="onDelete?.()"
   >
     <p v-if="one">
-      Its messages and files are deleted. This cannot be undone.
+      {{ t('delete.one') }}
     </p>
     <p v-else>
-      Their messages and files are deleted. This cannot be undone.
+      {{ t('delete.many') }}
     </p>
     <p>
-      {{ one ? 'Files it changed stay in the project.' : 'Files they changed stay in their projects.' }}
+      {{ one ? t('delete.filesOne') : t('delete.filesMany') }}
     </p>
   </ConfirmDialog>
 </template>

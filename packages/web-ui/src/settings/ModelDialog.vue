@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
-import { upperFirst } from '@demicodes/utils'
+import { effortLabel } from './efforts'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Checkbox from '@demicodes/web-ui/ui/Checkbox.vue'
@@ -79,12 +81,12 @@ function clone(m: SettingsModelDraft): SettingsModelDraft {
 
 const editable = computed(() => props.mode === 'edit')
 const title = computed(() =>
-  props.mode === 'edit' ? 'Edit Model' : draft.value.name || draft.value.id,
+  props.mode === 'edit' ? t('modelDialog.edit') : draft.value.name || draft.value.id,
 )
 
 /** Why the id cannot be saved, said as the user reads it; null when it can. */
 const idProblem = computed(() =>
-  props.takenIds?.includes(draft.value.id.trim()) ? 'Another model of this provider has this ID' : null,
+  props.takenIds?.includes(draft.value.id.trim()) ? t('modelDialog.duplicateId') : null,
 )
 
 function toggleEffort(effort: string) {
@@ -165,26 +167,26 @@ function save(): void {
         <div
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
-          <SettingsRow v-if="editable" label="Model ID">
+          <SettingsRow v-if="editable" :label="t('modelDialog.id')">
             <template v-if="idProblem" #detail>
               <InlineError :message="idProblem" />
             </template>
             <TextInput
               v-model="draft.id"
-              aria-label="Model ID"
+              :aria-label="t('modelDialog.id')"
               literal
               class="w-64 max-w-full font-mono"
             />
           </SettingsRow>
           <SettingsRow
-            label="Name"
-            :description="editable ? 'Shown in the model menu. Defaults to the ID.' : undefined"
+            :label="t('modelDialog.name')"
+            :description="editable ? t('modelDialog.nameDescription') : undefined"
             :compact="!editable"
           >
             <TextInput
               v-if="editable"
               v-model="draft.name"
-              aria-label="Name"
+              :aria-label="t('modelDialog.name')"
               :placeholder="draft.id"
               class="w-64 max-w-full"
             />
@@ -192,7 +194,7 @@ function save(): void {
               draft.name || '—'
             }}</span>
           </SettingsRow>
-          <SettingsRow label="Context window" :compact="!editable">
+          <SettingsRow :label="t('modelDialog.contextWindow')" :compact="!editable">
             <TokenInput
               v-if="editable"
               v-model="draft.contextWindow"
@@ -203,8 +205,8 @@ function save(): void {
             }}</span>
           </SettingsRow>
           <SettingsRow
-            label="Max output"
-            :description="editable ? 'Optional' : undefined"
+            :label="t('modelDialog.maxOutput')"
+            :description="editable ? t('modelDialog.optional') : undefined"
             :compact="!editable"
           >
             <TokenInput
@@ -217,8 +219,8 @@ function save(): void {
             }}</span>
           </SettingsRow>
           <SettingsRow
-            label="Reasoning"
-            :description="editable ? 'First is the default.' : undefined"
+            :label="t('modelDialog.reasoning')"
+            :description="editable ? t('modelDialog.reasoningDescription') : undefined"
             :compact="!editable"
           >
             <template v-if="editable">
@@ -234,16 +236,16 @@ function save(): void {
                 "
                 @click="toggleEffort(effort)"
               >
-                {{ upperFirst(effort) }}
+                {{ effortLabel(effort) }}
               </button>
             </template>
             <span v-else class="text-chrome text-fg">{{
-              draft.efforts.length ? draft.efforts.map(upperFirst).join(' · ') : 'None'
+              draft.efforts.length ? draft.efforts.map(effortLabel).join(' · ') : t('modelDialog.none')
             }}</span>
           </SettingsRow>
           <SettingsRow
-            label="Fast tier"
-            :description="editable ? 'Optional. Service tier ID.' : undefined"
+            :label="t('modelDialog.fastTier')"
+            :description="editable ? t('modelDialog.fastTierDescription') : undefined"
             :compact="!editable"
           >
             <TextInput
@@ -263,14 +265,14 @@ function save(): void {
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
           <SettingsRow
-            label="Accepted files"
-            :description="editable ? 'Text is always accepted.' : undefined"
+            :label="t('modelDialog.acceptedFiles')"
+            :description="editable ? t('modelDialog.textAlways') : undefined"
             :compact="!editable"
           >
             <span
               v-if="!editable && !draft.extensions?.length"
               class="text-chrome text-fg"
-              >{{ draft.extensions === null ? 'Unknown' : 'Text only' }}</span
+              >{{ draft.extensions === null ? t('modelDialog.unknown') : t('modelDialog.textOnly') }}</span
             >
             <span v-else-if="!editable" class="flex flex-wrap justify-end gap-1"
               ><Tag v-for="ext in draft.extensions" :key="ext">{{
@@ -290,7 +292,7 @@ function save(): void {
                 :model-value="presetState(preset.extensions).checked"
                 :partial="presetState(preset.extensions).partial"
                 label=""
-                :aria-label="`Accept ${preset.label.toLowerCase()}`"
+                :aria-label="t('modelDialog.accept', { label: preset.label.toLowerCase() })"
                 @update:model-value="(on) => setPreset(preset.extensions, on)"
               />
             </SettingsRow>
@@ -305,7 +307,7 @@ function save(): void {
                 v-if="editable"
                 type="button"
                 class="ml-1 text-fg-subtle hover:text-fg"
-                :aria-label="`Remove ${ext}`"
+                :aria-label="t('modelDialog.removeExtension', { ext })"
                 @click="
                   draft.extensions = (draft.extensions ?? []).filter(
                     (e) => e !== ext,
@@ -321,16 +323,16 @@ function save(): void {
       <InlineError v-if="error" class="px-5 pt-3" :message="error.message" :request-id="error.requestId" />
     </div>
     <template v-if="editable" #footer-leading>
-      <Button variant="danger" @click="emit('delete')">Delete Model</Button>
+      <Button variant="danger" @click="emit('delete')">{{ t('modelDialog.delete') }}</Button>
     </template>
     <template v-if="editable" #footer>
-      <Button @click="emit('close')">Cancel</Button>
+      <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
       <Button
         variant="primary"
         :disabled="!canSave"
         :operation="operation"
         @click="save"
-        >Save</Button
+        >{{ uiText('common.save') }}</Button
       >
     </template>
   </Dialog>

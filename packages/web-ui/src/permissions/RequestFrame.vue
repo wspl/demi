@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import type { Component } from 'vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import type { HeadlineText } from '../ui/ui-text'
@@ -34,7 +35,7 @@ defineProps<{
       <h3 class="min-w-0 flex-1 font-medium text-fg-emphasis">
         {{ title }}
       </h3>
-      <span v-if="count > 1" class="shrink-0 tabular-nums text-fg-subtle">1 / {{ count }}</span>
+      <span v-if="count > 1" class="shrink-0 tabular-nums text-fg-subtle">{{ t('request.progress', { position: 1, count }) }}</span>
     </header>
     <slot />
     <footer class="flex flex-wrap justify-end gap-2">

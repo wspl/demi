@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { ref } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { PasskeyOfferOutcome, PasskeyOfferStep } from '../settings/types'
@@ -31,7 +32,7 @@ const step = ref<PasskeyOfferStep>('ask')
   <Wizard
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Add a passkey"
+    :label="t('offer.label')"
     :step="step"
     skippable
     @close="emit('close')"

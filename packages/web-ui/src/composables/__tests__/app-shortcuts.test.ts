@@ -83,8 +83,8 @@ test('a shortcut without ⌘ or ⌃ never runs while the user types, only outsid
 
 test('recording refuses keys that type and keys another action holds, and says why', () => {
   const bindings = APP_SHORTCUTS.map((shortcut) => ({ ...shortcut }))
-  expect(shortcutRefusal('K', 'new', bindings)).toBe('K types text. Use ⌘ or ⌃ with a key.')
-  expect(shortcutRefusal('⇧K', 'new', bindings)).toBe('⇧K types text. Use ⌘ or ⌃ with a key.')
+  expect(shortcutRefusal('K', 'new', bindings)).toBe('K types text. Add ⌘ or ⌃.')
+  expect(shortcutRefusal('⇧K', 'new', bindings)).toBe('⇧K types text. Add ⌘ or ⌃.')
   expect(shortcutRefusal('⌘B', 'new', bindings)).toBe('⌘B is already used by Toggle sidebar.')
   expect(shortcutRefusal('⌃⌥N', 'new', bindings)).toBeNull()
   // A shortcut may keep its own keys.

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed } from 'vue';
 import { accountDisplayName } from '../auth/account-display';
 import Avatar from '@demicodes/web-ui/ui/Avatar.vue';
@@ -52,7 +53,7 @@ const displayName = computed(() =>
            ends in an ellipsis; the avatar keeps its size. -->
       <div
         role="button"
-        aria-label="Account"
+        :aria-label="t('account.label')"
         tabindex="0"
         class="flex h-9 w-full cursor-default select-none items-center gap-2 rounded-md pl-2 pr-1.5 transition-colors duration-200 ease-out phone:h-11 phone:gap-3"
         :class="isOpen ? 'bg-hover' : 'hover:bg-hover'"
@@ -87,7 +88,7 @@ const displayName = computed(() =>
         <MenuDivider />
         <MenuItem
           :icon="Settings"
-          label="Settings"
+          :label="t('account.settings')"
           shortcut="⌘,"
           @select="
             close();
@@ -97,7 +98,7 @@ const displayName = computed(() =>
         <MenuDivider />
         <MenuItem
           :icon="LogOut"
-          label="Sign Out"
+          :label="t('account.signOut')"
           :operation="THIS_SESSION"
           @select="onSignOut?.()"
         />

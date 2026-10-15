@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import AuthPage from './AuthPage.vue'
 import Button from '../ui/Button.vue'
@@ -29,26 +30,22 @@ const emit = defineEmits<{
 <template>
   <AuthPage
     v-if="phase.kind === 'opening'"
-    title="Handing Off"
-    message="Opening the page from your other device."
+    :title="t('handoffPage.openingTitle')"
+    :message="t('handoffPage.openingMessage')"
   >
     <div class="flex items-center gap-2 text-[13px] text-fg-muted" role="status">
       <IndeterminateSpinner />
-      Opening…
+      {{ t('handoffPage.opening') }}
     </div>
   </AuthPage>
   <AuthPage
     v-else
-    title="Couldn’t Hand Off"
-    :message="
-      phase.kind === 'expired'
-        ? 'This code expired or was already used. Show a new code, or sign in here.'
-        : 'The code didn’t work. Show a new code, or sign in here.'
-    "
+    :title="t('handoffPage.failedTitle')"
+    :message="phase.kind === 'expired' ? t('handoffPage.expired') : t('handoffPage.failed')"
   >
     <div class="flex flex-col items-start gap-4">
       <InlineError v-if="phase.kind === 'failed'" :message="phase.message" :request-id="phase.requestId" />
-      <Button variant="primary" @click="emit('signIn')">Sign In</Button>
+      <Button variant="primary" @click="emit('signIn')">{{ t('signIn.title') }}</Button>
     </div>
   </AuthPage>
 </template>

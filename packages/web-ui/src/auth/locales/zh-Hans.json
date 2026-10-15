@@ -1,0 +1,94 @@
+{
+  "password": {
+    "hint": "至少 {count} 个字符。",
+    "tooShort": "密码至少要有 {count} 个字符。",
+    "differ": "两次输入的密码不一致。",
+    "required": "必填"
+  },
+  "page": {
+    "tagline": "思考与创造的地方",
+    "taglineBody": "一切都从对话开始。"
+  },
+  "account": {
+    "fallback": "帐户"
+  },
+  "signIn": {
+    "title": "登录",
+    "message": "使用你的电子邮件登录。",
+    "expired": "你的会话已结束。请重新登录。",
+    "email": "电子邮件",
+    "password": "密码",
+    "passkey": "使用通行密钥登录",
+    "forgot": "忘记密码？请联系管理员重置。",
+    "locked": "登录失败次数过多。请在 {time} 后重试。"
+  },
+  "setup": {
+    "title": "设置 Demi",
+    "message": "创建用于管理 Demi 的所有者帐户。",
+    "taken": "Demi 已完成设置。请使用其所有者帐户登录。",
+    "name": "名称",
+    "email": "电子邮件",
+    "password": "密码",
+    "confirm": "确认密码",
+    "create": "创建帐户",
+    "passkeyTitle": "添加通行密钥",
+    "passkeyMessage": "使用触控 ID、面容 ID 或密码管理器登录。你也可以稍后在“设置”中添加。",
+    "addPasskey": "添加通行密钥",
+    "skip": "跳过"
+  },
+  "choose": {
+    "title": "选择你的密码",
+    "message": "请选择你自己的密码以继续。",
+    "new": "新密码",
+    "confirm": "确认新密码",
+    "signOut": "注销",
+    "choose": "选择密码"
+  },
+  "offer": {
+    "label": "添加通行密钥",
+    "title": "下次使用通行密钥？",
+    "notNow": "暂不",
+    "add": "添加通行密钥",
+    "passwordTitle": "输入你的密码",
+    "passwordMessage": "请确认是你本人，以添加通行密钥。",
+    "password": "密码",
+    "readyTitle": "通行密钥已就绪",
+    "readyMessage": "你的密码管理器中已有 Demi 的通行密钥。"
+  },
+  "unlock": {
+    "ios": "使用面容 ID 或触控 ID 代替密码登录。",
+    "mac": "使用触控 ID 代替密码登录。",
+    "windows": "使用 Windows Hello 代替密码登录。",
+    "android": "使用指纹、面部或屏幕锁定代替密码登录。",
+    "other": "使用设备的屏幕锁定代替密码登录。"
+  },
+  "handoff": {
+    "title": "接力到手机",
+    "confirm": "请确认是你本人。随后你的手机会打开此页面，并登录此帐户。",
+    "scan": "用手机相机扫描。",
+    "done": "已接力到 {browser}。",
+    "codeTitle": "登录代码",
+    "codeConfirm": "请确认是你本人。随后会生成一个代码，用于登录“{name}”手机上的帐户。",
+    "codeScan": "用对方手机的相机扫描。",
+    "codeDone": "已在 {browser} 上登录。",
+    "readyScan": "或用对方手机的相机扫描以登录。",
+    "making": "正在生成代码",
+    "qr": "二维码",
+    "expires": "{left} 后过期",
+    "expired": "此代码已过期。",
+    "usePasskey": "使用通行密钥",
+    "showNew": "显示新代码"
+  },
+  "verify": {
+    "title": "确认是你本人",
+    "password": "密码"
+  },
+  "handoffPage": {
+    "openingTitle": "正在接力",
+    "openingMessage": "正在打开来自你另一台设备的页面。",
+    "opening": "正在打开…",
+    "failedTitle": "无法接力",
+    "expired": "此代码已过期或已被使用。请显示新代码，或在此处登录。",
+    "failed": "此代码无效。请显示新代码，或在此处登录。"
+  }
+}

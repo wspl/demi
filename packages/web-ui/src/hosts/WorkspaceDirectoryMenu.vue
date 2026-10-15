@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, getCurrentInstance, ref } from 'vue'
 import { operations, type Operation } from '../ui/operations'
 import { Folder } from '@lucide/vue'
@@ -105,7 +106,7 @@ defineExpose({ browse })
             <Button
               class="max-w-full"
               variant="ghost"
-              aria-label="Switch directory"
+              :aria-label="t('directory.switch')"
             >
               <Folder :size="ICON_PX.in28" class="shrink-0" />
               <span
@@ -135,7 +136,7 @@ defineExpose({ browse })
             <MenuDivider />
             <MenuItem
               :icon="Folder"
-              label="Choose Another Directory…"
+              :label="t('directory.chooseAnother')"
               :disabled="locked || !browseEnabled"
               @select="browse()"
             />
@@ -154,7 +155,7 @@ defineExpose({ browse })
       :places="browsingHost.places"
       :hosts="hosts"
       :host-id="browsingDevice ?? undefined"
-      confirm-label="Use This Folder"
+      :confirm-label="t('directory.useThis')"
       :confirm-disabled="locked"
       :confirm-operation="choosing"
       @select="selectFolder"

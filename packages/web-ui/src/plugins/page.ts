@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import {
   computed,
   defineComponent,
@@ -25,7 +26,7 @@ import { provideOnScreen } from '../files/on-screen'
 import { reportError } from '../infra/errors'
 import { showToast } from '../infra/toast'
 import type { OverlayStore } from '../overlay/overlayStore'
-import type { SettingsNavGroup, SettingsNavItem } from '../settings/types'
+import type { SettingsGroupId, SettingsNavGroup, SettingsNavItem } from '../settings/types'
 import type { SidebarEntry } from '../sidebar/types'
 import type { IntentName, IntentPayloads, IntentRequest } from './intents'
 import type { OpenUserStream } from './streams'
@@ -356,8 +357,8 @@ export interface PanelKind<Data, Session = undefined> {
 }
 
 export interface PluginSettingsSection {
-  /** The label of the rail's group it joins. */
-  group: TitleText
+  /** The rail's group it joins. */
+  group: SettingsGroupId
   item: SettingsNavItem
   component: Component
   /**
@@ -532,9 +533,9 @@ class UserStateRefusals {
     this.refusing += 1
     if (this.refusing === 1) {
       // What did not read is for a developer, in the console.
-      reportError('Could Not Read the Plugin’s Data', refusal, {
+      reportError(t('dataUnreadable'), refusal, {
         userVisible: true,
-        message: 'Reloading the page may help.',
+        message: t('reloadMayHelp'),
         detail: `the user state of the ${this.plugin} plugin`,
       })
     }
@@ -814,11 +815,11 @@ export function withPluginSections(
     if (!page.settings || !enabled(page.plugin)) {
       continue
     }
-    const group = joined.find((candidate) => candidate.label === page.settings!.group)
+    const group = joined.find((candidate) => candidate.id === page.settings!.group)
     if (group) {
       group.items.push(page.settings.item)
     } else {
-      joined.push({ label: page.settings.group, items: [page.settings.item] })
+      joined.push({ id: page.settings.group, items: [page.settings.item] })
     }
   }
   return joined

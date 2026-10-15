@@ -103,7 +103,8 @@
     "no_model_available": "此对话没有可用的模型。",
     "models_not_loaded": "无法加载模型。{failure}",
     "source_conversation_unavailable": "源对话不可用。",
-    "file_not_owned": "它不在此帐户的文件中。"
+    "file_not_owned": "它不在此帐户的文件中。",
+    "no_passkey": "浏览器未提供通行密钥。"
   },
   "common": {
     "ok": "确定",
@@ -122,6 +123,12 @@
     "loading": "正在加载…",
     "undo": "撤消",
     "cloud": "云",
-    "workspace": "工作区"
+    "workspace": "工作区",
+    "add": "添加",
+    "back": "返回",
+    "continue": "继续",
+    "delete": "删除",
+    "remove": "删除",
+    "save": "保存"
   }
 }

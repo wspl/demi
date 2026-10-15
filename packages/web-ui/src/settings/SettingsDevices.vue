@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed } from 'vue'
 import AsyncRegion from '../ui/AsyncRegion.vue'
@@ -111,8 +112,8 @@ const pageProjects = computed(() =>
   />
   <SettingsPage
     v-else
-    title="Devices"
-    description="Machines that can host a conversation’s working directory."
+    :title="t('devices.title')"
+    :description="t('devices.description')"
   >
     <CloudSettings
       v-if="cloud"
@@ -122,13 +123,13 @@ const pageProjects = computed(() =>
       @reset="emit('resetCloud', $event)"
       @open="cloud.deviceId && emit('show', cloud.deviceId)"
     />
-    <SettingsGroup title="Your Devices">
+    <SettingsGroup :title="t('devices.yours')">
       <template #actions>
-        <Button size="sm" @click="open()">Add Device…</Button>
+        <Button size="sm" @click="open()">{{ t('devices.add') }}</Button>
       </template>
       <AsyncRegion
         :state="load"
-        label="Loading devices…"
+        :label="t('devices.loading')"
         @retry="emit('retry')"
       >
         <SettingsRow
@@ -139,7 +140,7 @@ const pageProjects = computed(() =>
           @click="emit('show', device.id)"
         >
           <template #description>
-            <template v-if="device.os">{{ device.os.name }} · </template>{{ reachedAs(device) }}<template v-if="device.state === 'offline' && device.seen"> · Last seen <RelativeTime :timestamp="device.seen" /></template>
+            <template v-if="device.os">{{ device.os.name }} · </template>{{ reachedAs(device) }}<template v-if="device.state === 'offline' && device.seen"> · {{ t('devices.lastSeen') }} <RelativeTime :timestamp="device.seen" /></template>
           </template>
           <template #leading>
             <DeviceIcon :state="device.state" />
@@ -149,7 +150,7 @@ const pageProjects = computed(() =>
           v-if="!devices.length"
           class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
         >
-          No devices
+          {{ t('devices.none') }}
         </div>
       </AsyncRegion>
     </SettingsGroup>

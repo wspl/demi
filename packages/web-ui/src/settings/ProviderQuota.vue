@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import RequestIdLine from '../ui/RequestIdLine.vue'
 import { computed, useTemplateRef, watch } from 'vue'
@@ -36,7 +37,7 @@ watch(computed(() => visible.value && props.autoRefresh), (shown) => {
       <RequestIdLine v-if="error.requestId" :request-id="error.requestId" />
     </div>
     <!-- Empty snapshots still have a visible region, so the first display can fetch them. -->
-    <span v-if="!windows.length">Usage not available yet</span>
+    <span v-if="!windows.length">{{ t('quota.unavailable') }}</span>
     <div v-else class="flex flex-col gap-2.5">
       <QuotaWindowRow v-for="window in windows" :key="window.id" :window="window" />
     </div>

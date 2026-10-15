@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import { computed, ref, watch } from 'vue'
 import { clientPlatform } from '@demicodes/utils'
 import { Check } from '@lucide/vue'
@@ -51,20 +53,20 @@ function submit() {
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Add Device"
+    :label="t('pairing.title')"
     :stack="stack"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Add Device</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('pairing.title') }}</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
           {{
             phase.kind === 'setup'
-              ? 'Start the runner on your device to get a pairing code.'
+              ? t('pairing.setupHint')
               : phase.kind === 'done'
-                ? 'The device is linked to your account and ready to use.'
-                : 'Enter the pairing code printed by the runner.'
+                ? t('pairing.doneHint')
+                : t('pairing.codeHint')
           }}
         </p>
       </header>
@@ -72,23 +74,23 @@ function submit() {
         v-if="phase.kind === 'setup'"
         class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
       >
-        <SettingsRow label="System">
+        <SettingsRow :label="t('pairing.system')">
           <Segmented
             v-model="system"
             size="sm"
             :options="deviceSystems"
-            aria-label="Device system"
+            :aria-label="t('pairing.systemLabel')"
           />
         </SettingsRow>
         <div class="flex flex-col gap-2 p-4">
           <p class="text-[12px] leading-4 text-fg-subtle">
             {{
               system === 'windows'
-                ? 'Run in PowerShell on the device. Keep it open.'
-                : 'Run in a terminal on the device. Keep it open.'
+                ? t('pairing.runInPowerShell')
+                : t('pairing.runInTerminal')
             }}
           </p>
-          <CopyCode :code="command" copy-label="Copy install command" />
+          <CopyCode :code="command" :copy-label="t('pairing.copyInstall')" />
         </div>
       </div>
       <template v-else-if="phase.kind === 'code' || phase.kind === 'pairing'">
@@ -96,13 +98,13 @@ function submit() {
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
           <!-- A code is 32 characters, wider than a control beside the label may be. -->
-          <SettingsRow label="Pairing code">
+          <SettingsRow :label="t('pairing.code')">
             <template #below>
               <TextInput
                 v-model="code"
                 focused
-                aria-label="Pairing code"
-                placeholder="Paste code"
+                :aria-label="t('pairing.code')"
+                :placeholder="t('pairing.paste')"
                 literal
                 class="w-full font-mono"
                 :disabled="phase.kind === 'pairing'"
@@ -129,18 +131,18 @@ function submit() {
         v-if="phase.kind === 'done'"
         variant="primary"
         @click="emit('close')"
-        >Done</Button
+        >{{ uiText('common.done') }}</Button
       >
       <template v-else>
         <Button v-if="phase.kind === 'code'" @click="emit('back')"
-          >Back</Button
+          >{{ uiText('common.back') }}</Button
         >
-        <Button @click="emit('close')">Cancel</Button>
+        <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
         <Button
           v-if="phase.kind === 'setup'"
           variant="primary"
           @click="emit('next')"
-          >Continue</Button
+          >{{ uiText('common.continue') }}</Button
         >
         <Button
           v-else
@@ -148,7 +150,7 @@ function submit() {
           :disabled="!code.trim()"
           :loading="phase.kind === 'pairing'"
           @click="submit"
-          >Pair Device</Button
+          >{{ t('pairing.pair') }}</Button
         >
       </template>
     </template>

@@ -1,0 +1,58 @@
+{
+  "menu": {
+    "where": "이 대화의 실행 위치",
+    "runOn": "실행 위치",
+    "addDevice": "장치 추가…",
+    "attached": "연결됨",
+    "detach": "분리"
+  },
+  "lock": {
+    "archived": "이 대화는 보관되었습니다.",
+    "moving": "이 대화를 이동하는 중입니다."
+  },
+  "choices": {
+    "offline": "이 장치는 오프라인입니다."
+  },
+  "move": {
+    "title": "이 대화를 {host}(으)로 이동하시겠습니까?",
+    "titleStop": "에이전트를 중지하고 이 대화를 {host}(으)로 이동하시겠습니까?",
+    "runsHome": "해당 위치의 홈 디렉터리에서 실행됩니다.",
+    "runsIn": "{directory}에서 실행됩니다.",
+    "runsOwn": "해당 위치의 전용 디렉터리에서 실행됩니다.",
+    "filesStay": "{host}의 파일은 그대로 유지됩니다.",
+    "agentLearns": "에이전트는 다음에 작업할 때 이동을 알게 되며, 지금 알려 줄 수도 있습니다.",
+    "stopAndMove": "중지 후 이동",
+    "move": "이동",
+    "stopMoveTell": "중지, 이동 후 에이전트에 알림",
+    "moveAndTell": "이동 후 에이전트에 알림"
+  },
+  "stop": {
+    "agent": "에이전트",
+    "subagents": "하위 에이전트 {count}개",
+    "commands": "명령 {count}개",
+    "sentence": "{list}이(가) 중지됩니다."
+  },
+  "project": {
+    "title": "새 프로젝트",
+    "selectFolder": "폴더 선택",
+    "loading": "장치를 로드하는 중…",
+    "cloudDescription": "관리형 작업 영역으로 바로 사용할 수 있습니다.",
+    "device": "장치",
+    "deviceDescription": "내 장치 중 하나에 있는 디렉터리입니다.",
+    "chooseDevice": "장치 선택",
+    "name": "프로젝트 이름",
+    "addDevice": "장치 추가…",
+    "noDevices": "장치 없음",
+    "directory": "디렉터리",
+    "browse": "찾아보기…",
+    "called": "프로젝트 이름은 {name}이(가) 됩니다.",
+    "takesName": "프로젝트 이름은 폴더 이름을 따릅니다.",
+    "add": "프로젝트 추가",
+    "create": "프로젝트 만들기"
+  },
+  "directory": {
+    "switch": "디렉터리 전환",
+    "chooseAnother": "다른 디렉터리 선택…",
+    "useThis": "이 폴더 사용"
+  }
+}

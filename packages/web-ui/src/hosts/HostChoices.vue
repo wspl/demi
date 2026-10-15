@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import MenuItem from '../ui/MenuItem.vue'
 import type { SentenceText } from '../ui/ui-text'
 import { DEVICE_GLYPHS } from '../devices/device-glyphs'
@@ -56,7 +58,7 @@ function deviceNote(device: HostDeviceOption): string | undefined {
   <MenuItem
     v-if="!onlineOnly || primaryHost.kind !== 'cloud'"
     :icon="hostIcon({ kind: 'cloud' })"
-    label="Cloud"
+    :label="uiText('common.cloud')"
     choice
     :is-selected="primaryHost.kind === 'cloud'"
     :disabled="!!locked"
@@ -72,7 +74,7 @@ function deviceNote(device: HostDeviceOption): string | undefined {
       choice
       :is-selected="deviceChecked(device.id)"
       :disabled="!!locked || device.state !== 'online'"
-      :disabled-reason="locked ?? 'This device is offline.'"
+      :disabled-reason="locked ?? t('choices.offline')"
       @select="emit('choose', { kind: 'device', id: device.id })"
     />
   </template>

@@ -1,0 +1,27 @@
+{
+  "keep": {
+    "1h": "1 小时",
+    "1d": "1 天",
+    "30d": "30 天",
+    "always": "始终"
+  },
+  "request": {
+    "allowTitle": "允许此对话 {action}？",
+    "agentRan": "智能体运行了",
+    "subagentRan": "子智能体 {number}（“{description}”）运行了",
+    "deny": "拒绝",
+    "allowConversation": "为此对话允许",
+    "allow": "允许",
+    "dontAllow": "不允许",
+    "decline": "拒绝",
+    "save": "保存",
+    "updateCredential": "更新凭据",
+    "saveCredential": "保存凭据",
+    "keepUntil": "保留至",
+    "needsValues": "每个字段都需要一个不超过 64 KiB 的值。",
+    "allowCredentialTitle": "允许此对话使用凭据“{name}”？",
+    "removed": "已删除",
+    "youRemoved": "你已删除此凭据。",
+    "progress": "{position} / {count}"
+  }
+}

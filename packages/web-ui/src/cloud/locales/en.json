@@ -1,0 +1,34 @@
+{
+  "settings": {
+    "title": "Cloud",
+    "description": "Shared by all your Cloud projects."
+  },
+  "environment": {
+    "title": "Your Cloud environment",
+    "reset": "Reset Environment",
+    "newerImage": "A newer system image is available",
+    "newerImageDescription": "Resetting keeps your home files and removes installed system packages.",
+    "connected": "{system} · Connected via relay"
+  },
+  "storage": {
+    "title": "Storage",
+    "line": "System {system} · Home {home}",
+    "max": "{size} max"
+  },
+  "reset": {
+    "title": "Reset Cloud Environment",
+    "body": "Stops Cloud tasks and resets system packages and settings. Your home files and Cloud projects stay.",
+    "starting": "Starting the reset…",
+    "retry": "Retry Reset",
+    "close": "Close",
+    "cancel": "Cancel"
+  },
+  "phase": {
+    "stopping": "Stopping Cloud tasks…",
+    "saving": "Saving home files…",
+    "rebuilding": "Rebuilding the system…",
+    "booting": "Starting Cloud…",
+    "ready": "Cloud is ready.",
+    "failed": "Reset failed."
+  }
+}

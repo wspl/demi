@@ -1,0 +1,16 @@
+{
+  "handoff": {
+    "wrongPassword": "這不是你的密碼。",
+    "signOutFailed": "無法登出該瀏覽器"
+  },
+  "passkeys": {
+    "held": "此密碼管理器中已有你帳戶的通行密鑰。",
+    "renameFailed": "無法重新命名通行密鑰",
+    "removeFailed": "無法移除通行密鑰"
+  },
+  "login": {
+    "invalidCredentials": "電子郵件或密碼不正確。",
+    "accountDisabled": "此帳戶已停用。請聯絡管理員啟用。",
+    "signOutFailed": "無法登出"
+  }
+}

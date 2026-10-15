@@ -1,20 +1,32 @@
 /** Who may do what to whom in Settings › Users (`product.md` § User system). */
 import type { SettingsUser, UserRole } from './types'
-import type { TitleText } from '../ui/ui-text'
+import type { SentenceText, TitleText } from '../ui/ui-text'
+import { t } from './locales/text'
 
 const RANK: Record<UserRole, number> = { user: 0, admin: 1, master: 2 }
 
-export const ROLE_LABEL: Record<UserRole, TitleText> = {
-  master: 'Master',
-  admin: 'Admin',
-  user: 'User',
+/** A role's name in the page's language. */
+export function roleLabel(role: UserRole): TitleText {
+  switch (role) {
+    case 'master':
+      return t('roles.master')
+    case 'admin':
+      return t('roles.admin')
+    case 'user':
+      return t('roles.user')
+  }
 }
 
-/** What each role may do, in the words a role is chosen by. */
-export const ROLE_DESCRIPTION: Record<UserRole, string> = {
-  master: 'Owns the server and manages every account.',
-  admin: 'Adds and manages users.',
-  user: 'Manages no other account.',
+/** What a role may do, in the page's language. */
+export function roleDescription(role: UserRole): SentenceText {
+  switch (role) {
+    case 'master':
+      return t('roles.masterDescription')
+    case 'admin':
+      return t('roles.adminDescription')
+    case 'user':
+      return t('roles.userDescription')
+  }
 }
 
 /** A role can act only on lower roles. */
