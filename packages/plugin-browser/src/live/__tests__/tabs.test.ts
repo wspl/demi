@@ -809,7 +809,7 @@ test('a tabs error words its failure in the language the page speaks when it is 
   try {
     expect([refused.message, offline.message]).toEqual(['The server couldn’t do that (500 Internal Server Error).', 'The device is offline.'])
     createPageI18n('ja')
-    expect([refused.message, offline.message]).toEqual(['サーバーはそれを実行できませんでした (500 Internal Server Error)。', 'デバイスはオフラインです。'])
+    expect([refused.message, offline.message]).toEqual(['サーバーはそれを実行できませんでした（500 Internal Server Error）。', 'デバイスはオフラインです。'])
   } finally {
     createPageI18n('en')
   }

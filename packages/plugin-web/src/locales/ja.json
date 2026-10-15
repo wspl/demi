@@ -12,7 +12,7 @@
   },
   "key": {
     "label": "API キー",
-    "description": "ドメインや日付など、すべてのフィルターを使用できます。",
+    "description": "ドメインや日付など、すべてのフィルタを使用できます。",
     "unchecked": "未確認: {reason}",
     "remove": "削除",
     "placeholder": "Exa API キー",
@@ -22,7 +22,7 @@
     "label": "使用中",
     "key": "API キー",
     "account": "Exa アカウント",
-    "anonymous": "匿名 (制限あり)"
+    "anonymous": "匿名（上限あり）"
   },
   "refusals": {
     "keyRefused": "Exa がこのキーを拒否しました。キー全体をコピーしたか確認してください。",

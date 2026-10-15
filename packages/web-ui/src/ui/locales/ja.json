@@ -8,8 +8,8 @@
     "empty": "項目がありません"
   },
   "limitField": {
-    "limited": "制限あり",
-    "unlimited": "制限なし",
+    "limited": "上限あり",
+    "unlimited": "無制限",
     "problem": "1 以上の整数を入力してください。"
   },
   "shortcutRecorder": {
@@ -30,8 +30,8 @@
     "failed": "セッションを確認できませんでした。"
   },
   "themeToggle": {
-    "light": "ライト テーマ",
-    "dark": "ダーク テーマ"
+    "light": "ライトテーマ",
+    "dark": "ダークテーマ"
   },
   "titleInput": {
     "title": "タイトル"

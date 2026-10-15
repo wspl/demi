@@ -34,8 +34,8 @@ test.each<{ language: Language; lines: string; kind: string; marked: string; lin
     language: 'ja',
     lines: 'TypeScript · 1 行 · 4 B',
     kind: 'TS ファイル',
-    marked: '競合: 他者が削除',
-    link: '/tmp/gone.log へのシンボリック リンク。リンク先は存在しません',
+    marked: '競合: 相手が削除',
+    link: '/tmp/gone.log へのシンボリックリンク。リンク先は存在しません',
     uploads: '1 個のファイル',
   },
   {

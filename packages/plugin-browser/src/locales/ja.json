@@ -33,9 +33,9 @@
     "capture_unavailable": "このデバイスではブラウザーのページをキャプチャできません。",
     "capture_failed": "デバイスがページをキャプチャできませんでした。再試行しています。",
     "capture_stopped": "デバイスがページをキャプチャできませんでした。",
-    "conversation_not_found": "この会話は存在しなくなりました。",
-    "conversation_archived": "この会話はアーカイブされています。",
-    "conversation_busy": "会話は処理中です。しばらくしてからもう一度お試しください。",
+    "conversation_not_found": "このチャットは存在しなくなりました。",
+    "conversation_archived": "このチャットはアーカイブされています。",
+    "conversation_busy": "チャットは処理中です。しばらくしてからもう一度お試しください。",
     "host_stopped": "クラウドは停止しています。",
     "device_offline": "デバイスはオフラインです。",
     "device_not_found": "デバイスはアカウントから削除されました。",
@@ -45,12 +45,12 @@
     "cloud_crash_loop": "クラウドの起動に何度も失敗したため、停止しました。",
     "host_operation_failed": "デバイスとの接続が切断されました。",
     "unknown_plugin_method": "このサーバーではブラウザーを実行できません。",
-    "plugin_disabled": "ブラウザー プラグインはオフです。"
+    "plugin_disabled": "ブラウザープラグインはオフです。"
   },
   "answers": {
     "none": "サーバーが応答しませんでした。",
     "unreadable": "サーバーの応答を読み取れませんでした。",
-    "refused": "サーバーはそれを実行できませんでした ({status})。"
+    "refused": "サーバーはそれを実行できませんでした（{status}）。"
   },
   "noBrowser": "このホストにブラウザーがありません。エージェントにインストールを依頼してください。",
   "starting": {
@@ -105,18 +105,18 @@
     "custom": "カスタム {width} × {height} {scale}"
   },
   "dialog": {
-    "leavePage": "このページから移動しますか？",
+    "leavePage": "このページを離れますか？",
     "says": "{host} の内容",
     "thisPageSays": "このページの内容",
     "answer": "回答",
-    "stay": "このページに留まる",
-    "leave": "移動",
+    "stay": "このページにとどまる",
+    "leave": "離れる",
     "cancel": "キャンセル",
     "ok": "OK"
   },
   "browserInput": "ブラウザー入力",
   "tab": {
     "new": "新しいタブ",
-    "createInBrowser": "会話のブラウザーで新しいタブ"
+    "createInBrowser": "チャットのブラウザーで新しいタブ"
   }
 }
