@@ -37,22 +37,33 @@ export function useDocumentImages(options: {
 }): { onError(event: Event): void; reload(): void } {
   const { html } = options
   const hostImages = useHostImagesAt(options.contents, options.hostFiles)
+  /** Each placeholder shown, with its image. */
   const failed = new Map<HTMLElement, HTMLImageElement>()
+  /**
+   * The placeholders of images whose bytes did not load, as against those
+   * still waiting for their file or their picture's sources: only these
+   * wait for a version they have not tried.
+   */
+  const unloaded = new Set<HTMLElement>()
 
   /** Shows `image`'s alt text in its place. */
-  function fail(image: HTMLImageElement): void {
+  function fail(image: HTMLImageElement): HTMLElement | null {
     const made = document.createElement('template')
     made.innerHTML = imagePlaceholderHtml(image.alt)
     const placeholder = made.content.firstElementChild
     if (!(placeholder instanceof HTMLElement))
-      return
+      return null
     failed.set(placeholder, image)
     image.replaceWith(placeholder)
+    return placeholder
   }
 
   function onError(event: Event): void {
-    if (event.target instanceof HTMLImageElement)
-      fail(event.target)
+    if (!(event.target instanceof HTMLImageElement))
+      return
+    const placeholder = fail(event.target)
+    if (placeholder)
+      unloaded.add(placeholder)
   }
 
   function reload(): void {
@@ -64,11 +75,15 @@ export function useDocumentImages(options: {
       // Setting the address again loads it again.
       image.src = image.src
       failed.delete(placeholder)
+      unloaded.delete(placeholder)
     }
   }
 
   // A new rendering brings its own images.
-  watch(html, () => failed.clear())
+  watch(html, () => {
+    failed.clear()
+    unloaded.clear()
+  })
 
   async function address(): Promise<void> {
     // The rendering reaches the page first.
@@ -96,11 +111,13 @@ export function useDocumentImages(options: {
         continue
       }
       if (placeholder) {
-        // A failed image tries again only for a version it has not tried.
-        if (shown.src === image.getAttribute('src'))
+        // An image whose bytes did not load tries again only for a version
+        // it has not tried; one that waited shows once it can.
+        if (unloaded.has(placeholder) && shown.src === image.getAttribute('src'))
           continue
         placeholder.replaceWith(image)
         failed.delete(placeholder)
+        unloaded.delete(placeholder)
         // Its own set, which the pass above did not find while it was away.
         if (image.hasAttribute(HOST_SRCSET_ATTRIBUTE))
           setSrcset(image)

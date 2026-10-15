@@ -194,6 +194,52 @@ test('a README’s dark logo is chosen before its light fallback gets an address
   expect(image?.parentElement?.localName).toBe('picture')
 })
 
+test('a picture whose source is read again shows its image once the source is read', async () => {
+  // The dark source's file cannot be read at first, so the picture shows
+  // its light fallback; the Host then reports the file changed, the image
+  // waits while it is read again, and shows once it is, at the same
+  // fallback address it had, which it never failed to load.
+  const light = '/w/brand/lockup-light.svg'
+  const dark = '/w/brand/lockup-dark.svg'
+  let darkReadable = false
+  let darkRead = Promise.withResolvers<void>()
+  const kept = new HostFiles()
+  const watched = new SimulatedWatch()
+  const contents = keptContents({
+    url: (path, options = {}) => `/raw?path=${path}&version=${options.version}`,
+    async describe(path) {
+      if (path === dark) {
+        await darkRead.promise
+        if (!darkReadable)
+          throw new Error('The Host cannot be read')
+      }
+      return { value: { size: 14745, modifiedAt: null, version: '"v1"' }, readAt: watched.readAt() }
+    },
+  }, { files: kept, watch: new WatchChannel(kept, watched.open) })
+  const sources = JSON.stringify([{ path: dark, descriptor: '' }])
+  const document_ = show(
+    `<p><picture><source media="all" data-host-srcset='${sources}'><img data-host-file="${light}" alt="Demi"></picture></p>`,
+    [light, dark],
+    contents,
+  )
+  darkRead.resolve()
+  await settle()
+  const [image] = document_.images()
+  expect(image?.getAttribute('src')).toBe(`/raw?path=${light}&version="v1"`)
+
+  darkReadable = true
+  darkRead = Promise.withResolvers()
+  watched.change(dark)
+  await settle()
+  expect(document_.text()).toBe('Demi')
+  expect(document_.images()).toHaveLength(0)
+
+  darkRead.resolve()
+  await settle()
+  expect(document_.images()).toEqual([image!])
+  expect(document.querySelector('source')?.getAttribute('srcset')).toBe(`/raw?path=${dark}&version="v1"`)
+})
+
 test('an image whose file is not there shows its alt text in a box', async () => {
   const { contents } = host()
   const document_ = show('<p><img data-host-file="/w/docs/shots/gone.png" alt="The gone page"></p>', ['/w/docs/shots/gone.png'], contents)
