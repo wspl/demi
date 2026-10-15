@@ -769,7 +769,7 @@ connected; a directory that is not an absolute path answers 400
 `invalid_body`, one that does not exist 404 `fs_not_found`, and another Host
 error 400 `fs_error`. `POST
 /api/conversations` takes an optional `workflow`, the new conversation's
-choice, absent for Default, and the conversation's PATCH takes `workflow` to
+choice, absent for Global Workflow, and the conversation's PATCH takes `workflow` to
 change it.
 
 ## Device log

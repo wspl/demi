@@ -266,7 +266,7 @@
   "workflows": {
     "label": "工作流程",
     "labelTip": "工作流程：{name}",
-    "default": "預設",
+    "default": "全域工作流程",
     "none": "無子智慧體",
     "reading": "正在讀取工作流程…",
     "failed": "無法讀取工作流程",

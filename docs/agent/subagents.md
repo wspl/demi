@@ -587,7 +587,7 @@ profiles:
 ```
 
 In a conversation on `~/app/web`, the Workflow menu at the composer's lower
-left offers **Default**, **No Subagents** and **Review Team**. Alex picks Review Team:
+left offers **Global Workflow**, **No Subagents** and **Review Team**. Alex picks Review Team:
 the root reads the workflow's instructions with the project's, and from the
 next spawn on its agents can start `explore` and `reviewer`.
 
@@ -641,14 +641,14 @@ next spawn on its agents can start `explore` and `reviewer`.
   directory reads that directory's workflows through the device, as the
   folder dialog reads its folders, and follows them on the device's file
   watch; one with no directory yet, or whose device is offline, offers
-  Default and No Subagents. A new conversation starts with the choice last
+  Global Workflow and No Subagents. A new conversation starts with the choice last
   made in its project, or outside projects, No Subagents until one is made
-  ([User preferences](../product/web-api.md#user-preferences)). **Default** applies
-  the user's Subagents settings. **No Subagents** turns subagents off for this
+  ([User preferences](../product/web-api.md#user-preferences)). **Global Workflow** applies
+  the user's Subagents settings, the profiles of Settings › Subagents. **No Subagents** turns subagents off for this
   conversation, as the settings' switch does for all of them. **A workflow**
   applies its profiles in place of the user's, for this conversation only,
   whatever the settings' switch is. A conversation whose working directory has no workflows offers
-  Default and No Subagents only; one whose chosen workflow is gone, renamed or no longer
+  Global Workflow and No Subagents only; one whose chosen workflow is gone, renamed or no longer
   reads shows it as unavailable, with why, and its spawns fail with that
   reason until the user picks another.
 - **Nothing applies by itself.** A repository is often someone else's, and
@@ -668,7 +668,7 @@ next spawn on its agents can start `explore` and `reviewer`.
   used from the next spawn and shows in the menu at once, and a slow or
   stopped Host never holds a spawn. Only the first read of a directory holds
   them, for at most 5 seconds; past that, or while the Host is stopped or
-  offline, they take the last result, or none, which offers Default and No
+  offline, they take the last result, or none, which offers Global Workflow and No
   Subagents. A file that does not parse is listed as unavailable with the
   parse error.
 - **How the model learns the format.** `demi agent workflows --help`, the
