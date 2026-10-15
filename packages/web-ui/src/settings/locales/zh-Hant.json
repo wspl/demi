@@ -194,7 +194,7 @@
       "keywords": "模型,API 金鑰,anthropic,openai,claude code,codex,基礎 URL,目錄"
     },
     "credentials": {
-      "keywords": "權杖,密鑰,登入,已儲存的登入"
+      "keywords": "token,密鑰,登入,已儲存的登入"
     },
     "instructions": {
       "keywords": "個人指示,自訂指示,AGENTS.md,CLAUDE.md,規則"
@@ -382,7 +382,7 @@
     "maxDepthDescription": "為 1 時，只有主智慧體可以啟動子智慧體。",
     "maxDepthConfirmTitle": "允許無限層級？",
     "allowUnlimited": "允許無限制",
-    "unlimitedWarning": "這可能導致對話不穩定，並消耗大量權杖。",
+    "unlimitedWarning": "這可能導致對話不穩定，並消耗大量token。",
     "profiles": "設定檔",
     "profilesDescription": "沒有設定檔時，子智慧體會繼承其上層的設定。",
     "newProfile": "新增設定檔…",
