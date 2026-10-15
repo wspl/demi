@@ -516,8 +516,13 @@ anything holds a lease on it:
 - a live execution context whose pinned manifest names the service's artifact;
 - an open [user stream](#user-streams) running in it;
 - a start in progress, for a call waiting until the service is ready;
-- the manifest installed on the connection, so consecutive jobs reuse the
-  service instead of starting it again;
+- the manifests installed on the connection, so consecutive jobs reuse the
+  service instead of starting it again: for each package, the release that
+  the most recently installed manifest naming the package names. A manifest
+  that names an older release keeps no lease on it, so after the startup
+  catalog moves a package to a new release, the old release's service ends
+  once the last job pinned to it does, while the connection keeps every
+  manifest ([Command declarations](commands.md));
 - the package release that the connection's user streams bound last, one per
   package, so consecutive user calls reuse the service as consecutive jobs do.
   It lasts until the connection ends; a stream that binds another release of
