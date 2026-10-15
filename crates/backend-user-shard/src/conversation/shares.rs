@@ -1,0 +1,274 @@
+//! Shares on the owner's shard (`sharing.md`, `web-api.md` § Sharing): the
+//! owner makes a share, takes a conversation's snapshot again and removes a
+//! share, each announced on the owner's pages through the conversation's
+//! summary, which lists its shares; and a share's reader reads its
+//! snapshot, by the share's record, which the edge found by the token. A
+//! read reaches the snapshot alone: no Host, no live session.
+
+use base64::Engine as _;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use bytes::Bytes;
+use demi_backend_blobs::ObjectError;
+use demi_backend_database::StorageError;
+use demi_backend_database::shares::{self, Added, ShareRecord};
+use demi_backend_database::tree::{self, BlockRead, PageQuery, PageRead, Transcript};
+use demi_backend_page_sync::Part;
+use demi_shared_types::{BlobRef, BlockId};
+use demi_web_api_protocol::ids::{ConversationId, ShareToken};
+use demi_web_api_protocol::shares::{ShareTarget, ShareTranscriptQuery};
+use rand::TryRngCore as _;
+use rand::rngs::OsRng;
+
+use crate::shard::Shard;
+
+/// Why the owner's request about a share was refused.
+#[derive(Debug, thiserror::Error)]
+pub enum ShareRefusal {
+    #[error("No such conversation")]
+    NoConversation,
+    #[error("No such share")]
+    NoShare,
+    #[error("Share the text that ends the agent's reply to a message")]
+    TargetInvalid,
+    #[error("An answer's share is not taken again")]
+    NotUpdatable,
+    #[error(transparent)]
+    Storage(#[from] StorageError),
+}
+
+/// A new share's token: 128 random bits from the operating system's
+/// generator, in URL-safe base64 (`sharing.md` § Safety).
+fn new_token() -> ShareToken {
+    let mut bits = [0_u8; 16];
+    OsRng
+        .try_fill_bytes(&mut bits)
+        .expect("the operating system's random generator works");
+    ShareToken::try_from(URL_SAFE_NO_PAD.encode(bits)).expect("16 bytes encode to a nonempty token")
+}
+
+impl Shard {
+    /// The conversation's share of `target`: the one it has, or a new one
+    /// with its snapshot taken now.
+    pub async fn share(
+        &self,
+        conversation: ConversationId,
+        target: ShareTarget,
+    ) -> Result<ShareRecord, ShareRefusal> {
+        let control = &self.services().control;
+        let record = control
+            .conversation(conversation)
+            .await?
+            .filter(|record| record.owner == *self.user())
+            .ok_or(ShareRefusal::NoConversation)?;
+        if let Some(existing) = control.share_of(record.id.clone(), target.clone()).await? {
+            return Ok(existing);
+        }
+        let token = new_token();
+        self.take_snapshot(&record.id, &token, &target).await?;
+        let share = ShareRecord {
+            token: token.clone(),
+            owner: self.user().clone(),
+            conversation: record.id.clone(),
+            target,
+            title: record.title,
+            taken_at: self.services().clock.now(),
+        };
+        match control.add_share(share).await? {
+            Added::New(share) => {
+                self.mark(Part::Conversation(record.id));
+                Ok(share)
+            }
+            // Another request shared it meanwhile, or the conversation went:
+            // this snapshot is no one's.
+            Added::Existing(existing) => {
+                self.drop_snapshot(&record.id, token).await;
+                Ok(existing)
+            }
+            Added::NoConversation => {
+                self.drop_snapshot(&record.id, token).await;
+                Err(ShareRefusal::NoConversation)
+            }
+        }
+    }
+
+    /// Takes the conversation's snapshot again under the same token: the
+    /// conversation as it is now, with its title now.
+    pub async fn update_share(
+        &self,
+        conversation: ConversationId,
+        token: ShareToken,
+    ) -> Result<ShareRecord, ShareRefusal> {
+        let share = self.owned_share(&conversation, &token).await?;
+        if share.target != ShareTarget::Conversation {
+            return Err(ShareRefusal::NotUpdatable);
+        }
+        let control = &self.services().control;
+        let record = control
+            .conversation(share.conversation.clone())
+            .await?
+            .ok_or(ShareRefusal::NoConversation)?;
+        self.take_snapshot(&record.id, &token, &share.target).await?;
+        let Some(share) = control
+            .retake_share(token.clone(), record.title, self.services().clock.now())
+            .await?
+        else {
+            // The owner stopped sharing meanwhile: this snapshot is no one's.
+            self.drop_snapshot(&record.id, token).await;
+            return Err(ShareRefusal::NoShare);
+        };
+        self.mark(Part::Conversation(record.id));
+        Ok(share)
+    }
+
+    /// Removes the share: its link answers as one that never existed from
+    /// the record's removal on, and its snapshot goes after it.
+    pub async fn stop_sharing(
+        &self,
+        conversation: ConversationId,
+        token: ShareToken,
+    ) -> Result<(), ShareRefusal> {
+        let share = self.owned_share(&conversation, &token).await?;
+        if !self
+            .services()
+            .control
+            .remove_share(share.conversation.clone(), token.clone())
+            .await?
+        {
+            return Err(ShareRefusal::NoShare);
+        }
+        self.mark(Part::Conversation(share.conversation.clone()));
+        self.drop_snapshot(&share.conversation, token).await;
+        Ok(())
+    }
+
+    /// The share `token` of the user's conversation `conversation`.
+    async fn owned_share(
+        &self,
+        conversation: &ConversationId,
+        token: &ShareToken,
+    ) -> Result<ShareRecord, ShareRefusal> {
+        self.services()
+            .control
+            .share(token.clone())
+            .await?
+            .filter(|share| share.owner == *self.user() && share.conversation == *conversation)
+            .ok_or(ShareRefusal::NoShare)
+    }
+
+    async fn take_snapshot(
+        &self,
+        conversation: &ConversationId,
+        token: &ShareToken,
+        target: &ShareTarget,
+    ) -> Result<(), ShareRefusal> {
+        let (token, target) = (token.clone(), target.clone());
+        let taken = self
+            .services()
+            .conversations
+            .db(conversation)
+            .call(move |connection| {
+                let transaction = connection.transaction()?;
+                let taken = match &target {
+                    ShareTarget::Conversation => {
+                        shares::take_conversation(&transaction, &token)?;
+                        true
+                    }
+                    ShareTarget::Answer { block_id } => shares::take_answer(&transaction, &token, block_id)?,
+                };
+                transaction.commit()?;
+                Ok(taken)
+            })
+            .await?;
+        if taken { Ok(()) } else { Err(ShareRefusal::TargetInvalid) }
+    }
+
+    /// Removes a snapshot no record names any more. One that stays costs
+    /// storage only: nothing reads the rows of a token without its record.
+    async fn drop_snapshot(&self, conversation: &ConversationId, token: ShareToken) {
+        let removed = self
+            .services()
+            .conversations
+            .db(conversation)
+            .call(move |connection| shares::remove(connection, &token))
+            .await;
+        if let Err(error) = removed {
+            tracing::warn!(
+                conversation = %conversation,
+                error = &error as &dyn std::error::Error,
+                "a share's snapshot that no record names stays in the conversation's database"
+            );
+        }
+    }
+
+    /// A page of the snapshot's copy of the transcript of the agent `query`
+    /// names, the root's without one; none when the conversation has no
+    /// database.
+    pub async fn share_page(
+        &self,
+        share: &ShareRecord,
+        query: ShareTranscriptQuery,
+    ) -> Result<Option<PageRead>, StorageError> {
+        let transcript = Transcript::Shared {
+            token: share.token.clone(),
+            agent: query.node.unwrap_or(0),
+        };
+        self.services()
+            .conversations
+            .read(&share.conversation, move |connection| {
+                let page = PageQuery {
+                    before: query.before,
+                    after: query.after,
+                    around: query.around.as_ref(),
+                    edge: query.edge.as_ref(),
+                };
+                tree::read_page(connection, &transcript, page)
+            })
+            .await
+    }
+
+    /// A block of the snapshot whole.
+    pub async fn share_block(
+        &self,
+        share: &ShareRecord,
+        agent: u64,
+        block: BlockId,
+    ) -> Result<Option<BlockRead>, StorageError> {
+        let transcript = Transcript::Shared {
+            token: share.token.clone(),
+            agent,
+        };
+        self.services()
+            .conversations
+            .read(&share.conversation, move |connection| {
+                tree::read_block(connection, &transcript, &block)
+            })
+            .await
+    }
+
+    /// The bytes of `blob` when the snapshot shows it.
+    pub async fn share_blob(&self, share: &ShareRecord, blob: BlobRef) -> Result<Option<Bytes>, ShareBlobError> {
+        let token = share.token.clone();
+        let wanted = blob.clone();
+        let shown = self
+            .services()
+            .conversations
+            .read(&share.conversation, move |connection| {
+                shares::shows_blob(connection, &token, &wanted)
+            })
+            .await?
+            .unwrap_or(false);
+        if !shown {
+            return Ok(None);
+        }
+        Ok(self.services().blobs.for_user(&share.owner).get(&blob).await?)
+    }
+}
+
+/// Why a share's blob could not be read.
+#[derive(Debug, thiserror::Error)]
+pub enum ShareBlobError {
+    #[error(transparent)]
+    Storage(#[from] StorageError),
+    #[error(transparent)]
+    Objects(#[from] ObjectError),
+}

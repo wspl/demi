@@ -64,6 +64,7 @@ mod runners;
 mod saved;
 mod search;
 mod settings;
+mod shares;
 mod sign_in;
 mod skills;
 mod startup;

@@ -2293,6 +2293,7 @@ version = "0.1.21"
 dependencies = [
  "async-stream",
  "axum",
+ "base64 0.22.1",
  "bytes",
  "demi-agent-server",
  "demi-agent-session",

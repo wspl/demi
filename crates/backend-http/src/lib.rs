@@ -48,6 +48,7 @@ mod saved;
 mod search;
 mod sessions;
 mod settings;
+mod shares;
 mod sidebar;
 mod streams;
 mod subagents;
@@ -231,7 +232,7 @@ impl FromRef<AppState> for Shards {
 /// act from a page other than the product's before anything else.
 /// Every `/api` path, unknown paths included, passes the session gate,
 /// except those outside `session_api`: the entrances, setup, login, the
-/// passkey sign-in and spending a handoff code, the
+/// passkey sign-in and spending a handoff code, the shares' public routes, the
 /// routes that authenticate with device credentials instead, and the
 /// synchronization channel, which checks the session without renewing it.
 /// The pipes stay outside the 503 of a closing backend, whose shutdown needs
@@ -321,6 +322,11 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             patch(conversations::patch).delete(conversations::delete),
         )
         .route("/conversations/{id}/fork", post(conversations::fork))
+        .route("/conversations/{id}/shares", post(shares::create))
+        .route(
+            "/conversations/{id}/shares/{token}",
+            put(shares::update).delete(shares::remove),
+        )
         .route("/conversations/{id}/transcript", get(history::transcript))
         .route(
             "/conversations/{id}/transcript/blocks/{block}",
@@ -456,6 +462,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/api/auth/passkey", post(passkeys::sign_in))
         .route("/api/auth/handoff", post(sessions::spend_code))
         .route("/api/sync", get(sync::channel))
+        .merge(public_shares())
         .method_not_allowed_fallback(no_route)
         .nest("/api", session_api)
         // After the nest, so the check covers every web app route, the
@@ -472,6 +479,21 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         None => app.fallback(no_route),
     };
     edge(app, closing, state)
+}
+
+/// The public routes of the shares (`web-api.md` § Sharing): no session
+/// gate, the token their only key, each answer with the headers that keep
+/// the token and the snapshot out of indexes, referrers and caches.
+fn public_shares() -> Router<AppState> {
+    Router::new()
+        .route("/api/shares/{token}", get(shares::read))
+        .route("/api/shares/{token}/transcript", get(shares::transcript))
+        .route(
+            "/api/shares/{token}/transcript/blocks/{block}",
+            get(shares::block),
+        )
+        .route("/api/shares/{token}/blobs/{sha256}", get(shares::blob))
+        .layer(middleware::map_response(shares::public_headers))
 }
 
 /// The routes of the backend's runner socket: what a Cloud's runner reaches

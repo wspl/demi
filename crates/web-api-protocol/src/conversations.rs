@@ -14,6 +14,7 @@ use serde_with::rust::{double_option, unwrap_or_skip};
 use crate::error::ErrorCode;
 use crate::ids::{ConversationId, DeviceId, ProviderId, WorkspaceId};
 use crate::query::StrictBool;
+use crate::shares::ConversationShare;
 use crate::text::Trimmed;
 
 /// The most characters (Unicode scalar values) a conversation's title has.
@@ -243,6 +244,11 @@ pub struct ConversationSummary {
     /// memory).
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub permissions_revision: u64,
+    /// The conversation's shares, its own and its answers', so the header
+    /// and an answer open the share dialog on the existing link
+    /// (`web-api.md` § Sharing).
+    #[garde(skip)]
+    pub shares: Vec<ConversationShare>,
 }
 
 /// The latest ended turn of a conversation's root (`web-api.md` § Sidebar
