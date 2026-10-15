@@ -47,6 +47,16 @@
   overflow-wrap: break-word;
 }
 
+/* Japanese has no spaces, so a line may break between any two characters;
+   auto-phrase breaks it between phrases instead, and a word such as
+   ワークスペース stays whole. Strict line breaking keeps small kana and the
+   long-vowel mark off the start of a line. */
+:root:lang(ja) {
+  word-break: auto-phrase;
+  line-break: strict;
+  overflow-wrap: break-word;
+}
+
 /* The phone layout, below 768 px (`ui/phone.ts`, whose PHONE_QUERY is the
    same query): one pane at a time, a finger's sizes, what a hover reveals
    shown at rest. It is the one switch for touch behavior: a touch screen in
