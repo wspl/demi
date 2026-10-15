@@ -96,6 +96,9 @@ pub(crate) struct JobEntry {
     /// Its start, while the backend may send it again: until the runner
     /// lists the job, or the start went again once.
     start: Option<Inbound>,
+    /// Whether its start waits to go again over the connection that
+    /// serves: its controls wait for it.
+    resending: bool,
 }
 
 /// What arrives of a job while its kept output is read again after a new
@@ -276,6 +279,7 @@ impl DeviceJobs {
                 claimed: watch::Sender::new(true),
                 sent_to: None,
                 start: None,
+                resending: false,
             },
         );
         claimed
@@ -297,11 +301,18 @@ impl DeviceJobs {
     pub(crate) fn resent(&self, link: &Link, id: &str, start: Result<(), Inbound>) {
         self.with(id, |job| match start {
             Ok(()) if job.attached.as_ref().is_some_and(|attached| attached.is(link)) => {
+                job.resending = false;
                 job.attachments.send_modify(|count| *count += 1);
             }
-            Ok(()) => {}
+            Ok(()) => job.resending = false,
             Err(start) => job.start = Some(start),
         });
+    }
+
+    /// Whether the start of the job `id` waits to go again over the
+    /// connection that serves.
+    pub(crate) fn resending(&self, id: &str) -> bool {
+        self.with(id, |job| job.resending).unwrap_or(false)
     }
 
     /// Takes up the job `id`, which the backend recorded as running: the
@@ -327,6 +338,7 @@ impl DeviceJobs {
             claimed: watch::Sender::new(false),
             sent_to: None,
             start: None,
+            resending: false,
         });
         job.parked = false;
         job.origin = entry.origin;
@@ -493,6 +505,7 @@ impl DeviceJobs {
             job.attachments.send_modify(|count| *count += 1);
             // The runner has it: its start never goes again.
             job.start = None;
+            job.resending = false;
             job.unreached = kept.ended.as_ref().is_some_and(|end| end.unreached);
             // A restarted backend, or one whose connection missed a
             // `job_outliving`, learns from the hello what keeps the job
@@ -532,6 +545,7 @@ impl DeviceJobs {
             {
                 job.attached = Some(link.downgrade());
                 job.away_since = None;
+                job.resending = true;
                 adoption.resend.push((id, start, job.commands.clone()));
                 continue;
             }
@@ -629,6 +643,7 @@ impl JobEntry {
             claimed: watch::Sender::new(false),
             sent_to: None,
             start: None,
+            resending: false,
         }
     }
 
