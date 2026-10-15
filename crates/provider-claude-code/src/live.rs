@@ -37,7 +37,7 @@ use tokio_util::task::AbortOnDropHandle;
 use crate::input::{self, ControlRequest, ControlResponse, Input, MCP_SERVER, McpReply};
 use crate::mcp::{self, Mcp, McpEvent};
 use crate::mirror::Mirror;
-use crate::output::{ControlRequestLine, LastCall, Line};
+use crate::output::{ControlRequestLine, LastCall, Line, Streaming};
 use crate::placement::{CliSite, ConfigDir, Placed, Placement};
 use crate::session::SessionFile;
 use crate::account::expiring;
@@ -196,10 +196,11 @@ pub(crate) struct LiveCli {
     stderr: Rc<RefCell<Tail>>,
     _drain: AbortOnDropHandle<()>,
     sent: Sent,
-    /// Whether the process streamed a message, after which the model's
-    /// tool calls come in batches that `message_stop` ends.
-    pub(crate) streamed: bool,
-    /// The tool uses of the message being streamed.
+    /// The response being streamed, from its first stream event until its
+    /// `message_stop`: its tool calls come in the batch that ends it. A
+    /// response that comes whole hands its batch on at once.
+    pub(crate) streaming: Option<Streaming>,
+    /// The tool uses of the response being read.
     pub(crate) collecting: Vec<ToolCall>,
     /// The tool uses the message being streamed opened, by their block's
     /// index, whose input pieces name only that index.
@@ -303,7 +304,7 @@ impl LiveCli {
             stderr,
             _drain: AbortOnDropHandle::new(drain),
             sent: Sent::default(),
-            streamed: false,
+            streaming: None,
             collecting: Vec::new(),
             writing: HashMap::new(),
             held: Vec::new(),
@@ -709,6 +710,33 @@ impl LiveCli {
             self.sent.first = first_user_message(&request.items).cloned();
         }
         Ok(())
+    }
+
+    /// Hands `batch` on to the agent and keeps it for the next run, which
+    /// delivers its results: the calls, the entries now placed, and the
+    /// response with the usage of the call that wrote them (`compaction.md`
+    /// § When compaction runs). The run ends with these events.
+    pub(crate) fn hand_over(
+        &mut self,
+        batch: Vec<ToolCall>,
+        request: &InferenceRequest,
+    ) -> Vec<ProviderEvent> {
+        self.collecting.clear();
+        self.writing.clear();
+        self.streaming = None;
+        let mut events: Vec<ProviderEvent> =
+            batch.iter().cloned().map(ProviderEvent::ToolCall).collect();
+        self.held = batch;
+        for call in &events {
+            self.mirror.observe(call);
+        }
+        events.extend(self.mirror.place(request, false));
+        events.push(ProviderEvent::response(
+            self.last_call.take(),
+            FAMILY,
+            &request.model_id,
+        ));
+        events
     }
 
     /// Adds a tool use to the batch being collected; a tool use the CLI
