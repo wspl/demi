@@ -12,7 +12,12 @@ test('a flick toward closing closes however short the pull, and a flick back kee
   expect(dragCloses(0, 400, 2)).toBe(false)
 })
 
-test('the speed of a drag is how the finger left, over its last 80 ms', () => {
-  expect(dragVelocity([{ at: 0, t: 0 }, { at: 10, t: 200 }, { at: 50, t: 260 }, { at: 90, t: 280 }])).toBe(1)
-  expect(dragVelocity([{ at: 0, t: 0 }])).toBe(0)
+test('the speed of a drag is how the finger left, over the last 80 ms before the lift', () => {
+  const flick = [{ at: 0, t: 0 }, { at: 10, t: 200 }, { at: 50, t: 260 }, { at: 90, t: 280 }]
+  expect(dragVelocity(flick, 280)).toBe(1)
+  // Held still for a moment before the lift: slower by the time it stood.
+  expect(dragVelocity(flick, 340)).toBe(0.5)
+  // Held still for longer than that: it has stopped.
+  expect(dragVelocity(flick, 280 + 687)).toBe(0)
+  expect(dragVelocity([{ at: 0, t: 0 }], 10)).toBe(0)
 })

@@ -12,7 +12,7 @@ GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/settings/models' })
 // After the page, since the components ask for its elements and the played
 // channel is one of its event targets.
 const { playChannels } = await import('../__tests__/sync-channel')
-await import('../__tests__/vue-components')
+await import('@demicodes/web-ui/__tests__/vue-components')
 const { createApp, nextTick } = await import('vue')
 const { createPinia } = await import('pinia')
 const { waitFor } = await import('@demicodes/utils')

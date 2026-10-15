@@ -11,7 +11,7 @@ import { afterEach, expect, test } from 'bun:test'
 
 GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/settings' })
 // After the page, since the components ask for its elements.
-await import('../__tests__/vue-components')
+await import('@demicodes/web-ui/__tests__/vue-components')
 const { createApp, h, shallowRef } = await import('vue')
 const { default: SettingsProvidersPage } = await import('@demicodes/web-ui/settings/SettingsProvidersPage.vue')
 const { createOverlayStore } = await import('@demicodes/web-ui/overlay/overlayStore')

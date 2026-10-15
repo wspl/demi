@@ -11,7 +11,7 @@ import type { Block, ChangedFile, EditedFile, ModelSelection } from '@demicodes/
 // besides the start of the page.
 
 GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/chat' })
-await import('../__tests__/vue-components')
+await import('@demicodes/web-ui/__tests__/vue-components')
 const { createApp, h, nextTick, ref } = await import('vue')
 const { provideBlobUrl } = await import('@demicodes/web-ui/agent/media-source')
 const { provideMediaViewer } = await import('@demicodes/web-ui/files/media-viewer')

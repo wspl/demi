@@ -9,7 +9,7 @@ import { afterEach, expect, test } from 'bun:test'
 // besides the start of the page.
 
 GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/chat' })
-await import('../__tests__/vue-components')
+await import('@demicodes/web-ui/__tests__/vue-components')
 const { createApp, h } = await import('vue')
 const { createPageI18n } = await import('@demicodes/web-ui/i18n/text')
 const { hostGlyph } = await import('@demicodes/web-ui/devices/device-glyphs')

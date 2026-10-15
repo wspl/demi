@@ -27,12 +27,20 @@ export function dragCloses(pulled: number, size: number, velocity: number): bool
   return pulled >= size * DRAG_CLOSE_SHARE
 }
 
-/** The speed of a drag along one axis from its recent samples (`at`, the newest last), in px per ms; 0 without two of them. */
-export function dragVelocity(samples: readonly { at: number; t: number }[]): number {
+/**
+ * The speed of a drag along one axis as the finger lifts at `liftAt`, from
+ * its recent samples (`at`, the newest last), in px per ms. It is the speed
+ * over the last 80 ms before the lift, the time the finger stood still
+ * before it included: a flick held still before the lift has stopped.
+ */
+export function dragVelocity(samples: readonly { at: number; t: number }[], liftAt: number): number {
   const last = samples.at(-1)
-  // The speed over the last 80 ms says how the finger left, not how the drag began.
-  const first = samples.find((sample) => last !== undefined && last.t - sample.t <= 80)
-  if (!last || !first || last.t === first.t)
+  const recent = samples.findIndex((sample) => liftAt - sample.t <= 80)
+  if (!last || recent === -1 || samples.length < 2)
     return 0
-  return (last.at - first.at) / (last.t - first.t)
+  // With one sample in the window, the one before it says where the finger came from.
+  const first = samples[Math.min(recent, samples.length - 2)]!
+  if (liftAt <= first.t)
+    return 0
+  return (last.at - first.at) / (liftAt - first.t)
 }
