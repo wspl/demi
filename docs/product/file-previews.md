@@ -287,7 +287,7 @@ the `<img>` it stands beside shows instead. A click on `plot.py` opens it in
 the File view. A link to a Host file shows the file's
 icon before its name, the icon the file tree shows for it, so a file reads as
 a file and not as a page on the web, and a commit link shows the commit
-icon the Commits list uses before its text. A link that starts with an icon, a
+icon, Lucide's `git-commit-horizontal`, before its text. A link that starts with an icon, a
 file's icon, a commit's or an agent's mark ([Linking an agent](../agent/subagents.md#linking-an-agent)),
 is a small object in the sentence, as a mention is in Slack or Notion, so it
 keeps 0.2 em of space on each side, inside its hover fill where it has one
