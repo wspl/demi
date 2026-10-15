@@ -24,7 +24,7 @@ its message counts, never reach the web app.
 Paths in the index are relative to `/api`, except the public installation row.
 Detailed sections use the same relative paths or spell out the `/api` prefix.
 Every response carries `X-Request-Id`, and JSON errors carry
-`{ code, message, requestId }` ([Request IDs and the server log](../backend/backend.md#request-ids-and-the-server-log)). `code` is a value of `ErrorCode`, the
+`{ code, message, params?, requestId }`, `params` the values the page's text for the code needs ([Localization](localization.md#text-from-the-backend)) ([Request IDs and the server log](../backend/backend.md#request-ids-and-the-server-log)). `code` is a value of `ErrorCode`, the
 `web-api-protocol` crate's list of every code the web app can see, which the web
 app receives as a string union. A situation has one code on every route:
 for example, an archived conversation that refuses an operation always answers
@@ -911,7 +911,7 @@ not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, multiAccountWarned?, hiddenProviders?, hiddenModels? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, multiAccountWarned?, hiddenProviders?, hiddenModels? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
@@ -948,7 +948,8 @@ not touch. `lastProjectHost` stores where New Project starts,
 `{ kind: "cloud" | "device", deviceId? }`: the kind and the device the user
 last chose in it ([Conversations and projects](product.md#conversations-and-projects)).
 A patch replaces it whole; a `deviceId` the user no longer has is kept and
-the dialog chooses no device for it. `locale` stores the time
+the dialog chooses no device for it. `language` is `system`, `en` or
+`zh-Hans`, absent meaning `system` ([Localization](localization.md#choosing-the-language)). `locale` stores the time
 zone and languages the user's browser last reported, as
 `{ timeZone, languages, colorScheme? }` with an IANA zone name, BCP 47 tags in
 preference order and the page's `light` or `dark` scheme. A page sends it
