@@ -314,6 +314,9 @@ with ID as the stable tie-breaker. Reorder writes one partition atomically and
 rejects archived rows or cross-partition targets.
 [Web API](../product/web-api.md#sidebar-mutations-and-read-state)
 owns the request contract.
+- **Shares:** `shares` holds each share's token, user, conversation,
+  kind, the answer's block and when it was taken; the snapshot itself is in
+  the conversation's database ([Sharing](../product/sharing.md#storage-and-routes)).
 - **Turns a shutdown interrupted:** `interrupted_turns` holds one row per
   root whose running turn a graceful shutdown began to interrupt, by its
   conversation. The start that resumes
@@ -337,6 +340,7 @@ Host. The node lifecycle and its commits are defined in
 | `blocks` | One transcript block per node and block index, found also by the block's id and by the command a `shell` call's view names, for a page read around a block, a block read whole and the call that started a command ([Conversation history](../product/web-api.md#conversation-history)) |
 | `command_outputs` | The record of each ended command's whole output, by command id ([Command outputs](#command-outputs)) |
 | `attachments` | Each attachment the agent uploaded, by its number: the file's name, its media type, its size and its blob ([Attachment commands](../execution/commands.md#attachment-commands)); a Fork's seed copies the rows, and the blobs stay shared |
+| `share_blocks`, `share_outputs` | Each share's snapshot: the blocks it shows, by share, agent and index, and the command outputs they show ([Sharing](../product/sharing.md#storage-and-routes)) |
 
 For example, saving a streamed assistant block updates that block's row and
 the node checkpoint together. It does not serialize the whole transcript into
@@ -544,7 +548,7 @@ fork of it also holds. Deletion goes in four steps:
 
 1. One transaction of the control database removes the conversation's
    record and every record that belongs to it, such as its draft, work
-   panel, attached hosts and permission requests and grants, and records the
+   panel, attached hosts, permission requests and grants and shares, and records the
    deletion as pending. The usage ledger keeps its rows: they are the
    user's record of what was used. From this
    commit on, no request finds the conversation.
