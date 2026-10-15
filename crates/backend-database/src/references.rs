@@ -4,8 +4,8 @@
 //! the messages they keep saved for later, and the plugins' values and Host
 //! directories; in each of the user's
 //! conversation databases, its blocks with their media and edit copies, the
-//! messages its checkpoints keep queued, the attachments the agent uploaded
-//! and the records of its commands' outputs. An upload
+//! messages its checkpoints keep queued, the attachments the agent uploaded,
+//! the records of its commands' outputs and the shares' snapshots. An upload
 //! record names its blob too, but only a recent one keeps it: an upload
 //! goes with its blob.
 
@@ -21,7 +21,7 @@ use super::StorageError;
 use super::columns::{decode, json};
 use super::command_outputs::{self, OutputRow};
 use super::control::ControlService;
-use super::conversation_attachments;
+use super::{conversation_attachments, shares};
 use super::drafts::draft_blobs;
 use super::plugin_values::plugin_blobs;
 
@@ -111,7 +111,8 @@ impl ControlService {
 /// Every blob a conversation's database names, read on `connection` in the
 /// read transaction it is given: each block's media and edit copies, every
 /// row included, the media of the messages its checkpoints keep queued, the
-/// agent's uploads, and each stored command output.
+/// agent's uploads, each stored command output, and the blocks of the
+/// shares' snapshots, which keep their blobs while they last.
 pub fn conversation_blobs(connection: &Connection) -> Result<BTreeSet<BlobRef>, StorageError> {
     let mut blobs = BTreeSet::new();
     let mut blocks = connection.prepare("SELECT block FROM blocks")?;
@@ -138,5 +139,6 @@ pub fn conversation_blobs(connection: &Connection) -> Result<BTreeSet<BlobRef>, 
             blobs.insert(blob);
         }
     }
+    blobs.extend(shares::snapshot_blobs(connection)?);
     Ok(blobs)
 }

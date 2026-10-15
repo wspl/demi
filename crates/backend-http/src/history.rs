@@ -7,11 +7,11 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::tree;
+use demi_backend_database::tree::{self, BlockRead, PageQuery, PageRead, Transcript};
 use demi_backend_host_access::root_of;
 use demi_backend_user_shard::conversation::{SubagentsError, failure_facts};
 use demi_conversation_socket_protocol::{index_u32, light};
-use demi_shared_types::{BlockId, CommandId};
+use demi_shared_types::{Block, BlockId, CommandId};
 use demi_web_api_protocol::conversations::{
     CommandCall, NodeQuery, Subagents, TranscriptPage, TranscriptQuery, WholeBlock,
 };
@@ -33,50 +33,59 @@ pub(super) async fn transcript(
 ) -> Result<Json<TranscriptPage>, ApiError> {
     let services = &state.services;
     let record = owned(services, &user.id, &id).await?;
-    let node = query.node.clone().unwrap_or_else(|| root_of(&record.id));
+    let transcript = Transcript::Agent(query.node.clone().unwrap_or_else(|| root_of(&record.id)));
     let read = services
         .conversations
         .read(&record.id, move |connection| {
-            tree::read_page(connection, &node, &query)
+            tree::read_page(connection, &transcript, PageQuery::from(&query))
         })
         .await
         .map_err(ApiError::conversation_unreadable)?;
+    let mut page = page_answer(read, no_node, no_block)?;
+    // Error blocks come whole, so their facts read as the stream's.
+    page.failures = failure_facts(&services.assembly, &page.blocks).await;
+    Ok(Json(page))
+}
+
+/// A page read as its route answers it, without failure facts: a
+/// conversation without a database yet has an empty transcript, and a node
+/// or a block the transcript lacks answers `no_node` or `no_block`.
+pub(super) fn page_answer(
+    read: Option<PageRead>,
+    no_node: fn() -> ApiError,
+    no_block: fn() -> ApiError,
+) -> Result<TranscriptPage, ApiError> {
     match read {
-        // A conversation with no database yet has an empty transcript.
-        None => Ok(Json(TranscriptPage {
+        None => Ok(TranscriptPage {
             start: 0,
             length: 0,
             blocks: Vec::new(),
             failures: None,
             instructions: Vec::new(),
             summaries: Vec::new(),
-        })),
-        Some(tree::PageRead::Page {
+        }),
+        Some(PageRead::Page {
             start,
             length,
             blocks,
             instructions,
             summaries,
-        }) => {
-            // Error blocks come whole, so their facts read as the stream's.
-            let failures = failure_facts(&services.assembly, &blocks).await;
-            Ok(Json(TranscriptPage {
-                start: index_u32(start),
-                length: index_u32(length),
-                blocks: light(&blocks),
-                failures,
-                instructions,
-                summaries,
-            }))
-        }
-        Some(tree::PageRead::NoNode) => Err(no_node()),
-        Some(tree::PageRead::NoBlock) => Err(no_block()),
-        Some(tree::PageRead::Changed) => Err(ApiError::new(
+        }) => Ok(TranscriptPage {
+            start: index_u32(start),
+            length: index_u32(length),
+            blocks: light(&blocks),
+            failures: None,
+            instructions,
+            summaries,
+        }),
+        Some(PageRead::NoNode) => Err(no_node()),
+        Some(PageRead::NoBlock) => Err(no_block()),
+        Some(PageRead::Changed) => Err(ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::TranscriptChanged,
             "The transcript changed since the page read it",
         )),
-        Some(tree::PageRead::Invalid(message)) => Err(ApiError::new(
+        Some(PageRead::Invalid(message)) => Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             ErrorCode::InvalidQuery,
             message,
@@ -95,27 +104,34 @@ pub(super) async fn block(
     let services = &state.services;
     let record = owned(services, &user.id, &id).await?;
     let block = BlockId::try_from(block).map_err(|_| no_block())?;
-    let node = query.node.unwrap_or_else(|| root_of(&record.id));
-    let found = services
+    let transcript = Transcript::Agent(query.node.unwrap_or_else(|| root_of(&record.id)));
+    let read = services
         .conversations
         .read(&record.id, move |connection| {
-            let Some(length) = tree::transcript_length(connection, &node)? else {
-                return Ok(Err(no_node()));
-            };
-            let Some(index) = tree::block_index(connection, &node, &block, length)? else {
-                return Ok(Err(no_block()));
-            };
-            let mut blocks = tree::blocks_in(connection, &node, index..index + 1)?;
-            Ok(Ok(blocks.remove(0)))
+            tree::read_block(connection, &transcript, &block)
         })
         .await
-        .map_err(ApiError::conversation_unreadable)?
-        .ok_or_else(no_block)??;
+        .map_err(ApiError::conversation_unreadable)?;
+    let found = block_answer(read, no_node, no_block)?;
     let failures = failure_facts(&services.assembly, std::slice::from_ref(&found)).await;
     Ok(Json(WholeBlock {
         block: found,
         failures,
     }))
+}
+
+/// A block read as its route answers it: a conversation without a database
+/// yet holds no block.
+pub(super) fn block_answer(
+    read: Option<BlockRead>,
+    no_node: fn() -> ApiError,
+    no_block: fn() -> ApiError,
+) -> Result<Block, ApiError> {
+    match read {
+        Some(BlockRead::Block(block)) => Ok(block),
+        Some(BlockRead::NoNode) => Err(no_node()),
+        Some(BlockRead::NoBlock) | None => Err(no_block()),
+    }
 }
 
 /// `GET /conversations/:id/subagents`: every subagent the conversation has

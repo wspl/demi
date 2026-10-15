@@ -79,7 +79,8 @@ impl ReadBlob for NoBlobs {
 /// and the one with that format before account rotation, and the one with
 /// account rotation before a placeholder title held no words, the one with
 /// placeholder titles before interrupted turns were kept, and the one with
-/// interrupted turns before a conversation kept the hosts it may reach.
+/// interrupted turns before a conversation kept the hosts it may reach,
+/// and the one with them before shares.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -195,8 +196,30 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.interrupted-turns.sql"),
             migration: Migration::Sql(CONTROL_FROM_INTERRUPTED_TURNS),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.reachable-hosts.sql"),
+            migration: Migration::Sql(CONTROL_FROM_REACHABLE_HOSTS),
+        },
     ],
 };
+
+/// From the control schema in which a conversation keeps the hosts it may
+/// reach to the one that keeps each share's record (`sharing.md` § Storage
+/// and routes). A database of the earlier schema has shared nothing.
+const CONTROL_FROM_REACHABLE_HOSTS: &str = "
+CREATE TABLE shares (
+  token           TEXT PRIMARY KEY,
+  user_id         TEXT NOT NULL REFERENCES users (id),
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  kind            TEXT NOT NULL CHECK (kind IN ('conversation', 'answer')),
+  block_id        TEXT,
+  title           TEXT,
+  taken_at        INTEGER NOT NULL,
+  CHECK ((kind = 'answer') = (block_id IS NOT NULL))
+) STRICT;
+CREATE UNIQUE INDEX shares_of_conversation ON shares (conversation_id) WHERE kind = 'conversation';
+CREATE UNIQUE INDEX shares_of_answer ON shares (conversation_id, block_id) WHERE kind = 'answer';
+";
 
 /// From the control schema that keeps the turns a shutdown interrupted to
 /// the one in which a conversation keeps the hosts it may reach and a request
@@ -695,7 +718,8 @@ CREATE TABLE plugin_oauth_clients (
 /// child's row kept its working directory, through the one with child
 /// directories before a node kept its profile's Context, and through the
 /// one of format 6 before a shell call marked the paths outside its
-/// agent's directory, and the one of format 7 before account rotation.
+/// agent's directory, and the one of format 7 before account rotation, and the one of format 8
+/// before the shares' snapshots.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -751,8 +775,45 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.block-format-7.sql"),
             migration: Migration::Sql(CONVERSATION_FROM_BLOCK_FORMAT_7),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.block-format-8.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_BLOCK_FORMAT_8),
+        },
     ],
 };
+
+/// From the conversation schema of transcript block format 8 to the one
+/// that keeps the shares' snapshots (`sharing.md` § Storage and routes). A
+/// database of the earlier schema holds none.
+const CONVERSATION_FROM_BLOCK_FORMAT_8: &str = "
+CREATE TABLE share_blocks (
+  token TEXT NOT NULL,
+  agent INTEGER NOT NULL CHECK (agent >= 0),
+  idx   INTEGER NOT NULL CHECK (idx >= 0),
+  block TEXT NOT NULL,
+  PRIMARY KEY (token, agent, idx)
+) STRICT;
+CREATE INDEX share_blocks_by_type ON share_blocks (token, agent, json_extract(block, '$.type'), idx);
+CREATE TABLE share_agents (
+  token       TEXT NOT NULL,
+  number      INTEGER NOT NULL CHECK (number >= 1),
+  description TEXT NOT NULL,
+  profile     TEXT,
+  PRIMARY KEY (token, number)
+) STRICT;
+CREATE TABLE share_attachments (
+  token      TEXT NOT NULL,
+  number     INTEGER NOT NULL CHECK (number >= 1),
+  name       TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  size       INTEGER NOT NULL CHECK (size >= 0),
+  width      INTEGER CHECK (width >= 1),
+  height     INTEGER CHECK (height >= 1),
+  blob       TEXT NOT NULL,
+  CHECK ((width IS NULL) = (height IS NULL)),
+  PRIMARY KEY (token, number)
+) STRICT;
+";
 
 /// From the conversation schema of transcript block format 7 and checkpoint
 /// state format 3 to block format 8, which adds the `account_switch` block,
@@ -2319,6 +2380,27 @@ CREATE TABLE interrupted_turns (
   conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE
 ) STRICT;
 
+-- Each share of a conversation or of one answer of it, behind its token,
+-- the only key to it (`sharing.md` § Storage and routes): its owner, its
+-- conversation, its kind, the answer's block for an answer's share, and when
+-- its snapshot, in the conversation's database, was taken. A conversation
+-- has at most one share of its own and one of each answer; its shares go
+-- with it.
+CREATE TABLE shares (
+  token           TEXT PRIMARY KEY,
+  user_id         TEXT NOT NULL REFERENCES users (id),
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  kind            TEXT NOT NULL CHECK (kind IN ('conversation', 'answer')),
+  block_id        TEXT,
+  -- The conversation's title when the snapshot was taken; null while it
+  -- was the placeholder.
+  title           TEXT,
+  taken_at        INTEGER NOT NULL,
+  CHECK ((kind = 'answer') = (block_id IS NOT NULL))
+) STRICT;
+CREATE UNIQUE INDEX shares_of_conversation ON shares (conversation_id) WHERE kind = 'conversation';
+CREATE UNIQUE INDEX shares_of_answer ON shares (conversation_id, block_id) WHERE kind = 'answer';
+
 -- A conversation's deletion that has not reached its last step: its record
 -- is gone, and a start finishes what is left (`storage.md` § Deleting a
 -- conversation). The id is compared as the index compares it.
@@ -2503,6 +2585,46 @@ CREATE TABLE blocks (
 CREATE INDEX blocks_by_type ON blocks (node_id, json_extract(block, '$.type'), idx);
 CREATE INDEX blocks_by_id ON blocks (json_extract(block, '$.id'));
 CREATE INDEX blocks_by_command ON blocks (json_extract(block, '$.view.commandId'));
+
+-- Each share's snapshot (`sharing.md` § Storage and routes): the blocks it
+-- holds, copied from the transcripts as they were when it was taken, by the
+-- share's token, the number of the agent whose transcript they are from, 0
+-- for the root's, and their index in the snapshot's copy of it. A page of a
+-- share is read as one of a transcript, by the requests that start at its
+-- user blocks. The share's control record says the token is valid; rows of
+-- a token it no longer has are never read.
+CREATE TABLE share_blocks (
+  token TEXT NOT NULL,
+  agent INTEGER NOT NULL CHECK (agent >= 0),
+  idx   INTEGER NOT NULL CHECK (idx >= 0),
+  -- share_blocks.block: transcript block format 8
+  block TEXT NOT NULL,
+  PRIMARY KEY (token, agent, idx)
+) STRICT;
+CREATE INDEX share_blocks_by_type ON share_blocks (token, agent, json_extract(block, '$.type'), idx);
+-- Each subagent a snapshot holds, with the description and profile it had
+-- when the snapshot was taken, for its transcript's header.
+CREATE TABLE share_agents (
+  token       TEXT NOT NULL,
+  number      INTEGER NOT NULL CHECK (number >= 1),
+  description TEXT NOT NULL,
+  profile     TEXT,
+  PRIMARY KEY (token, number)
+) STRICT;
+-- Each attachment a snapshot's text names that existed when it was taken,
+-- copied from `attachments`; its blob stays shared with the conversation's.
+CREATE TABLE share_attachments (
+  token      TEXT NOT NULL,
+  number     INTEGER NOT NULL CHECK (number >= 1),
+  name       TEXT NOT NULL,
+  media_type TEXT NOT NULL,
+  size       INTEGER NOT NULL CHECK (size >= 0),
+  width      INTEGER CHECK (width >= 1),
+  height     INTEGER CHECK (height >= 1),
+  blob       TEXT NOT NULL,
+  CHECK ((width IS NULL) = (height IS NULL)),
+  PRIMARY KEY (token, number)
+) STRICT;
 
 -- Each ended command's whole output: stored as a blob, with the bytes at
 -- its end the backend does not have and why; or not stored, and why; and
