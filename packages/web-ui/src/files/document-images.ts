@@ -16,7 +16,11 @@ import type { FileContents } from './types'
  * text in the placeholder box, never as an image without an address, which
  * the web browser draws as a broken picture. A `srcset` that names Host files (`HOST_SRCSET_ATTRIBUTE`) is
  * written once each of its Host files is read, each candidate at the address
- * of its file's version; a candidate whose file is not there drops out.
+ * of its file's version; a candidate whose file is not there drops out. The
+ * image of a `<picture>` takes its address only once each of the picture's
+ * sets is written, and keeps its placeholder until then, so the web browser
+ * chooses among the sources once and fetches only the candidate it chooses:
+ * a dark theme does not also fetch the light logo the image falls back to.
  *
  * An image whose bytes do not load, as while the Host is away, or whose file
  * is not there, shows its alt text in a quiet box in its place, as a web
@@ -69,13 +73,24 @@ export function useDocumentImages(options: {
   async function address(): Promise<void> {
     // The rendering reaches the page first.
     await nextTick()
+    const root = options.root()
+    // The pictures with a set whose files are still being read.
+    const choosing = new Set<Element>()
+    for (const element of root?.querySelectorAll(`[${HOST_SRCSET_ATTRIBUTE}]`) ?? []) {
+      const picture = element.closest('picture')
+      if (!setSrcset(element) && picture)
+        choosing.add(picture)
+    }
     const placeholders = new Map([...failed].map(([placeholder, image]) => [image, placeholder]))
-    const images = [...options.root()?.querySelectorAll<HTMLImageElement>(`img[${HOST_FILE_ATTRIBUTE}]`) ?? [], ...placeholders.keys()]
+    const images = [...root?.querySelectorAll<HTMLImageElement>(`img[${HOST_FILE_ATTRIBUTE}]`) ?? [], ...placeholders.keys()]
     for (const image of images) {
       const shown = hostImages.value.get(image.getAttribute(HOST_FILE_ATTRIBUTE) ?? '')
       const placeholder = placeholders.get(image)
-      // A file that is not there, or not read yet, shows its alt text, as an image that does not load does.
-      if (shown === undefined || shown.state !== 'shown') {
+      const picture = (placeholder ?? image).closest('picture')
+      // A file that is not there, or not read yet, shows its alt text, as an
+      // image that does not load does; so does the image of a picture that
+      // cannot choose its source yet.
+      if (shown === undefined || shown.state !== 'shown' || (picture && choosing.has(picture))) {
         if (!placeholder)
           fail(image)
         continue
@@ -86,15 +101,19 @@ export function useDocumentImages(options: {
           continue
         placeholder.replaceWith(image)
         failed.delete(placeholder)
+        // Its own set, which the pass above did not find while it was away.
+        if (image.hasAttribute(HOST_SRCSET_ATTRIBUTE))
+          setSrcset(image)
       }
       image.setAttribute('src', shown.src)
     }
-    for (const element of options.root()?.querySelectorAll(`[${HOST_SRCSET_ATTRIBUTE}]`) ?? [])
-      setSrcset(element)
   }
 
-  /** Writes the `srcset` of `element` from its candidates' files, once each is read. */
-  function setSrcset(element: Element): void {
+  /**
+   * Writes the `srcset` of `element` from its candidates' files, once each
+   * is read; whether it could, or a file is still being read.
+   */
+  function setSrcset(element: Element): boolean {
     const candidates = []
     for (const candidate of hostSrcsetCandidates(element)) {
       if ('url' in candidate) {
@@ -105,7 +124,7 @@ export function useDocumentImages(options: {
       // Until every file is read, the set could pick a candidate it would not pick whole.
       if (shown === undefined || shown.state === 'loading') {
         element.removeAttribute('srcset')
-        return
+        return false
       }
       if (shown.state === 'shown')
         candidates.push({ url: shown.src, descriptor: candidate.descriptor })
@@ -116,6 +135,7 @@ export function useDocumentImages(options: {
     // Set only when it changes, since setting it makes the web browser choose again.
     else if (element.getAttribute('srcset') !== srcset)
       element.setAttribute('srcset', srcset)
+    return true
   }
   watch([html, hostImages], address, { immediate: true, flush: 'post' })
 
