@@ -854,6 +854,11 @@ impl TestBackend {
         self.backend.hold_commits()
     }
 
+    /// How much work the users' search indexes have done so far.
+    pub fn search_work(&self) -> demi_backend_database::search::SearchWork {
+        self.backend.search_work()
+    }
+
     /// Holds every migration of a conversation's database from now on,
     /// until the hold is released or dropped.
     pub fn hold_migrations(&self) -> demi_backend_database::conversations::MigrationHold {

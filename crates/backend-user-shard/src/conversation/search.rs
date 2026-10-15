@@ -3,46 +3,63 @@
 //! which keeps the user's search index in step with the conversations, and
 //! the search the edge answers from that index alone.
 //!
-//! The indexer follows the user's changes as a page does: each change of a
-//! conversation's summary, among them every save of its root's checkpoint
-//! and every title change, marks the conversation on the indexer's watch.
-//! A marked conversation is indexed at once, and a mark within the interval
-//! after that waits for its end, so a streaming answer is indexed at most
-//! once per interval and its last save, which ends the turn, once more
-//! after it. Indexing reads the conversation's record and the saved version
-//! of its root's transcript, and writes only when either differs from what
-//! the index holds, so a mark that changed neither, such as a read
-//! acknowledgement, costs two reads.
+//! The indexer follows each save of a root's checkpoint by what it changed:
+//! the save hands over the version it follows and the one it makes, the
+//! searchable text of the blocks it wrote and where it cut the rest, and the
+//! indexer applies the saves of each conversation in turn, without reading
+//! the conversation, each only on top of the version it follows. Everything
+//! else that changes a conversation's summary, among them a title change and
+//! a deletion, marks the conversation on the indexer's watch; a marked
+//! conversation is looked at once, and a mark within the interval after that
+//! waits for its end. A mark reads the conversation's record and what the
+//! index holds of it, and replaces the title's row when the title differs.
+//! A conversation is read whole only when the index does not hold it: a mark
+//! finds it missing, a save finds it at another version than the one the
+//! save follows, the start finds it at another version, or the index is
+//! reset. A whole read that fails leaves the index behind, so the next save
+//! or start reads the conversation whole again.
 
 use std::cell::{Cell, RefCell};
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationRecord;
-use demi_backend_database::search::{IndexedConversation, IndexedMessage};
+use demi_backend_database::search::{IndexedConversation, TranscriptChange, title_ranges};
 use demi_backend_database::tree;
 use demi_backend_page_sync::{Part, Registration};
 use demi_shared_gates::KeyedSerialGate;
-use demi_shared_types::{Block, UserContentBlock};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
-use demi_web_api_protocol::search::{
-    LINE_MAX, RESULTS_MAX, SearchMatch, SearchResult, SearchText,
-};
+use demi_web_api_protocol::search::{RESULTS_MAX, SearchMatch, SearchResult, SearchText};
+use tokio::sync::broadcast::{self, error::RecvError};
 
 use crate::services::Services;
 use crate::shard::{Shard, Shards};
 
 /// The user's indexer: the watch of the user's changes, one indexing at a
-/// time per conversation, and the conversations marked since their last
-/// indexing began.
+/// time per conversation, the conversations marked since their last look
+/// began, the saves waiting to be applied, and where the catching up of
+/// every conversation stands.
 pub(crate) struct SearchIndexer {
     watch: Registration,
     turns: KeyedSerialGate<ConversationId>,
-    /// Each conversation being indexed or waiting out its interval, with
+    /// Each conversation being looked at or waiting out its interval, with
     /// whether it was marked again meanwhile.
     marked: RefCell<HashMap<ConversationId, Rc<Cell<bool>>>>,
+    /// Each conversation whose saves are being applied, with those not yet
+    /// applied, oldest first.
+    saves: RefCell<HashMap<ConversationId, VecDeque<TranscriptChange>>>,
+    catching_up: Cell<CatchUp>,
+}
+
+/// Where the catching up of every conversation stands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CatchUp {
+    Idle,
+    Running,
+    /// Running, and asked for again, as a reset during it does.
+    Again,
 }
 
 impl SearchIndexer {
@@ -51,12 +68,14 @@ impl SearchIndexer {
             watch: services.sync.watch(user),
             turns: KeyedSerialGate::new(),
             marked: RefCell::default(),
+            saves: RefCell::default(),
+            catching_up: Cell::new(CatchUp::Idle),
         }
     }
 }
 
 impl Shard {
-    /// Indexes each conversation the user's changes mark, until the shard
+    /// Looks at each conversation the user's changes mark, until the shard
     /// closes.
     pub(crate) async fn follow_for_search(self: Rc<Self>) {
         loop {
@@ -72,8 +91,58 @@ impl Shard {
         }
     }
 
-    /// Indexes the conversation now, unless an indexing of it began within
-    /// the interval: then once the interval has passed.
+    /// Applies what a save of the conversation's root changed, after the
+    /// saves before it, or reads the conversation whole when the index does
+    /// not hold the version the change follows.
+    pub(crate) fn follow_save(&self, id: ConversationId, change: TranscriptChange) {
+        let indexer = self.search_indexer();
+        if let Some(waiting) = indexer.saves.borrow_mut().get_mut(&id) {
+            waiting.push_back(change);
+            return;
+        }
+        indexer.saves.borrow_mut().insert(id.clone(), VecDeque::from([change]));
+        let shard = self.this();
+        self.tasks().spawn_local(async move {
+            loop {
+                let _turn = shard.search_indexer().turns.acquire(id.clone()).await;
+                let next = {
+                    let mut saves = shard.search_indexer().saves.borrow_mut();
+                    let next = saves.get_mut(&id).and_then(VecDeque::pop_front);
+                    if next.is_none() {
+                        saves.remove(&id);
+                    }
+                    next
+                };
+                let Some(change) = next else {
+                    return;
+                };
+                let services = shard.services();
+                let applied = services.search.apply(shard.user(), &id, change).await;
+                match applied {
+                    Ok(true) => continue,
+                    Ok(false) => {}
+                    Err(error) => tracing::warn!(
+                        conversation = %id,
+                        error = &error as &dyn std::error::Error,
+                        "a save was not indexed for search; the conversation is read whole"
+                    ),
+                }
+                // The index lacks the conversation, or a change before this
+                // one: it is read whole, unless it is at the conversation's
+                // version already, which holds the saves waiting so far. A
+                // failed read leaves the index behind the conversation, so
+                // the next save, or the next start, reads it whole again.
+                let caught_up = match services.control.conversation(id.clone()).await {
+                    Ok(record) => shard.catch_up(&id, record, true).await,
+                    Err(error) => Err(error),
+                };
+                report_catch_up(&id, caught_up);
+            }
+        });
+    }
+
+    /// Looks at the conversation now, unless a look at it began within the
+    /// interval: then once the interval has passed.
     fn mark_for_search(&self, id: ConversationId) {
         let indexer = self.search_indexer();
         if let Some(again) = indexer.marked.borrow().get(&id) {
@@ -88,18 +157,13 @@ impl Shard {
             loop {
                 let record = shard.services().control.conversation(id.clone()).await;
                 let indexed = match record {
-                    Ok(record) => shard.index_for_search(&id, record).await,
+                    Ok(record) => {
+                        let _turn = shard.search_indexer().turns.acquire(id.clone()).await;
+                        shard.catch_up(&id, record, false).await
+                    }
                     Err(error) => Err(error),
                 };
-                if let Err(error) = indexed {
-                    // The index keeps what it had; the conversation's next
-                    // change, or the next start, indexes it again.
-                    tracing::warn!(
-                        conversation = %id,
-                        error = &error as &dyn std::error::Error,
-                        "a conversation was not indexed for search"
-                    );
-                }
+                report_catch_up(&id, indexed);
                 tokio::select! {
                     () = tokio::time::sleep(interval) => {}
                     () = shard.closed() => break,
@@ -113,58 +177,88 @@ impl Shard {
     }
 
     /// Brings the index's rows of the conversation `id` in step with
-    /// `record`, its record now: removed when it is gone or not the user's,
-    /// otherwise indexed again when its title or its root's saved transcript
-    /// differs from what the index holds.
-    async fn index_for_search(
+    /// `record`, its record now, in the conversation's indexing turn, which
+    /// the caller holds: removed when it is gone or not the user's; read
+    /// whole when the index does not hold it, or, with `versions`, holds it
+    /// at another saved version of its root's transcript; otherwise its
+    /// title's row replaced when the title differs.
+    async fn catch_up(
         &self,
         id: &ConversationId,
         record: Option<ConversationRecord>,
+        versions: bool,
     ) -> Result<(), StorageError> {
-        let _turn = self.search_indexer().turns.acquire(id.clone()).await;
         let services = self.services();
         let user = self.user();
         let Some(record) = record.filter(|record| record.owner == *user) else {
             return services.search.remove_conversation(user, id).await;
         };
-        let indexed = services.search.indexed(user, &record.id).await?;
-        let version = services
-            .conversations
-            .read(&record.id, tree::root_version)
-            .await?
-            .unwrap_or_default();
         // The placeholder holds no words, which no query finds.
         let title = record.title.unwrap_or_default();
-        if indexed.is_some_and(|indexed| indexed.version == version && indexed.title == title) {
+        let indexed = services.search.indexed(user, &record.id).await?;
+        let whole = match &indexed {
+            None => true,
+            Some(_) if !versions => false,
+            Some(indexed) => {
+                let version = services
+                    .conversations
+                    .read(&record.id, tree::root_version)
+                    .await?
+                    .unwrap_or_default();
+                indexed.version != version
+            }
+        };
+        if !whole {
+            if indexed.is_some_and(|indexed| indexed.title != title) {
+                services.search.retitle(user, &record.id, title).await?;
+            }
             return Ok(());
         }
-        let (version, blocks) = services
+        // The saves waiting so far committed before the read below, which
+        // holds them; one that commits later is applied after it.
+        if let Some(waiting) = self.search_indexer().saves.borrow_mut().get_mut(&record.id) {
+            waiting.clear();
+        }
+        let (version, messages) = services
             .conversations
-            .read(&record.id, tree::root_transcript)
+            .read(&record.id, tree::root_search_texts)
             .await?
             .unwrap_or_default();
         let conversation = IndexedConversation {
             version,
             title,
-            messages: searchable(&blocks),
+            messages,
         };
         services.search.index(user, &record.id, conversation).await
     }
 
-    /// Brings the whole index in step at start, in the background: each of
-    /// the user's conversations, the most recently active first, and then
-    /// the rows of any conversation that is gone. An index built again is
-    /// empty, so this fills it.
-    async fn index_at_start(self: Rc<Self>) {
-        if let Err(error) = self.index_everything().await {
-            // The conversations not reached are indexed by their next
-            // change, or at the next start.
-            tracing::warn!(
-                user = %self.user(),
-                error = &error as &dyn std::error::Error,
-                "the search index was not brought in step at start"
-            );
+    /// Brings every conversation of the user's in step, in the background,
+    /// at start and after the index is reset: each of the user's
+    /// conversations, the most recently active first, and then the rows of
+    /// any conversation that is gone. An index built again is empty, so this
+    /// fills it. Asked for while it runs, it runs once more after.
+    pub(crate) async fn catch_up_everything(self: Rc<Self>) {
+        let indexer = self.search_indexer();
+        if indexer.catching_up.get() != CatchUp::Idle {
+            indexer.catching_up.set(CatchUp::Again);
+            return;
         }
+        loop {
+            indexer.catching_up.set(CatchUp::Running);
+            if let Err(error) = self.index_everything().await {
+                // The conversations not reached are indexed by their next
+                // change, or at the next start.
+                tracing::warn!(
+                    user = %self.user(),
+                    error = &error as &dyn std::error::Error,
+                    "the search index was not brought in step"
+                );
+            }
+            if indexer.catching_up.get() != CatchUp::Again || self.is_closing() {
+                break;
+            }
+        }
+        indexer.catching_up.set(CatchUp::Idle);
     }
 
     async fn index_everything(&self) -> Result<(), StorageError> {
@@ -181,14 +275,31 @@ impl Shard {
                 return Ok(());
             }
             let id = record.id.clone();
-            self.index_for_search(&id, Some(record)).await?;
+            let _turn = self.search_indexer().turns.acquire(id.clone()).await;
+            let caught_up = self.catch_up(&id, Some(record), true).await;
+            report_catch_up(&id, caught_up);
         }
         for id in services.search.conversations(user).await? {
             if !present.contains(&id) {
-                self.index_for_search(&id, None).await?;
+                let _turn = self.search_indexer().turns.acquire(id.clone()).await;
+                let caught_up = self.catch_up(&id, None, true).await;
+                report_catch_up(&id, caught_up);
             }
         }
         Ok(())
+    }
+}
+
+/// Logs a conversation the catching up of every conversation could not
+/// bring in step, which goes on with the others: the index stays behind it,
+/// so its next save, or the next start, reads it whole again.
+fn report_catch_up(id: &ConversationId, caught_up: Result<(), StorageError>) {
+    if let Err(error) = caught_up {
+        tracing::warn!(
+            conversation = %id,
+            error = &error as &dyn std::error::Error,
+            "a conversation was not indexed for search"
+        );
     }
 }
 
@@ -201,7 +312,7 @@ pub async fn index_at_start(
     shards: &Shards,
 ) -> Result<(), StorageError> {
     for owner in control.conversation_owners().await? {
-        let handed = shards.of(&owner).adopt(Shard::index_at_start).await;
+        let handed = shards.of(&owner).adopt(Shard::catch_up_everything).await;
         if handed.is_err() {
             // The backend is shutting down; the next start indexes what is
             // left.
@@ -211,268 +322,82 @@ pub async fn index_at_start(
     Ok(())
 }
 
-/// What a search finds of a transcript: the text of each of the root's
-/// `user` messages and steers, the user's messages both, and of its answers. Thinking, tool calls and their
-/// results, commands' output, files and the blocks the runtime writes are
-/// left out, and so is a message without text.
-fn searchable(blocks: &[Block]) -> Vec<IndexedMessage> {
-    blocks
-        .iter()
-        .enumerate()
-        .filter_map(|(position, block)| {
-            let text = match block {
-                Block::User(_) | Block::Steer(_) => message_text(block)?,
-                Block::Text(answer) if !answer.text.trim().is_empty() => answer.text.clone(),
-                _ => return None,
-            };
-            Some(IndexedMessage {
-                block: block.id().clone(),
-                position,
-                text,
-            })
-        })
-        .collect()
+/// Has each user whose search index is reset, from `resets`, index every
+/// conversation again as at start, until the backend closes. A follower that
+/// fell behind and missed some resets has every user do so.
+pub async fn follow_resets(
+    mut resets: broadcast::Receiver<UserId>,
+    control: ControlService,
+    shards: Shards,
+) {
+    loop {
+        let handed = match resets.recv().await {
+            Ok(user) => shards.of(&user).adopt(Shard::catch_up_everything).await.is_ok(),
+            Err(RecvError::Lagged(_)) => match index_at_start(&control, &shards).await {
+                Ok(()) => true,
+                Err(error) => {
+                    // The users not reached are brought in step at the next
+                    // start; their conversations' changes meanwhile apply as
+                    // they come.
+                    tracing::warn!(
+                        error = &error as &dyn std::error::Error,
+                        "the conversations to index for search cannot be listed"
+                    );
+                    true
+                }
+            },
+            Err(RecvError::Closed) => false,
+        };
+        if !handed {
+            // The backend is shutting down.
+            return;
+        }
+    }
 }
 
 /// Answers `query` for `user` from the user's index alone: no
 /// conversation's database is opened and no Host woken. The conversations'
-/// records give their current titles, archive state and activity, and a
-/// conversation whose record is gone is left out.
+/// records give their current titles, archive state and activity, and their
+/// order: title matches first, then the rest, each kind most recently
+/// active first; a conversation whose record is gone is left out.
 pub async fn search(
     services: &Services,
     user: &UserId,
     query: &SearchText,
 ) -> Result<Vec<SearchResult>, StorageError> {
     let words = query.words();
-    let found = services.search.find(user, words.clone()).await?;
     // The index holds each conversation under its record's spelling.
-    let mut records: HashMap<ConversationId, ConversationRecord> = HashMap::new();
+    let mut records: Vec<ConversationRecord> = Vec::new();
     for archived in [false, true] {
-        for record in services.control.conversations(user.clone(), archived).await? {
-            records.insert(record.id.clone(), record);
-        }
+        records.extend(services.control.conversations(user.clone(), archived).await?);
     }
-    let mut hits: Vec<_> = found
+    records.sort_by(|a, b| b.updated_at.cmp(&a.updated_at).then_with(|| a.id.cmp(&b.id)));
+    let ranked = records.iter().map(|record| record.id.clone()).collect();
+    let mut records: HashMap<ConversationId, ConversationRecord> =
+        records.into_iter().map(|record| (record.id.clone(), record)).collect();
+    let found = services.search.find(user, words.clone(), ranked, RESULTS_MAX).await?;
+    Ok(found
         .into_iter()
         .filter_map(|found| {
             let record = records.remove(&found.conversation)?;
-            Some((found, record))
-        })
-        .collect();
-    hits.sort_by(|(a, a_record), (b, b_record)| {
-        b.title
-            .cmp(&a.title)
-            .then_with(|| b_record.updated_at.cmp(&a_record.updated_at))
-            .then_with(|| a_record.id.cmp(&b_record.id))
-    });
-    hits.truncate(RESULTS_MAX);
-    let rows = hits
-        .iter()
-        .filter_map(|(found, _)| found.message.as_ref().map(|message| message.text))
-        .collect();
-    let texts = services.search.texts(user, rows).await?;
-    Ok(hits
-        .into_iter()
-        .map(|(found, record)| {
-            let r#match = found.message.and_then(|message| {
-                let text = texts.get(&message.text)?;
-                let (text, ranges) = match_line(text, &words);
-                Some(SearchMatch {
-                    block_id: message.block,
-                    text,
-                    ranges,
-                })
+            let r#match = found.message.map(|message| SearchMatch {
+                block_id: message.block,
+                text: message.line,
+                ranges: message.ranges,
             });
             let title_ranges = if found.title {
                 title_ranges(record.title.as_deref().unwrap_or_default(), &words)
             } else {
                 Vec::new()
             };
-            SearchResult {
+            Some(SearchResult {
                 conversation_id: record.id,
                 title_ranges,
                 title: record.title,
                 archived: record.archived,
                 last_active_at: record.updated_at,
                 r#match,
-            }
+            })
         })
         .collect())
-}
-
-/// How many characters of a long line come before its first match.
-const LEAD: usize = 40;
-
-/// The line of `text` around the first place a word matches, at most
-/// `LINE_MAX` characters, with an ellipsis where it is cut, and the places
-/// of every word in it as UTF-16 offsets, which the page marks.
-///
-/// FTS5's `snippet` and `highlight` would mark only the words of its MATCH,
-/// which leaves out the words of one or two characters the index finds by
-/// a scan, and they cut by tokens, which the trigram tokenizer makes of
-/// every character; neither gives UTF-16 offsets. So the line is cut and
-/// the words found here, on the text the index matched, case ignored as the
-/// index ignores it.
-fn match_line(text: &str, words: &[String]) -> (String, Vec<[u32; 2]>) {
-    let characters: Vec<char> = text.chars().collect();
-    let found = occurrences(&characters, words);
-    let first = found.first().map_or(0, |&(start, _)| start);
-    let mut line_start = characters[..first]
-        .iter()
-        .rposition(|&character| character == '\n')
-        .map_or(0, |newline| newline + 1);
-    let mut line_end = characters[first..]
-        .iter()
-        .position(|&character| character == '\n')
-        .map_or(characters.len(), |newline| first + newline);
-    while line_start < line_end && characters[line_start].is_whitespace() {
-        line_start += 1;
-    }
-    while line_end > line_start && characters[line_end - 1].is_whitespace() {
-        line_end -= 1;
-    }
-    let (mut start, mut end) = (line_start, line_end);
-    if end - start > LINE_MAX {
-        start = first.saturating_sub(LEAD).max(line_start);
-        end = (start + LINE_MAX).min(line_end);
-        start = end.saturating_sub(LINE_MAX).max(line_start);
-    }
-    // The ellipses take the place of a character each, inside the bound.
-    let cut_start = start > line_start;
-    let cut_end = end < line_end;
-    if cut_start {
-        start += 1;
-    }
-    if cut_end && end > start {
-        end -= 1;
-    }
-    let mut line = String::new();
-    if cut_start {
-        line.push('…');
-    }
-    line.extend(&characters[start..end]);
-    if cut_end {
-        line.push('…');
-    }
-    let ellipsis = if cut_start { '…'.len_utf16() } else { 0 };
-    let ranges = utf16_ranges(&characters[start..end], ellipsis, &found, start);
-    (line, ranges)
-}
-
-/// The places of every word in the whole title, as UTF-16 offsets, found
-/// as a match line's are.
-fn title_ranges(title: &str, words: &[String]) -> Vec<[u32; 2]> {
-    let characters: Vec<char> = title.chars().collect();
-    let found = occurrences(&characters, words);
-    utf16_ranges(&characters, 0, &found, 0)
-}
-
-/// `found`, character positions in a text, as UTF-16 offsets in `shown`, the
-/// piece of the text that starts at character `start` and follows `lead`
-/// UTF-16 units of its own, such as an ellipsis; pieces outside it are cut.
-fn utf16_ranges(shown: &[char], lead: usize, found: &[(usize, usize)], start: usize) -> Vec<[u32; 2]> {
-    let end = start + shown.len();
-    let offset = |position: usize| -> u32 {
-        let before: usize = shown[..position - start]
-            .iter()
-            .map(|character| character.len_utf16())
-            .sum();
-        u32::try_from(lead + before).expect("a line of 256 characters fits u32")
-    };
-    found
-        .iter()
-        .filter(|&&(from, to)| from < end && to > start)
-        .map(|&(from, to)| [offset(from.max(start)), offset(to.min(end))])
-        .collect()
-}
-
-/// Where the words occur in `characters`, as character positions, end
-/// exclusive, in order, overlapping ones joined.
-fn occurrences(characters: &[char], words: &[String]) -> Vec<(usize, usize)> {
-    let mut found = Vec::new();
-    for word in words {
-        let word: Vec<char> = word.chars().collect();
-        if word.is_empty() || word.len() > characters.len() {
-            continue;
-        }
-        for start in 0..=characters.len() - word.len() {
-            let matches = word
-                .iter()
-                .zip(&characters[start..])
-                .all(|(&wanted, &character)| same_letter(wanted, character));
-            if matches {
-                found.push((start, start + word.len()));
-            }
-        }
-    }
-    found.sort_unstable();
-    let mut joined: Vec<(usize, usize)> = Vec::new();
-    for (start, end) in found {
-        match joined.last_mut() {
-            Some(last) if start <= last.1 => last.1 = last.1.max(end),
-            _ => joined.push((start, end)),
-        }
-    }
-    joined
-}
-
-/// Whether two characters are the same letter, case ignored.
-fn same_letter(a: char, b: char) -> bool {
-    a == b || a.to_lowercase().eq(b.to_lowercase())
-}
-
-/// The text of a message the user sent, without its files; none for any
-/// other block, or a message without text.
-fn message_text(block: &Block) -> Option<String> {
-    let content = match block {
-        Block::User(user) => &user.content,
-        Block::Steer(steer) => &steer.content,
-        _ => return None,
-    };
-    let texts: Vec<&str> = content
-        .iter()
-        .filter_map(|part| match part {
-            UserContentBlock::Text { text } => Some(text.as_str()),
-            _ => None,
-        })
-        .collect();
-    let text = texts.join("\n");
-    (!text.trim().is_empty()).then_some(text)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn line(text: &str, query: &str) -> (String, Vec<[u32; 2]>) {
-        let words: Vec<String> = query.split_whitespace().map(str::to_owned).collect();
-        match_line(text, &words)
-    }
-
-    #[test]
-    fn a_match_line_is_the_line_around_the_first_match_with_its_words_in_utf16() {
-        // The line that holds the first match, case ignored, every word
-        // marked, overlapping ones as one.
-        assert_eq!(
-            line("intro\n  Fix TS2307 by fixing ts paths  \nmore", "ts2307 ts"),
-            ("Fix TS2307 by fixing ts paths".into(), vec![[4, 10], [21, 23]])
-        );
-        // Offsets count UTF-16 units: an emoji takes two.
-        assert_eq!(
-            line("🙂 模块路径不对", "路径"),
-            ("🙂 模块路径不对".into(), vec![[5, 7]])
-        );
-        // A long line is cut around the match, an ellipsis at each cut,
-        // 160 characters in all.
-        let long = format!("{}needle{}", "a".repeat(300), "b".repeat(300));
-        let (cut, ranges) = line(&long, "NEEDLE");
-        assert_eq!(cut.chars().count(), LINE_MAX);
-        assert!(cut.starts_with('…') && cut.ends_with('…'));
-        assert_eq!(ranges, vec![[40, 46]]);
-        assert_eq!(&cut[ranges[0][0] as usize + 2..ranges[0][1] as usize + 2], "needle");
-        // Near the start, the line keeps its start and is cut at the end.
-        let (cut, ranges) = line(&format!("needle {}", "c".repeat(400)), "needle");
-        assert!(cut.starts_with("needle") && cut.ends_with('…'));
-        assert_eq!(ranges, vec![[0, 6]]);
-    }
 }
