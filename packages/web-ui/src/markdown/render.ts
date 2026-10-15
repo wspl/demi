@@ -95,7 +95,8 @@ const CLOSING_PUNCTUATION_RE = /^[.,;:!?)\]}]/
 function tightenLinks(tokens: Token[]): void {
   const mark = (inline: readonly Token[]) => inline.forEach((part, index) => {
     const next = inline[index + 1]
-    if (part.type === 'link' && next?.type === 'text' && CLOSING_PUNCTUATION_RE.test(next.raw))
+    // Inline code may become a file's link (`codespan`), so it is marked as a link is.
+    if ((part.type === 'link' || part.type === 'codespan') && next?.type === 'text' && CLOSING_PUNCTUATION_RE.test(next.raw))
       tightLinks.add(part)
   })
   // A walk gives each token, but a table's cells hold their inline tokens apart from it.
@@ -109,7 +110,7 @@ function tightenLinks(tokens: Token[]): void {
   })
 }
 
-/** The links `tightenLinks` marked, by token. */
+/** The links and code spans `tightenLinks` marked, by token. */
 const tightLinks = new WeakSet<Token>()
 
 /**
@@ -281,14 +282,15 @@ const messageRenderer: RendererObject = {
   },
   // Inline code that names a file the Host has opens it, as a link of words with the file's icon
   // (`file-previews.md` § Files named in messages).
-  codespan({ text }) {
+  codespan(token) {
+    const { text } = token
     const code = `<code>${escapeHtml(text)}</code>`
     const files = activeOptions?.files
     const existing = activeOptions?.codeFiles
     if (!files?.open || !existing || openLinks > 0)
       return code
     const target = codeFileTarget(text, files.cwd)
-    return target && existing.has(target.path) ? iconLink((attributes) => fileLink(target, attributes), fileIcon(baseName(target.path)), code, false) : code
+    return target && existing.has(target.path) ? iconLink((attributes) => fileLink(target, attributes), fileIcon(baseName(target.path)), code, tightLinks.has(token)) : code
   },
   link(token) {
     openLinks += 1
