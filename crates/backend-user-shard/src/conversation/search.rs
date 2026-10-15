@@ -91,7 +91,7 @@ impl Shard {
         }
     }
 
-    /// Applies what a save of the conversation's root changed, after the
+    /// Applies what a save of one of the conversation's agents changed, after the
     /// saves before it, or reads the conversation whole when the index does
     /// not hold the version the change follows.
     pub(crate) fn follow_save(&self, id: ConversationId, change: TranscriptChange) {
@@ -179,8 +179,8 @@ impl Shard {
     /// Brings the index's rows of the conversation `id` in step with
     /// `record`, its record now, in the conversation's indexing turn, which
     /// the caller holds: removed when it is gone or not the user's; read
-    /// whole when the index does not hold it, or, with `versions`, holds it
-    /// at another saved version of its root's transcript; otherwise its
+    /// whole when the index does not hold it, or, with `versions`, holds any
+    /// agent's transcript at another saved version than it has; otherwise its
     /// title's row replaced when the title differs.
     async fn catch_up(
         &self,
@@ -200,12 +200,12 @@ impl Shard {
             None => true,
             Some(_) if !versions => false,
             Some(indexed) => {
-                let version = services
+                let versions = services
                     .conversations
-                    .read(&record.id, tree::root_version)
+                    .read(&record.id, tree::search_versions)
                     .await?
                     .unwrap_or_default();
-                indexed.version != version
+                indexed.versions != versions
             }
         };
         if !whole {
@@ -219,16 +219,12 @@ impl Shard {
         if let Some(waiting) = self.search_indexer().saves.borrow_mut().get_mut(&record.id) {
             waiting.clear();
         }
-        let (version, messages) = services
+        let agents = services
             .conversations
-            .read(&record.id, tree::root_search_texts)
+            .read(&record.id, tree::search_texts)
             .await?
             .unwrap_or_default();
-        let conversation = IndexedConversation {
-            version,
-            title,
-            messages,
-        };
+        let conversation = IndexedConversation { title, agents };
         services.search.index(user, &record.id, conversation).await
     }
 

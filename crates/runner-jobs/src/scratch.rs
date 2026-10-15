@@ -26,6 +26,11 @@ impl Scratch {
         }
     }
 
+    /// The directory that holds every conversation's scratch directory.
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// The directory of `conversation`, a conversation name the wire checked
     /// (`native-runtime.md` § Command context), made when it is not there.
     pub async fn create(&self, conversation: &str) -> io::Result<PathBuf> {

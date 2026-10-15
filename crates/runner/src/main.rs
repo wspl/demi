@@ -16,6 +16,7 @@ mod start;
 mod state;
 mod update;
 
+use demi_runner_jobs::scratch::Scratch;
 use demi_command_protocol::{LocalInvocation, host_target};
 use demi_runner_host::volumes::ManagedVolume;
 use demi_runner_process::{
@@ -390,7 +391,8 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     // `uninstall` runs is being removed.
     let removal = (boot.is_none() && !removing)
         .then(|| removal::command(&directory, installed.is_some(), &executable));
-    let identity = identity(home.to_string_lossy().into_owned())?;
+    let scratch_root = Scratch::new(&directory).root().to_string_lossy().into_owned();
+    let identity = identity(home.to_string_lossy().into_owned(), scratch_root)?;
     let login_shell = env.get("SHELL").filter(|path| !path.is_empty()).cloned();
     let runner = wire::RunnerInfo {
         native_target: Some(host_target().into()),
@@ -665,7 +667,7 @@ fn kernel() -> Option<wire::Kernel> {
     None
 }
 
-fn identity(home_dir: String) -> io::Result<wire::HostIdentity> {
+fn identity(home_dir: String, scratch_root: String) -> io::Result<wire::HostIdentity> {
     let hostname = hostname::get()?
         .into_string()
         .map_err(|_| io::Error::other("the hostname is not UTF-8"))?;
@@ -682,6 +684,7 @@ fn identity(home_dir: String) -> io::Result<wire::HostIdentity> {
         gid,
         hostname,
         home_dir,
+        scratch_root,
     })
 }
 

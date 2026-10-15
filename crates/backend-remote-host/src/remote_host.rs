@@ -1351,6 +1351,7 @@ impl Host for RemoteHost {
                 gid: 0,
                 hostname: String::new(),
                 home_dir: self.0.default_cwd.clone(),
+                scratch_root: String::new(),
                 paths: HostPaths::default(),
             },
         }
@@ -2024,6 +2025,7 @@ pub fn host_identity(runner: &wire::RunnerInfo) -> HostIdentity {
         gid: identity.gid,
         hostname: identity.hostname.clone(),
         home_dir: identity.home_dir.clone(),
+        scratch_root: identity.scratch_root.clone(),
         paths: host_paths(runner.platform),
     }
 }

@@ -15,7 +15,7 @@
 //! conversation's summary facts and its history, on a read-only connection,
 //! which keep the media references.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -43,7 +43,7 @@ use super::StorageError;
 use super::columns::{count, decode, instant, json, to_json};
 use super::command_outputs::{self, OutputRow};
 use super::conversations::ConversationDb;
-use super::search::{IndexedMessage, TranscriptChange, searchable_text};
+use super::search::{IndexedAgent, IndexedMessage, TranscriptChange, searchable_text};
 use super::{conversation_attachments, running, sequences};
 
 /// What a tree store tells after each commit that writes a node's
@@ -166,9 +166,9 @@ impl AgentTreeStore for SqliteTreeStore {
                     if let Err(refused) = write_checkpoint(&transaction, &record.id, &initial, &completions)? {
                         return Ok(Err(refused));
                     }
-                    // A new root follows the empty transcript.
-                    let change = root_version_of(&transaction, &record.id)?.map(|version| {
-                        TranscriptChange::new(SavedVersion::default(), version, &initial.changed_blocks)
+                    // A new node follows the empty transcript.
+                    let change = node_version_of(&transaction, &record.id)?.map(|(agent, version)| {
+                        TranscriptChange::new(agent, SavedVersion::default(), version, &initial.changed_blocks)
                     });
                     transaction.commit()?;
                     Ok(Ok(change))
@@ -475,15 +475,15 @@ impl SessionStore for SqliteSessionStore {
                 .db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
-                    let before = root_version_of(&transaction, &node)?;
+                    let before = node_version_of(&transaction, &node)?;
                     if let Err(refused) =
                         write_checkpoint(&transaction, &node, &update, &completions)?
                     {
                         return Ok(Err(refused));
                     }
-                    let change = match (before, root_version_of(&transaction, &node)?) {
-                        (Some(before), Some(version)) => {
-                            Some(TranscriptChange::new(before, version, &update.changed_blocks))
+                    let change = match (before, node_version_of(&transaction, &node)?) {
+                        (Some((agent, before)), Some((_, version))) => {
+                            Some(TranscriptChange::new(agent, before, version, &update.changed_blocks))
                         }
                         _ => None,
                     };
@@ -1102,22 +1102,59 @@ pub struct SavedVersion {
     pub blocks: u64,
 }
 
-/// The saved version of `node`'s transcript as `transaction` sees it, when
-/// the node is the root; none for any other node.
-fn root_version_of(transaction: &Transaction<'_>, node: &NodeId) -> Result<Option<SavedVersion>, StorageError> {
-    let row: Option<(i64, i64)> = transaction
-        .prepare_cached(
-            "SELECT output_revision, block_count FROM nodes WHERE id = ?1 AND parent_id IS NULL",
-        )?
-        .query_row([node.as_str()], |row| Ok((row.get(0)?, row.get(1)?)))
+/// The node's number, 0 for the root, and the saved version of its
+/// transcript; none when the tree has no such node.
+fn node_version_of(transaction: &Transaction<'_>, node: &NodeId) -> Result<Option<(u64, SavedVersion)>, StorageError> {
+    let row: Option<(i64, i64, i64)> = transaction
+        .prepare_cached("SELECT number, output_revision, block_count FROM nodes WHERE id = ?1")?
+        .query_row([node.as_str()], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
         .optional()?;
-    row.map(|(revision, blocks)| {
-        Ok(SavedVersion {
-            revision: decode("nodes", "output_revision", u64::try_from(revision))?,
-            blocks: decode("nodes", "block_count", u64::try_from(blocks))?,
-        })
+    row.map(|(number, revision, blocks)| {
+        Ok((
+            decode("nodes", "number", u64::try_from(number))?,
+            SavedVersion {
+                revision: decode("nodes", "output_revision", u64::try_from(revision))?,
+                blocks: decode("nodes", "block_count", u64::try_from(blocks))?,
+            },
+        ))
     })
     .transpose()
+}
+
+/// The node's number, 0 for the root: the agent the search index keys its
+/// rows by; none when the tree has no such node.
+pub fn agent_number(connection: &Connection, node: &NodeId) -> Result<Option<u64>, StorageError> {
+    let number: Option<i64> = connection
+        .query_row("SELECT number FROM nodes WHERE id = ?1", [node.as_str()], |row| row.get(0))
+        .optional()?;
+    number.map(|number| decode("nodes", "number", u64::try_from(number))).transpose()
+}
+
+/// The saved version of each agent's transcript, by the agent's number,
+/// which the search index compares with what it holds.
+pub fn search_versions(connection: &Connection) -> Result<BTreeMap<u64, SavedVersion>, StorageError> {
+    Ok(saved_nodes(connection)?
+        .into_iter()
+        .map(|(_, agent, version)| (agent, version))
+        .collect())
+}
+
+/// Each node's id, number and the saved version of its transcript.
+fn saved_nodes(connection: &Connection) -> Result<Vec<(NodeId, u64, SavedVersion)>, StorageError> {
+    let mut statement = connection.prepare("SELECT id, number, output_revision, block_count FROM nodes")?;
+    let mut rows = statement.query([])?;
+    let mut nodes = Vec::new();
+    while let Some(row) = rows.next()? {
+        nodes.push((
+            decode("nodes", "id", NodeId::try_from(row.get::<_, String>(0)?))?,
+            decode("nodes", "number", u64::try_from(row.get::<_, i64>(1)?))?,
+            SavedVersion {
+                revision: decode("nodes", "output_revision", u64::try_from(row.get::<_, i64>(2)?))?,
+                blocks: decode("nodes", "block_count", u64::try_from(row.get::<_, i64>(3)?))?,
+            },
+        ));
+    }
+    Ok(nodes)
 }
 
 /// The saved version of the root's transcript; the empty one, revision 0
@@ -1126,25 +1163,25 @@ pub fn root_version(connection: &Connection) -> Result<SavedVersion, StorageErro
     Ok(saved_root(connection)?.map_or_else(SavedVersion::default, |(_, version)| version))
 }
 
-/// The searchable text of the root's blocks with the saved version they
-/// make, read together; each block is decoded and dropped in turn, so the
-/// transcript is never held whole. None and the empty version when the tree
-/// has no root yet.
-pub fn root_search_texts(connection: &Connection) -> Result<(SavedVersion, Vec<IndexedMessage>), StorageError> {
-    let Some((root, version)) = saved_root(connection)? else {
-        return Ok((SavedVersion::default(), Vec::new()));
-    };
-    let mut messages = Vec::new();
-    each_block(connection, &root, integer(version.blocks), |position, block| {
-        if let Some(text) = searchable_text(&block) {
-            messages.push(IndexedMessage {
-                block: block.id().clone(),
-                position,
-                text,
-            });
-        }
-    })?;
-    Ok((version, messages))
+/// The searchable text of every agent's blocks with the saved version they
+/// make, read together; each block is decoded and dropped in turn, so no
+/// transcript is held whole.
+pub fn search_texts(connection: &Connection) -> Result<Vec<IndexedAgent>, StorageError> {
+    let mut agents = Vec::new();
+    for (node, agent, version) in saved_nodes(connection)? {
+        let mut messages = Vec::new();
+        each_block(connection, &node, integer(version.blocks), |position, block| {
+            if let Some(text) = searchable_text(&block) {
+                messages.push(IndexedMessage {
+                    block: block.id().clone(),
+                    position,
+                    text,
+                });
+            }
+        })?;
+        agents.push(IndexedAgent { agent, version, messages });
+    }
+    Ok(agents)
 }
 
 /// The root's id and the saved version of its transcript.

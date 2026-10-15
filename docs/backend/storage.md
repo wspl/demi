@@ -604,9 +604,11 @@ Cloud's disks belong to the machine manager
 
 Each user has a search index, `search/<userId>.sqlite`, that
 [Search](../product/web-api.md#search) reads: an SQLite FTS5 table with one
-row per searchable text, a conversation's title or the text of one of its
-root's `user` or `steer` blocks or answers, each with its conversation's and block's
-ids. Its tokenizer is FTS5's `trigram`, which matches any piece of text of
+row per searchable text, a conversation's title, or the text of a `user` or
+`steer` block, an agent's text or a command's description, of any agent of
+it, each with its conversation's id, its agent and its block's index and id,
+so [Reading the earlier history](../agent/compaction.md#reading-the-earlier-history)
+searches it as well as the product's search. Its tokenizer is FTS5's `trigram`, which matches any piece of text of
 three characters or more in every language without splitting words, as
 Chinese needs; a query word of one or two characters is matched by a scan of
 the user's rows instead. Searching a user's conversations without an index
@@ -618,12 +620,12 @@ The index is derived: everything in it is read from the conversations, so it
 is never migrated, backed up or replicated, and it is the one stored copy of
 data that this document allows to be derived, for speed. Its version is the
 digest of its schema, as for the databases. A row is keyed by its
-conversation and block ids, never by a number SQLite may give to another row.
+conversation, agent and block ids, never by a number SQLite may give to another row.
 
 **It follows the transcript's changes, not the transcript.** For example, a
 turn adds three blocks to a root of 11,000: the index replaces three rows,
-about a millisecond, and reads nothing else. The checkpoint that writes
-blocks already knows which of the root's blocks it wrote and from which
+about a millisecond, and reads nothing else. The checkpoint that writes an
+agent's blocks already knows which of them it wrote and from which
 index it cut the rest ([Conversation tree](#conversation-tree)); it hands
 the searchable text of exactly those, extracted from the blocks it holds
 decoded, to the user's index, which applies them in the order the
@@ -632,7 +634,7 @@ replaced, the cut blocks' rows removed. A block whose searchable text did
 not change, such as a call whose output grew, changes no row. A title
 change replaces the title's row alone.
 
-For each conversation the index records the root's persisted output
+For each agent of a conversation the index records its persisted output
 revision and number of blocks it has applied, since a save of input alone,
 such as a message, adds blocks without advancing the revision. A conversation is read whole only when the index
 does not hold it at that version: at start, for each conversation whose

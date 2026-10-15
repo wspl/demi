@@ -1444,6 +1444,9 @@ pub struct HostIdentity {
     pub gid: u32,
     pub hostname: String,
     pub home_dir: String,
+    /// The absolute directory that holds the conversations' scratch
+    /// directories, `<DEMI_HOME>/scratch` (`runner.md` § Scratch directory).
+    pub scratch_root: String,
 }
 
 /// A file's metadata, as `stat` or `lstat` reports it.

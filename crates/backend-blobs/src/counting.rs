@@ -1,7 +1,8 @@
 //! An object store that counts what reaches it, for the scenarios that prove
 //! what the backend reads and writes (`storage.md` § The object store): each
 //! put with its bytes, each read, each HEAD, the most reads in flight at
-//! once, each listing and each deletion.
+//! once, each listing and each deletion; and that holds its reads while a
+//! scenario says so, to stop a call while it waits for one.
 
 use std::fmt;
 use std::sync::Arc;
@@ -30,6 +31,45 @@ struct Counters {
     most_reading: AtomicU64,
     lists: AtomicU64,
     deletes: AtomicU64,
+    /// The hold the reads wait at, while one is held.
+    hold: std::sync::Mutex<Option<Arc<HoldState>>>,
+}
+
+/// A hold's state: how many reads wait at it, and whether it let them go.
+#[derive(Debug)]
+struct HoldState {
+    waiting: tokio::sync::watch::Sender<usize>,
+    released: tokio::sync::watch::Sender<bool>,
+}
+
+/// A hold on the reads of an object's content: from [`ObjectCounts::hold_gets`]
+/// until it is released or dropped, each such read waits before it reaches
+/// the store.
+pub struct GetHold {
+    counts: ObjectCounts,
+    state: Arc<HoldState>,
+}
+
+impl GetHold {
+    /// Waits until `count` reads wait at the hold.
+    pub async fn until_waiting(&self, count: usize) {
+        let mut waiting = self.state.waiting.subscribe();
+        // The hold keeps its sender, so the channel stays open.
+        let _ = waiting.wait_for(|waiting| *waiting >= count).await;
+    }
+
+    /// Lets the waiting reads and every later one through.
+    pub fn release(self) {
+        drop(self);
+    }
+}
+
+impl Drop for GetHold {
+    fn drop(&mut self) {
+        let mut hold = self.counts.0.hold.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        *hold = None;
+        self.state.released.send_replace(true);
+    }
 }
 
 /// What reached the object store up to one moment.
@@ -82,6 +122,17 @@ impl ObjectCounts {
             lists: counters.lists.load(Ordering::SeqCst),
             deletes: counters.deletes.load(Ordering::SeqCst),
         }
+    }
+
+    /// Holds every read of an object's content from now on, until the hold
+    /// is released.
+    pub fn hold_gets(&self) -> GetHold {
+        let state = Arc::new(HoldState {
+            waiting: tokio::sync::watch::Sender::new(0),
+            released: tokio::sync::watch::Sender::new(false),
+        });
+        *self.0.hold.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(state.clone());
+        GetHold { counts: self.clone(), state }
     }
 
     /// `objects`, with what reaches it counted here.
@@ -153,6 +204,13 @@ impl ObjectStore for Counted {
         if options.head {
             self.counts.0.heads.fetch_add(1, Ordering::SeqCst);
             return self.inner.get_opts(location, options).await;
+        }
+        let held = self.counts.0.hold.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+        if let Some(held) = held {
+            let mut released = held.released.subscribe();
+            held.waiting.send_modify(|waiting| *waiting += 1);
+            // The state keeps its sender, so the channel stays open.
+            let _ = released.wait_for(|released| *released).await;
         }
         let _reading = self.counts.read();
         // A read takes a moment, as it does over a network. A local file
