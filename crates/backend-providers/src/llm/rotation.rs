@@ -13,7 +13,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
-use demi_shared_types::{Model, QuotaSnapshot, QuotaWindow, Rotation, Timestamp};
+use demi_shared_types::{Model, QuotaSnapshot, QuotaWindow, QuotaWindowName, Rotation, Timestamp};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 
 /// How long an account whose failure and quota name no moment stays used up.
@@ -346,24 +346,26 @@ fn earliest(rooms: &[Room]) -> Option<Timestamp> {
         .min()
 }
 
-/// The name of the window `snapshot` shows used up, the one that resets at
-/// `moment` when several are; the line that says an agent moved names it.
-pub fn window_used_up(snapshot: &QuotaSnapshot, moment: Option<Timestamp>) -> Option<String> {
+/// What names the window `snapshot` shows used up for a request of
+/// `model`, the one that resets at `moment` when several are; a window on
+/// another model is not the one the request reached. The line that says an
+/// agent moved names it.
+pub fn window_used_up(snapshot: &QuotaSnapshot, model: &Model, moment: Option<Timestamp>) -> Option<QuotaWindowName> {
     let used_up: Vec<&QuotaWindow> = snapshot
         .windows
         .iter()
-        .filter(|window| window.used_percent.is_some_and(|percent| percent >= 100.0))
+        .filter(|window| window.used_percent.is_some_and(|percent| percent >= 100.0) && applies(window, model))
         .collect();
     used_up
         .iter()
         .find(|window| moment.is_some() && window.resets_at == moment)
         .or(used_up.first())
-        .map(|window| window.label.clone())
+        .map(|window| window.name())
 }
 
 #[cfg(test)]
 mod tests {
-    use demi_shared_types::QuotaScope;
+    use demi_shared_types::{QuotaKind, QuotaScope};
 
     use super::*;
 
@@ -380,7 +382,7 @@ mod tests {
     fn window(used: f64, resets_in_hours: Option<f64>, period_hours: Option<u64>) -> QuotaWindow {
         QuotaWindow {
             id: "w".into(),
-            label: "5h session".into(),
+            kind: QuotaKind::Limit,
             used_percent: Some(used),
             used: None,
             limit: None,
@@ -416,6 +418,26 @@ mod tests {
 
     fn entry() -> ProviderId {
         ProviderId::try_from("entry").unwrap()
+    }
+
+    /// An Opus request on an account whose Sonnet and Opus windows are both
+    /// used up reached the Opus one, which the account switch's line names,
+    /// whichever the snapshot lists first.
+    #[test]
+    fn the_window_named_used_up_is_the_one_on_the_requests_model() {
+        let on = |model: &str| {
+            let mut window = window(100.0, None, Some(168));
+            window.scope = Some(QuotaScope {
+                kind: "model".into(),
+                label: Some(model.into()),
+            });
+            window
+        };
+        let candidate = account("a", vec![window(40.0, None, Some(5)), on("Sonnet"), on("Opus")]);
+        let snapshot = candidate.snapshot.unwrap();
+        let named = window_used_up(&snapshot, &model("Claude Opus 4.8"), None).unwrap();
+        assert_eq!(named.scope.and_then(|scope| scope.label).as_deref(), Some("Opus"));
+        assert_eq!(window_used_up(&snapshot, &model("Claude Haiku 4.5"), None), None);
     }
 
     /// The account `rotation` takes, its agent kept running.

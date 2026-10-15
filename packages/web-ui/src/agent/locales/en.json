@@ -3,8 +3,8 @@
     "accountSwitch": {
       "usage": "{from} reached its usage limit. Continuing with {to}.",
       "usageReset": "{from} reached its usage limit, {reset}. Continuing with {to}.",
-      "window": "{from} reached its {window} limit. Continuing with {to}.",
-      "windowReset": "{from} reached its {window} limit, {reset}. Continuing with {to}."
+      "window": "{from} reached its {window}. Continuing with {to}.",
+      "windowReset": "{from} reached its {window}, {reset}. Continuing with {to}."
     },
     "notice": {
       "titled": "{notice}:"
@@ -275,7 +275,6 @@
     "windowUsed": "Context window, {percent} used",
     "tip": "Context {figure}",
     "compacting": "Compacting context…",
-    "unavailable": "Context usage unavailable",
     "compact": "Compact",
     "untilCompaction": "{tokens} until compaction",
     "afterTurn": "Available after the turn ends",

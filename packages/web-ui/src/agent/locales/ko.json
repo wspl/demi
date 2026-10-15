@@ -3,8 +3,8 @@
     "accountSwitch": {
       "usage": "{from} 계정이 사용 한도에 도달하여 {to} 계정으로 계속합니다.",
       "usageReset": "{from} 계정이 사용 한도에 도달하여({reset}) {to} 계정으로 계속합니다.",
-      "window": "{from} 계정이 {window} 한도에 도달하여 {to} 계정으로 계속합니다.",
-      "windowReset": "{from} 계정이 {window} 한도에 도달하여({reset}) {to} 계정으로 계속합니다."
+      "window": "{from} 계정이 {window}에 도달하여 {to} 계정으로 계속합니다.",
+      "windowReset": "{from} 계정이 {window}에 도달하여({reset}) {to} 계정으로 계속합니다."
     },
     "notice": {
       "titled": "{notice}:"
@@ -275,7 +275,6 @@
     "windowUsed": "컨텍스트 길이, {percent} 사용",
     "tip": "컨텍스트 {figure}",
     "compacting": "컨텍스트 압축 중…",
-    "unavailable": "컨텍스트 사용량을 확인할 수 없음",
     "compact": "압축",
     "untilCompaction": "압축까지 {tokens}",
     "afterTurn": "턴이 끝난 후 사용 가능",

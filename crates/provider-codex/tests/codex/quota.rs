@@ -7,14 +7,14 @@ use demi_provider_common::{
     quota::{ProbeCost, QuotaError},
     testing::{MockResponse, MockVendor, inference_request},
 };
-use demi_shared_types::{QuotaSeverity, SnapshotSource, Timestamp};
+use demi_shared_types::{QuotaKind, QuotaSeverity, SnapshotSource, Timestamp};
 use serde_json::json;
 
 use crate::{NOW, RESPONSES, completed, fresh_token, pool_with, provider, run, runtime_of, secret};
 
 fn windows(
     provider: &demi_provider_codex::CodexProvider,
-) -> Vec<(String, String, Option<f64>, Option<Timestamp>)> {
+) -> Vec<(String, QuotaKind, Option<u64>, Option<f64>, Option<Timestamp>)> {
     let snapshot = provider.quota().unwrap().latest().unwrap();
     snapshot
         .windows
@@ -22,7 +22,8 @@ fn windows(
         .map(|window| {
             (
                 window.id.clone(),
-                window.label.clone(),
+                window.kind,
+                window.period_seconds,
                 window.used_percent,
                 window.resets_at,
             )
@@ -54,8 +55,8 @@ async fn every_answer_of_the_service_a_refusal_included_updates_the_accounts_win
     assert_eq!(
         windows(&provider),
         [
-            ("primary".into(), "5-hour".into(), Some(35.5), Some(reset)),
-            ("secondary".into(), "Weekly".into(), Some(10.0), None),
+            ("primary".into(), QuotaKind::Limit, Some(5 * 3600), Some(35.5), Some(reset)),
+            ("secondary".into(), QuotaKind::Limit, Some(7 * 86_400), Some(10.0), None),
         ]
     );
     run(runtime.as_mut(), inference_request()).await;
@@ -116,13 +117,15 @@ async fn the_probe_reads_the_usage_status_for_free_with_the_plan_and_windows_nam
         [
             (
                 "primary".into(),
-                "5-hour".into(),
+                QuotaKind::Limit,
+                Some(5 * 3600),
                 Some(100.0),
                 Some("2023-11-14T22:13:20.000Z".parse().unwrap())
             ),
             (
                 "secondary".into(),
-                "2-day".into(),
+                QuotaKind::Limit,
+                Some(2 * 86_400),
                 Some(41.0),
                 Some("2023-11-20T17:06:40.000Z".parse().unwrap())
             ),

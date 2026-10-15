@@ -140,7 +140,7 @@ For example, the snapshot of a Codex account after a response:
 ```text
 plan       Pro
 observed   2026-09-23T10:04:12Z, by an observation
-windows    primary     5-hour    34% used    resets 12:30
+windows    primary     limit, 5 h  34% used    resets 12:30
            secondary   Weekly    12% used    resets Sep 28, 08:00
 ```
 
@@ -152,7 +152,7 @@ is one limit the vendor meters:
 | Field | Meaning |
 |---|---|
 | `id` | A stable id, such as `primary`, `five_hour` or `monthly` |
-| `label` | The name the user knows the window by, such as `5-hour` or `Monthly credits` |
+| `kind` | What it meters: `limit`, a share of use; `credits`; `requests` or `tokens`, a rate; `cap`, a ceiling with no period. The page names the window from it ([Window names](#window-names)); a snapshot holds no name |
 | `usedPercent` | The share used, from 0 to 100, or null when unknown; a reported share above 100 counts as 100, and one below 0 as 0 |
 | `used`, `limit`, `unit` | Amounts, when the vendor reports them, in the window's unit, such as `credits`, `requests` or `tokens` |
 | `resetsAt` | When the window resets, or null when unknown |
@@ -170,7 +170,7 @@ is one limit the vendor meters:
 
 Every surface that shows a window says its use and its reset the same way, on
 one line over its bar, the window's name, then its reset and its use at the
-line's end, *5h session · · · Resets in 4h 42m · 4% used*, the reset
+line's end, *5-hour limit · · · Resets in 4h 42m · 4% used*, the reset
 giving way first where the line is short: a bar of `usedPercent`, *18% used*, and when it resets, as specifically as the
 user would say it, counted from now in the user's time zone:
 
@@ -186,7 +186,33 @@ user would say it, counted from now in the user's time zone:
 
 The wording follows the clock while it shows. One web-ui row and one
 formatter say it on every surface, Settings and the context card alike, so
-the two never differ. Settings show every account's
+the two never differ.
+
+#### Window names
+
+The page names a window in the user's language, from its kind, its period
+and its scope, the same way for every vendor, so Codex's and Claude's
+five-hour windows read alike, as ChatGPT and Claude name them in their own
+settings, by their length and *limit*:
+
+| Window | English | 简体中文 |
+| --- | --- | --- |
+| A limit of a period | *5-hour limit*, *Daily limit*, *Weekly limit*, *3-day limit* | *5 小时限额*、*每日限额*、*每周限额*、*3 天限额* |
+| A limit on one model | *Weekly Opus limit* | *每周 Opus 限额* |
+| Credits of a period | *Weekly credits*, *Monthly credits* | *每周额度*、*每月额度* |
+| A rate | *Request rate*, *Token rate* | *请求速率*、*Token 速率* |
+| A cap | *On-demand cap* | *按需用量上限* |
+| A limit whose period is unknown | *Usage limit*, *Opus limit* | *用量限额*、*Opus 限额* |
+
+A period reads *Daily* for one day, *Weekly* for one week, *Monthly* for 28
+to 31 days, and otherwise its length in the largest unit that divides it
+evenly; a credits window whose period is unknown is *Credits*. Inside a
+sentence, such as the account switch's line, an English name is lowercase
+but for a proper name: *reached its weekly Opus limit*. The other languages
+say what the English says
+([Localization](../product/localization.md)).
+
+Settings show every account's
 windows, and the context indicator's card shows, under the context's rows,
 the windows of the account the conversation's model runs on, under a line
 naming the account by the label Settings shows for it, *Usage limits ·
@@ -262,7 +288,7 @@ reset time.
 |---|---|
 | Probe | `GET /wham/usage` on the ChatGPT backend, with the authorization and `ChatGPT-Account-Id` headers a request carries. It reads `plan_type` and the `rate_limit` object's `primary_window` and `secondary_window`: `used_percent`, `limit_window_seconds` and `reset_at`. This is the request the Codex CLI makes for its own status. |
 | Observation | The `x-codex-primary-*` and `x-codex-secondary-*` headers, `used-percent`, `window-minutes` and `reset-at`, on every response of Codex's service, the answer to a WebSocket handshake and a refusal included. |
-| Windows | `primary` and `secondary`, as percentages, labeled by their length: `Weekly` for one week and `Daily` for one day, otherwise the length in the largest unit that divides it evenly, such as `5-hour`, `3-day`, `2-week` or `90-minute`, and `Primary` or `Secondary` when the length is unknown. Both paths use the same labels, so a window keeps its name whichever path saw it last. |
+| Windows | `primary` and `secondary`, as percentages, each a `limit` with its length as its period, which may be unknown. |
 | Plan | `plan_type`, such as `plus`, `pro` or `team`, shown with underscores as spaces and a capital first letter. |
 | Account label | The account's label. |
 | Units | `reset_at` and the `reset-at` headers are Unix seconds. `limit_window_seconds` is in seconds, and the `window-minutes` headers are in minutes. |
@@ -273,7 +299,7 @@ reset time.
 |---|---|
 | Probe | `GET https://api.anthropic.com/api/oauth/usage`, with the account's access token as its bearer token and the OAuth beta header; the sign-in's `user:profile` scope is what the endpoint requires, which a setup token lacked. An answer that is not an object is refused. |
 | Observation | The `rate_limit_event` line of the CLI's stream-json output, which the CLI prints when the vendor's `anthropic-ratelimit-unified-*` headers change. Its `rate_limit_info.unifiedWindows` gives each window's `utilization` and `resetsAt`; the window `rateLimitType` names as binding, with the top-level `utilization` and `resetsAt`, counts too when `unifiedWindows` does not hold it. The backend reads each line as it arrives over the runner connection ([Claude Code](claude-code.md)). |
-| Windows | `five_hour` (`5h session`), `seven_day` (`7d all models`), `seven_day_sonnet` (`7d Sonnet`) and `seven_day_opus` (`7d Opus`), from `utilization`. A probe also reports every other entry of `limits` as a window, with the vendor's `severity` when it states one, named as the named windows are, by its period and its scope, never by the vendor's identifier: a `weekly_*` kind is `7d`, a session kind `5h`, and a limit on one model adds the model's name, so `weekly_scoped` on Fable is `7d Fable`; a kind whose period Demi cannot tell is named by its model, or `Other limit`. The `session` and `weekly_all` kinds are the named windows above, so they are skipped. An observed window Demi does not name, such as `seven_day_overage_included`, is left out. |
+| Windows | `five_hour`, `seven_day`, `seven_day_sonnet` and `seven_day_opus` (scope Sonnet, Opus), each a `limit`, from `utilization`. A probe also reports every other entry of `limits` as a `limit`, with the vendor's `severity` when it states one, by its period and its scope, never by the vendor's identifier: a `weekly_*` kind has a week, a session kind five hours, and a limit on one model has the model as its scope, so `weekly_scoped` on Fable reads *Weekly Fable limit*; a kind whose period Demi cannot tell has none. The `session` and `weekly_all` kinds are the named windows above, so they are skipped. An observed window Demi does not name, such as `seven_day_overage_included`, is left out. |
 | Plan | None: the usage endpoint does not say it. |
 | Account label | Not reported. |
 | Units | The usage endpoint states `utilization` as a percentage and `resets_at` as an RFC 3339 time. A `rate_limit_event` line passes the headers through: `utilization` is a fraction of one and `resetsAt` is Unix seconds (Claude Code 2.1.286, against a scripted vendor that sent the headers). |
@@ -284,7 +310,7 @@ reset time.
 |---|---|
 | Probe | `GET /v1/user?include=subscription` and `GET /v1/billing?format=credits`, sent together with the account's session. |
 | Observation | The `x-ratelimit-limit-requests`, `x-ratelimit-remaining-requests`, `x-ratelimit-limit-tokens` and `x-ratelimit-remaining-tokens` headers on every chat response, a refusal included. |
-| Windows | From billing, one credits window when the plan meters credits: `weekly` (`Weekly credits`) when the current period is weekly, otherwise `monthly` (`Monthly credits`), with the share used (`creditUsagePercent`, otherwise the amount used divided by the limit) and the used and limit amounts. A plan whose billing names none of these has no credits window, since a window with nothing to show is not reported. An on-demand cap above zero adds `on_demand_cap` (`On-demand cap`), which has a limit only. From the headers, `rpm` (`Requests (short window)`) and `tpm` (`Tokens (short window)`), where the amount used is the limit minus what remains. |
+| Windows | From billing, one credits window when the plan meters credits: `weekly` when the current period is weekly, otherwise `monthly`, of kind `credits`, with the share used (`creditUsagePercent`, otherwise the amount used divided by the limit) and the used and limit amounts. A plan whose billing names none of these has no credits window, since a window with nothing to show is not reported. An on-demand cap above zero adds `on_demand_cap`, a `cap`, which has a limit only. From the headers, `rpm` and `tpm`, of kind `requests` and `tokens`, where the amount used is the limit minus what remains. |
 | Plan | `subscriptionTier` from the user endpoint. |
 | Account label | The account's email address. |
 | Units | A credits window resets at `currentPeriod.end`, otherwise at `billingPeriodEnd`, both RFC 3339 times. The header windows have no reset time. |

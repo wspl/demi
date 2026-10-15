@@ -166,7 +166,32 @@
   },
   "quota": {
     "unavailable": "使用量はまだ取得できません",
-    "used": "{share} 使用済み"
+    "used": "{share} 使用済み",
+    "window": {
+      "period": {
+        "day": "1 日",
+        "week": "1 週間",
+        "month": "1 か月",
+        "seconds": "{count} 秒",
+        "minutes": "{count} 分",
+        "hours": "{count} 時間",
+        "days": "{count} 日間",
+        "weeks": "{count} 週間"
+      },
+      "limit": {
+        "period": "{period}の上限",
+        "periodScope": "{period}の {scope} 上限",
+        "scope": "{scope} の上限",
+        "unknown": "利用上限"
+      },
+      "credits": {
+        "period": "{period}のクレジット",
+        "unknown": "クレジット"
+      },
+      "requests": "リクエストレート",
+      "tokens": "トークンレート",
+      "cap": "オンデマンド上限"
+    }
   },
   "sections": {
     "agent": "エージェント",

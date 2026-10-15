@@ -27,7 +27,7 @@ use demi_provider_common::{
 };
 use demi_backend_providers::llm::rotation::{Candidate, Choice, Running, USED_UP_FOR_MS, window_used_up};
 use demi_shared_types::{
-    AgentAccount, Model, ModelSelection, NodeId, Rotation, Timestamp, UnavailableSetting,
+    AgentAccount, Model, ModelSelection, NodeId, QuotaWindowName, Rotation, Timestamp, UnavailableSetting,
     session_context_window,
 };
 use demi_web_api_protocol::conversations::ModelSettings;
@@ -471,7 +471,7 @@ impl ConversationRuntime {
         &mut self,
         entry: &ProviderEntry,
         failure: &ProviderFailure,
-    ) -> Option<(CredentialId, Option<Timestamp>, Option<String>)> {
+    ) -> Option<(CredentialId, Option<Timestamp>, Option<QuotaWindowName>)> {
         let used_up = self.account.clone()?;
         let now = self.scope.services.clock.now();
         // The moment the failure names, else the account's quota's.
@@ -484,7 +484,7 @@ impl ConversationRuntime {
         });
         let window = self.current.as_ref().and_then(|current| {
             let snapshot = current.provider.quota()?.latest()?;
-            window_used_up(&snapshot, moment)
+            window_used_up(&snapshot, &self.selection.model, moment)
         });
         let until = moment.unwrap_or_else(|| {
             Timestamp::from_millisecond(now.as_millisecond() + USED_UP_FOR_MS)

@@ -3,8 +3,8 @@
     "accountSwitch": {
       "usage": "{from} が利用上限に達したため、{to} で続けます。",
       "usageReset": "{from} が利用上限に達したため（{reset}）、{to} で続けます。",
-      "window": "{from} が {window} の上限に達したため、{to} で続けます。",
-      "windowReset": "{from} が {window} の上限に達したため（{reset}）、{to} で続けます。"
+      "window": "{from} が{window}に達したため、{to} で続けます。",
+      "windowReset": "{from} が{window}に達したため（{reset}）、{to} で続けます。"
     },
     "notice": {
       "titled": "{notice}:"
@@ -275,7 +275,6 @@
     "windowUsed": "コンテキストウィンドウ、{percent} 使用済み",
     "tip": "コンテキスト {figure}",
     "compacting": "コンテキストを圧縮中…",
-    "unavailable": "コンテキストの使用量を取得できません",
     "compact": "圧縮",
     "untilCompaction": "圧縮まで {tokens}",
     "afterTurn": "ターンの終了後に使用できます",

@@ -81,9 +81,10 @@ impl ReadBlob for NoBlobs {
 /// placeholder titles before interrupted turns were kept, and the one with
 /// interrupted turns before a conversation kept the hosts it may reach,
 /// the one with them before shares, the one with shares before a
-/// device's mark had a number, and 0.1.22-dev.20261015T105826Z's, before a
+/// device's mark had a number, 0.1.22-dev.20261015T105826Z's, before a
 /// project remembered the model and workflow its next conversation starts
-/// with.
+/// with, and 0.1.22-dev.20261015T134426Z's, before a quota window had a
+/// kind instead of an English name.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -210,6 +211,10 @@ pub(crate) const CONTROL: Schema = Schema {
         Shipped {
             sql: include_str!("schema/control-0.1.22-dev.20261015T105826Z.sql"),
             migration: Migration::Code(control_from_0_1_22_dev_20261015t105826z),
+        },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.20261015T134426Z.sql"),
+            migration: Migration::Code(snapshots_with_window_kinds),
         },
     ],
 };
@@ -810,7 +815,8 @@ CREATE TABLE plugin_oauth_clients (
 /// one of format 6 before a shell call marked the paths outside its
 /// agent's directory, and the one of format 7 before account rotation, and the one of format 8
 /// before the shares' snapshots. The last of those a server keeps is the
-/// one `0.1.22-dev.20261015T105826Z` deployed, of format 8.
+/// one `0.1.22-dev.20261015T105826Z` deployed, of format 8, and the one
+/// `0.1.22-dev.20261015T134426Z` deployed, of format 9.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -874,8 +880,229 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.20261015T105826Z.sql"),
             migration: Migration::Code(calls_with_their_ends),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.20261015T134426Z.sql"),
+            migration: Migration::Code(switches_with_window_names),
+        },
     ],
 };
+
+/// From 0.1.22-dev.20261015T134426Z's control schema, which a server keeps
+/// data of, to the one whose quota snapshots (format 2) give each window a
+/// kind, which with its period and its scope the page names it from in the
+/// user's language (`usage-and-quota.md` § Window names), instead of the
+/// English name format 1 held. Each window's kind is the one its old name
+/// says, read by its vendor's old namer ([`old_window_name`]); a name that
+/// namer did not make, or a vendor with none, fails the migration. Each
+/// snapshot is decoded and checked as format 2 before it is written back.
+fn snapshots_with_window_kinds(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    let rows = transaction
+        .prepare(
+            "SELECT c.provider_id, c.id, c.quota, p.provider_type FROM provider_credentials c
+               JOIN providers p ON p.id = c.provider_id WHERE c.quota IS NOT NULL",
+        )?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update = transaction.prepare("UPDATE provider_credentials SET quota = ?3 WHERE provider_id = ?1 AND id = ?2")?;
+    for (provider, id, text, provider_type) in rows {
+        let namer = match provider_type.as_str() {
+            "codex" => OldNamer::Codex,
+            "claude-code" => OldNamer::ClaudeCode,
+            "grok-build" => OldNamer::GrokBuild,
+            other => return Err(corrupt_text(&format!("a {other} account kept a quota snapshot, which no namer made"))),
+        };
+        let mut snapshot: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
+        let windows = snapshot
+            .get_mut("windows")
+            .and_then(serde_json::Value::as_array_mut)
+            .ok_or_else(|| corrupt_text("a stored quota snapshot has no windows"))?;
+        for window in windows {
+            let fields = window
+                .as_object_mut()
+                .ok_or_else(|| corrupt_text("a stored quota window is not an object"))?;
+            let label = match fields.remove("label") {
+                Some(serde_json::Value::String(label)) => label,
+                _ => return Err(corrupt_text("a stored quota window of format 1 has no name")),
+            };
+            let kind = old_window_name(&label, Some(namer))?.kind;
+            fields.insert("kind".to_owned(), serde_json::to_value(kind).map_err(corrupt)?);
+        }
+        let snapshot: demi_shared_types::QuotaSnapshot = demi_shared_types::decode_value(snapshot).map_err(corrupt)?;
+        update.execute(rusqlite::params![provider, id, to_json(&snapshot)])?;
+    }
+    Ok(())
+}
+
+/// From the conversation schema that `0.1.22-dev.20261015T134426Z`
+/// deployed, of transcript block format 9, to format 10, in which an
+/// `account_switch` block holds what names the window that was used up, its
+/// kind, period and scope, instead of its English name, so the line reads in
+/// the viewer's language (`usage-and-quota.md` § Window names). The old
+/// name says them, read by every vendor's old namer, since the block does
+/// not name the vendor ([`old_window_name`]); a name none made fails the
+/// migration. The blocks of the shares'
+/// snapshots are migrated the same way, and each block is decoded and
+/// checked as format 10 before it is written back.
+fn switches_with_window_names(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    let switches = "json_extract(block, '$.type') = 'account_switch'";
+    let rows = transaction
+        .prepare(&format!("SELECT node_id, idx, block FROM blocks WHERE {switches}"))?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
+    for (node, index, text) in rows {
+        update.execute(rusqlite::params![node, index, named_switch(&text)?])?;
+    }
+    let rows = transaction
+        .prepare(&format!("SELECT token, agent, idx, block FROM share_blocks WHERE {switches}"))?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?, row.get::<_, String>(3)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update =
+        transaction.prepare("UPDATE share_blocks SET block = ?4 WHERE token = ?1 AND agent = ?2 AND idx = ?3")?;
+    for (token, agent, index, text) in rows {
+        update.execute(rusqlite::params![token, agent, index, named_switch(&text)?])?;
+    }
+    Ok(())
+}
+
+/// The stored `account_switch` block `text` of format 9 as format 10 holds
+/// it: its window's name, a string or null, as what names it. A window of
+/// another type is corrupt data, which fails the migration.
+fn named_switch(text: &str) -> rusqlite::Result<String> {
+    let mut block: serde_json::Value = serde_json::from_str(text).map_err(corrupt)?;
+    let fields = block
+        .as_object_mut()
+        .ok_or_else(|| corrupt_text("a stored block is not an object"))?;
+    let window = match fields.remove("window") {
+        Some(serde_json::Value::String(label)) => serde_json::to_value(old_window_name(&label, None)?).map_err(corrupt)?,
+        Some(serde_json::Value::Null) => serde_json::Value::Null,
+        _ => return Err(corrupt_text("a stored account switch of format 9 names its window by no string")),
+    };
+    fields.insert("window".to_owned(), window);
+    let block: demi_shared_types::Block = demi_shared_types::decode_value(block).map_err(corrupt)?;
+    Ok(to_json(&block))
+}
+
+/// The vendor whose old namer made a window's English name, when the
+/// stored row says it: a snapshot's provider type. An account switch's
+/// block does not say it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum OldNamer {
+    Codex,
+    ClaudeCode,
+    GrokBuild,
+}
+
+/// What names a window that `namer`'s old code named `label` in English,
+/// before a window had a kind, or with no namer any of theirs; a label none
+/// of them made is corrupt data, which fails the migration.
+/// - Codex: `Primary` or `Secondary` for an unknown length, `Weekly`,
+///   `Daily`, or the length in the largest unit that divides it, `3-day`,
+///   `5-hour`, `1.5-minute`.
+/// - Claude Code: `5h session`, `7d all models`, `7d <model>`, `5h <model>`,
+///   `Other limit`, and the model's name alone for a limit on one model
+///   whose period it could not tell.
+/// - Grok Build: `Weekly credits`, `Monthly credits`, `On-demand cap`, and
+///   `Requests (short window)` and `Tokens (short window)`.
+///
+/// Without a namer, a label of the Codex length's shape must be one, and
+/// only one that is none of the other forms is a model's name.
+fn old_window_name(label: &str, namer: Option<OldNamer>) -> rusqlite::Result<demi_shared_types::QuotaWindowName> {
+    use demi_shared_types::{QuotaKind, QuotaScope, QuotaWindowName};
+
+    const HOUR: u64 = 3600;
+    const DAY: u64 = 24 * HOUR;
+    const WEEK: u64 = 7 * DAY;
+    let name = |kind, period_seconds, model: Option<&str>| QuotaWindowName {
+        kind,
+        period_seconds,
+        scope: model.map(|model| QuotaScope {
+            kind: "model".to_owned(),
+            label: Some(model.to_owned()),
+        }),
+    };
+    let limit = |period, model| Ok(name(QuotaKind::Limit, period, model));
+    let unknown = || Err(corrupt_text(&format!("no namer made the quota window name {label:?}")));
+    let by = |vendor: OldNamer| namer.is_none_or(|namer| namer == vendor);
+    if by(OldNamer::Codex) {
+        match label {
+            "Primary" | "Secondary" => return limit(None, None),
+            "Weekly" => return limit(Some(WEEK), None),
+            "Daily" => return limit(Some(DAY), None),
+            _ => {}
+        }
+        let length = label.rsplit_once('-').and_then(|(count, unit)| {
+            let unit = match unit {
+                "week" => WEEK,
+                "day" => DAY,
+                "hour" => HOUR,
+                "minute" => 60,
+                _ => return None,
+            };
+            Some((count, unit))
+        });
+        if let Some((count, unit)) = length {
+            return match codex_length(count, unit) {
+                Some(period) => limit(period, None),
+                None => unknown(),
+            };
+        }
+    }
+    if by(OldNamer::GrokBuild) {
+        match label {
+            "Weekly credits" => return Ok(name(QuotaKind::Credits, Some(WEEK), None)),
+            "Monthly credits" => return Ok(name(QuotaKind::Credits, None, None)),
+            "On-demand cap" => return Ok(name(QuotaKind::Cap, None, None)),
+            "Requests (short window)" => return Ok(name(QuotaKind::Requests, None, None)),
+            "Tokens (short window)" => return Ok(name(QuotaKind::Tokens, None, None)),
+            _ => {}
+        }
+    }
+    if by(OldNamer::ClaudeCode) {
+        match label {
+            "5h session" => return limit(Some(5 * HOUR), None),
+            "7d all models" | "7d" => return limit(Some(WEEK), None),
+            "5h" => return limit(Some(5 * HOUR), None),
+            "Other limit" => return limit(None, None),
+            "" => return unknown(),
+            _ => {}
+        }
+        if let Some(model) = label.strip_prefix("7d ") {
+            return limit(Some(WEEK), Some(model));
+        }
+        if let Some(model) = label.strip_prefix("5h ") {
+            return limit(Some(5 * HOUR), Some(model));
+        }
+        return limit(None, Some(label));
+    }
+    unknown()
+}
+
+/// The length Codex's old namer wrote as `count` of a unit of `unit`
+/// seconds, `1.5` of a minute: its seconds, or none, as Codex stored it,
+/// when they are not whole; `None` when `count` is no length it wrote,
+/// not a positive number in Rust's own form or too long to keep.
+fn codex_length(text: &str, unit: u64) -> Option<Option<u64>> {
+    let count: f64 = text.parse().ok().filter(|count: &f64| count.is_finite() && *count > 0.0)?;
+    // The namer wrote the quotient in Rust's shortest form, so a count in
+    // any other form, `1.50` or `1e3`, is not one it wrote.
+    if count.to_string() != text {
+        return None;
+    }
+    let seconds = count * unit as f64;
+    if seconds > demi_shared_types::MAX_SAFE_INTEGER as f64 {
+        return None;
+    }
+    if seconds.fract() != 0.0 || seconds < 1.0 {
+        return Some(None);
+    }
+    // Whole and below 2^53, so the conversion is exact.
+    Some(Some(seconds as u64))
+}
 
 /// From the conversation schema that `0.1.22-dev.20261015T105826Z`
 /// deployed, of transcript block format 8, to format 9, in which a call's
@@ -1546,6 +1773,11 @@ CREATE INDEX blocks_by_command ON blocks (json_extract(block, '$.view.commandId'
 /// database as 0.1.21 left it.
 fn corrupt(error: impl std::error::Error + Send + Sync + 'static) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(error))
+}
+
+/// Stored data that is not what its format says, in words.
+fn corrupt_text(message: &str) -> rusqlite::Error {
+    corrupt(std::io::Error::other(message.to_owned()))
 }
 
 /// From 0.1.21's checkpoint states to checkpoint state format 2: the yield
@@ -2664,6 +2896,8 @@ CREATE TABLE provider_credentials (
   source       TEXT NOT NULL,
   secret       BLOB NOT NULL,
   version      INTEGER NOT NULL CHECK (version >= 1),
+  -- A quota snapshot, format 2, whose windows have a kind (format 1 named
+  -- each window in English).
   quota        TEXT,
   updated_at   INTEGER NOT NULL,
   -- The account's place in its entry's list, which In Order follows.
@@ -2764,11 +2998,11 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 9.
+-- blocks.block: transcript block format 10.
 CREATE TABLE blocks (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx     INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 9
+  -- blocks.block: transcript block format 10
   block   TEXT NOT NULL,
   PRIMARY KEY (node_id, idx)
 ) STRICT;
@@ -2790,7 +3024,7 @@ CREATE TABLE share_blocks (
   token TEXT NOT NULL,
   agent INTEGER NOT NULL CHECK (agent >= 0),
   idx   INTEGER NOT NULL CHECK (idx >= 0),
-  -- share_blocks.block: transcript block format 9
+  -- share_blocks.block: transcript block format 10
   block TEXT NOT NULL,
   PRIMARY KEY (token, agent, idx)
 ) STRICT;
@@ -4263,6 +4497,223 @@ mod tests {
             [Some("2026-10-15T05:00:02.500Z".to_owned()), Some("2026-10-15T05:00:01.000Z".to_owned()), None]
         );
         assert_eq!(ends("SELECT block FROM share_blocks"), [Some("2026-10-15T05:00:02.500Z".to_owned())]);
+    }
+
+    /// The quota snapshots of 0.1.22-dev.20261015T134426Z's control schema
+    /// named each window in English: migrated, each window has the kind its
+    /// vendor's old namer meant by the name, and keeps its period and its
+    /// scope. A name that namer never made, such as another vendor's, a
+    /// count Codex did not write or no name at all, fails the migration
+    /// instead of becoming a model's name.
+    // Cost: eight databases on disk, a few milliseconds each.
+    #[test]
+    fn a_stored_snapshot_gets_its_windows_kinds() {
+        use demi_shared_types::{QuotaKind, QuotaSnapshot};
+
+        let window = |label: Option<&str>| {
+            let mut window = serde_json::json!({
+                "id": "w", "usedPercent": 40.0, "used": null, "limit": null,
+                "unit": "percent", "resetsAt": null, "periodSeconds": 90, "severity": null,
+                "scope": null
+            });
+            if let Some(label) = label {
+                window["label"] = label.into();
+            }
+            window
+        };
+        let migrated = |vendor: &str, labels: &[Option<&str>]| -> Result<Vec<QuotaKind>, StorageError> {
+            let (_directory, path, mut connection) =
+                database(include_str!("schema/control-0.1.22-dev.20261015T134426Z.sql"));
+            let quota = serde_json::json!({
+                "observedAt": "2026-10-15T13:00:00.000Z", "source": "probe", "plan": null,
+                "accountLabel": null, "windows": labels.iter().map(|label| window(*label)).collect::<Vec<_>>()
+            });
+            connection
+                .execute_batch(
+                    "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                       VALUES ('u1', 'a@example.test', 'Ana', 'hash', 'master', 1);",
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, created_at)
+                       VALUES ('p1', 'u1', ?1, 'subscription', 'Subscription', 1)",
+                    [vendor],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO provider_credentials (provider_id, id, label, source, secret, version, quota, updated_at)
+                       VALUES ('p1', 'a1', 'Work', 'login', x'00', 1, ?1, 1)",
+                    [quota.to_string()],
+                )
+                .unwrap();
+            CONTROL.apply(&mut connection, &path, &NoBlobs)?;
+            let text: String =
+                connection.query_row("SELECT quota FROM provider_credentials", [], |row| row.get(0)).unwrap();
+            let snapshot: QuotaSnapshot = demi_shared_types::decode(&text).unwrap();
+            assert!(snapshot.windows.iter().all(|window| window.period_seconds == Some(90)));
+            Ok(snapshot.windows.iter().map(|window| window.kind).collect())
+        };
+
+        assert_eq!(
+            migrated("codex", &[Some("5-hour"), Some("1.5-minute"), Some("Weekly"), Some("Primary")]).unwrap(),
+            [QuotaKind::Limit; 4]
+        );
+        assert_eq!(
+            migrated("grok-build", &[Some("Weekly credits"), Some("On-demand cap"), Some("Tokens (short window)")])
+                .unwrap(),
+            [QuotaKind::Credits, QuotaKind::Cap, QuotaKind::Tokens]
+        );
+        assert_eq!(
+            migrated("claude-code", &[Some("5h session"), Some("7d Fable"), Some("Opus"), Some("Other limit")])
+                .unwrap(),
+            [QuotaKind::Limit; 4]
+        );
+        for (vendor, label) in [
+            ("codex", Some("1.50-minute")),
+            ("codex", Some("Opus")),
+            ("grok-build", Some("5-hour")),
+            ("claude-code", Some("")),
+            ("codex", None),
+        ] {
+            assert!(migrated(vendor, &[label]).is_err(), "{vendor} {label:?}");
+        }
+    }
+
+    /// An `account_switch` block of transcript block format 9 named the
+    /// window that was used up in English: migrated to format 10, it holds
+    /// the kind, the period and the model that name said, in the
+    /// transcript and in a share's snapshot, and one that named none still
+    /// names none.
+    // Cost: one database on disk, a few milliseconds.
+    #[test]
+    fn a_stored_account_switch_gets_its_windows_name() {
+        use demi_shared_types::{Block, QuotaKind, QuotaScope, QuotaWindowName};
+
+        let switch = |id: &str, window: serde_json::Value| {
+            serde_json::json!({
+                "type": "account_switch",
+                "id": id,
+                "createdAt": "2026-10-15T13:00:00.000Z",
+                "model": {
+                    "providerId": "anthropic",
+                    "model": {
+                        "id": "claude-opus-4-8",
+                        "name": "Claude Opus 4.8",
+                        "contextWindow": 200000,
+                        "outputLimit": 64000,
+                        "thinking": [{"type": "disabled"}],
+                        "acceptedExtensions": ["png"]
+                    },
+                    "thinking": {"type": "disabled"},
+                    "serviceTierId": null
+                },
+                "from": "alex@example.com",
+                "to": "sam@example.com",
+                "window": window,
+                "resetsAt": null
+            })
+        };
+        let blocks = [
+            switch("b1", "5h session".into()),
+            switch("b2", "7d Fable".into()),
+            switch("b3", "Opus".into()),
+            switch("b4", "3-day".into()),
+            switch("b5", serde_json::Value::Null),
+        ];
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/conversation-0.1.22-dev.20261015T134426Z.sql"));
+        connection
+            .execute(
+                "INSERT INTO nodes
+                   (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                 VALUES ('root', 0, '', 1, 0, 1, 0, ?1, ?2, 0)",
+                rusqlite::params![state_of_development(), i64::try_from(blocks.len()).unwrap()],
+            )
+            .unwrap();
+        for (index, block) in blocks.iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
+                    rusqlite::params![i64::try_from(index).unwrap(), block.to_string()],
+                )
+                .unwrap();
+        }
+        connection
+            .execute(
+                "INSERT INTO share_blocks (token, agent, idx, block) VALUES ('s1', 0, 0, ?1)",
+                [blocks[1].to_string()],
+            )
+            .unwrap();
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let names = |sql: &str| -> Vec<Option<QuotaWindowName>> {
+            connection
+                .prepare(sql)
+                .unwrap()
+                .query_map([], |row| row.get::<_, String>(0))
+                .unwrap()
+                .map(|text| match demi_shared_types::decode::<Block>(&text.unwrap()).unwrap() {
+                    Block::AccountSwitch(switch) => switch.window,
+                    other => panic!("{other:?}"),
+                })
+                .collect()
+        };
+        let limit = |period_seconds, model: Option<&str>| {
+            Some(QuotaWindowName {
+                kind: QuotaKind::Limit,
+                period_seconds,
+                scope: model.map(|model| QuotaScope { kind: "model".into(), label: Some(model.into()) }),
+            })
+        };
+        let fable = limit(Some(604_800), Some("Fable"));
+        assert_eq!(
+            names("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx"),
+            [limit(Some(18_000), None), fable.clone(), limit(None, Some("Opus")), limit(Some(259_200), None), None]
+        );
+        assert_eq!(names("SELECT block FROM share_blocks"), [fable]);
+
+        // A name of a Codex length's shape is one exactly, a fractional
+        // count of a minute included, or the migration fails, in the
+        // transcript and in a share's snapshot alike; it never becomes a
+        // model's name.
+        let migrate = |table: &str, window: &str| {
+            let (_directory, path, mut connection) =
+                database(include_str!("schema/conversation-0.1.22-dev.20261015T134426Z.sql"));
+            let block = switch("b1", window.into()).to_string();
+            if table == "blocks" {
+                connection
+                    .execute(
+                        "INSERT INTO nodes
+                           (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                         VALUES ('root', 0, '', 1, 0, 1, 0, ?1, 1, 0)",
+                        [state_of_development()],
+                    )
+                    .unwrap();
+                connection
+                    .execute("INSERT INTO blocks (node_id, idx, block) VALUES ('root', 0, ?1)", [&block])
+                    .unwrap();
+            } else {
+                connection
+                    .execute("INSERT INTO share_blocks (token, agent, idx, block) VALUES ('s1', 0, 0, ?1)", [&block])
+                    .unwrap();
+            }
+            CONVERSATION.apply(&mut connection, &path, &NoBlobs)?;
+            let text: String = connection
+                .query_row(&format!("SELECT block FROM {table}"), [], |row| row.get(0))
+                .unwrap();
+            match demi_shared_types::decode::<Block>(&text).unwrap() {
+                Block::AccountSwitch(switch) => Ok::<_, StorageError>(switch.window),
+                other => panic!("{other:?}"),
+            }
+        };
+        for table in ["blocks", "share_blocks"] {
+            assert_eq!(migrate(table, "1.5-minute").unwrap(), limit(Some(90), None), "{table}");
+            for label in ["1.5x-minute", "1.50-minute", "-hour", ""] {
+                assert!(migrate(table, label).is_err(), "{table} {label:?}");
+            }
+        }
     }
 
     /// A shell call stored in transcript block format 6, whose own files

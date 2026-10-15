@@ -9,7 +9,7 @@ use demi_provider_common::quota::{
     Observation, ProbeCost, ProbeReading, QuotaError, QuotaSource, clamp_used_percent,
     header_number, severity, unix_seconds,
 };
-use demi_shared_types::{QuotaPlan, QuotaUnit, QuotaWindow};
+use demi_shared_types::{QuotaKind, QuotaPlan, QuotaUnit, QuotaWindow};
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, HeaderValue, header::ACCEPT};
 use reqwest::Url;
@@ -31,13 +31,6 @@ impl Kind {
         match self {
             Self::Primary => "primary",
             Self::Secondary => "secondary",
-        }
-    }
-
-    fn name(self) -> &'static str {
-        match self {
-            Self::Primary => "Primary",
-            Self::Secondary => "Secondary",
         }
     }
 }
@@ -191,7 +184,7 @@ fn window_of(
 ) -> QuotaWindow {
     QuotaWindow {
         id: kind.id().into(),
-        label: window_label(kind, minutes),
+        kind: QuotaKind::Limit,
         used_percent,
         used: None,
         limit: None,
@@ -205,35 +198,6 @@ fn window_of(
         severity: severity(used_percent),
         scope: None,
     }
-}
-
-/// A window is named by its length, which is what the user knows it by, the
-/// same whichever path saw it: `Weekly` and `Daily`, else the length in the
-/// largest unit that divides it, else the vendor's word for it.
-fn window_label(kind: Kind, minutes: Option<f64>) -> String {
-    const DAY: f64 = 24.0 * 60.0;
-    const WEEK: f64 = 7.0 * DAY;
-    let Some(minutes) = minutes.filter(|minutes| *minutes > 0.0) else {
-        return kind.name().into();
-    };
-    if minutes % WEEK == 0.0 {
-        return if minutes == WEEK {
-            "Weekly".into()
-        } else {
-            format!("{}-week", minutes / WEEK)
-        };
-    }
-    if minutes % DAY == 0.0 {
-        return if minutes == DAY {
-            "Daily".into()
-        } else {
-            format!("{}-day", minutes / DAY)
-        };
-    }
-    if minutes % 60.0 == 0.0 {
-        return format!("{}-hour", minutes / 60.0);
-    }
-    format!("{minutes}-minute")
 }
 
 /// `plus` reads `Plus`; `self_serve_business_usage_based` reads `Self serve

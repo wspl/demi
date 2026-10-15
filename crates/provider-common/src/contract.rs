@@ -6,7 +6,7 @@ use std::{num::NonZeroU32, sync::Arc};
 
 use demi_shared_types::{
     AgentAccount, AuthState, B64Bytes, MODEL_MEDIA_TYPES, Model, ModelMediaKind, ProviderErrorDiagnostics,
-    ProviderFailureFacts, ProviderModelList, RuntimeState, ThinkingConfig, Timestamp, TokenUsage,
+    ProviderFailureFacts, ProviderModelList, QuotaWindowName, RuntimeState, ThinkingConfig, Timestamp, TokenUsage,
     model_accepts_media_type, model_media_type_for,
 };
 use futures_util::{
@@ -584,7 +584,7 @@ impl ProviderEvent {
 pub struct AccountSwitch {
     pub from: String,
     pub to: String,
-    pub window: Option<String>,
+    pub window: Option<QuotaWindowName>,
     pub resets_at: Option<Timestamp>,
 }
 

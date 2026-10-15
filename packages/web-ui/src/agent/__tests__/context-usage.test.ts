@@ -1,6 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { ContextUsage } from '@demicodes/protocol'
-import { compactionRefusal, contextCardRows, contextFigure, contextPercent, contextTip, contextRatio, untilCompaction } from '../context-usage'
+import { compactionRefusal, contextCardParts, contextCardRows, contextFigure, contextPercent, contextTip, contextRatio, untilCompaction } from '../context-usage'
 import { refusedForSize } from '../session-status'
 
 const WINDOW = 100_000
@@ -108,4 +108,17 @@ test('the ring\'s tip is the header\'s figure under the word Context, and none w
   expect(contextTip({ tokens: 139_000, window: 1_000_000, compactFrom: 500_000, rows: [], account: null })).toBe('Context 139K / 1M (13%)')
   expect(contextTip({ tokens: 12_000, window: null, compactFrom: null, rows: [], account: null })).toBeUndefined()
   expect(contextTip(null)).toBeUndefined()
+})
+
+// A new conversation's card, before its first answer, knows no usage: it
+// holds the usage limits alone, and with none of them there is no meter
+// (`compaction.md` § What fills the context). Microseconds.
+test('a card whose usage or window is unknown shows only the usage limits, and without them nothing', () => {
+  const limits = { accountLabel: 'alex@example.com', windows: [], autoRefresh: true }
+  const known = usage(12_000)
+  const noWindow = { ...known, window: null }
+  expect(contextCardParts(null, limits, false)).toEqual({ context: false, limits: true })
+  expect(contextCardParts(noWindow, limits, false)).toEqual({ context: false, limits: true })
+  expect(contextCardParts(null, null, false)).toEqual({ context: false, limits: false })
+  expect(contextCardParts(known, null, false)).toEqual({ context: true, limits: false })
 })

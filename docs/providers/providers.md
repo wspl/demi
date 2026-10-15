@@ -796,7 +796,7 @@ there. It takes an account again only:
   for 30 minutes when neither names one; the agent takes another account
   and the same request is sent again at once, which counts as no retry, and
   the transcript says so in a neutral line (an `account_switch` block), *alex@example.com reached its
-  5h session limit, resetting at 9:00 PM; continuing with
+  5-hour limit, resetting at 9:00 PM; continuing with
   sam@example.com*. When every account is used up, the failure ends the turn
   as it would with Manual, its moment the earliest one among the accounts;
 - after a compaction, whose next request writes its prefix anew in any case

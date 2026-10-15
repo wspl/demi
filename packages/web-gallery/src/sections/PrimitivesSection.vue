@@ -37,7 +37,7 @@ import { providerLogo, vendorLogo } from '@demicodes/web-ui/settings/vendor-logo
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { inDevelopment } from '@demicodes/web-ui/ui/disabled'
 import { focusedByKeyboard } from '@demicodes/web-ui/ui/active-row'
-import { usageAt, usageOf } from '../fixtures/catalog'
+import { usageAt } from '../fixtures/catalog'
 import { useCardLimits } from '../fixtures/usage-limits'
 import GallerySection from '../components/GallerySection.vue'
 import GalleryOverlayWell from '../components/GalleryOverlayWell.vue'
@@ -138,6 +138,7 @@ const compactPinned = ref(false)
 const cardLong = useCardLimits('alex@example.com')
 const cardTruncated = useCardLimits('a-very-long-account-name.with.many.parts@subdomain.example.com')
 const cardUnlabeled = useCardLimits('')
+const cardNew = useCardLimits('alex@example.com')
 const cardFailing = useCardLimits('alex@example.com', 'Anthropic’s usage service is unavailable.')
 const buttonPressed = ref(true)
 const buttonGhostPressed = ref(true)
@@ -980,7 +981,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
 
       <GallerySection
         title="ContextUsageIndicator"
-        note="The ring is the backend’s estimate, blue below 70% of the window, orange from 70% and red from 90%. Click it for the card, on a phone tap it for a sheet; a click outside, another click on the ring or Escape closes it, and resting the pointer on it shows only its tip, the word Context and the figure the card’s header shows, such as Context 139K / 1M (13%), and none without a usage or a window. Compact closes the card, as a menu’s action does. The header opens and closes the list of what fills the context, closed at first and then as the user left it, kept in the browser; the bar shows either way, the rows largest first, each one figure with its share of the window. Under them, the room before compaction, with Compact, from half the window, or at any share after a turn the vendor refused for its size. Then the usage limits of a subscription account, under a line that ends in a Refresh usage button (its icon turns while the request runs, the windows stay until the answer replaces them, a failure shows the vendor’s words under the line until the next answer, and a click keeps the card open), each window’s name, reset and use on one line over its bar (a model on an API key has none), and last the instruction files, each of which opens where it is written."
+        note="The ring is the backend’s estimate, blue below 70% of the window, orange from 70% and red from 90%. Click it for the card, on a phone tap it for a sheet; a click outside, another click on the ring or Escape closes it, and resting the pointer on it shows only its tip, the word Context and the figure the card’s header shows, such as Context 139K / 1M (13%), and none without a usage or a window. Compact closes the card, as a menu’s action does. The header opens and closes the list of what fills the context, closed at first and then as the user left it, kept in the browser; the bar shows either way, the rows largest first, each one figure with its share of the window. Under them, the room before compaction, with Compact, from half the window, or at any share after a turn the vendor refused for its size. Then the usage limits of a subscription account, under a line that ends in a Refresh usage button (its icon turns while the request runs, the windows stay until the answer replaces them, a failure shows the vendor’s words under the line until the next answer, and a click keeps the card open), each window’s name, reset and use on one line over its bar (a model on an API key has none), and last the instruction files, each of which opens where it is written. While the usage or the window is unknown, as in a new conversation before its first answer, the card holds the usage limits alone, and a model with no limits either has no meter."
       >
         <div class="specimen-row">
           <GallerySpecimen variant="below half · 34%">
@@ -1014,12 +1015,6 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
             <ContextUsageIndicator
               :usage="usageAt(0.75)"
               :is-compacting="true"
-            />
-          </GallerySpecimen>
-          <GallerySpecimen variant="no window">
-            <ContextUsageIndicator
-              :usage="usageOf(12_000, null)"
-              @compact="productWould('Compact the Conversation')"
             />
           </GallerySpecimen>
         </div>
@@ -1095,6 +1090,19 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
                   @compact="productWould('Compact the Conversation')"
                   @open-instruction="demoOpenInstruction($event, productWould)"
                   @refresh-limits="cardFailing.refresh"
+                />
+              </div>
+            </GallerySpecimen>
+          </GalleryOverlayWell>
+          <GalleryOverlayWell>
+            <GallerySpecimen variant="card · new conversation, the usage limits alone">
+              <div class="px-44 pt-[16rem]">
+                <ContextUsageIndicator
+                  pinned
+                  :usage="null"
+                  :instructions="demoInstructions"
+                  :limits="cardNew.limits.value"
+                  @refresh-limits="cardNew.refresh"
                 />
               </div>
             </GallerySpecimen>

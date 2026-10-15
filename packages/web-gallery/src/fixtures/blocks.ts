@@ -1379,7 +1379,7 @@ export function usageLimitErrorBlock(id: string, resetsAt: string): Block {
 
 /**
  * The line an agent's move to another account leaves when its account
- * reached its 5-hour session limit, which resets at `resetsAt`, and the
+ * reached its 5-hour limit, which resets at `resetsAt`, and the
  * answer the same request then got from the next account
  * (`providers.md` § Account rotation).
  */
@@ -1392,7 +1392,7 @@ export function accountSwitchBlocks(resetsAt: string): Block[] {
       model: demoModel,
       from: 'alex@example.com',
       to: 'sam@example.com',
-      window: '5h session',
+      window: { kind: 'limit', periodSeconds: 5 * 3600, scope: null },
       resetsAt,
     },
     {

@@ -78,7 +78,8 @@ pub use model::{
 };
 pub use provider_state::{AccountInfo, AuthState, LoginPending, LoginStage, RefusedCode, RuntimeState, WireApi};
 pub use quota::{
-    QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, SnapshotSource,
+    QuotaKind, QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, QuotaWindowName,
+    SnapshotSource,
 };
 pub use read_at::ReadAt;
 pub use schema::Nullable;

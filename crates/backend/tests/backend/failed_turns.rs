@@ -409,7 +409,7 @@ async fn a_usage_limit_naming_no_moment_resumes_when_the_quotas_used_up_window_r
     world.script.by_record.store(true, Ordering::SeqCst);
     let window = |id: &str, used: f64, resets: &str| QuotaWindow {
         id: id.into(),
-        label: id.into(),
+        kind: demi_shared_types::QuotaKind::Limit,
         used_percent: Some(used),
         used: None,
         limit: None,
