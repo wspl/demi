@@ -799,7 +799,8 @@ same statement that checks it, so a rename that lands while the request is in
 flight wins and is never overwritten. A rename is a title that differs from
 the current one; a patch that repeats the current title, changes no origin. A Fork's title,
 the source's with " (Fork)", has origin `user`: it is already a settled name
-and is not regenerated.
+and is not regenerated. The Fork of a conversation still untitled is
+untitled too, origin `placeholder`.
 
 The request:
 
