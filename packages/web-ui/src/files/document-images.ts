@@ -1,6 +1,7 @@
 import { nextTick, watch } from 'vue'
 import { HOST_FILE_ATTRIBUTE } from '../markdown/document'
 import { useHostImagesAt } from '../markdown/host-images'
+import { t } from './locales/text'
 import type { FileContents } from './types'
 
 /**
@@ -35,7 +36,7 @@ export function useDocumentImages(options: {
   function fail(image: HTMLImageElement): void {
     const placeholder = document.createElement('span')
     placeholder.className = 'inline-flex max-w-full items-center rounded-md border border-dashed border-line px-2 py-0.5 align-middle text-[12px] text-fg-muted'
-    const words = image.alt.trim() || 'Could not show this image.'
+    const words = image.alt.trim() || t('view.imageFailed')
     placeholder.setAttribute('role', 'img')
     placeholder.setAttribute('aria-label', words)
     placeholder.textContent = words

@@ -3,10 +3,9 @@ import type { Language, LanguageDescription } from '@codemirror/language'
 import type { Tree } from '@lezer/common'
 import { highlightCode, highlightTree } from '@lezer/highlight'
 import { StyleModule } from 'style-mod'
-import { reportError } from '../infra/errors'
 import { appThemeStore } from '../theme/appTheme'
 import { codeTheme } from '../theme/codeTheme'
-import { fenceLanguage } from '../editor/language'
+import { fenceLanguage, reportSyntaxColorsUnavailable } from '../editor/language'
 import { codeHighlightStyle } from '../editor/theme/highlightStyle'
 import { escapeHtml } from './html'
 
@@ -38,7 +37,7 @@ function loadedLanguage(fence: string): Language | null {
       () => {
         renderVersion.value += 1
       },
-      (error: unknown) => reportError('Syntax Colors Are Unavailable', error),
+      reportSyntaxColorsUnavailable,
     )
   }
   return null

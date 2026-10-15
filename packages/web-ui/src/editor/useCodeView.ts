@@ -3,6 +3,7 @@ import { EditorState, type Extension, type StateEffect, type Text, type Transact
 import { EditorView } from '@codemirror/view'
 import { baseName } from '@demicodes/utils'
 import { loadFileLanguage } from './language'
+import { t } from './locales/text'
 import { editorTheme, trackEditorView, untrackEditorView } from './theme/cmTheme'
 import { diffOf, setDiffOriginal } from './unifiedDiff'
 
@@ -88,6 +89,13 @@ export function useCodeView(
         extensions: [
           EditorState.readOnly.of(true),
           EditorState.tabSize.of(2),
+          // The words CodeMirror says on its own, such as a folded range's tip, in the page's language.
+          EditorState.phrases.of({
+            'folded code': t('fold.folded'),
+            'unfold': t('fold.unfold'),
+            'Fold line': t('fold.foldLine'),
+            'Unfold line': t('fold.unfoldLine'),
+          }),
           // CodeMirror makes the text a read-only, multi-line textbox; the file's name names it.
           EditorView.contentAttributes.of({ 'aria-label': baseName(file.path) }),
           editorTheme(),

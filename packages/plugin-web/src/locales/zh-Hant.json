@@ -1,0 +1,37 @@
+{
+  "settings": {
+    "title": "網頁搜尋",
+    "keywords": "網路, 網頁, 搜尋, Exa, API 金鑰, 登入"
+  },
+  "account": {
+    "label": "Exa 帳戶",
+    "signedIn": "已登入",
+    "notConnected": "未連線",
+    "signOut": "登出",
+    "signIn": "登入"
+  },
+  "key": {
+    "label": "API 金鑰",
+    "description": "提供所有篩選條件，例如網域和日期。",
+    "unchecked": "未檢查：{reason}",
+    "remove": "移除",
+    "placeholder": "Exa API 金鑰",
+    "save": "儲存"
+  },
+  "inUse": {
+    "label": "目前使用",
+    "key": "你的 API 金鑰",
+    "account": "你的 Exa 帳戶",
+    "anonymous": "匿名，有限制"
+  },
+  "refusals": {
+    "keyRefused": "Exa 拒絕了此金鑰。請確認是否完整複製。",
+    "exaUnavailable": "Exa 沒有回應用於檢查金鑰的搜尋。請再試一次。"
+  },
+  "errors": {
+    "signIn": "無法開始 Exa 登入",
+    "signOut": "無法登出 Exa",
+    "saveKey": "無法儲存金鑰",
+    "removeKey": "無法移除金鑰"
+  }
+}

@@ -8,6 +8,7 @@ import { json } from '@codemirror/lang-json'
 import { markdown } from '@codemirror/lang-markdown'
 import { vue } from '@codemirror/lang-vue'
 import { reportError } from '../infra/errors'
+import { t } from './locales/text'
 import { baseName } from '@demicodes/utils'
 
 /** Files whose name the language data does not match, by the language-data name they read as. */
@@ -89,7 +90,12 @@ export async function loadFileLanguage(path: string): Promise<Extension> {
   try {
     return await load()
   } catch (error) {
-    reportError('Syntax Colors Are Unavailable', error)
+    reportSyntaxColorsUnavailable(error)
     return []
   }
+}
+
+/** Tells that a language's syntax colors could not load, as the editor and a message's code blocks both do. */
+export function reportSyntaxColorsUnavailable(error: unknown): void {
+  reportError(t('syntaxColorsUnavailable'), error)
 }

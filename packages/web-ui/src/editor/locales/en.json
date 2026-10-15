@@ -1,0 +1,21 @@
+{
+  "search": {
+    "label": "Find",
+    "matchCase": "Match case",
+    "wholeWord": "Match whole word",
+    "regexp": "Use regular expression",
+    "previous": "Previous match",
+    "next": "Next match"
+  },
+  "syntaxColorsUnavailable": "Syntax Colors Are Unavailable",
+  "diff": {
+    "unchanged": "{count} unchanged line | {count} unchanged lines",
+    "noNewline": "No newline at end of file"
+  },
+  "fold": {
+    "folded": "Folded code",
+    "unfold": "Unfold",
+    "foldLine": "Fold line",
+    "unfoldLine": "Unfold line"
+  }
+}

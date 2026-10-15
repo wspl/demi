@@ -81,12 +81,13 @@ export type OpenWatchLink = (handlers: WatchLinkHandlers) => WatchLink
  */
 export type SubscriptionStatus = 'waiting' | 'live' | 'unavailable' | 'refused'
 
-/** What the page says when the Host refuses a subscription for the page's limits. */
-const REFUSED_REASON = 'This page watches too many files.'
-
 /** One subscription of the kept files, shared by every entry that depends on its subject. */
 export class Subscription {
-  /** What the views read of it. */
+  /**
+   * What the views read of it. `reason` is the Host's own words for a
+   * subscription it could not watch; none for one the Host refused for the
+   * page's limits, which the page words itself (`unwatched`).
+   */
   readonly state = shallowReactive({ status: 'waiting' as SubscriptionStatus, reason: null as string | null })
   /** The epoch of the run that watches it, from its last `live`. */
   epoch: string | null = null
@@ -370,7 +371,7 @@ export class WatchChannel {
         if (!subscription)
           return
         subscription.state.status = message.type
-        subscription.state.reason = message.type === 'refused' ? REFUSED_REASON : message.reason
+        subscription.state.reason = message.type === 'refused' ? null : message.reason
         subscription.leaseFrom = null
         this.listener.heard([subscription])
         return

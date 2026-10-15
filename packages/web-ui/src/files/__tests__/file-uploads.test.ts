@@ -101,7 +101,7 @@ test('a failure stays listed with its reason until retried or cleared', async ()
   await settle()
   expect(uploads.items[0]!.state).toEqual({
     phase: 'failed',
-    failures: [{ path: '', message: 'A file with this name is there now.', requestId: null }],
+    failures: [{ path: '', message: 'A file with this name now exists.', requestId: null }],
   })
 
   // A retry goes after the ones still waiting or on their way.
