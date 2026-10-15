@@ -146,6 +146,25 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_c
         renamed.json::<Value>()["workspace"]["name"],
         json!("journal")
     );
+    // What the project's next conversation starts with: each field
+    // replaces its own, and the product state carries them.
+    let model = json!({ "providerId": "account", "modelId": "opus", "thinkingEffort": "high", "serviceTierId": null });
+    let review = json!({ "type": "workflow", "id": "review" });
+    for change in [
+        json!({ "lastModel": model, "lastWorkflow": { "type": "default" } }),
+        json!({ "lastWorkflow": review }),
+    ] {
+        let changed = backend
+            .patch(&format!("/api/workspaces/{notes}"), &master, change)
+            .await;
+        assert_eq!(changed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&changed.body));
+    }
+    let state = backend.sync(&master).await.snapshot().await;
+    let listed = serde_json::to_value(&state.workspaces[0]).unwrap();
+    assert_eq!(
+        (&listed["name"], &listed["lastModel"], &listed["lastWorkflow"]),
+        (&json!("journal"), &model, &review)
+    );
     let missing = backend
         .patch("/api/workspaces/nothing", &master, json!({ "name": "x" }))
         .await;

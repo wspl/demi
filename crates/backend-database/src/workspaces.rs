@@ -1,18 +1,22 @@
 //! Workspace records (`storage.md` § Control records): a named directory on
 //! one of the user's devices, which conversations can target. A workspace is
 //! a pointer: it owns no files. A new workspace joins the user's others at
-//! the end of their order.
+//! the end of their order. It keeps the model settings and the workflow
+//! the project's next conversation starts with (`web-api.md` § User
+//! preferences).
 
-use demi_shared_types::Timestamp;
+use demi_shared_types::{Timestamp, WorkflowChoice};
+use demi_web_api_protocol::conversations::ModelSettings;
 use demi_web_api_protocol::ids::{DeviceId, UserId, WorkspaceId};
 use demi_web_api_protocol::workspaces::WorkspaceDto;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
-use super::columns::{decode, instant};
+use super::columns::{decode, instant, json, to_json, workflow_choice, workflow_columns};
 use super::control::ControlService;
 
-const WORKSPACE_COLUMNS: &str = "id, user_id, device_id, path, name, created_at";
+const WORKSPACE_COLUMNS: &str =
+    "id, user_id, device_id, path, name, created_at, last_model, last_workflow_kind, last_workflow_id";
 
 /// A new workspace's id, which the backend assigns.
 pub fn new_workspace_id() -> WorkspaceId {
@@ -28,6 +32,20 @@ pub struct WorkspaceRecord {
     pub path: String,
     pub name: String,
     pub created_at: Timestamp,
+    /// The model settings last chosen in the project; none before the first
+    /// choice.
+    pub last_model: Option<ModelSettings>,
+    /// The Workflow menu choice last made in the project; none before the
+    /// first.
+    pub last_workflow: Option<WorkflowChoice>,
+}
+
+/// A change of a workspace: each field it holds replaces the stored one.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct WorkspaceChange {
+    pub name: Option<String>,
+    pub last_model: Option<ModelSettings>,
+    pub last_workflow: Option<WorkflowChoice>,
 }
 
 impl WorkspaceRecord {
@@ -39,6 +57,8 @@ impl WorkspaceRecord {
             path: self.path,
             name: self.name,
             created_at: self.created_at,
+            last_model: self.last_model,
+            last_workflow: self.last_workflow,
         }
     }
 }
@@ -112,24 +132,45 @@ impl ControlService {
                 path,
                 name,
                 created_at: now,
+                last_model: None,
+                last_workflow: None,
             }))
         })
         .await
     }
 
-    /// Renames the user's workspace `id` and answers it as it now is; `None`
-    /// when the user has no workspace of the id.
-    pub async fn rename_workspace(
+    /// Applies `change` to the user's workspace `id` and answers it as it
+    /// now is; `None` when the user has no workspace of the id.
+    pub async fn change_workspace(
         &self,
         user: UserId,
         id: WorkspaceId,
-        name: String,
+        change: WorkspaceChange,
     ) -> Result<Option<WorkspaceRecord>, StorageError> {
         self.call(move |connection, _| {
+            let (kind, workflow) = match &change.last_workflow {
+                Some(choice) => {
+                    let (kind, workflow) = workflow_columns(choice);
+                    (Some(kind), workflow)
+                }
+                None => (None, None),
+            };
             let mut statement = connection.prepare_cached(&format!(
-                "UPDATE workspaces SET name = ?1 WHERE id = ?2 AND user_id = ?3 RETURNING {WORKSPACE_COLUMNS}"
+                "UPDATE workspaces SET
+                   name = COALESCE(?1, name),
+                   last_model = COALESCE(?2, last_model),
+                   last_workflow_kind = COALESCE(?3, last_workflow_kind),
+                   last_workflow_id = CASE WHEN ?3 IS NULL THEN last_workflow_id ELSE ?4 END
+                 WHERE id = ?5 AND user_id = ?6 RETURNING {WORKSPACE_COLUMNS}"
             ))?;
-            let mut rows = statement.query(params![name, id.as_str(), user.as_str()])?;
+            let mut rows = statement.query(params![
+                change.name,
+                change.last_model.as_ref().map(to_json),
+                kind,
+                workflow,
+                id.as_str(),
+                user.as_str()
+            ])?;
             rows.next()?.map(workspace_row).transpose()
         })
         .await
@@ -207,5 +248,13 @@ fn workspace_row(row: &Row<'_>) -> Result<WorkspaceRecord, StorageError> {
         path: row.get("path")?,
         name: row.get("name")?,
         created_at: instant(row, TABLE, "created_at")?,
+        last_model: row
+            .get::<_, Option<String>>("last_model")?
+            .map(|text| json(TABLE, "last_model", &text))
+            .transpose()?,
+        last_workflow: row
+            .get::<_, Option<String>>("last_workflow_kind")?
+            .map(|kind| workflow_choice(TABLE, "last_workflow_kind", &kind, row.get("last_workflow_id")?))
+            .transpose()?,
     })
 }

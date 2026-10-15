@@ -25,10 +25,13 @@ export interface WorkflowOption {
 }
 
 /**
- * The project's workflows as the page holds them: being read; read; their
- * directory not usable, as a link, with why; or not readable now.
+ * The project's workflows as the page holds them: none to read, for a
+ * conversation with no directory yet, which offers Default and No
+ * Subagents; being read; read; their directory not usable, as a link, with
+ * why; or not readable now.
  */
 export type WorkflowList =
+  | { state: 'nowhere' }
   | { state: 'reading' }
   | { state: 'read'; workflows: readonly WorkflowOption[] }
   | { state: 'unavailable'; reason: string }
@@ -88,6 +91,8 @@ export function workflowRows(choice: WorkflowChoice, list: WorkflowList): Workfl
     row('default', t('workflows.default'), { type: 'default' }),
     row('none', t('workflows.none'), { type: 'none' }),
   ]
+  if (list.state === 'nowhere')
+    return choice.type === 'workflow' ? [...rows, row(`workflow:${choice.id}`, choice.id, choice)] : rows
   if (list.state === 'reading')
     return [...rows, row('reading', t('workflows.reading'), null)]
   if (list.state === 'failed')

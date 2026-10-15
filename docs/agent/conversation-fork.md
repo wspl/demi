@@ -23,7 +23,7 @@ Creation defaults:
   and does not call a model until the user sends a message.
 - Inherit the source's model settings, the selection its record holds
   ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)),
-  and its workspace or device selection.
+  its workflow, and its workspace or device selection.
 - Keep the source's unsent composer draft in the source.
 - Keep the source's [permission](permissions.md#grants) grants and requests
   in the source: the user decides for the new conversation again.

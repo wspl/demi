@@ -80,8 +80,10 @@ impl ReadBlob for NoBlobs {
 /// account rotation before a placeholder title held no words, the one with
 /// placeholder titles before interrupted turns were kept, and the one with
 /// interrupted turns before a conversation kept the hosts it may reach,
-/// the one with them before shares, and the one with shares before a
-/// device's mark had a number.
+/// the one with them before shares, the one with shares before a
+/// device's mark had a number, and 0.1.22-dev.20261015T105826Z's, before a
+/// project remembered the model and workflow its next conversation starts
+/// with.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -205,8 +207,83 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.shares.sql"),
             migration: Migration::Sql(CONTROL_FROM_SHARES),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.20261015T105826Z.sql"),
+            migration: Migration::Code(control_from_0_1_22_dev_20261015t105826z),
+        },
     ],
 };
+
+/// From 0.1.22-dev.20261015T105826Z's control schema, which a server keeps
+/// data of, to the one in which a workspace keeps what its project's next
+/// conversation starts with (`web-api.md` § User preferences), none before
+/// the first choice, and a Fork's metadata holds the workflow its
+/// destination keeps (format 3). A Fork reserved before was reserved to
+/// start with Default, which its record keeps.
+fn control_from_0_1_22_dev_20261015t105826z(
+    transaction: &Transaction<'_>,
+    _: &dyn ReadBlob,
+) -> rusqlite::Result<()> {
+    transaction.execute_batch(
+        "
+ALTER TABLE workspaces ADD COLUMN last_model TEXT;
+ALTER TABLE workspaces ADD COLUMN last_workflow_kind TEXT
+    CHECK (last_workflow_kind IN ('default', 'none', 'workflow'));
+ALTER TABLE workspaces ADD COLUMN last_workflow_id TEXT
+    CHECK ((last_workflow_kind IS 'workflow') = (last_workflow_id IS NOT NULL));
+",
+    )?;
+    let records = transaction
+        .prepare("SELECT id, metadata FROM conversation_fork_operations")?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update = transaction.prepare("UPDATE conversation_fork_operations SET metadata = ?2 WHERE id = ?1")?;
+    for (id, text) in records {
+        let earlier: fork_format_2::ForkMetadata =
+            json("conversation_fork_operations", "metadata", &text).map_err(corrupt)?;
+        let metadata = crate::forks::ForkMetadata {
+            title: earlier.title,
+            target: earlier.target,
+            model: earlier.model,
+            workflow: demi_shared_types::WorkflowChoice::Default,
+            created_at: earlier.created_at,
+            attached_hosts: earlier.attached_hosts,
+            context_version: earlier.context_version,
+        };
+        update.execute(rusqlite::params![id, to_json(&metadata)])?;
+    }
+    Ok(())
+}
+
+/// Fork metadata format 2, without the destination's workflow, as the
+/// control schema before [`control_from_0_1_22_dev_20261015t105826z`]
+/// stored it.
+mod fork_format_2 {
+    use demi_shared_types::{ModelSelection, Timestamp};
+    use demi_web_api_protocol::conversations::ConversationTarget;
+    use serde::{Deserialize, Serialize};
+
+    use crate::conversation_index::AttachedHostRecord;
+
+    #[derive(Serialize, Deserialize, garde::Validate)]
+    #[serde(rename_all = "camelCase", deny_unknown_fields)]
+    pub(super) struct ForkMetadata {
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[garde(length(min = 1))]
+        pub title: Option<String>,
+        #[garde(dive)]
+        pub target: ConversationTarget,
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[garde(dive)]
+        pub model: Option<ModelSelection>,
+        #[garde(skip)]
+        pub created_at: Timestamp,
+        #[garde(dive)]
+        pub attached_hosts: Vec<AttachedHostRecord>,
+        #[garde(skip)]
+        pub context_version: u64,
+    }
+}
 
 /// From the control schema that keeps each share's record to the one in
 /// which a paired device keeps the number of its mark (`product.md`
@@ -405,7 +482,7 @@ UPDATE conversations SET last_switch_revision = 0 WHERE last_switch IS NOT NULL;
         let context_version = decode("conversations", "context_version", u64::try_from(revision)).map_err(corrupt)?;
         let named: fork_format_1::ForkMetadata =
             json("conversation_fork_operations", "metadata", &text).map_err(corrupt)?;
-        let metadata = crate::forks::ForkMetadata {
+        let metadata = fork_format_2::ForkMetadata {
             title: Some(named.title),
             target: named.target,
             model: named.model,
@@ -421,7 +498,7 @@ UPDATE conversations SET last_switch_revision = 0 WHERE last_switch IS NOT NULL;
             context_version,
         };
         let text = to_json(&metadata);
-        let _: crate::forks::ForkMetadata =
+        let _: fork_format_2::ForkMetadata =
             json("conversation_fork_operations", "metadata", &text).map_err(corrupt)?;
         update.execute(rusqlite::params![id, text])?;
     }
@@ -2069,7 +2146,16 @@ CREATE TABLE workspaces (
   path       TEXT NOT NULL,
   name       TEXT NOT NULL,
   sort_order INTEGER NOT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  -- What the project's next conversation starts with (web-api.md § User
+  -- preferences), as the user last chose it there: model settings as JSON,
+  -- and a Workflow menu choice typed as a conversation's; each none before
+  -- its first choice.
+  last_model TEXT,
+  last_workflow_kind TEXT
+    CHECK (last_workflow_kind IN ('default', 'none', 'workflow')),
+  last_workflow_id TEXT
+    CHECK ((last_workflow_kind IS 'workflow') = (last_workflow_id IS NOT NULL))
 ) STRICT;
 CREATE INDEX workspaces_order ON workspaces (user_id, sort_order);
 
@@ -2431,10 +2517,11 @@ CREATE TABLE conversation_deletions (
 -- Records that make interrupted multi-step work discoverable. A Fork
 -- reserves its destination's conversation id, compared as the index
 -- compares it.
--- conversation_fork_operations.metadata: Fork metadata format 2, ForkMetadata
+-- conversation_fork_operations.metadata: Fork metadata format 3, ForkMetadata
 -- as JSON, whose attached hosts are their devices and directories without
 -- names and which holds the source's execution-context revision at the Fork
--- (format 1 named the hosts and held no revision).
+-- and its workflow (format 1 named the hosts and held no revision, format 2
+-- held no workflow).
 CREATE TABLE conversation_fork_operations (
   id        TEXT PRIMARY KEY COLLATE NOCASE,
   user_id   TEXT NOT NULL REFERENCES users (id),
@@ -3135,6 +3222,8 @@ mod tests {
             title: "Fork".to_owned().into(),
             target: ConversationTarget::Cloud { path: None },
             model: None,
+            // A Fork reserved before its workflow was kept starts with Default.
+            workflow: demi_shared_types::WorkflowChoice::Default,
             created_at: "2026-10-14T08:00:00Z".parse().unwrap(),
             attached_hosts: vec![AttachedHostRecord {
                 device: DeviceId::try_from("d1".to_owned()).unwrap(),
@@ -3146,6 +3235,7 @@ mod tests {
         let mut stored = serde_json::to_value(&metadata).unwrap();
         stored["attachedHosts"][0]["name"] = "laptop".into();
         stored.as_object_mut().unwrap().remove("contextVersion");
+        stored.as_object_mut().unwrap().remove("workflow");
         connection
             .execute(
                 "INSERT INTO conversation_fork_operations (id, user_id, source_id, block_id, metadata)

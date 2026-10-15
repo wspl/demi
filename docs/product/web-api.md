@@ -278,8 +278,10 @@ Workspace creation takes `{ kind: "device", deviceId, path, name }` or
 caller-owned device; another device answers 404 `device_not_found`. The second
 creates a project directory on the user's Cloud and can wake it. A name is
 trimmed and has 1 to 256 characters. A creation answers `{ workspace }` with
-201 and a rename, `PATCH /workspaces/:id { name }`, with 200; a workspace is
-`{ id, deviceId, path, name, createdAt }`, and `GET /workspaces` returns
+201 and a change, `PATCH /workspaces/:id { name?, lastModel?, lastWorkflow? }`, each field replacing its value, with 200 and `{ workspace }`; a workspace is
+`{ id, deviceId, path, name, createdAt, lastModel?, lastWorkflow? }`, the
+last two what its next conversation starts with
+([User preferences](#user-preferences)), and `GET /workspaces` returns
 `{ workspaces }` in the user's order, which the product state carries too. A
 workspace is a pointer; renaming or deleting it does not rename or delete
 files. Deletion answers 204, and 409 `workspace_in_use` while conversations
@@ -919,7 +921,7 @@ not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, resumeAfterRestart?, multiAccountWarned?, hiddenProviders?, hiddenModels? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastWorkflow?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, resumeAfterRestart?, multiAccountWarned?, hiddenProviders?, hiddenModels? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
@@ -946,11 +948,30 @@ device's menu, the profile editor's menu and `demi providers list` leave out
 the same entries and models
 ([Managing profiles](../agent/subagents.md#managing-profiles)). A conversation
 or a profile already on a hidden model keeps it; the menus no longer offer
-it, and a profile change through `demi agent profiles` refuses it. `lastModel` stores the explicit new-conversation
-default as model settings, `{ providerId, modelId, thinkingEffort, serviceTierId }`
-([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
-Every explicit choice of a model, an effort or a tier saves it, in an unsent
-draft or in an existing conversation. A new conversation starts with it, and
+it, and a profile change through `demi agent profiles` refuses it. **What a new conversation starts with** is remembered per project, and once
+for all the conversations outside a project: the model settings and the
+workflow last chosen there. For example, the user picks Opus and Parallel
+Development in a conversation of the project *demi*, and Sonnet in a
+conversation outside any project: the next conversation in *demi* starts
+with Opus and Parallel Development, the next one outside a project with
+Sonnet and No Subagents, and one in a project never used before with what
+the conversations outside a project start with; a project that remembers
+only one of the two takes the other from there. A project keeps
+its choice on its workspace (`lastModel`, `lastWorkflow`), deleted with it;
+the conversations outside a project keep theirs in the preferences
+(`lastModel`, `lastWorkflow`). `lastModel` holds model settings,
+`{ providerId, modelId, thinkingEffort, serviceTierId }`
+([A conversation's model settings](../providers/models.md#a-conversations-model-settings)),
+and `lastWorkflow` is a workflow choice as a conversation holds it,
+`{ type: "default" }`, `{ type: "none" }` for No Subagents or
+`{ type: "workflow", id }`; absent means No Subagents, as does a workflow the directory no longer
+has. Every explicit choice of a model, an effort, a tier or a workflow saves
+it where the conversation belongs, in an unsent draft or in an existing
+conversation, and a conversation moved into or out of a project saves
+nothing. The page saves a project's choice with
+`PATCH /workspaces/:id { lastModel?, lastWorkflow? }` and the outside one
+with the preferences' `PATCH`; both reach the user's other pages as a
+rename does. A new conversation starts with it, and
 its first send writes it to the new conversation's record, an effort the
 model no longer offers replaced by the model's first effort and a tier it no
 longer offers by the vendor's default. Its effort is null only for a model
@@ -1989,8 +2010,10 @@ page holds one while it keeps any such entry, whether or not a view shows it
 ([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
 The upgrade checks the session cookie and the `Origin` header as the browser
 stream does, and is admitted through the conversation's host access without
-waking a stopped Cloud. A device's folder dialog subscribes the same way on
-`WS /api/devices/:deviceId/fs/watch`, through device access
+waking a stopped Cloud. A device's folder dialog, and a new conversation's
+workflows on a device or the user's Cloud, subscribe the same way on
+`WS /api/devices/:deviceId/fs/watch`, through device access, which never
+wakes a stopped Cloud
 ([Every way to a Host](../execution/sessions-and-targets.md#every-way-to-a-host)).
 The conversation's route covers its primary Host and its attached hosts: an
 attached host's files, as the attachment picker lists them, are subscribed

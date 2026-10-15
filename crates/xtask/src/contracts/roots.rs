@@ -197,7 +197,7 @@ pub fn web() -> Vec<Root> {
         receives::<users::NewFirstPassword>(),
         receives::<workspaces::Workspaces>(),
         sends::<workspaces::CreateWorkspace>(),
-        sends::<workspaces::RenameWorkspace>(),
+        sends::<workspaces::ChangeWorkspace>(),
         receives::<workspaces::WorkspaceAnswer>(),
         sends::<sidebar::SidebarReorder>(),
         receives::<panel::WorkPanel>(),

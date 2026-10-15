@@ -85,6 +85,7 @@ export const usePreferences = defineStore('preferences', () => {
   let queued: { patch: PreferencesPatch; changes: ProductChange[] } = { patch: {}, changes: [] }
 
   const lastModel = computed(() => product.snapshot?.preferences.lastModel)
+  const lastWorkflow = computed(() => product.snapshot?.preferences.lastWorkflow)
   const lastProjectHost = computed(() => product.snapshot?.preferences.lastProjectHost)
   /** The language the user chose (`localization.md` § Choosing the language); absent means System. */
   const language = computed(() => product.snapshot?.preferences.language ?? 'system')
@@ -354,6 +355,7 @@ export const usePreferences = defineStore('preferences', () => {
   return {
     language,
     lastModel,
+    lastWorkflow,
     lastProjectHost,
     sendWhileRunning,
     resumeAtRetry,

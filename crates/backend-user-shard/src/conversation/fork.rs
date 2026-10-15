@@ -139,6 +139,8 @@ impl Shard {
                         // The destination inherits the source's model
                         // settings, the selection its record holds.
                         model: source.model.clone(),
+                        // And its workflow.
+                        workflow: source.workflow.clone(),
                         created_at: services.clock.now(),
                         attached_hosts: control
                             .attached_hosts(source.id.clone())
@@ -383,6 +385,7 @@ mod tests {
                     path: Some(format!("/home/demi/sessions/{source}")),
                 },
                 model: Some(test_model()),
+                workflow: demi_shared_types::WorkflowChoice::Default,
                 created_at,
                 attached_hosts: attached.iter().map(|host| host.record()).collect(),
                 context_version: 5,

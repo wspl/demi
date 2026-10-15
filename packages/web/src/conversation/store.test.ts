@@ -12,7 +12,7 @@ import { nextTick, toRaw, watch } from 'vue'
 import { useConversations } from './store'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
-import type { AttachedHost, ConversationDraft, ConversationSummary, DraftFile, Preferences, SavedMessage } from '../api/generated/web-api'
+import type { AttachedHost, ConversationDraft, ConversationSummary, DraftFile, Preferences, SavedMessage, WorkspaceDto } from '../api/generated/web-api'
 import { useSession } from '../auth/session'
 import { conversationSummary, productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
@@ -119,6 +119,8 @@ let requests: {
 let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>
 let savedPreferences: Preferences
+/** The user's projects as the backend keeps them. */
+let workspaces: WorkspaceDto[]
 /** The drafts the backend keeps, by conversation. */
 let serverDrafts: Map<string, ConversationDraft>
 
@@ -238,6 +240,7 @@ beforeEach(async () => {
   setActivePinia(pinia)
   records = [record(FIRST, 'first'), record(SECOND, 'second')]
   savedPreferences = { appearance: {}, shortcuts: {} }
+  workspaces = []
   serverDrafts = new Map()
   serverSaved = new Map()
   serverEdits = new Map()
@@ -261,6 +264,12 @@ beforeEach(async () => {
     }
     if (path.startsWith('/api/models')) {
       return Response.json({ providers: [] })
+    }
+    const workspacePatch = /^\/api\/workspaces\/([^/]+)$/.exec(path)
+    if (workspacePatch && init?.method === 'PATCH') {
+      const changed = { ...workspaces.find((item) => item.id === decodeURIComponent(workspacePatch[1]!))!, ...body }
+      workspaces = workspaces.map((item) => item.id === changed.id ? changed : item)
+      return Response.json({ workspace: changed })
     }
     if (path === `/api/conversations/${FIRST}/fork`) {
       if (rejectFork) {
@@ -289,7 +298,9 @@ beforeEach(async () => {
         )
       }
       const existing = records.find((item) => item.id === body.id)
-      const created = existing ?? { ...record(body.id), title: body.title ?? null, pinned: body.pinned ?? false }
+      const created = existing ?? {
+        ...record(body.id), title: body.title ?? null, pinned: body.pinned ?? false, workflow: body.workflow ?? { type: 'default' },
+      }
       if (!existing) {
         records.unshift(created)
       }
@@ -380,7 +391,7 @@ afterEach(() => {
 
 /** The backend's state, as its channel brings it. */
 function backendState() {
-  return productState({ preferences: savedPreferences, conversations: records })
+  return productState({ preferences: savedPreferences, conversations: records, workspaces })
 }
 
 /** The page starts following the state, and its channel brings the backend's first. */
@@ -436,6 +447,89 @@ test('an empty draft saves the complete last choice and new conversations restor
     thinkingEffort: null, serviceTierId: null,
   })
   expect(draft.model).toEqual(chosen)
+})
+
+/** A project of the user's, on a device, which remembers no choice yet. */
+function workspace(id: string): WorkspaceDto {
+  return { id, deviceId: 'laptop', path: `/work/${id}`, name: id, createdAt: '2026-09-09T00:00:00.000Z' }
+}
+
+test('each project, and the conversations outside projects, start a new conversation with the choices last made there', async () => {
+  workspaces = [workspace('demi'), workspace('website')]
+  await reconnected()
+  let store = useConversations()
+  /** Opens a new conversation there, and keeps it from being the next one. */
+  const open = (projectId: string | null) => {
+    const id = store.create(projectId)
+    const conversation = store.items.find((item) => item.id === id)!
+    conversation.draft = 'Not empty'
+    return conversation
+  }
+  const opus = { model: { providerId: 'account', modelId: 'opus' } }
+  const sonnet = { model: { providerId: 'account', modelId: 'sonnet' } }
+  const inDemi = open('demi')
+  await store.changeModel(inDemi, opus)
+  await store.changeWorkflow(inDemi.id, { type: 'workflow', id: 'parallel' })
+  await store.changeModel(open(null), sonnet)
+  // A project never used starts as the conversations outside one do.
+  const inWebsite = open('website')
+  expect([inWebsite.model.modelId, inWebsite.workflow]).toEqual(['sonnet', { type: 'none' }])
+  await store.changeWorkflow(inWebsite.id, { type: 'default' })
+  await usePreferences().flush()
+  await waitFor(() => workspaces.every((item) => item.lastWorkflow !== undefined), () => 'a project kept no choice')
+  expect(savedPreferences.lastWorkflow).toBeUndefined()
+  expect(savedPreferences.lastModel?.modelId).toBe('sonnet')
+
+  // Another page, which reads the choices from the backend.
+  store.stopAll()
+  usePreferences().stop()
+  useProduct().stop()
+  disposePinia(pinia)
+  pinia = createPinia()
+  setActivePinia(pinia)
+  store = useConversations()
+  await connect()
+  const starts = (projectId: string | null) => {
+    const conversation = open(projectId)
+    return [conversation.model.modelId, conversation.workflow]
+  }
+  expect(starts('demi')).toEqual(['opus', { type: 'workflow', id: 'parallel' }])
+  expect(starts(null)).toEqual(['sonnet', { type: 'none' }])
+  // Website's own workflow, and the only model chosen for it, outside.
+  expect(starts('website')).toEqual(['sonnet', { type: 'default' }])
+  // A project the page does not know starts as outside.
+  expect(starts('unknown')).toEqual(['sonnet', { type: 'none' }])
+})
+
+test('a project that remembers only a model starts with the workflow chosen outside projects', async () => {
+  workspaces = [{ ...workspace('demi'), lastModel: { providerId: 'account', modelId: 'opus', thinkingEffort: null, serviceTierId: null } }]
+  savedPreferences = {
+    ...savedPreferences,
+    lastModel: { providerId: 'account', modelId: 'sonnet', thinkingEffort: null, serviceTierId: null },
+    lastWorkflow: { type: 'default' },
+  }
+  await reconnected()
+  const store = useConversations()
+  const id = store.create('demi')
+  const conversation = store.items.find((item) => item.id === id)!
+  expect([conversation.model.modelId, conversation.workflow]).toEqual(['opus', { type: 'default' }])
+})
+
+test('a new conversation whose project no longer has the workflow it remembers goes on with No Subagents', async () => {
+  workspaces = [{ ...workspace('demi'), lastWorkflow: { type: 'workflow', id: 'explore' } }]
+  await reconnected()
+  const store = useConversations()
+  const id = store.create('demi')
+  const conversation = store.items.find((item) => item.id === id)!
+  const review = { id: 'review', name: 'Review Team', path: '/work/demi/.demi/workflows/review.yaml', unavailable: null }
+  const explore = { ...review, id: 'explore', name: 'Explore', path: '/work/demi/.demi/workflows/explore.yaml' }
+  store.settleStartingWorkflow(id, { state: 'reading' })
+  store.settleStartingWorkflow(id, { state: 'read', workflows: [review, explore] })
+  expect(conversation.workflow).toEqual({ type: 'workflow', id: 'explore' })
+  store.settleStartingWorkflow(id, { state: 'read', workflows: [review] })
+  expect(conversation.workflow).toEqual({ type: 'none' })
+  // Nothing is remembered: the project still starts with what it had.
+  expect(requests.some((request) => request.path.startsWith('/api/workspaces'))).toBe(false)
 })
 
 test('a page saves only the drafts it changed, so another tab\'s saved draft stays', async () => {
@@ -1448,6 +1542,8 @@ test('the first send creates the conversation with its settings and no title in 
     expect(created.map((request) => request.body)).toEqual([{
       id, pinned: false, target: { kind: 'cloud' },
       model: { providerId: 'stub', modelId: 'stub' }, serviceTierId: null,
+      // What a new conversation outside projects starts with before any choice.
+      workflow: { type: 'none' },
     }])
     expect(conversation.title).toBeNull()
     expect(readBack).toEqual([])
