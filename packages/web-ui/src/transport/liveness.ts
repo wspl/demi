@@ -18,6 +18,7 @@
 import { readonly, ref } from 'vue'
 import { defaultDocument, defaultNavigator, defaultWindow, useEventListener } from '@vueuse/core'
 import { reportError } from '../infra/errors'
+import { t } from './locales/text'
 
 /** Two and a half of the longest heartbeat, the backend's 30 seconds: a socket silent this long is broken. */
 const SILENCE_MS = 75_000
@@ -55,7 +56,7 @@ const waiting = new Set<() => void>()
 
 /** Reports why the page replaced its socket named `name`, for a developer; the user sees what the page shows. */
 function reportReplaced(name: string, why: string): void {
-  reportError('Socket Replaced', `The ${name} ${why}`)
+  reportError(t('socketReplaced'), `The ${name} ${why}`)
 }
 
 /**

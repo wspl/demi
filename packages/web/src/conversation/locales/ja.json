@@ -29,7 +29,9 @@
     "connectionLost": "接続が切断されました",
     "connectionLostMessage": "Demi がリクエストを受信できていない可能性があります。再接続後に会話を確認してください。",
     "requestNotAccepted": "会話がリクエストを受け付けませんでした。",
-    "fieldsNotUpdated": "一部の項目は更新されませんでした。"
+    "fieldsNotUpdated": "一部の項目は更新されませんでした。",
+    "readPermissions": "アクセス許可を読み取れませんでした",
+    "readFileWatch": "ファイル監視のメッセージを読み取れませんでした"
   },
   "drafts": {
     "storeFailed": "このブラウザーは下書きを保存できませんでした。",

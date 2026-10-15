@@ -10,6 +10,9 @@
   },
   "failures": {
     "updateSettings": "설정을 업데이트할 수 없습니다",
-    "changeContextLimit": "컨텍스트 한도를 변경할 수 없습니다"
+    "changeContextLimit": "컨텍스트 한도를 변경할 수 없습니다",
+    "readPermissionRequests": "알림의 권한 요청을 읽을 수 없습니다",
+    "updateTimeZoneLanguage": "시간대 및 언어를 업데이트할 수 없습니다",
+    "readSync": "동기화 채널의 메시지를 읽을 수 없습니다"
   }
 }

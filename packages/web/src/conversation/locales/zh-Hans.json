@@ -29,7 +29,9 @@
     "connectionLost": "连接已断开",
     "connectionLostMessage": "Demi 可能没有收到你的请求。重新连接后请检查对话。",
     "requestNotAccepted": "对话未接受该请求。",
-    "fieldsNotUpdated": "部分字段未更新。"
+    "fieldsNotUpdated": "部分字段未更新。",
+    "readPermissions": "无法读取权限",
+    "readFileWatch": "无法读取文件监视的消息"
   },
   "drafts": {
     "storeFailed": "此浏览器无法存储你的草稿。",

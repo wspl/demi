@@ -88,24 +88,8 @@ export type TabFailure = NonNullable<BrowserTabData['failure']>
  * catalogue's `reasons` hold a sentence for each, so a reason without one
  * does not build.
  */
-/** A reason as the sentence the page shows for it (`live-view.md` § The tab methods). */
 export function reasonSentence(reason: PanelReason): SentenceText {
   return t(`reasons.${reason}`)
-}
-
-/** What a failure with no reason says when no answer of the backend's came, as for a network failure or a timeout. */
-export function noAnswer(): SentenceText {
-  return t('answers.none')
-}
-
-/** What a failure with no reason says when the backend's answer could not be read. */
-export function unreadableAnswer(): SentenceText {
-  return t('answers.unreadable')
-}
-
-/** What a failure with no reason says when the backend answered with `status`, such as `500 Internal Server Error`. */
-export function serverRefused(status: string): SentenceText {
-  return t('answers.refused', { status })
 }
 
 /** What a tab the plugin could not open says, from its data (`live-view.md` § A browser tab in the panel). */
@@ -113,24 +97,50 @@ export function failureSentence(failure: TabFailure): SentenceText {
   return 'code' in failure ? reasonSentence(failure.code) : serverRefused(failure.status)
 }
 
+/** What a failure with no reason says when the backend answered with `status`, such as `500 Internal Server Error`. */
+export function serverRefused(status: string): SentenceText {
+  return t('answers.refused', { status })
+}
+
 /**
- * A request that failed, with its reason when it has one and the sentence
- * the page shows for it. A request never fails for the page's connection:
- * the shell's call waits for the backend (`plugin-pages.md` § The page
- * context).
+ * What a request failed for: a reason of the browser's or the backend's, the
+ * status of an answer without one, or that no answer came (a network
+ * failure, a timeout) or that the answer could not be read.
+ */
+export type TabsFailure =
+  | { reason: PanelReason }
+  | { status: string }
+  | { answer: 'none' | 'unreadable' }
+
+/** The page's words for a failure, in the page's language as of now. */
+function tabsFailureSentence(failure: TabsFailure): SentenceText {
+  if ('reason' in failure) {
+    return reasonSentence(failure.reason)
+  }
+  return 'status' in failure ? serverRefused(failure.status) : t(`answers.${failure.answer}`)
+}
+
+/**
+ * A request that failed, keeping what it failed for. Its `message` is worded
+ * as it is read, from the failure, so a language chosen while it shows
+ * rewords it, as a `ShownError` does. A request never fails for the page's
+ * connection: the shell's call waits for the backend (`plugin-pages.md` §
+ * The page context).
  */
 export class BrowserTabsError extends Error {
-  constructor(
-    /** The backend's or the browser's reason; null for a failure that carries none. */
-    readonly reason: PanelReason | null,
-    message: SentenceText,
-  ) {
-    super(message)
+  /** The backend's or the browser's reason; null for a failure that carries none. */
+  readonly reason: PanelReason | null
+
+  constructor(readonly failure: TabsFailure) {
+    super()
+    this.reason = 'reason' in failure ? failure.reason : null
+    // `message` is a property of Error, which an accessor cannot override in a subclass.
+    Object.defineProperty(this, 'message', { get: () => tabsFailureSentence(this.failure), configurable: true })
   }
 
-  /** A failure for `reason`, in the page's words for it. */
+  /** A failure for `reason`. */
   static of(reason: PanelReason): BrowserTabsError {
-    return new BrowserTabsError(reason, reasonSentence(reason))
+    return new BrowserTabsError({ reason })
   }
 }
 
@@ -811,5 +821,5 @@ export class BrowserTabsController {
 
 /** A failure that is no answer of the backend's, such as a network failure or a timeout, as the page says it. */
 export function asTabsError(error: unknown): BrowserTabsError {
-  return error instanceof BrowserTabsError ? error : new BrowserTabsError(null, noAnswer())
+  return error instanceof BrowserTabsError ? error : new BrowserTabsError({ answer: 'none' })
 }
