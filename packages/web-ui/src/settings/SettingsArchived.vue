@@ -5,6 +5,7 @@ import { Search } from '@lucide/vue'
 import Button from '../ui/Button.vue'
 import TextInput from '../ui/TextInput.vue'
 import ConversationDeleteDialog from '../sidebar/ConversationDeleteDialog.vue'
+import { conversationTitle } from '../agent/conversation-title'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { ICON_PX } from '../ui/icon-metrics'
 import { t } from './locales/text'
@@ -55,7 +56,7 @@ const shown = computed(() => {
   const q = query.value.trim().toLowerCase()
   return q
     ? props.conversations.filter((conversation) =>
-        conversation.title.toLowerCase().includes(q),
+        conversationTitle(conversation.title).toLowerCase().includes(q),
       )
     : props.conversations
 })
@@ -85,7 +86,7 @@ const shown = computed(() => {
         <SettingsRow
           v-for="conversation in shown"
           :key="conversation.id"
-          :label="conversation.title"
+          :label="conversationTitle(conversation.title)"
           :description="conversation.detail"
           interactive
           isolate-controls
@@ -106,7 +107,7 @@ const shown = computed(() => {
     <ConversationDeleteDialog
       :is-open="deleteOpen"
       :overlay-store="overlayStore"
-      :titles="deleting ? [deleting.title] : []"
+      :titles="deleting ? [conversationTitle(deleting.title)] : []"
       @close="deleteOpen = false"
       @delete="confirmDelete"
     />

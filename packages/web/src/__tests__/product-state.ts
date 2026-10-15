@@ -62,7 +62,7 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
 }
 
 /** An idle Cloud conversation's summary as the channel carries it, with `parts` replacing its fields. */
-export function conversationSummary(id: string, title = '', parts: Partial<ConversationSummary> = {}): ConversationSummary {
+export function conversationSummary(id: string, title: string | null = null, parts: Partial<ConversationSummary> = {}): ConversationSummary {
   return {
     id, title, pinned: false, archived: false, readRevision: 0, revision: 0, unread: false,
     pluginsChanged: false, draftRevision: 0, saved: 0, savedRevision: 0, panelRevision: 0, hostsRevision: 0, lastAttachment: 0, pluginRevisions: [],

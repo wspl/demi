@@ -289,7 +289,7 @@ beforeEach(async () => {
         )
       }
       const existing = records.find((item) => item.id === body.id)
-      const created = existing ?? { ...record(body.id), title: body.title ?? 'New conversation', pinned: body.pinned ?? false }
+      const created = existing ?? { ...record(body.id), title: body.title ?? null, pinned: body.pinned ?? false }
       if (!existing) {
         records.unshift(created)
       }
@@ -1420,7 +1420,7 @@ test('the first send keeps the new conversation shown while its record opens', a
   }
 })
 
-test('the first send creates the conversation with its settings in one request and reads nothing of it back', async () => {
+test('the first send creates the conversation with its settings and no title in one request and reads nothing of it back', async () => {
   const store = useConversations()
   const id = store.create()
   await store.activate(id)
@@ -1443,10 +1443,13 @@ test('the first send creates the conversation with its settings in one request a
     await store.send(conversation)
     expect(submit).toHaveBeenCalledTimes(1)
     const created = requests.filter((request) => request.path === '/api/conversations')
+    // The placeholder goes as no title: it holds no words, so it reads
+    // right in whichever language a page shows it later.
     expect(created.map((request) => request.body)).toEqual([{
-      id, title: conversation.title, pinned: false, target: { kind: 'cloud' },
+      id, pinned: false, target: { kind: 'cloud' },
       model: { providerId: 'stub', modelId: 'stub' }, serviceTierId: null,
     }])
+    expect(conversation.title).toBeNull()
     expect(readBack).toEqual([])
   } finally {
     submit.mockRestore()

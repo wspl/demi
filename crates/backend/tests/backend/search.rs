@@ -55,7 +55,7 @@ async fn search(backend: &TestBackend, session: &Session, query: &str) -> Vec<Fo
                 let marked = pieces(&found.text, &found.ranges);
                 (found.text, marked)
             });
-            (conversation_id.into_string(), archived, pieces(&title, &title_ranges), r#match)
+            (conversation_id.into_string(), archived, pieces(title.as_deref().unwrap_or_default(), &title_ranges), r#match)
         })
         .collect()
 }

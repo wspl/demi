@@ -40,7 +40,6 @@
     "deliveryInterrupted": "Delivery was interrupted. Retry to confirm."
   },
   "savedDeleted": "Saved Message Deleted",
-  "newConversation": "New conversation",
   "composer": {
     "cloudResetting": "The Cloud is resetting."
   },

@@ -34,7 +34,8 @@ export interface PendingSubmissionState {
 export interface ConversationState {
   id: string
   cwd: string
-  title: string
+  /** Null for the placeholder, which shows as New conversation in the reader's language. */
+  title: string | null
   /** The parts of the root's transcript the page holds (`web-application.md` § Transcript windows). */
   history: HeldTranscript
   /** The block whose window the transcript shows; null for the latest. */

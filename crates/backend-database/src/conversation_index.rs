@@ -25,7 +25,10 @@ use super::devices::CLOUD_NAME;
 pub struct ConversationRecord {
     pub id: ConversationId,
     pub owner: UserId,
-    pub title: String,
+    /// Its title; none while it is the placeholder, which holds no words
+    /// and which the page shows in the reader's language (`product.md`
+    /// § Conversation titles).
+    pub title: Option<String>,
     pub archived: bool,
     pub pinned: bool,
     /// The output revision the user last acknowledged; it only moves
@@ -182,7 +185,7 @@ pub enum ChangeOutcome {
 /// model.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConversationStart {
-    /// The user's title; the placeholder when none.
+    /// The user's title; the placeholder, which holds no words, when none.
     pub title: Option<String>,
     pub pinned: bool,
     pub target: ConversationTarget,
@@ -215,15 +218,11 @@ pub enum Creation {
     Unavailable,
 }
 
-/// The title a conversation has until its first send or a rename
-/// (`product.md` § Conversation titles).
-const PLACEHOLDER_TITLE: &str = "New conversation";
-
 /// The sidebar's order within the active or the archived conversations:
 /// pinned first, then by the user's order.
 const SIDEBAR_ORDER: &str = "pinned DESC, sort_order, id";
 
-const CONVERSATION_COLUMNS: &str = "id, user_id, title, archived, pinned, read_revision, target_kind, target_device_id,
+const CONVERSATION_COLUMNS: &str = "id, user_id, title, title_origin, archived, pinned, read_revision, target_kind, target_device_id,
      target_path, target_workspace_id, context_version, model, workflow_kind, workflow_id, created_at, updated_at, hosts_revision,
      COALESCE((SELECT revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS draft_revision,
      COALESCE((SELECT saved_revision FROM conversation_drafts WHERE conversation_id = conversations.id), 0) AS saved_revision,
@@ -293,17 +292,12 @@ impl ControlService {
             if reserved {
                 return Ok(Creation::Unavailable);
             }
-            let (title, origin) = match start.title.as_deref() {
-                Some(title) if title != PLACEHOLDER_TITLE => (title, TitleOrigin::User),
-                _ => (PLACEHOLDER_TITLE, TitleOrigin::Placeholder),
-            };
             let inserted = insert_conversation(
                 &transaction,
                 &NewConversation {
                     id: &id,
                     owner: &owner,
-                    title,
-                    origin,
+                    title: start.title.as_deref(),
                     pinned: start.pinned,
                     target: &start.target,
                     model: start.model.as_ref(),
@@ -613,29 +607,12 @@ impl ControlService {
     }
 }
 
-/// Where a conversation's title came from (`product.md` § Conversation
-/// titles), as its column names it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TitleOrigin {
-    Placeholder,
-    User,
-}
-
-impl TitleOrigin {
-    fn column(self) -> &'static str {
-        match self {
-            Self::Placeholder => "placeholder",
-            Self::User => "user",
-        }
-    }
-}
-
 /// A conversation as it enters the index, seen live as it is created.
 pub struct NewConversation<'a> {
     pub id: &'a ConversationId,
     pub owner: &'a UserId,
-    pub title: &'a str,
-    pub origin: TitleOrigin,
+    /// The user's title, origin `user`; none for the placeholder.
+    pub title: Option<&'a str>,
     pub pinned: bool,
     pub target: &'a ConversationTarget,
     pub model: Option<&'a ModelSelection>,
@@ -666,8 +643,8 @@ pub fn insert_conversation(
         params![
             new.id.as_str(),
             new.owner.as_str(),
-            new.title,
-            new.origin.column(),
+            new.title.unwrap_or_default(),
+            if new.title.is_some() { "user" } else { "placeholder" },
             target.kind,
             target.device,
             target.path,
@@ -732,6 +709,21 @@ fn workflow_row(row: &Row<'_>) -> Result<WorkflowChoice, StorageError> {
 }
 
 /// A `conversations` row, read from its columns in `CONVERSATION_COLUMNS`.
+/// A conversation's title: none for the placeholder, whose column is
+/// empty, and the words of any other origin, which are never empty.
+fn title_row(row: &Row<'_>) -> Result<Option<String>, StorageError> {
+    let title: String = row.get("title")?;
+    let placeholder = row.get::<_, String>("title_origin")? == "placeholder";
+    if placeholder != title.is_empty() {
+        return Err(StorageError::Corrupt {
+            table: "conversations",
+            column: "title",
+            reason: "a placeholder title holds words, or another title none".into(),
+        });
+    }
+    Ok((!placeholder).then_some(title))
+}
+
 fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
     const TABLE: &str = "conversations";
     let model: Option<String> = row.get("model")?;
@@ -747,7 +739,7 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
             "user_id",
             UserId::try_from(row.get::<_, String>("user_id")?),
         )?,
-        title: row.get("title")?,
+        title: title_row(row)?,
         archived: row.get("archived")?,
         pinned: row.get("pinned")?,
         read_revision: decode(
@@ -1352,13 +1344,13 @@ mod tests {
         );
         assert_eq!(
             (
-                first.title.as_str(),
+                first.title.as_deref(),
                 &first.target,
                 first.model.clone(),
                 first.read_revision
             ),
             (
-                "New conversation",
+                None,
                 &ConversationTarget::Cloud { path: None },
                 None,
                 0

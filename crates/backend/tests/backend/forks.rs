@@ -94,11 +94,11 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     assert_eq!(
         (
             destination.id.as_str(),
-            destination.title.as_str(),
+            destination.title.as_deref(),
             destination.pinned,
             destination.archived
         ),
-        (SECOND, "Build (Fork)", false, false)
+        (SECOND, Some("Build (Fork)"), false, false)
     );
     assert_eq!(destination.status, ConversationStatus::Idle);
     assert_eq!(
@@ -207,7 +207,7 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     let titles: Vec<String> = summaries(&backend, &master)
         .await
         .into_iter()
-        .map(|summary| summary.title)
+        .filter_map(|summary| summary.title)
         .collect();
     assert!(titles.contains(&"Build (Fork)".to_owned()), "{titles:?}");
     assert_eq!(
@@ -256,10 +256,10 @@ async fn a_fork_of_a_conversation_the_backend_no_longer_holds_reads_its_stored_h
     // The first message titled the source.
     assert_eq!(
         (
-            forked.conversation.title.as_str(),
+            forked.conversation.title.as_deref(),
             &forked.conversation.model
         ),
-        ("U1 (Fork)", &settings)
+        (Some("U1 (Fork)"), &settings)
     );
     // The history through the latest text, without the response after it.
     assert_eq!(

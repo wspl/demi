@@ -283,5 +283,8 @@
     "delete": "刪除",
     "remove": "移除",
     "save": "儲存"
+  },
+  "conversation": {
+    "untitled": "新對話"
   }
 }

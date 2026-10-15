@@ -5,6 +5,7 @@ import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent } from '@demicodes/protocol'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
 import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
+import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { ConversationRuntime, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
 import {
   regenerateMessage,
@@ -1530,7 +1531,8 @@ export const useConversations = defineStore('conversations', () => {
           for (const item of result.results) {
             const change = shownChanges.get(item.id)
             // A refusal names the conversation as the list shows it now: its title may have come meanwhile.
-            const title = items.value.find((conversation) => conversation.id === item.id)?.title ?? item.id
+            const listed = items.value.find((conversation) => conversation.id === item.id)
+            const title = listed ? conversationTitle(listed.title) : item.id
             if (item.status === 'refused') {
               change?.drop()
               refusals.push({ title, reasons: [item.message], requestId })
@@ -1620,7 +1622,10 @@ export const useConversations = defineStore('conversations', () => {
     const local = ids.filter((id) => !synced.includes(id))
     items.value = items.value.filter((item) => !local.includes(item.id))
     local.forEach(forget)
-    const titles = new Map(synced.map((id) => [id, items.value.find((item) => item.id === id)?.title ?? id]))
+    const titles = new Map(synced.map((id) => {
+      const listed = items.value.find((item) => item.id === id)
+      return [id, listed ? conversationTitle(listed.title) : id]
+    }))
     const removals = new Map(synced.map((id) => [id, product.change(`conversation:${id}`, (state) => ({
       ...state,
       conversations: state.conversations.filter((record) => record.id !== id),
@@ -1677,7 +1682,7 @@ export const useConversations = defineStore('conversations', () => {
     const now = new Date().toISOString()
     const conversation = newConversation({
       id: crypto.randomUUID(),
-      title: t('newConversation'),
+      title: null,
       pinned: false,
       archived: false,
       target: projectId
@@ -1743,7 +1748,8 @@ export const useConversations = defineStore('conversations', () => {
     const settings = listed ? offeredSettings(shown, listed.model) : null
     const request: CreateConversation = {
       id: conversation.id,
-      title: conversation.title,
+      // The placeholder goes as no title, which holds no words.
+      ...(conversation.title === null ? {} : { title: conversation.title }),
       pinned: conversation.pinned,
       target: conversation.target,
       ...(settings ? settingsPatch(settings) : {}),

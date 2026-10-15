@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
+import { conversationTitle } from '../agent/conversation-title'
 import { computed, nextTick, ref, useId, watch } from 'vue'
 import { Archive, FolderPlus, Search, Settings, Smartphone, SquarePen } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -661,7 +662,7 @@ function selectProjectConversations(project: SidebarProject): void {
         :style="{ left: `${drag.pointer.value.x + 12}px`, top: `${drag.pointer.value.y + 12}px` }"
         aria-hidden="true"
       >
-        {{ drag.source.value.kind === 'project' ? projectById.get(drag.source.value.id)?.name : byId.get(drag.source.value.id)?.title }}
+        {{ drag.source.value.kind === 'project' ? projectById.get(drag.source.value.id)?.name : conversationTitle(byId.get(drag.source.value.id)?.title ?? null) }}
       </div>
     </Teleport>
 
@@ -711,7 +712,7 @@ function selectProjectConversations(project: SidebarProject): void {
     <ConversationDeleteDialog
       :is-open="deleteOpen"
       :overlay-store="appOverlayStore"
-      :titles="deleteTargets.map((target) => target.title)"
+      :titles="deleteTargets.map((target) => conversationTitle(target.title))"
       @close="deleteOpen = false"
       @delete="confirmDelete"
     />
