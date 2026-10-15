@@ -453,8 +453,22 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
     provider({
-      id: 'codex', name: 'Codex', kind: 'subscription', family: 'codex', state: 'signed-out',
+      id: 'codex', name: 'Codex', kind: 'subscription', family: 'codex',
       catalogFetched: null,
+      // Two accounts, so Rotation shows here too; removing both signs it out.
+      accounts: [
+        {
+          id: 'c1',
+          label: 'alex@example.com',
+          plan: 'Plus',
+          active: true,
+          quota: [
+            { id: 'primary', label: '5h limit', used: 18, max: 100, resetsAt: ahead(2 * HOUR + 10 * MINUTE) },
+            { id: 'secondary', label: 'Weekly limit', used: 46, max: 100, resetsAt: ahead(4 * DAY) },
+          ],
+        },
+        { id: 'c2', label: 'alex@work.example', plan: 'Pro', active: false, quota: [] },
+      ],
       models: [
         model(
           {

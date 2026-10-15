@@ -781,39 +781,6 @@ function endpointCheck(value: string) {
 
               <!-- Accounts (subscription) -->
               <template v-if="selected.kind === 'subscription'">
-                <!-- Rotation means something with two accounts or more. -->
-                <SettingsRow
-                  v-if="selected.accounts.length >= 2"
-                  :label="t('providers.rotation.title')"
-                  :description="ROTATION_HINTS[selected.rotation ?? 'manual']"
-                >
-                  <Dropdown
-                    size="sm"
-                    :overlay-store="overlayStore"
-                    variant="default"
-                    :trigger-label="t('providers.rotation.title')"
-                    :disabled="busy(selected.id)"
-                  >
-                    <template #trigger>{{ ROTATION_LABELS[selected.rotation ?? 'manual'] }}</template>
-                    <template #content="{ close }">
-                      <Menu>
-                        <MenuItem
-                          v-for="rotation in ROTATIONS"
-                          :key="rotation"
-                          :icon="ROTATION_ICONS[rotation]"
-                          :label="ROTATION_LABELS[rotation]"
-                          :hint="ROTATION_HINTS[rotation]"
-                          choice
-                          :is-selected="(selected.rotation ?? 'manual') === rotation"
-                          @select="
-                            close();
-                            chooseRotation(selected, rotation)
-                          "
-                        />
-                      </Menu>
-                    </template>
-                  </Dropdown>
-                </SettingsRow>
                 <div ref="accountList" class="contents">
                 <SettingsRow
                   v-for="account in selected.accounts"
@@ -898,6 +865,42 @@ function endpointCheck(value: string) {
                   /></Tooltip>
                 </SettingsRow>
                 </div>
+                <!-- Rotation means something with two accounts or more. It governs the list, so it
+                     follows it across the card's hairline, as a setting follows its list in
+                     macOS Settings, at the list's inset. -->
+                <SettingsRow
+                  v-if="selected.accounts.length >= 2"
+                  :label="t('providers.rotation.title')"
+                  :description="ROTATION_HINTS[selected.rotation ?? 'manual']"
+                  compact
+                >
+                  <Dropdown
+                    size="sm"
+                    :overlay-store="overlayStore"
+                    variant="default"
+                    :trigger-label="t('providers.rotation.title')"
+                    :disabled="busy(selected.id)"
+                  >
+                    <template #trigger>{{ ROTATION_LABELS[selected.rotation ?? 'manual'] }}</template>
+                    <template #content="{ close }">
+                      <Menu>
+                        <MenuItem
+                          v-for="rotation in ROTATIONS"
+                          :key="rotation"
+                          :icon="ROTATION_ICONS[rotation]"
+                          :label="ROTATION_LABELS[rotation]"
+                          :hint="ROTATION_HINTS[rotation]"
+                          choice
+                          :is-selected="(selected.rotation ?? 'manual') === rotation"
+                          @select="
+                            close();
+                            chooseRotation(selected, rotation)
+                          "
+                        />
+                      </Menu>
+                    </template>
+                  </Dropdown>
+                </SettingsRow>
                 <div
                   v-if="!selected.accounts.length"
                   class="flex select-none flex-col items-center gap-1.5 px-4 py-6 text-center text-[13px] text-fg-subtle"
