@@ -344,7 +344,9 @@ impl Shard {
         self.tree_openers.close();
         self.tree_openers.wait().await;
         let _transfers_closed = self.conversations.end_transfers().await;
+        let roots = self.live_roots();
         self.agent.shutdown().await;
+        self.mark_interrupted_turns(roots).await;
         self.cloud_shard().close_cloud().await;
         self.devices.shut_down(&self.services.control).await;
         self.tasks.close();

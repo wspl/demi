@@ -21,11 +21,12 @@ import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 
 /**
- * Language, look, what Enter does with a message while the agent works, and
- * whether a turn a usage limit stopped goes on by itself once the limit
- * resets. Every row is a model; the preview beside the look reads the live
- * tokens. The language menu names each language in its own language, and
- * System in the page's, as macOS's Language & Region does.
+ * Language, look, what Enter does with a message while the agent works,
+ * whether a turn a restart of Demi stopped goes on by itself once Demi is
+ * back, and whether a turn a usage limit stopped goes on by itself once the
+ * limit resets. Every row is a model; the preview beside the look reads the
+ * live tokens. The language menu names each language in its own language,
+ * and System in the page's, as macOS's Language & Region does.
  */
 defineProps<{
   overlayStore: OverlayStore
@@ -37,6 +38,7 @@ const tone = defineModel<ProductTone>('tone', { required: true })
 const accent = defineModel<ProductAccent>('accent', { required: true })
 const fontSize = defineModel<number>('fontSize', { required: true })
 const sendWhileRunning = defineModel<SendWhileRunning>('sendWhileRunning', { required: true })
+const resumeAfterRestart = defineModel<boolean>('resumeAfterRestart', { required: true })
 const resumeAtRetry = defineModel<boolean>('resumeAtRetry', { required: true })
 
 /** A choice's name in the menu and on its button. */
@@ -131,6 +133,16 @@ const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() =>
           v-model="sendWhileRunning"
           size="sm"
           :options="sendOptions"
+        />
+      </SettingsRow>
+      <SettingsRow
+        :label="t('settings.general.resumeAfterRestart')"
+        :description="t('settings.general.resumeAfterRestartDescription')"
+      >
+        <Switch
+          v-model="resumeAfterRestart"
+          size="sm"
+          :aria-label="t('settings.general.resumeAfterRestart')"
         />
       </SettingsRow>
       <SettingsRow

@@ -1987,6 +1987,13 @@ async fn a_shutdown_in_the_middle_of_a_turn_saves_its_interruption_and_the_next_
     vendor.respond(MockResponse::event_stream(": thinking\n\n").stay_open());
     socket.send(&send("m2", "take your time")).await;
     vendor.received(2).await;
+    // The interrupted turn waits for the user, as it does with the user's
+    // `resumeAfterRestart` off, so the next start serves its record as the
+    // shutdown left it.
+    let off = backend
+        .patch("/api/settings/preferences", &master, json!({ "resumeAfterRestart": false }))
+        .await;
+    assert_eq!(off.status, StatusCode::OK);
 
     backend.close().await;
     assert_eq!(socket.closed().await, Some(u16::from(CloseCode::Away)));

@@ -59,6 +59,7 @@ mod providers;
 mod rotation;
 mod real_browser;
 mod real_cloud;
+mod restarts;
 mod runners;
 mod saved;
 mod search;
