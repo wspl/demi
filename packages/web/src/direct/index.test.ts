@@ -38,6 +38,7 @@ beforeEach(() => {
       startCommand: null,
       os: null,
       runnerVersion: null,
+      mark: { logo: 'apple', number: 1 },
       route: 'automatic',
     }],
     conversations: [

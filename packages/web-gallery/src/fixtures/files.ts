@@ -1,3 +1,4 @@
+import { GALLERY_MARKS } from './device-marks'
 import { createMemoryFileSource, dir, file, link, type MemoryDirectory } from '@demicodes/web-ui/files/memory-source'
 import type { FileBrowserHost, FileBrowserPlaceGroup, FileBrowserSource } from '@demicodes/web-ui/files/types'
 
@@ -193,6 +194,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
     {
       id: 'mac',
       label: 'alex-mbp',
+      mark: GALLERY_MARKS.mac,
       state: 'online',
       source: createMemoryFileSource(
         {
@@ -227,6 +229,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
     {
       id: 'build',
       label: 'build-01',
+      mark: GALLERY_MARKS.ubuntu,
       state: 'online',
       source: createMemoryFileSource(
         {
@@ -247,6 +250,7 @@ export function createGalleryFileHosts(latencyMs = 250): GalleryFileHost[] {
     {
       id: 'studio',
       label: 'studio',
+      mark: GALLERY_MARKS.windows,
       state: 'offline',
       source: createMemoryFileSource(
         {

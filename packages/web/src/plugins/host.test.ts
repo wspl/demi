@@ -245,6 +245,7 @@ test("what a conversation holds is its primary Host's, of the plugin's packages"
       startCommand: null,
       os: null,
       runnerVersion: null,
+      mark: { logo: 'tux', number: 1 },
       route: 'automatic',
     }],
     conversations: [

@@ -47,5 +47,6 @@ export function browserHosts(devices: Device[]): FileBrowserHost[] {
     id: device.id,
     label: device.name,
     state: device.state,
+    mark: device.mark,
   }))
 }

@@ -3,7 +3,7 @@ import { t as uiText } from '../locales/text'
 import { t } from './locales/text'
 import MenuItem from '../ui/MenuItem.vue'
 import type { SentenceText } from '../ui/ui-text'
-import { DEVICE_GLYPHS } from '../devices/device-glyphs'
+import { deviceGlyph } from '../devices/device-glyphs'
 import { hostIcon } from './icons'
 import { DEVICE_STATE_LABEL } from '../devices/state'
 import { DEVICE_PATH_LABEL } from '../devices/direct'
@@ -68,7 +68,7 @@ function deviceNote(device: HostDeviceOption): string | undefined {
   <template v-for="device in devices" :key="device.id">
     <MenuItem
       v-if="listed(device)"
-      :icon="DEVICE_GLYPHS[device.state]"
+      :icon="deviceGlyph(device.state, device.mark)"
       :label="choiceLabel(device)"
       :value="deviceNote(device)"
       choice

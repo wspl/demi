@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { GALLERY_MARKS } from '../fixtures/device-marks'
 import { correction, requestFailure } from '../fixtures/request-failures'
 import { ref } from 'vue'
 import EmailLoginPage from '@demicodes/web-ui/auth/EmailLoginPage.vue'
@@ -160,7 +161,7 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
               :is-open="open"
               :overlay-store="appOverlayStore"
               :devices="[
-                { id: 'preview-device', name: 'Preview laptop', state: 'online' },
+                { id: 'preview-device', name: 'Preview laptop', state: 'online', mark: GALLERY_MARKS.mac },
               ]"
               :source-for="() => hosts[0]!.source"
               :last-host="failedProjectHost"

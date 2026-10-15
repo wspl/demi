@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shownAmong } from '../fixtures/device-marks'
 import { computed, ref } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -40,11 +41,12 @@ useLiveGalleryCommand(session.terminals)
 // The session's messages find the files the gallery provides its transcripts.
 const messageFiles = useMessageFiles()
 const hosts = createGalleryFileHosts()
-const devices: HostDeviceOption[] = hosts.map((host) => ({
+const devices: HostDeviceOption[] = shownAmong(hosts.map((host) => ({
   id: host.id,
   name: host.label,
   state: host.state,
-}))
+  mark: host.mark ?? null,
+})))
 const folder = ref({
   deviceId: hosts[0]!.id,
   path: hosts[0]!.source.home,
@@ -65,8 +67,8 @@ const workspaceName = computed(() => folder.value.path.split('/').filter(Boolean
 const primaryHost = computed<HostMenuHost>(() => {
   const device = devices.find((candidate) => candidate.id === folder.value.deviceId)
   return device
-    ? { id: device.id, name: device.name, kind: 'device', state: device.state }
-    : { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online' }
+    ? { id: device.id, name: device.name, kind: 'device', state: device.state, mark: device.mark }
+    : { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null }
 })
 const attachedHosts = ref<HostMenuHost[]>([])
 // A move stays open while the agent works, as the product's: choosing asks to stop it first.
