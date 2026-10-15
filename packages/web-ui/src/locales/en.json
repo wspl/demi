@@ -283,5 +283,8 @@
     "delete": "Delete",
     "remove": "Remove",
     "save": "Save"
+  },
+  "conversation": {
+    "untitled": "New conversation"
   }
 }

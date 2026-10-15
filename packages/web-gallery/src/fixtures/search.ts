@@ -102,13 +102,14 @@ export function fixtureSearch(conversations: () => readonly SearchableConversati
       const timer = setTimeout(() => {
         const words = query.split(/\s+/).filter(Boolean)
         const found = conversations().flatMap(({ messages, ...row }) => {
-          const byTitle = holds(row.title, words)
+          // The placeholder holds no words, which no query finds.
+          const byTitle = row.title !== null && holds(row.title, words)
           const message = messages.findLast((candidate) => holds(candidate.text, words))
           if (!byTitle && !message) {
             return []
           }
           const match = message ? { blockId: message.blockId, ...matchLine(message.text, words) } : null
-          const titleRanges = byTitle ? occurrences(row.title, words) : []
+          const titleRanges = byTitle && row.title !== null ? occurrences(row.title, words) : []
           return [{ byTitle, row: { ...row, titleRanges, match } }]
         })
         found.sort((a, b) => Number(b.byTitle) - Number(a.byTitle) || b.row.lastActiveAt.localeCompare(a.row.lastActiveAt))

@@ -1378,7 +1378,9 @@ one every vendor accepts, letters, digits, `_` and `-` (Anthropic's rule, the
 strictest), so a model switch replays the history as it is, in either
 direction. Codex's call carries two ids, its call id and its item id, which
 it needs back on replay; it stores them joined by `-`, `call_7Qm…-fc_68e…`,
-since neither holds a `-`, and splits them at it.
+and on replay splits at the last `-` only when what follows starts with
+`fc_`, as Codex's item ids do; any other id, such as Google's
+`shell_123e4567-e89b-…`, is a call id whole.
 
 An image, video or document is replayed as a text that names it and says why
 it was not sent when the request's model does not accept its type

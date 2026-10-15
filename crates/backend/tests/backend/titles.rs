@@ -235,16 +235,6 @@ async fn the_first_message_titles_the_conversation_once_and_an_archive_ends_the_
     let (_harness, backend, master, provider) = titling(&script).await;
     create(&backend, &master, FIRST).await;
     choose(&backend, &master, FIRST, &provider, "m").await;
-    // The web app's record creation repeats the placeholder, which settles
-    // nothing.
-    let repeated = backend
-        .patch(
-            &format!("/api/conversations/{FIRST}"),
-            &master,
-            json!({ "title": "New conversation" }),
-        )
-        .await;
-    assert_eq!(repeated.status, StatusCode::OK);
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
@@ -256,10 +246,10 @@ async fn the_first_message_titles_the_conversation_once_and_an_archive_ends_the_
         script.asked() == 1
     })
     .await;
-    assert_eq!(summary(&backend, &master, FIRST).await.title, message);
+    assert_eq!(summary(&backend, &master, FIRST).await.title.as_deref(), Some(message));
     script.answers.add_permits(1);
     eventually("the generated title is written", || async {
-        summary(&backend, &master, FIRST).await.title == GENERATED
+        summary(&backend, &master, FIRST).await.title.as_deref() == Some(GENERATED)
     })
     .await;
     {
@@ -326,7 +316,7 @@ async fn the_first_message_titles_the_conversation_once_and_an_archive_ends_the_
         .await
         .json::<demi_web_api_protocol::conversations::Conversations>()
         .conversations;
-    assert_eq!(kept[0].title, "rename the login test");
+    assert_eq!(kept[0].title.as_deref(), Some("rename the login test"));
     backend.close().await;
 }
 
@@ -359,10 +349,10 @@ async fn a_rename_while_the_title_is_asked_wins() {
         )
         .await;
     assert_eq!(renamed.status, StatusCode::OK);
-    pushed(&mut page, FIRST, |summary| summary.title == "Kept").await;
+    pushed(&mut page, FIRST, |summary| summary.title.as_deref() == Some("Kept")).await;
     script.answers.add_permits(1);
     let ended = pushed(&mut page, FIRST, |_| true).await;
-    assert_eq!(ended.title, "Kept");
+    assert_eq!(ended.title.as_deref(), Some("Kept"));
     backend.close().await;
 }
 
@@ -388,7 +378,7 @@ async fn an_answer_without_a_title_leaves_the_messages_title() {
     script.answers.add_permits(1);
     // The title in place stays, and nothing retries.
     let ended = pushed(&mut page, FIRST, |_| true).await;
-    assert_eq!(ended.title, "hello there");
+    assert_eq!(ended.title.as_deref(), Some("hello there"));
     assert_eq!(script.asked(), 1);
     backend.close().await;
 }

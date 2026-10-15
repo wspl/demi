@@ -76,7 +76,8 @@ impl ReadBlob for NoBlobs {
 /// went by its device's name, the one with device names before a
 /// subagent profile had a Context of its own, and the one with a profile's
 /// Context before an API-key entry's sealed configuration had a format,
-/// and the one with that format before account rotation.
+/// and the one with that format before account rotation, and the one with
+/// account rotation before a placeholder title held no words.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -180,8 +181,18 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.config-format-2.sql"),
             migration: Migration::Sql(CONTROL_FROM_CONFIG_FORMAT_2),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.account-rotation.sql"),
+            migration: Migration::Sql(CONTROL_FROM_ACCOUNT_ROTATION),
+        },
     ],
 };
+
+/// From the control schema with account rotation, whose placeholder titles
+/// held the English "New conversation", to the one where a placeholder
+/// title holds no words (`product.md` § Conversation titles).
+const CONTROL_FROM_ACCOUNT_ROTATION: &str =
+    "UPDATE conversations SET title = '' WHERE title_origin = 'placeholder';";
 
 /// From the control schema whose API-key entries sealed configuration
 /// format 2 to the one with account rotation (`providers.md` § Account
@@ -302,7 +313,7 @@ UPDATE conversations SET last_switch_revision = 0 WHERE last_switch IS NOT NULL;
         let named: fork_format_1::ForkMetadata =
             json("conversation_fork_operations", "metadata", &text).map_err(corrupt)?;
         let metadata = crate::forks::ForkMetadata {
-            title: named.title,
+            title: Some(named.title),
             target: named.target,
             model: named.model,
             created_at: named.created_at,
@@ -2014,6 +2025,8 @@ CREATE INDEX user_credentials_by_expiry ON user_credentials (keep_until) WHERE k
 CREATE TABLE conversations (
   id                  TEXT PRIMARY KEY COLLATE NOCASE,
   user_id             TEXT NOT NULL REFERENCES users (id),
+  -- title: empty exactly while title_origin is 'placeholder', a title that
+  -- holds no words (product.md § Conversation titles).
   title               TEXT NOT NULL,
   title_origin        TEXT NOT NULL
                         CHECK (title_origin IN ('placeholder', 'message', 'generated', 'user')),
@@ -2889,7 +2902,7 @@ mod tests {
             )
             .unwrap();
         let metadata = ForkMetadata {
-            title: "Fork".into(),
+            title: "Fork".to_owned().into(),
             target: ConversationTarget::Cloud { path: None },
             model: None,
             created_at: "2026-10-14T08:00:00Z".parse().unwrap(),
@@ -4241,6 +4254,41 @@ mod tests {
                 [],
             )
             .unwrap();
+    }
+
+    /// A placeholder title stored in English loses its words; a title of
+    /// any other origin keeps them, the English words included.
+    #[test]
+    fn a_placeholder_title_of_the_schema_with_account_rotation_holds_no_words() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.22-dev.account-rotation.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('u1', 'a@example.test', 'Ana', 'hash', 'master', 1);
+                 INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
+                     read_revision, target_kind, context_version, created_at, updated_at)
+                   VALUES ('c1', 'u1', 'New conversation', 'placeholder', 0, 0, 0, 0, 'cloud', 0, 1, 1),
+                          ('c2', 'u1', 'New conversation', 'user', 0, 0, 1, 0, 'cloud', 0, 1, 1),
+                          ('c3', 'u1', 'Fix the build', 'generated', 0, 0, 2, 0, 'cloud', 0, 1, 1);",
+            )
+            .unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let titles: Vec<(String, String)> = connection
+            .prepare("SELECT id, title FROM conversations ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            titles,
+            [
+                ("c1".to_owned(), String::new()),
+                ("c2".to_owned(), "New conversation".to_owned()),
+                ("c3".to_owned(), "Fix the build".to_owned()),
+            ]
+        );
     }
 
     /// The development builds' schemas are the ones their server's

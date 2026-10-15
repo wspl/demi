@@ -40,7 +40,6 @@
     "deliveryInterrupted": "전송이 중단되었습니다. 다시 시도하여 확인하십시오."
   },
   "savedDeleted": "저장된 메시지를 삭제했습니다",
-  "newConversation": "새 대화",
   "composer": {
     "cloudResetting": "클라우드를 초기화하는 중입니다."
   },

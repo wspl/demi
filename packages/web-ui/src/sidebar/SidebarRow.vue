@@ -11,6 +11,7 @@ import { usePhone } from '@demicodes/web-ui/ui/phone'
 import type { SidebarConversation } from './types'
 import ConversationDot from './ConversationDot.vue'
 import DeviceMark from './DeviceMark.vue'
+import { conversationTitle } from '../agent/conversation-title'
 
 const props = defineProps<{
   conversation: SidebarConversation
@@ -39,6 +40,7 @@ const emit = defineEmits<{
 // The dot's look is `ConversationDot`'s. An unread answer also shows in the title's emphasis.
 
 const phone = usePhone()
+const shownTitle = computed(() => conversationTitle(props.conversation.title))
 
 // The row's end holds, in the flow, the pin's box and the device's mark, 24px each (32px on a
 // phone) with 2px between. The actions stand over them: Archive over the pin's box, or just left
@@ -79,7 +81,7 @@ const rowClass = computed(() => [
       v-if="renaming"
       class="flex-1"
       size="sm"
-      :title="conversation.title"
+      :title="shownTitle"
       @submit="emit('renameSubmit', $event)"
       @cancel="emit('renameCancel')"
     />
@@ -89,13 +91,13 @@ const rowClass = computed(() => [
          scroll-into-view lands inside it, and the row would be left showing the title's tail. -->
     <Tooltip
       v-else
-      :content="conversation.title"
+      :content="shownTitle"
       :show-if="isTextCut"
       placement="bottom-start"
       class="min-w-0 flex-1 overflow-clip text-ellipsis whitespace-nowrap transition-[margin] duration-[80ms] ease-out"
       :class="[conversation.unread && !open ? 'text-fg-emphasis' : '', titleMargin]"
       @dblclick="emit('renameStart')"
-    >{{ conversation.title }}</Tooltip>
+    >{{ shownTitle }}</Tooltip>
     <!-- The pin's glyph and the device's mark end the row, in the flow, so the title never reaches
          them. The mark stays on hover; the pin gives its place to Archive. -->
     <span v-if="!renaming && (conversation.pinned || conversation.device)" class="flex shrink-0 items-center gap-0.5">

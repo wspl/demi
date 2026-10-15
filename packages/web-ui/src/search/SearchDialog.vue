@@ -6,6 +6,7 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import { revealRow, stepHighlight } from '../composables/list-highlight'
 import Dialog from '../ui/Dialog.vue'
 import HighlightText from '../ui/HighlightText.vue'
+import { conversationTitle } from '../agent/conversation-title'
 import RegionStatus from '../ui/RegionStatus.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
@@ -173,7 +174,7 @@ const emptyLabel = computed(() =>
             @click="openRow(row)"
           >
             <div class="flex min-w-0 items-center gap-2">
-              <span class="min-w-0 flex-1 truncate text-chrome text-fg-emphasis"><HighlightText :text="row.title" :ranges="row.titleRanges" /></span>
+              <span class="min-w-0 flex-1 truncate text-chrome text-fg-emphasis"><HighlightText :text="conversationTitle(row.title)" :ranges="row.titleRanges" /></span>
               <Tag v-if="row.archived">{{ t('archived') }}</Tag>
               <RelativeTime class="shrink-0 text-[12px] text-fg-subtle" :timestamp="row.lastActiveAt" />
             </div>

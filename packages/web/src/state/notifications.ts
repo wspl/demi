@@ -4,6 +4,7 @@ import { z } from 'zod'
 import { truncate } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { markdownPlainText } from '@demicodes/web-ui/markdown/plain-text'
+import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { requestAction } from '@demicodes/web-ui/permissions/types'
 import { t } from './locales/text'
 import { readPermissions } from '../api/permissions'
@@ -233,10 +234,10 @@ export const useNotifications = defineStore('notifications', () => {
     }
     switch (cause.kind) {
       case 'turnFinished':
-        show(summary.id, summary.title, answerStart(cause.turn), turnTag(summary.id, cause.turn), open)
+        show(summary.id, conversationTitle(summary.title), answerStart(cause.turn), turnTag(summary.id, cause.turn), open)
         return
       case 'turnFailed':
-        show(summary.id, summary.title, t('notifications.turnStopped'), turnTag(summary.id, cause.turn), open)
+        show(summary.id, conversationTitle(summary.title), t('notifications.turnStopped'), turnTag(summary.id, cause.turn), open)
         return
       case 'permission': {
         let requests
@@ -256,7 +257,7 @@ export const useNotifications = defineStore('notifications', () => {
         notifiedRequests.set(summary.id, new Set(requests.map((request) => request.id)))
         for (const request of requests) {
           if (!notified.has(request.id)) {
-            show(summary.id, summary.title, requestQuestion(request), `permission:${request.id}`, open)
+            show(summary.id, conversationTitle(summary.title), requestQuestion(request), `permission:${request.id}`, open)
           }
         }
         return

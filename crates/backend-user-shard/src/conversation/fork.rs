@@ -134,7 +134,7 @@ impl Shard {
                     source: source.id.clone(),
                     block,
                     metadata: ForkMetadata {
-                        title: format!("{}{TITLE_SUFFIX}", source.title),
+                        title: source.title.as_ref().map(|title| format!("{title}{TITLE_SUFFIX}")),
                         target,
                         // The destination inherits the source's model
                         // settings, the selection its record holds.
@@ -378,7 +378,7 @@ mod tests {
             source: source.clone(),
             block: BlockId::try_from("text-1").unwrap(),
             metadata: ForkMetadata {
-                title: "New conversation (Fork)".into(),
+                title: Some("Notes (Fork)".into()),
                 target: ConversationTarget::Cloud {
                     path: Some(format!("/home/demi/sessions/{source}")),
                 },
@@ -422,13 +422,13 @@ mod tests {
             .expect("published");
         assert_eq!(
             (
-                published.title.as_str(),
+                published.title.as_deref(),
                 &published.target,
                 published.pinned,
                 published.archived
             ),
             (
-                "New conversation (Fork)",
+                Some("Notes (Fork)"),
                 &operation(&committed).metadata.target,
                 false,
                 false

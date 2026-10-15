@@ -15,7 +15,7 @@ use super::StorageError;
 use super::columns::{decode, json, to_json};
 use super::control::ControlService;
 use super::conversation_index::{
-    AttachedHostRecord, ConversationRecord, NewConversation, TitleOrigin, conversation_by_id,
+    AttachedHostRecord, ConversationRecord, NewConversation, conversation_by_id,
     insert_attached_host, insert_conversation,
 };
 
@@ -35,8 +35,11 @@ pub struct ForkOperation {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ForkMetadata {
+    /// The source's title with " (Fork)"; null when the source's is the
+    /// placeholder, which holds no words, so the destination's is too.
+    #[serde(deserialize_with = "Option::deserialize")]
     #[garde(length(min = 1))]
-    pub title: String,
+    pub title: Option<String>,
     #[garde(dive)]
     pub target: ConversationTarget,
     /// The model selection the source's record held, which the destination
@@ -155,8 +158,7 @@ impl ControlService {
                 &NewConversation {
                     id: &operation.id,
                     owner: &operation.owner,
-                    title: &metadata.title,
-                    origin: TitleOrigin::User,
+                    title: metadata.title.as_deref(),
                     pinned: false,
                     target: &metadata.target,
                     model: metadata.model.as_ref(),

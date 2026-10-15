@@ -484,10 +484,10 @@ mod tests {
         assert_eq!(refusals, [Err(ErrorCode::TurnInFlight); 3]);
         assert!(waited);
         assert_ne!(
-            held_title, "Renamed",
+            held_title.as_deref(), Some("Renamed"),
             "the rename applied while a transition held the conversation"
         );
-        assert_eq!(title, "Renamed");
+        assert_eq!(title.as_deref(), Some("Renamed"));
         pool.close().await;
     }
 

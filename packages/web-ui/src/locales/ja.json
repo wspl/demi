@@ -283,5 +283,8 @@
     "delete": "削除",
     "remove": "削除",
     "save": "保存"
+  },
+  "conversation": {
+    "untitled": "新しいチャット"
   }
 }

@@ -3,6 +3,7 @@ import { simulatedRequestId } from '../fixtures/request-failures'
 import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import { moveBefore } from '@demicodes/utils'
 import type { SidebarConversation, SidebarProject, SidebarProjectHost, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
+import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import type { SidebarGroup } from '@demicodes/web-ui/sidebar/list-model'
 import { RestoreSweep } from '../fixtures/restore-sweep'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
@@ -218,7 +219,7 @@ function archiveRows(list: Ref<SidebarConversation[]>, ids: string[]): void {
     // One batch request refused them all, as the product's does.
     const requestId = simulatedRequestId(`archive ${ids.join(' ')}`)
     showRefused('archive', refused.map((conversation) => ({
-      title: conversation.title,
+      title: conversationTitle(conversation.title),
       reasons: ['A conversation with running work cannot be archived, restored or moved'],
       requestId,
     })))
