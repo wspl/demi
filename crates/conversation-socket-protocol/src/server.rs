@@ -42,8 +42,9 @@ pub enum ServerFrame {
     Rejected {
         #[garde(skip)]
         command: ClientFrameKind,
+        #[serde(flatten)]
         #[garde(skip)]
-        reason: String,
+        refusal: Refusal,
     },
     /// The blocks from `start` to the end, whole, with the transcript's
     /// length and version (`runtime.md` § Where a reset starts).
@@ -326,8 +327,9 @@ pub enum EditOutcome {
         turn_id: TurnId,
     },
     Rejected {
+        #[serde(flatten)]
         #[garde(skip)]
-        reason: String,
+        refusal: Refusal,
     },
 }
 
@@ -354,10 +356,110 @@ pub enum SteerOutcome {
     /// The steer is pending until the next continuation boundary.
     Accepted,
     Rejected {
+        #[serde(flatten)]
         #[garde(skip)]
-        reason: String,
+        refusal: Refusal,
     },
 }
+
+/// A frame the backend or the session refused, as the page words it
+/// (`localization.md` § Text from the backend): the code its text is looked
+/// up by, one of the agent's [`AgentCode`]s or of the backend's
+/// `ErrorCode`s, the values that text needs, and the refusal in English, for
+/// the log and for a code the page has no words for.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct Refusal {
+    pub code: String,
+    /// The values the page's text for `code` needs, each a number or a
+    /// string, such as `{ "thresholdPercent": 60 }`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
+    pub reason: String,
+}
+
+impl Refusal {
+    /// The refusal of `code`, which `reason` says in English.
+    pub fn new(code: impl std::fmt::Display, reason: impl Into<String>) -> Self {
+        Self {
+            code: code.to_string(),
+            params: BTreeMap::new(),
+            reason: reason.into(),
+        }
+    }
+
+    /// The refusal with the value `name` its text is filled with.
+    pub fn with_param(mut self, name: &str, value: impl Into<serde_json::Value>) -> Self {
+        self.params.insert(name.to_owned(), value.into());
+        self
+    }
+}
+
+/// The codes of the agent's own refusals and failures, which the page words
+/// (`localization.md` § Text from the backend): a [`Refusal`]'s, and an
+/// `error` frame's that no provider failure gave; the backend's are
+/// `ErrorCode`s.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum AgentCode {
+    /// A second `open` on one connection.
+    SessionAlreadyOpen,
+    /// A frame that needs a session before the connection opened one.
+    NoSession,
+    /// A `compact` of a subagent that has ended.
+    AgentEnded,
+    /// A `send_saved` sent to the agent itself, which only the backend
+    /// sends.
+    SentByBackend,
+    /// An action that needs the session idle while it works.
+    SessionBusy,
+    /// A `compact` of a context that is not full enough yet, below
+    /// `thresholdPercent` of its window with `usedPercent` used.
+    CompactionUnavailable,
+    /// The session is closed.
+    SessionClosed,
+    /// A message edit is being prepared.
+    EditInProgress,
+    /// A steer while no turn runs.
+    NothingToSteer,
+    /// A steer while the running turn is being stopped.
+    TurnStopping,
+    /// A steer while the running turn is finishing.
+    TurnFinishing,
+    /// An edit whose operation id was used for another request.
+    EditConflict,
+    /// An edit while the session has work pending.
+    EditBusy,
+    /// An edit of a version of the conversation that changed since.
+    EditStale,
+    /// An edit of a block that is not a user message.
+    EditTarget,
+    /// An edit that keeps a file the edited message does not hold.
+    EditFileMissing,
+    /// An edit stopped before it was accepted.
+    EditStopped,
+    /// The frame's files could not be resolved, or the edit could not be
+    /// prepared or saved.
+    FrameFailed,
+    /// The conversation's agent could not be opened or restored.
+    OpenFailed,
+    /// The session's work could not be saved.
+    SaveFailed,
+    /// A subagent could not be started, resumed or closed.
+    SubagentFailed,
+    /// A page's input did not reach its command.
+    ShellInputFailed,
+    /// A page's stop did not reach its command.
+    ShellStopFailed,
+    /// A Retry with no turn to run again.
+    NothingToRetry,
+    /// Compaction's summary request answered calls and no summary, twice.
+    SummaryMissing,
+    /// The system prompt of the conversation's model could not be made, as
+    /// when its provider entry is gone.
+    PromptUnavailable,
+}
+
+serde_plain::derive_display_from_serialize!(AgentCode);
 
 /// What an `abort` stopped, and whether another `abort` would stop more.
 #[derive(

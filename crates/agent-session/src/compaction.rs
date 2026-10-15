@@ -13,6 +13,7 @@ use demi_agent_transcript::{
     estimate::{block_tokens, context_tokens, text_tokens},
     kept_messages, last_assistant_text, turn_record,
 };
+use demi_conversation_socket_protocol::{AgentCode, Refusal};
 use demi_provider_common::{ErrorCode, InferenceItem, RequestLimits, ToolDefinition, UserPart};
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, Reservation};
 use demi_shared_types::{
@@ -349,11 +350,7 @@ pub(super) async fn context_usage(
         .guard(s.runtime.system_prompt(&model))
         .await?
         .map_err(|message| {
-            TurnError::Failed(Box::new(ErrorReport {
-                message,
-                code: None,
-                diagnostics: None,
-            }))
+            TurnError::Failed(Box::new(ErrorReport::agent(AgentCode::PromptUnavailable, message)))
         })?;
     held(s, cancel, |core| usage_at(core, &prompt, window)).await
 }
@@ -407,15 +404,20 @@ pub(super) async fn report_context_usage(s: &SessionShared, cancel: &TurnCancel)
 /// takes it at any share: its media, not its tokens, are what the vendor
 /// refused, and summarizing them away is how the user continues it
 /// (`compaction.md` § When compaction runs).
-pub fn compaction_refusal(usage: &ContextUsage, size_refused: bool) -> Option<String> {
+pub fn compaction_refusal(usage: &ContextUsage, size_refused: bool) -> Option<Refusal> {
     if size_refused || usage.admits_compaction() {
         return None;
     }
     let window = usage.window?;
-    Some(format!(
-        "Available from {MANUAL_COMPACTION_PERCENT}% context (now {}%)",
-        usage.tokens * 100 / window
-    ))
+    let used = usage.tokens * 100 / window;
+    Some(
+        Refusal::new(
+            AgentCode::CompactionUnavailable,
+            format!("Available from {MANUAL_COMPACTION_PERCENT}% context (now {used}%)"),
+        )
+        .with_param("thresholdPercent", MANUAL_COMPACTION_PERCENT)
+        .with_param("usedPercent", used),
+    )
 }
 
 /// Whether the turn the history leaves unfinished failed because its
@@ -715,18 +717,17 @@ async fn summarize(
         match ask_copy(s, history.clone(), media.clone(), cancel).await? {
             Answer::Summary(summary) => return Ok(summary),
             Answer::OnlyCalls if attempt >= 2 => {
-                return Err(TurnError::Failed(Box::new(ErrorReport {
-                    message: ONLY_CALLS.to_owned(),
-                    code: None,
-                    diagnostics: None,
-                })));
+                return Err(TurnError::Failed(Box::new(ErrorReport::agent(
+                    AgentCode::SummaryMissing,
+                    ONLY_CALLS,
+                ))));
             }
             Answer::OnlyCalls => {
                 let delay = policy.delay(attempt, None);
                 s.emit(SessionEvent::RetryScheduled {
                     attempt,
                     delay_ms: u64::try_from(delay.as_millis()).unwrap_or(u64::MAX),
-                    code: None,
+                    code: Some(AgentCode::SummaryMissing.to_string()),
                     diagnostics: None,
                 });
                 cancel.guard(tokio::time::sleep(delay)).await?;

@@ -748,9 +748,18 @@ async fn the_usage_and_the_compact_gate_count_against_the_limit_the_user_set() {
         (full.tokens, full.window, full.compact_from),
         (400, Some(1_000), Some(500))
     );
+    // The page words the refusal from its code and values.
+    let refusal = compaction_refusal(&full, false).expect("40% is below the threshold");
     assert_eq!(
-        compaction_refusal(&full, false).as_deref(),
-        Some("Available from 50% context (now 40%)")
+        (refusal.code.as_str(), &refusal.params),
+        (
+            "compaction_unavailable",
+            &[
+                ("thresholdPercent".to_owned(), serde_json::json!(50)),
+                ("usedPercent".to_owned(), serde_json::json!(40)),
+            ]
+            .into(),
+        )
     );
 
     // The user limits the model's window to 600 tokens.

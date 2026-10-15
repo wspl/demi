@@ -20,7 +20,7 @@ use demi_backend_providers::llm::families::{
     FamilyArgs, FamilyCredential, FamilyError, ProviderFamily,
 };
 use demi_conversation_socket_protocol::{
-    ClientFrame, EditOutcome, EditRequest, Failures, RemoveOutcome, ServerFrame, SubagentJob,
+    ClientFrame, EditOutcome, EditRequest, Failures, Refusal, RemoveOutcome, ServerFrame, SubagentJob,
     TranscriptPatch, TranscriptVersion,
 };
 use demi_provider_common::testing::{MockResponse, MockVendor};
@@ -1328,7 +1328,10 @@ async fn the_frames_the_backend_refuses_never_reach_the_session() {
         ServerFrame::EditResult {
             operation_id: "edit-1".try_into().unwrap(),
             outcome: EditOutcome::Rejected {
-                reason: "Restore the conversation before writing to it".into()
+                refusal: Refusal::new(
+                    ErrorCode::ConversationArchived,
+                    "Restore the conversation before writing to it"
+                ),
             },
         }
     );

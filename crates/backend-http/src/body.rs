@@ -74,6 +74,7 @@ fn too_large() -> ApiError {
         ErrorCode::TooLarge,
         format!("The request body is over its {JSON_BODY_LIMIT}-byte limit"),
     )
+    .with_param("limitBytes", JSON_BODY_LIMIT)
 }
 
 impl<S, T> FromRequest<S> for JsonBody<T>

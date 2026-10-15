@@ -121,7 +121,8 @@ pub(super) async fn delete(
             StatusCode::CONFLICT,
             ErrorCode::WorkspaceInUse,
             format!("{conversations} conversation(s) still target this workspace"),
-        )),
+        )
+        .with_param("count", conversations)),
     }
 }
 

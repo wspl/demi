@@ -127,7 +127,8 @@ fn refused(refusal: SavedRefusal) -> ApiError {
             StatusCode::PAYLOAD_TOO_LARGE,
             ErrorCode::TooLarge,
             format!("The message is over its {DRAFT_BYTES_MAX}-byte limit"),
-        ),
+        )
+        .with_param("limitBytes", DRAFT_BYTES_MAX),
         SavedRefusal::Full => ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::SavedFull,

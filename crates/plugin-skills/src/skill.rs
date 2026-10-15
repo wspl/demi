@@ -2,7 +2,8 @@
 //! front matter Demi reads, checked leniently, as the format's guide for
 //! clients asks.
 
-use serde::Deserialize;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 
 /// The largest `SKILL.md` that is a skill.
 pub(crate) const SKILL_MD_MAX_BYTES: usize = 256 * 1024;
@@ -28,20 +29,70 @@ struct FrontMatter {
     disable_model_invocation: Option<bool>,
 }
 
-/// The skill `text` describes, in the directory named `directory`; the
-/// reason it is not a skill otherwise.
-pub(crate) fn parse(directory: &str, text: &[u8]) -> Result<Parsed, String> {
-    if text.len() > SKILL_MD_MAX_BYTES {
-        return Err("SKILL.md is larger than 256 KiB".into());
+/// Why a `SKILL.md` is not a skill, as the page words it (`localization.md`
+/// § Text from the backend).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "code", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum SkipProblem {
+    /// It is larger than `limit_bytes`.
+    TooLarge { limit_bytes: u32 },
+    NotUtf8,
+    NoFrontMatter,
+    /// Its front matter is not YAML; the reason quotes the parser.
+    FrontMatterInvalid,
+    NoDescription,
+}
+
+/// A `SKILL.md` that is not a skill: why, in English and as the page words
+/// it.
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+#[error("{reason}")]
+pub(crate) struct NotASkill {
+    pub(crate) reason: String,
+    pub(crate) problem: SkipProblem,
+}
+
+impl NotASkill {
+    fn new(problem: SkipProblem, reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+            problem,
+        }
     }
-    let text = std::str::from_utf8(text).map_err(|_| "SKILL.md is not UTF-8".to_owned())?;
-    let yaml = front_matter(text).ok_or_else(|| "SKILL.md has no front matter".to_owned())?;
-    let fields: FrontMatter = serde_saphyr::from_str(yaml)
-        .map_err(|error| format!("the front matter does not parse: {error}"))?;
+
+    /// A `SKILL.md` larger than [`SKILL_MD_MAX_BYTES`].
+    pub(crate) fn too_large() -> Self {
+        Self::new(
+            SkipProblem::TooLarge {
+                limit_bytes: SKILL_MD_MAX_BYTES as u32,
+            },
+            "SKILL.md is larger than 256 KiB",
+        )
+    }
+}
+
+/// The skill `text` describes, in the directory named `directory`; why it
+/// is not a skill otherwise.
+pub(crate) fn parse(directory: &str, text: &[u8]) -> Result<Parsed, NotASkill> {
+    if text.len() > SKILL_MD_MAX_BYTES {
+        return Err(NotASkill::too_large());
+    }
+    let text = std::str::from_utf8(text)
+        .map_err(|_| NotASkill::new(SkipProblem::NotUtf8, "SKILL.md is not UTF-8"))?;
+    let yaml = front_matter(text)
+        .ok_or_else(|| NotASkill::new(SkipProblem::NoFrontMatter, "SKILL.md has no front matter"))?;
+    let fields: FrontMatter = serde_saphyr::from_str(yaml).map_err(|error| {
+        NotASkill::new(
+            SkipProblem::FrontMatterInvalid,
+            format!("the front matter does not parse: {error}"),
+        )
+    })?;
     let description = fields
         .description
         .filter(|description| !description.trim().is_empty())
-        .ok_or_else(|| "the front matter has no description".to_owned())?;
+        .ok_or_else(|| {
+            NotASkill::new(SkipProblem::NoDescription, "the front matter has no description")
+        })?;
     let mut warnings = Vec::new();
     let name = match fields.name {
         Some(name) => {

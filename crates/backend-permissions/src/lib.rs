@@ -577,6 +577,14 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
         event: AgentMessageEvent::Permission {
             outcome: decision.outcome,
             action: action.clone(),
+            categories: match &request.ask {
+                StoredAsk::Permission { categories } => categories.clone(),
+                StoredAsk::Allowance { .. } | StoredAsk::Credential { .. } => Vec::new(),
+            },
+            credential: match &request.ask {
+                StoredAsk::Allowance { name, .. } => Some(name.clone()),
+                StoredAsk::Permission { .. } | StoredAsk::Credential { .. } => None,
+            },
         },
         origin: None,
     };

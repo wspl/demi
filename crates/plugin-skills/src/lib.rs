@@ -489,7 +489,7 @@ impl State {
                 Ok((fetched, blobs))
             }
             Err(FetchError::Stopped) => return Ok(Fetched::Stopped),
-            Err(FetchError::Failed(message)) => Err(message),
+            Err(FetchError::Failed { message, problem }) => Err((message, problem)),
         };
         loop {
             let all = sources::read(port).await?;
@@ -499,10 +499,11 @@ impl State {
             let now = self.clock.now();
             let recorded = match &outcome {
                 Ok((fetched, blobs)) => sources::fetched(&all, id, fetched, blobs, now),
-                Err(message) => Source {
+                Err((message, problem)) => Source {
                     failure: Some(Failure {
                         at: now,
                         message: message.clone(),
+                        problem: Some(problem.clone()),
                     }),
                     ..source.clone()
                 },
@@ -528,7 +529,7 @@ impl State {
                 port.set_directories(sources::directories(&all)).await?;
                 Ok(Fetched::Pinned)
             }
-            Err(message) => Ok(Fetched::Failed(message)),
+            Err((message, _)) => Ok(Fetched::Failed(message)),
         }
     }
 
