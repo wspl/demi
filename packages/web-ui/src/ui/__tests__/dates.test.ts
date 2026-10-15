@@ -114,10 +114,10 @@ test.each([
 // (`localization.md` § Where the text lives).
 test.each<{ language: Language; age: string; day: string; past: string; reset: string; span: string }>([
   { language: 'en', age: '2h', day: 'October 7, 2026', past: '5 minutes ago', reset: 'Resets in 3h 42m', span: '2m 14s' },
-  { language: 'zh-Hans', age: '2 小时', day: '2026年10月7日', past: '5分钟前', reset: '3 小时 42 分钟后重置', span: '2 分 14 秒' },
-  { language: 'zh-Hant', age: '2 小時', day: '2026年10月7日', past: '5分鐘前', reset: '3 小時 42 分鐘後重設', span: '2 分 14 秒' },
-  { language: 'ja', age: '2 時間', day: '2026年10月7日', past: '5 分前', reset: '3 時間 42 分後にリセット', span: '2 分 14 秒' },
-  { language: 'ko', age: '2시간', day: '2026년 10월 7일', past: '5분 전', reset: '3시간 42분 후 초기화', span: '2분 14초' },
+  { language: 'zh-Hans', age: '2小时前', day: '2026年10月7日', past: '5分钟前', reset: '3 小时 42 分钟后重置', span: '2 分 14 秒' },
+  { language: 'zh-Hant', age: '2小時前', day: '2026年10月7日', past: '5分鐘前', reset: '3 小時 42 分鐘後重設', span: '2 分 14 秒' },
+  { language: 'ja', age: '2時間前', day: '2026年10月7日', past: '5 分前', reset: '3 時間 42 分後にリセット', span: '2 分 14 秒' },
+  { language: 'ko', age: '2시간 전', day: '2026년 10월 7일', past: '5분 전', reset: '3시간 42분 후 초기화', span: '2분 14초' },
 ])('in $language an age reads "$age" and a day "$day"', ({ language, age, day, past, reset, span }) => {
   createPageI18n(language)
   expect(formatAge(inMs(-2 * HOUR - MINUTE), now)).toBe(age)
