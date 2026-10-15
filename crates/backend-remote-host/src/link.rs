@@ -36,6 +36,7 @@ use tokio_util::{sync::CancellationToken, task::TaskTracker};
 use crate::{
     device_jobs::{DeviceJobs, Hello},
     file_watch::LinkSubscriptions,
+    manifest::CommandSelection,
     output_records::{decode_output, stream_kind},
     pipes::Pipes,
     relay::{CallEntry, Stop},
@@ -260,6 +261,8 @@ impl WeakLink {
 
 pub(crate) struct Inner {
     device: String,
+    /// The instance of the runner at its other end, from its hello.
+    instance: u64,
     identity: HostIdentity,
     kernel: Option<wire::Kernel>,
     shell: Option<String>,
@@ -613,6 +616,7 @@ impl Link {
         let (package_events, mut events) = mpsc::channel(PACKAGE_EVENTS);
         let link = Link(Rc::new(Inner {
             device: options.device,
+            instance: options.hello.instance,
             identity: options.identity,
             kernel: options.kernel,
             shell: options.shell,
@@ -643,6 +647,14 @@ impl Link {
             let reading = link.clone();
             link.spawn("kept output resync", async move {
                 reading.resync(&job, lengths).await
+            });
+        }
+        for (job, start, commands) in adoption.resend {
+            let sending = link.clone();
+            link.spawn("job start sent again", async move {
+                let sent = sending.send_job_start(commands.as_ref(), &start).await;
+                let start = sent.map_err(|_| start);
+                sending.0.device_jobs.resent(&sending, &job, start);
             });
         }
         let handing = link.clone();
@@ -944,8 +956,40 @@ impl Link {
         });
     }
 
-    pub(crate) fn job_turn(&self) -> &SerialGate {
-        &self.0.jobs
+    /// The instance of the runner at the connection's other end.
+    pub(crate) fn instance(&self) -> u64 {
+        self.0.instance
+    }
+
+    /// Sends a job's `start`, after the manifest of its `commands` when the
+    /// connection did not carry that one last. Starts take turns: the
+    /// runner holds one manifest at a time, so a job's manifest and its
+    /// start travel together.
+    pub(crate) async fn send_job_start(
+        &self,
+        commands: Option<&CommandSelection>,
+        start: &Inbound,
+    ) -> Result<(), HostError> {
+        let _turn = self.0.jobs.acquire().await;
+        let sent = async {
+            if let Some(commands) = commands
+                && self.sent_manifest().as_deref() != Some(commands.hash())
+            {
+                self.set_sent_manifest(Some(commands.hash().to_owned()));
+                self.send(&Inbound::Manifest {
+                    manifest: commands.wire().clone(),
+                })
+                .await?;
+            }
+            self.send(start).await
+        };
+        let sent = sent.await;
+        if sent.is_err() {
+            // What the runner received is uncertain: the next job sends its
+            // manifest again.
+            self.set_sent_manifest(None);
+        }
+        sent
     }
 
     /// The device's jobs, which outlive the connection.
